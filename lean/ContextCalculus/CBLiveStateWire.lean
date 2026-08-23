@@ -57,6 +57,20 @@ structure WireLiveSuccessorEdge where
   rsucc_reach_hwm : Nat
 deriving FromJson, ToJson
 
+structure WireLiveSubstitution where
+  variable_id : Nat
+  value : Nat
+deriving FromJson, ToJson
+
+structure WireLiveRuleEvidence where
+  kind : String
+  ontology_index : Nat
+  instantiated_source : WireLiveClause
+  context_clause_ids : List Nat
+  matched_predicates : List WireLivePredicate
+  substitution : List WireLiveSubstitution
+deriving FromJson, ToJson
+
 structure WireLiveInsertionEvent where
   sequence : Nat
   context_index : Nat
@@ -64,6 +78,8 @@ structure WireLiveInsertionEvent where
   clause_id : Nat
   origin_hint : String
   origin_index : Option Nat
+  rule_hint : Option String
+  rule_evidence : Option WireLiveRuleEvidence
 deriving FromJson, ToJson
 
 structure WireLiveContext where
@@ -165,6 +181,75 @@ def WireLiveClause.decode (bounds : Bounds) (bits : Nat)
       else throw "CB live clause head contains duplicates"
     else throw "CB live clause body contains duplicates"
   else throw "CB live context-clause body contains a non-predicate literal"
+
+def WireLiveSubstitution.decode (bounds : Bounds) (bits : Nat)
+    (wire : WireLiveSubstitution) : Except String (Int × FTerm) := do
+  let decodedVariable ← decodeRawTerm bounds bits wire.variable_id
+  let value ← decodeRawTerm bounds bits wire.value
+  match decodedVariable with
+  | .var index => return (index, value)
+  | _ => throw "CB live Hyper substitution key is not a variable"
+
+structure DecodedLiveHyperPremise where
+  clauseId : Nat
+  clause : FCL
+  matched : FPred
+  matched_in_head : FLit.P matched ∈ clause.head
+
+def decodeLiveHyperPremises (bounds : Bounds) (bits : Nat) (arena : List FCL) :
+    List Nat → List WireLivePredicate → Except String (List DecodedLiveHyperPremise)
+  | [], [] => pure []
+  | clauseId :: clauseIds, wirePredicate :: wirePredicates => do
+      let clause ← match arena[clauseId]? with
+        | some clause => pure clause
+        | none => throw "CB live Hyper premise id is outside its context arena"
+      let matched ← wirePredicate.decode bounds bits
+      if hmatched : FLit.P matched ∈ clause.head then
+        return { clauseId, clause, matched, matched_in_head := hmatched } ::
+          (← decodeLiveHyperPremises bounds bits arena clauseIds wirePredicates)
+      else throw "CB live Hyper matched predicate is absent from its premise head"
+  | _, _ => throw "CB live Hyper premise and matched-predicate lengths differ"
+
+structure DecodedLiveHyperEvidence (production : DecodedProductionRun) where
+  ontologyIndex : Nat
+  instantiatedSource : FCL
+  substitution : List (Int × FTerm)
+  substitution_nodup : (substitution.map Prod.fst).Nodup
+  source_step_valid : CBProductionTrace.stepOk production.source.ontology [] []
+    instantiatedSource (.premise ontologyIndex substitution) = true
+  premises : List DecodedLiveHyperPremise
+
+def WireLiveRuleEvidence.decodeHyper (production : DecodedProductionRun)
+    (bits : Nat) (arena : List FCL) (wire : WireLiveRuleEvidence) :
+    Except String (DecodedLiveHyperEvidence production) := do
+  if wire.kind != "hyper" then
+    throw s!"unsupported CB live rule-evidence kind {wire.kind}"
+  let instantiatedSource ← wire.instantiated_source.decode production.bounds bits
+  let substitution ← wire.substitution.mapM
+    (WireLiveSubstitution.decode production.bounds bits)
+  if hsubstitution : (substitution.map Prod.fst).Nodup then
+  if hsource : CBProductionTrace.stepOk production.source.ontology [] []
+      instantiatedSource (.premise wire.ontology_index substitution) = true then
+    let premises ← decodeLiveHyperPremises production.bounds bits arena
+      wire.context_clause_ids wire.matched_predicates
+    return {
+      ontologyIndex := wire.ontology_index
+      instantiatedSource
+      substitution
+      substitution_nodup := hsubstitution
+      source_step_valid := hsource
+      premises
+    }
+  else throw "CB live Hyper source instantiation was rejected"
+  else throw "CB live Hyper substitution repeats a variable"
+
+theorem DecodedLiveHyperEvidence.source_sound
+    (evidence : DecodedLiveHyperEvidence production)
+    {D : Type} (model : TModel D) (assignment : Int → D)
+    (hontology : ∀ source ∈ production.source.ontology, valid model source) :
+    CBProductionTrace.HoldsAt model assignment evidence.instantiatedSource := by
+  exact CBProductionTrace.stepOk_sound model assignment hontology
+    (by simp) (by simp) evidence.source_step_valid
 
 private def terminalOfGlobal (global : DecodedCBGlobalModelDocument) :=
   global.global.rsucc.succ.join3.hyper.literalOrder.termOrder.factorClosure.localResolution.terminal
@@ -305,9 +390,11 @@ structure DecodedLiveInsertionEvent (production : DecodedProductionRun)
   clause : FCL
   origin : LiveInsertionOrigin
   origin_valid : insertionOriginOk production contextIndex clause origin = true
+  ruleHint : Option String
+  hyperEvidence : Option (DecodedLiveHyperEvidence production)
 
 def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
-    (ordinary root : List FCL) (wire : WireLiveInsertionEvent) :
+    (bits : Nat) (ordinary root : List FCL) (wire : WireLiveInsertionEvent) :
     Except String (DecodedLiveInsertionEvent production ordinary root) := do
   if hcontext : wire.context_index < production.contexts.length then
     let contextIndex : Fin production.contexts.length := ⟨wire.context_index, hcontext⟩
@@ -327,6 +414,22 @@ def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
                 throw "CB derived insertion origin unexpectedly has an index"
             | hint, _ => throw s!"unsupported CB insertion origin {hint}"
           if horigin : insertionOriginOk production contextIndex clause origin = true then
+            let hyperEvidence ← match origin, wire.rule_hint, wire.rule_evidence with
+              | .core _, none, none => pure none
+              | .ontologyFact _, none, none => pure none
+              | .derived, some "hyper", some evidence =>
+                  some <$> evidence.decodeHyper production bits arena
+              | .derived, some hint, none =>
+                  if ["pred-local", "pred-arrival", "succ", "eq", "factor", "join",
+                      "branch-decision", "filtered-seed"].contains hint then
+                    pure none
+                  else throw s!"unsupported CB live derived-rule hint {hint}"
+              | .core _, _, _ | .ontologyFact _, _, _ =>
+                  throw "CB live insertion seed unexpectedly carries rule metadata"
+              | .derived, none, _ =>
+                  throw "CB live derived insertion omits its rule hint"
+              | .derived, some _, some _ =>
+                  throw "CB live non-Hyper insertion unexpectedly carries Hyper evidence"
             return {
               sequence := wire.sequence
               contextIndex := contextIndex
@@ -336,6 +439,8 @@ def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
               clause := clause
               origin := origin
               origin_valid := horigin
+              ruleHint := wire.rule_hint
+              hyperEvidence
             }
           else throw "CB insertion origin does not match its indexed production seed"
       | none => throw "CB insertion-history clause id is outside its arena"
@@ -522,7 +627,7 @@ def WireProductionBoundGlobalModelDocument.decode
     Except String DecodedLiveStateDocument := do
   if wire.version != 1 then
     throw s!"unsupported production-bound CB global-model version {wire.version}"
-  if wire.live_state.version != 4 then
+  if wire.live_state.version != 5 then
     throw s!"unsupported CB live-state version {wire.live_state.version}"
   let global ← wire.global_model.decode
   let production := rProduction global.global.rsucc
@@ -555,7 +660,7 @@ def WireProductionBoundGlobalModelDocument.decode
     let root ← wire.live_state.root_clause_arena.mapM
       (WireLiveClause.decode production.bounds wire.live_state.comp_ind_bits)
     let insertionHistory ← wire.live_state.insertion_history.mapM
-      (WireLiveInsertionEvent.decode production ordinary root)
+      (WireLiveInsertionEvent.decode production wire.live_state.comp_ind_bits ordinary root)
     if hinsertionSequence : insertionHistory.map (·.sequence) =
         List.range insertionHistory.length then
     let contexts ← wire.live_state.contexts.mapM
@@ -615,5 +720,6 @@ theorem WireProductionBoundGlobalModelDocument.check_sound
 
 #print axioms WireProductionBoundGlobalModelDocument.check_sound
 #print axioms DecodedLiveInsertionEvent.seed_sound
+#print axioms DecodedLiveHyperEvidence.source_sound
 
 end ContextCalculus.CBLiveStateWire

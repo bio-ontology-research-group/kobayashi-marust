@@ -37,7 +37,7 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
     let snapshot: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     std::fs::remove_file(&path).unwrap();
-    assert_eq!(snapshot["version"], 4);
+    assert_eq!(snapshot["version"], 5);
     assert!(snapshot["concept_count"].is_number());
     assert!(snapshot["role_count"].is_number());
     assert!(snapshot["function_count"].is_number());
@@ -167,7 +167,7 @@ fn mandatory_lean_rejection_prevents_publication() {
     let document: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&bundle).unwrap()).unwrap();
     assert_eq!(document["version"], 1);
-    assert_eq!(document["live_state"]["version"], 4);
+    assert_eq!(document["live_state"]["version"], 5);
     assert!(document["live_state"]["concept_count"].is_number());
     assert!(document["live_state"]["role_count"].is_number());
     assert!(document["live_state"]["function_count"].is_number());
@@ -200,7 +200,29 @@ fn mandatory_lean_rejection_prevents_publication() {
         assert_eq!(event["origin_index"].is_number(), origin != "derived");
         saw_core |= origin == "core";
         saw_ontology_fact |= origin == "ontology_fact";
-        saw_hyper |= origin == "derived" && event["rule_hint"] == "hyper";
+        if origin == "derived" && event["rule_hint"] == "hyper" {
+            saw_hyper = true;
+            let evidence = &event["rule_evidence"];
+            assert_eq!(evidence["kind"], "hyper");
+            assert!(evidence["ontology_index"].as_u64().unwrap()
+                < document["live_state"]["source_ontology"]
+                    .as_array()
+                    .unwrap()
+                    .len() as u64);
+            let premises = evidence["context_clause_ids"].as_array().unwrap();
+            let matched = evidence["matched_predicates"].as_array().unwrap();
+            assert_eq!(premises.len(), matched.len());
+            assert!(!premises.is_empty());
+            for premise in premises {
+                let premise_id = premise.as_u64().unwrap();
+                assert!(history[..sequence].iter().any(|prior| {
+                    prior["context_index"] == event["context_index"]
+                        && prior["root"] == event["root"]
+                        && prior["clause_id"].as_u64() == Some(premise_id)
+                }));
+            }
+            assert!(evidence["substitution"].is_array());
+        }
     }
     assert!(saw_core && saw_ontology_fact);
     assert!(saw_hyper);
@@ -211,14 +233,21 @@ fn mandatory_lean_rejection_prevents_publication() {
     let evidence = candidate["insertion_evidence"].as_array().unwrap();
     assert_eq!(evidence.len(), history.len());
     for (event, proof) in history.iter().zip(evidence) {
-        let expected = if event["origin_hint"] == "derived" {
+        let expected = if event["rule_hint"] == "hyper" {
+            "local"
+        } else if event["origin_hint"] == "derived" {
             "unproved"
         } else {
             "seed"
         };
         assert_eq!(proof["kind"], expected);
-        assert_eq!(proof["prior_events"].as_array().unwrap().len(), 0);
-        assert_eq!(proof["trace"].as_array().unwrap().len(), 0);
+        if expected == "local" {
+            assert!(!proof["prior_events"].as_array().unwrap().is_empty());
+            assert!(!proof["trace"].as_array().unwrap().is_empty());
+        } else {
+            assert_eq!(proof["prior_events"].as_array().unwrap().len(), 0);
+            assert_eq!(proof["trace"].as_array().unwrap().len(), 0);
+        }
         assert_eq!(proof["discarded"].as_array().unwrap().len(), 0);
     }
     std::fs::remove_file(global).unwrap();

@@ -3302,6 +3302,25 @@ pub struct CbLiveInsertionEvent {
     /// the certificate producer can reconstruct the corresponding checked
     /// justification without guessing across every calculus rule.
     pub rule_hint: Option<&'static str>,
+    pub rule_evidence: Option<CbLiveRuleEvidence>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CbLiveRuleEvidence {
+    Hyper {
+        ontology_index: usize,
+        instantiated_source: CbLiveClause,
+        context_clause_ids: Vec<u32>,
+        matched_predicates: Vec<CbLivePred>,
+        substitution: Vec<CbLiveSubstitution>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLiveSubstitution {
+    pub variable_id: Term,
+    pub value: Term,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -3375,7 +3394,7 @@ mod cb_live_snapshot_tests {
         let second = engine.live_terminal_snapshot();
         assert_eq!(first, second);
         assert_eq!(serde_json::to_vec(&first).unwrap(), serde_json::to_vec(&second).unwrap());
-        assert_eq!(first.version, 4);
+        assert_eq!(first.version, 5);
         assert_eq!(first.concept_count, engine.sig.concept_names.len());
         assert_eq!(first.role_count, engine.sig.role_names.len());
         assert_eq!(first.source_ontology.len(), engine.ont.clauses.len());
@@ -3808,8 +3827,15 @@ impl Engine {
                 let side = self.cc_arena[root as usize][cid as usize].clone();
                 let maxima: Vec<Pred> = side.max_head_predicates().map(|(p, _)| p).collect();
                 for max in maxima {
-                    for result in self.hyper(id, &side, max, root) {
-                        self.add_clause_with_rule(id, result, Some("hyper"));
+                    for (result, evidence) in
+                        self.hyper_with_evidence(id, cid, &side, max, root)
+                    {
+                        self.add_clause_with_rule(
+                            id,
+                            result,
+                            Some("hyper"),
+                            Some(evidence),
+                        );
                     }
                 }
             }
@@ -3918,7 +3944,7 @@ impl Engine {
                         root,
                         &self.sig,
                     );
-                    self.add_clause_with_rule(id, c, Some("branch-decision"));
+                    self.add_clause_with_rule(id, c, Some("branch-decision"), None);
                 }
             }
         }
@@ -4153,7 +4179,7 @@ impl Engine {
     /// Redundancy-aware clause addition (Elim): skip if subsumed; remove clauses
     /// it subsumes; enqueue to todo. Returns true if added.
     fn add_clause(&mut self, id: usize, clause: ContextClause) -> bool {
-        self.add_clause_with_rule(id, clause, None)
+        self.add_clause_with_rule(id, clause, None, None)
     }
 
     fn add_clause_with_rule(
@@ -4161,12 +4187,13 @@ impl Engine {
         id: usize,
         clause: ContextClause,
         rule_hint: Option<&'static str>,
+        rule_evidence: Option<CbLiveRuleEvidence>,
     ) -> bool {
         if !self.prof_time {
-            return self.add_clause_inner(id, clause, rule_hint);
+            return self.add_clause_inner(id, clause, rule_hint, rule_evidence);
         }
         let t = std::time::Instant::now();
-        let r = self.add_clause_inner(id, clause, rule_hint);
+        let r = self.add_clause_inner(id, clause, rule_hint, rule_evidence);
         prof_add(&ADDCLAUSE_NS, t);
         r
     }
@@ -4176,6 +4203,7 @@ impl Engine {
         id: usize,
         clause: ContextClause,
         rule_hint: Option<&'static str>,
+        rule_evidence: Option<CbLiveRuleEvidence>,
     ) -> bool {
         if clause.is_head_tautology() {
             return false;
@@ -4256,6 +4284,7 @@ impl Engine {
                 origin_hint: "derived",
                 origin_index: None,
                 rule_hint,
+                rule_evidence,
             });
         }
         if let Some(t) = __t {
@@ -4370,12 +4399,18 @@ impl Engine {
                         // Hyper fires on every maximal head predicate; the
                         // candidate ontology clauses are those with a body atom
                         // (central or neighbour) that can unify with `p`.
-                        let results = self.hyper(id, &clause, *p, root);
+                        let results = self.hyper_with_evidence(id, cid, &clause, *p, root);
                         if prof {
                             nhyper += results.len() as u64;
                         }
-                        for r in results {
-                            if self.add_clause_with_rule(id, r, Some("hyper")) && prof {
+                        for (r, evidence) in results {
+                            if self.add_clause_with_rule(
+                                id,
+                                r,
+                                Some("hyper"),
+                                Some(evidence),
+                            ) && prof
+                            {
                                 nadded += 1;
                             }
                         }
@@ -4385,7 +4420,7 @@ impl Engine {
                                 npred += results.len() as u64;
                             }
                             for r in results {
-                                if self.add_clause_with_rule(id, r, Some("pred-local")) && prof {
+                                if self.add_clause_with_rule(id, r, Some("pred-local"), None) && prof {
                                     nadded += 1;
                                 }
                             }
@@ -4399,7 +4434,7 @@ impl Engine {
                                     neqp += results.len() as u64;
                                 }
                                 for r in results {
-                                    if self.add_clause_with_rule(id, r, Some("eq")) && prof {
+                                    if self.add_clause_with_rule(id, r, Some("eq"), None) && prof {
                                         nadded += 1;
                                     }
                                 }
@@ -4415,7 +4450,7 @@ impl Engine {
                                 npred += results.len() as u64;
                             }
                             for r in results {
-                                if self.add_clause_with_rule(id, r, Some("pred-local")) && prof {
+                                if self.add_clause_with_rule(id, r, Some("pred-local"), None) && prof {
                                     nadded += 1;
                                 }
                             }
@@ -4429,7 +4464,7 @@ impl Engine {
                                     neqp += results.len() as u64;
                                 }
                                 for r in results {
-                                    if self.add_clause_with_rule(id, r, Some("eq")) && prof {
+                                    if self.add_clause_with_rule(id, r, Some("eq"), None) && prof {
                                         nadded += 1;
                                     }
                                 }
@@ -4448,7 +4483,7 @@ impl Engine {
                             neqe += results.len() as u64;
                         }
                         for r in results {
-                            if self.add_clause_with_rule(id, r, Some("eq")) && prof {
+                            if self.add_clause_with_rule(id, r, Some("eq"), None) && prof {
                                 nadded += 1;
                             }
                         }
@@ -4467,7 +4502,7 @@ impl Engine {
                             neqp += results.len() as u64;
                         }
                         for r in results {
-                            if self.add_clause_with_rule(id, r, Some("eq")) && prof {
+                            if self.add_clause_with_rule(id, r, Some("eq"), None) && prof {
                                 nadded += 1;
                             }
                         }
@@ -4493,7 +4528,7 @@ impl Engine {
                     nfact += results.len() as u64;
                 }
                 for r in results {
-                    if self.add_clause_with_rule(id, r, Some("factor")) && prof {
+                    if self.add_clause_with_rule(id, r, Some("factor"), None) && prof {
                         nadded += 1;
                     }
                 }
@@ -4503,7 +4538,7 @@ impl Engine {
             {
                 let results = self.join(id, &clause, root);
                 for r in results {
-                    if self.add_clause_with_rule(id, r, Some("join")) && prof {
+                    if self.add_clause_with_rule(id, r, Some("join"), None) && prof {
                         nadded += 1;
                     }
                 }
@@ -4590,23 +4625,44 @@ impl Engine {
 
     /// Hyper rule.  `side` is the just-popped clause; `max` one of its maximal
     /// head predicates.
+    #[cfg(test)]
     fn hyper(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
+        let started = self.prof_time.then(std::time::Instant::now);
+        let results = self.hyper_results(id, None, side, max, root);
+        if let Some(started) = started {
+            prof_add(&HYPER_NS, started);
+        }
+        results
+            .into_iter()
+            .map(|(clause, _)| clause)
+            .collect()
+    }
+
+    fn hyper_with_evidence(
+        &self,
+        id: usize,
+        side_id: u32,
+        side: &ContextClause,
+        max: Pred,
+        root: bool,
+    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
         if !self.prof_time {
-            return self.hyper_inner(id, side, max, root);
+            return self.hyper_results(id, Some(side_id), side, max, root);
         }
         let t = std::time::Instant::now();
-        let r = self.hyper_inner(id, side, max, root);
+        let r = self.hyper_results(id, Some(side_id), side, max, root);
         prof_add(&HYPER_NS, t);
         r
     }
 
-    fn hyper_inner(
+    fn hyper_results(
         &self,
         id: usize,
+        side_id: Option<u32>,
         side: &ContextClause,
         max: Pred,
         root: bool,
-    ) -> Vec<ContextClause> {
+    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
         HYPER_CALLS.with(|c| c.set(c.get() + 1));
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
@@ -4848,6 +4904,8 @@ impl Engine {
             };
             self.hyper_join(
                 id,
+                side_id,
+                oci,
                 side,
                 oc,
                 &candidates,
@@ -4871,6 +4929,8 @@ impl Engine {
     fn hyper_join(
         &self,
         id: usize,
+        side_id: Option<u32>,
+        ontology_index: usize,
         side: &ContextClause,
         oc: &OntologyClause,
         candidates: &[Vec<(usize, Pred)>],
@@ -4881,13 +4941,56 @@ impl Engine {
         chosen: &mut Vec<usize>,
         root: bool,
         determined: &mut DeterminedIndex,
-        out: &mut Vec<ContextClause>,
+        out: &mut Vec<(ContextClause, CbLiveRuleEvidence)>,
     ) {
         if depth == order.len() {
             if let Some(c) =
                 self.build_hyper_resolvent(id, side, oc, sigma, candidates, chosen, root)
             {
-                out.push(c);
+                let context_clause_ids = candidates
+                    .iter()
+                    .enumerate()
+                    .map(|(position, choices)| {
+                        let selected = choices[chosen[position]].0;
+                        if selected == usize::MAX {
+                            side_id.unwrap_or(u32::MAX)
+                        } else {
+                            selected as u32
+                        }
+                    })
+                    .collect();
+                let matched_predicates = candidates
+                    .iter()
+                    .enumerate()
+                    .map(|(position, choices)| choices[chosen[position]].1.into())
+                    .collect();
+                let substitution = sigma
+                    .map
+                    .iter()
+                    .map(|&(variable_id, value)| CbLiveSubstitution { variable_id, value })
+                    .collect();
+                let instantiated_source = CbLiveClause {
+                    body: oc
+                        .body
+                        .iter()
+                        .map(|predicate| CbLiveLit::from(predicate.apply(&|term| sigma.apply(term))))
+                        .collect(),
+                    head: oc
+                        .head
+                        .iter()
+                        .map(|literal| CbLiveLit::from(literal.apply(&|term| sigma.apply(term))))
+                        .collect(),
+                };
+                out.push((
+                    c,
+                    CbLiveRuleEvidence::Hyper {
+                        ontology_index,
+                        instantiated_source,
+                        context_clause_ids,
+                        matched_predicates,
+                        substitution,
+                    },
+                ));
             }
             return;
         }
@@ -4919,6 +5022,8 @@ impl Engine {
                         chosen[pos] = j as usize;
                         self.hyper_join(
                             id,
+                            side_id,
+                            ontology_index,
                             side,
                             oc,
                             candidates,
@@ -4950,6 +5055,8 @@ impl Engine {
                 chosen[pos] = j;
                 self.hyper_join(
                     id,
+                    side_id,
+                    ontology_index,
                     side,
                     oc,
                     candidates,
@@ -6611,7 +6718,7 @@ impl Engine {
         // context creation still sit in `todo` and must be worked off.
         let root = self.contexts[target].root;
         let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, &self.sig);
-        self.add_clause_with_rule(target, c, Some("succ"));
+        self.add_clause_with_rule(target, c, Some("succ"), None);
         target
     }
 
@@ -6707,7 +6814,7 @@ impl Engine {
             self.stat_pred_conclusions += results.len() as u64;
         }
         for r in results {
-            let fresh = self.add_clause_with_rule(to, r, Some("pred-arrival"));
+            let fresh = self.add_clause_with_rule(to, r, Some("pred-arrival"), None);
             if msgprof && fresh {
                 self.stat_pred_conclusions_new += 1;
             }
@@ -7780,6 +7887,9 @@ impl Engine {
                     event.origin_index = Some(index);
                 }
             }
+            if event.origin_hint == "derived" && event.rule_hint.is_none() {
+                event.rule_hint = Some("filtered-seed");
+            }
         }
 
         let mut function_count = 0usize;
@@ -7821,7 +7931,7 @@ impl Engine {
         }
 
         CbLiveTerminalSnapshot {
-            version: 4,
+            version: 5,
             comp_ind_bits: active_comp_ind_bits(),
             concept_count: self.sig.concept_names.len(),
             role_count: self.sig.role_names.len(),
@@ -8653,12 +8763,14 @@ mod tests {
         assert_eq!(sigma.mark(), sigma0.mark(), "generic join leaked bindings");
 
         let mut narrowed: Vec<Vec<(usize, Pred)>> = raw.to_vec();
-        let mut narrow_out = Vec::new();
+        let mut narrow_results = Vec::new();
         if reduce_hyper_candidates(oc, &mut narrowed, sigma0) {
             let mut sigma = sigma0.clone();
             let mut chosen = vec![0usize; n];
             let mut determined = DeterminedIndex::new(true);
             engine.hyper_join(
+                0,
+                None,
                 0,
                 side,
                 oc,
@@ -8670,7 +8782,7 @@ mod tests {
                 &mut chosen,
                 root,
                 &mut determined,
-                &mut narrow_out,
+                &mut narrow_results,
             );
             assert_eq!(
                 sigma.mark(),
@@ -8678,6 +8790,10 @@ mod tests {
                 "narrowed join leaked bindings"
             );
         }
+        let narrow_out = narrow_results
+            .into_iter()
+            .map(|(clause, _)| clause)
+            .collect();
         let narrowed_widths = narrowed.iter().map(Vec::len).collect();
         (generic, narrow_out, narrowed_widths)
     }

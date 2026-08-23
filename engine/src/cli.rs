@@ -552,6 +552,184 @@ pub fn run_engine() {
     }
 }
 
+fn cb_wire_term(term: crate::calc::Term, bits: u32) -> serde_json::Value {
+    use crate::calc::{COMP_BASE, FTERM_BASE, X, Y};
+    if term == X {
+        return serde_json::json!({"var": {"index": 0}});
+    }
+    if term <= Y {
+        return serde_json::json!({"var": {"index": i64::from(term) - i64::from(X)}});
+    }
+    if term < FTERM_BASE {
+        return serde_json::json!({"constant": {"individual": term - X}});
+    }
+    if term < COMP_BASE {
+        return serde_json::json!({"app": {
+            "function": term - FTERM_BASE,
+            "argument": {"var": {"index": 0}}
+        }});
+    }
+    let packed = term - COMP_BASE;
+    serde_json::json!({"app": {
+        "function": packed >> bits,
+        "argument": {"constant": {"individual": packed & ((1u32 << bits) - 1)}}
+    }})
+}
+
+fn cb_wire_literal(literal: &crate::engine::CbLiveLit, bits: u32) -> serde_json::Value {
+    match (literal.kind, literal.iri, literal.second) {
+        ("concept", Some(concept), None) => serde_json::json!({"predicate": {
+            "predicate": {"concept": {
+                "concept": concept,
+                "term": cb_wire_term(literal.first, bits)
+            }}
+        }}),
+        ("role", Some(role), Some(target)) => serde_json::json!({"predicate": {
+            "predicate": {"role": {
+                "role": role,
+                "source": cb_wire_term(literal.first, bits),
+                "target": cb_wire_term(target, bits)
+            }}
+        }}),
+        ("equality", None, Some(right)) => serde_json::json!({"equality": {
+            "left": cb_wire_term(literal.first, bits),
+            "right": cb_wire_term(right, bits)
+        }}),
+        ("inequality", None, Some(right)) => serde_json::json!({"inequality": {
+            "left": cb_wire_term(literal.first, bits),
+            "right": cb_wire_term(right, bits)
+        }}),
+        _ => serde_json::Value::Null,
+    }
+}
+
+fn cb_wire_clause(clause: &crate::engine::CbLiveClause, bits: u32) -> serde_json::Value {
+    serde_json::json!({
+        "body": clause.body.iter().map(|literal| cb_wire_literal(literal, bits)).collect::<Vec<_>>(),
+        "head": clause.head.iter().map(|literal| cb_wire_literal(literal, bits)).collect::<Vec<_>>(),
+    })
+}
+
+fn cb_live_pred_literal(predicate: &crate::engine::CbLivePred) -> crate::engine::CbLiveLit {
+    crate::engine::CbLiveLit {
+        kind: predicate.kind,
+        iri: Some(predicate.iri),
+        first: predicate.first,
+        second: predicate.second,
+    }
+}
+
+fn cb_push_unique<T: PartialEq>(target: &mut Vec<T>, value: T) {
+    if !target.contains(&value) {
+        target.push(value);
+    }
+}
+
+fn cb_resolve_live(
+    positive: &crate::engine::CbLiveClause,
+    negative: &crate::engine::CbLiveClause,
+    literal: &crate::engine::CbLiveLit,
+) -> Option<crate::engine::CbLiveClause> {
+    if !positive.head.contains(literal) || !negative.body.contains(literal) {
+        return None;
+    }
+    let mut body = Vec::new();
+    for candidate in positive.body.iter().chain(negative.body.iter()) {
+        if candidate != literal {
+            cb_push_unique(&mut body, candidate.clone());
+        }
+    }
+    let mut head = Vec::new();
+    for candidate in positive.head.iter().chain(negative.head.iter()) {
+        if candidate != literal {
+            cb_push_unique(&mut head, candidate.clone());
+        }
+    }
+    Some(crate::engine::CbLiveClause { body, head })
+}
+
+fn cb_clause_set_eq(
+    left: &crate::engine::CbLiveClause,
+    right: &crate::engine::CbLiveClause,
+) -> bool {
+    left.body.len() == right.body.len()
+        && left.head.len() == right.head.len()
+        && left.body.iter().all(|literal| right.body.contains(literal))
+        && left.head.iter().all(|literal| right.head.contains(literal))
+}
+
+fn cb_hyper_event_evidence(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    event: &crate::engine::CbLiveInsertionEvent,
+    prior: &std::collections::HashMap<(usize, bool, u32), usize>,
+) -> Option<serde_json::Value> {
+    let crate::engine::CbLiveRuleEvidence::Hyper {
+        ontology_index,
+        instantiated_source,
+        context_clause_ids,
+        matched_predicates,
+        substitution,
+    } = event.rule_evidence.as_ref()?;
+    if context_clause_ids.len() != matched_predicates.len() {
+        return None;
+    }
+    let arena = if event.root {
+        &live.root_clause_arena
+    } else {
+        &live.ordinary_clause_arena
+    };
+    let mut references = Vec::with_capacity(context_clause_ids.len());
+    let mut providers = Vec::with_capacity(context_clause_ids.len());
+    for &clause_id in context_clause_ids {
+        let event_index = *prior.get(&(event.context_index, event.root, clause_id))?;
+        references.push(serde_json::json!({"event_index": event_index}));
+        providers.push(arena.get(clause_id as usize)?);
+    }
+    let mut trace = Vec::with_capacity(context_clause_ids.len() + 1);
+    let wire_substitution = substitution
+        .iter()
+        .map(|entry| serde_json::json!({
+            "variableId": i64::from(entry.variable_id) - i64::from(crate::calc::X),
+            "term": cb_wire_term(entry.value, live.comp_ind_bits),
+        }))
+        .collect::<Vec<_>>();
+    trace.push(serde_json::json!({
+        "clause": cb_wire_clause(instantiated_source, live.comp_ind_bits),
+        "justification": {"premise": {
+            "index": ontology_index,
+            "substitution": wire_substitution,
+        }}
+    }));
+    let premise_count = providers.len();
+    let mut current = instantiated_source.clone();
+    for (index, (provider, matched)) in providers
+        .into_iter()
+        .zip(matched_predicates)
+        .enumerate()
+    {
+        let literal = cb_live_pred_literal(matched);
+        current = cb_resolve_live(provider, &current, &literal)?;
+        trace.push(serde_json::json!({
+            "clause": cb_wire_clause(&current, live.comp_ind_bits),
+            "justification": {"resolve": {
+                "positive": index,
+                "negative": premise_count + index,
+                "literal": cb_wire_literal(&literal, live.comp_ind_bits),
+            }}
+        }));
+    }
+    let event_clause = arena.get(event.clause_id as usize)?;
+    if !cb_clause_set_eq(&current, event_clause) {
+        return None;
+    }
+    Some(serde_json::json!({
+        "kind": "local",
+        "prior_events": references,
+        "trace": trace,
+        "discarded": [],
+    }))
+}
+
 /// Construct the exact production-bound certificate bundle and require the
 /// native Lean checker to accept it before any CB answer reaches stdout.
 fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<(), String> {
@@ -573,10 +751,14 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
         .map_err(|error| format!("cannot parse global CB certificate: {error}"))?;
     let live_state = reasoner.live_terminal_snapshot()?;
     let production_contexts = find_cb_production_contexts(&global_model, &live_state);
-    let insertion_evidence: Vec<_> = live_state
-        .insertion_history
-        .iter()
-        .map(|event| {
+    let mut prior_insertions = std::collections::HashMap::new();
+    let mut insertion_evidence = Vec::with_capacity(live_state.insertion_history.len());
+    for event in &live_state.insertion_history {
+            let automatic_hyper = if event.origin_hint == "derived" {
+                cb_hyper_event_evidence(&live_state, event, &prior_insertions)
+            } else {
+                None
+            };
             let retained = live_state.contexts[event.context_index]
                 .retained_clause_ids
                 .contains(&event.clause_id);
@@ -610,7 +792,7 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
             } else {
                 Vec::new()
             };
-            let kind = if event.origin_hint != "derived" {
+            let fallback_kind = if event.origin_hint != "derived" {
                 "seed"
             } else if retained && !trace.is_empty() {
                 "local"
@@ -619,14 +801,18 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
             } else {
                 "unproved"
             };
-            serde_json::json!({
-                "kind": kind,
+            let fallback = serde_json::json!({
+                "kind": fallback_kind,
                 "prior_events": [],
-                "trace": if kind == "discarded" { discarded_trace } else { trace },
+                "trace": if fallback_kind == "discarded" { discarded_trace } else { trace },
                 "discarded": discarded,
-            })
-        })
-        .collect();
+            });
+            insertion_evidence.push(automatic_hyper.unwrap_or(fallback));
+            prior_insertions.insert(
+                (event.context_index, event.root, event.clause_id),
+                event.sequence,
+            );
+    }
     let bundle = serde_json::json!({
         "version": 1,
         "global_model": global_model,
@@ -760,7 +946,7 @@ mod cb_derivation_candidate_tests {
 
     fn live_snapshot() -> crate::engine::CbLiveTerminalSnapshot {
         crate::engine::CbLiveTerminalSnapshot {
-            version: 4,
+            version: 5,
             comp_ind_bits: 17,
             concept_count: 1,
             role_count: 0,

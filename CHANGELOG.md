@@ -71,7 +71,7 @@
   retained strengthening index, finds the exact live event clause, and proves
   it from that stronger terminal clause. Missing or forged deletion witnesses
   reject instead of falling back to a forward reference.
-  Extend the version-4 live snapshot with the exact post-preprocessing
+  Extend the live snapshot with the exact post-preprocessing
   normalized ontology, source and runtime symbol bounds, and each context's
   core, query concept, and nominal-ground identity. Lean independently decodes
   these compact engine values and requires exact equality with the nested
@@ -85,6 +85,15 @@
   cannot overwrite an explicit derived-rule origin. This is producer metadata,
   not trusted proof: generated justifications still require independent Lean
   reconstruction and checking.
+  Version 5 adds exact Hyper provenance: the normalized ontology-clause index,
+  its complete instantiated clause and substitution, and every selected local
+  premise and matched predicate in source-body order. Lean independently
+  rechecks the source instantiation, arena bounds, and positive-premise
+  membership. The Rust producer now converts ordinary Hyper firings into local
+  chronological Resolution traces that cite only earlier insertions in the same
+  context. Firings affected by filtering or Nom transformation fail closed and
+  retain the existing unsupported or externally checked fallback until those
+  transformations receive dedicated evidence.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,
