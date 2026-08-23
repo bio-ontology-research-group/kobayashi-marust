@@ -123,7 +123,16 @@
   the runtime table to extend the source table, preserve all other symbol
   bounds, and decode contexts, substitutions, transfers, and arrivals against
   it. This makes fresh Nom constants representable while rejecting truncated
-  runtime tables. Exact binding to nominal allocation remains open.
+  runtime tables.
+- Compose both root r-Pred branches with the executable send-coverage
+  document. Require one snapshot for the designated ground context, decode its
+  individual-labelled edges, recompute exact root backward substitutions, and
+  partition every ground-context transfer. Ordinary and root partitions now
+  cover the complete transfer list by sender class.
+- Tighten Nom allocation to require the runtime individual count to equal the
+  source count plus the exact allocated width, rejecting invented trailing
+  identifiers. Bind each runtime table extension in Pred evidence to a checked
+  allocation with identical source bounds, encoded ontology, and runtime count.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

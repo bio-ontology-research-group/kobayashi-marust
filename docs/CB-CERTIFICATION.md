@@ -162,17 +162,20 @@ claim that the layer is already complete.
   next wire layer must bind the snapshot to KM's final retained clauses and
   predecessor edges, require the transfer list to equal this enumeration, and
   add the separate nominal r-Pred eligibility cases.
-- `CBPredSendCoverageWire` applies that enumerator to every non-ground sender
-  in one inter-context document. It bounds-checks and identifies every edge
-  destination, requires ordinary `f(x)` labels, decodes duplicate-free pushed
-  sets, derives the exact backward substitution, and compares each sender's
-  ordered transfer signatures with the recomputed eligible signatures. The
-  sender snapshots must cover every non-ground context exactly once, and their
-  transfer indexes must partition every non-ground transfer in order. Tests
-  reject an omitted transfer and a forged edge pushed set. A standalone
+- `CBPredSendCoverageWire` applies the ordinary and root enumerators to every
+  sender in one inter-context document. It bounds-checks every edge destination
+  and label, decodes duplicate-free pushed sets, derives the ordinary or root
+  backward substitution, and compares each sender's ordered transfer
+  signatures with the recomputed eligible signatures. The snapshots cover all
+  non-ground contexts plus exactly the designated ground context, and their
+  two transfer partitions cover all ordinary and root transfers. Tests accept
+  both sender modes and reject an omitted transfer, a forged pushed set, a
+  missing root snapshot, and a non-individual root label. The same document now
+  binds every runtime individual-table extension to a checked Nom allocation
+  over the identical source bounds and ontology. A standalone
   `cb-pred-send-coverage-check` executable exposes this boundary. Binding the
-  designated ground context and edge snapshots to the terminal Rust state,
-  plus nominal r-Pred coverage, remain open.
+  designated ground context and predecessor snapshots to serialized terminal
+  Rust state remains open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual
@@ -183,7 +186,8 @@ claim that the layer is already complete.
   edge to cover the complete body and its receiving source to have announced
   every individual in the clause. `enumerateAll` composes the mutually
   exclusive branches in KM's clause-major order and has an exact membership
-  theorem. Executable wire composition remains open.
+  theorem. `CBPredSendCoverageWire` now composes this enumeration with the
+  executable transfer list; terminal Rust-state emission remains open.
 - Production traces now distinguish the normalized source individual bound
   from the runtime individual bound. The runtime table must extend the source
   table, while concept, role, and function bounds remain identical. Context
@@ -191,8 +195,9 @@ claim that the layer is already complete.
   bound, so Nom-generated fresh constants can be represented instead of being
   rejected before their allocation proof is checked. Tests accept a fresh
   runtime constant under an extended table and reject the same trace when the
-  runtime table is truncated. Binding the exact runtime bound to the Nom
-  allocation document remains open.
+  runtime table is truncated. The send-coverage document requires an allocation
+  exactly when the runtime table extends the source table, and checks identical
+  source bounds, identical encoded ontology, and equal runtime count.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge
@@ -211,9 +216,10 @@ claim that the layer is already complete.
   invariant that would permit cross-firing reuse, but KM no longer relies on
   that unproved optimization. `CBNominalAllocationWire` now checks exact firing
   identities, positive widths, one consecutive allocation sequence, global
-  freshness and disjointness, exact budget accounting, and no truncation. Its
-  executable checker rejects overlapping blocks, replayed keys, and truncated
-  runs. `check_family_sound` composes accepted allocation evidence with
+  freshness and disjointness, exact budget accounting, an exact final runtime
+  individual count, and no truncation. Its executable checker rejects
+  overlapping blocks, replayed keys, trailing unallocated runtime identifiers,
+  and truncated runs. `check_family_sound` composes accepted allocation evidence with
   `nom_family_sound`: once the next decoder supplies one width-aligned semantic
   obligation per firing, all obligations receive simultaneous witnesses while
   their concrete blocks remain fresh and disjoint. `nomConclusion_sound` proves

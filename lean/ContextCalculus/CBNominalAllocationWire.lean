@@ -154,6 +154,7 @@ structure DecodedNominalAllocation where
   ids_fresh : ∀ id ∈ allBlockIds blocks,
     source.bounds.individuals ≤ id ∧ id < individualCount
   allocated_eq : allocated = (blocks.map (·.width)).sum
+  individual_count_eq : individualCount = source.bounds.individuals + allocated
   allocated_le_budget : allocated ≤ budget
 
 def WireNominalAllocation.decode (wire : WireNominalAllocation) :
@@ -175,23 +176,27 @@ def WireNominalAllocation.decode (wire : WireNominalAllocation) :
             if hfresh : ∀ id ∈ allBlockIds blocks,
                 source.bounds.individuals ≤ id ∧ id < wire.individual_count then
               if hallocated : wire.allocated = (blocks.map (·.width)).sum then
-                if hbudget : wire.allocated ≤ wire.budget then
-                  return {
-                    source
-                    individualCount := wire.individual_count
-                    source_count_le := hcount
-                    budget := wire.budget
-                    allocated := wire.allocated
-                    blocks
-                    keys_nodup := hkeys
-                    widths_positive := hwidths
-                    sequential := hsequential
-                    ids_nodup := hids
-                    ids_fresh := hfresh
-                    allocated_eq := hallocated
-                    allocated_le_budget := hbudget
-                  }
-                else throw "CB Nom allocation exceeds its declared budget"
+                if hruntime : wire.individual_count =
+                    source.bounds.individuals + wire.allocated then
+                  if hbudget : wire.allocated ≤ wire.budget then
+                    return {
+                      source
+                      individualCount := wire.individual_count
+                      source_count_le := hcount
+                      budget := wire.budget
+                      allocated := wire.allocated
+                      blocks
+                      keys_nodup := hkeys
+                      widths_positive := hwidths
+                      sequential := hsequential
+                      ids_nodup := hids
+                      ids_fresh := hfresh
+                      allocated_eq := hallocated
+                      individual_count_eq := hruntime
+                      allocated_le_budget := hbudget
+                    }
+                  else throw "CB Nom allocation exceeds its declared budget"
+                else throw "CB Nom runtime individual count differs from exact allocation"
               else throw "CB Nom allocated count differs from the block widths"
             else throw "CB Nom block contains a non-fresh or out-of-range individual"
           else throw "CB Nom blocks overlap"
@@ -215,12 +220,15 @@ theorem WireNominalAllocation.check_sound (wire : WireNominalAllocation)
         decoded.source.bounds.individuals ≤ id ∧
           id < decoded.individualCount) ∧
       decoded.allocated = (decoded.blocks.map (·.width)).sum ∧
+      decoded.individualCount =
+        decoded.source.bounds.individuals + decoded.allocated ∧
       decoded.allocated ≤ decoded.budget := by
   cases hdecode : wire.decode with
   | error message => simp [WireNominalAllocation.check, hdecode] at hcheck
   | ok decoded =>
       exact ⟨decoded, rfl, decoded.keys_nodup, decoded.ids_nodup,
-        decoded.ids_fresh, decoded.allocated_eq, decoded.allocated_le_budget⟩
+        decoded.ids_fresh, decoded.allocated_eq, decoded.individual_count_eq,
+        decoded.allocated_le_budget⟩
 
 /-- The semantic obligations and allocation document agree firing-for-firing.
 The obligation list is supplied by the next premise-decoding layer; this
@@ -252,7 +260,7 @@ theorem WireNominalAllocation.check_family_sound {D : Type}
       ∃ interp : NomFamilyInterpretation obligations,
         ∀ index : Fin obligations.length,
           (obligations.get index).SatisfiedWith (interp index) := by
-  obtain ⟨decoded, hdecode, _, hids, hfresh, _, _⟩ :=
+  obtain ⟨decoded, hdecode, _, hids, hfresh, _, _, _⟩ :=
     wire.check_sound hcheck
   obtain ⟨interp, hinterp⟩ := nom_family_sound obligations
   exact ⟨decoded, hdecode, haligned decoded hdecode, hids, hfresh,
@@ -632,6 +640,11 @@ private def truncatedExample : WireNominalAllocation :=
   { acceptedExample with truncated := true }
 
 example : rejected truncatedExample.check = true := by native_decide
+
+private def trailingRuntimeIdsExample : WireNominalAllocation :=
+  { acceptedExample with individual_count := 5 }
+
+example : rejected trailingRuntimeIdsExample.check = true := by native_decide
 
 #print axioms WireNominalAllocation.check_sound
 #print axioms WireNominalAllocation.check_family_sound
