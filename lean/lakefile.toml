@@ -113,6 +113,10 @@ name = "cb-rsucc-closure-wire-check"
 root = "CBRSuccClosureWireCheck"
 
 [[lean_exe]]
+name = "cb-global-closure-check"
+root = "CBGlobalClosureCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

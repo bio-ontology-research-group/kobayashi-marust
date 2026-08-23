@@ -60,6 +60,7 @@ import ContextCalculus.CBSuccClosure
 import ContextCalculus.CBSuccClosureWire
 import ContextCalculus.CBRSuccClosure
 import ContextCalculus.CBRSuccClosureWire
+import ContextCalculus.CBGlobalClosureWire
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker

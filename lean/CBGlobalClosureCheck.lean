@@ -1,0 +1,5 @@
+import ContextCalculus.CBGlobalClosureWire
+
+open ContextCalculus.CBGlobalClosureWire
+
+#print axioms WireCBGlobalClosureDocument.check_sound
