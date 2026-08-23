@@ -162,6 +162,25 @@ claim that the layer is already complete.
   next wire layer must bind the snapshot to KM's final retained clauses and
   predecessor edges, require the transfer list to equal this enumeration, and
   add the separate nominal r-Pred eligibility cases.
+- `CBPredSendCoverageWire` applies that enumerator to every non-ground sender
+  in one inter-context document. It bounds-checks and identifies every edge
+  destination, requires ordinary `f(x)` labels, decodes duplicate-free pushed
+  sets, derives the exact backward substitution, and compares each sender's
+  ordered transfer signatures with the recomputed eligible signatures. The
+  sender snapshots must cover every non-ground context exactly once, and their
+  transfer indexes must partition every non-ground transfer in order. Tests
+  reject an omitted transfer and a forged edge pushed set. A standalone
+  `cb-pred-send-coverage-check` executable exposes this boundary. Binding the
+  designated ground context and edge snapshots to the terminal Rust state,
+  plus nominal r-Pred coverage, remain open.
+- `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
+  It allows different individual-labelled edges of one receiving source to
+  discharge different body predicates, checks that every non-fresh individual
+  mentioned by the clause was announced by that source, and selects exactly
+  the first minimum-labelled representative edge for each source. Its exact
+  membership theorem rules out omitted and invented retained-clause/source
+  pairs. The x-containing ground-context path and executable wire composition
+  remain open.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge

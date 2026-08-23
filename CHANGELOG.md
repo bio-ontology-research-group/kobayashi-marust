@@ -106,6 +106,17 @@
   equivalent to bounded indexes plus production eligibility, so the finite
   enumeration omits and invents no eligible pair. Binding the snapshot and
   emitted transfer list to final Rust state remains unreleased work.
+- Add a bounds-checked ordinary-Pred send-coverage document and standalone
+  checker. It recomputes every non-ground sender's exact eligible signatures,
+  including destination and backward substitution, requires all non-ground
+  senders exactly once, and partitions all non-ground transfers exactly once
+  in order. Reject omitted transfers and forged pushed-edge evidence. Terminal
+  Rust snapshot binding and nominal r-Pred eligibility remain open.
+- Add exact finite enumeration for the x-free nominal r-Pred sender path. It
+  checks multi-edge body discharge per receiving source, announcement of every
+  non-fresh individual, and the unique first minimum-labelled representative
+  edge, then proves list membership equivalent to those production conditions.
+  The x-containing nominal path and wire composition remain open.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
