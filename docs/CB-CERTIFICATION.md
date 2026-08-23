@@ -125,6 +125,11 @@ claim that the layer is already complete.
   rejected. Production edge eligibility, exhaustive Cartesian enumeration,
   antichain pruning coverage, and complete queue delivery remain refinement
   obligations.
+  `coveredResults_contextValid` closes the semantic antichain step: if the
+  executable enumeration layer shows that every raw Cartesian conclusion has
+  a retained strengthening, validity of the retained antichain implies
+  validity of every pruned conclusion. What remains is to compute and check
+  that exhaustive finite coverage from the production snapshot.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge

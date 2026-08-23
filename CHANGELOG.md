@@ -76,6 +76,10 @@
   resolution fold, and prove its result valid under the receiver core. Reject
   forged providers and results. Edge eligibility, exhaustive Cartesian and
   antichain coverage, and complete delivery remain production obligations.
+- Prove the semantic antichain capstone for Pred arrivals: when every raw
+  Cartesian result has a retained syntactic strengthening, receiver-core
+  validity of the retained results covers every pruned result. Executable
+  enumeration still has to establish that finite coverage premise.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

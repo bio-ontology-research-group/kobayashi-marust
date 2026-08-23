@@ -1,4 +1,4 @@
-import ContextCalculus.CheckerTerm
+import ContextCalculus.CBProductionTrace
 
 /-!
 # Semantic foundation for production CB inter-context transfer
@@ -17,6 +17,7 @@ delivered or represented by a retained strengthening.
 namespace ContextCalculus.CBInterContext
 
 open ContextCalculus ContextCalculus.CheckerTerm
+open ContextCalculus.CBProductionTrace
 
 variable {D : Type}
 
@@ -87,8 +88,33 @@ theorem resolveContextual_sound (model : TModel D) (core : List FPred)
   exact resolution_sound (model.evalL assignment) positive negative literal
     (hpositive assignment hcore) (hnegative assignment hcore) hhead hbody
 
+/-- A receiver-core-valid strengthening semantically covers the weaker raw
+Cartesian conclusion that production antichain pruning removes. -/
+theorem ContextValid.of_strengthens (model : TModel D) (core : List FPred)
+    {stronger weaker : FCL} (hstrengthens : Strengthens stronger weaker)
+    (hstronger : ContextValid model core stronger) :
+    ContextValid model core weaker := by
+  intro assignment hcore
+  exact HoldsAt.of_strengthens model assignment hstrengthens
+    (hstronger assignment hcore)
+
+/-- Finite antichain coverage is sufficient for semantic preservation: every
+raw Cartesian result remains valid when some retained result strengthens it. -/
+theorem coveredResults_contextValid (model : TModel D) (core : List FPred)
+    (retained generated : List FCL)
+    (hretained : ∀ clause ∈ retained, ContextValid model core clause)
+    (hcoverage : ∀ clause ∈ generated,
+      ∃ stronger ∈ retained, Strengthens stronger clause) :
+    ∀ clause ∈ generated, ContextValid model core clause := by
+  intro clause hclause
+  obtain ⟨stronger, hstronger, hstrengthens⟩ := hcoverage clause hclause
+  exact ContextValid.of_strengthens model core hstrengthens
+    (hretained stronger hstronger)
+
 #print axioms predTransfer_sound
 #print axioms succHypothesis_valid
 #print axioms resolveContextual_sound
+#print axioms ContextValid.of_strengthens
+#print axioms coveredResults_contextValid
 
 end ContextCalculus.CBInterContext
