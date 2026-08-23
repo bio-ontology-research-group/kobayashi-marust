@@ -261,6 +261,33 @@ theorem WireDirectCommonSource.check_sound (wire : WireDirectCommonSource)
       EntailsSub decoded.projection.source sub sup := by
   exact decoded.entails_iff sub sup
 
+/-- The common proper-term source and the executable direct HT target have the
+same complete taxonomy. This composes signed-clause normalization with the
+checked finite projection instead of stopping at the intermediate source. -/
+theorem DecodedDirectCommonSource.entails_target_iff
+    (decoded : DecodedDirectCommonSource)
+    (sub sup : Fin decoded.projection.concepts.length) :
+    decoded.CommonEntails sub sup ↔
+      EntailsSub decoded.projection.target sub sup := by
+  rw [decoded.entails_iff sub sup]
+  constructor
+  · intro hsource Domain interpretation htarget value hsub
+    exact hsource Domain interpretation
+      ((decoded.projection.models_source_iff_target interpretation).2 htarget)
+      value hsub
+  · intro htarget Domain interpretation hsource value hsub
+    exact htarget Domain interpretation
+      ((decoded.projection.models_source_iff_target interpretation).1 hsource)
+      value hsub
+
+theorem WireDirectCommonSource.check_target_sound
+    (wire : WireDirectCommonSource) (decoded : DecodedDirectCommonSource)
+    (_hdecode : wire.decode = .ok decoded) (_hcheck : wire.check = .ok true)
+    (sub sup : Fin decoded.projection.concepts.length) :
+    decoded.CommonEntails sub sup ↔
+      EntailsSub decoded.projection.target sub sup :=
+  decoded.entails_target_iff sub sup
+
 private def acceptedExample : WireDirectCommonSource where
   version := 1
   projection := {
@@ -297,6 +324,8 @@ private def rejected (result : Except String Bool) : Bool :=
 example : rejected existentialExample.check = true := by native_decide
 
 #print axioms DecodedDirectCommonSource.entails_iff
+#print axioms DecodedDirectCommonSource.entails_target_iff
 #print axioms WireDirectCommonSource.check_sound
+#print axioms WireDirectCommonSource.check_target_sound
 
 end ContextCalculus.HTDirectCommonSourceWire

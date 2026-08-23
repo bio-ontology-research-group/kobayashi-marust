@@ -127,6 +127,11 @@
   preserves every bundle role and filler witness through the merged function
   table, and the capstone proves complete taxonomy equivalence at every checked
   source-concept image in the renamed bundle target.
+- Unify all six executable HT source translations behind one tagged checker.
+  Each accepted direct, mixed, bundle, or cardinality document now yields its
+  complete branch-specific common-source-to-target taxonomy equivalence. The
+  direct branch additionally composes signed normalization with its checked HT
+  projection instead of stopping at the intermediate normalized source.
 
 ### Close the executable ELC certification boundary
 
