@@ -171,11 +171,12 @@ claim that the layer is already complete.
   two transfer partitions cover all ordinary and root transfers. Tests accept
   both sender modes and reject an omitted transfer, a forged pushed set, a
   missing root snapshot, and a non-individual root label. The same document now
+  requires its ground-context designation to equal exactly the production
+  contexts marked root, rejecting both a missing root and multiple roots. It
   binds every runtime individual-table extension to a checked Nom allocation
   over the identical source bounds and ontology. A standalone
   `cb-pred-send-coverage-check` executable exposes this boundary. Binding the
-  designated ground context and predecessor snapshots to serialized terminal
-  Rust state remains open.
+  predecessor snapshots to serialized terminal Rust state remains open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

@@ -216,6 +216,12 @@ def rootTransferIndices (decoded : DecodedCompleteInterContextRun)
     | some transfer => decide (transfer.senderIndex.val = groundContextIndex)
     | none => false
 
+def rootContextIndices (production : DecodedProductionRun) : List Nat :=
+  (List.range production.contexts.length).filter fun index =>
+    match production.contexts[index]? with
+    | some context => context.root
+    | none => false
+
 structure DecodedPredSenderSnapshot
     (decoded : DecodedCompleteInterContextRun) where
   senderIndex : Fin decoded.base.production.contexts.length
@@ -357,6 +363,8 @@ structure DecodedPredSendCoverageDocument where
   groundContextIndex : Option Nat
   ground_index_valid : ∀ index ∈ groundContextIndex,
     index < interContext.base.production.contexts.length
+  ground_index_exact : groundContextIndex.toList =
+    rootContextIndices interContext.base.production
   senders : List (DecodedPredSenderSnapshot interContext)
   rootSender : Option (DecodedRootPredSenderSnapshot interContext)
   nominalAllocation : Option
@@ -386,6 +394,8 @@ def WirePredSendCoverageDocument.decode
     interContext.base.production wire.nominal_allocation
   if hground : ∀ index ∈ wire.ground_context_index,
       index < interContext.base.production.contexts.length then
+    if hgroundExact : wire.ground_context_index.toList =
+        rootContextIndices interContext.base.production then
     let senders ← wire.senders.mapM
       (WirePredSenderSnapshot.decode interContext)
     let actualSenders := senders.map fun sender => sender.senderIndex.val
@@ -403,6 +413,7 @@ def WirePredSendCoverageDocument.decode
               interContext
               groundContextIndex := none
               ground_index_valid := by simpa [hcase] using hground
+              ground_index_exact := by simpa [hcase] using hgroundExact
               senders
               rootSender := none
               nominalAllocation := allocationBinding.allocation
@@ -425,6 +436,7 @@ def WirePredSendCoverageDocument.decode
                 interContext
                 groundContextIndex := some groundIndex
                 ground_index_valid := by simpa [hcase] using hground
+                ground_index_exact := by simpa [hcase] using hgroundExact
                 senders
                 rootSender := some rootSender
                 nominalAllocation := allocationBinding.allocation
@@ -443,6 +455,7 @@ def WirePredSendCoverageDocument.decode
             throw "designated ground context has no root Pred snapshot"
       else throw "ordinary Pred sender snapshots do not partition all ordinary transfers"
     else throw "ordinary Pred snapshots do not cover every non-ground sender exactly once"
+    else throw "designated ground context differs from the unique root context"
   else throw "nominal ground-context index is outside the production run"
 
 def WirePredSendCoverageDocument.check
@@ -454,6 +467,8 @@ theorem WirePredSendCoverageDocument.check_sound
     (wire : WirePredSendCoverageDocument) (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedPredSendCoverageDocument,
       wire.decode = .ok decoded ∧
+      decoded.groundContextIndex.toList =
+        rootContextIndices decoded.interContext.base.production ∧
       decoded.senders.map (fun sender => sender.senderIndex.val) =
         ordinarySenderIndices decoded.interContext.base.production.contexts.length
           decoded.groundContextIndex ∧
@@ -480,7 +495,7 @@ theorem WirePredSendCoverageDocument.check_sound
   cases hdecode : wire.decode with
   | error message => simp [WirePredSendCoverageDocument.check, hdecode] at hcheck
   | ok decoded =>
-      refine ⟨decoded, rfl, decoded.sender_indices_exact,
+      refine ⟨decoded, rfl, decoded.ground_index_exact, decoded.sender_indices_exact,
         decoded.transfer_partition_exact, decoded.root_transfer_partition_exact,
         decoded.allocation_present_iff, ?_, ?_⟩
       · intro sender _
@@ -651,6 +666,18 @@ example : acceptedRootExample.check = .ok true := by native_decide
 
 example : rejected ({ acceptedRootExample with root_sender := none }).check = true := by
   native_decide
+
+private def missingRootMarkerExample : WirePredSendCoverageDocument :=
+  { acceptedRootExample with
+    inter_context := {
+      rootInterContextExample with
+      production := {
+        rootProductionExample with
+        contexts := [{ rootContextExample with root := false }]
+      }
+    } }
+
+example : rejected missingRootMarkerExample.check = true := by native_decide
 
 private def badRootLabelExample : WirePredSendCoverageDocument :=
   { acceptedRootExample with
