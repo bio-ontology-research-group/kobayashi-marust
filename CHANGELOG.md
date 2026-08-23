@@ -148,9 +148,11 @@
   positive `A ⊑ B` cell must name A's exact query context, whose core is checked
   to be exactly `A(x)`, and a retained `top → B(x)` clause. Lean obtains that
   clause's context validity from the certified chronological history and proves
-  semantic subsumption for the exact source encoding. A native checker exposes
-  this theorem. Unsatisfiable rows, exact public-payload binding, and negative
-  completeness evidence remain part of the integrated taxonomy layer.
+  semantic subsumption for the exact source encoding. Unsatisfiable rows must
+  likewise name A's exact query context and its retained empty clause; Lean
+  proves that no source model can realize A. A native checker exposes both
+  theorems. Exact public-payload binding and negative completeness evidence
+  remain part of the integrated taxonomy layer.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

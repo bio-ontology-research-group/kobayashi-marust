@@ -23,10 +23,16 @@ structure WireLiveSubsumption where
   context_index : Nat
 deriving FromJson, ToJson
 
+structure WireLiveUnsatisfiable where
+  sub : Nat
+  context_index : Nat
+deriving FromJson, ToJson
+
 structure WireLiveTaxonomyPublication where
   version : Nat
   derivation : WireLiveInsertionDerivationDocument
   public_subsumptions : List WireLiveSubsumption
+  unsatisfiable : List WireLiveUnsatisfiable
 deriving FromJson, ToJson
 
 def queryCore (sub : Nat) : List FPred :=
@@ -34,6 +40,8 @@ def queryCore (sub : Nat) : List FPred :=
 
 def subsumptionClause (sup : Nat) : FCL :=
   ⟨[], [.P (.concept sup (.var 0))]⟩
+
+def contradictionClause : FCL := ⟨[], []⟩
 
 structure DecodedLiveSubsumption
     (derivation : DecodedLiveInsertionDerivationDocument) where
@@ -86,9 +94,56 @@ def WireLiveSubsumption.decode
     else throw "published CB superconcept is outside the source signature"
   else throw "published CB subconcept is outside the source signature"
 
+structure DecodedLiveUnsatisfiable
+    (derivation : DecodedLiveInsertionDerivationDocument) where
+  sub : Fin (rProduction derivation.live.global.global.rsucc).source.bounds.concepts
+  contextListIndex : Fin derivation.live.contexts.length
+  contextIndex : Fin (rProduction derivation.live.global.global.rsucc).contexts.length
+  context_index_eq :
+    (derivation.live.contexts.get contextListIndex).contextIndex = contextIndex
+  query_eq :
+    ((rProduction derivation.live.global.global.rsucc).contexts.get
+      contextIndex).queryConcept = some sub.val
+  core_eq :
+    ((rProduction derivation.live.global.global.rsucc).contexts.get
+      contextIndex).core = queryCore sub.val
+  contradiction_mem : contradictionClause ∈
+    (derivation.live.contexts.get contextListIndex).retained
+
+def WireLiveUnsatisfiable.decode
+    (derivation : DecodedLiveInsertionDerivationDocument)
+    (wire : WireLiveUnsatisfiable) :
+    Except String (DecodedLiveUnsatisfiable derivation) := do
+  let production := rProduction derivation.live.global.global.rsucc
+  if hsub : wire.sub < production.source.bounds.concepts then
+    let sub : Fin production.source.bounds.concepts := ⟨wire.sub, hsub⟩
+    if hlist : wire.context_index < derivation.live.contexts.length then
+      let contextListIndex : Fin derivation.live.contexts.length :=
+        ⟨wire.context_index, hlist⟩
+      let context := derivation.live.contexts.get contextListIndex
+      let contextIndex := context.contextIndex
+      if hquery : (production.contexts.get contextIndex).queryConcept = some sub.val then
+        if hcore : (production.contexts.get contextIndex).core = queryCore sub.val then
+          if hcontradiction : contradictionClause ∈ context.retained then
+            return {
+              sub
+              contextListIndex
+              contextIndex
+              context_index_eq := rfl
+              query_eq := hquery
+              core_eq := hcore
+              contradiction_mem := hcontradiction
+            }
+          else throw "published CB unsatisfiable row has no retained contradiction"
+        else throw "published CB unsatisfiable context has a different core"
+      else throw "published CB unsatisfiable context has a different query"
+    else throw "published CB unsatisfiable context index is outside the live run"
+  else throw "published CB unsatisfiable concept is outside the source signature"
+
 structure DecodedLiveTaxonomyPublication where
   derivation : DecodedLiveInsertionDerivationDocument
   publicSubsumptions : List (DecodedLiveSubsumption derivation)
+  unsatisfiable : List (DecodedLiveUnsatisfiable derivation)
 
 def WireLiveTaxonomyPublication.decode
     (wire : WireLiveTaxonomyPublication) :
@@ -98,7 +153,9 @@ def WireLiveTaxonomyPublication.decode
   let derivation ← wire.derivation.decode
   let publicSubsumptions ← wire.public_subsumptions.mapM
     (WireLiveSubsumption.decode derivation)
-  return { derivation, publicSubsumptions }
+  let unsatisfiable ← wire.unsatisfiable.mapM
+    (WireLiveUnsatisfiable.decode derivation)
+  return { derivation, publicSubsumptions, unsatisfiable }
 
 def WireLiveTaxonomyPublication.check
     (wire : WireLiveTaxonomyPublication) : Except String Bool := do
@@ -132,20 +189,55 @@ theorem DecodedLiveSubsumption.entails
   subst literal
   exact htrue
 
+theorem DecodedLiveUnsatisfiable.refutes
+    (row : DecodedLiveUnsatisfiable derivation) :
+    ∀ (D : Type) (model : TModel D),
+      (∀ source ∈
+        (rProduction derivation.live.global.global.rsucc).source.ontology,
+        valid model source) →
+      ∀ element, ¬model.conc row.sub.val element := by
+  intro D model hontology element hsub
+  let context := derivation.live.contexts.get row.contextListIndex
+  have hcontext : context ∈ derivation.live.contexts :=
+    List.get_mem derivation.live.contexts row.contextListIndex
+  have hvalid := derivation.retained_contextValid context hcontext
+    contradictionClause row.contradiction_mem model hontology
+  have hcore : CoreHolds model (fun _ => element)
+      ((rProduction derivation.live.global.global.rsucc).contexts.get
+        context.contextIndex).core := by
+    rw [row.context_index_eq, row.core_eq]
+    intro predicate hpredicate
+    simp only [queryCore, List.mem_singleton] at hpredicate
+    subst predicate
+    exact hsub
+  have hfalse := hvalid (fun _ => element) hcore (by
+    intro literal hliteral
+    cases hliteral)
+  obtain ⟨literal, hliteral, _⟩ := hfalse
+  cases hliteral
+
 theorem WireLiveTaxonomyPublication.check_sound
     (wire : WireLiveTaxonomyPublication) (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedLiveTaxonomyPublication,
       wire.decode = .ok decoded ∧
-      ∀ cell ∈ decoded.publicSubsumptions,
+      (∀ cell ∈ decoded.publicSubsumptions,
         (rProduction decoded.derivation.live.global.global.rsucc).source.Entails
-          cell.sub cell.sup := by
+          cell.sub cell.sup) ∧
+      (∀ row ∈ decoded.unsatisfiable,
+        ∀ (D : Type) (model : TModel D),
+          (∀ source ∈
+            (rProduction decoded.derivation.live.global.global.rsucc).source.ontology,
+            valid model source) →
+          ∀ element, ¬model.conc row.sub.val element) := by
   cases hdecode : wire.decode with
   | error message =>
       simp [WireLiveTaxonomyPublication.check, hdecode] at hcheck
   | ok decoded =>
-      exact ⟨decoded, rfl, fun cell _ => cell.entails⟩
+      exact ⟨decoded, rfl, fun cell _ => cell.entails,
+        fun row _ => row.refutes⟩
 
 #print axioms DecodedLiveSubsumption.entails
+#print axioms DecodedLiveUnsatisfiable.refutes
 #print axioms WireLiveTaxonomyPublication.check_sound
 
 end ContextCalculus.CBLiveTaxonomyPublication
