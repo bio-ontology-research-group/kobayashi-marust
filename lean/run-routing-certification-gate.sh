@@ -77,6 +77,7 @@ for theorem in \
     valid_shiftClauseFunctions_iff \
     models_shiftOntologyFunctions_iff \
     functionView_mergedModel \
+    WireMixedCardinalityCommonSource.check_sound \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \

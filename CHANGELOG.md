@@ -117,6 +117,11 @@
   semantic preservation, then proves that the merged model retains the mixed
   finite prefix and exposes the cardinality model exactly through its shifted
   suffix. This prevents accidental cross-family function aliasing.
+- Bind the versioned mixed-cardinality executable wire to that disjoint common
+  source. Its decoder rejects existential atoms in both residual clauses and
+  Skolem-pair bodies. Lean constructs and restricts merged models in both
+  directions and proves that the common proper-term taxonomy is equivalent to
+  the exact mixed HT target with first-class cardinality definitions.
 
 ### Close the executable ELC certification boundary
 
