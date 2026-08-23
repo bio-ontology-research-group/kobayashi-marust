@@ -150,14 +150,45 @@ inductive CoverageBasis where
 deriving DecidableEq, Repr
 
 def coverageBasis : Route → CoverageBasis
-  | .elc | .htRules | .htGeneral | .certifiedCardNominals
-  | .nominalNiTBox => .certifiedFragment
+  | .htRules => .certifiedFragment
+  | .elc | .htGeneral | .certifiedCardNominals | .nominalNiTBox =>
+      .certifiedFallback
   | .certifiedElProduction | .certifiedNominals | .productionAll
   | .productionAll8 | .productionAll1 | .certifiedCardProxyABox =>
       .certifiedFallback
   | .nominals | .cbPlain16 | .cbPlain8 | .cbPlain1
   | .cbAbsorb16 | .cbAbsorb8 | .cbAbsorb1 | .lean | .seqOn | .seqOff =>
       .totalCalculus
+
+def atomicSpecialist : Route → Bool
+  | .elc | .htGeneral | .certifiedCardNominals | .nominalNiTBox => true
+  | _ => false
+
+def fallbackEligibleFragment : SemanticFragment → Bool
+  | .nativeBridgeABox | .positiveABox | .nominal | .sriqCore => true
+  | .rules | .unsupportedRules => false
+
+/-- Lean mirror of the automatic supervisor's source-appropriate retry. -/
+def automaticFallback (selected : Route) (fragment : SemanticFragment) : Option Route :=
+  if !atomicSpecialist selected then none
+  else match fragment with
+    | .nativeBridgeABox | .nominal => some .nominals
+    | .positiveABox | .sriqCore => some .productionAll
+    | .rules | .unsupportedRules => none
+
+/-- Every automatic atomic specialist on an OWL routing fragment either
+publishes a checked complete answer or has a selected fallback whose own
+coverage does not depend on that specialist's fragment theorem. -/
+theorem automatic_specialist_decline_has_coverage
+    (selected : Route) (fragment : SemanticFragment)
+    (hspecialist : atomicSpecialist selected = true)
+    (hfragment : fallbackEligibleFragment fragment = true) :
+    ∃ fallback,
+      automaticFallback selected fragment = some fallback ∧
+      coverageBasis fallback ≠ .certifiedFragment := by
+  cases selected <;> cases fragment <;>
+    simp_all [atomicSpecialist, fallbackEligibleFragment, automaticFallback,
+      coverageBasis]
 
 /-- Obligations retained by the concrete route checker.  Source identity is
 mandatory for every route.  Absorbed production inputs additionally require a
@@ -208,5 +239,6 @@ example (decision : Decision)
 #print axioms selected_route_has_coverage_basis
 #print axioms selected_route_requires_exact_source
 #print axioms WireSelection.check_sound
+#print axioms automatic_specialist_decline_has_coverage
 
 end ContextCalculus.KMAutomaticRouting

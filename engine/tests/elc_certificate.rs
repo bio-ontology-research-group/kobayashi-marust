@@ -52,3 +52,39 @@ fn certified_elc_publication_passes_the_real_source_checker() {
     assert_eq!(output["inconsistent"], false);
     assert_eq!(output["subsumptions"]["A"], serde_json::json!(["B"]));
 }
+
+fn classify_with_failed_elc(route: &str) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_km"))
+        .args([
+            "classify",
+            "--route",
+            route,
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/automatic_el_fallback.ofn"
+            ),
+        ])
+        .env("KM_ELC_BIN", "/bin/false")
+        .env("KM_NO_INPROC_ELC", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("run KM classification")
+}
+
+#[test]
+fn automatic_el_decline_retries_exactly_but_forced_el_remains_atomic() {
+    let automatic = classify_with_failed_elc("auto");
+    assert!(
+        automatic.status.success(),
+        "{}",
+        String::from_utf8_lossy(&automatic.stderr)
+    );
+    let output: serde_json::Value =
+        serde_json::from_slice(&automatic.stdout).expect("automatic fallback output");
+    assert_eq!(output["subsumptions"], serde_json::json!([[":A", ":B"]]));
+
+    let forced = classify_with_failed_elc("elc");
+    assert!(!forced.status.success());
+    assert!(forced.stdout.is_empty(), "forced failed ELC published output");
+}

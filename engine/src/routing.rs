@@ -1315,6 +1315,29 @@ pub fn select(profile: &OntologyProfile) -> Route {
     }
 }
 
+/// Exact fallback installed by the automatic supervisor after an atomic
+/// complete-answer-or-defer specialist declines. Explicitly requested matrix
+/// routes remain atomic. Nominal/ABox sources require the nominal-aware CB
+/// calculus; nominal-free and certified-positive-ABox sources use the complete
+/// production portfolio.
+pub(crate) fn automatic_atomic_fallback(
+    selected: Route,
+    profile: &OntologyProfile,
+) -> Option<Route> {
+    let specialist = matches!(
+        selected,
+        Route::Elc | Route::HtGeneral | Route::CertifiedCardNominals | Route::NominalNiTbox
+    );
+    if !specialist {
+        return None;
+    }
+    match semantic_fragment(profile) {
+        SemanticFragment::NativeBridgeAbox | SemanticFragment::Nominal => Some(Route::Nominals),
+        SemanticFragment::PositiveAbox | SemanticFragment::SriqCore => Some(Route::ProductionAll),
+        SemanticFragment::Rules | SemanticFragment::UnsupportedRules => None,
+    }
+}
+
 /// Restore the caller's routing environment when one classification finishes.
 /// The CLI classifies one ontology per process, but the Rust API can be reused.
 /// Without this guard, its first automatic route would leave `KM_ROUTE=manual`
@@ -2999,6 +3022,36 @@ mod tests {
 
         profile.source.complements = 1;
         assert!(!large_horn_functional_native_bridge_candidate(&profile));
+    }
+
+    #[test]
+    fn automatic_atomic_declines_retain_source_appropriate_fallbacks() {
+        let mut nominal = OntologyProfile::default();
+        nominal.source.abox_axioms = 1;
+        assert_eq!(semantic_fragment(&nominal), SemanticFragment::Nominal);
+        for route in [
+            Route::Elc,
+            Route::HtGeneral,
+            Route::CertifiedCardNominals,
+            Route::NominalNiTbox,
+        ] {
+            assert_eq!(
+                automatic_atomic_fallback(route, &nominal),
+                Some(Route::Nominals)
+            );
+        }
+
+        let core = OntologyProfile::default();
+        assert_eq!(semantic_fragment(&core), SemanticFragment::SriqCore);
+        assert_eq!(
+            automatic_atomic_fallback(Route::Elc, &core),
+            Some(Route::ProductionAll)
+        );
+        assert_eq!(automatic_atomic_fallback(Route::CbPlain16, &core), None);
+
+        let mut rules = OntologyProfile::default();
+        rules.source.rule_axioms = 1;
+        assert_eq!(automatic_atomic_fallback(Route::Elc, &rules), None);
     }
 
     #[test]

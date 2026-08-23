@@ -41,7 +41,8 @@ fi
 for theorem in \
     SourceBoundWorker.erase_soundAt \
     AutomaticRouter.sound_and_complete \
-    WireSelection.check_sound
+    WireSelection.check_sound \
+    automatic_specialist_decline_has_coverage
 do
     grep -q "$theorem" "$surface_log" || {
         echo "missing routing certification-surface axiom audit: $theorem" >&2
@@ -59,6 +60,10 @@ fi
     cd "$engine_root"
     CARGO_TARGET_DIR="$target_root" cargo test --release \
         routing::tests::large_horn_functional_terminology_retains_exact_fallback
+    CARGO_TARGET_DIR="$target_root" cargo test --release \
+        routing::tests::automatic_atomic_declines_retain_source_appropriate_fallbacks
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test elc_certificate \
+        automatic_el_decline_retries_exactly_but_forced_el_remains_atomic
 )
 
 echo "routing certification gate passed"

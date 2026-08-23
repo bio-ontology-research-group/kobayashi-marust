@@ -28,6 +28,14 @@
   but an honest bridge decline now starts the exact fallback instead of ending
   classification. The focused release-mode routing regression and the Lean
   selector mirror both pass.
+- Make every remaining automatically selected atomic ELC/HT specialist retry a
+  source-appropriate exact route after an honest decline: nominal/ABox inputs
+  use the nominal-aware CB calculus, while nominal-free and certified-positive
+  inputs use the production portfolio. Explicit matrix routes remain atomic.
+  Lean proves that every eligible specialist decline has a fallback whose
+  coverage does not depend on the failed specialist fragment. Unit and process
+  regressions force ELC failure, verify automatic recovery with the exact
+  taxonomy, and verify that explicit `--route elc` still fails closed.
 
 ### Close the executable ELC certification boundary
 

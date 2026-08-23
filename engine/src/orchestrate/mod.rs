@@ -804,6 +804,9 @@ fn classify_with_evidence_mode(
     ont: &Path,
     retain_grouped_output: bool,
 ) -> Result<ClassificationEvidence, OrchestrateError> {
+    let automatic_requested = std::env::var("KM_ROUTE")
+        .map(|route| route == crate::routing::Route::Auto.as_str())
+        .unwrap_or(false);
     // Route selection changes process-wide KM_* keys because the frontend and
     // worker subprocesses share the established environment contract. Restore
     // them on every return path so repeated library calls route independently.
@@ -1075,6 +1078,17 @@ fn classify_with_evidence_mode(
                 "KM_ROUTE",
                 crate::routing::Route::ProductionAll.as_str(),
             );
+            let fallback_cfg = Config::from_env();
+            return classify_with_evidence_mode(&fallback_cfg, ont, retain_grouped_output);
+        }
+        Err(_error) if automatic_requested => {
+            let Some(fallback) =
+                crate::routing::automatic_atomic_fallback(selected_route, &meta.profile)
+            else {
+                return Err(_error);
+            };
+            fallback.apply_environment();
+            std::env::set_var("KM_ROUTE", fallback.as_str());
             let fallback_cfg = Config::from_env();
             return classify_with_evidence_mode(&fallback_cfg, ont, retain_grouped_output);
         }
