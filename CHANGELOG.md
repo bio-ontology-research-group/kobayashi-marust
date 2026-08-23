@@ -122,6 +122,11 @@
   Skolem-pair bodies. Lean constructs and restricts merged models in both
   directions and proves that the common proper-term taxonomy is equivalent to
   the exact mixed HT target with first-class cardinality definitions.
+- Extend the same collision-free common source to bundle-cardinality inputs.
+  The executable decoder fails closed on residual existential atoms, Lean
+  preserves every bundle role and filler witness through the merged function
+  table, and the capstone proves complete taxonomy equivalence at every checked
+  source-concept image in the renamed bundle target.
 
 ### Close the executable ELC certification boundary
 
