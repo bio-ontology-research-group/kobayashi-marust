@@ -59,6 +59,11 @@
   Equality atoms, nested terms, individuals, auxiliaries, concepts, and roles
   now have proved clause and whole-list satisfaction equivalence in the common
   proper-term language, rather than covering only the ordinary raw partition.
+- Prove the reverse ELC residual model construction. A disjoint, injective
+  constant code reconstructs every individual and labelled auxiliary exactly;
+  function interpretations preserve arbitrary nesting. Lean now proves full
+  residual-taxonomy equivalence between ELC semantics and the common source,
+  not only satisfaction preservation from an existing common model.
 - Package HT's retained direct clauses and complete, uniquely keyed Skolem-pair
   family as a routing source. Lean proves both model-existence equivalence and
   taxonomy-entailment equivalence with the exact existential HT ontology. This

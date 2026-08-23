@@ -33,10 +33,112 @@ private def labelCode : List (Nat × Int) → Nat
   | (concept, polarity) :: tail =>
       Nat.pair (Nat.pair concept (intCode polarity)) (labelCode tail) + 1
 
+private theorem intCode_injective : Function.Injective intCode := by
+  intro left right heq
+  cases left with
+  | ofNat left =>
+      cases right with
+      | ofNat right =>
+          simp [intCode] at heq
+          exact congrArg Int.ofNat (Nat.mul_left_cancel (by omega) heq)
+      | negSucc right => simp [intCode] at heq; omega
+  | negSucc left =>
+      cases right with
+      | ofNat right => simp [intCode] at heq; omega
+      | negSucc right =>
+          simp [intCode] at heq
+          exact congrArg Int.negSucc (Nat.mul_left_cancel (by omega) heq)
+
+private theorem labelCode_injective : Function.Injective labelCode := by
+  intro left
+  induction left with
+  | nil =>
+      intro right heq
+      cases right with
+      | nil => rfl
+      | cons head tail => simp [labelCode] at heq
+  | cons head tail ih =>
+      intro right heq
+      cases right with
+      | nil => simp [labelCode] at heq
+      | cons other rest =>
+          simp only [labelCode] at heq
+          have heq' := Nat.add_right_cancel heq
+          have hpair := Nat.pair_eq_pair.mp heq'
+          have hheadPair := Nat.pair_eq_pair.mp hpair.1
+          have hconcept : head.1 = other.1 := hheadPair.1
+          have hpolarity : head.2 = other.2 := intCode_injective hheadPair.2
+          have hhead : head = other := Prod.ext hconcept hpolarity
+          have htail : tail = rest := ih hpair.2
+          simp [hhead, htail]
+
 def individualCode (individual : Nat) : Nat := Nat.pair 0 individual
 
 def auxiliaryCode (root : Nat) (label : List (Nat × Int)) : Nat :=
   Nat.pair 1 (Nat.pair root (labelCode label))
+
+theorem individualCode_injective : Function.Injective individualCode := by
+  intro left right heq
+  exact (Nat.pair_eq_pair.mp heq).2
+
+theorem auxiliaryCode_injective :
+    Function.Injective (fun value : Nat × List (Nat × Int) =>
+      auxiliaryCode value.1 value.2) := by
+  intro left right heq
+  have houter := Nat.pair_eq_pair.mp heq
+  have hinner := Nat.pair_eq_pair.mp houter.2
+  exact Prod.ext hinner.1 (labelCode_injective hinner.2)
+
+theorem individualCode_ne_auxiliaryCode (individual root : Nat)
+    (label : List (Nat × Int)) :
+    individualCode individual ≠ auxiliaryCode root label := by
+  intro heq
+  have htag := (Nat.pair_eq_pair.mp heq).1
+  omega
+
+noncomputable def decodedConstant (T : RawTermInterp Domain) (fallback : Domain)
+    (code : Nat) : Domain := by
+  classical
+  exact if hindividual : ∃ individual, individualCode individual = code then
+      T.individual (Classical.choose hindividual)
+    else if hauxiliary : ∃ value : Nat × List (Nat × Int),
+        auxiliaryCode value.1 value.2 = code then
+      T.auxiliary (Classical.choose hauxiliary).1
+        (Classical.choose hauxiliary).2
+    else fallback
+
+@[simp] theorem decodedConstant_individual (T : RawTermInterp Domain)
+    (fallback : Domain) (individual : Nat) :
+    decodedConstant T fallback (individualCode individual) =
+      T.individual individual := by
+  classical
+  have hexists : ∃ candidate : Nat,
+      individualCode candidate = individualCode individual := ⟨individual, rfl⟩
+  simp only [decodedConstant, dif_pos hexists]
+  have hchosen := Classical.choose_spec
+    hexists
+  rw [individualCode_injective hchosen]
+
+@[simp] theorem decodedConstant_auxiliary (T : RawTermInterp Domain)
+    (fallback : Domain) (root : Nat) (label : List (Nat × Int)) :
+    decodedConstant T fallback (auxiliaryCode root label) =
+      T.auxiliary root label := by
+  classical
+  have hnoIndividual : ¬∃ individual,
+      individualCode individual = auxiliaryCode root label := by
+    rintro ⟨individual, heq⟩
+    exact individualCode_ne_auxiliaryCode individual root label heq
+  have hexists : ∃ value : Nat × List (Nat × Int),
+      auxiliaryCode value.1 value.2 = auxiliaryCode root label :=
+    ⟨(root, label), rfl⟩
+  simp only [decodedConstant, dif_neg hnoIndividual, dif_pos hexists]
+  let chosen := Classical.choose
+    hexists
+  have hchosen : auxiliaryCode chosen.1 chosen.2 = auxiliaryCode root label :=
+    Classical.choose_spec hexists
+  have heq : chosen = (root, label) := auxiliaryCode_injective hchosen
+  simpa [chosen] using congrArg (fun value : Nat × List (Nat × Int) =>
+    T.auxiliary value.1 value.2) heq
 
 def encodeTerm : RawTerm → FTerm
   | .var index => .var (Int.ofNat index)
@@ -74,6 +176,28 @@ def elInterp (model : TModel Domain) (top bottom : Nat)
   role := model.rol
   top_true := topTrue
   bottom_false := bottomFalse
+
+noncomputable def modelOfRaw
+    (I : Interp Domain Nat Nat top bottom) (T : RawTermInterp Domain)
+    (fallback : Domain) : TModel Domain where
+  conc := I.concept
+  rol := I.role
+  const := decodedConstant T fallback
+  fn := T.function
+
+@[simp] theorem rawTermInterp_modelOfRaw
+    (I : Interp Domain Nat Nat top bottom) (T : RawTermInterp Domain)
+    (fallback : Domain) :
+    rawTermInterp (modelOfRaw I T fallback) = T := by
+  rcases T with ⟨individuals, auxiliaries, functions⟩
+  simp [rawTermInterp, modelOfRaw]
+
+@[simp] theorem elInterp_modelOfRaw
+    (I : Interp Domain Nat Nat top bottom) (T : RawTermInterp Domain)
+    (fallback : Domain) :
+    elInterp (modelOfRaw I T fallback) top bottom I.top_true I.bottom_false = I := by
+  rcases I with ⟨concepts, roles, topTrue, bottomFalse⟩
+  rfl
 
 @[simp] theorem eval_encodeTerm (model : TModel Domain) (assignment : Int → Domain)
     (term : RawTerm) :
@@ -215,9 +339,50 @@ theorem models_encodeResidual_iff (model : TModel Domain) (top bottom : Nat)
   · exact (valid_encodeResidualClause_iff model top bottom topTrue bottomFalse
       clause).2 (h clause hclause)
 
+def CommonResidualEntails (top bottom : Nat)
+    (ontology : List (RawResidualClause Nat Nat)) (sub sup : Nat) : Prop :=
+  ∀ (Domain : Type) (model : TModel Domain),
+    (∀ value, model.conc top value) →
+    (∀ value, ¬model.conc bottom value) →
+    (∀ clause ∈ ontology, valid model (encodeResidualClause clause)) →
+      ∀ value, model.conc sub value → model.conc sup value
+
+def RawResidualEntails (top bottom : Nat)
+    (ontology : List (RawResidualClause Nat Nat)) (sub sup : Nat) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Nat Nat top bottom)
+    (T : RawTermInterp Domain),
+    modelsRawResidual I T ontology →
+      ∀ value, I.concept sub value → I.concept sup value
+
+/-- Bidirectional common-source theorem for the exact residual language used by
+the V5 ELC checker. The reverse direction constructs interpretations for every
+encoded individual, auxiliary constant, and nested function. -/
+theorem commonResidualEntails_iff_raw (top bottom : Nat)
+    (ontology : List (RawResidualClause Nat Nat)) (sub sup : Nat) :
+    CommonResidualEntails top bottom ontology sub sup ↔
+      RawResidualEntails top bottom ontology sub sup := by
+  constructor
+  · intro hcommon Domain I T hmodels value hsub
+    let model := modelOfRaw I T value
+    have hencoded : ∀ clause ∈ ontology,
+        valid model (encodeResidualClause clause) := by
+      apply (models_encodeResidual_iff model top bottom I.top_true
+        I.bottom_false ontology).2
+      simpa [model] using hmodels
+    exact hcommon Domain model (by simpa [model, modelOfRaw] using I.top_true)
+      (by simpa [model, modelOfRaw] using I.bottom_false) hencoded value
+      (by simpa [model, modelOfRaw] using hsub)
+  · intro hraw Domain model htop hbottom hmodels value hsub
+    exact hraw Domain (elInterp model top bottom htop hbottom)
+      (rawTermInterp model)
+      ((models_encodeResidual_iff model top bottom htop hbottom ontology).1 hmodels)
+      value hsub
+
 #print axioms valid_encodeClause_iff
 #print axioms models_encode_iff
 #print axioms valid_encodeResidualClause_iff
 #print axioms models_encodeResidual_iff
+#print axioms rawTermInterp_modelOfRaw
+#print axioms commonResidualEntails_iff_raw
 
 end ContextCalculus.ELCheckerTermEmbedding
