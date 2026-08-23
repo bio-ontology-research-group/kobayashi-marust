@@ -561,6 +561,7 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
         .ok_or_else(|| "KM_CB_LEAN_CERT_CHECKER is required".to_string())?;
     let bundle_path = std::env::var_os("KM_CB_CERT_BUNDLE")
         .ok_or_else(|| "KM_CB_CERT_BUNDLE is required".to_string())?;
+    let derivation_candidate_path = std::env::var_os("KM_CB_DERIVATION_CANDIDATE");
 
     let global_bytes = std::fs::read(&global_path).map_err(|error| {
         format!(
@@ -571,6 +572,17 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
     let global_model: serde_json::Value = serde_json::from_slice(&global_bytes)
         .map_err(|error| format!("cannot parse global CB certificate: {error}"))?;
     let live_state = reasoner.live_terminal_snapshot()?;
+    let insertion_evidence: Vec<_> = live_state
+        .insertion_history
+        .iter()
+        .map(|event| {
+            serde_json::json!({
+                "kind": if event.origin_hint == "derived" { "unproved" } else { "seed" },
+                "prior_events": [],
+                "trace": [],
+            })
+        })
+        .collect();
     let bundle = serde_json::json!({
         "version": 1,
         "global_model": global_model,
@@ -592,6 +604,29 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
     writer
         .flush()
         .map_err(|error| format!("cannot flush CB certificate bundle: {error}"))?;
+
+    if let Some(candidate_path) = derivation_candidate_path {
+        let candidate = serde_json::json!({
+            "version": 1,
+            "production_bound": bundle,
+            "insertion_evidence": insertion_evidence,
+        });
+        let file = std::fs::File::create(&candidate_path).map_err(|error| {
+            format!(
+                "cannot create CB derivation candidate {}: {error}",
+                std::path::Path::new(&candidate_path).display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize CB derivation candidate: {error}"))?;
+        writer
+            .write_all(b"\n")
+            .map_err(|error| format!("cannot finish CB derivation candidate: {error}"))?;
+        writer
+            .flush()
+            .map_err(|error| format!("cannot flush CB derivation candidate: {error}"))?;
+    }
 
     let status = std::process::Command::new(&checker)
         .arg(&bundle_path)

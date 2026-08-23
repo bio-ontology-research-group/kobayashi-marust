@@ -132,12 +132,14 @@ fn mandatory_lean_mode_fails_without_complete_configuration() {
 fn mandatory_lean_rejection_prevents_publication() {
     let global = snapshot_path("global-model");
     let bundle = snapshot_path("bundle");
+    let derivation = snapshot_path("derivation-candidate");
     std::fs::write(&global, b"{}\n").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
         .env("KM_CB_LEAN_REQUIRED", "1")
         .env("KM_CB_GLOBAL_MODEL_CERT", &global)
         .env("KM_CB_LEAN_CERT_CHECKER", "/bin/false")
         .env("KM_CB_CERT_BUNDLE", &bundle)
+        .env("KM_CB_DERIVATION_CANDIDATE", &derivation)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -152,6 +154,7 @@ fn mandatory_lean_rejection_prevents_publication() {
     assert_eq!(output.status.code(), Some(5));
     assert!(output.stdout.is_empty());
     assert!(bundle.exists());
+    assert!(derivation.exists());
     let document: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&bundle).unwrap()).unwrap();
     assert_eq!(document["version"], 1);
@@ -178,8 +181,25 @@ fn mandatory_lean_rejection_prevents_publication() {
         saw_ontology_fact |= origin == "ontology_fact";
     }
     assert!(saw_core && saw_ontology_fact);
+    let candidate: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&derivation).unwrap()).unwrap();
+    assert_eq!(candidate["version"], 1);
+    assert_eq!(candidate["production_bound"], document);
+    let evidence = candidate["insertion_evidence"].as_array().unwrap();
+    assert_eq!(evidence.len(), history.len());
+    for (event, proof) in history.iter().zip(evidence) {
+        let expected = if event["origin_hint"] == "derived" {
+            "unproved"
+        } else {
+            "seed"
+        };
+        assert_eq!(proof["kind"], expected);
+        assert_eq!(proof["prior_events"].as_array().unwrap().len(), 0);
+        assert_eq!(proof["trace"].as_array().unwrap().len(), 0);
+    }
     std::fs::remove_file(global).unwrap();
     std::fs::remove_file(bundle).unwrap();
+    std::fs::remove_file(derivation).unwrap();
 }
 
 #[test]

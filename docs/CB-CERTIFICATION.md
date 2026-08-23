@@ -118,6 +118,10 @@ claim that the layer is already complete.
   layer executable and the `cb-live-insertion-derivation-check` native checker
   exposes it. The Rust evidence producer, mandatory publication integration,
   and the distinct inter-context evidence constructor remain open.
+  `KM_CB_DERIVATION_CANDIDATE` emits the exact nested production-bound document
+  plus one evidence slot per insertion. Verified seeds are populated; derived
+  slots use an unsupported `unproved` tag so the checker fails closed until a
+  rule reconstruction replaces every such slot.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the

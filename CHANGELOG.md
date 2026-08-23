@@ -53,6 +53,12 @@
   conclusions, and seed/local origin confusion, and constructs the certified
   history during decoding. This checker remains separate from mandatory CB
   publication until KM emits evidence for every derived event.
+  KM can now emit a nested producer candidate with
+  `KM_CB_DERIVATION_CANDIDATE`. It emits checker-ready empty evidence for every
+  exact seed and the deliberately unsupported `unproved` tag for each remaining
+  derived event. The native checker therefore rejects incomplete candidates,
+  while the artifact gives rule reconstruction a length-exact per-run worklist
+  without weakening mandatory publication.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,
