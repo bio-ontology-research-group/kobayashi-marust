@@ -17,19 +17,19 @@ open Lean
 structure WireLit where
   concept : Nat
   neg : Bool
-deriving FromJson, ToJson, Repr
+deriving FromJson, ToJson, Repr, DecidableEq
 
 inductive WireAtom where
   | concept (literal : WireLit) (node : Nat)
   | role (role source target : Nat)
   | exists_ (role : Nat) (filler : WireLit) (node : Nat)
   | eq (left right : Nat)
-deriving FromJson, ToJson, Repr
+deriving FromJson, ToJson, Repr, DecidableEq
 
 structure WireClause where
   body : List WireAtom
   head : List WireAtom
-deriving FromJson, ToJson, Repr
+deriving FromJson, ToJson, Repr, DecidableEq
 
 structure WireLabel where
   node : Nat

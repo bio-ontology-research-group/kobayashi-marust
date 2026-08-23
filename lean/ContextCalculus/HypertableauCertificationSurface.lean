@@ -5,6 +5,8 @@ import ContextCalculus.HypertableauOrdinaryTaxonomyRunMatrixWire
 import ContextCalculus.HypertableauSourceBoundNativeABoxWire
 import ContextCalculus.HypertableauExecutablePublicationWire
 import ContextCalculus.HTDirectTaxonomyCommonPublication
+import ContextCalculus.HTMixedTaxonomyCommonPublication
+import ContextCalculus.HTBundleTaxonomyCommonPublication
 
 /-!
 # Current production hypertableau certification surface
@@ -124,6 +126,20 @@ theorem certifiedHTDirectCommonTaxonomyPublication
     (hcheck : wire.check = .ok true) : wire.SemanticallyValid :=
   wire.check_sound hcheck
 
+/-- A checked mixed publication reports the complete named taxonomy of the
+exact common unary-Skolem source retained by its projection. -/
+theorem certifiedHTMixedCommonTaxonomyPublication
+    (wire : HTMixedTaxonomyCommonPublication.WireMixedTaxonomyPublication)
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid :=
+  wire.check_sound hcheck
+
+/-- A checked bundle publication reports the complete named taxonomy of its
+exact common shared-function source at the checked source-concept embedding. -/
+theorem certifiedHTBundleCommonTaxonomyPublication
+    (wire : HTBundleTaxonomyCommonPublication.WireBundleTaxonomyPublication)
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid :=
+  wire.check_sound hcheck
+
 #print axioms certifiedHTGlobalPublication
 #print axioms certifiedHTRegularTaxonomyPublication
 #print axioms certifiedHTCardinalityTaxonomyPublication
@@ -138,5 +154,7 @@ theorem certifiedHTDirectCommonTaxonomyPublication
 #print axioms certifiedHTExecutableGlobalPublication
 #print axioms certifiedHTExecutableTaxonomyPublication
 #print axioms certifiedHTDirectCommonTaxonomyPublication
+#print axioms certifiedHTMixedCommonTaxonomyPublication
+#print axioms certifiedHTBundleCommonTaxonomyPublication
 
 end ContextCalculus.Hypertableau

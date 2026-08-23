@@ -224,18 +224,15 @@ def DecodedDirectCommonSource.CommonEntails
     (sub sup : Fin decoded.projection.concepts.length) : Prop :=
   CommonEntailsSub decoded.commonOntology sub.val sup.val
 
-theorem entails_mapOntology_iff
+/-- Mapping finite HT identifiers into naturals preserves the full HT
+semantics, including existential atoms.  This is distinct from encoding into
+the proper-term common calculus, which additionally requires a direct source. -/
+theorem entails_mapOntology_finite_iff
     (source : List
       (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
-    (hdirect : ∀ clause ∈ source, clauseNoExistentials clause = true)
     (sub sup : Fin concepts) :
-    CommonEntailsSub (mapOntology source) sub.val sup.val ↔
+    EntailsSub (mapOntology source) sub.val sup.val ↔
       EntailsSub source sub sup := by
-  have hcommonDirect : DirectOntology (mapOntology source) := by
-    intro clause hclause
-    rcases List.mem_map.mp hclause with ⟨original, horiginal, rfl⟩
-    exact direct_mapClause original (hdirect original horiginal)
-  rw [entailsSub_encode_iff (mapOntology source) hcommonDirect sub.val sup.val]
   constructor
   · intro hnat Domain interpretation hmodels value hsub
     letI : Nonempty Domain := ⟨value⟩
@@ -255,6 +252,20 @@ theorem entails_mapOntology_iff
           (hmodels (mapClause clause)
             (List.mem_map.mpr ⟨clause, hclause, rfl⟩)))
       value (by simpa [finInterp] using hsub)
+
+theorem entails_mapOntology_iff
+    (source : List
+      (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
+    (hdirect : ∀ clause ∈ source, clauseNoExistentials clause = true)
+    (sub sup : Fin concepts) :
+    CommonEntailsSub (mapOntology source) sub.val sup.val ↔
+      EntailsSub source sub sup := by
+  have hcommonDirect : DirectOntology (mapOntology source) := by
+    intro clause hclause
+    rcases List.mem_map.mp hclause with ⟨original, horiginal, rfl⟩
+    exact direct_mapClause original (hdirect original horiginal)
+  rw [entailsSub_encode_iff (mapOntology source) hcommonDirect sub.val sup.val]
+  exact entails_mapOntology_finite_iff source sub sup
 
 /-- Accepted executable direct-source evidence has exactly the same taxonomy
 meaning in the common routing source and in the checked HT source. -/
@@ -340,5 +351,6 @@ example : rejected existentialExample.check = true := by native_decide
 #print axioms WireDirectCommonSource.check_sound
 #print axioms WireDirectCommonSource.check_target_sound
 #print axioms entails_mapOntology_iff
+#print axioms entails_mapOntology_finite_iff
 
 end ContextCalculus.HTDirectCommonSourceWire
