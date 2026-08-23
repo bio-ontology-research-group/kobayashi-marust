@@ -527,6 +527,18 @@ Lean independently checks the exact premise identity, every resolution step,
 closure, and omission of the empty clause. Sources requiring genuinely
 infinite models still need the regular blocked-model evidence form.
 
+The first regular bridge now covers an exact ALC-shaped CB source. The wire
+decodes a normalized ALC ontology and accepts only when its indexed Skolem
+encoding is exactly the production CB clause list. It also decodes an existing
+regular HT certificate and requires that certificate's ontology to be exactly
+the guarded HT translation of the same ALC ontology. Lean transports the
+checked regular unravelling through the ALC semantics and installs the indexed
+Skolem witnesses, producing a `CheckerTerm.TModel` with the positive subclass
+and negative superclass at its root. The exact matrix accepts this evidence as
+`regularALC`. Richer SROIQ source shapes still need corresponding exact
+projection bridges for equality, nominals, and cardinality clauses; they are
+not routed through this ALC case.
+
 ## Requirements for the complete CB layer
 
 The CB layer is complete only when one release gate establishes all of the

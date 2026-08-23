@@ -46,7 +46,16 @@
   resolution closure, and fails closed on contradiction or explicit clause and
   resolution-attempt caps. Focused tests cover both an accepted open closure
   and rejection of a refuted query. Genuinely infinite regular evidence remains
-  open.
+  open for the full SROIQ source.
+  Add the first regular negative-evidence bridge for exact ALC-shaped CB
+  sources. A bounds-checked wire requires byte-structural semantic identity at
+  both boundaries: the decoded ALC indexed-Skolem encoding must equal the exact
+  production CB source, and the checked regular certificate ontology must equal
+  its guarded HT translation. Lean then transports the HT regular unravelling
+  through ALC semantics and installs the CB Skolem functions, yielding a
+  possibly infinite `TModel` that refutes the taxonomy cell. The exact matrix
+  accepts this as `regularALC`; richer equality, nominal, and cardinality
+  projections remain open.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

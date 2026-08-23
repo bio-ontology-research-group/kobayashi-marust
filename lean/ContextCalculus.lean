@@ -54,6 +54,8 @@ import ContextCalculus.CBFiniteAtomEncoding
 import ContextCalculus.CBBlockedGroundSaturationWire
 import ContextCalculus.CBBlockedTaxonomyCountermodel
 import ContextCalculus.CBBlockedTaxonomyCountermodelWire
+import ContextCalculus.CBRegularALCCountermodel
+import ContextCalculus.CBRegularALCCountermodelWire
 import ContextCalculus.CBHyperClosure
 import ContextCalculus.CBHyperClosureWire
 import ContextCalculus.CBJoin3Closure
