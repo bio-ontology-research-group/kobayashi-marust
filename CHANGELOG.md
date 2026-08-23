@@ -97,7 +97,17 @@
   production source at the original concept bound and the anchored certificate
   at one additional concept. The exact taxonomy matrix accepts this as
   `regularFreshCardinality`. Theorems build without `sorryAx`; native Rust
-  generation and arbitrary-chain regular projection remain open.
+  generation remains open.
+  Add checked arbitrary-chain projection over an enlarged role signature.
+  `CBSourceSignatureRenaming` proves simultaneous concept/role pullback for
+  every exact source constructor and finite chain. A binary derivation tree
+  composes renamed source-role atoms only through listed binary target rules;
+  Lean proves this entails the original indexed chain semantics. The combined
+  regular countermodel and bounds-checked wire preserve the exact production
+  source while allowing fresh intermediate target roles, the fresh universal
+  concept, nominals, functionality, and qualified at-most clauses together.
+  Exact cells can cite `regularArbitraryChain`. Rust generation of this evidence
+  remains open.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

@@ -592,9 +592,21 @@ its original concept bound and the anchored cardinality certificate at the
 extended bound. Exact taxonomy cells can cite this evidence as
 `regularFreshCardinality`. The Rust producer does not yet construct any of the
 regular nominal/cardinality wires automatically, so native generation remains
-open. Longer-than-binary role chains also remain outside the regular producer
-projection even though the base source semantics already certifies arbitrary
-finite chains.
+open.
+
+`CBRoleChainBinaryDerivation` closes the semantic gap between arbitrary source
+chains and HT's binary regular role rules. A checked tree starts from renamed
+source-role atoms and may compose two adjacent paths only by citing an exact
+binary rule in the target source. Lean proves these trees sound for arbitrary
+relations and proves their list-path semantics implies CB's indexed finite-chain
+semantics. `CBRegularArbitraryChainCountermodel` combines this with simultaneous
+concept/role renaming, fresh target roles, the fresh universal concept, nominal
+anchors, and cardinality definitions. Its wire checks the original production
+source, the enlarged target bounds, every binary chain and derivation, and the
+anchored certificate before `regularArbitraryChain` can enter the exact matrix.
+This removes the binary-chain restriction from the certified regular evidence
+language. Rust still needs to generate the enlarged target projection and its
+derivation trees automatically.
 
 ## Requirements for the complete CB layer
 
