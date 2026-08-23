@@ -41,6 +41,11 @@
   publication sound, and proves coverage through either the selected complete
   route or its retained exact fallback. Completeness is an explicit adapter
   obligation and cannot be inferred from a route tag or worker termination.
+- Add the certified frontend-adapter theorem used to lift an ELC, HT, or CB
+  worker from its normalized source to the router's exact source. The adapter
+  must prove semantic equivalence for every published answer; Lean then
+  transports both source-bound soundness and completeness through the
+  translation. Byte hashes and route labels cannot discharge this obligation.
 
 ### Close the executable ELC certification boundary
 

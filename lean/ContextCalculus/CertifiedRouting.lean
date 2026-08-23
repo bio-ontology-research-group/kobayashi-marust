@@ -95,6 +95,85 @@ theorem SourceBoundWorker.erase_completeAt
   · exact worker.accept_sound source publication.answer publication.evidence
       (worker.run_accepted source publication hpublication)
 
+/-- A checked frontend boundary from the router's source language to one
+worker's normalized source language.  `correct_iff` is the semantic
+preservation obligation: translating the source changes neither the meaning of
+the published taxonomy nor the consistency verdict represented by `Answer`.
+
+This field is intentionally propositional rather than a hash or route tag. A
+concrete ELC, HT, or CB adapter must prove it from the frontend normalization
+theorems for the exact source it serializes.
+-/
+structure SourceTranslation (Source : Type u) (WorkerSource : Type v)
+    (Answer : Type w) (sourceCorrect : Source → Answer → Prop)
+    (workerCorrect : WorkerSource → Answer → Prop) where
+  translate : Source → WorkerSource
+  correct_iff : ∀ source answer,
+    workerCorrect (translate source) answer ↔ sourceCorrect source answer
+
+/-- Lift an already source-bound worker through a semantics-preserving
+frontend translation.  The lifted publication records the original router
+source, while acceptance reruns the worker checker against exactly the
+translated source produced from it. -/
+def SourceBoundWorker.liftTranslation
+    {Source : Type u} {WorkerSource : Type v} {Answer : Type w}
+    {Evidence : Type _} {sourceCorrect : Source → Answer → Prop}
+    {workerCorrect : WorkerSource → Answer → Prop}
+    (translation : SourceTranslation Source WorkerSource Answer
+      sourceCorrect workerCorrect)
+    (worker : SourceBoundWorker WorkerSource Answer Evidence workerCorrect) :
+    SourceBoundWorker Source Answer Evidence sourceCorrect where
+  run source :=
+    match hrun : worker.run (translation.translate source) with
+    | .publish publication => .publish {
+        source
+        answer := publication.answer
+        evidence := publication.evidence
+      }
+    | .defer => .defer
+    | .error => .error
+    | .timeout => .timeout
+  accept source answer evidence :=
+    worker.accept (translation.translate source) answer evidence
+  run_source_exact := by
+    intro source publication hpublication
+    split at hpublication
+    next workerPublication hrun =>
+      injection hpublication with hpublication
+      rw [← hpublication]
+    all_goals simp_all
+  run_accepted := by
+    intro source publication hpublication
+    split at hpublication
+    next workerPublication hrun =>
+      simp only [Outcome.publish.injEq] at hpublication
+      subst publication
+      exact worker.run_accepted (translation.translate source)
+        workerPublication hrun
+    all_goals simp_all
+  accept_sound := by
+    intro source answer evidence haccept
+    exact (translation.correct_iff source answer).mp
+      (worker.accept_sound (translation.translate source) answer evidence haccept)
+
+theorem SourceBoundWorker.liftTranslation_completeAt
+    {Source : Type u} {WorkerSource : Type v} {Answer : Type w}
+    {Evidence : Type _} {sourceCorrect : Source → Answer → Prop}
+    {workerCorrect : WorkerSource → Answer → Prop}
+    (translation : SourceTranslation Source WorkerSource Answer
+      sourceCorrect workerCorrect)
+    (worker : SourceBoundWorker WorkerSource Answer Evidence workerCorrect)
+    (source : Source) (hcomplete : worker.CompleteAt (translation.translate source)) :
+    (worker.liftTranslation translation).CompleteAt source := by
+  rcases hcomplete with ⟨publication, hpublication⟩
+  refine ⟨{
+    source
+    answer := publication.answer
+    evidence := publication.evidence
+  }, ?_⟩
+  dsimp [SourceBoundWorker.liftTranslation]
+  rw [hpublication]
+
 /-- A heterogeneous worker erased only after every member has established the
 same source-level correctness predicate. -/
 structure CertifiedProcedure (Source : Type u) (Answer : Type v)
@@ -214,6 +293,8 @@ theorem AutomaticRouter.sound_and_complete
 
 #print axioms SourceBoundWorker.erase_soundAt
 #print axioms SourceBoundWorker.erase_completeAt
+#print axioms SourceBoundWorker.liftTranslation
+#print axioms SourceBoundWorker.liftTranslation_completeAt
 #print axioms CertifiedProcedure.firstPublish_sound
 #print axioms CertifiedProcedure.firstPublish_complete
 #print axioms AutomaticRouter.sound
