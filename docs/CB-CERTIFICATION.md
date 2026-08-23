@@ -231,6 +231,14 @@ claim that the layer is already complete.
   boundary. This removes runtime maximality masks from the trusted base, but it
   does not yet prove Eq or Hyper candidate closure or that the selected order
   satisfies the final ordered-calculus admissibility theorem.
+- `CBLocalEqEnumeration` defines KM's direct-position rewrite separately from
+  the older recursive term-checker rewrite and proves that the exact operation
+  preserves literal truth under its equality premise. It also specifies the
+  terminal union of the `eq_from_pred` and `eq_from_equation` scans from checked
+  maximal head indexes, including the production equality and inequality
+  suppression cases, and proves exact list membership. Retained-strengthening
+  coverage, candidate-level semantic composition, Rust-state emission, and the
+  ordered-paramodulation completeness connection remain open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

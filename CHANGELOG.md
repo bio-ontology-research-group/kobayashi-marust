@@ -174,6 +174,12 @@
   An iff theorem exposes bounded index, literal identity, and domination of
   every other head literal. Runtime maximality masks are not trusted. Eq/Hyper
   candidate closure and the admissible-order completeness theorem remain open.
+- Specify the exact direct-position rewrite performed by KM's Eq rule and prove
+  that it preserves literal truth under the selected equality. Independently
+  enumerate the terminal union of both production Eq scans from checked head
+  maxima, including their equality and inequality suppression cases, with an
+  exact membership theorem. Retained closure and the ordered-completeness
+  connection remain part of the unreleased CB layer.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
