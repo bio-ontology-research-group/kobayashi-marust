@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "concept_count": 1,
+  "role_count": 0,
+  "function_count": 0,
+  "individual_count": 0,
+  "ontology": [{
+    "body": [],
+    "head": [{"predicate": {"predicate": {"concept": {
+      "concept": 0, "term": {"var": {"index": 0}}
+    }}}}]
+  }],
+  "proof": {
+    "version": 1,
+    "nodes": [
+      {
+        "core": [],
+        "clause": {
+          "body": [],
+          "head": [{"predicate": {"predicate": {"concept": {
+            "concept": 0, "term": {"var": {"index": 0}}
+          }}}}]
+        },
+        "evidence": {"local": {
+          "prior_nodes": [],
+          "trace": [{
+            "clause": {
+              "body": [],
+              "head": [{"predicate": {"predicate": {"concept": {
+                "concept": 0, "term": {"var": {"index": 0}}
+              }}}}]
+            },
+            "justification": {"premise": {"index": 0, "substitution": []}}
+          }]
+        }}
+      },
+      {
+        "core": [],
+        "clause": {
+          "body": [],
+          "head": [{"predicate": {"predicate": {"concept": {
+            "concept": 0, "term": {"var": {"index": 0}}
+          }}}}]
+        },
+        "evidence": {"pred": {
+          "sender_node": 0,
+          "provider_nodes": [],
+          "edge_label": {"var": {"index": 0}},
+          "payload": {
+            "body": [],
+            "head": [{"predicate": {"predicate": {"concept": {
+              "concept": 0, "term": {"var": {"index": 0}}
+            }}}}]
+          },
+          "matched": []
+        }}
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "concept_count": 1,
+  "role_count": 0,
+  "function_count": 0,
+  "individual_count": 0,
+  "ontology": [],
+  "proof": {
+    "version": 1,
+    "nodes": [{
+      "core": [],
+      "clause": {"body": [], "head": []},
+      "evidence": {"local": {"prior_nodes": [0], "trace": []}}
+    }]
+  }
+}

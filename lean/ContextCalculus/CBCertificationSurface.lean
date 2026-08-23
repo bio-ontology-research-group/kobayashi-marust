@@ -1,5 +1,6 @@
 import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBLiveExactTaxonomyPublication
+import ContextCalculus.CBStandaloneContextProofWire
 
 /-!
 # Public CB certification surface
@@ -15,6 +16,29 @@ namespace ContextCalculus.CB
 open ContextCalculus.CBTaxonomyWire
 open ContextCalculus.CBSourceTaxonomyWire
 open ContextCalculus.CBLiveExactTaxonomyPublication
+open ContextCalculus.CBStandaloneContextProofWire
+
+/-- Every node accepted by the chronological source-bound proof checker is
+context-valid in every model of the exact typed ontology. This includes local
+production and arbitrarily nested cross-context Pred derivations. -/
+theorem certifiedCBStandaloneContextProof
+    (bounds : CBTermWire.Bounds) (ontology : List CheckerTerm.FCL)
+    (wire : WireStandaloneProof)
+    (hcheck : wire.check bounds ontology = .ok true) :
+    ∃ decoded : DecodedStandaloneProof ontology,
+      wire.decode bounds ontology = .ok decoded ∧
+      ∀ node ∈ decoded.nodes, ∀ {D : Type} (model : CheckerTerm.TModel D),
+        (∀ source ∈ ontology, CheckerTerm.valid model source) →
+        CBInterContext.ContextValid model node.core node.clause := by
+  cases hdecode : wire.decode bounds ontology with
+  | error message =>
+      simp [WireStandaloneProof.check, hdecode] at hcheck
+  | ok decoded =>
+      refine ⟨decoded, rfl, ?_⟩
+      intro node hnode D model hontology
+      exact node.contextValid model hontology
+
+#print axioms certifiedCBStandaloneContextProof
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :

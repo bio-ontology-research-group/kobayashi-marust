@@ -50,6 +50,7 @@ if grep -q 'sorryAx' "$surface_log"; then
 fi
 
 surface_theorems=(
+    certifiedCBStandaloneContextProof
     certifiedCBExactTaxonomyPublication
     certifiedCBSourceExactTaxonomyPublication
     certifiedCBProductionExactTaxonomyPublication
@@ -60,6 +61,14 @@ for theorem in "${surface_theorems[@]}"; do
         exit 1
     }
 done
+
+"$bin_root/cb-standalone-context-proof-check" \
+    "$lean_root/testdata/cb-standalone-context-pred-valid.json"
+if "$bin_root/cb-standalone-context-proof-check" \
+    "$lean_root/testdata/cb-standalone-context-forward-ref-forged.json"; then
+    echo "forged forward-reference CB context proof was accepted" >&2
+    exit 1
+fi
 
 for checker in "${checkers[@]}"; do
     [[ -x "$bin_root/$checker" ]] || {
