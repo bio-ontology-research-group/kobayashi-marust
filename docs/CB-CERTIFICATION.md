@@ -140,6 +140,11 @@ claim that the layer is already complete.
   the block and rejects a forged omitted equality. The remaining Nom evidence
   must derive each obligation from the firing's exact covering/counting premises
   and check that its decoded body and residual head have the required meanings.
+  The firing now also carries a source-clause index. Decoding requires its
+  recorded source body and head to equal that exact clause in the verified
+  normalized ontology; an out-of-range index is rejected. Lean transports the
+  indexed source clause's validity to the recorded premise without trusting the
+  duplicate payload.
 
 ## Not yet established
 

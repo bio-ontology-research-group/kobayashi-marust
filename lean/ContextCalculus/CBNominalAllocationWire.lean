@@ -24,6 +24,7 @@ open ContextCalculus.CBProductionTrace
 
 structure WireNominalFiringKey where
   context : Nat
+  source_index : Nat
   source_body : List WirePredicate
   source_head : List WireLiteral
   side_body : List WirePredicate
@@ -53,12 +54,16 @@ deriving FromJson, ToJson
 
 structure NominalFiringKey where
   context : Nat
+  sourceIndex : Nat
+  sourceClause : CheckerTerm.FCL
   sourceBody : List CheckerTerm.FPred
   sourceHead : List CheckerTerm.FLit
   sideBody : List CheckerTerm.FPred
   sideHead : List CheckerTerm.FLit
   selected : List (Nat × CheckerTerm.FPred)
   substitution : List (Int × CheckerTerm.FTerm)
+  source_equiv : CheckerTerm.clEquivT sourceClause
+    ⟨sourceBody.map CheckerTerm.FLit.P, sourceHead⟩
 
 structure NominalBlock where
   wireKey : WireNominalFiringKey
@@ -79,26 +84,35 @@ private def decodeSelected (bounds : Bounds)
   return (entry.1, predicate)
 
 def WireNominalFiringKey.decode (bounds : Bounds)
-    (wire : WireNominalFiringKey) : Except String NominalFiringKey := do
+    (ontology : List CheckerTerm.FCL) (wire : WireNominalFiringKey) :
+    Except String NominalFiringKey := do
   let variableIds := wire.substitution.map WireSubstitutionEntry.variableId
   if !wire.selected.isEmpty then
     if variableIds.Nodup then
-      return {
-        context := wire.context
-        sourceBody := ← wire.source_body.mapM (WirePredicate.decode bounds)
-        sourceHead := ← wire.source_head.mapM (WireLiteral.decode bounds)
-        sideBody := ← wire.side_body.mapM (WirePredicate.decode bounds)
-        sideHead := ← wire.side_head.mapM (WireLiteral.decode bounds)
-        selected := ← wire.selected.mapM (decodeSelected bounds)
-        substitution := ← wire.substitution.mapM
+      match ontology[wire.source_index]? with
+      | none => throw "Nom firing source-clause index is outside the ontology"
+      | some sourceClause =>
+        let sourceBody ← wire.source_body.mapM (WirePredicate.decode bounds)
+        let sourceHead ← wire.source_head.mapM (WireLiteral.decode bounds)
+        let sideBody ← wire.side_body.mapM (WirePredicate.decode bounds)
+        let sideHead ← wire.side_head.mapM (WireLiteral.decode bounds)
+        let selected ← wire.selected.mapM (decodeSelected bounds)
+        let substitution ← wire.substitution.mapM
           (WireSubstitutionEntry.decode bounds)
-      }
+        let recorded : CheckerTerm.FCL :=
+          ⟨sourceBody.map CheckerTerm.FLit.P, sourceHead⟩
+        if hequivalent : CheckerTerm.clEquivT sourceClause recorded then
+          return NominalFiringKey.mk wire.context wire.source_index sourceClause
+            sourceBody sourceHead sideBody sideHead selected substitution
+            hequivalent
+        else throw "Nom firing source clause differs from its indexed ontology premise"
     else throw "Nom firing substitution contains a duplicate variable"
   else throw "Nom firing must select at least one matched predicate"
 
 def WireNominalBlock.decode (bounds : Bounds)
+    (ontology : List CheckerTerm.FCL)
     (wire : WireNominalBlock) : Except String NominalBlock := do
-  let key ← wire.key.decode bounds
+  let key ← wire.key.decode bounds ontology
   if wire.body.Nodup then
     if wire.kept_head.Nodup then
       let body ← wire.body.mapM (WireLiteral.decode bounds)
@@ -151,7 +165,7 @@ def WireNominalAllocation.decode (wire : WireNominalAllocation) :
   let source ← wire.source.decode
   if hcount : source.bounds.individuals ≤ wire.individual_count then
     let bounds := { source.bounds with individuals := wire.individual_count }
-    let blocks ← wire.blocks.mapM (WireNominalBlock.decode bounds)
+    let blocks ← wire.blocks.mapM (WireNominalBlock.decode bounds source.ontology)
     if blocks.isEmpty then
       throw "CB Nom allocation must contain at least one firing"
     if hkeys : (blocks.map (·.wireKey)).Nodup then
@@ -253,6 +267,17 @@ def nomConclusion {width : Nat} (body keptHead : List CheckerTerm.FLit)
     (fresh : Fin width → CheckerTerm.FTerm) : CheckerTerm.FCL :=
   ⟨body, keptHead ++ (List.finRange width).map fun index =>
     .eq (.var (-1)) (fresh index)⟩
+
+theorem NominalFiringKey.recorded_source_sound {D : Type}
+    (key : NominalFiringKey) (model : CheckerTerm.TModel D)
+    (hsource : CheckerTerm.valid model key.sourceClause) :
+    CheckerTerm.valid model
+      ⟨key.sourceBody.map CheckerTerm.FLit.P, key.sourceHead⟩ := by
+  intro assignment
+  exact CheckerTerm.sat_of_clEquivT
+    ⟨key.source_equiv.2.1, key.source_equiv.1,
+      key.source_equiv.2.2.2, key.source_equiv.2.2.1⟩
+    (hsource assignment)
 
 theorem NominalBlock.emitted_conclusion_sound {D : Type}
     (block : NominalBlock) (model : CheckerTerm.TModel D)
@@ -461,8 +486,9 @@ private def conceptAt (concept individual : Nat) : WirePredicate :=
 
 private def exampleKey (context : Nat) : WireNominalFiringKey where
   context
-  source_body := [.role 0 (.constant 0) (.var (-1))]
-  source_head := [.equality (.var (-1)) (.var (-1))]
+  source_index := 0
+  source_body := [.concept 0 (.var 0)]
+  source_head := [.predicate (.concept 0 (.var 0))]
   side_body := [.concept 0 (.var (-1))]
   side_head := []
   selected := [(0, conceptAt 0 0)]
@@ -474,9 +500,10 @@ private def exampleSource : WireSourceBinding where
   role_count := 1
   function_count := 0
   individual_count := 1
-  source_clauses := []
+  source_clauses := [.gci [0] [0]]
   role_chains := []
-  ontology := []
+  ontology := [WireClause.mk [.predicate (.concept 0 (.var 0))]
+    [.predicate (.concept 0 (.var 0))]]
 
 private def acceptedExample : WireNominalAllocation where
   version := 1
@@ -538,6 +565,12 @@ private def forgedConclusionExample : WireNominalAllocation :=
 
 example : rejected forgedConclusionExample.check = true := by native_decide
 
+private def forgedSourceIndexExample : WireNominalAllocation :=
+  { acceptedExample with blocks := acceptedExample.blocks.map fun block =>
+    { block with key := { block.key with source_index := 1 } } }
+
+example : rejected forgedSourceIndexExample.check = true := by native_decide
+
 private def truncatedExample : WireNominalAllocation :=
   { acceptedExample with truncated := true }
 
@@ -547,6 +580,7 @@ example : rejected truncatedExample.check = true := by native_decide
 #print axioms WireNominalAllocation.check_family_sound
 #print axioms nomConclusion_sound
 #print axioms NominalBlock.emitted_conclusion_sound
+#print axioms NominalFiringKey.recorded_source_sound
 #print axioms extendNomBlock_fresh
 #print axioms valid_extendNomBlock_of_below
 #print axioms nomConclusion_exists_extension

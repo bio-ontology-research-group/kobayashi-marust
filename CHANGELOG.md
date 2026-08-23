@@ -16,7 +16,10 @@
   remains valid. Each block now carries its body, residual head, and emitted
   clause; executable checking requires the exact complete equality disjunction
   and rejects an omitted block member. Exact covering-premise decoding remains
-  unfinished.
+  unfinished. Each firing now indexes the verified normalized ontology, and
+  decoding checks its duplicated source body/head against that exact premise.
+  Lean transports source validity across the checked equivalence; forged source
+  indexes are rejected.
 
 - Add an exact source-indexed Skolem encoding from normalized ALC clauses to
   the nested-term first-order clauses consumed by CB certificates.
