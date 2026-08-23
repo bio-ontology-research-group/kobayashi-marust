@@ -89,6 +89,10 @@ name = "cb-hyper-closure-wire-check"
 root = "CBHyperClosureWireCheck"
 
 [[lean_exe]]
+name = "cb-join3-closure-check"
+root = "CBJoin3ClosureCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 
