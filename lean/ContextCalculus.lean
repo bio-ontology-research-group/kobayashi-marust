@@ -50,6 +50,8 @@ import ContextCalculus.CBGroundEqualityBridge
 import ContextCalculus.CBRoleChainGroundCompleteness
 import ContextCalculus.CBNamedGroundCompleteness
 import ContextCalculus.CBBlockedCarrierWire
+import ContextCalculus.CBFiniteAtomEncoding
+import ContextCalculus.CBBlockedGroundSaturationWire
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker

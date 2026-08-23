@@ -293,6 +293,20 @@ claim that the layer is already complete.
   never uses its fallback, and each embedded name decodes to its exact source
   constant. The standalone `cb-blocked-carrier-check` exposes this boundary.
   Ground-clause coverage by terminal production evidence remains open.
+- `CBFiniteAtomEncoding` gives every bounded concept, role, and equality atom a
+  canonical executable numeric identifier without accepting a serialized atom
+  table. Lean proves the encoding injective and proves exact clause and
+  clause-set model transport.
+- `CBBlockedGroundSaturationWire` computes one authoritative combined grounding
+  from the checked typed source, source-name ranks, and bounded witness table.
+  It requires the generic resolution certificate's premises to equal that set
+  exactly after canonical atom encoding. The existing saturation checker then
+  validates every derivation and exhaustive terminal resolution closure. Lean
+  proves that absence of the empty clause produces a congruence-quotient model
+  of the original typed source, including arbitrary role chains. The standalone
+  `cb-blocked-ground-saturation-check` exposes this boundary. Binding KM's
+  context terminal state to this ground saturation, and certified taxonomy
+  publication from it, remain open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

@@ -77,6 +77,10 @@ name = "cb-blocked-carrier-check"
 root = "CBBlockedCarrierCheck"
 
 [[lean_exe]]
+name = "cb-blocked-ground-saturation-check"
+root = "CBBlockedGroundSaturationCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

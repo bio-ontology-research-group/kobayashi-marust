@@ -57,7 +57,7 @@ inductive GAtom (CN RN T : Type) where
   | con (c : CN) (x : T)
   | rol (r : RN) (x y : T)
   | eqa (x y : T)
-deriving DecidableEq
+deriving DecidableEq, Fintype
 
 /-- A propositional valuation of ground atoms (a model of the grounded clause
     set will be such a `π`). -/

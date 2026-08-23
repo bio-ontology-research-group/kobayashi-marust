@@ -209,6 +209,12 @@
   embeddings from checked constant ranks and require a total bounded row-major
   existential-witness table. Prove every table coordinate is in range and every
   name embedding retrieves its original source constant.
+- Add canonical executable numbering for every finite blocked ground atom and
+  prove exact model transport through clause and clause-set encoding. Compose
+  the checked source, carrier, name map, and witness table with the generic
+  saturation checker. Exact premise equality plus a terminal set without the
+  empty clause now yields a model of the original typed source, including role
+  chains, through the congruence quotient.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
