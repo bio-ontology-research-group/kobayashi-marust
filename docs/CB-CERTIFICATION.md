@@ -580,6 +580,22 @@ source-to-target concept renaming and a fresh target-only universal marker,
 using the existing HT concept-renaming semantics. Do not treat the
 same-signature wire as the final cardinality completeness layer.
 
+`CBSourceConceptRenaming` and
+`CBRegularFreshCardinalityCountermodel` now provide that larger-signature
+semantic layer. The source concepts are injected with `Fin.succ` into a target
+signature with one extra concept, while target concept zero is reserved as the
+universal marker and functionality filler. Lean proves clause-by-clause and
+whole-source renaming equivalence, pulls an accepted target interpretation back
+to the exact source signature, and preserves the positive and negative query
+witness. The bounds-checked wire independently checks the production source at
+its original concept bound and the anchored cardinality certificate at the
+extended bound. Exact taxonomy cells can cite this evidence as
+`regularFreshCardinality`. The Rust producer does not yet construct any of the
+regular nominal/cardinality wires automatically, so native generation remains
+open. Longer-than-binary role chains also remain outside the regular producer
+projection even though the base source semantics already certifies arbitrary
+finite chains.
+
 ## Requirements for the complete CB layer
 
 The CB layer is complete only when one release gate establishes all of the

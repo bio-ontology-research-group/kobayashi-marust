@@ -84,12 +84,20 @@
   cardinality certificate. Exact taxonomy cells can cite `regularNominal` or
   `regularCardinality`; Rust generation of these evidence forms remains to be
   connected before the complete production gate can use them automatically.
-  The current cardinality wire is the same-signature specialization: marker
+  The first cardinality wire is the same-signature specialization: marker
   and functionality-filler concepts are selected from the decoded source
   concept bounds. It is sound but not a complete evidence form when every
-  source concept is constrained away from top. The complete construction must
-  rename source concepts into an extended target signature with a structurally
-  fresh universal concept; that generalization remains open.
+  source concept is constrained away from top.
+  Add the fresh-signature construction needed for the general case.
+  `CBSourceConceptRenaming` proves exact semantic transport for every source
+  clause constructor and role chains. The fresh cardinality projection embeds
+  source concepts with `Fin.succ`, reserves target concept zero as the universal
+  marker and functionality filler, and pulls a checked target countermodel back
+  to the exact source signature. Its bounds-checked wire verifies the original
+  production source at the original concept bound and the anchored certificate
+  at one additional concept. The exact taxonomy matrix accepts this as
+  `regularFreshCardinality`. Theorems build without `sorryAx`; native Rust
+  generation and arbitrary-chain regular projection remain open.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

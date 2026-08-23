@@ -5,6 +5,7 @@ import ContextCalculus.CBRegularALCCountermodelWire
 import ContextCalculus.CBRegularRoleCountermodelWire
 import ContextCalculus.CBRegularNominalCountermodelWire
 import ContextCalculus.CBRegularCardinalityCountermodelWire
+import ContextCalculus.CBRegularFreshCardinalityCountermodelWire
 
 /-!
 # Exact production-bound CB taxonomy publication
@@ -33,6 +34,7 @@ open ContextCalculus.CBRegularALCCountermodelWire
 open ContextCalculus.CBRegularRoleCountermodelWire
 open ContextCalculus.CBRegularNominalCountermodelWire
 open ContextCalculus.CBRegularCardinalityCountermodelWire
+open ContextCalculus.CBRegularFreshCardinalityCountermodelWire
 open ContextCalculus.CBBlockedCarrierWire
 open ContextCalculus.CBBlockedGroundSaturationWire
 open ContextCalculus.CBTermWire
@@ -47,6 +49,8 @@ inductive WireExactCellEvidence where
   | regularRole (countermodel : WireRegularRoleCountermodel)
   | regularNominal (countermodel : WireRegularNominalCountermodel)
   | regularCardinality (countermodel : WireRegularCardinalityCountermodel)
+  | regularFreshCardinality
+      (countermodel : WireRegularFreshCardinalityCountermodel)
   | unresolved
 deriving FromJson, ToJson
 
@@ -364,6 +368,30 @@ def WireExactCell.decode (live : DecodedLiveTaxonomyPublication)
                   exact (hnot hentails).elim
             }
           else throw "regular-cardinality CB countermodel is paired with a true answer"
+      | .regularFreshCardinality countermodelWire =>
+          if hanswer : wire.answer = false then
+            let countermodel ← countermodelWire.decode production.source.bounds
+              production.source.ontology wire.sub wire.sup
+            have hnot : ¬ExactEntails live wire.sub wire.sup := by
+              intro hentails
+              obtain ⟨D, model, element, hsource, hcore, hsuper⟩ :=
+                countermodel.refutes
+              exact hsuper (hentails D model hsource element hcore)
+            return {
+              sub := wire.sub
+              sub_in_bounds := hsub
+              sup := wire.sup
+              sup_in_bounds := hsup
+              answer := wire.answer
+              exact := by
+                constructor
+                · intro htrue
+                  simp [hanswer] at htrue
+                · intro hentails
+                  exact (hnot hentails).elim
+            }
+          else
+            throw "fresh-cardinality CB countermodel is paired with a true answer"
       | .unresolved =>
           throw "exact CB taxonomy cell has unresolved negative evidence"
     else throw "exact CB taxonomy superclass is outside the source signature"
