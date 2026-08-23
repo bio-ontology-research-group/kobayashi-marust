@@ -313,7 +313,7 @@ private def productionExample : WireProductionRun where
   source := sourceExample
   contexts := [contextExample]
 
-private def acceptedExample : WireInterContextRun where
+def acceptedExample : WireInterContextRun where
   version := 1
   production := productionExample
   transfers := [{

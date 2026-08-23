@@ -141,7 +141,14 @@ claim that the layer is already complete.
   every accepted payload-body plan classifies each literal as either a complete
   nonempty provider dimension or a provider-free, syntactically ground
   remainder. A missing provider for a non-ground literal rejects the arrival.
-  Generated-result disposition is the remaining join to the wire.
+  `CBPredCoverageWire` joins those pieces executably. For each checked
+  transfer/receiver pair it recomputes the complete Cartesian signature list,
+  requires exactly one generated record per signature, reconstructs each raw
+  resolution result, and checks an accepted arrival from the same transfer and
+  receiver syntactically strengthens it. Lean proves every covered raw result
+  receiver-core valid. Kernel-evaluated tests reject an omitted selection, a
+  forged provider, and an out-of-range strengthening arrival. Edge eligibility,
+  whole-run pair coverage, and queue delivery remain open.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge

@@ -37,6 +37,10 @@ name = "cb-inter-context-check"
 root = "CBInterContextCheck"
 
 [[lean_exe]]
+name = "cb-pred-coverage-check"
+root = "CBPredCoverageCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

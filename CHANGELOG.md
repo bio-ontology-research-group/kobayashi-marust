@@ -89,6 +89,12 @@
   classifies each payload body literal as a complete nonempty provider
   dimension or a provider-free ground remainder. Reject a non-ground literal
   with no provider instead of silently treating it as residual.
+- Add an executable exhaustive Pred-coverage document. For each
+  transfer/receiver pair it recomputes every Cartesian selection, rejects an
+  omitted or forged signature, reconstructs the raw resolution fold, and
+  requires an accepted same-pair arrival that strengthens it. Prove every such
+  raw result valid under the receiver core; test omission, provider forgery,
+  and invalid strengthening indexes.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
