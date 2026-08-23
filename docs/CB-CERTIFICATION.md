@@ -249,6 +249,16 @@ claim that the layer is already complete.
   its two retained premises. The standalone `cb-local-eq-closure-check` exposes
   this boundary. Rust emission and the ordered-calculus completeness theorem
   remain open.
+- `CBFiniteOrderAdmissibilityWire` strengthens the order boundary required by
+  the eventual ordered-paramodulation theorem. The finite production universe
+  now contains every nested proper subterm, not only top-level literal
+  arguments. The checker requires every proper subterm to rank below its
+  containing term and requires strict order to be preserved by every unary
+  function context represented in the finite production universe. Lean proves
+  those properties, strict trichotomy on production terms, and well-foundedness
+  of the rank-induced order. The standalone
+  `cb-finite-order-admissibility-check` exposes this boundary. The final
+  ordered-paramodulation model theorem still remains open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

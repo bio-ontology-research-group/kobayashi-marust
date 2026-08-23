@@ -69,6 +69,10 @@ name = "cb-local-eq-closure-check"
 root = "CBLocalEqClosureCheck"
 
 [[lean_exe]]
+name = "cb-finite-order-admissibility-check"
+root = "CBFiniteOrderAdmissibilityCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

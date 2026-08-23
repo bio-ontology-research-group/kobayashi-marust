@@ -22,10 +22,14 @@ open Lean ContextCalculus ContextCalculus.CheckerTerm
 open ContextCalculus.CBTermWire ContextCalculus.CBProductionTraceWire
 open ContextCalculus.CBLocalFactorClosureWire
 
+def termAndSubterms : FTerm → List FTerm
+  | term@(.var _) | term@(.const _) => [term]
+  | term@(.app _ argument) => term :: termAndSubterms argument
+
 def literalTerms : FLit → List FTerm
-  | .P (.concept _ term) => [term]
-  | .P (.role _ source target) => [source, target]
-  | .eq left right | .ineq left right => [left, right]
+  | .P (.concept _ term) => termAndSubterms term
+  | .P (.role _ source target) => termAndSubterms source ++ termAndSubterms target
+  | .eq left right | .ineq left right => termAndSubterms left ++ termAndSubterms right
 
 def clauseTerms (clause : FCL) : List FTerm :=
   (clause.body.flatMap literalTerms) ++ clause.head.flatMap literalTerms

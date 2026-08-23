@@ -186,6 +186,12 @@
   strengthening, then compares the complete generated list with independent
   enumeration. Prove each normalized candidate from validity of its retained
   premises. Rust emission and ordered-calculus completeness remain open.
+- Strengthen the finite term-order certificate with executable admissibility
+  conditions. Include every nested proper subterm in the production universe,
+  require proper subterms to be smaller, and require unary contexts to preserve
+  strict order whenever both applications occur. Prove these conditions,
+  production-term trichotomy, and well-foundedness. The corresponding model
+  theorem remains part of the unreleased CB certification layer.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
