@@ -70,12 +70,14 @@
   clause validity into ordinary payload validity. Also prove the exact
   hypothesis installed by Succ/r-Succ universally valid. Add an executable
   inter-context checker that binds each sender context and retained clause,
-  checks its substitution, and requires the payload to equal that transfer
-  modulo production sort/dedup semantics. Extend it through receiver arrival:
+  records the exact destination context, checks its substitution, and requires
+  the payload to equal that transfer modulo production sort/dedup semantics.
+  Extend it through receiver arrival: require the transfer's exact destination,
   check every retained provider and discharged literal, reconstruct the exact
-  resolution fold, and prove its result valid under the receiver core. Reject
-  forged providers and results. Edge eligibility, exhaustive Cartesian and
-  antichain coverage, and complete delivery remain production obligations.
+  resolution fold, and prove its result valid under the receiver core. Export
+  the checked destination equality from the public soundness theorem. Reject
+  forged providers and results. Edge eligibility and complete delivery remain
+  production obligations.
 - Prove the semantic antichain capstone for Pred arrivals: when every raw
   Cartesian result has a retained syntactic strengthening, receiver-core
   validity of the retained results covers every pruned result. Executable
@@ -93,8 +95,11 @@
   transfer/receiver pair it recomputes every Cartesian selection, rejects an
   omitted or forged signature, reconstructs the raw resolution fold, and
   requires an accepted same-pair arrival that strengthens it. Prove every such
-  raw result valid under the receiver core; test omission, provider forgery,
-  and invalid strengthening indexes.
+  raw result valid under the receiver core. Require the receiver to equal the
+  transfer's recorded destination and require exactly one ordered coverage
+  record for every accepted transfer, preventing whole-transfer omission or
+  duplication. Test omitted selections, provider forgery, invalid strengthening
+  indexes, and duplicated transfer coverage.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

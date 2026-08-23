@@ -108,8 +108,13 @@ The Lean development is under [`lean/`](lean/). Build it with:
 ```sh
 cd lean
 lake exe cache get
-lake build -j 4
+LEAN_NUM_THREADS=1 taskset -c 0-3 lake build
 ```
+
+Lake derives its scheduler width from the CPUs visible to the process. The
+`taskset` boundary therefore limits the build to four CPUs, while
+`LEAN_NUM_THREADS=1` prevents each Lean process from creating an additional
+worker pool.
 
 Run the production HT certification gate from the repository root:
 

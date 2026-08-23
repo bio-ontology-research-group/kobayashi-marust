@@ -114,17 +114,18 @@ claim that the layer is already complete.
   `pred_payload` does before sort/dedup normalization. The same module proves
   the exact `p → p` hypothesis installed by Succ and r-Succ universally valid.
   `CBInterContextWire` makes the sender theorem executable: every transfer is
-  indexed into an accepted production context and retained clause, checks the
-  context id and duplicate-free substitution, and requires its payload to be
-  clause-equivalent to the substituted clause plus substituted core. Its tests
-  reject forged sender ids and payloads. The same executable document now binds
-  each accepted arrival to a receiver context and a sequence of retained
-  providers. It checks every provider index, positive-head and current-body
-  occurrence, reconstructs the complete resolution fold, and proves the exact
-  result valid under the receiver core. Forged providers and results are
-  rejected. Production edge eligibility, exhaustive Cartesian enumeration,
-  antichain pruning coverage, and complete queue delivery remain refinement
-  obligations.
+  indexed into an accepted production context and retained clause, records its
+  exact destination context, checks both context ids and the duplicate-free
+  substitution, and requires its payload to be clause-equivalent to the
+  substituted clause plus substituted core. Its tests reject forged sender ids
+  and payloads. The same executable document binds each accepted arrival to the
+  transfer's recorded destination and a sequence of retained providers. It
+  checks every provider index, positive-head and current-body occurrence,
+  reconstructs the complete resolution fold, and proves the exact result valid
+  under the receiver core. The public checker theorem retains the checked
+  transfer-to-arrival destination equality. Forged providers and results are
+  rejected. Production edge eligibility and complete queue delivery remain
+  refinement obligations.
   `coveredResults_contextValid` closes the semantic antichain step: if the
   executable enumeration layer shows that every raw Cartesian conclusion has
   a retained strengthening, validity of the retained antichain implies
@@ -145,10 +146,14 @@ claim that the layer is already complete.
   transfer/receiver pair it recomputes the complete Cartesian signature list,
   requires exactly one generated record per signature, reconstructs each raw
   resolution result, and checks an accepted arrival from the same transfer and
-  receiver syntactically strengthens it. Lean proves every covered raw result
-  receiver-core valid. Kernel-evaluated tests reject an omitted selection, a
-  forged provider, and an out-of-range strengthening arrival. Edge eligibility,
-  whole-run pair coverage, and queue delivery remain open.
+  recorded destination syntactically strengthens it. The whole document must
+  contain exactly one ordered coverage record for every accepted transfer, so
+  no transfer may be omitted or duplicated. Lean proves every covered raw
+  result receiver-core valid and exports both exact whole-transfer coverage and
+  target equality. Kernel-evaluated tests reject an omitted selection, a forged
+  provider, an out-of-range strengthening arrival, and duplicated transfer
+  coverage. Edge eligibility, exact enumeration of all production transfers,
+  and complete queue delivery remain open.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge

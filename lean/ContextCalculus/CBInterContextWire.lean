@@ -20,6 +20,8 @@ open ContextCalculus.CBSourceWire
 structure WirePredTransfer where
   sender_context_index : Nat
   sender_context_id : Nat
+  receiver_context_index : Nat
+  receiver_context_id : Nat
   retained_clause_index : Nat
   substitution : List WireSubstitutionEntry
   payload : WireClause
@@ -49,6 +51,9 @@ structure DecodedPredTransfer (production : DecodedProductionRun) where
   senderIndex : Fin production.contexts.length
   senderId : Nat
   sender_id_eq : (production.contexts.get senderIndex).contextId = senderId
+  receiverIndex : Fin production.contexts.length
+  receiverId : Nat
+  receiver_id_eq : (production.contexts.get receiverIndex).contextId = receiverId
   retainedIndex : Fin (production.contexts.get senderIndex).retained.length
   substitution : List (Int × FTerm)
   payload : FCL
@@ -64,29 +69,39 @@ def WirePredTransfer.decode (production : DecodedProductionRun)
       ⟨wire.sender_context_index, hsender⟩
     let sender := production.contexts.get senderIndex
     if hid : sender.contextId = wire.sender_context_id then
-      if hretained : wire.retained_clause_index < sender.retained.length then
-        let retainedIndex : Fin sender.retained.length :=
-          ⟨wire.retained_clause_index, hretained⟩
-        let variableIds := wire.substitution.map WireSubstitutionEntry.variableId
-        if variableIds.Nodup then
-          let substitution ← wire.substitution.mapM
-            (WireSubstitutionEntry.decode production.source.bounds)
-          let payload ← wire.payload.decode production.source.bounds
-          let expected := predTransfer substitution sender.core
-            (sender.retained.get retainedIndex)
-          if hequivalent : clEquivT payload expected then
-            return {
-              senderIndex
-              senderId := wire.sender_context_id
-              sender_id_eq := hid
-              retainedIndex
-              substitution
-              payload
-              payload_equiv := hequivalent
-            }
-          else throw "Pred payload differs from the substituted sender clause and core"
-        else throw "Pred transfer substitution contains a duplicate variable"
-      else throw "Pred transfer retained-clause index is outside the sender context"
+      if hreceiver : wire.receiver_context_index < production.contexts.length then
+        let receiverIndex : Fin production.contexts.length :=
+          ⟨wire.receiver_context_index, hreceiver⟩
+        let receiver := production.contexts.get receiverIndex
+        if hreceiverId : receiver.contextId = wire.receiver_context_id then
+          if hretained : wire.retained_clause_index < sender.retained.length then
+            let retainedIndex : Fin sender.retained.length :=
+              ⟨wire.retained_clause_index, hretained⟩
+            let variableIds := wire.substitution.map WireSubstitutionEntry.variableId
+            if variableIds.Nodup then
+              let substitution ← wire.substitution.mapM
+                (WireSubstitutionEntry.decode production.source.bounds)
+              let payload ← wire.payload.decode production.source.bounds
+              let expected := predTransfer substitution sender.core
+                (sender.retained.get retainedIndex)
+              if hequivalent : clEquivT payload expected then
+                return {
+                  senderIndex
+                  senderId := wire.sender_context_id
+                  sender_id_eq := hid
+                  receiverIndex
+                  receiverId := wire.receiver_context_id
+                  receiver_id_eq := hreceiverId
+                  retainedIndex
+                  substitution
+                  payload
+                  payload_equiv := hequivalent
+                }
+              else throw "Pred payload differs from the substituted sender clause and core"
+            else throw "Pred transfer substitution contains a duplicate variable"
+          else throw "Pred transfer retained-clause index is outside the sender context"
+        else throw "Pred transfer receiver id differs from its indexed context"
+      else throw "Pred transfer receiver-context index is outside the production run"
     else throw "Pred transfer sender id differs from its indexed context"
   else throw "Pred transfer sender-context index is outside the production run"
 
@@ -126,6 +141,8 @@ structure DecodedPredArrival (decoded : DecodedInterContextRun) where
   receiverId : Nat
   receiver_id_eq :
     (decoded.production.contexts.get receiverIndex).contextId = receiverId
+  receiver_is_target :
+    (decoded.transfers.get transferIndex).receiverIndex.val = receiverIndex.val
   providers : List
     (DecodedPredProvider (decoded.production.contexts.get receiverIndex))
   steps_ok : arrivalStepsOk
@@ -160,24 +177,28 @@ def WirePredArrival.decode (decoded : DecodedInterContextRun)
         ⟨wire.receiver_context_index, hreceiver⟩
       let receiver := decoded.production.contexts.get receiverIndex
       if hid : receiver.contextId = wire.receiver_context_id then
-        let providers ← wire.providers.mapM (WirePredProvider.decode receiver)
-        let payload := (decoded.transfers.get transferIndex).payload
-        if hsteps : arrivalStepsOk receiver payload providers = true then
-          let result ← wire.result.decode decoded.production.source.bounds
-          let expected := arrivalConclusion receiver payload providers
-          if hequivalent : clEquivT result expected then
-            return {
-              transferIndex
-              receiverIndex
-              receiverId := wire.receiver_context_id
-              receiver_id_eq := hid
-              providers
-              steps_ok := hsteps
-              result
-              result_equiv := hequivalent
-            }
-          else throw "Pred arrival result differs from its checked resolution fold"
-        else throw "Pred arrival provider does not discharge the current body literal"
+        let transfer := decoded.transfers.get transferIndex
+        if htarget : transfer.receiverIndex.val = receiverIndex.val then
+          let providers ← wire.providers.mapM (WirePredProvider.decode receiver)
+          let payload := transfer.payload
+          if hsteps : arrivalStepsOk receiver payload providers = true then
+            let result ← wire.result.decode decoded.production.source.bounds
+            let expected := arrivalConclusion receiver payload providers
+            if hequivalent : clEquivT result expected then
+              return {
+                transferIndex
+                receiverIndex
+                receiverId := wire.receiver_context_id
+                receiver_id_eq := hid
+                receiver_is_target := htarget
+                providers
+                steps_ok := hsteps
+                result
+                result_equiv := hequivalent
+              }
+            else throw "Pred arrival result differs from its checked resolution fold"
+          else throw "Pred arrival provider does not discharge the current body literal"
+        else throw "Pred arrival receiver differs from the transfer target"
       else throw "Pred arrival receiver id differs from its indexed context"
     else throw "Pred arrival receiver-context index is outside the production run"
   else throw "Pred arrival transfer index is outside the transfer list"
@@ -268,19 +289,23 @@ theorem WireInterContextRun.check_sound (wire : WireInterContextRun)
             valid model source) →
           valid model transfer.payload) ∧
       (∀ arrival ∈ decoded.arrivals,
+        (decoded.base.transfers.get arrival.transferIndex).receiverIndex.val =
+          arrival.receiverIndex.val ∧
         ∀ (D : Type) (model : TModel D),
-          (∀ source ∈ decoded.base.production.source.ontology,
-            valid model source) →
-          ContextValid model
-            (decoded.base.production.contexts.get arrival.receiverIndex).core
-            arrival.result) := by
+            (∀ source ∈ decoded.base.production.source.ontology,
+              valid model source) →
+            ContextValid model
+              (decoded.base.production.contexts.get arrival.receiverIndex).core
+              arrival.result) := by
   cases hdecode : wire.decode with
   | error message => simp [WireInterContextRun.check, hdecode] at hcheck
   | ok decoded =>
       refine ⟨decoded, rfl, ?_, ?_⟩
       · intro transfer _ D model hontology
         exact transfer.payload_valid model hontology
-      · intro arrival _ D model hontology
+      · intro arrival _
+        refine ⟨arrival.receiver_is_target, ?_⟩
+        intro D model hontology
         exact arrival.result_contextValid model hontology
 
 private def x : WireTerm := .var 0
@@ -319,6 +344,8 @@ def acceptedExample : WireInterContextRun where
   transfers := [{
     sender_context_index := 0
     sender_context_id := 7
+    receiver_context_index := 0
+    receiver_context_id := 7
     retained_clause_index := 0
     substitution := []
     -- Production sort/dedup removes the duplicate core/body C0 literal.

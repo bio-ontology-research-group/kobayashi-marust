@@ -113,6 +113,9 @@ structure DecodedPredCoverage (decoded : DecodedCompleteInterContextRun) where
   receiverId : Nat
   receiver_id_eq :
     (decoded.base.production.contexts.get receiverIndex).contextId = receiverId
+  receiver_is_target :
+    (decoded.base.transfers.get transferIndex).receiverIndex.val =
+      receiverIndex.val
   generated : List
     (DecodedGeneratedPredResult decoded transferIndex receiverIndex)
   signatures_exact : generated.map (·.signature) =
@@ -131,20 +134,23 @@ def WirePredCoverage.decode (decoded : DecodedCompleteInterContextRun)
         ⟨wire.receiver_context_index, hreceiver⟩
       let receiver := decoded.base.production.contexts.get receiverIndex
       if hid : receiver.contextId = wire.receiver_context_id then
-        let generated ← wire.generated.mapM
-          (WireGeneratedPredResult.decode decoded transferIndex receiverIndex)
-        let expected := expectedSignatures receiver
-          (decoded.base.transfers.get transferIndex).payload
-        if hexact : generated.map (·.signature) = expected then
-          return {
-            transferIndex
-            receiverIndex
-            receiverId := wire.receiver_context_id
-            receiver_id_eq := hid
-            generated
-            signatures_exact := hexact
-          }
-        else throw "Pred coverage omits, duplicates, or reorders a Cartesian selection"
+        let transfer := decoded.base.transfers.get transferIndex
+        if htarget : transfer.receiverIndex.val = receiverIndex.val then
+          let generated ← wire.generated.mapM
+            (WireGeneratedPredResult.decode decoded transferIndex receiverIndex)
+          let expected := expectedSignatures receiver transfer.payload
+          if hexact : generated.map (·.signature) = expected then
+            return {
+              transferIndex
+              receiverIndex
+              receiverId := wire.receiver_context_id
+              receiver_id_eq := hid
+              receiver_is_target := htarget
+              generated
+              signatures_exact := hexact
+            }
+          else throw "Pred coverage omits, duplicates, or reorders a Cartesian selection"
+        else throw "Pred coverage receiver differs from the transfer target"
       else throw "Pred coverage receiver id differs from its indexed context"
     else throw "Pred coverage receiver-context index is outside the production run"
   else throw "Pred coverage transfer index is outside the transfer list"
@@ -152,6 +158,9 @@ def WirePredCoverage.decode (decoded : DecodedCompleteInterContextRun)
 structure DecodedPredCoverageDocument where
   interContext : DecodedCompleteInterContextRun
   coverages : List (DecodedPredCoverage interContext)
+  transfer_coverage_exact : coverages.map (fun coverage =>
+      coverage.transferIndex.val) =
+    List.range interContext.base.transfers.length
 
 def WirePredCoverageDocument.decode (wire : WirePredCoverageDocument) :
     Except String DecodedPredCoverageDocument := do
@@ -161,7 +170,12 @@ def WirePredCoverageDocument.decode (wire : WirePredCoverageDocument) :
     throw "CB Pred coverage must contain at least one transfer/receiver pair"
   let interContext ← wire.inter_context.decode
   let coverages ← wire.coverages.mapM (WirePredCoverage.decode interContext)
-  return { interContext, coverages }
+  let coveredTransfers := coverages.map (fun coverage =>
+    coverage.transferIndex.val)
+  let expectedTransfers := List.range interContext.base.transfers.length
+  if hexact : coveredTransfers = expectedTransfers then
+    return { interContext, coverages, transfer_coverage_exact := hexact }
+  else throw "Pred coverage must cover every transfer exactly once and in order"
 
 def WirePredCoverageDocument.check (wire : WirePredCoverageDocument) :
     Except String Bool := do
@@ -190,30 +204,36 @@ theorem WirePredCoverageDocument.check_sound
     (wire : WirePredCoverageDocument) (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedPredCoverageDocument,
       wire.decode = .ok decoded ∧
-      ∀ coverage ∈ decoded.coverages,
-        coverage.generated.map (·.signature) =
-          expectedSignatures
-            (decoded.interContext.base.production.contexts.get
-              coverage.receiverIndex)
-            (decoded.interContext.base.transfers.get coverage.transferIndex).payload ∧
-        ∀ generated ∈ coverage.generated,
-          ∀ (D : Type) (model : TModel D),
-            (∀ source ∈ decoded.interContext.base.production.source.ontology,
-              valid model source) →
-            ContextValid model
+      decoded.coverages.map (fun coverage => coverage.transferIndex.val) =
+        List.range decoded.interContext.base.transfers.length ∧
+      (∀ coverage ∈ decoded.coverages,
+          (decoded.interContext.base.transfers.get
+            coverage.transferIndex).receiverIndex.val =
+              coverage.receiverIndex.val ∧
+          coverage.generated.map (·.signature) =
+            expectedSignatures
               (decoded.interContext.base.production.contexts.get
-                coverage.receiverIndex).core
-              (arrivalConclusion
+                coverage.receiverIndex)
+              (decoded.interContext.base.transfers.get
+                coverage.transferIndex).payload ∧
+          ∀ generated ∈ coverage.generated,
+            ∀ (D : Type) (model : TModel D),
+              (∀ source ∈ decoded.interContext.base.production.source.ontology,
+                valid model source) →
+              ContextValid model
                 (decoded.interContext.base.production.contexts.get
-                  coverage.receiverIndex)
-                (decoded.interContext.base.transfers.get
-                  coverage.transferIndex).payload generated.providers) := by
+                  coverage.receiverIndex).core
+                (arrivalConclusion
+                  (decoded.interContext.base.production.contexts.get
+                    coverage.receiverIndex)
+                  (decoded.interContext.base.transfers.get
+                    coverage.transferIndex).payload generated.providers)) := by
   cases hdecode : wire.decode with
   | error message => simp [WirePredCoverageDocument.check, hdecode] at hcheck
   | ok decoded =>
-      refine ⟨decoded, rfl, ?_⟩
+      refine ⟨decoded, rfl, decoded.transfer_coverage_exact, ?_⟩
       intro coverage _
-      refine ⟨coverage.signatures_exact, ?_⟩
+      refine ⟨coverage.receiver_is_target, coverage.signatures_exact, ?_⟩
       intro generated _ D model hontology
       exact generated.raw_contextValid model hontology
 
@@ -263,6 +283,12 @@ private def forgedArrivalIndexExample : WirePredCoverageDocument :=
           { generated with strengthening_arrival_index := 1 }) }) }
 
 example : rejected forgedArrivalIndexExample.check = true := by native_decide
+
+private def duplicatedTransferCoverageExample : WirePredCoverageDocument :=
+  { acceptedCoverageExample with coverages :=
+      acceptedCoverageExample.coverages ++ acceptedCoverageExample.coverages }
+
+example : rejected duplicatedTransferCoverageExample.check = true := by native_decide
 
 #print axioms DecodedGeneratedPredResult.raw_contextValid
 #print axioms WirePredCoverageDocument.check_sound
