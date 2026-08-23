@@ -30,6 +30,7 @@ trap cleanup_checker EXIT
     LEAN_NUM_THREADS="$lean_threads" lake build \
         ContextCalculus.CertifiedRouting \
         ContextCalculus.KMAutomaticRouting \
+        ContextCalculus.KMAutomaticSupervisor \
         km-automatic-routing-check 2>&1 | tee "$surface_log"
 )
 
@@ -42,7 +43,8 @@ for theorem in \
     SourceBoundWorker.erase_soundAt \
     AutomaticRouter.sound_and_complete \
     WireSelection.check_sound \
-    automatic_specialist_decline_has_coverage
+    automatic_specialist_decline_has_coverage \
+    CertifiedSupervisor.sound_and_complete
 do
     grep -q "$theorem" "$surface_log" || {
         echo "missing routing certification-surface axiom audit: $theorem" >&2

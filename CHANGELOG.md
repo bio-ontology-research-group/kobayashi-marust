@@ -36,6 +36,11 @@
   coverage does not depend on the failed specialist fragment. Unit and process
   regressions force ELC failure, verify automatic recovery with the exact
   taxonomy, and verify that explicit `--route elc` still fails closed.
+- Certify the automatic supervisor's actual ordered execution plan in Lean.
+  The new theorem composes source-indexed worker adapters, proves every
+  publication sound, and proves coverage through either the selected complete
+  route or its retained exact fallback. Completeness is an explicit adapter
+  obligation and cannot be inferred from a route tag or worker termination.
 
 ### Close the executable ELC certification boundary
 
