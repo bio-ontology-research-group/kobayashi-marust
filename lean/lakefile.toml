@@ -25,6 +25,10 @@ name = "cb-term-cert-check"
 root = "CBTermCertCheck"
 
 [[lean_exe]]
+name = "cb-taxonomy-cert-check"
+root = "CBTaxonomyCertCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

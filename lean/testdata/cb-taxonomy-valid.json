@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "concept_count": 1,
+  "role_count": 0,
+  "function_count": 0,
+  "individual_count": 0,
+  "ontology": [],
+  "named_concepts": [0],
+  "published": [true],
+  "cells": [{
+    "core_concept": 0,
+    "superconcept": 0,
+    "answer": true,
+    "evidence": {"positive": {"trace": [{
+      "clause": {
+        "body": [],
+        "head": [{"predicate": {"predicate": {"concept": {
+          "concept": 0,
+          "term": {"var": {"index": 0}}
+        }}}}]
+      },
+      "justification": "core"
+    }]}}
+  }]
+}

@@ -36,6 +36,21 @@ claim that the layer is already complete.
   individual constants. Constants have a fixed model interpretation and cannot
   be changed by substitutions. The certificate generator emits this corrected
   representation instead of encoding individuals as negative variable ids.
+- `CBFiniteModel` proves that executable enumeration of every valuation over
+  the variables occurring in a nested-term clause establishes universal clause
+  validity. The model semantics cover nested unary functions, named constants,
+  concepts, roles, equality, and inequality.
+- `CBFiniteModelWire` checks complete finite truth and function tables against
+  the exact source bounds. An accepted countermodel proves that a claimed
+  subsumption does not follow from the complete decoded ontology.
+- `CBTaxonomyWire` combines positive derivations and negative countermodels in
+  one source-bound, row-major named-concept matrix. It checks every coordinate,
+  every publication bit, and complete matrix shape. The public theorem in
+  `CBCertificationSurface` proves that every accepted bit is true exactly when
+  its decoded source ontology entails that subsumption.
+- `cb-taxonomy-cert-check` is the executable JSON checker for this exact
+  publication boundary. Its fixtures accept a valid document and reject a
+  forged publication bit.
 
 ## Not yet established
 
@@ -44,12 +59,18 @@ checker. Generated files under `lean/Validation` certify selected positive
 verdicts, but they do not certify every production run, omitted taxonomy cells,
 or the supervisor's publication behavior.
 
-The main mathematical gap is the representation refinement between:
+The remaining production gap is the representation refinement between:
 
 1. the Rust engine's contexts, cores, clause stores, inter-context messages,
    literal ordering, redundancy deletion, blocking, and termination state; and
 2. the abstract complete saturation or good-type fixpoint used by the Lean
    completeness theorems.
+
+Exact result certification no longer depends on that refinement: a complete
+taxonomy document can prove every positive cell by derivation and every
+negative cell by a finite countermodel. The refinement remains necessary if a
+production terminal saturation is to justify omissions without emitting
+countermodels.
 
 Benchmark agreement with another reasoner is regression evidence only.
 
