@@ -9,8 +9,10 @@
   one unique row per public subject, every positive cell, every unsatisfiable
   row, and the global inconsistency flag. Lean requires the grouped rows to be
   exactly the flattening of the checked positive and contradiction witnesses,
-  proves every positive cell and unsatisfiable row sound, and proves a reported
-  global inconsistency refutes every source model. Certified mode fails closed
+  proves every positive cell and unsatisfiable row sound, proves a reported
+  global inconsistency refutes every source model, and accepts a reported
+  consistency result only when the nested blocked saturation omits the empty
+  clause and therefore constructs a typed source model. Certified mode fails closed
   on unsupported input clauses or output rows without retained witnesses, and
   serializes the checked row map after acceptance. It materializes direct-
   bottom roots and temporarily bypasses SCC-alias and nominal-label query

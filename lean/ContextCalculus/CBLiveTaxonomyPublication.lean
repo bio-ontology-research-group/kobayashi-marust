@@ -16,6 +16,10 @@ open ContextCalculus.CBGlobalClosureWire
 open ContextCalculus.CBProductionTraceWire
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBLiveInsertionDerivation
+open ContextCalculus.CBBlockedGroundSaturationWire
+open ContextCalculus.CBBlockedCarrierWire
+open ContextCalculus.CBRoleChainEncoding
+open ContextCalculus.PropRes
 
 structure WireLiveSubsumption where
   sub : Nat
@@ -198,6 +202,13 @@ structure DecodedLiveTaxonomyPublication where
   publicSubsumptions : List (DecodedLiveSubsumption derivation)
   unsatisfiable : List (DecodedLiveUnsatisfiable derivation)
   inconsistency : Option (DecodedLiveInconsistency derivation)
+  consistent_source_model : inconsistency = none →
+    ∃ (D : Type) (interpretation : Eqv.Interp D
+        (Fin (productionRun derivation.live.global.blocked.carrier.admissibility).source.bounds.concepts)
+        (Fin (productionRun derivation.live.global.blocked.carrier.admissibility).source.bounds.roles)
+        (Fin (productionRun derivation.live.global.blocked.carrier.admissibility).source.bounds.individuals)),
+      CBRoleChainEncoding.models interpretation
+        (blockedSource derivation.live.global.blocked.carrier)
   concept_names_length : conceptNames.length =
     (rProduction derivation.live.global.global.rsucc).source.bounds.concepts
   concept_names_nodup : conceptNames.Nodup
@@ -213,6 +224,17 @@ structure DecodedLiveTaxonomyPublication where
     (publicRows.filter (·.unsatisfiable)).map (·.sub) =
       unsatisfiable.map (·.sub.val)
 
+structure DecodedConsistencyEvidence
+    (derivation : DecodedLiveInsertionDerivationDocument) where
+  inconsistency : Option (DecodedLiveInconsistency derivation)
+  sourceModel : inconsistency = none →
+    ∃ (D : Type) (interpretation : Eqv.Interp D
+        (Fin (productionRun derivation.live.global.blocked.carrier.admissibility).source.bounds.concepts)
+        (Fin (productionRun derivation.live.global.blocked.carrier.admissibility).source.bounds.roles)
+        (Fin (productionRun derivation.live.global.blocked.carrier.admissibility).source.bounds.individuals)),
+      CBRoleChainEncoding.models interpretation
+        (blockedSource derivation.live.global.blocked.carrier)
+
 def WireLiveTaxonomyPublication.decode
     (wire : WireLiveTaxonomyPublication) :
     Except String DecodedLiveTaxonomyPublication := do
@@ -223,12 +245,22 @@ def WireLiveTaxonomyPublication.decode
     (WireLiveSubsumption.decode derivation)
   let unsatisfiable ← wire.unsatisfiable.mapM
     (WireLiveUnsatisfiable.decode derivation)
-  let inconsistency : Option (DecodedLiveInconsistency derivation) ←
+  let consistency : DecodedConsistencyEvidence derivation ←
     match wire.inconsistent, wire.inconsistency_witness with
-    | true, some witness => pure (some (← witness.decode derivation))
-    | false, none => pure none
+    | true, some witness =>
+        let decoded ← witness.decode derivation
+        pure (DecodedConsistencyEvidence.mk (some decoded) (by
+          intro h
+          cases h))
+    | false, none =>
+        if hbot : PClause.bot ∉
+            derivation.live.global.blocked.certificate.terminal then
+          pure (DecodedConsistencyEvidence.mk none
+            (fun _ => derivation.live.global.source_model hbot))
+        else throw "live CB consistency output has no checked blocked source model"
     | true, none => throw "live CB inconsistency output has no witness"
     | false, some _ => throw "live CB consistency output carries an inconsistency witness"
+  let inconsistency := consistency.inconsistency
   let concepts := (rProduction derivation.live.global.global.rsucc).source.bounds.concepts
   if hnamesLength : wire.concept_names.length = concepts then
     if hnamesNodup : wire.concept_names.Nodup then
@@ -249,6 +281,7 @@ def WireLiveTaxonomyPublication.decode
                 publicSubsumptions
                 unsatisfiable
                 inconsistency
+                consistent_source_model := consistency.sourceModel
                 concept_names_length := hnamesLength
                 concept_names_nodup := hnamesNodup
                 row_subjects_nodup := hsubjects
@@ -363,13 +396,21 @@ theorem WireLiveTaxonomyPublication.check_sound
         ¬∃ (D : Type) (model : TModel D),
           ∀ source ∈
             (rProduction decoded.derivation.live.global.global.rsucc).source.ontology,
-            valid model source) := by
+            valid model source) ∧
+      (decoded.inconsistency = none →
+        ∃ (D : Type) (interpretation : Eqv.Interp D
+            (Fin (productionRun decoded.derivation.live.global.blocked.carrier.admissibility).source.bounds.concepts)
+            (Fin (productionRun decoded.derivation.live.global.blocked.carrier.admissibility).source.bounds.roles)
+            (Fin (productionRun decoded.derivation.live.global.blocked.carrier.admissibility).source.bounds.individuals)),
+          CBRoleChainEncoding.models interpretation
+            (blockedSource decoded.derivation.live.global.blocked.carrier)) := by
   cases hdecode : wire.decode with
   | error message =>
       simp [WireLiveTaxonomyPublication.check, hdecode] at hcheck
   | ok decoded =>
       exact ⟨decoded, rfl, fun cell _ => cell.entails,
-        fun row _ => row.refutes, fun inconsistency _ => inconsistency.refutes⟩
+        fun row _ => row.refutes, fun inconsistency _ => inconsistency.refutes,
+        decoded.consistent_source_model⟩
 
 #print axioms DecodedLiveSubsumption.entails
 #print axioms DecodedLiveUnsatisfiable.refutes

@@ -454,9 +454,13 @@ post-processing from entering the checked answer. Separate refinement proofs
 can restore those optimizations to certified execution later.
 
 This boundary proves sound positive taxonomy cells, sound unsatisfiable rows,
-and sound reported inconsistency. It does not yet prove omitted taxonomy cells
-negative or prove a reported consistency result. Those claims require the
-global closure, fairness, and countermodel layer below.
+and sound reported inconsistency. A reported consistency result is accepted
+only when the nested blocked saturation omits the empty clause; the existing
+ground-completeness theorem then constructs a model of the exact typed source.
+The blocked/global document is still supplied externally rather than generated
+from the production run. Omitted taxonomy cells also remain unproved. Those
+claims require the production global-closure, fairness, and countermodel layer
+below.
 
 ## Requirements for the complete CB layer
 
