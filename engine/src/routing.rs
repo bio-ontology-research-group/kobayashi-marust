@@ -618,6 +618,23 @@ pub(crate) fn one_thread_small_production_candidate(profile: &OntologyProfile) -
         && !profile.expressivity.datatype
 }
 
+/// Bridge-first production scheduling retains the exact CB fallback without
+/// allocating it concurrently with a bridge known to dominate this source
+/// shape. `Some` is also the bounded subject-worker count for that first arm.
+pub(crate) fn production_bridge_subject_workers(
+    profile: &OntologyProfile,
+) -> Option<&'static str> {
+    if eight_thread_large_sriq_candidate(profile) {
+        Some("4")
+    } else if sequential_large_shi_bridge_candidate(profile)
+        || large_horn_functional_native_bridge_candidate(profile)
+    {
+        Some("2")
+    } else {
+        None
+    }
+}
+
 /// Source-layout gate for the finite SHOIN nominal specialist.
 ///
 /// This route deliberately recognizes the complete Wine-style layout that was
@@ -1108,7 +1125,7 @@ fn large_tbox_small_identity_abox_production_candidate(profile: &OntologyProfile
 /// cardinality, datatype, rule, import, or ABox axiom is the pre-normalisation
 /// Horn certificate. The bridge independently rechecks lossless converted-input
 /// coverage and returns a complete answer or explicitly defers.
-fn large_horn_functional_native_bridge_candidate(profile: &OntologyProfile) -> bool {
+pub(crate) fn large_horn_functional_native_bridge_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     source.abox_axioms == 0
         && source.logical_axioms >= 30_000
@@ -1267,15 +1284,12 @@ pub fn select(profile: &OntologyProfile) -> Route {
         {
             Route::Elc
         }
-        // This large Horn SHIF shape used to select the concurrent production
-        // portfolio. Its exact bridge arm needs about 8 GiB, but racing the CB
-        // fallback can push the process-tree total above the 20 GiB contract.
-        // The atomic bridge repeats the semantic gate over the converted input
-        // and is complete-answer-or-defer: it cannot publish an approximate
-        // taxonomy if this cheap source-side scheduling predicate is a false
-        // positive.
+        // Run this large Horn SHIF shape bridge-first so its roughly 8-GiB arm
+        // does not race the CB allocation. The bridge is complete-answer-or-
+        // defer, not total: an honest converted-input decline must start the
+        // exact production fallback instead of making automatic routing fail.
         SemanticFragment::SriqCore if large_horn_functional_native_bridge_candidate(profile) => {
-            Route::HtBridge
+            Route::ProductionAll
         }
         SemanticFragment::PositiveAbox if source_el_positive_abox_candidate(profile) => Route::Elc,
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore
@@ -2955,7 +2969,7 @@ mod tests {
     }
 
     #[test]
-    fn large_horn_functional_terminology_uses_exact_atomic_bridge() {
+    fn large_horn_functional_terminology_retains_exact_fallback() {
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 37_696;
         profile.source.tbox_axioms = 35_531;
@@ -2969,14 +2983,19 @@ mod tests {
 
         assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
         assert!(large_horn_functional_native_bridge_candidate(&profile));
-        assert_eq!(select(&profile), Route::HtBridge);
+        assert_eq!(select(&profile), Route::ProductionAll);
+        assert_eq!(production_bridge_subject_workers(&profile), Some("2"));
 
         // Production selects before clausification. The source-only profile
         // must therefore make the same decision as `km profile`, which fills
         // clause statistics after normalisation.
         let mut pre_clausification = profile.clone();
         pre_clausification.clauses = Default::default();
-        assert_eq!(select(&pre_clausification), Route::HtBridge);
+        assert_eq!(select(&pre_clausification), Route::ProductionAll);
+        assert_eq!(
+            production_bridge_subject_workers(&pre_clausification),
+            Some("2")
+        );
 
         profile.source.complements = 1;
         assert!(!large_horn_functional_native_bridge_candidate(&profile));

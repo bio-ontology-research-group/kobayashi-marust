@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+### Start the concrete automatic-routing certification
+
+- Add a source-indexed routing composition layer in Lean. A worker publication
+  can be erased into a portfolio only after its evidence checker accepts the
+  proposed answer against the exact source delivered to that worker. Lean then
+  proves soundness and completeness for profile-selected sequential portfolios,
+  with coverage remaining an explicit fragment or fallback obligation. The
+  capstones contain no `sorryAx`.
+- Mirror the semantic branch order and complete set of production automatic
+  routes in Lean. Each selected route is classified as fragment-complete,
+  fallback-complete, or a total CB-family calculus. The mirror also records
+  mandatory source identity and the routes whose absorbed preprocessing still
+  needs a source-equivalence certificate. Concrete profile-predicate and worker
+  adapter proofs remain before the integrated routing theorem is complete.
+- Replace the automatic large Horn-functional atomic bridge leaf with the
+  bridge-first `production_all` portfolio. The bridge still runs before CB with
+  two bounded subject workers, preserving the non-concurrent memory schedule,
+  but an honest bridge decline now starts the exact fallback instead of ending
+  classification. The focused release-mode routing regression and the Lean
+  selector mirror both pass.
+
 ### Close the executable ELC certification boundary
 
 - Add the wire-level ELC publication capstone. Acceptance of the exact
