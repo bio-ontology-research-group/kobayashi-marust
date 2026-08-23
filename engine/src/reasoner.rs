@@ -42,6 +42,10 @@ pub struct Reasoner {
     inconsistent: bool,
     incomplete: bool,
     num_ctx: usize,
+    /// Present only when KM_CB_LIVE_STATE requests proof evidence. Certified
+    /// emission must observe one complete engine, so this mode uses the exact
+    /// sequential schedule and retains that engine until serialization.
+    certificate_engine: Option<Box<Engine>>,
 }
 
 #[derive(Clone)]
@@ -375,6 +379,7 @@ impl Reasoner {
             inconsistent: false,
             incomplete: false,
             num_ctx: 0,
+            certificate_engine: None,
         }
     }
 
@@ -869,7 +874,12 @@ impl Reasoner {
                 mutual_unit_groups.len()
             );
         }
-        let threads = Self::want_threads().min(queries.len().max(1));
+        let retain_certificate_engine = std::env::var_os("KM_CB_LIVE_STATE").is_some();
+        let threads = if retain_certificate_engine {
+            1
+        } else {
+            Self::want_threads().min(queries.len().max(1))
+        };
         // Sequential path: one engine over all queries (preserves cross-query
         // context sharing -- fastest when single-threaded).
         if threads <= 1 || queries.len() <= 1 {
@@ -883,6 +893,9 @@ impl Reasoner {
             );
             self.absorb(subs, inc, incomplete, n);
             self.expand_mutual_unit_aliases(&mutual_unit_groups);
+            if retain_certificate_engine {
+                self.certificate_engine = Some(Box::new(e));
+            }
             return;
         }
         // Exact nominal roots all communicate through one ground context.  A
@@ -1053,6 +1066,40 @@ impl Reasoner {
     /// not be exposed as a complete classification.
     pub fn incomplete(&self) -> bool {
         self.incomplete
+    }
+
+    /// Write the deterministic snapshot of the single production engine kept
+    /// for CB certification. Ordinary parallel classifications intentionally
+    /// have no such snapshot: merging worker answers is exact, but it is not
+    /// one context graph and cannot be represented as one terminal certificate.
+    pub fn write_live_terminal_snapshot(
+        &self,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<(), String> {
+        let engine = self.certificate_engine.as_deref().ok_or_else(|| {
+            "CB live-state emission requires KM_CB_LIVE_STATE and a sequential production run"
+                .to_string()
+        })?;
+        if engine.incomplete() {
+            return Err("CB live-state emission refused an incomplete engine".to_string());
+        }
+        let snapshot = engine.live_terminal_snapshot();
+        let file = std::fs::File::create(path.as_ref()).map_err(|error| {
+            format!(
+                "cannot create CB live-state snapshot {}: {error}",
+                path.as_ref().display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &snapshot)
+            .map_err(|error| format!("cannot serialize CB live-state snapshot: {error}"))?;
+        use std::io::Write;
+        writer
+            .write_all(b"\n")
+            .map_err(|error| format!("cannot finish CB live-state snapshot: {error}"))?;
+        writer
+            .flush()
+            .map_err(|error| format!("cannot flush CB live-state snapshot: {error}"))
     }
 
     pub fn dropped_unsupported(&self) -> usize {

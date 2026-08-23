@@ -489,6 +489,12 @@ pub fn run_engine() {
         );
         exit(4);
     }
+    if let Some(path) = std::env::var_os("KM_CB_LIVE_STATE") {
+        if let Err(error) = r.write_live_terminal_snapshot(&path) {
+            eprintln!("CB certification evidence emission failed: {error}");
+            exit(5);
+        }
+    }
 
     let t3 = std::time::Instant::now();
     // The derived-clause echo doubles output volume and is only consumed by the
