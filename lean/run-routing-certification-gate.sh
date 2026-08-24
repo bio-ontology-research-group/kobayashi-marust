@@ -81,6 +81,33 @@ for theorem in \
     elcCheck_correct \
     elcAccept_sound \
     ELCExecution.worker_soundAt \
+    finTaxonomyAnswer_correct \
+    finBooleanAnswer_correct \
+    directHTAnswer_correct \
+    directHTCheck_correct \
+    directHTAccept_sound \
+    DirectHTExecution.worker_soundAt \
+    mixedHTAnswer_correct \
+    mixedHTCheck_correct \
+    mixedHTAccept_sound \
+    MixedHTExecution.worker_soundAt \
+    bundleHTAnswer_correct \
+    bundleHTCheck_correct \
+    bundleHTAccept_sound \
+    BundleHTExecution.worker_soundAt \
+    exactCardinalityBit_exact \
+    directCardinalityHTAnswer_correct \
+    directCardinalityHTCheck_correct \
+    directCardinalityHTAccept_sound \
+    DirectCardinalityHTExecution.worker_soundAt \
+    mixedCardinalityHTAnswer_correct \
+    mixedCardinalityHTCheck_correct \
+    mixedCardinalityHTAccept_sound \
+    MixedCardinalityHTExecution.worker_soundAt \
+    bundleCardinalityHTAnswer_correct \
+    bundleCardinalityHTCheck_correct \
+    bundleCardinalityHTAccept_sound \
+    BundleCardinalityHTExecution.worker_soundAt \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
     WireDirectTaxonomyPublication.check_sound \
