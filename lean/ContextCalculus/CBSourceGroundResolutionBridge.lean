@@ -120,6 +120,46 @@ theorem SourceProductionClosed.retained_eq_pair_covered
     hequality target rewritten htarget hdifferent hrewrite hproduction filtered
     hnormalize
 
+/-- Exact production Eq coverage, including removal of a selected
+disequality when it rewrites to reflexive falsity. -/
+theorem SourceProductionClosed.retained_eq_production_pair_covered
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (_closed : SourceProductionClosed decoded)
+    (context : DecodedSourceLiveContext (liveOf decoded).production
+      (liveOf decoded).ordinaryArena (liveOf decoded).rootArena)
+    (hcontext : context ∈ (liveOf decoded).contexts)
+    (equalityIndex equalityHeadIndex targetIndex targetHeadIndex : Nat)
+    (equalityClause targetClause : FCL)
+    (hequalityClause : context.retained[equalityIndex]? = some equalityClause)
+    (htargetClause : context.retained[targetIndex]? = some targetClause)
+    (hmaxEquality : equalityHeadIndex ∈
+      (hyperOf decoded).order.maximalHeadIndices context.rootDomain
+        equalityClause.head)
+    (hmaxTarget : targetHeadIndex ∈
+      (hyperOf decoded).order.maximalHeadIndices context.rootDomain
+        targetClause.head)
+    (left right : FTerm)
+    (hequality : equalityClause.head[equalityHeadIndex]? =
+      some (.eq left right))
+    (target : FLit) (rewritten : Option FLit)
+    (htarget : targetClause.head[targetHeadIndex]? = some target)
+    (hdifferent : target ≠ .eq left right)
+    (hrewrite : CBSourceEqClosure.productionRewrite
+      (hyperOf decoded).order left right target = some rewritten)
+    (filtered : List FLit)
+    (hnormalize : normalizeGeneratedHead
+      (CBLocalEqEnumeration.productionParamodulant targetClause equalityClause
+        target (.eq left right) rewritten).head = some filtered) :
+    ∃ retained ∈ context.retained,
+      CBProductionTrace.Strengthens retained
+        { CBLocalEqEnumeration.productionParamodulant targetClause equalityClause
+            target (.eq left right) rewritten with head := filtered } :=
+  sourceEq_production_pair_covered (hyperOf decoded).order context
+    ((eqOf decoded).eq_closed context hcontext)
+    equalityIndex equalityHeadIndex targetIndex targetHeadIndex equalityClause
+    targetClause hequalityClause htargetClause hmaxEquality hmaxTarget left right
+    hequality target rewritten htarget hdifferent hrewrite filtered hnormalize
+
 /-- Feature-independent local candidate valuation obtained from the same
 source-bound production certificate. Equality coherence is established by the
 subsequent Factor/Eq bridge. -/
@@ -576,5 +616,6 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.retained_head_equality_normal
 #print axioms SourceProductionClosed.retained_factor_pair_covered
 #print axioms SourceProductionClosed.retained_eq_pair_covered
+#print axioms SourceProductionClosed.retained_eq_production_pair_covered
 
 end ContextCalculus.CBSourceGroundResolutionBridge
