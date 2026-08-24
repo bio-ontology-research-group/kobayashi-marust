@@ -13,7 +13,7 @@ namespace ContextCalculus.OrdResModulo
 
 open ContextCalculus.PropRes ContextCalculus.OrdRes
 
-variable {Atom : Type*} [LinearOrder Atom] [Fintype Atom] [DecidableEq Atom]
+variable {Atom : Type*} [LinearOrder Atom] [WellFoundedLT Atom] [DecidableEq Atom]
 
 def Strengthens (stronger weaker : PClause Atom) : Prop :=
   stronger.neg ⊆ weaker.neg ∧ stronger.pos ⊆ weaker.pos

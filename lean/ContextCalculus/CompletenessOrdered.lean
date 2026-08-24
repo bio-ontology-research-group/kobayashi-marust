@@ -39,7 +39,7 @@ open ContextCalculus.PropRes
 
 set_option linter.unusedSectionVars false
 
-variable {Atom : Type*} [LinearOrder Atom] [Fintype Atom] [DecidableEq Atom]
+variable {Atom : Type*} [LinearOrder Atom] [WellFoundedLT Atom] [DecidableEq Atom]
 
 /-- All atoms occurring in a clause (negative or positive). -/
 def lits (c : PClause Atom) : Finset Atom := c.neg ∪ c.pos
@@ -52,9 +52,6 @@ theorem mem_lits {c : PClause Atom} {a : Atom} : a ∈ lits c ↔ a ∈ c.neg �
     smaller.  (A productive clause's distinguished literal.) -/
 def strictMaxPos (c : PClause Atom) (a : Atom) : Prop :=
   a ∈ c.pos ∧ a ∉ c.neg ∧ ∀ b ∈ lits c, b ≠ a → b < a
-
-/-- The well-founded `<` on a finite linear order. -/
-instance : WellFoundedLT Atom := Finite.to_wellFoundedLT
 
 /-- **Candidate model** for a clause set `S` (Bachmair–Ganzinger).  An atom `a`
     is true iff some clause of `S` *produces* it: `a` is the strictly-maximal

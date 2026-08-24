@@ -98,6 +98,14 @@
   equality atoms. This removes the generic subsumption mismatch from the
   source-bound canonical-model bridge; transporting each production rule into
   the required ground closure remains open.
+- Generalize the ordered candidate-model theorem from finite atom types to any
+  well-founded linear atom order. Production's recursive `FTerm` syntax is not
+  finite, so the former type-class requirement could not certify its live term
+  algebra even though the proof only recurses down the order. The translated
+  retained antichain now has a `sorry`-free canonical-model endpoint from
+  modulo-subsumption closure, and checked FCL strengthenings transport directly
+  into that ground antichain. Establishing closure from all context-local and
+  inter-context production families is the next remaining bridge.
 
 ### Accept empty exact CB transfer partitions
 

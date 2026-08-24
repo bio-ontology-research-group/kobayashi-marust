@@ -174,6 +174,18 @@ theorem mem_groundSet_iff (clauses : List FCL) (ground : PClause GroundAtom) :
     ground ∈ groundSet clauses ↔ ∃ clause ∈ clauses, groundClause clause = ground := by
   simp [groundSet, eq_comm]
 
+/-- A retained production strengthening becomes a retained strengthening in
+the translated ground antichain. -/
+theorem exists_ground_strengthening {clauses : List FCL} {candidate : FCL}
+    (hretained : ∃ retained ∈ clauses,
+      CBProductionTrace.Strengthens retained candidate) :
+    ∃ retainedGround ∈ groundSet clauses,
+      OrdResModulo.Strengthens retainedGround (groundClause candidate) := by
+  obtain ⟨retained, hmember, hstrengthens⟩ := hretained
+  exact ⟨groundClause retained,
+    (mem_groundSet_iff clauses _).mpr ⟨retained, hmember, rfl⟩,
+    groundClause_strengthens hstrengthens⟩
+
 theorem models_groundSet_iff (valuation : GroundAtom → Prop) (clauses : List FCL) :
     (∀ ground ∈ groundSet clauses, ground.sat valuation) ↔
       ∀ clause ∈ clauses, sat (evalGroundLiteral valuation) clause := by
@@ -194,9 +206,24 @@ theorem unsat_groundSet_iff (clauses : List FCL) :
         ∀ clause ∈ clauses, sat (evalGroundLiteral valuation) clause := by
   simp only [PropRes.Unsat, models_groundSet_iff]
 
+/-- The canonical ordered model for a translated production antichain.  The
+remaining source-bound CB bridge has to establish `ClosedModulo` from the
+checked rule-family closure; it no longer has to reconstruct the model proof. -/
+theorem groundSet_model_of_closed [LinearOrder GroundAtom]
+    [WellFoundedLT GroundAtom] (clauses : List FCL)
+    (hclosed : OrdResModulo.ClosedModulo (groundSet clauses))
+    (hbot : PClause.bot ∉ groundSet clauses) :
+    ∃ valuation : GroundAtom → Prop,
+      ∀ clause ∈ clauses, sat (evalGroundLiteral valuation) clause := by
+  obtain ⟨valuation, hmodel⟩ :=
+    OrdResModulo.ordered_model_exists (groundSet clauses) hclosed hbot
+  exact ⟨valuation, (models_groundSet_iff valuation clauses).mp hmodel⟩
+
 #print axioms groundClause_sat_iff
 #print axioms groundClause_strengthens
+#print axioms exists_ground_strengthening
 #print axioms models_groundSet_iff
 #print axioms unsat_groundSet_iff
+#print axioms groundSet_model_of_closed
 
 end ContextCalculus.CBGroundEqualityBridge
