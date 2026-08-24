@@ -1403,6 +1403,14 @@ fn verify_cb_lean_publication(
         return Err("KM_CB_SOURCE_EQ_CLOSURE_CANDIDATE is required with \
             KM_CB_SOURCE_EQ_CLOSURE_CHECKER".to_string());
     }
+    let source_ordinary_pred_checker =
+        std::env::var_os("KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CHECKER");
+    let source_ordinary_pred_path =
+        std::env::var_os("KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CANDIDATE");
+    if source_ordinary_pred_checker.is_some() && source_ordinary_pred_path.is_none() {
+        return Err("KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CANDIDATE is required with \
+            KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CHECKER".to_string());
+    }
     let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
     let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
     if terminal_state_checker.is_some() && terminal_state_path.is_none() {
@@ -1713,14 +1721,13 @@ fn verify_cb_lean_publication(
     }
 
     if let Some(path) = source_eq_path.as_ref() {
-        let succ = cb_source_succ_closure_candidate(
+        let candidate = cb_source_eq_closure_candidate(
             input_typed_source.ok_or_else(|| {
                 "source-bound Eq certification requires an in-band typed source".to_string()
             })?, &live_state,
             certificate.pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
                 .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
-        let candidate = serde_json::json!({"version": 1, "succ_closure": succ});
         let file = std::fs::File::create(path).map_err(|error| {
             format!("cannot create source-bound CB Eq candidate {}: {error}",
                 std::path::Path::new(path).display())
@@ -1733,6 +1740,33 @@ fn verify_cb_lean_publication(
             .map_err(|error| format!("cannot finish source-bound CB Eq candidate: {error}"))?;
         writer.flush()
             .map_err(|error| format!("cannot flush source-bound CB Eq candidate: {error}"))?;
+    }
+
+    if let Some(path) = source_ordinary_pred_path.as_ref() {
+        let eq = cb_source_eq_closure_candidate(
+            input_typed_source.ok_or_else(|| {
+                "source-bound ordinary Pred certification requires an in-band typed source"
+                    .to_string()
+            })?, &live_state,
+            certificate.pointer("/derivation/insertion_evidence")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+        let candidate = serde_json::json!({"version": 1, "eq_closure": eq});
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!("cannot create source-bound CB ordinary Pred candidate {}: {error}",
+                std::path::Path::new(path).display())
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate).map_err(|error| {
+            format!("cannot serialize source-bound CB ordinary Pred candidate: {error}")
+        })?;
+        use std::io::Write;
+        writer.write_all(b"\n").map_err(|error| {
+            format!("cannot finish source-bound CB ordinary Pred candidate: {error}")
+        })?;
+        writer.flush().map_err(|error| {
+            format!("cannot flush source-bound CB ordinary Pred candidate: {error}")
+        })?;
     }
 
     if let Some(path) = terminal_state_path.as_ref() {
@@ -1942,6 +1976,20 @@ fn verify_cb_lean_publication(
                 std::path::Path::new(&eq_checker).display()))?;
         if !status.success() {
             return Err(format!("source-bound CB Eq checker rejected the candidate with {status}"));
+        }
+    }
+    if let Some(pred_checker) = source_ordinary_pred_checker {
+        let path = source_ordinary_pred_path.as_ref().ok_or_else(|| {
+            "source-bound CB ordinary Pred checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&pred_checker)
+            .arg(path).stdout(std::process::Stdio::null()).status()
+            .map_err(|error| format!(
+                "cannot run source-bound CB ordinary Pred checker {}: {error}",
+                std::path::Path::new(&pred_checker).display()))?;
+        if !status.success() {
+            return Err(format!(
+                "source-bound CB ordinary Pred checker rejected the candidate with {status}"));
         }
     }
     if let Some(checker) = checker {
@@ -4799,6 +4847,15 @@ fn cb_source_succ_closure_candidate(
     }))
 }
 
+fn cb_source_eq_closure_candidate(
+    source: &serde_json::Value,
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    insertion_evidence: &[serde_json::Value],
+) -> Result<serde_json::Value, String> {
+    let succ = cb_source_succ_closure_candidate(source, live, insertion_evidence)?;
+    Ok(serde_json::json!({"version": 1, "succ_closure": succ}))
+}
+
 /// Reconstruct the exact Pred send partition from the terminal engine state.
 /// `pred_pool_seen` is the production record of every pool clause actually
 /// sent over an edge. Historical IDs removed by back-subsumption are omitted,
@@ -6801,6 +6858,19 @@ mod cb_derivation_candidate_tests {
             let eq_status = std::process::Command::new(eq_checker)
                 .arg(&path).status().unwrap();
             assert!(eq_status.success(), "native source Eq closure was rejected");
+        }
+
+        if let Some(pred_checker) =
+            std::env::var_os("KM_CB_TEST_SOURCE_ORDINARY_PRED_CLOSURE_CHECKER")
+        {
+            let eq = cb_source_eq_closure_candidate(&source, &live, &evidence)
+                .expect("construct source-bound ordinary Pred parent candidate");
+            let pred = serde_json::json!({"version": 1, "eq_closure": eq});
+            std::fs::write(&path, serde_json::to_vec(&pred).unwrap()).unwrap();
+            let pred_status = std::process::Command::new(pred_checker)
+                .arg(&path).status().unwrap();
+            assert!(pred_status.success(),
+                "native source ordinary Pred closure was rejected");
         }
 
         let mut forged = candidate;

@@ -56,6 +56,15 @@
   have semantic soundness theorems, every candidate has a checked origin, and
   native Rust output passes the executable checker. The canonical-model theorem
   connecting this closure to ordered-paramodulation completeness remains open.
+- Add source-bound ordinary Pred closure. The decoder now requires exact,
+  duplicate-free terminal Pred-pool and edge watermarks. Lean independently
+  recomputes every eligible final retained pool index for every non-nominal
+  sender edge, requires the serialized sent-index list to match exactly,
+  reconstructs each backward-substituted payload, enumerates the receiver's
+  complete provider Cartesian product, and requires retained strengthening of
+  every arrival. Rust emits the nested document from its terminal snapshot and
+  fails closed on checker rejection. The native Rust document passes the real
+  checker. Nominal-ground r-Pred remains a separate open rule family.
 
 ### Accept empty exact CB transfer partitions
 

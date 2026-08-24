@@ -23,6 +23,11 @@ structure DecodedSourcePredecessorEdge (production : DecodedProductionRun) where
   predecessorIndex : Fin production.contexts.length
   label : FTerm
   pushed : List FPred
+  pushed_nodup : pushed.Nodup
+  predPoolSeen : List Nat
+  pred_pool_seen_nodup : predPoolSeen.Nodup
+  edgeSeen : Nat
+  edge_seen_eq : edgeSeen = pushed.length
 
 def decodeSourcePredecessorEdge (production : DecodedProductionRun)
     (bits : Nat) (wire : WireLivePredecessorEdge) :
@@ -33,7 +38,19 @@ def decodeSourcePredecessorEdge (production : DecodedProductionRun)
     let label ← decodeRawTerm production.bounds bits wire.label
     let pushed ← wire.pushed.mapM
       (WireLivePredicate.decode production.bounds bits)
-    return { predecessorIndex, label, pushed }
+    if hpushed : pushed.Nodup then
+      if hseen : wire.pred_pool_seen.Nodup then
+        if hedgeSeen : wire.edge_seen = pushed.length then
+          return {
+            predecessorIndex, label, pushed
+            pushed_nodup := hpushed
+            predPoolSeen := wire.pred_pool_seen
+            pred_pool_seen_nodup := hseen
+            edgeSeen := wire.edge_seen
+            edge_seen_eq := hedgeSeen }
+        else throw "source-bound CB predecessor edge watermark is incomplete"
+      else throw "source-bound CB predecessor sent-pool list contains a duplicate"
+    else throw "source-bound CB predecessor pushed set contains a duplicate"
   else throw "source-bound CB predecessor edge has an invalid context"
 
 structure DecodedSourceSuccessorEdge (production : DecodedProductionRun) where
@@ -58,9 +75,15 @@ structure DecodedSourceLiveContext
   context_id_eq : (production.contexts.get contextIndex).contextId = contextId
   root_eq : (production.contexts.get contextIndex).root = rootDomain
   retainedClauseIds : List Nat
+  retained_clause_ids_nodup : retainedClauseIds.Nodup
   retained : List FCL
   retained_eq : retained = (production.contexts.get contextIndex).retained
+  predPoolIds : List Nat
+  predHwm : Nat
+  pred_hwm_eq : predHwm = predPoolIds.length
   predecessors : List (DecodedSourcePredecessorEdge production)
+  pred_pool_seen_bounded : predecessors.all fun edge =>
+    edge.predPoolSeen.all fun index => index < predPoolIds.length
   successors : List (DecodedSourceSuccessorEdge production)
 
 def decodeSourceLiveContext (production : DecodedProductionRun)
@@ -81,24 +104,36 @@ def decodeSourceLiveContext (production : DecodedProductionRun)
                 match arena[clauseId]? with
                 | some clause => pure clause
                 | none => throw "source-bound CB retained clause id is outside its arena"
-              if hretained : retained = context.retained then
-                let predecessors ← wire.predecessors.mapM
-                  (decodeSourcePredecessorEdge production bits)
-                let successors ← wire.successors.mapM
-                  (decodeSourceSuccessorEdge production bits)
-                return {
+              if hretainedIds : wire.retained_clause_ids.Nodup then
+               if hretained : retained = context.retained then
+                if hpredHwm : wire.pred_hwm = wire.pred_pool_ids.length then
+                 let predecessors ← wire.predecessors.mapM
+                   (decodeSourcePredecessorEdge production bits)
+                 if hseenBounded : predecessors.all fun edge =>
+                     edge.predPoolSeen.all fun index => index < wire.pred_pool_ids.length then
+                  let successors ← wire.successors.mapM
+                    (decodeSourceSuccessorEdge production bits)
+                  return {
                   contextIndex
                   contextId := wire.context_id
                   rootDomain := wire.root
                   context_id_eq := hid
                   root_eq := hroot
                   retainedClauseIds := wire.retained_clause_ids
+                  retained_clause_ids_nodup := hretainedIds
                   retained
                   retained_eq := hretained
+                  predPoolIds := wire.pred_pool_ids
+                  predHwm := wire.pred_hwm
+                  pred_hwm_eq := hpredHwm
                   predecessors
+                  pred_pool_seen_bounded := hseenBounded
                   successors
-                }
-              else throw "source-bound CB retained clauses differ from production"
+                  }
+                 else throw "source-bound CB predecessor sent-pool index is outside the pool"
+                else throw "source-bound CB Pred pool watermark is incomplete"
+               else throw "source-bound CB retained clauses differ from production"
+              else throw "source-bound CB retained clause ids contain a duplicate"
             else throw "source-bound CB context core differs from production"
           else throw "source-bound CB query concept differs from production"
         else throw "source-bound CB nominal-ground marker differs from production"

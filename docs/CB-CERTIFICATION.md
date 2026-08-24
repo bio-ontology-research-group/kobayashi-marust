@@ -220,9 +220,12 @@ claim that the layer is already complete.
   function-free Pred-compatible head eligibility and complete edge-body
   coverage for every retained-clause/edge pair. `mem_enumerate_iff` proves that
   its clause-major, edge-minor output contains exactly the eligible pairs. The
-  next wire layer must bind the snapshot to KM's final retained clauses and
-  predecessor edges, require the transfer list to equal this enumeration, and
-  add the separate nominal r-Pred eligibility cases.
+  `CBSourceOrdinaryPredClosure` now binds that enumeration to KM's final
+  source-bound retained clauses and predecessor edges. It checks complete
+  terminal pool/edge watermarks, exact sent-pool-index lists, exact backward
+  payloads, complete receiver provider products, and retained strengthening of
+  every arrival. The executable Rust-to-Lean path passes. The remaining sender
+  case is the separate nominal-ground r-Pred eligibility and arrival closure.
 - `CBPredSendCoverageWire` applies the ordinary and root enumerators to every
   sender in one inter-context document. It bounds-checks every edge destination
   and label, decodes duplicate-free pushed sets, derives the ordinary or root
