@@ -17,6 +17,8 @@ namespace ContextCalculus.CBSourceCanonicalOrder
 open ContextCalculus ContextCalculus.CheckerTerm
 open ContextCalculus.CBSourceHyperClosure
 open ContextCalculus.CBSourceLinearExtension
+open ContextCalculus.CBFiniteLiteralOrderWire
+open ContextCalculus.CBProductionTraceWire
 
 deriving instance Encodable for FTerm
 deriving instance Encodable for FPred
@@ -86,7 +88,54 @@ theorem production_le_implies_global_le
     ((extension.mem_linear_iff right).mpr hright)]
   exact extension.linearExtensionOn.preserves left hleft right hright hle
 
+theorem retained_literal_mem_ordered
+    (order : DecodedSourceFiniteOrder production)
+    (context : DecodedProductionContext production.bounds
+      production.source.ontology)
+    (hcontext : context ∈ production.contexts)
+    (clause : FCL) (hclause : clause ∈ context.retained)
+    (literal : FLit) (hliteral : literal ∈ clauseLiterals clause) :
+    literal ∈ order.orderedLiterals := by
+  rw [← List.mem_toFinset, order.literals_exact, List.mem_toFinset]
+  simp only [sourceProductionLiterals, List.mem_eraseDups, List.mem_append,
+    List.mem_flatMap]
+  exact Or.inr ⟨context, hcontext, clause, hclause, hliteral⟩
+
+theorem retained_head_mem_ordered
+    (order : DecodedSourceFiniteOrder production)
+    (context : DecodedProductionContext production.bounds
+      production.source.ontology)
+    (hcontext : context ∈ production.contexts)
+    (clause : FCL) (hclause : clause ∈ context.retained)
+    (literal : FLit) (hliteral : literal ∈ clause.head) :
+    literal ∈ order.orderedLiterals :=
+  retained_literal_mem_ordered order context hcontext clause hclause literal
+    (by simp [clauseLiterals, hliteral])
+
+/-- A head maximum selected by the checked canonical rank is one of the exact
+partial-order maxima for which production Hyper/Eq coverage was checked. -/
+theorem canonical_max_is_production_maximal
+    (order : DecodedSourceFiniteOrder production)
+    (context : DecodedProductionContext production.bounds
+      production.source.ontology)
+    (hcontext : context ∈ production.contexts)
+    (clause : FCL) (hclause : clause ∈ context.retained)
+    (extension : ComputedLinearExtension order context.root)
+    (index : Nat) (literal : FLit)
+    (hindex : clause.head[index]? = some literal)
+    (hmax : ∀ other ∈ clause.head,
+      extension.rank other ≤ extension.rank literal) :
+    index ∈ order.maximalHeadIndices context.root clause.head := by
+  apply total_rank_maximal_is_production_maximal order context.root clause.head
+    extension.rank
+    (extension.headLinearExtensionOn clause.head
+      (fun candidate hcandidate =>
+        retained_head_mem_ordered order context hcontext clause hclause
+          candidate hcandidate)) index literal hindex hmax
+
 #print axioms orderingKey_injective
 #print axioms production_le_implies_global_le
+#print axioms retained_literal_mem_ordered
+#print axioms canonical_max_is_production_maximal
 
 end ContextCalculus.CBSourceCanonicalOrder
