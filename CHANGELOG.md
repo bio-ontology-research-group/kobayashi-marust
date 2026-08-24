@@ -116,6 +116,14 @@
   context in this slice. Factor and ordered paramodulation must extend this
   result across explicit equality/inequality polarity before contexts can be
   assembled into the full source model.
+- Remove the feature restriction from the local candidate-model layer by first
+  treating every production `FLit` as a propositional atom. KM's list-level
+  Resolution now translates exactly to ordered finset resolution for concepts,
+  roles, equalities, and inequalities, and source-bound antichain closure yields
+  a clash-free candidate valuation for every terminal context. This separates
+  the remaining obligation cleanly: Factor and Eq closure must show that this
+  valuation can be replaced by an equality-coherent term interpretation, while
+  Succ and Pred assemble those local interpretations globally.
 
 ### Accept empty exact CB transfer partitions
 
