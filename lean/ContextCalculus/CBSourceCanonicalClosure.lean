@@ -54,6 +54,13 @@ theorem DecodedSourceCanonicalClosureDocument.production_closed
   CBSourceProductionClosure.DecodedSourceRootPredClosureDocument.production_closed
     decoded.productionClosure
 
+def DecodedSourceCanonicalClosureDocument.extensionFor
+    (decoded : DecodedSourceCanonicalClosureDocument) :
+    (root : Bool) → ComputedLinearExtension
+      (hyperOf decoded.productionClosure).order root
+  | false => decoded.nonrootExtension
+  | true => decoded.rootExtension
+
 theorem DecodedSourceCanonicalClosureDocument.linear_extension
     (decoded : DecodedSourceCanonicalClosureDocument) (root : Bool) :
     ∃ extension : ComputedLinearExtension
@@ -63,10 +70,10 @@ theorem DecodedSourceCanonicalClosureDocument.linear_extension
         extension.rank := by
   cases root with
   | false =>
-      exact ⟨decoded.nonrootExtension,
+      exact ⟨decoded.extensionFor false,
         decoded.nonrootExtension.linearExtensionOn⟩
   | true =>
-      exact ⟨decoded.rootExtension,
+      exact ⟨decoded.extensionFor true,
         decoded.rootExtension.linearExtensionOn⟩
 
 theorem WireSourceCanonicalClosureDocument.check_sound
