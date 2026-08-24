@@ -185,15 +185,14 @@ def WirePredCoverageDocument.check (wire : WirePredCoverageDocument) :
 theorem DecodedGeneratedPredResult.raw_contextValid
     (generated : DecodedGeneratedPredResult decoded transfer receiver)
     {D : Type} (model : TModel D)
-    (hontology : ∀ source ∈ decoded.base.production.source.ontology,
-      valid model source) :
+    (hretained : ProductionRetainedValid decoded.base.production model) :
     ContextValid model
       (decoded.base.production.contexts.get receiver).core
       (arrivalConclusion
         (decoded.base.production.contexts.get receiver)
         (decoded.base.transfers.get transfer).payload generated.providers) := by
   let arrival := decoded.arrivals.get generated.strengtheningArrivalIndex
-  have harrival := arrival.result_contextValid model hontology
+  have harrival := arrival.result_contextValid model hretained
   have hsameReceiver : arrival.receiverIndex = receiver := by
     apply Fin.ext
     exact generated.same_receiver
@@ -218,8 +217,8 @@ theorem WirePredCoverageDocument.check_sound
                 coverage.transferIndex).payload ∧
           ∀ generated ∈ coverage.generated,
             ∀ (D : Type) (model : TModel D),
-              (∀ source ∈ decoded.interContext.base.production.source.ontology,
-                valid model source) →
+              ProductionRetainedValid
+                decoded.interContext.base.production model →
               ContextValid model
                 (decoded.interContext.base.production.contexts.get
                   coverage.receiverIndex).core
@@ -234,8 +233,8 @@ theorem WirePredCoverageDocument.check_sound
       refine ⟨decoded, rfl, decoded.transfer_coverage_exact, ?_⟩
       intro coverage _
       refine ⟨coverage.receiver_is_target, coverage.signatures_exact, ?_⟩
-      intro generated _ D model hontology
-      exact generated.raw_contextValid model hontology
+      intro generated _ D model hretained
+      exact generated.raw_contextValid model hretained
 
 private def acceptedCoverageExample : WirePredCoverageDocument where
   version := 1

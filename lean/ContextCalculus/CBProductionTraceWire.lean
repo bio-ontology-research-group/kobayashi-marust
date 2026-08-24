@@ -51,6 +51,11 @@ structure WireProductionContext where
   nominal_ground : Bool
   query_concept : Option Nat
   core : List WirePredicate
+  /-- Clauses imported through the globally checked chronological insertion
+  DAG (in particular Pred). They are assumptions of this local trace, but are
+  not source premises. The enclosing live-derivation theorem must discharge
+  their context validity. -/
+  imports : Option (List WireClause) := none
   retained : List WireClause
   discarded : List WireDiscardedClause
   trace : List WireProductionEntry
@@ -119,9 +124,11 @@ structure DecodedProductionContext (bounds : Bounds) (ontology : List FCL) where
   queryConcept : Option Nat
   core : List FPred
   core_nodup : core.Nodup
+  imports : List FCL
   assumptions : List FCL
-  assumptions_eq : assumptions = core.map assumptionClause
+  assumptions_eq : assumptions = core.map assumptionClause ++ imports
   retained : List FCL
+  imports_retained : ∀ imported ∈ imports, imported ∈ retained
   discarded : List (DecodedDiscardedClause retained)
   trace : List Entry
   retained_eq : retained = terminal trace
@@ -136,32 +143,37 @@ def WireProductionContext.decode (bounds : Bounds) (ontology : List FCL)
   if _hcoreNodup : wire.core.Nodup then
     let core ← wire.core.mapM (WirePredicate.decode bounds)
     if hdecodedCoreNodup : core.Nodup then
-      let assumptions := core.map assumptionClause
+      let imports ← (wire.imports.getD []).mapM (WireClause.decode bounds)
+      let assumptions := core.map assumptionClause ++ imports
       let retained ← wire.retained.mapM (WireClause.decode bounds)
       let discarded ← wire.discarded.mapM (WireDiscardedClause.decode bounds retained)
       let trace ← wire.trace.mapM (WireProductionEntry.decode bounds)
-      if hretained : retained = terminal trace then
-        if htrace : check ontology assumptions trace = true then
-          if hnominalRoot : wire.nominal_ground = true → wire.root = true then
-            return {
-              contextId := wire.context_id
-              root := wire.root
-              nominalGround := wire.nominal_ground
-              nominal_ground_root := hnominalRoot
-              queryConcept
-              core
-              core_nodup := hdecodedCoreNodup
-              assumptions
-              assumptions_eq := rfl
-              retained
-              discarded
-              trace
-              retained_eq := hretained
-              trace_valid := htrace
-            }
-          else throw "nominal ground context is not a root context"
-        else throw "production context trace was rejected"
-      else throw "production retained clauses differ from the checked trace terminal"
+      if himportsRetained : ∀ imported ∈ imports, imported ∈ retained then
+        if hretained : retained = terminal trace then
+          if htrace : check ontology assumptions trace = true then
+            if hnominalRoot : wire.nominal_ground = true → wire.root = true then
+              return {
+                contextId := wire.context_id
+                root := wire.root
+                nominalGround := wire.nominal_ground
+                nominal_ground_root := hnominalRoot
+                queryConcept
+                core
+                core_nodup := hdecodedCoreNodup
+                imports
+                imports_retained := himportsRetained
+                assumptions
+                assumptions_eq := rfl
+                retained
+                discarded
+                trace
+                retained_eq := hretained
+                trace_valid := htrace
+              }
+            else throw "nominal ground context is not a root context"
+          else throw "production context trace was rejected"
+        else throw "production retained clauses differ from the checked trace terminal"
+      else throw "production context import is absent from the retained state"
     else throw "decoded production context core contains duplicates"
   else throw "production context core contains duplicate predicates"
 
@@ -173,30 +185,46 @@ theorem DecodedProductionContext.retained_sound
     (decoded : DecodedProductionContext bounds ontology)
     {D : Type} (model : TModel D) (assignment : Int → D)
     (hontology : ∀ source ∈ ontology, valid model source)
-    (hcore : CoreHolds model assignment decoded.core) :
+    (hcore : CoreHolds model assignment decoded.core)
+    (himports : ∀ imported ∈ decoded.imports,
+      HoldsAt model assignment imported) :
     ∀ clause ∈ decoded.retained, HoldsAt model assignment clause := by
   rw [decoded.retained_eq]
   apply CBProductionTrace.check_sound model assignment
     (assumptions := decoded.assumptions) (trace := decoded.trace) hontology
   · intro assumption hassumption
     rw [decoded.assumptions_eq] at hassumption
-    simp only [List.mem_map] at hassumption
-    obtain ⟨predicate, hpredicate, rfl⟩ := hassumption
-    intro _
-    exact ⟨.P predicate, List.mem_singleton.mpr rfl,
-      hcore predicate hpredicate⟩
+    rcases List.mem_append.mp hassumption with hcoreAssumption | himport
+    · simp only [List.mem_map] at hcoreAssumption
+      obtain ⟨predicate, hpredicate, rfl⟩ := hcoreAssumption
+      intro _
+      exact ⟨.P predicate, List.mem_singleton.mpr rfl,
+        hcore predicate hpredicate⟩
+    · exact himports assumption himport
   · exact decoded.trace_valid
+
+theorem DecodedProductionContext.retained_sound_no_import
+    (decoded : DecodedProductionContext bounds ontology)
+    {D : Type} (model : TModel D) (assignment : Int → D)
+    (hontology : ∀ source ∈ ontology, valid model source)
+    (hcore : CoreHolds model assignment decoded.core)
+    (himports : decoded.imports = []) :
+    ∀ clause ∈ decoded.retained, HoldsAt model assignment clause := by
+  apply decoded.retained_sound model assignment hontology hcore
+  simp [himports]
 
 theorem DecodedProductionContext.discarded_sound
     (decoded : DecodedProductionContext bounds ontology)
     {D : Type} (model : TModel D) (assignment : Int → D)
     (hontology : ∀ source ∈ ontology, valid model source)
-    (hcore : CoreHolds model assignment decoded.core) :
+    (hcore : CoreHolds model assignment decoded.core)
+    (himports : ∀ imported ∈ decoded.imports,
+      HoldsAt model assignment imported) :
     ∀ discarded ∈ decoded.discarded,
       HoldsAt model assignment discarded.clause := by
   intro discarded _
   apply HoldsAt.of_strengthens model assignment discarded.strengthens
-  exact decoded.retained_sound model assignment hontology hcore
+  exact decoded.retained_sound model assignment hontology hcore himports
     (decoded.retained.get discarded.strengtheningIndex)
     (List.get_mem decoded.retained discarded.strengtheningIndex)
 
@@ -250,6 +278,8 @@ theorem WireProductionRun.check_sound (wire : WireProductionRun)
         ∀ (D : Type) (model : TModel D) (assignment : Int → D),
           (∀ source ∈ decoded.source.ontology, valid model source) →
           CoreHolds model assignment context.core →
+          (∀ imported ∈ context.imports,
+            HoldsAt model assignment imported) →
           (∀ clause ∈ context.retained, HoldsAt model assignment clause) ∧
           (∀ discarded ∈ context.discarded,
             HoldsAt model assignment discarded.clause) := by
@@ -257,9 +287,9 @@ theorem WireProductionRun.check_sound (wire : WireProductionRun)
   | error message => simp [WireProductionRun.check, hdecode] at hcheck
   | ok decoded =>
       refine ⟨decoded, rfl, ?_⟩
-      intro context hcontext D model assignment hontology hcore
-      exact ⟨context.retained_sound model assignment hontology hcore,
-        context.discarded_sound model assignment hontology hcore⟩
+      intro context hcontext D model assignment hontology hcore himports
+      exact ⟨context.retained_sound model assignment hontology hcore himports,
+        context.discarded_sound model assignment hontology hcore himports⟩
 
 /-- The same production-step theorem at the typed source semantics.  The model
 used for trace evaluation is exactly the verified Skolem extension of a model
@@ -280,6 +310,10 @@ theorem WireProductionRun.check_source_sound (wire : WireProductionRun)
           CoreHolds
             (decoded.source.productionModel interpretation hmodels default)
               assignment context.core →
+          (∀ imported ∈ context.imports,
+            HoldsAt
+              (decoded.source.productionModel interpretation hmodels default)
+                assignment imported) →
           (∀ clause ∈ context.retained,
               HoldsAt
                 (decoded.source.productionModel interpretation hmodels default)
@@ -291,11 +325,12 @@ theorem WireProductionRun.check_source_sound (wire : WireProductionRun)
                 discarded.clause) := by
   rcases wire.check_sound hcheck with ⟨decoded, hdecode, hsound⟩
   refine ⟨decoded, hdecode, ?_⟩
-  intro context hcontext D interpretation hmodels default assignment hcore
+  intro context hcontext D interpretation hmodels default assignment hcore himports
   apply hsound context hcontext D
     (decoded.source.productionModel interpretation hmodels default) assignment
   · exact decoded.source.models_production interpretation hmodels default
   · exact hcore
+  · exact himports
 
 private def x : WireTerm := .var 0
 private def conceptPredicate (id : Nat) : WirePredicate := .concept id x
@@ -343,6 +378,33 @@ example : rejected ({ acceptedExample with contexts :=
 
 example : rejected ({ acceptedExample with contexts :=
     [contextExample, contextExample] }).check = true := by native_decide
+
+private def importedClause : WireClause :=
+  ⟨[], [conceptLiteral 1]⟩
+
+private def importedContextExample : WireProductionContext where
+  context_id := 9
+  root := true
+  nominal_ground := false
+  query_concept := some 0
+  core := [conceptPredicate 0]
+  imports := some [importedClause]
+  retained := [importedClause]
+  discarded := []
+  trace := [⟨importedClause, .assumption 1⟩]
+
+private def acceptedImportedExample : WireProductionRun :=
+  { acceptedExample with contexts := [importedContextExample] }
+
+example : acceptedImportedExample.check = .ok true := by native_decide
+
+example : rejected ({ acceptedImportedExample with contexts :=
+    [{ importedContextExample with retained := [] }] }).check = true := by
+  native_decide
+
+example : rejected ({ acceptedImportedExample with contexts :=
+    [{ importedContextExample with imports := some [⟨[], []⟩] }] }).check = true := by
+  native_decide
 
 private def freshLiteral : WireLiteral :=
   .predicate (.concept 0 (.constant 0))

@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+### Bind live CB imports and Pred transfers to the chronological derivation
+
+- Separate clauses imported through inter-context Pred from ontology and core
+  assumptions in each local production trace. The decoder requires every
+  declared import to occur in the context's checked retained state; standalone
+  taxonomy evidence rejects imports because it has no enclosing global proof.
+- Keep chronological insertion-event traces core-only, then prove globally
+  that every final retained clause is context-valid. This theorem discharges
+  local import assumptions and proves every terminal Pred payload and arrival
+  valid without treating imported clauses as source premises.
+- Export the composed live-production theorem from the public CB certification
+  surface. Exhaustive Pred coverage now consumes the same globally established
+  retained-state invariant. Positive, empty-import, and forged-import fixtures
+  pass, and the complete local CB certification gate passes without `sorryAx`.
+
 ### Accept empty exact CB transfer partitions
 
 - Permit exact CB inter-context and Pred send-coverage certificates with zero

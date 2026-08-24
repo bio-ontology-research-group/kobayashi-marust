@@ -1,5 +1,6 @@
 import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBLiveExactTaxonomyPublication
+import ContextCalculus.CBLiveInsertionDerivation
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -19,6 +20,10 @@ namespace ContextCalculus.CB
 open ContextCalculus.CBTaxonomyWire
 open ContextCalculus.CBSourceTaxonomyWire
 open ContextCalculus.CBLiveExactTaxonomyPublication
+open ContextCalculus.CBLiveInsertionDerivation
+open ContextCalculus.CBLiveStateWire
+open ContextCalculus.CBInterContext
+open ContextCalculus.CBInterContextWire
 open ContextCalculus.CBStandaloneContextProofWire
 open ContextCalculus.CBGlobalClosureWire
 open ContextCalculus.CBGlobalProductionClosure
@@ -105,6 +110,43 @@ theorem certifiedCBStandaloneContextProof
       exact node.contextValid model hontology
 
 #print axioms certifiedCBStandaloneContextProof
+
+/-- The production execution bridge. An accepted live insertion document
+proves every final retained clause context-valid and consequently proves every
+terminal Pred transfer and arrival sound. No imported clause remains an
+untrusted local-trace premise. -/
+theorem certifiedCBLiveProductionDerivation
+    (wire : WireLiveInsertionDerivationDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedLiveInsertionDerivationDocument,
+      wire.decode = .ok decoded ∧
+      ∀ (D : Type) (model : CheckerTerm.TModel D),
+        (∀ source ∈
+          (rProduction decoded.live.global.global.rsucc).source.ontology,
+          CheckerTerm.valid model source) →
+        ProductionRetainedValid
+          (rProduction decoded.live.global.global.rsucc) model ∧
+        (∀ transfer ∈
+            (terminalOfGlobal decoded.live.global).sendCoverage.interContext.base.transfers,
+          CheckerTerm.valid model transfer.payload) ∧
+        (∀ arrival ∈
+            (terminalOfGlobal decoded.live.global).sendCoverage.interContext.arrivals,
+          ContextValid model
+            ((terminalOfGlobal decoded.live.global).sendCoverage.interContext.base.production.contexts.get
+              arrival.receiverIndex).core arrival.result) := by
+  cases hdecode : wire.decode with
+  | error message =>
+      simp [WireLiveInsertionDerivationDocument.check, hdecode] at hcheck
+  | ok decoded =>
+      refine ⟨decoded, rfl, ?_⟩
+      intro D model hontology
+      refine ⟨decoded.production_retained_valid model hontology, ?_, ?_⟩
+      · intro transfer _
+        exact decoded.terminal_pred_transfer_valid model hontology transfer
+      · intro arrival _
+        exact decoded.terminal_pred_arrival_valid model hontology arrival
+
+#print axioms certifiedCBLiveProductionDerivation
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :

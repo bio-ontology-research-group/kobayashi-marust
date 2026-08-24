@@ -217,16 +217,23 @@ def WireInterContextRun.check (wire : WireInterContextRun) : Except String Bool 
   let _ ← wire.decode
   return true
 
+/-- Semantic premise discharged by the globally checked chronological
+insertion DAG. It covers local and imported retained clauses uniformly. -/
+def ProductionRetainedValid (production : DecodedProductionRun)
+    {D : Type} (model : TModel D) : Prop :=
+  ∀ index : Fin production.contexts.length,
+    ∀ clause ∈ (production.contexts.get index).retained,
+      ContextValid model (production.contexts.get index).core clause
+
 theorem DecodedPredTransfer.payload_valid
     (transfer : DecodedPredTransfer production)
     {D : Type} (model : TModel D)
-    (hontology : ∀ source ∈ production.source.ontology, valid model source) :
+    (hretained : ProductionRetainedValid production model) :
     valid model transfer.payload := by
   let sender := production.contexts.get transfer.senderIndex
   let sourceClause := sender.retained.get transfer.retainedIndex
-  have hcontextual : ContextValid model sender.core sourceClause := by
-    intro assignment hcore
-    exact sender.retained_sound model assignment hontology hcore sourceClause
+  have hcontextual : ContextValid model sender.core sourceClause :=
+    hretained transfer.senderIndex sourceClause
       (List.get_mem sender.retained transfer.retainedIndex)
   have hexpected := predTransfer_sound model sender.core sourceClause
     transfer.substitution hcontextual
@@ -238,7 +245,8 @@ theorem arrivalConclusion_contextValid
     (providers : List (DecodedPredProvider receiver))
     {D : Type} (model : TModel D) (current : FCL)
     (hcurrent : ContextValid model receiver.core current)
-    (hontology : ∀ source ∈ ontology, valid model source)
+    (hreceiver : ∀ clause ∈ receiver.retained,
+      ContextValid model receiver.core clause)
     (hsteps : arrivalStepsOk receiver current providers = true) :
     ContextValid model receiver.core
       (arrivalConclusion receiver current providers) := by
@@ -247,10 +255,8 @@ theorem arrivalConclusion_contextValid
   | cons provider rest ih =>
       simp only [arrivalStepsOk, Bool.and_eq_true] at hsteps
       have hprovider : ContextValid model receiver.core
-          (receiver.retained.get provider.retainedIndex) := by
-        intro assignment hcore
-        exact receiver.retained_sound model assignment hontology hcore _
-          (List.get_mem receiver.retained provider.retainedIndex)
+          (receiver.retained.get provider.retainedIndex) :=
+        hreceiver _ (List.get_mem receiver.retained provider.retainedIndex)
       have hresolved := resolveContextual_sound model receiver.core
         (receiver.retained.get provider.retainedIndex) current provider.literal
         hprovider hcurrent (of_decide_eq_true hsteps.1.1)
@@ -260,20 +266,20 @@ theorem arrivalConclusion_contextValid
 theorem DecodedPredArrival.result_contextValid
     (arrival : DecodedPredArrival decoded)
     {D : Type} (model : TModel D)
-    (hontology : ∀ source ∈ decoded.production.source.ontology,
-      valid model source) :
+    (hretained : ProductionRetainedValid decoded.production model) :
     ContextValid model
       (decoded.production.contexts.get arrival.receiverIndex).core
       arrival.result := by
   let receiver := decoded.production.contexts.get arrival.receiverIndex
   let transfer := decoded.transfers.get arrival.transferIndex
   have hpayloadValid : valid model transfer.payload :=
-    transfer.payload_valid model hontology
+    transfer.payload_valid model hretained
   have hpayloadContext : ContextValid model receiver.core transfer.payload := by
     intro assignment _
     exact hpayloadValid assignment
   have hfold := arrivalConclusion_contextValid receiver arrival.providers model
-    transfer.payload hpayloadContext hontology arrival.steps_ok
+    transfer.payload hpayloadContext (hretained arrival.receiverIndex)
+      arrival.steps_ok
   intro assignment hcore
   exact sat_of_clEquivT arrival.result_equiv (hfold assignment hcore)
 
@@ -283,15 +289,13 @@ theorem WireInterContextRun.check_sound (wire : WireInterContextRun)
       wire.decode = .ok decoded ∧
       (∀ transfer ∈ decoded.base.transfers,
         ∀ (D : Type) (model : TModel D),
-          (∀ source ∈ decoded.base.production.source.ontology,
-            valid model source) →
+          ProductionRetainedValid decoded.base.production model →
           valid model transfer.payload) ∧
       (∀ arrival ∈ decoded.arrivals,
         (decoded.base.transfers.get arrival.transferIndex).receiverIndex.val =
           arrival.receiverIndex.val ∧
         ∀ (D : Type) (model : TModel D),
-            (∀ source ∈ decoded.base.production.source.ontology,
-              valid model source) →
+            ProductionRetainedValid decoded.base.production model →
             ContextValid model
               (decoded.base.production.contexts.get arrival.receiverIndex).core
               arrival.result) := by
@@ -299,12 +303,12 @@ theorem WireInterContextRun.check_sound (wire : WireInterContextRun)
   | error message => simp [WireInterContextRun.check, hdecode] at hcheck
   | ok decoded =>
       refine ⟨decoded, rfl, ?_, ?_⟩
-      · intro transfer _ D model hontology
-        exact transfer.payload_valid model hontology
+      · intro transfer _ D model hretained
+        exact transfer.payload_valid model hretained
       · intro arrival _
         refine ⟨arrival.receiver_is_target, ?_⟩
-        intro D model hontology
-        exact arrival.result_contextValid model hontology
+        intro D model hretained
+        exact arrival.result_contextValid model hretained
 
 private def x : WireTerm := .var 0
 private def concept (id : Nat) : WirePredicate := .concept id x

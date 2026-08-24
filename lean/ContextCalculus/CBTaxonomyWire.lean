@@ -99,7 +99,8 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
       let context ← contextWire.decode bounds ontology
       let target : FCL :=
         ⟨[], [.P (.concept superconcept (.var 0))]⟩
-      if hcoreExact : context.core = [.concept core (.var 0)] then
+      if hnoImports : context.imports = [] then
+       if hcoreExact : context.core = [.concept core (.var 0)] then
         if htarget : target ∈ context.retained then
           have hsemantic : Entails ontology core superconcept := by
             intro D model hontology element hsub
@@ -110,8 +111,8 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
               simp only [List.mem_singleton] at hpredicate
               subst predicate
               exact hsub
-            have hvalid := context.retained_sound model assignment hontology
-              hcore target htarget
+            have hvalid := context.retained_sound_no_import model assignment
+              hontology hcore hnoImports target htarget
             have hhead := hvalid (by intro literal hliteral; cases hliteral)
             obtain ⟨literal, hliteral, heval⟩ := hhead
             simp only [target, List.mem_singleton] at hliteral
@@ -137,8 +138,8 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
                 simp only [List.mem_singleton] at hpredicate
                 subst predicate
                 exact hsub
-              have hvalid := context.retained_sound model assignment hontology
-                hcore bottom hbottom
+              have hvalid := context.retained_sound_no_import model assignment
+                hontology hcore hnoImports bottom hbottom
               have hfalse := hvalid (by intro literal hliteral; cases hliteral)
               obtain ⟨literal, hliteral, _⟩ := hfalse
               cases hliteral
@@ -151,7 +152,8 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
               exact := ⟨fun _ => hsemantic, fun _ => rfl⟩
             }
           else throw "production CB taxonomy trace omits its target unit or contradiction"
-      else throw "production CB taxonomy trace uses the wrong query core"
+       else throw "production CB taxonomy trace uses the wrong query core"
+      else throw "standalone production CB taxonomy trace contains imports"
   | .negative witness model =>
       if wire.answer != false then
         throw "negative CB taxonomy evidence is paired with a true answer"

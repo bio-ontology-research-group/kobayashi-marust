@@ -19,7 +19,16 @@ namespace ContextCalculus.CBLiveInsertionDerivation
 open Lean ContextCalculus ContextCalculus.CheckerTerm
 open ContextCalculus.CBProductionTrace
 open ContextCalculus.CBProductionTraceWire
+open ContextCalculus.CBInterContext
+open ContextCalculus.CBInterContextWire
 open ContextCalculus.CBLiveStateWire
+
+def eventAssumptionClause (predicate : FPred) : FCL :=
+  ⟨[], [.P predicate]⟩
+
+def eventAssumptions (production : DecodedProductionRun)
+    (index : Fin production.contexts.length) : List FCL :=
+  (production.contexts.get index).core.map eventAssumptionClause
 open ContextCalculus.CBGlobalClosureWire
 
 abbrev LiveEvent (production : DecodedProductionRun)
@@ -53,7 +62,7 @@ inductive EventEvidence
       (references : List (PriorLocalRef done event))
       (trace : List Entry) (final : List FCL)
       (checked : checkFold production.source.ontology
-        (production.contexts.get event.contextIndex).assumptions
+        (eventAssumptions production event.contextIndex)
         (priorClauses references) trace = some final)
       (conclusion : event.clause ∈ final) : EventEvidence done event
   | pred (event) (predEvidence : DecodedLivePredEvidence production)
@@ -70,7 +79,7 @@ inductive EventEvidence
   | discarded (event)
       (trace : List Entry) (final : List FCL)
       (checked : checkFold production.source.ontology
-        (production.contexts.get event.contextIndex).assumptions [] trace = some final)
+        (eventAssumptions production event.contextIndex) [] trace = some final)
       (strengtheningIndex : Fin final.length)
       (strengthens : Strengthens (final.get strengtheningIndex) event.clause) :
       EventEvidence done event
@@ -116,9 +125,7 @@ theorem EventEvidence.sound
       intro D model assignment hontology hcore
       have hfinal := checkFold_sound model assignment hontology
         (fun assumption hassumption => by
-          rw [(production.contexts.get event.contextIndex).assumptions_eq]
-            at hassumption
-          simp only [List.mem_map] at hassumption
+          simp only [eventAssumptions, List.mem_map] at hassumption
           obtain ⟨predicate, hpredicate, rfl⟩ := hassumption
           intro _
           exact ⟨.P predicate, List.mem_singleton.mpr rfl,
@@ -167,9 +174,7 @@ theorem EventEvidence.sound
       apply HoldsAt.of_strengthens model assignment strengthens
       have hfinal := checkFold_sound model assignment hontology
         (fun assumption hassumption => by
-          rw [(production.contexts.get event.contextIndex).assumptions_eq]
-            at hassumption
-          simp only [List.mem_map] at hassumption
+          simp only [eventAssumptions, List.mem_map] at hassumption
           obtain ⟨predicate, hpredicate, rfl⟩ := hassumption
           intro _
           exact ⟨.P predicate, List.mem_singleton.mpr rfl,
@@ -239,7 +244,7 @@ def WireEventEvidence.decode
         let trace ← wire.trace.mapM
           (WireProductionEntry.decode production.bounds)
         match hchecked : checkFold production.source.ontology
-            (production.contexts.get event.contextIndex).assumptions
+            (eventAssumptions production event.contextIndex)
             (priorClauses references) trace with
         | none => throw "CB local insertion trace was rejected"
         | some final =>
@@ -255,7 +260,7 @@ def WireEventEvidence.decode
         let trace ← wire.trace.mapM
           (WireProductionEntry.decode production.bounds)
         match hchecked : checkFold production.source.ontology
-            (production.contexts.get event.contextIndex).assumptions [] trace with
+            (eventAssumptions production event.contextIndex) [] trace with
         | none => throw "CB discarded insertion trace was rejected"
         | some final =>
             let discarded ← wire.discarded.mapM
@@ -428,6 +433,106 @@ theorem DecodedLiveInsertionDerivationDocument.retained_contextValid
     rw [hcontextEq]
     exact hcore)
 
+/-- The chronological insertion DAG discharges the semantic premise required
+by inter-context Pred and by local traces that explicitly import clauses. -/
+theorem DecodedLiveInsertionDerivationDocument.production_retained_valid
+    (decoded : DecodedLiveInsertionDerivationDocument)
+    {D : Type} (model : TModel D)
+    (hontology : ∀ source ∈
+      (rProduction decoded.live.global.global.rsucc).source.ontology,
+      valid model source) :
+    CBInterContextWire.ProductionRetainedValid
+      (rProduction decoded.live.global.global.rsucc) model := by
+  intro index clause hclause
+  have hindex : index.val ∈ List.range
+      (rProduction decoded.live.global.global.rsucc).contexts.length :=
+    List.mem_range.mpr index.isLt
+  rw [← decoded.live.context_indices_exact] at hindex
+  rcases List.mem_map.mp hindex with ⟨context, hcontext, hcontextIndex⟩
+  have heq : context.contextIndex = index := Fin.ext hcontextIndex
+  subst index
+  apply decoded.retained_contextValid context hcontext clause
+  · rw [context.retained_eq]
+    exact hclause
+  · exact hontology
+
+/-- Every local import is a checked retained clause, so the chronological
+insertion DAG supplies exactly the import premise required by the local
+production-trace soundness theorem. -/
+theorem DecodedLiveInsertionDerivationDocument.production_imports_valid
+    (decoded : DecodedLiveInsertionDerivationDocument)
+    {D : Type} (model : TModel D)
+    (hontology : ∀ source ∈
+      (rProduction decoded.live.global.global.rsucc).source.ontology,
+      valid model source)
+    (index : Fin
+      (rProduction decoded.live.global.global.rsucc).contexts.length)
+    (assignment : Int → D)
+    (hcore : CoreHolds model assignment
+      ((rProduction decoded.live.global.global.rsucc).contexts.get index).core) :
+    ∀ imported ∈
+        ((rProduction decoded.live.global.global.rsucc).contexts.get index).imports,
+      HoldsAt model assignment imported := by
+  intro imported himport
+  let context :=
+    (rProduction decoded.live.global.global.rsucc).contexts.get index
+  have hretained : imported ∈ context.retained :=
+    context.imports_retained imported himport
+  exact decoded.production_retained_valid model hontology index imported
+    hretained assignment hcore
+
+/-- Capstone for the local/global proof boundary: after the live insertion DAG
+has been checked, every local production trace is sound without any remaining
+untrusted import premise. -/
+theorem DecodedLiveInsertionDerivationDocument.production_trace_sound
+    (decoded : DecodedLiveInsertionDerivationDocument)
+    {D : Type} (model : TModel D)
+    (hontology : ∀ source ∈
+      (rProduction decoded.live.global.global.rsucc).source.ontology,
+      valid model source)
+    (index : Fin
+      (rProduction decoded.live.global.global.rsucc).contexts.length)
+    (assignment : Int → D)
+    (hcore : CoreHolds model assignment
+      ((rProduction decoded.live.global.global.rsucc).contexts.get index).core) :
+    ∀ clause ∈
+        ((rProduction decoded.live.global.global.rsucc).contexts.get index).retained,
+      HoldsAt model assignment clause := by
+  let context :=
+    (rProduction decoded.live.global.global.rsucc).contexts.get index
+  exact context.retained_sound model assignment hontology hcore
+    (decoded.production_imports_valid model hontology index assignment hcore)
+
+/-- Exact terminal Pred sends inherit validity from the same live insertion
+history that produced their sender clauses. -/
+theorem DecodedLiveInsertionDerivationDocument.terminal_pred_transfer_valid
+    (decoded : DecodedLiveInsertionDerivationDocument)
+    {D : Type} (model : TModel D)
+    (hontology : ∀ source ∈
+      (rProduction decoded.live.global.global.rsucc).source.ontology,
+      valid model source)
+    (transfer : DecodedPredTransfer
+      (terminalOfGlobal decoded.live.global).sendCoverage.interContext.base.production) :
+    valid model transfer.payload := by
+  exact transfer.payload_valid model
+    (decoded.production_retained_valid model hontology)
+
+/-- Exact terminal Pred arrivals are context-valid once the globally checked
+insertion DAG has discharged sender and receiver retained-clause validity. -/
+theorem DecodedLiveInsertionDerivationDocument.terminal_pred_arrival_valid
+    (decoded : DecodedLiveInsertionDerivationDocument)
+    {D : Type} (model : TModel D)
+    (hontology : ∀ source ∈
+      (rProduction decoded.live.global.global.rsucc).source.ontology,
+      valid model source)
+    (arrival : DecodedPredArrival
+      (terminalOfGlobal decoded.live.global).sendCoverage.interContext.base) :
+    ContextValid model
+      ((terminalOfGlobal decoded.live.global).sendCoverage.interContext.base.production.contexts.get
+        arrival.receiverIndex).core arrival.result := by
+  exact arrival.result_contextValid model
+    (decoded.production_retained_valid model hontology)
+
 theorem WireLiveInsertionDerivationDocument.check_sound
     (wire : WireLiveInsertionDerivationDocument)
     (hcheck : wire.check = .ok true) :
@@ -443,6 +548,11 @@ theorem WireLiveInsertionDerivationDocument.check_sound
 #print axioms CertifiedHistory.sound
 #print axioms DecodedCertifiedHistory.sound
 #print axioms DecodedLiveInsertionDerivationDocument.retained_contextValid
+#print axioms DecodedLiveInsertionDerivationDocument.production_retained_valid
+#print axioms DecodedLiveInsertionDerivationDocument.production_imports_valid
+#print axioms DecodedLiveInsertionDerivationDocument.production_trace_sound
+#print axioms DecodedLiveInsertionDerivationDocument.terminal_pred_transfer_valid
+#print axioms DecodedLiveInsertionDerivationDocument.terminal_pred_arrival_valid
 #print axioms WireLiveInsertionDerivationDocument.check_sound
 
 end ContextCalculus.CBLiveInsertionDerivation

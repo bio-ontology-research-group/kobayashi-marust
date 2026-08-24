@@ -138,9 +138,12 @@ The CB gate builds every native `cb-*` checker declared in Lake, audits the
 public theorem surface for admitted axioms, and exercises the real
 Rust-to-Lean source-bound taxonomy path. In mandatory source-exact mode, KM
 publishes only after Lean checks every positive cell from a production trace
-and every negative cell from a finite or regular countermodel. The remaining
-CB certification work is total producer coverage for all production inference
-shapes and binding the typed source certificate through the routing layer.
+and every negative cell from a finite or regular countermodel. Lean also binds
+the live chronological insertion history to final retained contexts and uses
+that invariant to prove terminal Pred transfers, arrivals, and explicit local
+imports sound. The remaining CB certification work is total native producer
+coverage for the complete nested certificate and its exact negative evidence.
+Routing certification follows after that CB boundary is complete.
 
 ### Current certified HT boundary
 

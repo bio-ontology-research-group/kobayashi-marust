@@ -121,7 +121,13 @@ claim that the layer is already complete.
   removed by redundancy. Pred evidence names the earlier sender event and the
   complete receiver-provider path; Lean applies the checked inter-context
   transfer theorem before folding the local resolutions. Every missing or
-  malformed evidence slot fails closed. Mandatory publication now writes this
+  malformed evidence slot fails closed. Local production traces now distinguish
+  core assumptions from explicit inter-context imports. The decoder requires
+  each import to occur in the checked retained context, while the chronological
+  insertion theorem proves every retained clause context-valid and discharges
+  those import assumptions. Event-local evidence remains core-only, so an
+  imported clause cannot be relabelled as a source or core premise. Mandatory
+  publication now writes this
   complete version-2 document to `KM_CB_CERT_BUNDLE` and invokes
   `KM_CB_LEAN_CERT_CHECKER` on it before stdout. The optional
   `KM_CB_DERIVATION_CANDIDATE` path writes an identical diagnostic copy.
@@ -146,8 +152,10 @@ claim that the layer is already complete.
   reconstructs the complete resolution fold, and proves the exact result valid
   under the receiver core. The public checker theorem retains the checked
   transfer-to-arrival destination equality. Forged providers and results are
-  rejected. Production edge eligibility and complete queue delivery remain
-  refinement obligations.
+  rejected. The public `certifiedCBLiveProductionDerivation` theorem composes
+  this layer with the exact live insertion history and proves every terminal
+  Pred transfer and arrival valid. Production edge eligibility and complete
+  queue delivery remain refinement obligations.
   `coveredResults_contextValid` closes the semantic antichain step: if the
   executable enumeration layer shows that every raw Cartesian conclusion has
   a retained strengthening, validity of the retained antichain implies
