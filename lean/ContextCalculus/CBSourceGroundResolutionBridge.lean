@@ -18,6 +18,7 @@ open ContextCalculus.CBGroundResolutionBridge
 open ContextCalculus.CBSourceProductionClosure
 open ContextCalculus.CBSourceRootPredClosure
 open ContextCalculus.CBProductionTraceWire
+open ContextCalculus.CBProductionTrace
 open ContextCalculus.CBLocalPropositionalModel
 open ContextCalculus.CBLocalFactorClosureWire
 
@@ -50,6 +51,29 @@ theorem SourceProductionClosed.retained_head_equality_normal
   exact ⟨terminalHeadNormal_no_reflexive_eq hnormal,
     terminalHeadNormal_no_reflexive_ineq hnormal,
     fun _ _ => terminalHeadNormal_no_complement hnormal⟩
+
+theorem SourceProductionClosed.retained_factor_pair_covered
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (_closed : SourceProductionClosed decoded)
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (sourceIndex firstHeadIndex secondHeadIndex : Nat)
+    (source : FCL) (hsource : context.retained[sourceIndex]? = some source)
+    (common first second : FTerm)
+    (hfirst : source.head[firstHeadIndex]? = some (.eq common first))
+    (hsecond : source.head[secondHeadIndex]? = some (.eq common second))
+    (hdistinct : second ≠ first)
+    (filtered : List FLit)
+    (hnormalize : normalizeGeneratedHead
+      (factorConclusion source common first second).head = some filtered) :
+    ∃ retained ∈ context.retained,
+      CBProductionTrace.Strengthens retained
+        { factorConclusion source common first second with head := filtered } :=
+  (localOf decoded).factor_pair_covered context hcontext sourceIndex
+    firstHeadIndex secondHeadIndex source hsource common first second hfirst
+    hsecond hdistinct filtered hnormalize
 
 /-- Feature-independent local candidate valuation obtained from the same
 source-bound production certificate. Equality coherence is established by the
@@ -105,5 +129,6 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.context_raw_model
 #print axioms SourceProductionClosed.retained_head_equality_normal
+#print axioms SourceProductionClosed.retained_factor_pair_covered
 
 end ContextCalculus.CBSourceGroundResolutionBridge

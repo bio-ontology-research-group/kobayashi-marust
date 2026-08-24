@@ -130,6 +130,13 @@
   proved consequences of the executable head normalizer, rather than comments
   about Rust filtering, and provide the first premises for turning the raw
   literal candidate valuation into an equality-coherent term model.
+- Eliminate the Factor enumerator from the source-bound semantic surface. For
+  any retained clause and any indexed pair of distinct head equalities with a
+  common left term, every successfully normalized Factor conclusion now has a
+  retained strengthening. The theorem reconstructs the exact finite candidate
+  and obtains its coverage from the same composed terminal certificate. This
+  is the pairwise equality-consistency premise needed by the ordered canonical
+  term-model construction.
 
 ### Accept empty exact CB transfer partitions
 

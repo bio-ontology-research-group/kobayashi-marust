@@ -116,6 +116,55 @@ theorem DecodedSourceLocalClosureDocument.local_factor_closed
   intro context hcontext
   exact localFactorClosedB_sound context (decoded.factor_closed context hcontext)
 
+/-- Every normalizable ordered pair of distinct equalities with a common left
+side is represented by a retained strengthening. This removes the finite-index
+enumerator from the semantic Factor closure surface. -/
+theorem DecodedSourceLocalClosureDocument.factor_pair_covered
+    (decoded : DecodedSourceLocalClosureDocument)
+    (context : DecodedProductionContext decoded.live.production.bounds
+      decoded.live.production.source.ontology)
+    (hcontext : context ∈ decoded.live.production.contexts)
+    (sourceIndex firstHeadIndex secondHeadIndex : Nat)
+    (source : FCL)
+    (hsource : context.retained[sourceIndex]? = some source)
+    (common first second : FTerm)
+    (hfirst : source.head[firstHeadIndex]? = some (.eq common first))
+    (hsecond : source.head[secondHeadIndex]? = some (.eq common second))
+    (hdistinct : second ≠ first)
+    (filtered : List FLit)
+    (hnormalize : normalizeGeneratedHead
+      (factorConclusion source common first second).head = some filtered) :
+    ∃ retained ∈ context.retained,
+      Strengthens retained
+        { factorConclusion source common first second with head := filtered } := by
+  have hsourceBound : sourceIndex < context.retained.length :=
+    (List.getElem?_eq_some_iff.mp hsource).1
+  have hfirstBound : firstHeadIndex < source.head.length :=
+    (List.getElem?_eq_some_iff.mp hfirst).1
+  have hsecondBound : secondHeadIndex < source.head.length :=
+    (List.getElem?_eq_some_iff.mp hsecond).1
+  have hindices : firstHeadIndex ≠ secondHeadIndex := by
+    intro heq
+    subst secondHeadIndex
+    rw [hfirst] at hsecond
+    have : first = second := by simpa using Option.some.inj hsecond
+    exact hdistinct this.symm
+  let signature : FactorSignature :=
+    { sourceIndex, firstHeadIndex, secondHeadIndex }
+  let conclusion : FCL :=
+    { factorConclusion source common first second with head := filtered }
+  have hcandidateAt : factorCandidate? sourceIndex firstHeadIndex
+      secondHeadIndex source = some (signature, conclusion) := by
+    simp [factorCandidate?, hindices, hfirst, hsecond, hdistinct,
+      hnormalize, signature, conclusion]
+  have hcandidate : (signature, conclusion) ∈
+      factorCandidates context.retained := by
+    rw [mem_factorCandidates_iff]
+    exact ⟨sourceIndex, hsourceBound, source, hsource,
+      firstHeadIndex, hfirstBound, secondHeadIndex, hsecondBound, hcandidateAt⟩
+  exact (decoded.local_factor_closed context hcontext).2
+    (signature, conclusion) hcandidate
+
 theorem WireSourceLocalClosureDocument.check_sound
     (wire : WireSourceLocalClosureDocument) (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedSourceLocalClosureDocument,
@@ -135,6 +184,7 @@ theorem WireSourceLocalClosureDocument.check_sound
 
 #print axioms localResolutionClosedB_sound
 #print axioms localFactorClosedB_sound
+#print axioms DecodedSourceLocalClosureDocument.factor_pair_covered
 #print axioms WireSourceLocalClosureDocument.check_sound
 
 end ContextCalculus.CBSourceLocalClosure
