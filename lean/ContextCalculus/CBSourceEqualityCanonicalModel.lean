@@ -264,6 +264,169 @@ theorem quotientTerm_productive_eq
     quotientApp context extension function (quotientTerm context extension term) =
       quotientTerm context extension (.app function term) := rfl
 
+def productiveConceptHolds
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (concept : Nat)
+    (element : ProductiveQuotient context extension) : Prop :=
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  ∃ term, quotientTerm context extension term = element ∧
+    OrdRes.Itrue (rawSet context.retained) (.P (.concept concept term))
+
+def productiveRoleHolds
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (role : Nat)
+    (source target : ProductiveQuotient context extension) : Prop :=
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  ∃ sourceTerm targetTerm,
+    quotientTerm context extension sourceTerm = source ∧
+    quotientTerm context extension targetTerm = target ∧
+    OrdRes.Itrue (rawSet context.retained)
+      (.P (.role role sourceTerm targetTerm))
+
+/-- The first-order equality model induced by the exact candidate valuation.
+Predicate extensions are the congruence closure of productive predicate facts;
+equality itself is genuine quotient equality. -/
+def productiveQuotientModel
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    TModel (ProductiveQuotient context extension) where
+  conc := productiveConceptHolds context extension
+  rol := productiveRoleHolds context extension
+  const := fun individual => quotientTerm context extension (.const individual)
+  fn := quotientApp context extension
+
+def quotientAssignment
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    Int → ProductiveQuotient context extension :=
+  fun variableIndex => quotientTerm context extension (.var variableIndex)
+
+@[simp] theorem productiveQuotientModel_evalT
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (term : FTerm) :
+    (productiveQuotientModel context extension).evalT
+        (quotientAssignment context extension) term =
+      quotientTerm context extension term := by
+  induction term with
+  | var variableIndex => rfl
+  | const individual => rfl
+  | app function argument ih =>
+      change quotientApp context extension function
+        ((productiveQuotientModel context extension).evalT
+          (quotientAssignment context extension) argument) = _
+      rw [ih]
+      exact quotientApp_quotientTerm context extension function argument
+
+theorem productiveQuotientModel_concept_of_true
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (concept : Nat) (term : FTerm)
+    (htrue :
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained) (.P (.concept concept term))) :
+    (productiveQuotientModel context extension).evalL
+      (quotientAssignment context extension) (.P (.concept concept term)) := by
+  rw [TModel.evalL, productiveQuotientModel_evalT]
+  change productiveConceptHolds context extension concept
+    (quotientTerm context extension term)
+  simp only [productiveConceptHolds]
+  exact ⟨term, rfl, htrue⟩
+
+theorem productiveQuotientModel_role_of_true
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (role : Nat)
+    (source target : FTerm)
+    (htrue :
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained)
+        (.P (.role role source target))) :
+    (productiveQuotientModel context extension).evalL
+      (quotientAssignment context extension)
+      (.P (.role role source target)) := by
+  rw [TModel.evalL, productiveQuotientModel_evalT,
+    productiveQuotientModel_evalT]
+  change productiveRoleHolds context extension role
+    (quotientTerm context extension source)
+    (quotientTerm context extension target)
+  simp only [productiveRoleHolds]
+  exact ⟨source, target, rfl, rfl, htrue⟩
+
+@[simp] theorem productiveQuotientModel_eval_eq
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (left right : FTerm) :
+    (productiveQuotientModel context extension).evalL
+        (quotientAssignment context extension) (.eq left right) ↔
+      ProductiveCongruence context extension left right := by
+  rw [TModel.evalL, productiveQuotientModel_evalT,
+    productiveQuotientModel_evalT]
+  exact Quotient.eq
+
+theorem productiveQuotientModel_equality_of_true
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (left right : FTerm)
+    (htrue :
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained) (.eq left right)) :
+    (productiveQuotientModel context extension).evalL
+      (quotientAssignment context extension) (.eq left right) := by
+  rw [productiveQuotientModel_eval_eq]
+  exact ProductiveCongruence.productive (by
+    simpa [ProductiveEqualityRewrite] using htrue)
+
+@[simp] theorem productiveQuotientModel_eval_ineq
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (left right : FTerm) :
+    (productiveQuotientModel context extension).evalL
+        (quotientAssignment context extension) (.ineq left right) ↔
+      ¬ ProductiveCongruence context extension left right := by
+  rw [TModel.evalL, productiveQuotientModel_evalT,
+    productiveQuotientModel_evalT]
+  exact not_congr Quotient.eq
+
 #print axioms retained_literal_mem_ordered
 #print axioms self_mem_termAndSubterms
 #print axioms retained_equality_term_mem_ordered
@@ -272,5 +435,11 @@ theorem quotientTerm_productive_eq
 #print axioms productiveEqualityRewrite_wellFounded
 #print axioms quotientTerm_productive_eq
 #print axioms quotientApp_quotientTerm
+#print axioms productiveQuotientModel_evalT
+#print axioms productiveQuotientModel_concept_of_true
+#print axioms productiveQuotientModel_role_of_true
+#print axioms productiveQuotientModel_eval_eq
+#print axioms productiveQuotientModel_equality_of_true
+#print axioms productiveQuotientModel_eval_ineq
 
 end ContextCalculus.CBSourceEqualityCanonicalModel
