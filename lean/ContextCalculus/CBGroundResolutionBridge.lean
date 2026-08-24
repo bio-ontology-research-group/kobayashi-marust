@@ -182,6 +182,39 @@ theorem filterMap_inequality_without_eq (literals : List FLit)
     subst literal
     simp [inequalityAtom?] at hatom
 
+theorem filterMap_inequality_without_predicate (literals : List FLit)
+    (predicate : FPred) :
+    ((without (.P predicate) literals).filterMap inequalityAtom?).toFinset =
+      (literals.filterMap inequalityAtom?).toFinset := by
+  ext atom
+  simp only [List.mem_toFinset, List.mem_filterMap]
+  constructor
+  · rintro ⟨literal, hliteral, hatom⟩
+    exact ⟨literal, (mem_without.mp hliteral).1, hatom⟩
+  · rintro ⟨literal, hliteral, hatom⟩
+    refine ⟨literal, mem_without.mpr ⟨hliteral, ?_⟩, hatom⟩
+    intro hequal
+    subst literal
+    simp [inequalityAtom?] at hatom
+
+theorem conceptAtom_not_mem_inequalityAtoms
+    (literals : List FLit) (concept : Nat) (term : FTerm) :
+    Eqv.GAtom.con concept term ∉
+      (literals.filterMap inequalityAtom?).toFinset := by
+  intro hmember
+  rw [List.mem_toFinset, List.mem_filterMap] at hmember
+  obtain ⟨literal, _, hatom⟩ := hmember
+  cases literal <;> simp [inequalityAtom?] at hatom
+
+theorem roleAtom_not_mem_inequalityAtoms
+    (literals : List FLit) (role : Nat) (source target : FTerm) :
+    Eqv.GAtom.rol role source target ∉
+      (literals.filterMap inequalityAtom?).toFinset := by
+  intro hmember
+  rw [List.mem_toFinset, List.mem_filterMap] at hmember
+  obtain ⟨literal, _, hatom⟩ := hmember
+  cases literal <;> simp [inequalityAtom?] at hatom
+
 theorem equalityAtom_not_mem_body_positive
     (clause : FCL) (hbody : PredicateBody clause) (left right : FTerm) :
     .eqa left right ∉ (clause.body.filterMap positiveAtom?).toFinset := by
@@ -382,6 +415,77 @@ theorem groundClause_resolvent {positive negative : FCL} {literal : FLit}
       List.toFinset_append]
     rw [filterMap_positive_without positive.head literal atom hatom]
 
+/-- Exact ordinary Resolution correspondence for production clauses. Checked
+body polarity makes the resolved literal a predicate atom, so it cannot alias
+an equality atom contributed by a head disequality. -/
+theorem groundClause_resolvent_of_predicateBody
+    {positive negative : FCL} {literal : FLit}
+    (_hpositiveBody : PredicateBody positive)
+    (hnegativeBody : PredicateBody negative)
+    (hhead : literal ∈ positive.head) (hbody : literal ∈ negative.body) :
+    ∃ atom : GroundAtom,
+      positiveAtom? literal = some atom ∧
+      groundClause (ContextCalculus.resolvent positive negative literal) =
+        PropRes.resolvent (groundClause positive) (groundClause negative) atom := by
+  obtain ⟨predicate, rfl⟩ := hnegativeBody literal hbody
+  cases predicate with
+  | concept concept term =>
+      refine ⟨.con concept term, rfl, ?_⟩
+      rw [PClause.mk.injEq]
+      constructor
+      · simp only [groundClause, negativeAtoms, ContextCalculus.resolvent,
+          List.filterMap_append, List.toFinset_append, PropRes.resolvent]
+        rw [filterMap_positive_without negative.body (.P (.concept concept term))
+          (.con concept term) rfl]
+        rw [filterMap_inequality_without_predicate positive.head
+          (.concept concept term)]
+        have hnot := conceptAtom_not_mem_inequalityAtoms negative.head concept term
+        have hnot' : ¬ ∃ literal ∈ negative.head,
+            inequalityAtom? literal = some (.con concept term) := by
+          simpa [List.mem_filterMap] using hnot
+        ext atom
+        by_cases hatom : atom = .con concept term
+        · subst atom
+          simp [hnot', or_assoc, or_left_comm, or_comm]
+        · simp [hatom, or_assoc, or_left_comm, or_comm]
+      · simp only [groundClause, positiveAtoms, ContextCalculus.resolvent,
+          List.filterMap_append, List.toFinset_append, PropRes.resolvent]
+        rw [filterMap_positive_without positive.head (.P (.concept concept term))
+          (.con concept term) rfl]
+        rw [filterMap_inequality_without_predicate negative.body
+          (.concept concept term)]
+        rw [filterMap_inequality_eq_nil_of_predicateBody _ _hpositiveBody,
+          filterMap_inequality_eq_nil_of_predicateBody _ hnegativeBody]
+        simp only [List.toFinset_nil, Finset.union_empty]
+  | role role source target =>
+      refine ⟨.rol role source target, rfl, ?_⟩
+      rw [PClause.mk.injEq]
+      constructor
+      · simp only [groundClause, negativeAtoms, ContextCalculus.resolvent,
+          List.filterMap_append, List.toFinset_append, PropRes.resolvent]
+        rw [filterMap_positive_without negative.body (.P (.role role source target))
+          (.rol role source target) rfl]
+        rw [filterMap_inequality_without_predicate positive.head
+          (.role role source target)]
+        have hnot := roleAtom_not_mem_inequalityAtoms negative.head role source target
+        have hnot' : ¬ ∃ literal ∈ negative.head,
+            inequalityAtom? literal = some (.rol role source target) := by
+          simpa [List.mem_filterMap] using hnot
+        ext atom
+        by_cases hatom : atom = .rol role source target
+        · subst atom
+          simp [hnot', or_assoc, or_left_comm, or_comm]
+        · simp [hatom, or_assoc, or_left_comm, or_comm]
+      · simp only [groundClause, positiveAtoms, ContextCalculus.resolvent,
+          List.filterMap_append, List.toFinset_append, PropRes.resolvent]
+        rw [filterMap_positive_without positive.head (.P (.role role source target))
+          (.rol role source target) rfl]
+        rw [filterMap_inequality_without_predicate negative.body
+          (.role role source target)]
+        rw [filterMap_inequality_eq_nil_of_predicateBody _ _hpositiveBody,
+          filterMap_inequality_eq_nil_of_predicateBody _ hnegativeBody]
+        simp only [List.toFinset_nil, Finset.union_empty]
+
 /-- Source-bound local closure supplies every propositional resolvent of an
 inequality-free retained context, modulo the same retained antichain. -/
 theorem local_ground_resolution_closed (retained : List FCL)
@@ -429,6 +533,55 @@ theorem local_ground_resolution_closed (retained : List FCL)
   rw [← htranslation]
   exact exists_ground_strengthening hretained
 
+/-- Ordinary ground resolvents whose negative occurrence comes from a checked
+predicate body are covered by KM's local Resolution closure even when retained
+heads also contain equality or disequality literals. -/
+theorem local_ground_resolution_closed_of_predicateBody (retained : List FCL)
+    (hbodyShape : ∀ clause ∈ retained, PredicateBody clause)
+    (hclosed : ∀ candidate ∈ localResolutionCandidates retained,
+      ∃ clause ∈ retained, CBProductionTrace.Strengthens clause candidate) :
+    ∀ positiveGround ∈ groundSet retained,
+      ∀ negativeGround ∈ groundSet retained, ∀ atom : GroundAtom,
+        atom ∈ positiveGround.pos →
+        (∃ negative ∈ retained,
+          groundClause negative = negativeGround ∧
+          ∃ literal ∈ negative.body,
+            positiveAtom? literal = some atom) →
+        ∃ retainedGround ∈ groundSet retained,
+          OrdResModulo.Strengthens retainedGround
+            (PropRes.resolvent positiveGround negativeGround atom) := by
+  intro positiveGround hpositiveGround negativeGround _ atom
+    hatomPositive hnegativeWitness
+  obtain ⟨positive, hpositive, rfl⟩ :=
+    (mem_groundSet_iff retained positiveGround).mp hpositiveGround
+  obtain ⟨negative, hnegative, rfl, negativeLiteral,
+      hnegativeBody, hnegativeAtom⟩ := hnegativeWitness
+  have hpositiveShape := hbodyShape positive hpositive
+  have hnegativeShape := hbodyShape negative hnegative
+  have hatomPositive' : atom ∈ positiveAtoms positive :=
+    List.mem_toFinset.mp hatomPositive
+  rw [mem_positiveAtoms_of_predicateBody positive hpositiveShape] at hatomPositive'
+  obtain ⟨positiveLiteral, hpositiveHead, hpositiveAtom⟩ := hatomPositive'
+  have hliteral : positiveLiteral = negativeLiteral :=
+    positiveAtom_injective hpositiveAtom hnegativeAtom
+  subst negativeLiteral
+  let candidate := ContextCalculus.resolvent positive negative positiveLiteral
+  have hcandidate : candidate ∈ localResolutionCandidates retained := by
+    simp only [localResolutionCandidates, List.mem_flatMap]
+    refine ⟨positive, hpositive, negative, hnegative, ?_⟩
+    rw [List.mem_filterMap]
+    refine ⟨positiveLiteral, hpositiveHead, ?_⟩
+    simp [hnegativeBody, candidate]
+  have hretained := hclosed candidate hcandidate
+  obtain ⟨translatedAtom, htranslatedAtom, htranslation⟩ :=
+    groundClause_resolvent_of_predicateBody hpositiveShape hnegativeShape
+      hpositiveHead hnegativeBody
+  have hatomsEqual : translatedAtom = atom :=
+    Option.some.inj (htranslatedAtom.symm.trans hpositiveAtom)
+  subst translatedAtom
+  rw [← htranslation]
+  exact exists_ground_strengthening hretained
+
 theorem local_ground_closedModulo [LinearOrder GroundAtom]
     (retained : List FCL)
     (hfree : ∀ clause ∈ retained, InequalityFree clause)
@@ -461,7 +614,9 @@ theorem local_ground_model [LinearOrder GroundAtom] [WellFoundedLT GroundAtom]
 #print axioms productionParamodulant_cancel_no_reflexive_eq
 #print axioms filterMap_positive_without
 #print axioms groundClause_resolvent
+#print axioms groundClause_resolvent_of_predicateBody
 #print axioms local_ground_resolution_closed
+#print axioms local_ground_resolution_closed_of_predicateBody
 #print axioms local_ground_closedModulo
 #print axioms local_ground_model
 
