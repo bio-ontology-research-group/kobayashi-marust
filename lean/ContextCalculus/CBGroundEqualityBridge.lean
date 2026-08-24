@@ -219,11 +219,25 @@ theorem groundSet_model_of_closed [LinearOrder GroundAtom]
     OrdResModulo.ordered_model_exists (groundSet clauses) hclosed hbot
   exact ⟨valuation, (models_groundSet_iff valuation clauses).mp hmodel⟩
 
+/-- Canonical ordered model when generated tautologies are deleted instead of
+being represented in the retained antichain. -/
+theorem groundSet_model_of_closedModuloTautology [LinearOrder GroundAtom]
+    [WellFoundedLT GroundAtom] (clauses : List FCL)
+    (hclosed : OrdResModulo.ClosedModuloTautology (groundSet clauses))
+    (hbot : PClause.bot ∉ groundSet clauses) :
+    ∃ valuation : GroundAtom → Prop,
+      ∀ clause ∈ clauses, sat (evalGroundLiteral valuation) clause := by
+  obtain ⟨valuation, hmodel⟩ :=
+    OrdResModulo.ordered_model_exists_of_closedModuloTautology
+      (groundSet clauses) hclosed hbot
+  exact ⟨valuation, (models_groundSet_iff valuation clauses).mp hmodel⟩
+
 #print axioms groundClause_sat_iff
 #print axioms groundClause_strengthens
 #print axioms exists_ground_strengthening
 #print axioms models_groundSet_iff
 #print axioms unsat_groundSet_iff
 #print axioms groundSet_model_of_closed
+#print axioms groundSet_model_of_closedModuloTautology
 
 end ContextCalculus.CBGroundEqualityBridge

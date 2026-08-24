@@ -232,6 +232,86 @@ theorem groundClause_productionParamodulant_cancel
     simp only [List.toFinset_nil, Finset.union_empty]
     ac_rfl
 
+/-- If a raw generated head contains no reflexive equality, rejection by KM's
+normalizer witnesses an equality/disequality complement. Its ground clause is
+therefore propositionally tautological. -/
+theorem groundClause_tautological_of_normalizeGeneratedHead_none
+    (clause : FCL)
+    (hnoReflexive : ∀ term, .eq term term ∉ clause.head)
+    (hnone : CBLocalFactorClosureWire.normalizeGeneratedHead clause.head = none) :
+    OrdResModulo.Tautological (groundClause clause) := by
+  cases hfilter : CBLocalFactorClosureWire.filterReflexiveHead clause.head with
+  | none =>
+      unfold CBLocalFactorClosureWire.filterReflexiveHead at hfilter
+      split at hfilter
+      next hany =>
+        obtain ⟨literal, hliteral, hreflexive⟩ := List.any_eq_true.mp hany
+        cases literal with
+        | P predicate =>
+            simp [CBLocalFactorClosureWire.isReflexiveEquality] at hreflexive
+        | ineq left right =>
+            simp [CBLocalFactorClosureWire.isReflexiveEquality] at hreflexive
+        | eq left right =>
+            simp only [CBLocalFactorClosureWire.isReflexiveEquality,
+              decide_eq_true_eq] at hreflexive
+            subst right
+            exact False.elim (hnoReflexive left hliteral)
+      next _ => contradiction
+  | some filtered =>
+      have hcomplement :
+          CBLocalFactorClosureWire.hasEqualityComplement filtered = true := by
+        by_contra hfalse
+        have hfalse' :
+            CBLocalFactorClosureWire.hasEqualityComplement filtered = false :=
+          Bool.eq_false_of_not_eq_true hfalse
+        simp [CBLocalFactorClosureWire.normalizeGeneratedHead, hfilter,
+          hfalse'] at hnone
+      obtain ⟨literal, hliteral, hpaired⟩ :=
+        List.any_eq_true.mp hcomplement
+      cases literal with
+      | P predicate =>
+          simp [CBLocalFactorClosureWire.hasEqualityComplement] at hpaired
+      | ineq left right =>
+          simp [CBLocalFactorClosureWire.hasEqualityComplement] at hpaired
+      | eq left right =>
+          have hfiltered : filtered = clause.head.filter fun literal =>
+              !CBLocalFactorClosureWire.isReflexiveInequality literal := by
+            unfold CBLocalFactorClosureWire.filterReflexiveHead at hfilter
+            split at hfilter
+            · contradiction
+            next _ => exact Option.some.inj hfilter |>.symm
+          have hequality : .eq left right ∈ clause.head := by
+            rw [hfiltered, List.mem_filter] at hliteral
+            exact hliteral.1
+          have hinequalityFiltered : .ineq left right ∈ filtered := by
+            simpa [CBLocalFactorClosureWire.hasEqualityComplement] using hpaired
+          have hinequality : .ineq left right ∈ clause.head := by
+            rw [hfiltered, List.mem_filter] at hinequalityFiltered
+            exact hinequalityFiltered.1
+          refine ⟨.eqa left right, ?_, ?_⟩
+          · rw [show (groundClause clause).neg =
+                (negativeAtoms clause).toFinset from rfl,
+              List.mem_toFinset, mem_negativeAtoms_iff]
+            exact Or.inr ⟨.ineq left right, hinequality, rfl⟩
+          · rw [show (groundClause clause).pos =
+                (positiveAtoms clause).toFinset from rfl,
+              List.mem_toFinset, mem_positiveAtoms_iff]
+            exact Or.inl ⟨.eq left right, hequality, rfl⟩
+
+theorem productionParamodulant_cancel_no_reflexive_eq
+    (equalityClause targetClause : FCL) (left right : FTerm)
+    (hequalityNoReflexive : ∀ term, .eq term term ∉ equalityClause.head)
+    (htargetNoReflexive : ∀ term, .eq term term ∉ targetClause.head) :
+    ∀ term, .eq term term ∉
+      (CBLocalEqEnumeration.productionParamodulant targetClause equalityClause
+        (.ineq left right) (.eq left right) none).head := by
+  intro term hmember
+  simp only [CBLocalEqEnumeration.productionParamodulant,
+    Option.toList_none, List.nil_append, List.mem_append] at hmember
+  rcases hmember with htarget | hequality
+  · exact htargetNoReflexive term (mem_without.mp htarget).1
+  · exact hequalityNoReflexive term (mem_without.mp hequality).1
+
 theorem filterMap_inequality_eq_nil (literals : List FLit)
     (hfree : ∀ literal ∈ literals, inequalityAtom? literal = none) :
     literals.filterMap inequalityAtom? = [] := by
@@ -377,6 +457,8 @@ theorem local_ground_model [LinearOrder GroundAtom] [WellFoundedLT GroundAtom]
 #print axioms mem_positiveAtoms_of_predicateBody
 #print axioms mem_negativeAtoms_of_predicateBody
 #print axioms groundClause_productionParamodulant_cancel
+#print axioms groundClause_tautological_of_normalizeGeneratedHead_none
+#print axioms productionParamodulant_cancel_no_reflexive_eq
 #print axioms filterMap_positive_without
 #print axioms groundClause_resolvent
 #print axioms local_ground_resolution_closed
