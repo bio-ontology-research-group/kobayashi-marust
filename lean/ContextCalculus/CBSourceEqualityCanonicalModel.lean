@@ -492,6 +492,58 @@ theorem productiveClassNormalForm_eq_of_equivalent
         ⟨ProductiveEquivalence.symm hequivalent, hright, hleft,
           by simpa [DecodedSourceFiniteOrder.termLt] using hgt⟩).symm
 
+theorem productiveEquivalence_eq_or_mem_ordered
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    {left right : FTerm}
+    (hequivalent : ProductiveEquivalence context extension left right) :
+    left = right ∨
+      (left ∈ (hyperOf decoded).order.orderedTerms ∧
+        right ∈ (hyperOf decoded).order.orderedTerms) := by
+  induction hequivalent with
+  | productive hrewrite =>
+      obtain ⟨hsmaller, hlarger⟩ :=
+        productiveEqualityRewrite_terms_mem_ordered context hcontext extension
+          hrewrite
+      exact Or.inr ⟨hlarger, hsmaller⟩
+  | refl term => exact Or.inl rfl
+  | symm hequivalent ih =>
+      rcases ih with hequal | ⟨hleft, hright⟩
+      · exact Or.inl hequal.symm
+      · exact Or.inr ⟨hright, hleft⟩
+  | trans hleft hright ihleft ihright =>
+      rcases ihleft with hequalLeft | ⟨hfirst, hmiddle⟩
+      · subst_vars
+        exact ihright
+      · rcases ihright with hequalRight | ⟨_, hlast⟩
+        · subst_vars
+          exact Or.inr ⟨hfirst, hmiddle⟩
+        · exact Or.inr ⟨hfirst, hlast⟩
+
+theorem productiveClassNormalForm_eq_of_equivalent_any
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    {left right : FTerm}
+    (hequivalent : ProductiveEquivalence context extension left right) :
+    productiveClassNormalForm context extension left =
+      productiveClassNormalForm context extension right := by
+  rcases productiveEquivalence_eq_or_mem_ordered context hcontext extension
+      hequivalent with hequal | ⟨hleft, hright⟩
+  · subst right
+    rfl
+  · exact productiveClassNormalForm_eq_of_equivalent context extension
+      hequivalent hleft hright
+
 abbrev ProductiveSourceQuotient
     {decoded : DecodedSourceRootPredClosureDocument}
     (context : DecodedProductionContext
@@ -509,6 +561,108 @@ def sourceQuotientTerm
     (extension : ComputedLinearExtension
       (hyperOf decoded).order context.root) (term : FTerm) :
     ProductiveSourceQuotient context extension := Quotient.mk _ term
+
+/-- Canonical predicate extension: evaluate the exact ordered candidate only
+at the unique normal-form representative of an equality class. -/
+noncomputable def normalSourceConceptHolds
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (concept : Nat) :
+    ProductiveSourceQuotient context extension → Prop :=
+  Quotient.lift
+    (fun term =>
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained)
+        (.P (.concept concept
+          (productiveClassNormalForm context extension term))))
+    (by
+      intro left right hequivalent
+      apply propext
+      dsimp only
+      rw [productiveClassNormalForm_eq_of_equivalent_any context hcontext
+        extension hequivalent])
+
+noncomputable def normalSourceRoleHolds
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (role : Nat) :
+    ProductiveSourceQuotient context extension →
+      ProductiveSourceQuotient context extension → Prop :=
+  Quotient.lift₂
+    (fun source target =>
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained)
+        (.P (.role role
+          (productiveClassNormalForm context extension source)
+          (productiveClassNormalForm context extension target))))
+    (by
+      intro source target source' target' hsource htarget
+      apply propext
+      dsimp only
+      rw [productiveClassNormalForm_eq_of_equivalent_any context hcontext
+          extension hsource,
+        productiveClassNormalForm_eq_of_equivalent_any context hcontext
+          extension htarget])
+
+noncomputable def normalProductiveSourceInterpretation
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    Eqv.Interp (ProductiveSourceQuotient context extension) Nat Nat Nat where
+  c := normalSourceConceptHolds context hcontext extension
+  r := normalSourceRoleHolds context hcontext extension
+  nm := fun individual => sourceQuotientTerm context extension (.const individual)
+
+@[simp] theorem normalSourceConceptHolds_mk
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (concept : Nat) (term : FTerm) :
+    normalSourceConceptHolds context hcontext extension concept
+        (sourceQuotientTerm context extension term) ↔
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained)
+        (.P (.concept concept
+          (productiveClassNormalForm context extension term))) :=
+  Iff.rfl
+
+@[simp] theorem normalSourceRoleHolds_mk
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (role : Nat)
+    (source target : FTerm) :
+    normalSourceRoleHolds context hcontext extension role
+        (sourceQuotientTerm context extension source)
+        (sourceQuotientTerm context extension target) ↔
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained)
+        (.P (.role role
+          (productiveClassNormalForm context extension source)
+          (productiveClassNormalForm context extension target))) :=
+  Iff.rfl
 
 def sourceConceptHolds
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -1201,6 +1355,10 @@ theorem productiveGroundValuation_of_Itrue_positive
 #print axioms productiveClassNormalForm_mem_ordered
 #print axioms productiveClassNormalForm_equivalent
 #print axioms productiveClassNormalForm_eq_of_equivalent
+#print axioms productiveEquivalence_eq_or_mem_ordered
+#print axioms productiveClassNormalForm_eq_of_equivalent_any
+#print axioms normalSourceConceptHolds_mk
+#print axioms normalSourceRoleHolds_mk
 #print axioms sourceConceptHolds_iff
 #print axioms sourceRoleHolds_iff
 #print axioms productiveSourceGroundValuation_respectsEq
