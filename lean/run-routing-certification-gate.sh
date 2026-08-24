@@ -79,7 +79,9 @@ for theorem in \
     WireDirectTaxonomyPublication.check_sound \
     directHTCheck_common_routing_source_sound \
     WireMixedTaxonomyPublication.check_sound \
+    mixedHTCheck_common_routing_source_sound \
     WireBundleTaxonomyPublication.check_sound \
+    bundleHTCheck_common_routing_source_sound \
     entailsSub_mixed_encode_iff \
     WireMixedCommonSource.check_sound \
     entailsSub_bundles_encode_iff \

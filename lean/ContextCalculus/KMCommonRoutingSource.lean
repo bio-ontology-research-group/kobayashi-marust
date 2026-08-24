@@ -1,6 +1,8 @@
 import ContextCalculus.ELCommonSourceWire
 import ContextCalculus.HTCheckerTermEmbedding
 import ContextCalculus.HTDirectTaxonomyCommonPublication
+import ContextCalculus.HTMixedTaxonomyCommonPublication
+import ContextCalculus.HTBundleTaxonomyCommonPublication
 import ContextCalculus.CBSourceProductionTaxonomyWire
 
 /-!
@@ -128,6 +130,51 @@ theorem unsatisfiable_directHTOntology_iff
   simp only [Unsatisfiable, directHTOntology,
     HTCheckerTermEmbedding.CommonUnsatisfiableConcept, List.forall_mem_map]
 
+def mixedHTOntology
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (pairs : List (Hypertableau.SkolemPairSpec Nat Nat Nat Nat)) : List FCL :=
+  HTSkolemPairCheckerTermEmbedding.encodeMixed direct pairs
+
+theorem entails_mixedHTOntology_iff
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (pairs : List (Hypertableau.SkolemPairSpec Nat Nat Nat Nat))
+    (sub sup : Nat) :
+    Entails (mixedHTOntology direct pairs) sub sup ↔
+      HTSkolemPairCheckerTermEmbedding.CommonEntailsSub direct pairs sub sup := by
+  rfl
+
+theorem unsatisfiable_mixedHTOntology_iff
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (pairs : List (Hypertableau.SkolemPairSpec Nat Nat Nat Nat))
+    (concept : Nat) :
+    Unsatisfiable (mixedHTOntology direct pairs) concept ↔
+      HTSkolemPairCheckerTermEmbedding.CommonUnsatisfiableConcept
+        direct pairs concept := by
+  rfl
+
+def bundleHTOntology
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (bundles : List (Hypertableau.BundleSpec Nat Nat Nat Nat)) : List FCL :=
+  HTSkolemBundleCheckerTermEmbedding.encodeBundles direct bundles
+
+theorem entails_bundleHTOntology_iff
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (bundles : List (Hypertableau.BundleSpec Nat Nat Nat Nat))
+    (sub sup : Nat) :
+    Entails (bundleHTOntology direct bundles) sub sup ↔
+      HTSkolemBundleCheckerTermEmbedding.CommonEntailsSub
+        direct bundles sub sup := by
+  rfl
+
+theorem unsatisfiable_bundleHTOntology_iff
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (bundles : List (Hypertableau.BundleSpec Nat Nat Nat Nat))
+    (concept : Nat) :
+    Unsatisfiable (bundleHTOntology direct bundles) concept ↔
+      HTSkolemBundleCheckerTermEmbedding.CommonUnsatisfiableConcept
+        direct bundles concept := by
+  rfl
+
 theorem entails_cbOntology_iff (ontology : List FCL) (sub sup : Nat) :
     Entails ontology sub sup ↔
       CBSourceProductionTaxonomyWire.Entails ontology sub sup := by
@@ -232,6 +279,140 @@ theorem directHTCheck_common_routing_source_sound
   exact ⟨hruns, hpayload, decoded, hdecode,
     directHTRoutingSemantics decoded⟩
 
+def mixedHTPublicationOntology :
+    HTMixedTaxonomyCommonPublication.DecodedMixedTaxonomyPublication → List FCL
+  | .plain common .. =>
+      mixedHTOntology common.commonDirect common.commonPairs
+  | .mixed common .. =>
+      mixedHTOntology common.commonDirect common.commonPairs
+
+def MixedHTRoutingSemantics
+    (decoded :
+      HTMixedTaxonomyCommonPublication.DecodedMixedTaxonomyPublication) : Prop :=
+  match decoded with
+  | .plain common taxonomy _ conceptCount _ _ =>
+      (∀ concept : Fin common.projection.concepts.length,
+        Fin.cast conceptCount concept ∈ taxonomy.target.named →
+        (Fin.cast conceptCount concept ∈ taxonomy.semantic.unsatisfiable ↔
+          Unsatisfiable (mixedHTPublicationOntology decoded) concept.val)) ∧
+      (∀ sub sup : Fin common.projection.concepts.length,
+        Fin.cast conceptCount sub ∈ taxonomy.target.named →
+        Fin.cast conceptCount sup ∈ taxonomy.target.named →
+        ((Fin.cast conceptCount sub, Fin.cast conceptCount sup) ∈
+            taxonomy.semantic.subsumptions ↔
+          Entails (mixedHTPublicationOntology decoded) sub.val sup.val))
+  | .mixed common taxonomy _ conceptCount _ _ =>
+      (∀ concept : Fin common.projection.concepts.length,
+        Fin.cast conceptCount concept ∈ taxonomy.target.named →
+        (Fin.cast conceptCount concept ∈ taxonomy.semantic.unsatisfiable ↔
+          Unsatisfiable (mixedHTPublicationOntology decoded) concept.val)) ∧
+      (∀ sub sup : Fin common.projection.concepts.length,
+        Fin.cast conceptCount sub ∈ taxonomy.target.named →
+        Fin.cast conceptCount sup ∈ taxonomy.target.named →
+        ((Fin.cast conceptCount sub, Fin.cast conceptCount sup) ∈
+            taxonomy.semantic.subsumptions ↔
+          Entails (mixedHTPublicationOntology decoded) sub.val sup.val))
+
+theorem mixedHTRoutingSemantics
+    (decoded :
+      HTMixedTaxonomyCommonPublication.DecodedMixedTaxonomyPublication) :
+    MixedHTRoutingSemantics decoded := by
+  have hcommon :=
+    HTMixedTaxonomyCommonPublication.DecodedMixedTaxonomyPublication.common_semantics
+      decoded
+  cases decoded <;>
+    simpa [MixedHTRoutingSemantics, mixedHTPublicationOntology,
+      mixedHTOntology, Entails, Unsatisfiable,
+      HTMixedCommonSourceWire.DecodedMixedCommonSource.CommonEntails,
+      HTMixedCommonSourceWire.DecodedMixedCommonSource.CommonUnsatisfiable,
+      HTSkolemPairCheckerTermEmbedding.CommonEntailsSub,
+      HTSkolemPairCheckerTermEmbedding.CommonUnsatisfiableConcept] using hcommon
+
+theorem mixedHTCheck_common_routing_source_sound
+    (wire : HTMixedTaxonomyCommonPublication.WireMixedTaxonomyPublication)
+    (hcheck : wire.check = .ok true) :
+    wire.document.runs.check = true ∧
+      wire.document.payloadBoundB = true ∧
+      ∃ decoded :
+          HTMixedTaxonomyCommonPublication.DecodedMixedTaxonomyPublication,
+        wire.decode = .ok decoded ∧ MixedHTRoutingSemantics decoded := by
+  rcases HTMixedTaxonomyCommonPublication.WireMixedTaxonomyPublication.check_sound
+      wire hcheck with ⟨hruns, hpayload, decoded, hdecode, _⟩
+  exact ⟨hruns, hpayload, decoded, hdecode,
+    mixedHTRoutingSemantics decoded⟩
+
+def bundleHTPublicationOntology :
+    HTBundleTaxonomyCommonPublication.DecodedBundleTaxonomyPublication → List FCL
+  | .plain common .. =>
+      bundleHTOntology common.commonDirect common.commonBundles
+  | .mixed common .. =>
+      bundleHTOntology common.commonDirect common.commonBundles
+
+def BundleHTRoutingSemantics
+    (decoded :
+      HTBundleTaxonomyCommonPublication.DecodedBundleTaxonomyPublication) : Prop :=
+  match decoded with
+  | .plain common taxonomy conceptCount _ _ =>
+      (∀ concept : Fin common.projection.sourceConcepts.length,
+        Fin.cast conceptCount (common.projection.sourceTargets concept) ∈
+          taxonomy.target.named →
+        (Fin.cast conceptCount (common.projection.sourceTargets concept) ∈
+            taxonomy.semantic.unsatisfiable ↔
+          Unsatisfiable (bundleHTPublicationOntology decoded) concept.val)) ∧
+      (∀ sub sup : Fin common.projection.sourceConcepts.length,
+        Fin.cast conceptCount (common.projection.sourceTargets sub) ∈
+          taxonomy.target.named →
+        Fin.cast conceptCount (common.projection.sourceTargets sup) ∈
+          taxonomy.target.named →
+        ((Fin.cast conceptCount (common.projection.sourceTargets sub),
+            Fin.cast conceptCount (common.projection.sourceTargets sup)) ∈
+            taxonomy.semantic.subsumptions ↔
+          Entails (bundleHTPublicationOntology decoded) sub.val sup.val))
+  | .mixed common taxonomy conceptCount _ _ =>
+      (∀ concept : Fin common.projection.sourceConcepts.length,
+        Fin.cast conceptCount (common.projection.sourceTargets concept) ∈
+          taxonomy.target.named →
+        (Fin.cast conceptCount (common.projection.sourceTargets concept) ∈
+            taxonomy.semantic.unsatisfiable ↔
+          Unsatisfiable (bundleHTPublicationOntology decoded) concept.val)) ∧
+      (∀ sub sup : Fin common.projection.sourceConcepts.length,
+        Fin.cast conceptCount (common.projection.sourceTargets sub) ∈
+          taxonomy.target.named →
+        Fin.cast conceptCount (common.projection.sourceTargets sup) ∈
+          taxonomy.target.named →
+        ((Fin.cast conceptCount (common.projection.sourceTargets sub),
+            Fin.cast conceptCount (common.projection.sourceTargets sup)) ∈
+            taxonomy.semantic.subsumptions ↔
+          Entails (bundleHTPublicationOntology decoded) sub.val sup.val))
+
+theorem bundleHTRoutingSemantics
+    (decoded :
+      HTBundleTaxonomyCommonPublication.DecodedBundleTaxonomyPublication) :
+    BundleHTRoutingSemantics decoded := by
+  have hcommon :=
+    HTBundleTaxonomyCommonPublication.DecodedBundleTaxonomyPublication.common_semantics
+      decoded
+  cases decoded <;>
+    simpa [BundleHTRoutingSemantics, bundleHTPublicationOntology,
+      bundleHTOntology, Entails, Unsatisfiable,
+      HTBundleCommonSourceWire.DecodedBundleCommonSource.CommonEntails,
+      HTBundleCommonSourceWire.DecodedBundleCommonSource.CommonUnsatisfiable,
+      HTSkolemBundleCheckerTermEmbedding.CommonEntailsSub,
+      HTSkolemBundleCheckerTermEmbedding.CommonUnsatisfiableConcept] using hcommon
+
+theorem bundleHTCheck_common_routing_source_sound
+    (wire : HTBundleTaxonomyCommonPublication.WireBundleTaxonomyPublication)
+    (hcheck : wire.check = .ok true) :
+    wire.document.runs.check = true ∧
+      wire.document.payloadBoundB = true ∧
+      ∃ decoded :
+          HTBundleTaxonomyCommonPublication.DecodedBundleTaxonomyPublication,
+        wire.decode = .ok decoded ∧ BundleHTRoutingSemantics decoded := by
+  rcases HTBundleTaxonomyCommonPublication.WireBundleTaxonomyPublication.check_sound
+      wire hcheck with ⟨hruns, hpayload, decoded, hdecode, _⟩
+  exact ⟨hruns, hpayload, decoded, hdecode,
+    bundleHTRoutingSemantics decoded⟩
+
 #print axioms models_elcOntology_iff
 #print axioms entails_elcOntology_iff
 #print axioms entails_directHTOntology_iff
@@ -239,5 +420,7 @@ theorem directHTCheck_common_routing_source_sound
 #print axioms entails_cbOntology_iff
 #print axioms ELCompletion.WireCertificate.check_common_routing_source_sound
 #print axioms directHTCheck_common_routing_source_sound
+#print axioms mixedHTCheck_common_routing_source_sound
+#print axioms bundleHTCheck_common_routing_source_sound
 
 end ContextCalculus.KMCommonRoutingSource
