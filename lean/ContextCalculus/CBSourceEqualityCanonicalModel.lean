@@ -60,6 +60,37 @@ theorem retained_clause_predicateBody
     PredicateBody clause :=
   context.retained_predicate_body clause hclause
 
+/-- Every production context has the unique checked live-state context with
+the same retained clauses and root-domain flag. -/
+theorem exists_live_context_of_production_context
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts) :
+    ∃ liveContext ∈ (liveOf decoded).contexts,
+      liveContext.retained = context.retained ∧
+        liveContext.rootDomain = context.root := by
+  obtain ⟨index, hindexBound, hindexGet⟩ :=
+    List.mem_iff_getElem.mp hcontext
+  have hindexRange : index ∈
+      List.range (liveOf decoded).production.contexts.length :=
+    List.mem_range.mpr hindexBound
+  rw [← (liveOf decoded).context_indices_exact] at hindexRange
+  obtain ⟨liveContext, hlive, hliveIndex⟩ :=
+    List.mem_map.mp hindexRange
+  have hcontextAt :
+      (liveOf decoded).production.contexts.get liveContext.contextIndex =
+        context := by
+    have hindexEq : liveContext.contextIndex.val = index := hliveIndex
+    have hfinEq : liveContext.contextIndex = ⟨index, hindexBound⟩ :=
+      Fin.ext hindexEq
+    rw [hfinEq]
+    exact hindexGet
+  refine ⟨liveContext, hlive, ?_, ?_⟩
+  · rw [liveContext.retained_eq, hcontextAt]
+  · rw [← liveContext.root_eq, hcontextAt]
+
 theorem self_mem_termAndSubterms (term : FTerm) :
     term ∈ termAndSubterms term := by
   cases term <;> simp [termAndSubterms]
@@ -346,6 +377,56 @@ def productiveRoleHolds
     quotientTerm context extension targetTerm = target ∧
     OrdRes.Itrue (rawSet context.retained)
       (.P (.role role sourceTerm targetTerm))
+
+theorem productiveConceptHolds_iff
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (concept : Nat) (term : FTerm) :
+    productiveConceptHolds context extension concept
+        (quotientTerm context extension term) ↔
+      ∃ witness,
+        ProductiveCongruence context extension witness term ∧
+        letI : LinearOrder FLit := linearOrder extension
+        letI : WellFoundedLT FLit := wellFoundedLT extension
+        OrdRes.Itrue (rawSet context.retained)
+          (.P (.concept concept witness)) := by
+  simp only [productiveConceptHolds]
+  constructor
+  · rintro ⟨witness, hequal, htrue⟩
+    exact ⟨witness, Quotient.eq.mp hequal, htrue⟩
+  · rintro ⟨witness, hequal, htrue⟩
+    exact ⟨witness, Quotient.sound hequal, htrue⟩
+
+theorem productiveRoleHolds_iff
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (role : Nat) (source target : FTerm) :
+    productiveRoleHolds context extension role
+        (quotientTerm context extension source)
+        (quotientTerm context extension target) ↔
+      ∃ sourceWitness targetWitness,
+        ProductiveCongruence context extension sourceWitness source ∧
+        ProductiveCongruence context extension targetWitness target ∧
+        letI : LinearOrder FLit := linearOrder extension
+        letI : WellFoundedLT FLit := wellFoundedLT extension
+        OrdRes.Itrue (rawSet context.retained)
+          (.P (.role role sourceWitness targetWitness)) := by
+  simp only [productiveRoleHolds]
+  constructor
+  · rintro ⟨sourceWitness, targetWitness, hsource, htarget, htrue⟩
+    exact ⟨sourceWitness, targetWitness, Quotient.eq.mp hsource,
+      Quotient.eq.mp htarget, htrue⟩
+  · rintro ⟨sourceWitness, targetWitness, hsource, htarget, htrue⟩
+    exact ⟨sourceWitness, targetWitness, Quotient.sound hsource,
+      Quotient.sound htarget, htrue⟩
 
 /-- The first-order equality model induced by the exact candidate valuation.
 Predicate extensions are the congruence closure of productive predicate facts;
@@ -679,6 +760,7 @@ theorem productiveGroundValuation_of_Itrue_positive
 #print axioms source_clause_predicateBody
 #print axioms source_instance_predicateBody
 #print axioms retained_clause_predicateBody
+#print axioms exists_live_context_of_production_context
 #print axioms self_mem_termAndSubterms
 #print axioms retained_equality_term_mem_ordered
 #print axioms retained_equality_strictly_decreases
@@ -687,6 +769,8 @@ theorem productiveGroundValuation_of_Itrue_positive
 #print axioms productiveEqualityRewrite_wellFounded
 #print axioms quotientTerm_productive_eq
 #print axioms productiveQuotientModel_evalT
+#print axioms productiveConceptHolds_iff
+#print axioms productiveRoleHolds_iff
 #print axioms productiveQuotientModel_concept_of_true
 #print axioms productiveQuotientModel_role_of_true
 #print axioms productiveQuotientModel_eval_eq
