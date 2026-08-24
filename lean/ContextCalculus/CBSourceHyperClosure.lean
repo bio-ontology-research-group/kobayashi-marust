@@ -327,6 +327,47 @@ theorem incomparable_pair_both_maximal
       · exact Or.inr hrightLeft
       · exact Or.inl rfl⟩
 
+structure LinearExtensionOn
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (support : List FLit) (rank : FLit → Nat) : Prop where
+  injective : ∀ left ∈ support, ∀ right ∈ support,
+    rank left = rank right → left = right
+  preserves : ∀ left ∈ support, ∀ right ∈ support,
+    order.literalLe root left right = true → rank left ≤ rank right
+
+/-- A maximum chosen by any injective total ranking extending production's
+partial literal order is production-maximal. This is the transfer needed to
+use a total ordered canonical-model construction while relying on KM's
+all-partial-maxima rule coverage. -/
+theorem total_rank_maximal_is_production_maximal
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (head : List FLit) (rank : FLit → Nat)
+    (hextension : LinearExtensionOn order root head rank)
+    (index : Nat) (literal : FLit)
+    (hindex : head[index]? = some literal)
+    (hmax : ∀ other ∈ head, rank other ≤ rank literal) :
+    index ∈ order.maximalHeadIndices root head := by
+  rw [mem_maximalHeadIndices_iff]
+  have hbound : index < head.length :=
+    (List.getElem?_eq_some_iff.mp hindex).1
+  have hliteral : literal ∈ head := by
+    obtain ⟨_, hget⟩ := List.getElem?_eq_some_iff.mp hindex
+    rw [← hget]
+    exact List.getElem_mem hbound
+  refine ⟨hbound, literal, hindex, ?_⟩
+  intro other hother
+  by_cases hequal : other = literal
+  · exact Or.inl hequal
+  · apply Or.inr
+    apply Bool.eq_false_iff.mpr
+    intro hle
+    have hrankLe : rank literal ≤ rank other :=
+      hextension.preserves literal hliteral other hother hle
+    have hrankEq : rank literal = rank other :=
+      Nat.le_antisymm hrankLe (hmax other hother)
+    exact hequal (hextension.injective other hother literal hliteral
+      hrankEq.symm)
+
 def maximalProvidersFor
     (order : DecodedSourceFiniteOrder production)
     (root : Bool) (retained : List FCL) (literal : FLit) : List ProviderLocation :=
@@ -438,6 +479,7 @@ theorem WireSourceHyperClosureDocument.check_sound
 #print axioms hyperCandidates_sound
 #print axioms mem_maximalHeadIndices_iff
 #print axioms incomparable_pair_both_maximal
+#print axioms total_rank_maximal_is_production_maximal
 #print axioms sourceHyperClosedB_sound
 #print axioms WireSourceHyperClosureDocument.check_sound
 

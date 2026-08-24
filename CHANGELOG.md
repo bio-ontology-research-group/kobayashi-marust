@@ -153,6 +153,12 @@
   regression test checks the same bitmask, and the full local CB certification
   gate, including native Rust-to-Lean closure documents, passes with the
   expanded candidate set.
+- Prove the order-transfer lemma needed by the CB canonical model. On any
+  retained head, a maximum of an injective total rank extending KM's partial
+  literal order is one of KM's production-maximal literals. Therefore the
+  existing all-partial-maxima closure covers whichever literal a total ordered
+  model construction selects. Constructing and checking the finite extending
+  rank over the complete source/live literal support remains the next step.
 
 ### Accept empty exact CB transfer partitions
 
