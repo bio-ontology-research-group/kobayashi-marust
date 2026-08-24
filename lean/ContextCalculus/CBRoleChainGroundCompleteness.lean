@@ -52,10 +52,34 @@ def chainsGround (chains : List (RoleChain RN)) :
     Finset (PClause (GAtom CN RN T)) :=
   (chains.map chainInsts).foldr (· ∪ ·) ∅
 
+def roleAxiomGroundClause (roleAxiom : RoleAxiom RN) (values : Fin 3 → T) :
+    PClause (GAtom CN RN T) :=
+  match roleAxiom with
+  | .symmetric role => clImp [.rol role (values 0) (values 1)]
+      [.rol role (values 1) (values 0)]
+  | .asymmetric role => clImp
+      [.rol role (values 0) (values 1), .rol role (values 1) (values 0)] []
+  | .reflexive role => clImp [] [.rol role (values 0) (values 0)]
+  | .irreflexive role => clImp [.rol role (values 0) (values 0)] []
+  | .inverseFunctional role => clImp
+      [.rol role (values 1) (values 0), .rol role (values 2) (values 0)]
+      [.eqa (values 1) (values 2)]
+  | .disjoint left right => clImp
+      [.rol left (values 0) (values 1), .rol right (values 0) (values 1)] []
+
+def roleAxiomInsts (roleAxiom : RoleAxiom RN) :
+    Finset (PClause (GAtom CN RN T)) :=
+  Finset.univ.image (roleAxiomGroundClause roleAxiom)
+
+def roleAxiomsGround (roleAxioms : List (RoleAxiom RN)) :
+    Finset (PClause (GAtom CN RN T)) :=
+  (roleAxioms.map roleAxiomInsts).foldr (· ∪ ·) ∅
+
 def groundSource (wit : CN → RN → CN → T → T)
     (source : SourceOntology CN RN T) :
     Finset (PClause (GAtom CN RN T)) :=
-  Eqv.ground wit source.clauses ∪ chainsGround source.chains
+  (Eqv.ground wit source.clauses ∪ chainsGround source.chains) ∪
+    roleAxiomsGround source.roleAxioms
 
 theorem mem_chainsGround {chain : RoleChain RN} {chains : List (RoleChain RN)}
     (hchain : chain ∈ chains) :
@@ -74,7 +98,7 @@ theorem mem_groundSource_base {wit : CN → RN → CN → T → T}
     {source : SourceOntology CN RN T} {clause : PClause (GAtom CN RN T)}
     (hclause : clause ∈ Eqv.ground wit source.clauses) :
     clause ∈ groundSource wit source :=
-  Finset.mem_union.mpr (Or.inl hclause)
+  Finset.mem_union.mpr (Or.inl (Finset.mem_union.mpr (Or.inl hclause)))
 
 theorem mem_groundSource_chain {wit : CN → RN → CN → T → T}
     {source : SourceOntology CN RN T} {chain : RoleChain RN}
@@ -82,8 +106,32 @@ theorem mem_groundSource_chain {wit : CN → RN → CN → T → T}
     (values : Fin (chain.body.length + 1) → T) :
     chainGroundClause chain values ∈ groundSource wit source := by
   apply Finset.mem_union.mpr
+  apply Or.inl
+  apply Finset.mem_union.mpr
   apply Or.inr
   apply mem_chainsGround hchain
+  exact Finset.mem_image_of_mem _ (Finset.mem_univ values)
+
+theorem mem_roleAxiomsGround {roleAxiom : RoleAxiom RN}
+    {roleAxioms : List (RoleAxiom RN)} (hroleAxiom : roleAxiom ∈ roleAxioms) :
+    roleAxiomInsts (CN := CN) (T := T) roleAxiom ⊆
+      roleAxiomsGround (CN := CN) (T := T) roleAxioms := by
+  induction roleAxioms with
+  | nil => simp at hroleAxiom
+  | cons first rest ih =>
+      rw [List.mem_cons] at hroleAxiom
+      simp only [roleAxiomsGround, List.map_cons, List.foldr_cons]
+      rcases hroleAxiom with rfl | hrest
+      · exact Finset.subset_union_left
+      · exact (ih hrest).trans Finset.subset_union_right
+
+theorem mem_groundSource_roleAxiom {wit : CN → RN → CN → T → T}
+    {source : SourceOntology CN RN T} {roleAxiom : RoleAxiom RN}
+    (hroleAxiom : roleAxiom ∈ source.roleAxioms) (values : Fin 3 → T) :
+    roleAxiomGroundClause roleAxiom values ∈ groundSource wit source := by
+  apply Finset.mem_union.mpr
+  apply Or.inr
+  apply mem_roleAxiomsGround hroleAxiom
   exact Finset.mem_image_of_mem _ (Finset.mem_univ values)
 
 theorem quotient_satisfies_chain
@@ -115,6 +163,97 @@ theorem quotient_satisfies_chain
     ← hvalues ⟨chain.body.length, Nat.lt_succ_self _⟩]
   exact htrue
 
+theorem quotient_satisfies_roleAxiom
+    {valuation : GAtom CN RN T → Prop} (respects : RespectsEq valuation)
+    {G : Finset (PClause (GAtom CN RN T))}
+    (hmodels : ∀ clause ∈ G, clause.sat valuation)
+    (roleAxiom : RoleAxiom RN)
+    (hinstances : ∀ values : Fin 3 → T,
+      roleAxiomGroundClause roleAxiom values ∈ G) :
+    satRoleAxiom (congruenceModel valuation respects).r roleAxiom := by
+  cases roleAxiom with
+  | symmetric role =>
+      intro first second hedge
+      obtain ⟨x, rfl⟩ := Quotient.exists_rep first
+      obtain ⟨y, rfl⟩ := Quotient.exists_rep second
+      let values : Fin 3 → T := ![x, y, x]
+      obtain ⟨atom, hatom, htrue⟩ := Eqv.useClause hmodels
+        (hinstances values) (by
+          intro atom hatom
+          simp only [roleAxiomGroundClause, List.mem_singleton] at hatom
+          subst atom
+          exact hedge)
+      simp only [roleAxiomGroundClause, List.mem_singleton] at hatom
+      subst atom
+      exact htrue
+  | asymmetric role =>
+      intro first second hforward hbackward
+      obtain ⟨x, rfl⟩ := Quotient.exists_rep first
+      obtain ⟨y, rfl⟩ := Quotient.exists_rep second
+      let values : Fin 3 → T := ![x, y, x]
+      obtain ⟨atom, hatom, _⟩ := Eqv.useClause hmodels
+        (hinstances values) (by
+          intro atom hatom
+          simp only [roleAxiomGroundClause, List.mem_cons, List.mem_singleton,
+            List.not_mem_nil, or_false] at hatom
+          rcases hatom with rfl | rfl
+          · exact hforward
+          · exact hbackward)
+      simp only [roleAxiomGroundClause, List.not_mem_nil] at hatom
+  | reflexive role =>
+      intro first
+      obtain ⟨x, rfl⟩ := Quotient.exists_rep first
+      let values : Fin 3 → T := ![x, x, x]
+      obtain ⟨atom, hatom, htrue⟩ := Eqv.useClause hmodels
+        (hinstances values) (by
+          intro atom hatom
+          simp only [roleAxiomGroundClause, List.not_mem_nil] at hatom)
+      simp only [roleAxiomGroundClause, List.mem_singleton] at hatom
+      subst atom
+      exact htrue
+  | irreflexive role =>
+      intro first hreflexive
+      obtain ⟨x, rfl⟩ := Quotient.exists_rep first
+      let values : Fin 3 → T := ![x, x, x]
+      obtain ⟨atom, hatom, _⟩ := Eqv.useClause hmodels
+        (hinstances values) (by
+          intro atom hatom
+          simp only [roleAxiomGroundClause, List.mem_singleton] at hatom
+          subst atom
+          exact hreflexive)
+      simp only [roleAxiomGroundClause, List.not_mem_nil] at hatom
+  | inverseFunctional role =>
+      intro target first second hfirst hsecond
+      obtain ⟨x, rfl⟩ := Quotient.exists_rep target
+      obtain ⟨y, rfl⟩ := Quotient.exists_rep first
+      obtain ⟨z, rfl⟩ := Quotient.exists_rep second
+      let values : Fin 3 → T := ![x, y, z]
+      obtain ⟨atom, hatom, htrue⟩ := Eqv.useClause hmodels
+        (hinstances values) (by
+          intro atom hatom
+          simp only [roleAxiomGroundClause, List.mem_cons, List.mem_singleton,
+            List.not_mem_nil, or_false] at hatom
+          rcases hatom with rfl | rfl
+          · exact hfirst
+          · exact hsecond)
+      simp only [roleAxiomGroundClause, List.mem_singleton] at hatom
+      subst atom
+      exact Quotient.sound htrue
+  | disjoint left right =>
+      intro source target hleft hright
+      obtain ⟨x, rfl⟩ := Quotient.exists_rep source
+      obtain ⟨y, rfl⟩ := Quotient.exists_rep target
+      let values : Fin 3 → T := ![x, y, x]
+      obtain ⟨atom, hatom, _⟩ := Eqv.useClause hmodels
+        (hinstances values) (by
+          intro atom hatom
+          simp only [roleAxiomGroundClause, List.mem_cons, List.mem_singleton,
+            List.not_mem_nil, or_false] at hatom
+          rcases hatom with rfl | rfl
+          · exact hleft
+          · exact hright)
+      simp only [roleAxiomGroundClause, List.not_mem_nil] at hatom
+
 theorem quotient_models_source
     {valuation : GAtom CN RN T → Prop}
     {wit : CN → RN → CN → T → T}
@@ -131,9 +270,13 @@ theorem quotient_models_source
   constructor
   · exact Eqv.congruenceModel_models respects hbase
       (Eqv.grounds_ground wit source.clauses)
-  · intro chain hchain
-    exact quotient_satisfies_chain respects hmodels chain
-      (fun values => mem_groundSource_chain hchain values)
+  · constructor
+    · intro chain hchain
+      exact quotient_satisfies_chain respects hmodels chain
+        (fun values => mem_groundSource_chain hchain values)
+    · intro roleAxiom hroleAxiom
+      exact quotient_satisfies_roleAxiom respects hmodels roleAxiom
+        (fun values => mem_groundSource_roleAxiom hroleAxiom values)
 
 theorem source_complete_ground
     (wit : CN → RN → CN → T → T)

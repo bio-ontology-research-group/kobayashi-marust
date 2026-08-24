@@ -239,40 +239,43 @@ theorem models_source_of_models_ht
         simpa [SafeClause.toOClause, Eqv.satO, restrictHT] using
           inverse_models interpretation source target hsourceTarget role inverse
             hforward hbackward
-  · intro chain hchain
-    simp only [SafeSource.toSource, List.mem_map] at hchain
-    rcases hchain with ⟨binary, hbinary, rfl⟩
-    intro values hedges
-    have hclause := hroles
-      ((NormalizedRoleClause.chain binary.first binary.second binary.conclusion
-        source middle target).toClause (Concept := Fin conceptCount)) (by
+  · constructor
+    · intro chain hchain
+      simp only [SafeSource.toSource, List.mem_map] at hchain
+      rcases hchain with ⟨binary, hbinary, rfl⟩
+      intro values hedges
+      have hclause := hroles
+        ((NormalizedRoleClause.chain binary.first binary.second binary.conclusion
+          source middle target).toClause (Concept := Fin conceptCount)) (by
           apply List.mem_map.mpr
           refine ⟨NormalizedRoleClause.chain binary.first binary.second
             binary.conclusion source middle target, ?_, rfl⟩
           simp only [roleClauses, List.mem_append]
           exact Or.inr (List.mem_map.mpr ⟨binary, hbinary, rfl⟩))
-    let assignment : Fin variableCount → D := fun node =>
-      if node = source then values 0
-      else if node = middle then values 1
-      else values 2
-    rcases hclause assignment (by
-      intro atom hatom
-      simp only [NormalizedRoleClause.toClause, List.mem_cons,
-        List.not_mem_nil, or_false] at hatom
-      rcases hatom with rfl | rfl
-      · simpa [Hypertableau.Interp.satAtom, assignment, hmiddleSource,
-          Ne.symm hmiddleSource] using
-          hedges ⟨0, by simp [BinaryChain.toRoleChain]⟩
-      · simpa [Hypertableau.Interp.satAtom, assignment, hmiddleTarget,
-          hsourceTarget, Ne.symm hsourceTarget, Ne.symm hmiddleTarget,
-          hmiddleSource, Ne.symm hmiddleSource] using
-          hedges ⟨1, by simp [BinaryChain.toRoleChain]⟩) with
-      ⟨atom, hatom, hsat⟩
-    simp only [NormalizedRoleClause.toClause, List.mem_singleton] at hatom
-    subst atom
-    simpa [Hypertableau.Interp.satAtom, assignment, hsourceTarget,
-      Ne.symm hsourceTarget, hmiddleTarget, Ne.symm hmiddleTarget,
-      BinaryChain.toRoleChain, restrictHT] using hsat
+      let assignment : Fin variableCount → D := fun node =>
+        if node = source then values 0
+        else if node = middle then values 1
+        else values 2
+      rcases hclause assignment (by
+        intro atom hatom
+        simp only [NormalizedRoleClause.toClause, List.mem_cons,
+          List.not_mem_nil, or_false] at hatom
+        rcases hatom with rfl | rfl
+        · simpa [Hypertableau.Interp.satAtom, assignment, hmiddleSource,
+            Ne.symm hmiddleSource] using
+            hedges ⟨0, by simp [BinaryChain.toRoleChain]⟩
+        · simpa [Hypertableau.Interp.satAtom, assignment, hmiddleTarget,
+            hsourceTarget, Ne.symm hsourceTarget, Ne.symm hmiddleTarget,
+            hmiddleSource, Ne.symm hmiddleSource] using
+            hedges ⟨1, by simp [BinaryChain.toRoleChain]⟩) with
+        ⟨atom, hatom, hsat⟩
+      simp only [NormalizedRoleClause.toClause, List.mem_singleton] at hatom
+      subst atom
+      simpa [Hypertableau.Interp.satAtom, assignment, hsourceTarget,
+        Ne.symm hsourceTarget, hmiddleTarget, Ne.symm hmiddleTarget,
+        BinaryChain.toRoleChain, restrictHT] using hsat
+    · intro roleAxiom hroleAxiom
+      simp [SafeSource.toSource] at hroleAxiom
 
 /-- A checked equality-free regular certificate over the exact residual and
 RBox translations yields a nested-term CB countermodel. -/

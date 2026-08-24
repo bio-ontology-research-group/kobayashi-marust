@@ -24,6 +24,7 @@ def mapSource (f : SourceConcept → TargetConcept)
     SourceOntology TargetConcept Role Individual where
   clauses := source.clauses.map (mapClause f)
   chains := source.chains
+  roleAxioms := source.roleAxioms
 
 def pullback (f : SourceConcept → TargetConcept)
     (target : Eqv.Interp D TargetConcept Role Individual) :
@@ -69,18 +70,22 @@ theorem models_mapSource_iff
     CBRoleChainEncoding.models target (mapSource f source) ↔
       CBRoleChainEncoding.models (pullback f target) source := by
   constructor
-  · rintro ⟨hclauses, hchains⟩
+  · rintro ⟨hclauses, hchains, hroleAxioms⟩
     constructor
     · intro clause hclause
       exact (sat_mapClause_iff f target clause).1
         (hclauses (mapClause f clause) (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
-    · simpa [mapSource, pullback] using hchains
-  · rintro ⟨hclauses, hchains⟩
+    · constructor
+      · simpa [mapSource, pullback] using hchains
+      · simpa [mapSource, pullback] using hroleAxioms
+  · rintro ⟨hclauses, hchains, hroleAxioms⟩
     constructor
     · intro targetClause htarget
       rcases List.mem_map.mp htarget with ⟨clause, hclause, rfl⟩
       exact (sat_mapClause_iff f target clause).2 (hclauses clause hclause)
-    · simpa [mapSource, pullback] using hchains
+    · constructor
+      · simpa [mapSource, pullback] using hchains
+      · simpa [mapSource, pullback] using hroleAxioms
 
 #print axioms sat_mapClause_iff
 #print axioms models_mapSource_iff

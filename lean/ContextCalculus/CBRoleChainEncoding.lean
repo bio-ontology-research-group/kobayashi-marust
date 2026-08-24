@@ -19,6 +19,17 @@ structure RoleChain (Role : Type) where
   sup : Role
 deriving DecidableEq, Repr
 
+/-- Normalized role axioms emitted directly by the OWL frontend but not
+expressible as role inclusions or chains. -/
+inductive RoleAxiom (Role : Type) where
+  | symmetric (role : Role)
+  | asymmetric (role : Role)
+  | reflexive (role : Role)
+  | irreflexive (role : Role)
+  | inverseFunctional (role : Role)
+  | disjoint (left right : Role)
+deriving DecidableEq, Repr
+
 /-- Values along a chain path. The premise contains one edge for every role in
     the chain and the conclusion contains the corresponding super-role edge. -/
 def satChain {D Role : Type} (interpretation : Role → D → D → Prop)
@@ -34,18 +45,31 @@ def satChain {D Role : Type} (interpretation : Role → D → D → Prop)
 structure SourceOntology (Concept Role Individual : Type) where
   clauses : Eqv.Ontology Concept Role Individual
   chains : List (RoleChain Role)
+  roleAxioms : List (RoleAxiom Role) := []
+
+def satRoleAxiom {D Role : Type} (interpretation : Role → D → D → Prop) :
+    RoleAxiom Role → Prop
+  | .symmetric role => ∀ x y, interpretation role x y → interpretation role y x
+  | .asymmetric role => ∀ x y, interpretation role x y → ¬interpretation role y x
+  | .reflexive role => ∀ x, interpretation role x x
+  | .irreflexive role => ∀ x, ¬interpretation role x x
+  | .inverseFunctional role => ∀ x y z,
+      interpretation role y x → interpretation role z x → y = z
+  | .disjoint left right => ∀ x y,
+      interpretation left x y → ¬interpretation right x y
 
 def models {D Concept Role Individual : Type}
     (interpretation : Eqv.Interp D Concept Role Individual)
     (source : SourceOntology Concept Role Individual) : Prop :=
   Eqv.models interpretation source.clauses ∧
-    ∀ chain ∈ source.chains, satChain interpretation.r chain
+    (∀ chain ∈ source.chains, satChain interpretation.r chain) ∧
+    ∀ roleAxiom ∈ source.roleAxioms, satRoleAxiom interpretation.r roleAxiom
 
 private def node (index : Nat) : FTerm :=
   .var (-(Int.ofNat index))
 
 private abbrev rol (role : Fin roleCount) (source target : FTerm) : FLit :=
-  CBALCEncoding.rol role source target
+  .P (.role role.val source target)
 
 private def chainBody (chain : RoleChain (Fin roleCount)) : List FLit :=
   List.ofFn fun i : Fin chain.body.length =>
@@ -55,10 +79,24 @@ def encodeChain (chain : RoleChain (Fin roleCount)) : FCL :=
   ⟨chainBody chain,
     [rol chain.sup (node 0) (node chain.body.length)]⟩
 
+private def x : FTerm := .var 0
+private def y : FTerm := .var (-1)
+private def z : FTerm := .var (-2)
+
+def encodeRoleAxiom : RoleAxiom (Fin roleCount) → FCL
+  | .symmetric role => ⟨[rol role x y], [rol role y x]⟩
+  | .asymmetric role => ⟨[rol role x y, rol role y x], []⟩
+  | .reflexive role => ⟨[], [rol role x x]⟩
+  | .irreflexive role => ⟨[rol role x x], []⟩
+  | .inverseFunctional role =>
+      ⟨[rol role y x, rol role z x], [.eq y z]⟩
+  | .disjoint left right => ⟨[rol left x y, rol right x y], []⟩
+
 def encode
     (source : SourceOntology (Fin conceptCount) (Fin roleCount) (Fin individualCount)) :
     List FCL :=
-  CBEqEncoding.encode source.clauses ++ source.chains.map encodeChain
+  CBEqEncoding.encode source.clauses ++ source.chains.map encodeChain ++
+    source.roleAxioms.map encodeRoleAxiom
 
 private def chainAssignment {length : Nat}
     (values : Fin (length + 1) → D) (id : Int) : D :=
@@ -116,6 +154,72 @@ theorem valid_encodeChain_iff (model : TModel D)
         (rol (chain.body.get i) (node i.val) (node (i.val + 1)))
         (mem_chainBody.mpr ⟨i, rfl⟩))
 
+private theorem forallAssignment1 (property : D → Prop) :
+    (∀ assignment : Int → D, property (assignment 0)) ↔ ∀ value, property value := by
+  constructor
+  · intro hall value
+    exact hall (fun _ => value)
+  · intro hall assignment
+    exact hall (assignment 0)
+
+private theorem forallAssignment2 (property : D → D → Prop) :
+    (∀ assignment : Int → D, property (assignment 0) (assignment (-1))) ↔
+      ∀ first second, property first second := by
+  constructor
+  · intro hall first second
+    exact hall (fun index => if index = -1 then second else first)
+  · intro hall assignment
+    exact hall (assignment 0) (assignment (-1))
+
+private theorem forallAssignment3 (property : D → D → D → Prop) :
+    (∀ assignment : Int → D,
+      property (assignment 0) (assignment (-1)) (assignment (-2))) ↔
+      ∀ first second third, property first second third := by
+  constructor
+  · intro hall first second third
+    exact hall (fun index =>
+      if index = -1 then second else if index = -2 then third else first)
+  · intro hall assignment
+    exact hall (assignment 0) (assignment (-1)) (assignment (-2))
+
+theorem valid_encodeRoleAxiom_iff (model : TModel D)
+    (roleAxiom : RoleAxiom (Fin roleCount)) :
+    valid model (encodeRoleAxiom roleAxiom) ↔
+      satRoleAxiom (fun role => model.rol role.val) roleAxiom := by
+  cases roleAxiom with
+  | symmetric role =>
+      simpa [valid, sat, encodeRoleAxiom, satRoleAxiom, rol, x, y,
+        TModel.evalL, TModel.evalT] using
+        (forallAssignment2 (D := D)
+          (fun first second => model.rol role.val first second →
+            model.rol role.val second first))
+  | asymmetric role =>
+      simpa [valid, sat, encodeRoleAxiom, satRoleAxiom, rol, x, y,
+        TModel.evalL, TModel.evalT] using
+        (forallAssignment2 (D := D)
+          (fun first second => model.rol role.val first second →
+            ¬model.rol role.val second first))
+  | reflexive role =>
+      simpa [valid, sat, encodeRoleAxiom, satRoleAxiom, rol, x,
+        TModel.evalL, TModel.evalT] using
+        (forallAssignment1 (D := D) (fun value => model.rol role.val value value))
+  | irreflexive role =>
+      simpa [valid, sat, encodeRoleAxiom, satRoleAxiom, rol, x,
+        TModel.evalL, TModel.evalT] using
+        (forallAssignment1 (D := D) (fun value => ¬model.rol role.val value value))
+  | inverseFunctional role =>
+      simpa [valid, sat, encodeRoleAxiom, satRoleAxiom, rol, x, y, z,
+        TModel.evalL, TModel.evalT] using
+        (forallAssignment3 (D := D)
+          (fun target first second => model.rol role.val first target →
+            model.rol role.val second target → first = second))
+  | disjoint left right =>
+      simpa [valid, sat, encodeRoleAxiom, satRoleAxiom, rol, x, y,
+        TModel.evalL, TModel.evalT] using
+        (forallAssignment2 (D := D)
+          (fun source target => model.rol left.val source target →
+            ¬model.rol right.val source target))
+
 def restrictModel (model : TModel D) :
     Eqv.Interp D (Fin conceptCount) (Fin roleCount) (Fin individualCount) :=
   CBEqEncoding.restrictModel model
@@ -128,11 +232,17 @@ theorem models_restrict
   · apply CBEqEncoding.models_restrict source.clauses model
     intro clause hclause
     exact hmodels clause (by simp [encode, hclause])
-  · intro chain hchain
-    apply (valid_encodeChain_iff model chain).1
-    exact hmodels (encodeChain chain) (by
-      simp only [encode, List.mem_append, List.mem_map]
-      exact Or.inr ⟨chain, hchain, rfl⟩)
+  · constructor
+    · intro chain hchain
+      apply (valid_encodeChain_iff model chain).1
+      exact hmodels (encodeChain chain) (by
+        simp only [encode, List.mem_append, List.mem_map]
+        exact Or.inl (Or.inr ⟨chain, hchain, rfl⟩))
+    · intro roleAxiom hroleAxiom
+      apply (valid_encodeRoleAxiom_iff model roleAxiom).1
+      exact hmodels (encodeRoleAxiom roleAxiom) (by
+        simp only [encode, List.mem_append, List.mem_map]
+        exact Or.inr ⟨roleAxiom, hroleAxiom, rfl⟩)
 
 noncomputable def extendModel
     (source : SourceOntology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
@@ -150,18 +260,23 @@ theorem models_extend
       valid (extendModel source interpretation hmodels default) clause := by
   intro clause hclause
   simp only [encode, List.mem_append, List.mem_map] at hclause
-  rcases hclause with hbase | ⟨chain, hchain, rfl⟩
+  rcases hclause with (hbase | ⟨chain, hchain, rfl⟩) |
+      ⟨roleAxiom, hroleAxiom, rfl⟩
   · exact CBEqEncoding.models_extend source.clauses interpretation hmodels.1 default
       clause hbase
   · apply (valid_encodeChain_iff
       (extendModel source interpretation hmodels default) chain).2
     intro values hedges
-    have hchainSemantic := hmodels.2 chain hchain
+    have hchainSemantic := hmodels.2.1 chain hchain
     have hresult := hchainSemantic values (by
       intro i
       simpa [extendModel, CBEqEncoding.extendModel, (chain.body.get i).isLt] using
         hedges i)
     simpa [extendModel, CBEqEncoding.extendModel, chain.sup.isLt] using hresult
+  · apply (valid_encodeRoleAxiom_iff
+      (extendModel source interpretation hmodels default) roleAxiom).2
+    simpa [extendModel, CBEqEncoding.extendModel] using
+      hmodels.2.2 roleAxiom hroleAxiom
 
 def EntailsSub
     (source : SourceOntology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
@@ -244,6 +359,7 @@ theorem satChain_transitiveChain_iff {D Role : Type}
         hedges ⟨1, by simp [transitiveChain]⟩
 
 #print axioms valid_encodeChain_iff
+#print axioms valid_encodeRoleAxiom_iff
 #print axioms models_restrict
 #print axioms models_extend
 #print axioms entailsSub_iff_source

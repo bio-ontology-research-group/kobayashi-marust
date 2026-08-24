@@ -30,12 +30,22 @@ def mapChain (roleMap : SourceRole → TargetRole)
   body := chain.body.map roleMap
   sup := roleMap chain.sup
 
+def mapRoleAxiom (roleMap : SourceRole → TargetRole) :
+    RoleAxiom SourceRole → RoleAxiom TargetRole
+  | .symmetric role => .symmetric (roleMap role)
+  | .asymmetric role => .asymmetric (roleMap role)
+  | .reflexive role => .reflexive (roleMap role)
+  | .irreflexive role => .irreflexive (roleMap role)
+  | .inverseFunctional role => .inverseFunctional (roleMap role)
+  | .disjoint left right => .disjoint (roleMap left) (roleMap right)
+
 def mapSource (conceptMap : SourceConcept → TargetConcept)
     (roleMap : SourceRole → TargetRole)
     (source : SourceOntology SourceConcept SourceRole Individual) :
     SourceOntology TargetConcept TargetRole Individual where
   clauses := source.clauses.map (mapClause conceptMap roleMap)
   chains := source.chains.map (mapChain roleMap)
+  roleAxioms := source.roleAxioms.map (mapRoleAxiom roleMap)
 
 def pullback (conceptMap : SourceConcept → TargetConcept)
     (roleMap : SourceRole → TargetRole)
@@ -109,6 +119,14 @@ theorem sat_mapChain_iff
       simpa [castIndex, castValue, mapChain] using hedges (castIndex index))
     simpa [castValue, mapChain] using hsource
 
+theorem sat_mapRoleAxiom_iff
+    (roleMap : SourceRole → TargetRole)
+    (target : TargetRole → D → D → Prop)
+    (roleAxiom : RoleAxiom SourceRole) :
+    satRoleAxiom target (mapRoleAxiom roleMap roleAxiom) ↔
+      satRoleAxiom (fun role => target (roleMap role)) roleAxiom := by
+  cases roleAxiom <;> rfl
+
 theorem models_mapSource_iff
     (conceptMap : SourceConcept → TargetConcept)
     (roleMap : SourceRole → TargetRole)
@@ -118,29 +136,40 @@ theorem models_mapSource_iff
         (mapSource conceptMap roleMap source) ↔
       CBRoleChainEncoding.models (pullback conceptMap roleMap target) source := by
   constructor
-  · rintro ⟨hclauses, hchains⟩
+  · rintro ⟨hclauses, hchains, hroleAxioms⟩
     constructor
     · intro clause hclause
       exact (sat_mapClause_iff conceptMap roleMap target clause).1
         (hclauses (mapClause conceptMap roleMap clause)
           (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
-    · intro chain hchain
-      exact (sat_mapChain_iff roleMap target.r chain).1
-        (hchains (mapChain roleMap chain)
-          (List.mem_map.mpr ⟨chain, hchain, rfl⟩))
-  · rintro ⟨hclauses, hchains⟩
+    · constructor
+      · intro chain hchain
+        exact (sat_mapChain_iff roleMap target.r chain).1
+          (hchains (mapChain roleMap chain)
+            (List.mem_map.mpr ⟨chain, hchain, rfl⟩))
+      · intro roleAxiom hroleAxiom
+        exact (sat_mapRoleAxiom_iff roleMap target.r roleAxiom).1
+          (hroleAxioms (mapRoleAxiom roleMap roleAxiom)
+            (List.mem_map.mpr ⟨roleAxiom, hroleAxiom, rfl⟩))
+  · rintro ⟨hclauses, hchains, hroleAxioms⟩
     constructor
     · intro targetClause htarget
       rcases List.mem_map.mp htarget with ⟨clause, hclause, rfl⟩
       exact (sat_mapClause_iff conceptMap roleMap target clause).2
         (hclauses clause hclause)
-    · intro targetChain htarget
-      rcases List.mem_map.mp htarget with ⟨chain, hchain, rfl⟩
-      exact (sat_mapChain_iff roleMap target.r chain).2
-        (hchains chain hchain)
+    · constructor
+      · intro targetChain htarget
+        rcases List.mem_map.mp htarget with ⟨chain, hchain, rfl⟩
+        exact (sat_mapChain_iff roleMap target.r chain).2
+          (hchains chain hchain)
+      · intro targetRoleAxiom htarget
+        rcases List.mem_map.mp htarget with ⟨roleAxiom, hroleAxiom, rfl⟩
+        exact (sat_mapRoleAxiom_iff roleMap target.r roleAxiom).2
+          (hroleAxioms roleAxiom hroleAxiom)
 
 #print axioms sat_mapClause_iff
 #print axioms sat_mapChain_iff
+#print axioms sat_mapRoleAxiom_iff
 #print axioms models_mapSource_iff
 
 end ContextCalculus.CBSourceSignatureRenaming

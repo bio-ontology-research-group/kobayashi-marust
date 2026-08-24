@@ -202,13 +202,16 @@ theorem models_source_of_models_core_and_cardinality
             intro index
             simpa [definition,
               ContextCalculus.CBRegularRoleCountermodel.restrictHT] using hvalues index)
-  · intro chain hchain
-    apply hcore.2 chain
-    have hchain' : chain ∈ source.chains.map
-        ContextCalculus.CBRegularRoleCountermodel.BinaryChain.toRoleChain := by
-      simpa only [SafeSource.toSource] using hchain
-    simpa only [SafeSource.core,
-      CBRegularNominalCountermodel.SafeSource.toSource] using hchain'
+  · constructor
+    · intro chain hchain
+      apply hcore.2.1 chain
+      have hchain' : chain ∈ source.chains.map
+          ContextCalculus.CBRegularRoleCountermodel.BinaryChain.toRoleChain := by
+        simpa only [SafeSource.toSource] using hchain
+      simpa only [SafeSource.core,
+        CBRegularNominalCountermodel.SafeSource.toSource] using hchain'
+    · intro roleAxiom hroleAxiom
+      simp [SafeSource.toSource] at hroleAxiom
 
 /-- Exact anchored-cardinality evidence yields a regular CB countermodel for
 ALC, the equality-free RBox, nominals, global functionality, and global

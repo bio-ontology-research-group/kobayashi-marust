@@ -141,14 +141,17 @@ theorem models_source_of_target
     rw [target_clauses_exact source conceptMap roleMap top binaryChains]
     exact List.mem_map.mpr ⟨safeClause.toOClause,
       List.mem_map.mpr ⟨safeClause, hsafeClause, rfl⟩, rfl⟩
-  · intro chain hchain
-    apply CBRoleChainBinaryDerivation.satChain_of_derivation roleMap binaryChains
-      chain (derivations chain hchain) target.r
-    intro binary hbinary
-    exact hmodels.2 binary.toRoleChain (by
-      simp only [CBRegularCardinalityCountermodel.SafeSource.toSource,
-        SafeSource.toTarget, List.mem_map]
-      exact ⟨binary, hbinary, rfl⟩)
+  · constructor
+    · intro chain hchain
+      apply CBRoleChainBinaryDerivation.satChain_of_derivation roleMap binaryChains
+        chain (derivations chain hchain) target.r
+      intro binary hbinary
+      exact hmodels.2.1 binary.toRoleChain (by
+        simp only [CBRegularCardinalityCountermodel.SafeSource.toSource,
+          SafeSource.toTarget, List.mem_map]
+        exact ⟨binary, hbinary, rfl⟩)
+    · intro roleAxiom hroleAxiom
+      simp [SafeSource.toSource] at hroleAxiom
 
 /-- Pull a target model using fresh concepts, fresh roles, and checked binary
 chain derivations back to the exact arbitrary-chain source signature. -/

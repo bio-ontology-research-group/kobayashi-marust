@@ -37,6 +37,15 @@ structure WireRoleChain where
   sup : Nat
 deriving DecidableEq, FromJson, ToJson
 
+inductive WireRoleAxiom where
+  | symmetric (role : Nat)
+  | asymmetric (role : Nat)
+  | reflexive (role : Nat)
+  | irreflexive (role : Nat)
+  | inverseFunctional (role : Nat)
+  | disjoint (left right : Nat)
+deriving DecidableEq, FromJson, ToJson
+
 structure WireSourceBinding where
   version : Nat
   concept_count : Nat
@@ -45,6 +54,7 @@ structure WireSourceBinding where
   individual_count : Nat
   source_clauses : List WireSourceClause
   role_chains : List WireRoleChain
+  role_axioms : List WireRoleAxiom := []
   ontology : List WireClause
   function_allocation : Option WireFunctionAllocation := none
 deriving FromJson, ToJson
@@ -108,6 +118,24 @@ def WireRoleChain.decode (bounds : Bounds) (wire : WireRoleChain) :
     sup := ← checkedFin "chain super-role" bounds.roles wire.sup
   }
 
+def WireRoleAxiom.decode (bounds : Bounds) : WireRoleAxiom →
+    Except String (RoleAxiom (Fin bounds.roles))
+  | .symmetric role =>
+      return .symmetric (← checkedFin "symmetric role" bounds.roles role)
+  | .asymmetric role =>
+      return .asymmetric (← checkedFin "asymmetric role" bounds.roles role)
+  | .reflexive role =>
+      return .reflexive (← checkedFin "reflexive role" bounds.roles role)
+  | .irreflexive role =>
+      return .irreflexive (← checkedFin "irreflexive role" bounds.roles role)
+  | .inverseFunctional role =>
+      return .inverseFunctional
+        (← checkedFin "inverse-functional role" bounds.roles role)
+  | .disjoint left right =>
+      return .disjoint
+        (← checkedFin "left disjoint role" bounds.roles left)
+        (← checkedFin "right disjoint role" bounds.roles right)
+
 structure DecodedSourceBinding where
   bounds : Bounds
   source : SourceOntology (Fin bounds.concepts) (Fin bounds.roles)
@@ -127,8 +155,9 @@ def WireSourceBinding.decode (wire : WireSourceBinding) :
   let bounds := wire.bounds
   let clauses ← wire.source_clauses.mapM (WireSourceClause.decode bounds)
   let chains ← wire.role_chains.mapM (WireRoleChain.decode bounds)
+  let roleAxioms ← wire.role_axioms.mapM (WireRoleAxiom.decode bounds)
   let source : SourceOntology (Fin bounds.concepts) (Fin bounds.roles)
-      (Fin bounds.individuals) := { clauses, chains }
+      (Fin bounds.individuals) := { clauses, chains, roleAxioms }
   let ontology ← wire.ontology.mapM (WireClause.decode bounds)
   if wire.version = 1 then
     if wire.function_allocation.isSome then
@@ -295,6 +324,66 @@ private def duplicateAllocationExample : WireSourceBinding where
 
 example : duplicateAllocationExample.check =
     .error "CB function allocation reuses a production Skolem id" := by
+  native_decide
+
+private def roleAxiomExample (roleAxiomWire : WireRoleAxiom)
+    (encoded : WireClause) : WireSourceBinding where
+  version := 1
+  concept_count := 1
+  role_count := 2
+  function_count := 0
+  individual_count := 0
+  source_clauses := []
+  role_chains := []
+  role_axioms := [roleAxiomWire]
+  ontology := [encoded]
+
+private def symmetricExample := roleAxiomExample (.symmetric 0)
+  ⟨[role 0 (.var 0) (.var (-1))], [role 0 (.var (-1)) (.var 0)]⟩
+
+private def asymmetricExample := roleAxiomExample (.asymmetric 0)
+  ⟨[role 0 (.var 0) (.var (-1)), role 0 (.var (-1)) (.var 0)], []⟩
+
+private def reflexiveExample := roleAxiomExample (.reflexive 0)
+  ⟨[], [role 0 (.var 0) (.var 0)]⟩
+
+private def irreflexiveExample := roleAxiomExample (.irreflexive 1)
+  ⟨[role 1 (.var 0) (.var 0)], []⟩
+
+private def inverseFunctionalExample := roleAxiomExample (.inverseFunctional 0)
+  ⟨[role 0 (.var (-1)) (.var 0), role 0 (.var (-2)) (.var 0)],
+    [.equality (.var (-1)) (.var (-2))]⟩
+
+private def disjointExample := roleAxiomExample (.disjoint 0 1)
+  ⟨[role 0 (.var 0) (.var (-1)), role 1 (.var 0) (.var (-1))], []⟩
+
+example : symmetricExample.check = .ok true := by native_decide
+example : asymmetricExample.check = .ok true := by native_decide
+example : reflexiveExample.check = .ok true := by native_decide
+example : irreflexiveExample.check = .ok true := by native_decide
+example : inverseFunctionalExample.check = .ok true := by native_decide
+example : disjointExample.check = .ok true := by native_decide
+
+private def tamperRoleAxiomExample (wire : WireSourceBinding) : WireSourceBinding :=
+  { wire with ontology := [] }
+
+example : (tamperRoleAxiomExample symmetricExample).check =
+    .error "decoded CB ontology differs from the verified source encoding" := by
+  native_decide
+example : (tamperRoleAxiomExample asymmetricExample).check =
+    .error "decoded CB ontology differs from the verified source encoding" := by
+  native_decide
+example : (tamperRoleAxiomExample reflexiveExample).check =
+    .error "decoded CB ontology differs from the verified source encoding" := by
+  native_decide
+example : (tamperRoleAxiomExample irreflexiveExample).check =
+    .error "decoded CB ontology differs from the verified source encoding" := by
+  native_decide
+example : (tamperRoleAxiomExample inverseFunctionalExample).check =
+    .error "decoded CB ontology differs from the verified source encoding" := by
+  native_decide
+example : (tamperRoleAxiomExample disjointExample).check =
+    .error "decoded CB ontology differs from the verified source encoding" := by
   native_decide
 
 #print axioms DecodedSourceBinding.entails_iff_source

@@ -82,13 +82,16 @@ theorem models_source_of_models_base_and_nominals
         simpa [SafeClause.toOClause, NominalClause.toOClause, Eqv.satO,
           CBRegularRoleCountermodel.restrictHT] using
           hnominal nominal hmem
-  · intro chain hchain
-    apply hbase.2 chain
-    have hchain' : chain ∈
-        source.chains.map CBRegularRoleCountermodel.BinaryChain.toRoleChain := by
-      simpa only [SafeSource.toSource] using hchain
-    simpa only [SafeSource.base,
-      CBRegularRoleCountermodel.SafeSource.toSource] using hchain'
+  · constructor
+    · intro chain hchain
+      apply hbase.2.1 chain
+      have hchain' : chain ∈
+          source.chains.map CBRegularRoleCountermodel.BinaryChain.toRoleChain := by
+        simpa only [SafeSource.toSource] using hchain
+      simpa only [SafeSource.base,
+        CBRegularRoleCountermodel.SafeSource.toSource] using hchain'
+    · intro roleAxiom hroleAxiom
+      simp [SafeSource.toSource] at hroleAxiom
 
 /-- A checked anchored regular certificate gives a CB countermodel for the
 base role fragment plus append-only nominal clauses.  The certificate's exact
