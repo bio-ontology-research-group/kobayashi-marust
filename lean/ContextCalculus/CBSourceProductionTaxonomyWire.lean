@@ -2,6 +2,7 @@ import ContextCalculus.CBSourceWire
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBFiniteModelWire
 import ContextCalculus.CBRegularArbitraryChainCountermodelWire
+import ContextCalculus.CBTypedRegularArbitraryChainCountermodelWire
 import Mathlib.Data.Finset.Basic
 
 /-!
@@ -21,6 +22,7 @@ open ContextCalculus.CBTermWire ContextCalculus.CBSourceWire
 open ContextCalculus.CBStandaloneContextProofWire
 open ContextCalculus.CBFiniteModelWire
 open ContextCalculus.CBRegularArbitraryChainCountermodelWire
+open ContextCalculus.CBTypedRegularArbitraryChainCountermodelWire
 open ContextCalculus.CBRoleChainEncoding
 
 def Entails (ontology : List FCL) (sub sup : Nat) : Prop :=
@@ -32,6 +34,7 @@ inductive WireCellEvidence where
   | positiveNode (node : Nat)
   | negative (witness : Nat) (model : WireFiniteModel)
   | regularArbitraryChain (model : WireRegularArbitraryChainCountermodel)
+  | typedRegularArbitraryChain (model : WireRegularArbitraryChainCountermodel)
 deriving FromJson, ToJson
 
 structure WireCell where
@@ -174,6 +177,26 @@ def WireCell.decode (source : DecodedSourceBinding)
             intro hentails
             rcases countermodel.refutes with
               ⟨D, interpretation, element, hontology, hpositive, hnegative⟩
+            exact hnegative (hentails D interpretation hontology element hpositive)
+          return {
+            sub
+            sub_in_bounds := hsub
+            sup
+            sup_in_bounds := hsup
+            answer := false
+            exact := ⟨by simp, fun h => (hnot h).elim⟩
+          }
+      | .typedRegularArbitraryChain model =>
+          if wire.answer != false then
+            throw "typed regular production evidence is paired with a true answer"
+          let countermodel ←
+            CBTypedRegularArbitraryChainCountermodelWire.WireRegularArbitraryChainCountermodel.decodeTyped
+              source sub sup model
+          have hnot : ¬ Entails source.ontology sub sup := by
+            intro hentails
+            obtain ⟨D, interpretation, element, hontology, hpositive, hnegative⟩ :=
+              CBTypedRegularArbitraryChainCountermodelWire.DecodedTypedRegularArbitraryChainCountermodel.refutesProduction
+                countermodel
             exact hnegative (hentails D interpretation hontology element hpositive)
           return {
             sub

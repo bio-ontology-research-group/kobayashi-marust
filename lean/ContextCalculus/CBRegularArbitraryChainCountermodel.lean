@@ -54,6 +54,10 @@ def SafeClause.toTarget (conceptMap : SourceConcept → TargetConcept)
   | .func role => .func (roleMap role) top top
   | .atMost bound role filler =>
       .atMost bound (roleMap role) (conceptMap filler) top
+  | .guardedAtMost marker bound role filler =>
+      .guardedAtMost (conceptMap marker) bound (roleMap role) (conceptMap filler)
+  | .atLeast marker bound role filler =>
+      .atLeast (conceptMap marker) bound (roleMap role) (conceptMap filler)
 
 def SafeSource.toTarget
     (source : SafeSource SourceConcept SourceRole Individual)
@@ -100,6 +104,8 @@ theorem toTargetClause_toOClause
   | core clause => exact mapNominalClause_toOClause conceptMap roleMap clause
   | func role => rfl
   | atMost bound role filler => rfl
+  | guardedAtMost marker bound role filler => rfl
+  | atLeast marker bound role filler => rfl
 
 theorem target_clauses_exact
     (source : SafeSource SourceConcept SourceRole Individual)

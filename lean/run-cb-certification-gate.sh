@@ -97,6 +97,7 @@ done
     export KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER="$bin_root/cb-standalone-context-proof-check"
     export KM_CB_TEST_SOURCE_PRODUCTION_TAXONOMY_CHECKER="$bin_root/cb-source-production-taxonomy-check"
     export KM_CB_TEST_REGULAR_ARBITRARY_CHAIN_CHECKER="$bin_root/cb-regular-arbitrary-chain-countermodel-check"
+    export KM_CB_TEST_TYPED_REGULAR_ARBITRARY_CHAIN_CHECKER="$bin_root/cb-typed-regular-arbitrary-chain-countermodel-check"
     # Legacy fixture processes still load handcrafted source documents from
     # files. Production certified execution has no such escape hatch.
     export KM_CB_TEST_ALLOW_EXTERNAL_SOURCE=1
@@ -106,6 +107,7 @@ done
     cargo test --lib source_exact_taxonomy_uses_real_production_traces_and_models
     cargo test --lib pred_standalone_dag_passes_the_real_lean_checker
     cargo test --lib native_regular_countermodel_passes_the_exact_lean_wire_checker
+    cargo test --lib typed_regular_cardinality_countermodel_respects_function_allocation
 )
 
 echo "CB certification gate passed"

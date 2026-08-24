@@ -2591,6 +2591,34 @@ fn cb_regular_arbitrary_chain_source(
                     "filler": field("concept")?,
                 }}))
             }
+            "guardedAtMost" => {
+                let field = |name: &str| {
+                    payload
+                        .get(name)
+                        .and_then(serde_json::Value::as_u64)
+                        .ok_or_else(|| format!("guardedAtMost source clause has no {name}"))
+                };
+                Ok(serde_json::json!({"guardedAtMost": {
+                    "marker": field("source")?,
+                    "bound": field("cardinality")?,
+                    "role": field("role")?,
+                    "filler": field("concept")?,
+                }}))
+            }
+            "guardedAtLeast" => {
+                let field = |name: &str| {
+                    payload
+                        .get(name)
+                        .and_then(serde_json::Value::as_u64)
+                        .ok_or_else(|| format!("guardedAtLeast source clause has no {name}"))
+                };
+                Ok(serde_json::json!({"atLeast": {
+                    "marker": field("source")?,
+                    "bound": field("cardinality")?,
+                    "role": field("role")?,
+                    "filler": field("concept")?,
+                }}))
+            }
             other => Err(format!("unsupported certified CB source constructor {other}")),
         }
     }
@@ -2827,6 +2855,28 @@ fn cb_regular_arbitrary_chain_countermodel(
                     false,
                 ));
                 clauses.push(Clause::new(Vec::new(), vec![pos(0, 0)]));
+            }
+            "guardedAtMost" => {
+                cardinality_defs.push((
+                    concept(payload, "source")?,
+                    false,
+                    u32::try_from(field(payload, "cardinality")?)
+                        .map_err(|_| "guardedAtMost bound exceeds u32".to_string())?,
+                    role(payload, "role")?,
+                    concept(payload, "concept")?,
+                    false,
+                ));
+            }
+            "guardedAtLeast" => {
+                cardinality_defs.push((
+                    concept(payload, "source")?,
+                    true,
+                    u32::try_from(field(payload, "cardinality")?)
+                        .map_err(|_| "guardedAtLeast bound exceeds u32".to_string())?,
+                    role(payload, "role")?,
+                    concept(payload, "concept")?,
+                    false,
+                ));
             }
             "nominal" => {
                 let individual: usize = field(payload, "individual")?
@@ -4022,10 +4072,15 @@ fn cb_source_production_taxonomy_candidate(
             };
             serde_json::json!({"positiveNode": {"node": node}})
         } else {
-            legacy_cell
+            let legacy_evidence = legacy_cell
                 .get("evidence")
                 .cloned()
-                .ok_or_else(|| "negative CB cell has no evidence".to_string())?
+                .ok_or_else(|| "negative CB cell has no evidence".to_string())?;
+            if let Some(regular) = legacy_evidence.get("regularArbitraryChain") {
+                serde_json::json!({"typedRegularArbitraryChain": regular})
+            } else {
+                legacy_evidence
+            }
         };
         cells.push(serde_json::json!({
             "sub": sub,
@@ -4985,6 +5040,95 @@ mod cb_derivation_candidate_tests {
         assert!(
             !check(&document),
             "Lean must reject a countermodel with a forged nominal-root assignment"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn typed_regular_cardinality_countermodel_respects_function_allocation() {
+        let Some(checker) =
+            std::env::var_os("KM_CB_TEST_TYPED_REGULAR_ARBITRARY_CHAIN_CHECKER")
+        else {
+            return;
+        };
+        use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
+
+        let mut registry = IriRegistry::new();
+        let ontology = parse::parse_axioms(
+            &mut registry,
+            "Ontology(\
+              SubClassOf(<A> ObjectMinCardinality(2 <R> <B>))\
+              SubClassOf(<A> ObjectMaxCardinality(2 <R> <B>)))",
+        )
+        .expect("parse mixed guarded cardinality source");
+        let (clauses, _, _) = normalise::normalise(&ontology);
+        let clauses = clauses.iter().map(clause_to_json).collect::<Vec<_>>();
+        let binding = crate::cb_source::typed_source_candidate(&clauses)
+            .expect("compile the exact allocated typed source");
+        let production = crate::reasoner::cb_production_input(&clauses);
+        let sub = production
+            .concept_names
+            .iter()
+            .position(|name| name == "B")
+            .expect("B concept id");
+        let sup = production
+            .concept_names
+            .iter()
+            .position(|name| name == "A")
+            .expect("A concept id");
+        let source = cb_regular_arbitrary_chain_source(
+            &serde_json::json!({"production": {"source": binding.clone()}}),
+        )
+        .expect("translate the guarded cardinality source");
+        assert!(source
+            .clauses
+            .iter()
+            .any(|clause| clause.get("atLeast").is_some()));
+        assert!(source
+            .clauses
+            .iter()
+            .any(|clause| clause.get("guardedAtMost").is_some()));
+        let countermodel = cb_regular_arbitrary_chain_countermodel(&source, sub, sup)
+            .expect("construct the typed regular cardinality countermodel")
+            .expect("B is not subsumed by A");
+        let mut document = serde_json::json!({
+            "source": binding,
+            "sub": sub,
+            "sup": sup,
+            "countermodel": countermodel,
+        });
+        let artifact_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("engine has a repository parent")
+            .join(".work/artifacts");
+        std::fs::create_dir_all(&artifact_root).unwrap();
+        let path = artifact_root.join(format!(
+            "cb-typed-regular-cardinality-test-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+        let output = std::process::Command::new(&checker)
+            .arg(&path)
+            .output()
+            .expect("run the typed regular Lean checker");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let production_count = document["source"]["function_allocation"]["production_count"]
+            .as_u64()
+            .expect("production function count");
+        document["source"]["function_allocation"]["sparse_allocation"][0]["target"] =
+            serde_json::json!(production_count);
+        std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+        let forged = std::process::Command::new(&checker)
+            .arg(&path)
+            .output()
+            .expect("run the typed regular Lean checker on forged allocation");
+        assert!(
+            !forged.status.success(),
+            "Lean must reject a typed countermodel whose production function allocation was forged"
         );
         let _ = std::fs::remove_file(path);
     }

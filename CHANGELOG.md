@@ -321,6 +321,15 @@
   source while allowing fresh intermediate target roles, the fresh universal
   concept, nominals, functionality, and qualified at-most clauses together.
   Exact cells can cite `regularArbitraryChain`.
+  Bind the arbitrary-chain regular countermodel to the exact typed production
+  source. The new wrapper checks the countermodel over the canonical source and
+  transports it through the source certificate's injective Skolem-function
+  allocation, so negative evidence no longer assumes identity allocation.
+  Extend the regular source and Rust adapter with guarded qualified minimum and
+  maximum clauses. Lean derives their exact cardinality semantics from checked
+  HT definitions, including an injective minimum-witness family. The native
+  checker accepts an OWL-derived mixed-cardinality source with sparse
+  nonidentity allocation and rejects a forged allocation target.
   Add the canonical finite binary compiler and prove it conservative in the
   other direction. Every model of the original finite chain family extends to
   the compiled signature by interpreting each fresh path role as relational

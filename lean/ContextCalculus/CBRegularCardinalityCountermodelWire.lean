@@ -16,6 +16,8 @@ inductive WireSafeClause where
   | core (clause : CBRegularNominalCountermodelWire.WireSafeClause)
   | func (role marker filler : Nat)
   | atMost (bound role filler marker : Nat)
+  | guardedAtMost (marker bound role filler : Nat)
+  | atLeast (marker bound role filler : Nat)
 deriving FromJson, ToJson
 
 structure WireRegularCardinalityCountermodel where
@@ -43,6 +45,18 @@ def WireSafeClause.decode (conceptCount roleCount individualCount : Nat) :
         (← checkedFin "regular-cardinality maximum role" roleCount role)
         (← checkedFin "regular-cardinality maximum filler" conceptCount filler)
         (← checkedFin "regular-cardinality maximum marker" conceptCount marker)
+  | .guardedAtMost marker bound role filler => do
+      return .guardedAtMost
+        (← checkedFin "regular-cardinality guarded maximum marker" conceptCount marker)
+        bound
+        (← checkedFin "regular-cardinality guarded maximum role" roleCount role)
+        (← checkedFin "regular-cardinality guarded maximum filler" conceptCount filler)
+  | .atLeast marker bound role filler => do
+      return .atLeast
+        (← checkedFin "regular-cardinality minimum marker" conceptCount marker)
+        bound
+        (← checkedFin "regular-cardinality minimum role" roleCount role)
+        (← checkedFin "regular-cardinality minimum filler" conceptCount filler)
 
 private def checkedFinExact (kind : String) (bound value : Nat) :
     Except String { index : Fin bound // index.val = value } :=

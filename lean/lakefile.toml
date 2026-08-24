@@ -145,6 +145,10 @@ name = "cb-regular-arbitrary-chain-countermodel-check"
 root = "CBRegularArbitraryChainCountermodelCheck"
 
 [[lean_exe]]
+name = "cb-typed-regular-arbitrary-chain-countermodel-check"
+root = "CBTypedRegularArbitraryChainCountermodelCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

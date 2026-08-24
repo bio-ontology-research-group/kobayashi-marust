@@ -23,6 +23,8 @@ inductive SafeClause (Concept Role Individual : Type) where
   | core (clause : CBRegularNominalCountermodel.SafeClause Concept Role Individual)
   | func (role : Role) (marker filler : Concept)
   | atMost (bound : Nat) (role : Role) (filler marker : Concept)
+  | guardedAtMost (marker : Concept) (bound : Nat) (role : Role) (filler : Concept)
+  | atLeast (marker : Concept) (bound : Nat) (role : Role) (filler : Concept)
 deriving DecidableEq, Repr
 
 def SafeClause.toOClause : SafeClause Concept Role Individual →
@@ -30,6 +32,9 @@ def SafeClause.toOClause : SafeClause Concept Role Individual →
   | .core clause => clause.toOClause
   | .func role _ _ => .func role
   | .atMost bound role filler _ => .atMost bound role filler
+  | .guardedAtMost marker bound role filler =>
+      .guardedAtMost marker bound role filler
+  | .atLeast marker bound role filler => .guardedAtLeast marker bound role filler
 
 def SafeClause.definition? : SafeClause Concept Role Individual →
     Option (CardinalityDef Concept Role)
@@ -38,6 +43,10 @@ def SafeClause.definition? : SafeClause Concept Role Individual →
       marker, kind := .maximum, bound := 1, role, filler }
   | .atMost bound role filler marker => some {
       marker, kind := .maximum, bound, role, filler }
+  | .guardedAtMost marker bound role filler => some {
+      marker, kind := .maximum, bound, role, filler }
+  | .atLeast marker bound role filler => some {
+      marker, kind := .minimum, bound, role, filler }
 
 structure SafeSource (Concept Role Individual : Type) where
   clauses : List (SafeClause Concept Role Individual)
@@ -47,7 +56,8 @@ def SafeSource.core (source : SafeSource Concept Role Individual) :
     CBRegularNominalCountermodel.SafeSource Concept Role Individual where
   clauses := source.clauses.filterMap fun clause => match clause with
     | .core core => some core
-    | .func _ _ _ | .atMost _ _ _ _ => none
+    | .func _ _ _ | .atMost _ _ _ _ | .guardedAtMost _ _ _ _ |
+        .atLeast _ _ _ _ => none
   chains := source.chains
 
 def SafeSource.definitions (source : SafeSource Concept Role Individual) :
@@ -73,6 +83,8 @@ def SafeClause.activationClauses (nodeVar : Variable) :
       [universalConceptClause nodeVar marker,
        universalConceptClause nodeVar filler]
   | .atMost _ _ _ marker => [universalConceptClause nodeVar marker]
+  | .guardedAtMost _ _ _ _ => []
+  | .atLeast _ _ _ _ => []
 
 def SafeSource.activationClauses (source : SafeSource Concept Role Individual)
     (nodeVar : Variable) : List (Hypertableau.Clause Variable Concept Role) :=
@@ -97,14 +109,14 @@ theorem atMost_of_maximum_definition
     (definition : CardinalityDef Concept Role)
     (hkind : definition.kind = .maximum)
     (hmodels : interpretation.modelsCardinalityDef definition)
-    (hmarker : ∀ value, interpretation.concept definition.marker value)
-    (source : D) (values : Fin (definition.bound + 1) → D)
+    (source : D) (hmarker : interpretation.concept definition.marker source)
+    (values : Fin (definition.bound + 1) → D)
     (hsuccessors : ∀ index,
       interpretation.role definition.role source (values index) ∧
       interpretation.concept definition.filler (values index)) :
     ∃ left right, left ≠ right ∧ values left = values right := by
   have hnotInjective := interpretation.maximum_forces_merge definition hkind
-    hmodels source (hmarker source) values hsuccessors
+    hmodels source hmarker values hsuccessors
   rcases Function.not_injective_iff.mp hnotInjective with
     ⟨left, right, hequal, hne⟩
   exact ⟨left, right, hne, hequal⟩
@@ -153,8 +165,11 @@ theorem models_source_of_models_core_and_cardinality
       (ContextCalculus.CBRegularRoleCountermodel.restrictHT interpretation name)
       source.core.toSource)
     (hdefinitions : interpretation.modelsCardinalityDefs source.definitions)
-    (hmarkers : ∀ clause ∈ source.clauses, ∀ marker,
-      (clause.definition?).map (fun definition => definition.marker) = some marker →
+    (hfuncMarkers : ∀ role marker filler,
+      SafeClause.func role marker filler ∈ source.clauses →
+      ∀ value, interpretation.concept marker value)
+    (hatMostMarkers : ∀ bound role filler marker,
+      SafeClause.atMost bound role filler marker ∈ source.clauses →
       ∀ value, interpretation.concept marker value)
     (hfunctionFillers : ∀ role marker filler,
       SafeClause.func role marker filler ∈ source.clauses →
@@ -181,7 +196,7 @@ theorem models_source_of_models_core_and_cardinality
           exact ⟨SafeClause.func role marker filler, hmem, rfl⟩
         have hmodels := hdefinitions definition hdefinition
         have hmarker : ∀ value, interpretation.concept marker value :=
-          hmarkers (.func role marker filler) hmem marker (by rfl)
+          hfuncMarkers role marker filler hmem
         have hfiller := hfunctionFillers role marker filler hmem
         simpa [SafeClause.toOClause, Eqv.satO,
           ContextCalculus.CBRegularRoleCountermodel.restrictHT, definition] using
@@ -195,10 +210,37 @@ theorem models_source_of_models_core_and_cardinality
           exact ⟨SafeClause.atMost bound role filler marker, hmem, rfl⟩
         have hmodels := hdefinitions definition hdefinition
         have hmarker : ∀ value, interpretation.concept marker value :=
-          hmarkers (.atMost bound role filler marker) hmem marker (by rfl)
+          hatMostMarkers bound role filler marker hmem
         intro element values hvalues
         exact atMost_of_maximum_definition interpretation definition rfl hmodels
-          hmarker element values (by
+          element (hmarker element) values (by
+            intro index
+            simpa [definition,
+              ContextCalculus.CBRegularRoleCountermodel.restrictHT] using hvalues index)
+    | atLeast marker bound role filler =>
+        let definition : CardinalityDef Concept Role := {
+          marker, kind := .minimum, bound, role, filler }
+        have hdefinition : definition ∈ source.definitions := by
+          simp only [SafeSource.definitions, List.mem_filterMap]
+          exact ⟨SafeClause.atLeast marker bound role filler, hmem, rfl⟩
+        have hmodels := hdefinitions definition hdefinition
+        intro element hmarker
+        have hminimum := hmodels element hmarker
+        rcases hminimum with ⟨witnesses, hinjective, hsuccessors⟩
+        exact ⟨witnesses, fun index => by
+          simpa [definition, Hypertableau.Interp.cardinalitySuccessor,
+            ContextCalculus.CBRegularRoleCountermodel.restrictHT] using
+              hsuccessors index, hinjective⟩
+    | guardedAtMost marker bound role filler =>
+        let definition : CardinalityDef Concept Role := {
+          marker, kind := .maximum, bound, role, filler }
+        have hdefinition : definition ∈ source.definitions := by
+          simp only [SafeSource.definitions, List.mem_filterMap]
+          exact ⟨SafeClause.guardedAtMost marker bound role filler, hmem, rfl⟩
+        have hmodels := hdefinitions definition hdefinition
+        intro element hmarker values hvalues
+        exact atMost_of_maximum_definition interpretation definition rfl hmodels
+          element hmarker values (by
             intro index
             simpa [definition,
               ContextCalculus.CBRegularRoleCountermodel.restrictHT] using hvalues index)
@@ -310,27 +352,24 @@ theorem checked_regular_cardinality_countermodel
   have hactivation : htModel.models (safe.activationClauses sourceVar) := by
     intro clause hclause
     exact hresidualModels clause (List.mem_append_right _ hclause)
-  have hmarkers : ∀ clause ∈ safe.clauses, ∀ marker,
-      (clause.definition?).map (fun definition => definition.marker) = some marker →
+  have hfuncMarkers : ∀ role marker filler,
+      SafeClause.func role marker filler ∈ safe.clauses →
       ∀ value, htModel.concept marker value := by
-    intro clause hmem marker hmarker
-    cases clause with
-    | core coreClause => simp [SafeClause.definition?] at hmarker
-    | func role selected filler =>
-        simp only [SafeClause.definition?, Option.map_some, Option.some.injEq] at hmarker
-        subst marker
-        apply concept_everywhere_of_models_universal htModel sourceVar selected
-        apply hactivation
-        simp only [SafeSource.activationClauses, List.mem_flatMap]
-        exact ⟨SafeClause.func role selected filler, hmem, by simp [SafeClause.activationClauses]⟩
-    | atMost bound role filler selected =>
-        simp only [SafeClause.definition?, Option.map_some, Option.some.injEq] at hmarker
-        subst marker
-        apply concept_everywhere_of_models_universal htModel sourceVar selected
-        apply hactivation
-        simp only [SafeSource.activationClauses, List.mem_flatMap]
-        exact ⟨SafeClause.atMost bound role filler selected, hmem,
-          by simp [SafeClause.activationClauses]⟩
+    intro role marker filler hmem
+    apply concept_everywhere_of_models_universal htModel sourceVar marker
+    apply hactivation
+    simp only [SafeSource.activationClauses, List.mem_flatMap]
+    exact ⟨SafeClause.func role marker filler, hmem,
+      by simp [SafeClause.activationClauses]⟩
+  have hatMostMarkers : ∀ bound role filler marker,
+      SafeClause.atMost bound role filler marker ∈ safe.clauses →
+      ∀ value, htModel.concept marker value := by
+    intro bound role filler marker hmem
+    apply concept_everywhere_of_models_universal htModel sourceVar marker
+    apply hactivation
+    simp only [SafeSource.activationClauses, List.mem_flatMap]
+    exact ⟨SafeClause.atMost bound role filler marker, hmem,
+      by simp [SafeClause.activationClauses]⟩
   have hfunctionFillers : ∀ role marker filler,
       SafeClause.func role marker filler ∈ safe.clauses →
       ∀ value, htModel.concept filler value := by
@@ -343,7 +382,7 @@ theorem checked_regular_cardinality_countermodel
   have hsourceModels : CBRoleChainEncoding.models
       (CBRegularRoleCountermodel.restrictHT htModel name) safe.toSource :=
     models_source_of_models_core_and_cardinality htModel name safe hcore
-      hdefinitionModels hmarkers hfunctionFillers
+      hdefinitionModels hfuncMarkers hatMostMarkers hfunctionFillers
   let element := AnchoredForestDomain.root certificate.anchored.regular.state
     certificate.anchored.regular.redirect slotAllowed anchor
     (certificate.anchored.classMap 0)

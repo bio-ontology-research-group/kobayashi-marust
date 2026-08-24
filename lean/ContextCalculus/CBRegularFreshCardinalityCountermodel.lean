@@ -21,6 +21,8 @@ inductive SafeClause (Concept Role Individual : Type) where
   | core (clause : CBRegularNominalCountermodel.SafeClause Concept Role Individual)
   | func (role : Role)
   | atMost (bound : Nat) (role : Role) (filler : Concept)
+  | guardedAtMost (marker : Concept) (bound : Nat) (role : Role) (filler : Concept)
+  | atLeast (marker : Concept) (bound : Nat) (role : Role) (filler : Concept)
 deriving DecidableEq, Repr
 
 def SafeClause.toOClause : SafeClause Concept Role Individual →
@@ -28,6 +30,9 @@ def SafeClause.toOClause : SafeClause Concept Role Individual →
   | .core clause => clause.toOClause
   | .func role => .func role
   | .atMost bound role filler => .atMost bound role filler
+  | .guardedAtMost marker bound role filler =>
+      .guardedAtMost marker bound role filler
+  | .atLeast marker bound role filler => .guardedAtLeast marker bound role filler
 
 structure SafeSource (Concept Role Individual : Type) where
   clauses : List (SafeClause Concept Role Individual)
@@ -61,6 +66,10 @@ def SafeClause.toTarget (f : SourceConcept → TargetConcept) (top : TargetConce
   | .core clause => .core (mapNominalClause f clause)
   | .func role => .func role top top
   | .atMost bound role filler => .atMost bound role (f filler) top
+  | .guardedAtMost marker bound role filler =>
+      .guardedAtMost (f marker) bound role (f filler)
+  | .atLeast marker bound role filler =>
+      .atLeast (f marker) bound role (f filler)
 
 def SafeSource.toTarget (source : SafeSource SourceConcept Role Individual)
     (f : SourceConcept → TargetConcept) (top : TargetConcept) :
@@ -96,6 +105,8 @@ theorem toTargetClause_toOClause
   | core clause => exact mapNominalClause_toOClause f clause
   | func role => rfl
   | atMost bound role filler => rfl
+  | guardedAtMost marker bound role filler => rfl
+  | atLeast marker bound role filler => rfl
 
 theorem toTarget_toSource
     (source : SafeSource SourceConcept Role Individual)

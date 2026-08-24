@@ -599,16 +599,17 @@ mapping, both query labels, and the anchored certificate before exposing a
 countermodel.
 
 `CBRegularCardinalityCountermodel` supplies the slot-preserving extension for
-global functionality and qualified at-most restrictions. HT cardinality
-definitions are marker guarded, whereas these normalized CB source clauses are
-unconditional. The exact projection therefore includes residual unit clauses
-that make every selected marker universal and, for functionality, make its
-selected filler universal. Lean proves these units in the anchored regular
-model and only then derives the unconditional CB clauses from checked maximum
-definitions. The wire also requires the full definition list to equal the
-source projection. `regularNominal` and `regularCardinality` are accepted as
-negative evidence by the exact taxonomy matrix. Rust emits the stronger
-  fresh-signature combined wire for the currently supported cardinality case;
+global functionality, guarded qualified maximum restrictions, and guarded
+qualified minimum restrictions. For unconditional functionality and maximum
+clauses, the exact projection includes residual unit clauses that make the
+selected marker universal and, for functionality, make its selected filler
+universal. Guarded maximum and minimum clauses retain their source marker.
+Lean derives maximum semantics from the checked HT maximum definition and
+derives minimum semantics with an injective family of checked successor
+witnesses. The wire also requires the full definition list to equal the source
+projection. `regularNominal` and `regularCardinality` are accepted as negative
+evidence by the exact taxonomy matrix. Rust emits the stronger fresh-signature
+combined wire for the currently supported cardinality case;
 native nominal-root production is connected through the combined arbitrary-
 chain wire. This
 first wire keeps source and target concept
@@ -650,6 +651,20 @@ empty, length-three-chain, single-functionality, repeated-functionality, core
 GCI, and named-individual examples and rejects forged nominal-root evidence.
 The remaining capstone work concerns total positive-trace extraction and
 routing-bound typed-source delivery, not nominal countermodel construction.
+
+`CBTypedRegularArbitraryChainCountermodelWire` binds that regular evidence to
+the authoritative typed source rather than assuming canonical and production
+Skolem ids coincide. It checks the regular model against the canonical
+role-chain encoding, then transports the model through the typed source's
+proved injective function allocation to the exact production ontology. The
+shared-production taxonomy accepts this evidence as
+`typedRegularArbitraryChain`. The native adapter now preserves guarded minimum
+and maximum clauses, emits their HT cardinality definitions, and wraps regular
+negative evidence in this typed form. A cross-language test starts from OWL
+functional syntax containing both restrictions, exercises a sparse
+nonidentity allocation, and is accepted by the native Lean checker. The same
+checker rejects a forged allocation target. General source role axioms remain
+outside this regular evidence family and therefore fail closed.
 
 ## Requirements for the complete CB layer
 
