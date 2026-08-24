@@ -23,7 +23,8 @@ def blockedSource (carrier : DecodedBlockedCarrierDocument) :=
   (productionRun carrier.admissibility).source.source
 
 def blockedGround (carrier : DecodedBlockedCarrierDocument) :=
-  namedGroundSource carrier.name carrier.witness (blockedSource carrier)
+  namedGroundSource carrier.name carrier.witness carrier.minimumWitness
+    (blockedSource carrier)
 
 def encodedBlockedGround (carrier : DecodedBlockedCarrierDocument) :=
   encodeSet (blockedGround carrier)
@@ -101,7 +102,7 @@ theorem DecodedBlockedGroundSaturationDocument.source_model
       (blockedGround decoded.carrier) hgroundModels hderivable
     exact PClause.not_sat_bot _ hfalse
   exact source_complete_ground_named decoded.carrier.name decoded.carrier.witness
-    (blockedSource decoded.carrier) hnotDerivable
+    decoded.carrier.minimumWitness (blockedSource decoded.carrier) hnotDerivable
 
 theorem WireBlockedGroundSaturationDocument.check_sound
     (wire : WireBlockedGroundSaturationDocument) (hcheck : wire.check = .ok true) :

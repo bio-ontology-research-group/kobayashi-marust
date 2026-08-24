@@ -76,9 +76,10 @@ def roleAxiomsGround (roleAxioms : List (RoleAxiom RN)) :
   (roleAxioms.map roleAxiomInsts).foldr (· ∪ ·) ∅
 
 def groundSource (wit : CN → RN → CN → T → T)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T)
     (source : SourceOntology CN RN T) :
     Finset (PClause (GAtom CN RN T)) :=
-  (Eqv.ground wit source.clauses ∪ chainsGround source.chains) ∪
+  (Eqv.ground wit minWit source.clauses ∪ chainsGround source.chains) ∪
     roleAxiomsGround source.roleAxioms
 
 theorem mem_chainsGround {chain : RoleChain RN} {chains : List (RoleChain RN)}
@@ -94,17 +95,17 @@ theorem mem_chainsGround {chain : RoleChain RN} {chains : List (RoleChain RN)}
       · exact Finset.subset_union_left
       · exact (ih hrest).trans Finset.subset_union_right
 
-theorem mem_groundSource_base {wit : CN → RN → CN → T → T}
+theorem mem_groundSource_base {wit : CN → RN → CN → T → T} {minWit}
     {source : SourceOntology CN RN T} {clause : PClause (GAtom CN RN T)}
-    (hclause : clause ∈ Eqv.ground wit source.clauses) :
-    clause ∈ groundSource wit source :=
+    (hclause : clause ∈ Eqv.ground wit minWit source.clauses) :
+    clause ∈ groundSource wit minWit source :=
   Finset.mem_union.mpr (Or.inl (Finset.mem_union.mpr (Or.inl hclause)))
 
-theorem mem_groundSource_chain {wit : CN → RN → CN → T → T}
+theorem mem_groundSource_chain {wit : CN → RN → CN → T → T} {minWit}
     {source : SourceOntology CN RN T} {chain : RoleChain RN}
     (hchain : chain ∈ source.chains)
     (values : Fin (chain.body.length + 1) → T) :
-    chainGroundClause chain values ∈ groundSource wit source := by
+    chainGroundClause chain values ∈ groundSource wit minWit source := by
   apply Finset.mem_union.mpr
   apply Or.inl
   apply Finset.mem_union.mpr
@@ -125,10 +126,10 @@ theorem mem_roleAxiomsGround {roleAxiom : RoleAxiom RN}
       · exact Finset.subset_union_left
       · exact (ih hrest).trans Finset.subset_union_right
 
-theorem mem_groundSource_roleAxiom {wit : CN → RN → CN → T → T}
+theorem mem_groundSource_roleAxiom {wit : CN → RN → CN → T → T} {minWit}
     {source : SourceOntology CN RN T} {roleAxiom : RoleAxiom RN}
     (hroleAxiom : roleAxiom ∈ source.roleAxioms) (values : Fin 3 → T) :
-    roleAxiomGroundClause roleAxiom values ∈ groundSource wit source := by
+    roleAxiomGroundClause roleAxiom values ∈ groundSource wit minWit source := by
   apply Finset.mem_union.mpr
   apply Or.inr
   apply mem_roleAxiomsGround hroleAxiom
@@ -257,19 +258,20 @@ theorem quotient_satisfies_roleAxiom
 theorem quotient_models_source
     {valuation : GAtom CN RN T → Prop}
     {wit : CN → RN → CN → T → T}
+    {minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T}
     {source : SourceOntology CN RN T}
-    (hmodels : ∀ clause ∈ groundSource wit source, clause.sat valuation) :
+    (hmodels : ∀ clause ∈ groundSource wit minWit source, clause.sat valuation) :
     let respects := Eqv.respectsEq_of_grounds
       (fun clause hclause => hmodels clause (mem_groundSource_base hclause))
-      (Eqv.grounds_ground wit source.clauses)
+      (Eqv.grounds_ground wit minWit source.clauses)
     CBRoleChainEncoding.models (Eqv.congruenceModel valuation respects) source := by
-  let hbase : ∀ clause ∈ Eqv.ground wit source.clauses, clause.sat valuation :=
+  let hbase : ∀ clause ∈ Eqv.ground wit minWit source.clauses, clause.sat valuation :=
     fun clause hclause => hmodels clause (mem_groundSource_base hclause)
   let respects := Eqv.respectsEq_of_grounds hbase
-    (Eqv.grounds_ground wit source.clauses)
+    (Eqv.grounds_ground wit minWit source.clauses)
   constructor
   · exact Eqv.congruenceModel_models respects hbase
-      (Eqv.grounds_ground wit source.clauses)
+      (Eqv.grounds_ground wit minWit source.clauses)
   · constructor
     · intro chain hchain
       exact quotient_satisfies_chain respects hmodels chain
@@ -280,19 +282,20 @@ theorem quotient_models_source
 
 theorem source_complete_ground
     (wit : CN → RN → CN → T → T)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T)
     (source : SourceOntology CN RN T)
-    (hclash : ¬ PropRes.Derivable (groundSource wit source) PClause.bot) :
+    (hclash : ¬ PropRes.Derivable (groundSource wit minWit source) PClause.bot) :
     ∃ (D : Type) (interpretation : Interp D CN RN T),
       CBRoleChainEncoding.models interpretation source := by
   have hsatisfiable : ∃ valuation : GAtom CN RN T → Prop,
-      ∀ clause ∈ groundSource wit source, clause.sat valuation := by
+      ∀ clause ∈ groundSource wit minWit source, clause.sat valuation := by
     by_contra hunsat
-    exact hclash (PropRes.completeness (groundSource wit source) hunsat)
+    exact hclash (PropRes.completeness (groundSource wit minWit source) hunsat)
   obtain ⟨valuation, hmodels⟩ := hsatisfiable
-  let hbase : ∀ clause ∈ Eqv.ground wit source.clauses, clause.sat valuation :=
+  let hbase : ∀ clause ∈ Eqv.ground wit minWit source.clauses, clause.sat valuation :=
     fun clause hclause => hmodels clause (mem_groundSource_base hclause)
   let respects := Eqv.respectsEq_of_grounds hbase
-    (Eqv.grounds_ground wit source.clauses)
+    (Eqv.grounds_ground wit minWit source.clauses)
   exact ⟨Eqv.QDom valuation respects, Eqv.congruenceModel valuation respects,
     quotient_models_source hmodels⟩
 

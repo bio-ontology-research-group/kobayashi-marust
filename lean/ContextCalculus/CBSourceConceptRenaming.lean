@@ -20,6 +20,8 @@ def mapClause (f : SourceConcept → TargetConcept) :
   | .atMost bound role concept => .atMost bound role (f concept)
   | .guardedAtMost source bound role concept =>
       .guardedAtMost (f source) bound role (f concept)
+  | .guardedAtLeast source bound role concept =>
+      .guardedAtLeast (f source) bound role (f concept)
 
 def mapSource (f : SourceConcept → TargetConcept)
     (source : SourceOntology SourceConcept Role Individual) :
@@ -65,6 +67,7 @@ theorem sat_mapClause_iff
   | nom concept individual => rfl
   | atMost bound role concept => rfl
   | guardedAtMost source bound role concept => rfl
+  | guardedAtLeast source bound role concept => rfl
 
 theorem models_mapSource_iff
     (f : SourceConcept → TargetConcept)

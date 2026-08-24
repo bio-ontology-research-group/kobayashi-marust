@@ -121,10 +121,11 @@ section Ground
 variable {CN RN T : Type} [DecidableEq CN] [DecidableEq RN] [DecidableEq T]
   [Fintype T] [Fintype CN] [Fintype RN]
 variable (wit : CN → RN → CN → T → T) (O : Ontology CN RN T)
+variable (minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T)
 
 /-- Ground resolution decides the grounding of the ontology. -/
 theorem ground_resolution_decides :
-    Derivable (ground wit O) PClause.bot ↔ Unsat (ground wit O) :=
+    Derivable (ground wit minWit O) PClause.bot ↔ Unsat (ground wit minWit O) :=
   derivable_bot_iff_unsat _
 
 /-- **The engine agrees with ground resolution on the grounding.**  Its
@@ -132,14 +133,14 @@ theorem ground_resolution_decides :
     does *not* refute, the congruence quotient is a genuine first-order model of
     the ontology (so the non-refutation is justified, not a missed proof). -/
 theorem engine_agrees_ground {N : Finset (PClause (GAtom CN RN T))}
-    (hsat : Saturation (ground wit O) N) :
-    (PClause.bot ∈ N ↔ Derivable (ground wit O) PClause.bot) ∧
+    (hsat : Saturation (ground wit minWit O) N) :
+    (PClause.bot ∈ N ↔ Derivable (ground wit minWit O) PClause.bot) ∧
     (PClause.bot ∉ N → ∃ (D : Type) (I : Interp D CN RN T), models I O) := by
   refine ⟨saturation_refutes_iff_derivable hsat, ?_⟩
   intro hnb
-  have hnd : ¬ Derivable (ground wit O) PClause.bot :=
+  have hnd : ¬ Derivable (ground wit minWit O) PClause.bot :=
     fun h => hnb ((saturation_refutes_iff_derivable hsat).mpr h)
-  exact herbrand_complete (grounds_ground wit O) hnd
+  exact herbrand_complete (grounds_ground wit minWit O) hnd
 
 end Ground
 

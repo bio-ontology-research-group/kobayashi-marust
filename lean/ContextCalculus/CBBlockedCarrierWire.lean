@@ -128,6 +128,32 @@ def DecodedBlockedCarrierDocument.witness
       source role filler carrier)
     ⟨0, decoded.carrier_nonempty⟩
 
+/-- Canonical witness slot for a grouped minimum-cardinality source clause.
+    The source-clause index and slot determine the canonical Skolem id; the
+    checked source allocation maps it to the production function namespace.
+    Blocking maps the resulting application to its finite term rank, with the
+    carrier's distinguished element as a total fallback. -/
+def DecodedBlockedCarrierDocument.minimumWitness
+    (decoded : DecodedBlockedCarrierDocument)
+    (source : Fin (productionRun decoded.admissibility).source.bounds.concepts)
+    (n : Nat)
+    (role : Fin (productionRun decoded.admissibility).source.bounds.roles)
+    (filler : Fin (productionRun decoded.admissibility).source.bounds.concepts)
+    (carrier : decoded.Carrier) (slot : Fin n) : decoded.Carrier := by
+  let run := productionRun decoded.admissibility
+  let sourceClause : Eqv.OClause
+      (Fin run.source.bounds.concepts) (Fin run.source.bounds.roles)
+      (Fin run.source.bounds.individuals) :=
+    .guardedAtLeast source n role filler
+  let owner := run.source.source.clauses.idxOf sourceClause
+  let function := run.source.allocation (Nat.pair owner slot.val)
+  let order := decoded.admissibility.eqClosure.literalOrder.termOrder
+  let argument := order.orderedTerms.get carrier
+  let term := FTerm.app function argument
+  if h : order.rank term < order.orderedTerms.length then
+    exact ⟨order.rank term, h⟩
+  else exact ⟨0, decoded.carrier_nonempty⟩
+
 theorem DecodedBlockedCarrierDocument.witness_eq_get
     (decoded : DecodedBlockedCarrierDocument)
     (source : Fin (productionRun decoded.admissibility).source.bounds.concepts)

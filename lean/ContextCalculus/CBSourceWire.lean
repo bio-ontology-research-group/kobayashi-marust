@@ -31,6 +31,7 @@ inductive WireSourceClause where
   | nominal (concept individual : Nat)
   | atMost (cardinality role concept : Nat)
   | guardedAtMost (source cardinality role concept : Nat)
+  | guardedAtLeast (source cardinality role concept : Nat)
 deriving DecidableEq, FromJson, ToJson
 
 structure WireRoleChain where
@@ -113,6 +114,12 @@ def WireSourceClause.decode (bounds : Bounds) : WireSourceClause →
         (← checkedFin "source concept" bounds.concepts concept)
   | .guardedAtMost source cardinality role concept =>
       return .guardedAtMost
+        (← checkedFin "source concept" bounds.concepts source)
+        cardinality
+        (← checkedFin "source role" bounds.roles role)
+        (← checkedFin "source concept" bounds.concepts concept)
+  | .guardedAtLeast source cardinality role concept =>
+      return .guardedAtLeast
         (← checkedFin "source concept" bounds.concepts source)
         cardinality
         (← checkedFin "source role" bounds.roles role)
@@ -369,10 +376,11 @@ private def allocatedExample : WireSourceBinding where
     [ ⟨[concept 0 (.var 0)], [role 0 (.var 0) (.app 1 (.var 0))]⟩
     , ⟨[concept 0 (.var 0)], [concept 1 (.app 1 (.var 0))]⟩ ]
   function_allocation := some {
-    version := 1
+    version := 2
     canonical_count := 1
     production_count := 2
-    allocation := [1]
+    allocation := []
+    sparse_allocation := [⟨0, 1⟩]
   }
 
 example : allocatedExample.check = .ok true := by native_decide
@@ -389,14 +397,15 @@ private def duplicateAllocationExample : WireSourceBinding where
     [ ⟨[concept 0 (.var 0)], [concept 1 (.var 0)]⟩
     , ⟨[concept 1 (.var 0)], [concept 0 (.var 0)]⟩ ]
   function_allocation := some {
-    version := 1
+    version := 2
     canonical_count := 2
     production_count := 2
-    allocation := [1, 1]
+    allocation := []
+    sparse_allocation := [⟨0, 1⟩, ⟨2, 1⟩]
   }
 
 example : duplicateAllocationExample.check =
-    .error "CB function allocation reuses a production Skolem id" := by
+    .error "sparse CB function allocation reuses a production Skolem id" := by
   native_decide
 
 private def sparseNonExistentialExample : WireSourceBinding where
@@ -409,10 +418,10 @@ private def sparseNonExistentialExample : WireSourceBinding where
   role_chains := []
   ontology := [⟨[concept 0 (.var 0)], [concept 1 (.var 0)]⟩]
   function_allocation := some {
-    version := 1
+    version := 2
     canonical_count := 1
     production_count := 0
-    allocation := [0]
+    allocation := []
   }
 
 example : sparseNonExistentialExample.check = .ok true := by native_decide
@@ -430,10 +439,11 @@ private def sparseMixedExample : WireSourceBinding where
     , ⟨[concept 0 (.var 0)], [role 0 (.var 0) (.app 0 (.var 0))]⟩
     , ⟨[concept 0 (.var 0)], [concept 1 (.app 0 (.var 0))]⟩ ]
   function_allocation := some {
-    version := 1
+    version := 2
     canonical_count := 2
     production_count := 1
-    allocation := [1, 0]
+    allocation := []
+    sparse_allocation := [⟨2, 0⟩]
   }
 
 example : sparseMixedExample.check = .ok true := by native_decide
@@ -441,14 +451,29 @@ example : sparseMixedExample.check = .ok true := by native_decide
 private def malformedSentinelExample : WireSourceBinding :=
   { sparseNonExistentialExample with
     function_allocation := some {
-      version := 1
+      version := 2
       canonical_count := 1
       production_count := 0
-      allocation := [2]
+      allocation := []
+      sparse_allocation := [⟨0, 2⟩]
     } }
 
 example : malformedSentinelExample.check =
-    .error "CB function allocation entry is neither bounded nor its canonical sentinel" := by
+    .error "sparse CB function allocation target is outside function_count" := by
+  native_decide
+
+private def duplicateSparseSourceExample : WireSourceBinding :=
+  { allocatedExample with
+    function_allocation := some {
+      version := 2
+      canonical_count := 1
+      production_count := 2
+      allocation := []
+      sparse_allocation := [⟨0, 0⟩, ⟨0, 1⟩]
+    } }
+
+example : duplicateSparseSourceExample.check =
+    .error "sparse CB function allocation repeats a canonical Skolem id" := by
   native_decide
 
 private def roleAxiomExample (roleAxiomWire : WireRoleAxiom)

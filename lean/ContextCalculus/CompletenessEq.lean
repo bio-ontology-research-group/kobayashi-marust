@@ -99,6 +99,8 @@ inductive OClause (CN RN T : Type) where
   | nom (a : CN) (o : T)                       -- a ≡ {o} (nominal concept)
   | atMost (n : ℕ) (r : RN) (c : CN)           -- ≤n r.c  (qualified number restriction)
   | guardedAtMost (a : CN) (n : ℕ) (r : RN) (c : CN) -- a ⊑ ≤n r.c
+  | guardedAtLeast (a : CN) (n : ℕ) (r : RN) (c : CN) -- a ⊑ ≥n r.c
+deriving DecidableEq
 
 abbrev Ontology (CN RN T : Type) := List (OClause CN RN T)
 
@@ -118,6 +120,9 @@ def satO {D : Type} (I : Interp D CN RN T) : OClause CN RN T → Prop
   | OClause.guardedAtMost a n rr cc => ∀ x, I.c a x →
       ∀ f : Fin (n + 1) → D,
         (∀ i, I.r rr x (f i) ∧ I.c cc (f i)) → ∃ i j, i ≠ j ∧ f i = f j
+  | OClause.guardedAtLeast a n rr cc => ∀ x, I.c a x →
+      ∃ f : Fin n → D,
+        (∀ i, I.r rr x (f i) ∧ I.c cc (f i)) ∧ Function.Injective f
 
 def models {D : Type} (I : Interp D CN RN T) (O : Ontology CN RN T) : Prop :=
   ∀ cl ∈ O, satO I cl
@@ -176,6 +181,13 @@ def guardedAtMostBody (a : CN) (rr : RN) (cc : CN) (n : ℕ)
     (x : T) (g : Fin (n + 1) → T) : List (GAtom CN RN T) :=
   GAtom.con a x :: atMostBody rr cc n x g
 
+def guardedAtLeastRoleBody (a : CN) (x : T) : List (GAtom CN RN T) :=
+  [GAtom.con a x]
+
+def guardedAtLeastDistinctBody (a : CN) (x left right : T) :
+    List (GAtom CN RN T) :=
+  [GAtom.con a x, GAtom.eqa left right]
+
 theorem mem_atMostBody {rr cc n x g} {ga : GAtom CN RN T} :
     ga ∈ atMostBody rr cc n x g ↔
       (∃ i, ga = GAtom.rol rr x (g i)) ∨ (∃ i, ga = GAtom.con cc (g i)) := by
@@ -233,6 +245,14 @@ structure Grounds (G : Finset (PClause (GAtom CN RN T))) (O : Ontology CN RN T)
   guardedAtMostI : ∀ a n r c, OClause.guardedAtMost a n r c ∈ O →
     ∀ x (g : Fin (n + 1) → T),
       clImp (guardedAtMostBody a r c n x g) (atMostHead n g) ∈ G
+  guardedAtLeastI : ∀ a n r c, OClause.guardedAtLeast a n r c ∈ O →
+    ∃ witnesses : T → Fin n → T,
+      (∀ x i, clImp (guardedAtLeastRoleBody a x)
+        [GAtom.rol r x (witnesses x i)] ∈ G) ∧
+      (∀ x i, clImp (guardedAtLeastRoleBody a x)
+        [GAtom.con c (witnesses x i)] ∈ G) ∧
+      (∀ x i j, i < j → clImp
+        (guardedAtLeastDistinctBody a x (witnesses x i) (witnesses x j)) [] ∈ G)
 
 /-- Discharge one ground implication: from a member of `G` satisfied by `π`,
     pull out its `bs → hs` content. -/
@@ -391,6 +411,55 @@ theorem congruenceModel_models {π : Val CN RN T} (h : RespectsEq π)
     refine ⟨i, j, ne_of_lt hlt, ?_⟩
     rw [← hg i, ← hg j]
     exact Quotient.sound hπ
+  | guardedAtLeast a n r c =>
+    intro q hguard
+    obtain ⟨x, rfl⟩ := Quotient.exists_rep q
+    obtain ⟨witnesses, hrole, hconcept, hdistinct⟩ :=
+      hgr.guardedAtLeastI a n r c hcl
+    let f : Fin n → QDom π h := fun i => Quotient.mk _ (witnesses x i)
+    refine ⟨f, ?_, ?_⟩
+    · intro i
+      constructor
+      · obtain ⟨ga, hga, htrue⟩ := useClause hG (hrole x i) (by
+          intro ga hga
+          simp only [guardedAtLeastRoleBody, List.mem_singleton] at hga
+          subst ga
+          exact hguard)
+        simp only [List.mem_singleton] at hga
+        subst ga
+        exact htrue
+      · obtain ⟨ga, hga, htrue⟩ := useClause hG (hconcept x i) (by
+          intro ga hga
+          simp only [guardedAtLeastRoleBody, List.mem_singleton] at hga
+          subst ga
+          exact hguard)
+        simp only [List.mem_singleton] at hga
+        subst ga
+        exact htrue
+    · intro i j hequal
+      by_contra hne
+      have hlt : i < j ∨ j < i := lt_or_gt_of_ne hne
+      rcases hlt with hij | hji
+      · have heqAtom : π (GAtom.eqa (witnesses x i) (witnesses x j)) :=
+          Quotient.exact hequal
+        obtain ⟨ga, hga, _⟩ := useClause hG (hdistinct x i j hij) (by
+          intro ga hga
+          simp only [guardedAtLeastDistinctBody, List.mem_cons,
+            List.not_mem_nil, or_false] at hga
+          rcases hga with rfl | rfl
+          · exact hguard
+          · exact heqAtom)
+        exact (by simpa using hga)
+      · have heqAtom : π (GAtom.eqa (witnesses x j) (witnesses x i)) :=
+          Quotient.exact hequal.symm
+        obtain ⟨ga, hga, _⟩ := useClause hG (hdistinct x j i hji) (by
+          intro ga hga
+          simp only [guardedAtLeastDistinctBody, List.mem_cons,
+            List.not_mem_nil, or_false] at hga
+          rcases hga with rfl | rfl
+          · exact hguard
+          · exact heqAtom)
+        exact (by simpa using hga)
 
 /-- The equality axioms in a grounding force any model `π` to respect equality.
     So `RespectsEq` is *derived* from `Grounds` + `π ⊨ G`, never assumed. -/
@@ -500,7 +569,8 @@ def eqAxiomSet : Finset (PClause (GAtom CN RN T)) :=
             [GAtom.rol p.1 p.2.1 p.2.2.2]))))))
 
 /-- All ground instances of one ontology clause. -/
-def clauseInsts (wit : CN → RN → CN → T → T) :
+def clauseInsts (wit : CN → RN → CN → T → T)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T) :
     OClause CN RN T → Finset (PClause (GAtom CN RN T))
   | OClause.gci body head =>
       Finset.univ.image (fun x : T =>
@@ -531,25 +601,39 @@ def clauseInsts (wit : CN → RN → CN → T → T) :
   | OClause.guardedAtMost a n r c =>
       Finset.univ.image (fun p : T × (Fin (n + 1) → T) =>
         clImp (guardedAtMostBody a r c n p.1 p.2) (atMostHead n p.2))
+  | OClause.guardedAtLeast a n r c =>
+      (Finset.univ.image (fun p : T × Fin n =>
+        clImp (guardedAtLeastRoleBody a p.1)
+          [GAtom.rol r p.1 (minWit a n r c p.1 p.2)])) ∪
+      ((Finset.univ.image (fun p : T × Fin n =>
+        clImp (guardedAtLeastRoleBody a p.1)
+          [GAtom.con c (minWit a n r c p.1 p.2)])) ∪
+      ((Finset.univ.filter (fun p : T × Fin n × Fin n => p.2.1 < p.2.2)).image
+        (fun p => clImp (guardedAtLeastDistinctBody a p.1
+          (minWit a n r c p.1 p.2.1) (minWit a n r c p.1 p.2.2)) [])))
 
 /-- **The grounder.**  Equality axioms together with every ontology-clause
     instance over the finite Herbrand universe. -/
-def ground (wit : CN → RN → CN → T → T) (O : Ontology CN RN T) :
+def ground (wit : CN → RN → CN → T → T)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T)
+    (O : Ontology CN RN T) :
     Finset (PClause (GAtom CN RN T)) :=
-  eqAxiomSet ∪ (O.map (clauseInsts wit)).foldr (· ∪ ·) ∅
+  eqAxiomSet ∪ (O.map (clauseInsts wit minWit)).foldr (· ∪ ·) ∅
 
-theorem mem_ground_eq {wit O} {c : PClause (GAtom CN RN T)} (h : c ∈ eqAxiomSet) :
-    c ∈ ground wit O :=
+theorem mem_ground_eq {wit minWit O} {c : PClause (GAtom CN RN T)}
+    (h : c ∈ eqAxiomSet) : c ∈ ground wit minWit O :=
   Finset.mem_union.mpr (Or.inl h)
 
-theorem mem_ground_cl {wit O} {cl : OClause CN RN T} {c : PClause (GAtom CN RN T)}
-    (hcl : cl ∈ O) (h : c ∈ clauseInsts wit cl) : c ∈ ground wit O :=
-  Finset.mem_union.mpr (Or.inr (mem_fold_of_mem (clauseInsts wit) hcl h))
+theorem mem_ground_cl {wit minWit O} {cl : OClause CN RN T}
+    {c : PClause (GAtom CN RN T)} (hcl : cl ∈ O)
+    (h : c ∈ clauseInsts wit minWit cl) : c ∈ ground wit minWit O :=
+  Finset.mem_union.mpr (Or.inr (mem_fold_of_mem (clauseInsts wit minWit) hcl h))
 
 /-- **The grounder satisfies `Grounds`.**  Each required ground instance is in
     the emitted set; `Grounds` is therefore realised, not assumed. -/
-theorem grounds_ground (wit : CN → RN → CN → T → T) (O : Ontology CN RN T) :
-    Grounds (ground wit O) O wit where
+theorem grounds_ground (wit : CN → RN → CN → T → T)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T)
+    (O : Ontology CN RN T) : Grounds (ground wit minWit O) O wit where
   eqRefl := fun x => mem_ground_eq (by
     simp only [eqAxiomSet, Finset.mem_union, Finset.mem_image, Finset.mem_univ, true_and]
     exact Or.inl ⟨x, rfl⟩)
@@ -595,6 +679,22 @@ theorem grounds_ground (wit : CN → RN → CN → T → T) (O : Ontology CN RN 
     simp only [clauseInsts]; exact image_mem _ (x, g))
   guardedAtMostI := fun a n r c hcl x g => mem_ground_cl hcl (by
     simp only [clauseInsts]; exact image_mem _ (x, g))
+  guardedAtLeastI := by
+    intro a n r c hcl
+    refine ⟨minWit a n r c, ?_, ?_, ?_⟩
+    · intro x i
+      apply mem_ground_cl hcl
+      simp only [clauseInsts, Finset.mem_union]
+      exact Or.inl (image_mem _ (x, i))
+    · intro x i
+      apply mem_ground_cl hcl
+      simp only [clauseInsts, Finset.mem_union]
+      exact Or.inr (Or.inl (image_mem _ (x, i)))
+    · intro x i j hij
+      apply mem_ground_cl hcl
+      simp only [clauseInsts, Finset.mem_union]
+      exact Or.inr (Or.inr
+        (Finset.mem_image.mpr ⟨(x, i, j), by simp [hij], rfl⟩))
 
 /-- **Full equational Herbrand completeness, self-contained.**  Over a finite
     vocabulary and Herbrand universe, if the concrete grounding of `O` is
@@ -602,10 +702,12 @@ theorem grounds_ground (wit : CN → RN → CN → T → T) (O : Ontology CN RN 
     model — the congruence quotient — covering disjunction, existentials,
     universals, role hierarchy, inverse roles, nominals, and qualified number
     restrictions `≤n R.C`.  No assumed `Grounds`, no assumed Herbrand lemma. -/
-theorem herbrand_complete_ground (wit : CN → RN → CN → T → T) (O : Ontology CN RN T)
-    (hclash : ¬ Derivable (ground wit O) PClause.bot) :
+theorem herbrand_complete_ground (wit : CN → RN → CN → T → T)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T)
+    (O : Ontology CN RN T)
+    (hclash : ¬ Derivable (ground wit minWit O) PClause.bot) :
     ∃ (D : Type) (I : Interp D CN RN T), models I O :=
-  herbrand_complete (grounds_ground wit O) hclash
+  herbrand_complete (grounds_ground wit minWit O) hclash
 
 end Grounder
 

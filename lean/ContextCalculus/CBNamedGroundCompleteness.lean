@@ -31,6 +31,8 @@ def mapIndividualClause (name : Individual → Carrier) :
   | .atMost cardinality role concept => .atMost cardinality role concept
   | .guardedAtMost source cardinality role concept =>
       .guardedAtMost source cardinality role concept
+  | .guardedAtLeast source cardinality role concept =>
+      .guardedAtLeast source cardinality role concept
 
 def mapIndividuals (name : Individual → Carrier)
     (source : SourceOntology CN RN Individual) : SourceOntology CN RN Carrier :=
@@ -88,19 +90,21 @@ variable [DecidableEq CN] [DecidableEq RN] [DecidableEq Carrier]
 
 def namedGroundSource (name : Individual → Carrier)
     (wit : CN → RN → CN → Carrier → Carrier)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → Carrier → Fin n → Carrier)
     (source : SourceOntology CN RN Individual) :=
-  groundSource wit (mapIndividuals name source)
+  groundSource wit minWit (mapIndividuals name source)
 
 theorem source_complete_ground_named
     (name : Individual → Carrier)
     (wit : CN → RN → CN → Carrier → Carrier)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → Carrier → Fin n → Carrier)
     (source : SourceOntology CN RN Individual)
-    (hclash : ¬ PropRes.Derivable (namedGroundSource name wit source)
+    (hclash : ¬ PropRes.Derivable (namedGroundSource name wit minWit source)
       PropRes.PClause.bot) :
     ∃ (D : Type) (interpretation : Interp D CN RN Individual),
       CBRoleChainEncoding.models interpretation source := by
   obtain ⟨D, carrierInterpretation, hmodels⟩ :=
-    source_complete_ground wit (mapIndividuals name source) hclash
+    source_complete_ground wit minWit (mapIndividuals name source) hclash
   exact ⟨D, restrictIndividualNames name carrierInterpretation,
     (models_mapIndividuals_iff name carrierInterpretation source).mp hmodels⟩
 

@@ -4461,6 +4461,7 @@ mod cb_derivation_candidate_tests {
                 {"atMost": {"cardinality": 2, "role": 0, "concept": 1}}
             ],
             "role_chains": [{"body": [0, 1, 2], "sup": 2}],
+            "role_axioms": [],
             "ontology": []
         });
         let global = serde_json::json!({
@@ -4529,6 +4530,7 @@ mod cb_derivation_candidate_tests {
             "individual_count": 0,
             "source_clauses": [{"gci": {"body": [0], "head": [1]}}],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": [gci]
         });
         let live_state = serde_json::json!({
@@ -4691,6 +4693,7 @@ mod cb_derivation_candidate_tests {
             "individual_count": 0,
             "source_clauses": [],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": []
         });
         let forged = serde_json::json!({
@@ -4716,6 +4719,7 @@ mod cb_derivation_candidate_tests {
             "individual_count": 0,
             "source_clauses": [],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": []
         });
         let source = cb_regular_arbitrary_chain_source(
@@ -4770,6 +4774,7 @@ mod cb_derivation_candidate_tests {
             "individual_count": 0,
             "source_clauses": [],
             "role_chains": [{"body": [0, 1, 2], "sup": 2}],
+            "role_axioms": [],
             "ontology": [{
                 "body": [
                     role_literal(0, 0, -1),
@@ -4810,6 +4815,7 @@ mod cb_derivation_candidate_tests {
             "individual_count": 0,
             "source_clauses": [{"functional": {"role": 0}}],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": [{
                 "body": [
                     role_literal(0, 0, -1),
@@ -4854,6 +4860,7 @@ mod cb_derivation_candidate_tests {
                 {"functional": {"role": 1}}
             ],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": [
                 {
                     "body": [role_literal(0, 0, -1), role_literal(0, 0, -2)],
@@ -4901,6 +4908,7 @@ mod cb_derivation_candidate_tests {
             "individual_count": 0,
             "source_clauses": [{"gci": {"body": [0], "head": [1]}}],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": [{
                 "body": [concept_literal(0, term(0))],
                 "head": [concept_literal(1, term(0))]
@@ -4937,6 +4945,7 @@ mod cb_derivation_candidate_tests {
             "individual_count": 1,
             "source_clauses": [{"nominal": {"concept": 0, "individual": 0}}],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": [
                 {
                     "body": [concept_literal(0, term(0))],
@@ -5530,6 +5539,7 @@ mod cb_derivation_candidate_tests {
             "individual_count": 0,
             "source_clauses": [],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": wire_ontology,
         });
         let publication = serde_json::json!({

@@ -1,5 +1,6 @@
 import ContextCalculus.CBALCEncoding
 import ContextCalculus.CompletenessEq
+import Mathlib.Data.Nat.Pairing
 
 /-!
 # Exact equational ontology to CB nested-term encoding
@@ -42,6 +43,72 @@ private def atMostHeadL (n : Nat) : List FLit :=
   (List.range (n + 1)).flatMap (fun i =>
     (List.range (n + 1)).flatMap (fun j =>
       if i < j then [.eq (slot i) (slot j)] else []))
+
+private def atLeastWitness (index slot : Nat) : FTerm :=
+  .app (Nat.pair index slot) x
+
+private def atLeastRoleClauses (index : Nat) (source : Fin conceptCount)
+    (n : Nat) (role : Fin roleCount) : List FCL :=
+  (List.range n).map fun i =>
+    ⟨[con source x], [rol role x (atLeastWitness index i)]⟩
+
+private def atLeastConceptClauses (index : Nat) (source : Fin conceptCount)
+    (n : Nat) (concept : Fin conceptCount) : List FCL :=
+  (List.range n).map fun i =>
+    ⟨[con source x], [con concept (atLeastWitness index i)]⟩
+
+private def atLeastDistinctClauses (index : Nat) (source : Fin conceptCount)
+    (n : Nat) : List FCL :=
+  (List.range n).flatMap fun i =>
+    (List.range n).flatMap fun j =>
+      if i < j then
+        [⟨[con source x],
+          [.ineq (atLeastWitness index j) (atLeastWitness index i)]⟩]
+      else []
+
+private def guardedAtLeastClauses (index : Nat) (source : Fin conceptCount)
+    (n : Nat) (role : Fin roleCount) (concept : Fin conceptCount) : List FCL :=
+  atLeastRoleClauses index source n role ++
+    atLeastConceptClauses index source n concept ++
+    atLeastDistinctClauses index source n
+
+private theorem mem_atLeastRoleClauses {clause : FCL} :
+    clause ∈ atLeastRoleClauses index source n role ↔
+      ∃ i : Fin n, clause =
+        ⟨[con source x], [rol role x (atLeastWitness index i)]⟩ := by
+  simp only [atLeastRoleClauses, List.mem_map, List.mem_range]
+  constructor
+  · rintro ⟨i, hi, rfl⟩
+    exact ⟨⟨i, hi⟩, rfl⟩
+  · rintro ⟨i, rfl⟩
+    exact ⟨i.val, i.isLt, rfl⟩
+
+private theorem mem_atLeastConceptClauses {clause : FCL} :
+    clause ∈ atLeastConceptClauses index source n concept ↔
+      ∃ i : Fin n, clause =
+        ⟨[con source x], [con concept (atLeastWitness index i)]⟩ := by
+  simp only [atLeastConceptClauses, List.mem_map, List.mem_range]
+  constructor
+  · rintro ⟨i, hi, rfl⟩
+    exact ⟨⟨i, hi⟩, rfl⟩
+  · rintro ⟨i, rfl⟩
+    exact ⟨i.val, i.isLt, rfl⟩
+
+private theorem mem_atLeastDistinctClauses {clause : FCL} :
+    clause ∈ atLeastDistinctClauses index source n ↔
+      ∃ i j : Fin n, i < j ∧ clause =
+        ⟨[con source x],
+          [.ineq (atLeastWitness index j) (atLeastWitness index i)]⟩ := by
+  simp only [atLeastDistinctClauses, List.mem_flatMap, List.mem_range]
+  constructor
+  · rintro ⟨i, hi, j, hj, hmem⟩
+    by_cases hlt : i < j
+    · simp only [hlt, if_true, List.mem_singleton] at hmem
+      exact ⟨⟨i, hi⟩, ⟨j, hj⟩, hlt, hmem⟩
+    · simp only [hlt, if_false, List.not_mem_nil] at hmem
+  · rintro ⟨i, j, hlt, rfl⟩
+    exact ⟨i.val, i.isLt, j.val, j.isLt,
+      by simp only [show i.val < j.val from hlt, if_true, List.mem_singleton]⟩
 
 private theorem mem_atMostBodyL {n : Nat} {role : Fin roleCount}
     {concept : Fin conceptCount} {literal : FLit} :
@@ -102,15 +169,15 @@ private noncomputable def slotAssignment {n : Nat} (source : D)
     Int.ofNat_injective (show Int.ofNat (i.val + 2) = Int.ofNat 0 from hzero)
   omega
 
-/-- Encode one normalized source clause. Existential-right clauses use their
-    source-list index as the Skolem function identifier. -/
+/-- Encode one normalized source clause. Canonical Skolem identifiers pair the
+    source-clause index with a constructor-local witness slot. -/
 def encodeClause (index : Nat) :
     OClause (Fin conceptCount) (Fin roleCount) (Fin individualCount) → List FCL
   | .gci body head =>
       [⟨body.map (con · x), head.map (con · x)⟩]
   | .exR source role filler =>
-      [ ⟨[con source x], [rol role x (.app index x)]⟩
-      , ⟨[con source x], [con filler (.app index x)]⟩ ]
+      [ ⟨[con source x], [rol role x (.app (Nat.pair index 0) x)]⟩
+      , ⟨[con source x], [con filler (.app (Nat.pair index 0) x)]⟩ ]
   | .allR source role filler =>
       [⟨[con source x, rol role x y], [con filler y]⟩]
   | .exL role filler conclusion =>
@@ -129,6 +196,8 @@ def encodeClause (index : Nat) :
       [⟨atMostBodyL n role concept, atMostHeadL n⟩]
   | .guardedAtMost source n role concept =>
       [⟨con source x :: atMostBodyL n role concept, atMostHeadL n⟩]
+  | .guardedAtLeast source n role concept =>
+      guardedAtLeastClauses index source n role concept
 
 def encodeFrom (index : Nat) :
     Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount) → List FCL
@@ -365,6 +434,70 @@ theorem valid_guardedAtMost_iff (model : TModel D)
     · exact ⟨.eq (slot j) (slot i),
         mem_atMostHeadL.mpr ⟨j, i, hgt, rfl⟩, heq.symm⟩
 
+theorem guardedAtLeast_of_valid (model : TModel D) (index : Nat)
+    (source : Fin conceptCount) (n : Nat) (role : Fin roleCount)
+    (concept : Fin conceptCount)
+    (hvalid : ∀ clause ∈ guardedAtLeastClauses index source n role concept,
+      valid model clause) :
+    ∀ element, model.conc source.val element →
+      ∃ values : Fin n → D,
+        (∀ i, model.rol role.val element (values i) ∧
+          model.conc concept.val (values i)) ∧ Function.Injective values := by
+  intro element hsource
+  let values : Fin n → D := fun i => model.fn (Nat.pair index i.val) element
+  refine ⟨values, ?_, ?_⟩
+  · intro i
+    constructor
+    · have hclause := hvalid _ (by
+        simp only [guardedAtLeastClauses, List.mem_append]
+        exact Or.inl (Or.inl (mem_atLeastRoleClauses.mpr ⟨i, rfl⟩)))
+      rcases hclause (fun _ => element) (by
+        intro literal hliteral
+        simp only [List.mem_singleton] at hliteral
+        subst literal
+        exact hsource) with ⟨literal, hliteral, htrue⟩
+      simp only [List.mem_singleton] at hliteral
+      subst literal
+      simpa [values, atLeastWitness, x, TModel.evalL, TModel.evalT] using htrue
+    · have hclause := hvalid _ (by
+        simp only [guardedAtLeastClauses, List.mem_append]
+        exact Or.inl (Or.inr (mem_atLeastConceptClauses.mpr ⟨i, rfl⟩)))
+      rcases hclause (fun _ => element) (by
+        intro literal hliteral
+        simp only [List.mem_singleton] at hliteral
+        subst literal
+        exact hsource) with ⟨literal, hliteral, htrue⟩
+      simp only [List.mem_singleton] at hliteral
+      subst literal
+      simpa [values, atLeastWitness, x, TModel.evalL, TModel.evalT] using htrue
+  · intro i j hequal
+    by_contra hne
+    rcases lt_or_gt_of_ne hne with hij | hji
+    · have hclause := hvalid _ (by
+        simp only [guardedAtLeastClauses, List.mem_append]
+        exact Or.inr (mem_atLeastDistinctClauses.mpr ⟨i, j, hij, rfl⟩))
+      obtain ⟨literal, hliteral, hnequal⟩ := hclause (fun _ => element) (by
+        intro literal hliteral
+        simp only [List.mem_singleton] at hliteral
+        subst literal
+        exact hsource)
+      simp only [List.mem_singleton] at hliteral
+      subst literal
+      exact (hnequal (by
+        simpa [values, atLeastWitness, x, TModel.evalL, TModel.evalT] using hequal.symm)).elim
+    · have hclause := hvalid _ (by
+        simp only [guardedAtLeastClauses, List.mem_append]
+        exact Or.inr (mem_atLeastDistinctClauses.mpr ⟨j, i, hji, rfl⟩))
+      obtain ⟨literal, hliteral, hnequal⟩ := hclause (fun _ => element) (by
+        intro literal hliteral
+        simp only [List.mem_singleton] at hliteral
+        subst literal
+        exact hsource)
+      simp only [List.mem_singleton] at hliteral
+      subst literal
+      exact (hnequal (by
+        simpa [values, atLeastWitness, x, TModel.evalL, TModel.evalT] using hequal)).elim
+
 /-! ### Restriction from encoded term models -/
 
 theorem models_restrict
@@ -393,10 +526,10 @@ theorem models_restrict
                 (hencoded _ (by simp [encodeClause]))
           | exR source role filler =>
               intro element hsource
-              let target := model.fn index element
+              let target := model.fn (Nat.pair index 0) element
               refine ⟨target, ?_, ?_⟩
               · have hvalid := hencoded
-                  ⟨[con source x], [rol role x (.app index x)]⟩
+                  ⟨[con source x], [rol role x (.app (Nat.pair index 0) x)]⟩
                   (by simp [encodeClause])
                 rcases hvalid (fun _ => element) (by
                   intro literal hliteral
@@ -407,7 +540,7 @@ theorem models_restrict
                 subst literal
                 exact htrue
               · have hvalid := hencoded
-                  ⟨[con source x], [con filler (.app index x)]⟩
+                  ⟨[con source x], [con filler (.app (Nat.pair index 0) x)]⟩
                   (by simp [encodeClause])
                 rcases hvalid (fun _ => element) (by
                   intro literal hliteral
@@ -443,6 +576,10 @@ theorem models_restrict
           | guardedAtMost source n role concept =>
               exact (valid_guardedAtMost_iff model source n role concept).1
                 (hencoded _ (by simp [encodeClause]))
+          | guardedAtLeast source n role concept =>
+              exact guardedAtLeast_of_valid model index source n role concept (by
+                intro encoded hmem
+                exact hencoded encoded (by simpa [encodeClause] using hmem))
         · apply ih (index := index + 1)
           · intro encoded hencoded
             exact hall encoded (by simp [encodeFrom, hencoded])
@@ -493,6 +630,85 @@ theorem witnessFor_spec
     simpa only [hsource, dite_true] using hspec
   next hlookup => exact (hlookup source role filler hclause).elim
 
+noncomputable def atLeastWitnessFor
+    (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
+    (interpretation : Eqv.Interp D (Fin conceptCount) (Fin roleCount)
+      (Fin individualCount))
+    (hmodels : Eqv.models interpretation ontology) (default : D)
+    (index slot : Nat) (element : D) : D := by
+  classical
+  exact match hclause : ontology[index]? with
+    | some (.guardedAtLeast source n role concept) =>
+        if hslot : slot < n then
+          if hsource : interpretation.c source element then
+            (Classical.choose
+              (hmodels _ (List.mem_of_getElem? hclause) element hsource)) ⟨slot, hslot⟩
+          else default
+        else default
+    | _ => default
+
+theorem atLeastWitnessFor_spec
+    (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
+    (interpretation : Eqv.Interp D (Fin conceptCount) (Fin roleCount)
+      (Fin individualCount))
+    (hmodels : Eqv.models interpretation ontology) (default : D)
+    {index : Nat} {source : Fin conceptCount} {n : Nat}
+    {role : Fin roleCount} {concept : Fin conceptCount}
+    (hclause : ontology[index]? = some (.guardedAtLeast source n role concept))
+    (element : D) (hsource : interpretation.c source element) :
+    (∀ i : Fin n,
+      interpretation.r role element
+          (atLeastWitnessFor ontology interpretation hmodels default index i element) ∧
+        interpretation.c concept
+          (atLeastWitnessFor ontology interpretation hmodels default index i element)) ∧
+      Function.Injective (fun i : Fin n =>
+        atLeastWitnessFor ontology interpretation hmodels default index i element) := by
+  have hsemantic := hmodels _ (List.mem_of_getElem? hclause) element hsource
+  let family : Fin n → D := Classical.choose hsemantic
+  have hspec := Classical.choose_spec hsemantic
+  have heq : ∀ i : Fin n,
+      atLeastWitnessFor ontology interpretation hmodels default index i element =
+        family i := by
+    intro i
+    rw [atLeastWitnessFor]
+    split
+    next source' n' role' concept' hlookup =>
+      have hinj : OClause.guardedAtLeast source' n' role' concept' =
+          OClause.guardedAtLeast source n role concept :=
+        Option.some.inj (hlookup.symm.trans hclause)
+      injection hinj with hsource' hn' hrole' hconcept'
+      subst source'
+      subst n'
+      subst role'
+      subst concept'
+      simp only [i.isLt, hsource, dite_true]
+      rfl
+    next hlookup => exact (hlookup source n role concept hclause).elim
+  constructor
+  · intro i
+    rw [heq i]
+    exact hspec.1 i
+  · intro i j hij
+    change atLeastWitnessFor ontology interpretation hmodels default index i element =
+      atLeastWitnessFor ontology interpretation hmodels default index j element at hij
+    rw [heq i, heq j] at hij
+    exact hspec.2 hij
+
+noncomputable def functionInterpretation
+    (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
+    (interpretation : Eqv.Interp D (Fin conceptCount) (Fin roleCount)
+      (Fin individualCount))
+    (hmodels : Eqv.models interpretation ontology) (default : D)
+    (canonical : Nat) (element : D) : D :=
+  let owner := Nat.unpair canonical
+  match ontology[owner.1]? with
+  | some (.guardedAtLeast _ _ _ _) =>
+      atLeastWitnessFor ontology interpretation hmodels default owner.1 owner.2 element
+  | _ =>
+      if owner.2 = 0 then
+        witnessFor ontology interpretation hmodels default owner.1 element
+      else default
+
 noncomputable def extendModel
     (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
     (interpretation : Eqv.Interp D (Fin conceptCount) (Fin roleCount)
@@ -503,7 +719,7 @@ noncomputable def extendModel
   rol id source target := if h : id < roleCount then
     interpretation.r ⟨id, h⟩ source target else False
   const id := if h : id < individualCount then interpretation.nm ⟨id, h⟩ else default
-  fn := witnessFor ontology interpretation hmodels default
+  fn := functionInterpretation ontology interpretation hmodels default
 
 @[simp] theorem extendModel_conc
     (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
@@ -534,6 +750,67 @@ noncomputable def extendModel
     (extendModel ontology interpretation hmodels default).const name.val =
       interpretation.nm name := by
   simp [extendModel, name.isLt]
+
+theorem valid_guardedAtLeast_extend
+    (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
+    (interpretation : Eqv.Interp D (Fin conceptCount) (Fin roleCount)
+      (Fin individualCount))
+    (hmodels : Eqv.models interpretation ontology) (default : D)
+    {index : Nat} {source : Fin conceptCount} {n : Nat}
+    {role : Fin roleCount} {concept : Fin conceptCount}
+    (hclause : ontology[index]? = some (.guardedAtLeast source n role concept)) :
+    ∀ encoded ∈ guardedAtLeastClauses index source n role concept,
+      valid (extendModel ontology interpretation hmodels default) encoded := by
+  let model := extendModel ontology interpretation hmodels default
+  intro encoded hencoded
+  simp only [guardedAtLeastClauses, List.mem_append] at hencoded
+  rcases hencoded with (hrole | hconcept) | hdistinct
+  · rw [mem_atLeastRoleClauses] at hrole
+    obtain ⟨i, rfl⟩ := hrole
+    intro assignment hbody
+    have hsource : interpretation.c source (assignment 0) := by
+      have hm : model.conc source.val (assignment 0) := by
+        simpa [con, x, TModel.evalL, TModel.evalT] using
+          hbody (con source x) (by simp)
+      simpa only [model, extendModel_conc] using hm
+    have hspec := (atLeastWitnessFor_spec ontology interpretation hmodels default
+      hclause (assignment 0) hsource).1 i
+    exact ⟨rol role x (atLeastWitness index i), by simp, by
+      change model.rol role.val (assignment 0)
+        (model.fn (Nat.pair index i.val) (assignment 0))
+      simpa [model, extendModel, functionInterpretation, hclause, role.isLt,
+        atLeastWitness] using hspec.1⟩
+  · rw [mem_atLeastConceptClauses] at hconcept
+    obtain ⟨i, rfl⟩ := hconcept
+    intro assignment hbody
+    have hsource : interpretation.c source (assignment 0) := by
+      have hm : model.conc source.val (assignment 0) := by
+        simpa [con, x, TModel.evalL, TModel.evalT] using
+          hbody (con source x) (by simp)
+      simpa only [model, extendModel_conc] using hm
+    have hspec := (atLeastWitnessFor_spec ontology interpretation hmodels default
+      hclause (assignment 0) hsource).1 i
+    exact ⟨con concept (atLeastWitness index i), by simp, by
+      change model.conc concept.val
+        (model.fn (Nat.pair index i.val) (assignment 0))
+      simpa [model, extendModel, functionInterpretation, hclause, concept.isLt,
+        atLeastWitness] using hspec.2⟩
+  · rw [mem_atLeastDistinctClauses] at hdistinct
+    obtain ⟨i, j, hij, rfl⟩ := hdistinct
+    intro assignment hbody
+    have hsource : interpretation.c source (assignment 0) := by
+      have hm : model.conc source.val (assignment 0) := by
+        simpa [con, x, TModel.evalL, TModel.evalT] using
+          hbody (con source x) (by simp)
+      simpa only [model, extendModel_conc] using hm
+    have hinjective := (atLeastWitnessFor_spec ontology interpretation hmodels default
+      hclause (assignment 0) hsource).2
+    exact ⟨.ineq (atLeastWitness index j) (atLeastWitness index i), by simp, by
+      intro hequal
+      apply ne_of_gt hij
+      apply hinjective
+      simpa [model, extendModel, functionInterpretation, hclause, atLeastWitness,
+        TModel.evalL, TModel.evalT] using hequal⟩
 
 theorem models_extend
     (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount))
@@ -581,24 +858,28 @@ theorem models_extend
                     simpa [con, x, TModel.evalL, TModel.evalT] using
                       hbody (con source x) (by simp)
                   simpa only [model, extendModel_conc] using hm
-                exact ⟨rol role x (.app index x), by simp,
+                exact ⟨rol role x (.app (Nat.pair index 0) x), by simp,
                   by
                     have hw := (witnessFor_spec ontology interpretation hmodels default
                       hindex (assignment 0) hsource).1
-                    change model.rol role.val (assignment 0) (model.fn index (assignment 0))
-                    simpa [model, extendModel, role.isLt] using hw⟩
+                    change model.rol role.val (assignment 0)
+                      (model.fn (Nat.pair index 0) (assignment 0))
+                    simpa [model, extendModel, functionInterpretation, hindex,
+                      role.isLt] using hw⟩
               · intro assignment hbody
                 have hsource : interpretation.c source (assignment 0) := by
                   have hm : model.conc source.val (assignment 0) := by
                     simpa [con, x, TModel.evalL, TModel.evalT] using
                       hbody (con source x) (by simp)
                   simpa only [model, extendModel_conc] using hm
-                exact ⟨con filler (.app index x), by simp,
+                exact ⟨con filler (.app (Nat.pair index 0) x), by simp,
                   by
                     have hw := (witnessFor_spec ontology interpretation hmodels default
                       hindex (assignment 0) hsource).2
-                    change model.conc filler.val (model.fn index (assignment 0))
-                    simpa [model, extendModel, filler.isLt] using hw⟩
+                    change model.conc filler.val
+                      (model.fn (Nat.pair index 0) (assignment 0))
+                    simpa [model, extendModel, functionInterpretation, hindex,
+                      filler.isLt] using hw⟩
           | allR source role filler =>
               simp only [encodeClause, List.mem_singleton] at hhead
               subst encoded
@@ -673,6 +954,12 @@ theorem models_extend
               · intro i
                 exact ⟨by simpa only [model, extendModel_rol] using (hvalues i).1,
                   by simpa only [model, extendModel_conc] using (hvalues i).2⟩
+          | guardedAtLeast source n role concept =>
+              have hindex : ontology[index]? =
+                  some (.guardedAtLeast source n role concept) := by
+                simpa using hlookup 0 (.guardedAtLeast source n role concept) rfl
+              exact valid_guardedAtLeast_extend ontology interpretation hmodels default
+                hindex encoded (by simpa [encodeClause] using hhead)
         · apply ih (index := index + 1)
           · intro candidate hcand
             exact hsubset candidate (by simp [hcand])

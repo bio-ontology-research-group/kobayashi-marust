@@ -23,6 +23,7 @@ fn write_trivial_typed_source(path: &std::path::Path) {
         "individual_count": 1,
         "source_clauses": [{"gci": {"body": [], "head": [0]}}],
         "role_chains": [],
+        "role_axioms": [],
         "ontology": [{"body": [], "head": [concept]}]
     }});
     std::fs::write(path, serde_json::to_vec(&source).unwrap()).unwrap();
@@ -469,6 +470,7 @@ fn source_exact_lean_checker_accepts_real_cb_publication() {
             "individual_count": 1,
             "source_clauses": [{"gci": {"body": [0], "head": [1]}}],
             "role_chains": [],
+            "role_axioms": [],
             "ontology": [{"body": [concept(0)], "head": [concept(1)]}]
         }))
         .unwrap(),

@@ -66,6 +66,13 @@ pub enum NamedSourceClause {
         role: String,
         concept: String,
     },
+    GuardedAtLeast {
+        source: String,
+        cardinality: usize,
+        role: String,
+        concept: String,
+        functions: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,6 +85,22 @@ pub struct RecoveredSource {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecoveryError {
     pub production_index: usize,
+}
+
+/// Lean's `Nat.pair`: a bijective pairing used to give every source-clause
+/// witness slot a canonical function id.  Checked arithmetic keeps source
+/// publication fail-closed on inputs too large for the wire representation.
+fn canonical_function_id(owner: usize, slot: usize) -> Result<usize, String> {
+    if owner < slot {
+        slot.checked_mul(slot)
+            .and_then(|square| square.checked_add(owner))
+    } else {
+        owner
+            .checked_mul(owner)
+            .and_then(|square| square.checked_add(owner))
+            .and_then(|value| value.checked_add(slot))
+    }
+    .ok_or_else(|| "canonical CB function id overflowed usize".to_string())
 }
 
 fn variable(term: &JTerm) -> Option<&str> {
@@ -501,6 +524,96 @@ pub fn paired_source_clause(first: &JClause, second: &JClause) -> Option<NamedSo
     None
 }
 
+/// Recover the normalizer's atomic encoding of `A ⊑ ≥n R.C`.  The family
+/// consists of one adjacent role/filler pair per Skolem function followed by
+/// every pairwise equality-to-bottom clause in lexicographic slot order.  The
+/// whole family is accepted or rejected as one unit.
+fn grouped_guarded_at_least(clauses: &[JClause]) -> Option<(NamedSourceClause, usize)> {
+    let mut witnesses = Vec::new();
+    let mut offset = 0;
+    while let (Some(first), Some(second)) = (clauses.get(offset), clauses.get(offset + 1)) {
+        let Some(NamedSourceClause::ExR {
+            source,
+            role,
+            filler,
+            function,
+        }) = paired_source_clause(first, second)
+        else {
+            break;
+        };
+        let trigger_variable = match first.body.as_slice() {
+            [trigger] => concept(trigger)?.1.to_string(),
+            _ => return None,
+        };
+        if let Some((expected_source, expected_role, expected_filler, expected_variable, _)) =
+            witnesses.first()
+        {
+            if &source != expected_source
+                || &role != expected_role
+                || &filler != expected_filler
+                || &trigger_variable != expected_variable
+            {
+                break;
+            }
+        }
+        if witnesses
+            .iter()
+            .any(|(_, _, _, _, existing)| existing == &function)
+        {
+            return None;
+        }
+        witnesses.push((source, role, filler, trigger_variable, function));
+        offset += 2;
+    }
+
+    // Cardinality one is exactly an ordinary existential and is intentionally
+    // retained as `ExR`; only a family with distinctness clauses is grouped.
+    if witnesses.len() < 2 {
+        return None;
+    }
+    let distinct_count = witnesses.len().checked_mul(witnesses.len() - 1)? / 2;
+    for left in 0..witnesses.len() {
+        for right in (left + 1)..witnesses.len() {
+            let clause = clauses.get(offset)?;
+            let ([guard, equal], []) = (clause.body.as_slice(), clause.head.as_slice()) else {
+                return None;
+            };
+            let (guard_concept, guard_variable) = concept(guard)?;
+            let (left_term, right_term) = match equal {
+                JAtom::Eq { left, right } => (left, right),
+                _ => return None,
+            };
+            let (left_function, left_argument) = unary_function(left_term)?;
+            let (right_function, right_argument) = unary_function(right_term)?;
+            if guard_concept != witnesses[0].0
+                || guard_variable != witnesses[0].3
+                || left_function != witnesses[left].4
+                || right_function != witnesses[right].4
+                || left_argument != witnesses[0].3
+                || right_argument != witnesses[0].3
+            {
+                return None;
+            }
+            offset += 1;
+        }
+    }
+    debug_assert_eq!(offset, witnesses.len() * 2 + distinct_count);
+    let (source, role, filler, _, _) = &witnesses[0];
+    Some((
+        NamedSourceClause::GuardedAtLeast {
+            source: source.clone(),
+            cardinality: witnesses.len(),
+            role: role.clone(),
+            concept: filler.clone(),
+            functions: witnesses
+                .into_iter()
+                .map(|(_, _, _, _, function)| function)
+                .collect(),
+        },
+        offset,
+    ))
+}
+
 /// Recover the complete supported typed source from one production clause
 /// stream. Every production clause must be consumed exactly once. Multi-clause
 /// constructors are consumed atomically and all unsupported or malformed
@@ -513,6 +626,11 @@ pub fn recover_source(clauses: &[JClause]) -> Result<RecoveredSource, RecoveryEr
     };
     let mut index = 0;
     while index < clauses.len() {
+        if let Some((source, consumed)) = grouped_guarded_at_least(&clauses[index..]) {
+            recovered.clauses.push(source);
+            index += consumed;
+            continue;
+        }
         if let Some(next) = clauses.get(index + 1) {
             if let Some(source) = paired_source_clause(&clauses[index], next) {
                 recovered.clauses.push(source);
@@ -645,15 +763,15 @@ pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::
         .max()
         .and_then(|value| usize::try_from(value).ok())
         .map_or(0, |maximum| maximum + 1);
-    let mut allocation = Vec::with_capacity(recovered.clauses.len());
+    let mut sparse_allocation = Vec::new();
     for (index, clause) in recovered.clauses.iter().enumerate() {
-        let (wire, function) = match clause {
+        let (wire, functions) = match clause {
             NamedSourceClause::Gci { body, head } => (
                 serde_json::json!({"gci": {
                     "body": body.iter().map(|name| concept_id(name)).collect::<Result<Vec<_>, _>>()?,
                     "head": head.iter().map(|name| concept_id(name)).collect::<Result<Vec<_>, _>>()?
                 }}),
-                None,
+                Vec::new(),
             ),
             NamedSourceClause::ExR {
                 source,
@@ -665,7 +783,7 @@ pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::
                     "source": concept_id(source)?, "role": role_id(role)?,
                     "filler": concept_id(filler)?
                 }}),
-                Some(function.as_str()),
+                vec![function.as_str()],
             ),
             NamedSourceClause::AllR {
                 source,
@@ -676,7 +794,7 @@ pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::
                     "source": concept_id(source)?, "role": role_id(role)?,
                     "filler": concept_id(filler)?
                 }}),
-                None,
+                Vec::new(),
             ),
             NamedSourceClause::ExL {
                 role,
@@ -687,21 +805,21 @@ pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::
                     "role": role_id(role)?, "filler": concept_id(filler)?,
                     "conclusion": concept_id(conclusion)?
                 }}),
-                None,
+                Vec::new(),
             ),
             NamedSourceClause::SubR { sub, sup } => (
                 serde_json::json!({"subR": {"sub": role_id(sub)?, "sup": role_id(sup)?}}),
-                None,
+                Vec::new(),
             ),
             NamedSourceClause::Inverse { role, inverse } => (
                 serde_json::json!({"inverse": {
                     "role": role_id(role)?, "inverse": role_id(inverse)?
                 }}),
-                None,
+                Vec::new(),
             ),
             NamedSourceClause::Functional { role } => (
                 serde_json::json!({"functional": {"role": role_id(role)?}}),
-                None,
+                Vec::new(),
             ),
             NamedSourceClause::Nominal {
                 concept,
@@ -710,7 +828,7 @@ pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::
                 serde_json::json!({"nominal": {
                     "concept": concept_id(concept)?, "individual": individual_id(individual)?
                 }}),
-                None,
+                Vec::new(),
             ),
             NamedSourceClause::GuardedAtMost {
                 source,
@@ -722,20 +840,35 @@ pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::
                     "source": concept_id(source)?, "cardinality": cardinality,
                     "role": role_id(role)?, "concept": concept_id(concept)?
                 }}),
-                None,
+                Vec::new(),
+            ),
+            NamedSourceClause::GuardedAtLeast {
+                source,
+                cardinality,
+                role,
+                concept,
+                functions,
+            } => (
+                serde_json::json!({"guardedAtLeast": {
+                    "source": concept_id(source)?, "cardinality": cardinality,
+                    "role": role_id(role)?, "concept": concept_id(concept)?
+                }}),
+                functions.iter().map(String::as_str).collect(),
             ),
         };
         source_clauses.push(wire);
-        allocation.push(if let Some(function) = function {
-            production
+        for (slot, function) in functions.into_iter().enumerate() {
+            let target = production
                 .function_ids
                 .get(function)
                 .copied()
                 .and_then(|value| usize::try_from(value).ok())
-                .ok_or_else(|| format!("existential function {function} was not interned"))?
-        } else {
-            function_count + index
-        });
+                .ok_or_else(|| format!("existential function {function} was not interned"))?;
+            sparse_allocation.push(serde_json::json!({
+                "source": canonical_function_id(index, slot)?,
+                "target": target
+            }));
+        }
     }
 
     let role_chains = recovered
@@ -800,10 +933,11 @@ pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::
         "role_axioms": role_axioms,
         "ontology": ontology,
         "function_allocation": {
-            "version": 1,
+            "version": 2,
             "canonical_count": recovered.clauses.len(),
             "production_count": function_count,
-            "allocation": allocation
+            "allocation": [],
+            "sparse_allocation": sparse_allocation
         }
     }))
 }
@@ -1098,6 +1232,52 @@ mod tests {
             serde_json::to_string(&clauses.iter().map(clause_to_json).collect::<Vec<_>>())
                 .expect("serialize guarded maximum cardinality clauses")
         );
+    }
+
+    #[test]
+    fn groups_actual_min_cardinality_witness_family_atomically() {
+        use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
+
+        let mut registry = IriRegistry::new();
+        let ontology = parse::parse_axioms(
+            &mut registry,
+            "Ontology(SubClassOf(<A> ObjectMinCardinality(3 <R> <B>)))",
+        )
+        .expect("parse guarded minimum cardinality");
+        let (clauses, _, _) = normalise::normalise(&ontology);
+        let json = clauses.iter().map(clause_to_json).collect::<Vec<_>>();
+        let recovered = recover_source(&json).expect("recover complete minimum family");
+        let families = recovered
+            .clauses
+            .iter()
+            .filter_map(|clause| match clause {
+                NamedSourceClause::GuardedAtLeast {
+                    cardinality,
+                    functions,
+                    ..
+                } => Some((*cardinality, functions.len())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(families, vec![(3, 3)]);
+    }
+
+    #[test]
+    fn minimum_cardinality_rejects_a_missing_distinctness_clause() {
+        use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
+
+        let mut registry = IriRegistry::new();
+        let ontology = parse::parse_axioms(
+            &mut registry,
+            "Ontology(SubClassOf(<A> ObjectMinCardinality(3 <R> <B>)))",
+        )
+        .expect("parse guarded minimum cardinality");
+        let (clauses, _, _) = normalise::normalise(&ontology);
+        let mut json = clauses.iter().map(clause_to_json).collect::<Vec<_>>();
+        // Six witness clauses are followed by three pairwise-distinctness
+        // clauses. Removing one must reject the stream, never weaken `≥3`.
+        json.remove(8);
+        assert!(recover_source(&json).is_err());
     }
 
     #[test]

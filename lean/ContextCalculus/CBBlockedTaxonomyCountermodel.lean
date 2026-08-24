@@ -76,13 +76,13 @@ theorem blockedQueryGround_countermodel
     exact hqueryModels clause (by
       simp only [blockedQueryGround, Finset.mem_insert]
       exact Or.inr (Or.inr hclause))
-  let hbase : ∀ clause ∈ Eqv.ground carrier.witness
+  let hbase : ∀ clause ∈ Eqv.ground carrier.witness carrier.minimumWitness
       (mapIndividuals carrier.name (blockedSource carrier)).clauses,
       clause.sat (fun atom => valuation (atomIndex atom)) :=
     fun clause hclause => hblockedModels clause
       (mem_groundSource_base hclause)
   let respects := Eqv.respectsEq_of_grounds hbase
-    (Eqv.grounds_ground carrier.witness
+    (Eqv.grounds_ground carrier.witness carrier.minimumWitness
       (mapIndividuals carrier.name (blockedSource carrier)).clauses)
   let carrierInterpretation := Eqv.congruenceModel
     (fun atom => valuation (atomIndex atom)) respects
