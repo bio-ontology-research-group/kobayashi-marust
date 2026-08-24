@@ -33,6 +33,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMAutomaticSupervisor \
         ContextCalculus.KMWorkerPublication \
         ContextCalculus.KMCommonRoutingSource \
+        ContextCalculus.KMConcreteWorkerAdapters \
         ContextCalculus.ELCheckerTermEmbedding \
         ContextCalculus.ELNormalCheckerTermEmbedding \
         ContextCalculus.ELCommonSourceWire \
@@ -105,6 +106,8 @@ for theorem in \
     WireBundleCardinalityCommonSource.check_sound \
     bundleCardinalityHTCheck_common_routing_source_sound \
     cbCheck_common_routing_source_sound \
+    cbAccept_sound \
+    CBExecution.worker_soundAt \
     WireHTCommonSource.check_sound \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
