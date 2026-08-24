@@ -201,6 +201,27 @@ theorem HoldsAt.of_normalizeGeneratedHead_none {D : Type}
           · exact ⟨.eq left right, hequality, heq⟩
           · exact ⟨.ineq left right, hinequality, heq⟩
 
+theorem mem_of_normalizeGeneratedHead
+    {head filtered : List FLit}
+    (hnormalize : normalizeGeneratedHead head = some filtered)
+    {literal : FLit} (hliteral : literal ∈ filtered) :
+    literal ∈ head := by
+  cases hfilter : filterReflexiveHead head with
+  | none => simp [normalizeGeneratedHead, hfilter] at hnormalize
+  | some intermediate =>
+      by_cases hcomplement : hasEqualityComplement intermediate = true
+      · simp [normalizeGeneratedHead, hfilter, hcomplement] at hnormalize
+      · have heq : intermediate = filtered := by
+          simpa [normalizeGeneratedHead, hfilter, hcomplement] using hnormalize
+        subst filtered
+        unfold filterReflexiveHead at hfilter
+        split at hfilter
+        · contradiction
+        next _ =>
+          simp only [Option.some.injEq] at hfilter
+          rw [← hfilter] at hliteral
+          exact (List.mem_filter.mp hliteral).1
+
 structure FactorSignature where
   sourceIndex : Nat
   firstHeadIndex : Nat
@@ -579,6 +600,7 @@ example : terminalHeadNormal
 #print axioms WireLocalFactorClosureDocument.check_sound
 #print axioms HoldsAt.normalizeGeneratedHead_sound
 #print axioms HoldsAt.of_normalizeGeneratedHead_none
+#print axioms mem_of_normalizeGeneratedHead
 #print axioms factorCandidate_sound
 #print axioms mem_factorCandidates_iff
 #print axioms terminalHeadNormal_components

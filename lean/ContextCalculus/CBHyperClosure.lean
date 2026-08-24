@@ -142,6 +142,66 @@ theorem resolveProviders_exists_of_provider_heads
       · obtain ⟨conclusion, hconclusion⟩ := ih source htail
         exact ⟨conclusion, by simp [resolveProviders, hbody, hconclusion]⟩
 
+def FalseAt (valuation : FLit → Prop) (clause : FCL) : Prop :=
+  (∀ literal ∈ clause.body, valuation literal) ∧
+    (∀ literal ∈ clause.head, ¬ valuation literal)
+
+structure ProductiveAt (valuation : FLit → Prop) (clause : FCL)
+    (selected : FLit) : Prop where
+  selected_mem : selected ∈ clause.head
+  body_true : ∀ literal ∈ clause.body, valuation literal
+  other_false : ∀ literal ∈ clause.head,
+    literal ≠ selected → ¬ valuation literal
+
+theorem FalseAt.resolvent_of_productive
+    (valuation : FLit → Prop) (provider source : FCL) (selected : FLit)
+    (hprovider : ProductiveAt valuation provider selected)
+    (hsource : FalseAt valuation source) :
+    FalseAt valuation (resolvent provider source selected) := by
+  constructor
+  · intro literal hliteral
+    simp only [resolvent, List.mem_append] at hliteral
+    rcases hliteral with hliteral | hliteral
+    · exact hprovider.body_true literal hliteral
+    · exact hsource.1 literal (mem_without.mp hliteral).1
+  · intro literal hliteral
+    simp only [resolvent, List.mem_append] at hliteral
+    rcases hliteral with hliteral | hliteral
+    · have hwithout := mem_without.mp hliteral
+      exact hprovider.other_false literal hwithout.1 hwithout.2
+    · exact hsource.2 literal hliteral
+
+theorem resolveProviders_falseAt
+    (valuation : FLit → Prop) :
+    ∀ {source providers conclusion},
+      resolveProviders source providers = some conclusion →
+      FalseAt valuation source →
+      (∀ selected ∈ providers,
+        ProductiveAt valuation selected.2 selected.1) →
+      FalseAt valuation conclusion := by
+  intro source providers
+  induction providers generalizing source with
+  | nil =>
+      intro conclusion hresolve hsource _
+      simp [resolveProviders] at hresolve
+      subst conclusion
+      exact hsource
+  | cons selected providers ih =>
+      rcases selected with ⟨literal, provider⟩
+      intro conclusion hresolve hsource hproductive
+      have hprovider := hproductive (literal, provider) (by simp)
+      have htail : ∀ selected ∈ providers,
+          ProductiveAt valuation selected.2 selected.1 := by
+        intro selected hselected
+        exact hproductive selected (by simp [hselected])
+      by_cases hbody : literal ∈ source.body
+      · simp only [resolveProviders, hbody, hprovider.selected_mem] at hresolve
+        exact ih hresolve
+          (hsource.resolvent_of_productive valuation provider source literal
+            hprovider) htail
+      · simp only [resolveProviders, hbody] at hresolve
+        exact ih hresolve hsource htail
+
 /-! ## Provider enumeration independent of runtime indexes -/
 
 /-- A provider location is represented by ordinary naturals so the complete
@@ -375,6 +435,8 @@ example :
 #print axioms substitutionOf_terms_mem
 #print axioms resolveProviders_sound
 #print axioms resolveProviders_exists_of_provider_heads
+#print axioms FalseAt.resolvent_of_productive
+#print axioms resolveProviders_falseAt
 #print axioms mem_maximalProvidersFor_iff
 #print axioms mem_providerSelections_iff
 #print axioms providerAt_sound

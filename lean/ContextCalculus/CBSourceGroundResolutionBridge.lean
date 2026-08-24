@@ -307,6 +307,71 @@ theorem ordered_candidate_true_body_has_provider_selection
         (CBSourceHyperClosure.mem_providerSelections_iff _ _ _ _ _).mp
           hselection⟩
 
+theorem ordered_candidate_true_body_has_productive_selection
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (body : List FLit) :
+    letI := linearOrder extension
+    letI := wellFoundedLT extension
+    (∀ literal ∈ body,
+      OrdRes.Itrue (rawSet context.retained) literal) →
+      ∃ selection providers,
+        selection ∈ CBSourceHyperClosure.providerSelections
+          (hyperOf decoded).order context.root context.retained body ∧
+        CBHyperClosure.selectedProviders context.retained body selection =
+          some providers ∧
+        ∀ selected ∈ providers,
+          CBHyperClosure.ProductiveAt
+            (OrdRes.Itrue (rawSet context.retained)) selected.2 selected.1 := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  induction body with
+  | nil =>
+      intro _
+      exact ⟨[], [], by simp [CBSourceHyperClosure.providerSelections,
+        CBPredEnumeration.cartesianSelections], rfl, by simp⟩
+  | cons literal body ih =>
+      intro htrue
+      obtain ⟨provider, hprovider, headIndex, hhead, hmaximal,
+          hproviderBody, hproviderOther⟩ :=
+        ordered_candidate_true_has_production_provider context hcontext
+          extension literal (htrue literal (by simp))
+      obtain ⟨clauseIndex, hclauseBound, hclauseGet⟩ :=
+        List.mem_iff_getElem.mp hprovider
+      have hproviderAt : context.retained[clauseIndex]? = some provider :=
+        List.getElem?_eq_some_iff.mpr ⟨hclauseBound, hclauseGet⟩
+      have hlocation : (clauseIndex, headIndex) ∈
+          CBSourceHyperClosure.maximalProvidersFor (hyperOf decoded).order
+            context.root context.retained literal := by
+        rw [CBSourceHyperClosure.mem_maximalProvidersFor_iff]
+        exact ⟨hclauseBound, provider, hproviderAt, hmaximal, hhead⟩
+      have hproviderDecode : CBHyperClosure.providerAt context.retained literal
+          (clauseIndex, headIndex) = some (literal, provider) := by
+        simp [CBHyperClosure.providerAt, hproviderAt, hhead]
+      have hliteralHead : literal ∈ provider.head := by
+        obtain ⟨hbound, hget⟩ := List.getElem?_eq_some_iff.mp hhead
+        exact List.mem_iff_getElem.mpr ⟨headIndex, hbound, hget⟩
+      obtain ⟨selection, providers, hselection, hdecode, hproductive⟩ :=
+        ih (fun candidate hcandidate => htrue candidate (by simp [hcandidate]))
+      refine ⟨(clauseIndex, headIndex) :: selection,
+        (literal, provider) :: providers, ?_, ?_, ?_⟩
+      · rw [CBSourceHyperClosure.mem_providerSelections_iff]
+        simp only [List.map_cons, CBPredEnumeration.Selects]
+        exact ⟨hlocation,
+          (CBSourceHyperClosure.mem_providerSelections_iff _ _ _ _ _).mp
+            hselection⟩
+      · simp [CBHyperClosure.selectedProviders, hproviderDecode, hdecode]
+      · intro selected hselected
+        simp only [List.mem_cons] at hselected
+        rcases hselected with rfl | hselected
+        · exact ⟨hliteralHead, hproviderBody, hproviderOther⟩
+        · exact hproductive selected hselected
+
 /-- For every source instance whose body is true in the exact ordered
 candidate valuation, exhaustive production-provider enumeration reaches a raw
 Hyper conclusion. If head normalization keeps that conclusion, terminal Hyper
@@ -368,6 +433,103 @@ theorem SourceProductionClosed.ordered_candidate_hyper_step
       simp [CBHyperClosure.hyperCandidate?, instantiated, hproviders, hraw,
         hnormal]
 
+/-- Every checked source instance is true in the exact ordered candidate
+valuation unless its raw Hyper conclusion is rejected as an equality
+tautology. This is the local source-model completeness dichotomy. -/
+theorem SourceProductionClosed.ordered_candidate_source_instance_or_tautology
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (closed : SourceProductionClosed decoded)
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (hbot : PClause.bot ∉ rawSet context.retained)
+    (sourceClause : FCL)
+    (hsource : sourceClause ∈
+      (liveOf decoded).production.source.ontology)
+    (substitution : List (Int × FTerm))
+    (hsubstitution : substitution ∈
+      CBHyperClosure.substitutions (hyperOf decoded).order.orderedTerms
+        sourceClause) :
+    letI := linearOrder extension
+    letI := wellFoundedLT extension
+    ContextCalculus.sat (OrdRes.Itrue (rawSet context.retained))
+        (substCl substitution sourceClause) ∨
+      ∃ selection providers raw,
+        selection ∈ CBSourceHyperClosure.providerSelections
+          (hyperOf decoded).order context.root context.retained
+          (substCl substitution sourceClause).body ∧
+        CBHyperClosure.selectedProviders context.retained
+          (substCl substitution sourceClause).body selection = some providers ∧
+        CBHyperClosure.resolveProviders (substCl substitution sourceClause)
+          providers = some raw ∧
+        CBLocalFactorClosureWire.normalizeGeneratedHead raw.head = none := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  let valuation := OrdRes.Itrue (rawSet context.retained)
+  let instantiated := substCl substitution sourceClause
+  by_cases hsat : ContextCalculus.sat valuation instantiated
+  · exact Or.inl hsat
+  · apply Or.inr
+    have hfalseSource : CBHyperClosure.FalseAt valuation instantiated := by
+      constructor
+      · intro literal hliteral
+        by_contra hfalse
+        apply hsat
+        intro hbody
+        exact False.elim (hfalse (hbody literal hliteral))
+      · intro literal hliteral htrue
+        apply hsat
+        intro _
+        exact ⟨literal, hliteral, htrue⟩
+    obtain ⟨selection, providers, hselection, hproviders, hproductive⟩ :=
+      ordered_candidate_true_body_has_productive_selection context hcontext
+        extension instantiated.body hfalseSource.1
+    obtain ⟨raw, hraw⟩ :=
+      CBHyperClosure.resolveProviders_exists_of_provider_heads instantiated
+        providers (fun selected hselected =>
+          (hproductive selected hselected).selected_mem)
+    have hfalseRaw : CBHyperClosure.FalseAt valuation raw :=
+      CBHyperClosure.resolveProviders_falseAt valuation hraw hfalseSource
+        hproductive
+    cases hnormal : CBLocalFactorClosureWire.normalizeGeneratedHead raw.head with
+    | none => exact ⟨selection, providers, raw, hselection, hproviders, hraw,
+        hnormal⟩
+    | some filtered =>
+        let candidate : FCL := { raw with head := filtered }
+        have hcandidateMember : candidate ∈
+            CBSourceHyperClosure.hyperCandidates (hyperOf decoded).order
+              context.root context.retained
+              (liveOf decoded).production.source.ontology := by
+          simp only [CBSourceHyperClosure.hyperCandidates, List.mem_flatMap,
+            List.mem_filterMap]
+          refine ⟨sourceClause, hsource, substitution, hsubstitution, selection,
+            hselection, ?_⟩
+          simp [CBHyperClosure.hyperCandidate?, instantiated, hproviders, hraw,
+            hnormal, candidate]
+        obtain ⟨retained, hretained, hstrengthens⟩ :=
+          closed.hyper context hcontext candidate hcandidateMember
+        have hretainedSat : ContextCalculus.sat valuation retained :=
+          ContextCalculus.CBSourceGroundResolutionBridge.SourceProductionClosed.context_ordered_candidate_model
+            closed context hcontext extension hbot retained hretained
+        have hcandidateSat : ContextCalculus.sat valuation candidate := by
+          rw [← rawClause_sat_iff]
+          exact OrdResModulo.sat_of_strengthens valuation
+            (rawClause_strengthens hstrengthens)
+            ((rawClause_sat_iff valuation retained).mpr hretainedSat)
+        have hfalseCandidate : CBHyperClosure.FalseAt valuation candidate := by
+          constructor
+          · exact hfalseRaw.1
+          · intro literal hliteral
+            apply hfalseRaw.2 literal
+            exact CBLocalFactorClosureWire.mem_of_normalizeGeneratedHead hnormal
+              hliteral
+        obtain ⟨literal, hliteral, htrue⟩ :=
+          hcandidateSat hfalseCandidate.1
+        exact False.elim (hfalseCandidate.2 literal hliteral htrue)
+
 theorem SourceProductionClosed.context_ground_model
     [LinearOrder GroundAtom] [WellFoundedLT GroundAtom]
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -408,7 +570,9 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms ordered_candidate_true_has_production_provider
 #print axioms ordered_candidate_true_has_provider_location
 #print axioms ordered_candidate_true_body_has_provider_selection
+#print axioms ordered_candidate_true_body_has_productive_selection
 #print axioms SourceProductionClosed.ordered_candidate_hyper_step
+#print axioms SourceProductionClosed.ordered_candidate_source_instance_or_tautology
 #print axioms SourceProductionClosed.retained_head_equality_normal
 #print axioms SourceProductionClosed.retained_factor_pair_covered
 #print axioms SourceProductionClosed.retained_eq_pair_covered
