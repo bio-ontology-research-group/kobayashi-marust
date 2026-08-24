@@ -135,6 +135,7 @@ fn run_ofn_in_process(
     };
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
+        cb_typed_source: None,
         rbox: result.rbox,
         cardinalities: result.cardinalities,
         definers: result.definers,

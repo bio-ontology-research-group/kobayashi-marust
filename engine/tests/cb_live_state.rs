@@ -156,7 +156,59 @@ fn mandatory_lean_mode_fails_without_complete_configuration() {
         .unwrap();
     assert_eq!(output.status.code(), Some(5));
     assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("KM_CB_GLOBAL_MODEL_CERT"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("KM_CB_LEAN_CERT_CHECKER"));
+}
+
+#[test]
+fn production_certification_rejects_an_external_source_file() {
+    let global = snapshot_path("external-source-rejected");
+    let bundle = snapshot_path("external-source-bundle");
+    std::fs::write(&global, b"{}\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .env("KM_CB_GLOBAL_MODEL_CERT", &global)
+        .env("KM_CB_LEAN_CERT_CHECKER", "/bin/false")
+        .env("KM_CB_CERT_BUNDLE", &bundle)
+        .env_remove("KM_CB_TEST_ALLOW_EXTERNAL_SOURCE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(b"{\"clauses\":[]}")?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("in-band cb_typed_source"));
+    assert!(!bundle.exists());
+    std::fs::remove_file(global).unwrap();
+}
+
+#[test]
+fn in_band_source_reaches_the_checker_boundary() {
+    let bundle = snapshot_path("in-band-source-bundle");
+    let input = r#"{"clauses":[],"cb_typed_source":{}}"#;
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .env("KM_CB_LEAN_CERT_CHECKER", "/bin/false")
+        .env("KM_CB_CERT_BUNDLE", &bundle)
+        .env_remove("KM_CB_TEST_ALLOW_EXTERNAL_SOURCE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(input.as_bytes())?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Lean checker rejected"));
+    assert!(bundle.exists());
+    std::fs::remove_file(bundle).unwrap();
 }
 
 #[test]

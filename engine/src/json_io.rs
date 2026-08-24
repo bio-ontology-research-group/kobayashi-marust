@@ -246,6 +246,13 @@ pub struct NominalRoleAssertionMeta {
 #[derive(Serialize, Deserialize)]
 pub struct JInput {
     pub clauses: Vec<JClause>,
+    /// Exact typed normalized source consumed by the certified CB publication
+    /// checker. Keeping it in the worker input prevents an unrelated
+    /// environment-selected certificate from being attached after parsing.
+    /// The Lean source-production checker still verifies that its encoded
+    /// ontology is exactly `clauses` before any answer can be published.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cb_typed_source: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rbox: Vec<Vec<String>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

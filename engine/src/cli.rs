@@ -467,6 +467,7 @@ pub fn run_engine() {
 
     let t1 = std::time::Instant::now();
     let mut r = Reasoner::new(&input.clauses);
+    let cb_typed_source = input.cb_typed_source.clone();
     // Likewise the parsed `JClause` block (String-owning IRIs, several times
     // the raw JSON size) is fully interned into the Reasoner; drop it before
     // saturation rather than at end of function.
@@ -491,7 +492,7 @@ pub fn run_engine() {
         }
     }
     let certified_subsumptions = if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
-        match verify_cb_lean_publication(&r) {
+        match verify_cb_lean_publication(&r, cb_typed_source.as_ref()) {
             Ok(subsumptions) => Some(subsumptions),
             Err(error) => {
                 eprintln!("CB Lean certification failed: {error}");
@@ -1328,6 +1329,7 @@ fn cb_filtered_seed_event_evidence(
 /// native Lean checker to accept it before any CB answer reaches stdout.
 fn verify_cb_lean_publication(
     reasoner: &crate::reasoner::Reasoner,
+    input_typed_source: Option<&serde_json::Value>,
 ) -> Result<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>, String> {
     let source_exact_checker = std::env::var_os("KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER");
     let source_exact_candidate_path =
@@ -1355,11 +1357,6 @@ fn verify_cb_lean_publication(
             KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER"
             .to_string());
     }
-    let global_path = std::env::var_os("KM_CB_TYPED_SOURCE_CERT")
-        .or_else(|| std::env::var_os("KM_CB_GLOBAL_MODEL_CERT"))
-        .ok_or_else(|| {
-            "KM_CB_TYPED_SOURCE_CERT or KM_CB_GLOBAL_MODEL_CERT is required".to_string()
-        })?;
     let checker = std::env::var_os("KM_CB_LEAN_CERT_CHECKER");
     if checker.is_none()
         && source_exact_checker.is_none()
@@ -1383,14 +1380,28 @@ fn verify_cb_lean_publication(
         );
     }
 
-    let global_bytes = std::fs::read(&global_path).map_err(|error| {
-        format!(
-            "cannot read global CB certificate {}: {error}",
-            std::path::Path::new(&global_path).display()
-        )
-    })?;
-    let global_model: serde_json::Value = serde_json::from_slice(&global_bytes)
-        .map_err(|error| format!("cannot parse global CB certificate: {error}"))?;
+    let global_model = if let Some(source) = input_typed_source {
+        source.clone()
+    } else if std::env::var_os("KM_CB_TEST_ALLOW_EXTERNAL_SOURCE").is_some() {
+        let global_path = std::env::var_os("KM_CB_TYPED_SOURCE_CERT")
+            .or_else(|| std::env::var_os("KM_CB_GLOBAL_MODEL_CERT"))
+            .ok_or_else(|| {
+                "certified CB input has no cb_typed_source and the test-only external source is not configured"
+                    .to_string()
+            })?;
+        let global_bytes = std::fs::read(&global_path).map_err(|error| {
+            format!(
+                "cannot read test-only external CB certificate {}: {error}",
+                std::path::Path::new(&global_path).display()
+            )
+        })?;
+        serde_json::from_slice(&global_bytes)
+            .map_err(|error| format!("cannot parse test-only external CB certificate: {error}"))?
+    } else {
+        return Err(
+            "certified CB worker input requires an in-band cb_typed_source".to_string(),
+        );
+    };
     let live_state = reasoner.live_terminal_snapshot()?;
     let public_answer = reasoner.subsumptions();
     let public_inconsistent = reasoner.inconsistent();

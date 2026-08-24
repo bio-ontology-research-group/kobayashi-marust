@@ -400,11 +400,20 @@ claim that the layer is already complete.
 
 ## Not yet established
 
-The production Rust worker does not currently emit or invoke the complete
-production-run CB document. Generated files under `lean/Validation` certify
-selected positive verdicts, but they do not certify every production run,
-terminal closure, omitted taxonomy cells, or the supervisor's publication
-behavior.
+The production Rust worker now requires certified preprocessing evidence to be
+carried in-band as `cb_typed_source` in the exact JSON input containing its
+clause stream. The source-production Lean checker independently requires that
+the typed source encoding equals the worker's retained ontology. Environment-
+selected source files are accepted only behind
+`KM_CB_TEST_ALLOW_EXTERNAL_SOURCE`, which the local gate uses for older
+handwritten fixtures. The frontend still needs to produce this in-band typed
+source for every CB-routed ontology; until then, automatic production routing
+cannot claim the complete CB boundary.
+
+The production Rust worker does not yet emit or invoke every component of the
+complete production-run CB document. Generated files under `lean/Validation`
+certify selected positive verdicts, but they do not certify every production
+run, terminal closure, omitted taxonomy cell, or supervisor publication.
 
 The remaining production gap is the representation refinement between:
 
