@@ -21,6 +21,10 @@
   contexts, retained imports, arenas, and chronological evidence directly from
   the in-band typed source and terminal snapshot. A real Rust-to-Lean Pred test
   accepts the native document and rejects a forged forward sender reference.
+- Add source-bound local Resolution and Factor closure. Lean independently
+  enumerates all terminal candidates and checks a retained strengthening, plus
+  terminal head normalization, so Rust emits no trusted candidate list. The
+  native source-live fixture passes the standalone local-closure checker.
 
 ### Accept empty exact CB transfer partitions
 

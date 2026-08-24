@@ -137,6 +137,10 @@ name = "cb-source-live-insertion-derivation-check"
 root = "CBSourceLiveInsertionDerivationCheck"
 
 [[lean_exe]]
+name = "cb-source-local-closure-check"
+root = "CBSourceLocalClosureCheck"
+
+[[lean_exe]]
 name = "cb-live-taxonomy-publication-check"
 root = "CBLiveTaxonomyPublicationCheck"
 

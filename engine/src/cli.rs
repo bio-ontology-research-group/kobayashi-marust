@@ -1370,6 +1370,15 @@ fn verify_cb_lean_publication(
             KM_CB_SOURCE_LIVE_DERIVATION_CHECKER"
             .to_string());
     }
+    let source_local_checker =
+        std::env::var_os("KM_CB_SOURCE_LOCAL_CLOSURE_CHECKER");
+    let source_local_path =
+        std::env::var_os("KM_CB_SOURCE_LOCAL_CLOSURE_CANDIDATE");
+    if source_local_checker.is_some() && source_local_path.is_none() {
+        return Err("KM_CB_SOURCE_LOCAL_CLOSURE_CANDIDATE is required with \
+            KM_CB_SOURCE_LOCAL_CLOSURE_CHECKER"
+            .to_string());
+    }
     let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
     let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
     if terminal_state_checker.is_some() && terminal_state_path.is_none() {
@@ -1580,6 +1589,36 @@ fn verify_cb_lean_publication(
             .map_err(|error| format!("cannot flush source-bound CB live candidate: {error}"))?;
     }
 
+    if let Some(path) = source_local_path.as_ref() {
+        let live = cb_source_live_derivation_candidate(
+            input_typed_source.ok_or_else(|| {
+                "source-bound local CB certification requires an in-band typed source".to_string()
+            })?,
+            &live_state,
+            certificate.pointer("/derivation/insertion_evidence")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
+        )?;
+        let candidate = serde_json::json!({"version": 1, "live": live});
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!(
+                "cannot create source-bound CB local-closure candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate).map_err(|error| {
+            format!("cannot serialize source-bound CB local-closure candidate: {error}")
+        })?;
+        use std::io::Write;
+        writer.write_all(b"\n").map_err(|error| {
+            format!("cannot finish source-bound CB local-closure candidate: {error}")
+        })?;
+        writer.flush().map_err(|error| {
+            format!("cannot flush source-bound CB local-closure candidate: {error}")
+        })?;
+    }
+
     if let Some(path) = terminal_state_path.as_ref() {
         let terminal = cb_terminal_state_candidate(&global_model, &live_state)?;
         let file = std::fs::File::create(path).map_err(|error| {
@@ -1718,6 +1757,26 @@ fn verify_cb_lean_publication(
         if !status.success() {
             return Err(format!(
                 "source-bound CB live checker rejected the candidate with {status}"
+            ));
+        }
+    }
+    if let Some(local_checker) = source_local_checker {
+        let path = source_local_path.as_ref().ok_or_else(|| {
+            "source-bound CB local-closure checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&local_checker)
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-bound CB local-closure checker {}: {error}",
+                    std::path::Path::new(&local_checker).display()
+                )
+            })?;
+        if !status.success() {
+            return Err(format!(
+                "source-bound CB local-closure checker rejected the candidate with {status}"
             ));
         }
     }
@@ -6390,6 +6449,16 @@ mod cb_derivation_candidate_tests {
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
         let status = std::process::Command::new(&checker).arg(&path).status().unwrap();
         assert!(status.success(), "source-bound live Pred candidate was rejected");
+
+        if let Some(local_checker) =
+            std::env::var_os("KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER")
+        {
+            let local = serde_json::json!({"version": 1, "live": candidate});
+            std::fs::write(&path, serde_json::to_vec(&local).unwrap()).unwrap();
+            let local_status = std::process::Command::new(local_checker)
+                .arg(&path).status().unwrap();
+            assert!(local_status.success(), "native source local closure was rejected");
+        }
 
         let mut forged = candidate;
         forged["insertion_evidence"][1]["sender_event"]["event_index"] =

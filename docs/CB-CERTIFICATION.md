@@ -145,6 +145,14 @@ claim that the layer is already complete.
   reject a forged forward sender reference. This closes native construction of
   the retained-clause soundness certificate; it does not replace the separate
   global closure and countermodel obligations needed for completeness.
+- `CBSourceLocalClosure` starts native construction of that completeness
+  boundary without recreating the old nested evidence tree. Given the checked
+  source-live document, Lean itself enumerates every local Resolution and
+  Factor candidate in every terminal context, checks a retained strengthening,
+  and checks terminal head normalization. Rust can emit and independently gate
+  this document without serializing or being trusted for candidate coverage.
+  Eq, Hyper, Join-3, Succ, r-Succ, and exact Pred delivery still need the same
+  source-bound treatment before this becomes a global closure theorem.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the

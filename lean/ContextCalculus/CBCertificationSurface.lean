@@ -2,6 +2,7 @@ import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBLiveInsertionDerivation
 import ContextCalculus.CBSourceLiveInsertionDerivation
+import ContextCalculus.CBSourceLocalClosure
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -23,6 +24,7 @@ open ContextCalculus.CBSourceTaxonomyWire
 open ContextCalculus.CBLiveExactTaxonomyPublication
 open ContextCalculus.CBLiveInsertionDerivation
 open ContextCalculus.CBSourceLiveInsertionDerivation
+open ContextCalculus.CBSourceLocalClosure
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBInterContext
 open ContextCalculus.CBInterContextWire
@@ -166,6 +168,29 @@ theorem certifiedCBSourceLiveProductionDerivation
   wire.check_sound hcheck
 
 #print axioms certifiedCBSourceLiveProductionDerivation
+
+/-- Native local-fixpoint boundary. Lean recomputes every terminal local
+Resolution and Factor candidate and checks a retained strengthening, rather
+than trusting a candidate list emitted by Rust. -/
+theorem certifiedCBSourceLocalClosure
+    (wire : WireSourceLocalClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceLocalClosureDocument,
+      wire.decode = .ok decoded ∧
+      (∀ context ∈ decoded.live.production.contexts,
+        ∀ candidate ∈ localResolutionCandidates context.retained,
+          ∃ clause ∈ context.retained,
+            CBProductionTrace.Strengthens clause candidate) ∧
+      (∀ context ∈ decoded.live.production.contexts,
+        (∀ clause ∈ context.retained,
+          CBLocalFactorClosureWire.terminalHeadNormal clause.head = true) ∧
+        (∀ candidate ∈
+            CBLocalFactorClosureWire.factorCandidates context.retained,
+          ∃ clause ∈ context.retained,
+            CBProductionTrace.Strengthens clause candidate.2)) :=
+  wire.check_sound hcheck
+
+#print axioms certifiedCBSourceLocalClosure
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :

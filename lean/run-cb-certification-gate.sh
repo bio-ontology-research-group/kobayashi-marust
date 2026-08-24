@@ -66,6 +66,7 @@ surface_theorems=(
     certifiedCBClashFreeGlobalProductionModel
     certifiedCBStandaloneContextProof
     certifiedCBSourceLiveProductionDerivation
+    certifiedCBSourceLocalClosure
     certifiedCBSharedProductionTaxonomyPublication
     certifiedCBExactTaxonomyPublication
     certifiedCBSourceExactTaxonomyPublication
@@ -103,6 +104,7 @@ done
     export KM_CB_TEST_TYPED_REGULAR_ARBITRARY_CHAIN_CHECKER="$bin_root/cb-typed-regular-arbitrary-chain-countermodel-check"
     export KM_CB_TEST_PRED_SEND_COVERAGE_CHECKER="$bin_root/cb-pred-send-coverage-check"
     export KM_CB_TEST_SOURCE_LIVE_DERIVATION_CHECKER="$bin_root/cb-source-live-insertion-derivation-check"
+    export KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER="$bin_root/cb-source-local-closure-check"
     # Legacy fixture processes still load handcrafted source documents from
     # files. Production certified execution has no such escape hatch.
     export KM_CB_TEST_ALLOW_EXTERNAL_SOURCE=1
