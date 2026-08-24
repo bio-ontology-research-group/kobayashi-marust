@@ -2,6 +2,20 @@
 
 ## [unreleased]
 
+### Correct the CB terminal predecessor-edge binding
+
+- Correct the executable Lean terminal-state checker to compare each
+  context's `edge_seen` watermarks with pushed-set lengths on edges incoming to
+  that receiver. The previous expression selected the same context as a
+  sender and therefore inspected outgoing edges, while Rust serializes the
+  receiver context's predecessor map. A directed two-context fixture now
+  distinguishes the two orientations and proves that an edge from context 0
+  to context 1 contributes no incoming watermark to context 0 and one to
+  context 1.
+- Rebuild the complete live-state and public CB certification surfaces after
+  the correction. Their axiom reports remain limited to `propext`,
+  `Classical.choice`, and `Quot.sound`.
+
 ### Start the concrete automatic-routing certification
 
 - Add a source-indexed routing composition layer in Lean. A worker publication

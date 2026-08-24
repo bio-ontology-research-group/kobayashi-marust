@@ -47,18 +47,20 @@ structure WireCBTerminalStateDocument where
   contexts : List WireTerminalContextState
 deriving FromJson, ToJson
 
-def pushedLengthsAt (decoded : DecodedPredSendCoverageDocument)
-    (contextIndex : Nat) : List Nat :=
-  match decoded.senders.find? fun sender =>
-      sender.senderIndex.val = contextIndex with
-  | some sender => sender.edges.map fun edge => edge.pushed.length
-  | none =>
-      match decoded.rootSender with
-      | some sender =>
-          if sender.senderIndex.val = contextIndex then
-            sender.edges.map fun edge => edge.pushed.length
-          else []
-      | none => []
+/-- Lengths of the pushed sets on edges incoming to one receiver context.
+The Rust `edge_seen` watermark belongs to the receiver's predecessor map, not
+to the sender's outgoing-edge map.  Enumerating ordinary senders followed by
+the optional root sender also matches the edge enumeration used by the live
+state binding. -/
+def incomingPushedLengthsAt (decoded : DecodedPredSendCoverageDocument)
+    (receiverIndex : Nat) : List Nat :=
+  let ordinary := decoded.senders.flatMap fun sender =>
+    sender.edges.filterMap fun edge =>
+      if edge.receiverIndex.val = receiverIndex then some edge.pushed.length else none
+  let root := decoded.rootSender.toList.flatMap fun sender =>
+    sender.edges.filterMap fun edge =>
+      if edge.receiverIndex.val = receiverIndex then some edge.pushed.length else none
+  ordinary ++ root
 
 structure DecodedTerminalContextState
     (decoded : DecodedPredSendCoverageDocument) where
@@ -89,7 +91,7 @@ structure DecodedTerminalContextState
   rsuccEdgesGrew : Bool
   rsucc_edges_stable : rsuccEdgesGrew = false
   edgeSeen : List Nat
-  edge_watermarks_exact : edgeSeen = pushedLengthsAt decoded contextIndex.val
+  edge_watermarks_exact : edgeSeen = incomingPushedLengthsAt decoded contextIndex.val
 
 def WireTerminalContextState.decode
     (decoded : DecodedPredSendCoverageDocument)
@@ -110,7 +112,7 @@ def WireTerminalContextState.decode
                   if hpairs : ∀ watermark ∈ wire.rsucc_pair_reach_hwm,
                       watermark = wire.rsucc_reach_len then
                     if hedgesStable : wire.rsucc_edges_grew = false then
-                      let expectedEdges := pushedLengthsAt decoded wire.context_index
+                      let expectedEdges := incomingPushedLengthsAt decoded wire.context_index
                       if hedgeSeen : wire.edge_seen = expectedEdges then
                         return {
                         contextIndex
@@ -220,7 +222,7 @@ theorem WireCBTerminalStateDocument.check_sound
         (∀ watermark ∈ context.rsuccPairReachHwm,
           watermark = context.rsuccReachLen) ∧
         context.rsuccEdgesGrew = false ∧
-        context.edgeSeen = pushedLengthsAt decoded.sendCoverage
+        context.edgeSeen = incomingPushedLengthsAt decoded.sendCoverage
           context.contextIndex.val := by
   cases hdecode : wire.decode with
   | error message => simp [WireCBTerminalStateDocument.check, hdecode] at hcheck
@@ -263,6 +265,13 @@ private def rejected (result : Except String Bool) : Bool :=
   match result with | .error _ => true | .ok _ => false
 
 example : acceptedExample.check = .ok true := by native_decide
+
+example :
+    ((WirePredSendCoverageDocument.decode
+      ContextCalculus.CBPredSendCoverageWire.directedAcceptedExample).map fun decoded =>
+      (incomingPushedLengthsAt decoded 0, incomingPushedLengthsAt decoded 1)) =
+      Except.ok ([], [1]) := by
+  native_decide
 
 example : rejected ({ acceptedExample with pending_messages := 1 }).check = true := by
   native_decide

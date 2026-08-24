@@ -571,10 +571,57 @@ def acceptedExample : WirePredSendCoverageDocument where
   root_sender := none
   nominal_allocation := none
 
+/-- A two-context fixture whose only predecessor edge is directed from context
+0 to context 1.  It prevents terminal-state tests from accidentally treating
+incoming and outgoing edge watermarks as interchangeable. -/
+def directedAcceptedExample : WirePredSendCoverageDocument where
+  version := 2
+  inter_context := {
+    interContextExample with
+    production := {
+      productionExample with
+      contexts := [contextExample, { contextExample with context_id := 8 }]
+    }
+    transfers := [{
+      sender_context_index := 0
+      sender_context_id := 7
+      receiver_context_index := 1
+      receiver_context_id := 8
+      retained_clause_index := 0
+      substitution := [
+        { variableId := -1, term := x },
+        { variableId := 0, term := fx }]
+      payload := ⟨
+        [.predicate (.concept 0 fx)],
+        [.predicate (.concept 1 fx)]⟩
+    }]
+  }
+  ground_context_index := none
+  senders := [{
+    sender_context_index := 0
+    sender_context_id := 7
+    edges := [{
+      receiver_context_index := 1
+      receiver_context_id := 8
+      label := fx
+      pushed := [concept 0]
+    }]
+    transfer_indices := [0]
+  }, {
+    sender_context_index := 1
+    sender_context_id := 8
+    edges := []
+    transfer_indices := []
+  }]
+  root_sender := none
+  nominal_allocation := none
+
 private def rejected (result : Except String Bool) : Bool :=
   match result with | .error _ => true | .ok _ => false
 
 example : acceptedExample.check = .ok true := by native_decide
+
+example : directedAcceptedExample.check = .ok true := by native_decide
 
 private def allocationKeyExample : WireNominalFiringKey where
   context := 7
