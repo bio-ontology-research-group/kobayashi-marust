@@ -34,6 +34,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMWorkerPublication \
         ContextCalculus.KMCommonRoutingSource \
         ContextCalculus.KMConcreteWorkerAdapters \
+        ContextCalculus.KMConcreteAutomaticSupervisor \
         ContextCalculus.ELCheckerTermEmbedding \
         ContextCalculus.ELNormalCheckerTermEmbedding \
         ContextCalculus.ELCommonSourceWire \
@@ -108,6 +109,16 @@ for theorem in \
     bundleCardinalityHTCheck_correct \
     bundleCardinalityHTAccept_sound \
     BundleCardinalityHTExecution.worker_soundAt \
+    htAccept_sound \
+    HTExecution.worker_soundAt \
+    kmExactAccept_sound \
+    KMExactExecution.worker_soundAt \
+    requestedExactAccept_sound \
+    KMRequestedExecution.worker_soundAt \
+    KMRequestedExecution.certifiedProcedure \
+    ConcreteSupervisor.certified \
+    ConcreteSupervisor.sound_and_complete \
+    ConcreteSupervisor.profile_independent_sound \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
     WireDirectTaxonomyPublication.check_sound \

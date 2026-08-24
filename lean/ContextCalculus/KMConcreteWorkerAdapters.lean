@@ -1070,6 +1070,169 @@ theorem BundleCardinalityHTExecution.worker_soundAt
     Certification.SoundAt Correct execution.worker.erase ontology :=
   execution.worker.erase_soundAt ontology
 
+/-- All certified HT publication formats accepted by the production HT route.
+The tag only selects a checker; it cannot assert correctness by itself. -/
+inductive HTEvidence where
+  | direct (evidence : DirectHTEvidence)
+  | mixed (evidence : MixedHTEvidence)
+  | bundle (evidence : BundleHTEvidence)
+  | directCardinality (evidence : DirectCardinalityHTEvidence)
+  | mixedCardinality (evidence : MixedCardinalityHTEvidence)
+  | bundleCardinality (evidence : BundleCardinalityHTEvidence)
+
+def htAccept (ontology : List FCL) (answer : TaxonomyAnswer) :
+    HTEvidence → Bool
+  | .direct evidence => directHTAccept ontology answer evidence
+  | .mixed evidence => mixedHTAccept ontology answer evidence
+  | .bundle evidence => bundleHTAccept ontology answer evidence
+  | .directCardinality evidence =>
+      directCardinalityHTAccept ontology answer evidence
+  | .mixedCardinality evidence =>
+      mixedCardinalityHTAccept ontology answer evidence
+  | .bundleCardinality evidence =>
+      bundleCardinalityHTAccept ontology answer evidence
+
+theorem htAccept_sound (ontology : List FCL) (answer : TaxonomyAnswer)
+    (evidence : HTEvidence) (haccept : htAccept ontology answer evidence = true) :
+    Correct ontology answer := by
+  cases evidence with
+  | direct evidence => exact directHTAccept_sound ontology answer evidence haccept
+  | mixed evidence => exact mixedHTAccept_sound ontology answer evidence haccept
+  | bundle evidence => exact bundleHTAccept_sound ontology answer evidence haccept
+  | directCardinality evidence =>
+      exact directCardinalityHTAccept_sound ontology answer evidence haccept
+  | mixedCardinality evidence =>
+      exact mixedCardinalityHTAccept_sound ontology answer evidence haccept
+  | bundleCardinality evidence =>
+      exact bundleCardinalityHTAccept_sound ontology answer evidence haccept
+
+structure HTExecution where
+  run : List FCL →
+    Certification.Outcome
+      (CertifiedRouting.Publication (List FCL) TaxonomyAnswer HTEvidence)
+  sourceExact : ∀ ontology publication,
+    run ontology = .publish publication → publication.source = ontology
+  accepted : ∀ ontology publication,
+    run ontology = .publish publication →
+      htAccept ontology publication.answer publication.evidence = true
+
+def HTExecution.worker (execution : HTExecution) :
+    CertifiedRouting.SourceBoundWorker
+      (List FCL) TaxonomyAnswer HTEvidence Correct where
+  run := execution.run
+  accept := htAccept
+  run_source_exact := execution.sourceExact
+  run_accepted := execution.accepted
+  accept_sound := htAccept_sound
+
+theorem HTExecution.worker_soundAt (execution : HTExecution)
+    (ontology : List FCL) :
+    Certification.SoundAt Correct execution.worker.erase ontology :=
+  execution.worker.erase_soundAt ontology
+
+/-- The common evidence type at the automatic supervisor boundary.  Every
+constructor delegates to an executable, source-bound calculus checker. -/
+inductive KMExactEvidence where
+  | elc (evidence : ELCEvidence)
+  | ht (evidence : HTEvidence)
+  | cb (evidence : CBEvidence)
+
+def kmExactAccept (ontology : List FCL) (answer : TaxonomyAnswer) :
+    KMExactEvidence → Bool
+  | .elc evidence => elcAccept ontology answer evidence
+  | .ht evidence => htAccept ontology answer evidence
+  | .cb evidence => cbAccept ontology answer evidence
+
+theorem kmExactAccept_sound (ontology : List FCL) (answer : TaxonomyAnswer)
+    (evidence : KMExactEvidence)
+    (haccept : kmExactAccept ontology answer evidence = true) :
+    Correct ontology answer := by
+  cases evidence with
+  | elc evidence => exact elcAccept_sound ontology answer evidence haccept
+  | ht evidence => exact htAccept_sound ontology answer evidence haccept
+  | cb evidence => exact cbAccept_sound ontology answer evidence haccept
+
+structure KMExactExecution where
+  run : List FCL →
+    Certification.Outcome
+      (CertifiedRouting.Publication
+        (List FCL) TaxonomyAnswer KMExactEvidence)
+  sourceExact : ∀ ontology publication,
+    run ontology = .publish publication → publication.source = ontology
+  accepted : ∀ ontology publication,
+    run ontology = .publish publication →
+      kmExactAccept ontology publication.answer publication.evidence = true
+
+def KMExactExecution.worker (execution : KMExactExecution) :
+    CertifiedRouting.SourceBoundWorker
+      (List FCL) TaxonomyAnswer KMExactEvidence Correct where
+  run := execution.run
+  accept := kmExactAccept
+  run_source_exact := execution.sourceExact
+  run_accepted := execution.accepted
+  accept_sound := kmExactAccept_sound
+
+theorem KMExactExecution.worker_soundAt (execution : KMExactExecution)
+    (ontology : List FCL) :
+    Certification.SoundAt Correct execution.worker.erase ontology :=
+  execution.worker.erase_soundAt ontology
+
+/-- The source seen by taxonomy routing includes both the common ontology and
+the complete requested named-class signature.  Keeping the signature in the
+source prevents a semantically exact but vacuous empty matrix from counting as
+a complete classification. -/
+structure RequestedTaxonomySource where
+  ontology : List FCL
+  named : List Nat
+deriving DecidableEq, Repr
+
+structure RequestedCorrect (source : RequestedTaxonomySource)
+    (answer : TaxonomyAnswer) : Prop where
+  named_exact : answer.named = source.named
+  matrix_exact : Correct source.ontology answer
+
+def requestedExactAccept (source : RequestedTaxonomySource)
+    (answer : TaxonomyAnswer) (evidence : KMExactEvidence) : Bool :=
+  decide (answer.named = source.named) &&
+    kmExactAccept source.ontology answer evidence
+
+theorem requestedExactAccept_sound (source : RequestedTaxonomySource)
+    (answer : TaxonomyAnswer) (evidence : KMExactEvidence)
+    (haccept : requestedExactAccept source answer evidence = true) :
+    RequestedCorrect source answer := by
+  have parts : decide (answer.named = source.named) = true ∧
+      kmExactAccept source.ontology answer evidence = true := by
+    simpa [requestedExactAccept, Bool.and_eq_true] using haccept
+  exact {
+    named_exact := by simpa [decide_eq_true_eq] using parts.1
+    matrix_exact := kmExactAccept_sound source.ontology answer evidence parts.2
+  }
+
+structure KMRequestedExecution where
+  run : RequestedTaxonomySource →
+    Certification.Outcome
+      (CertifiedRouting.Publication
+        RequestedTaxonomySource TaxonomyAnswer KMExactEvidence)
+  sourceExact : ∀ source publication,
+    run source = .publish publication → publication.source = source
+  accepted : ∀ source publication,
+    run source = .publish publication →
+      requestedExactAccept source publication.answer publication.evidence = true
+
+def KMRequestedExecution.worker (execution : KMRequestedExecution) :
+    CertifiedRouting.SourceBoundWorker RequestedTaxonomySource TaxonomyAnswer
+      KMExactEvidence RequestedCorrect where
+  run := execution.run
+  accept := requestedExactAccept
+  run_source_exact := execution.sourceExact
+  run_accepted := execution.accepted
+  accept_sound := requestedExactAccept_sound
+
+theorem KMRequestedExecution.worker_soundAt (execution : KMRequestedExecution)
+    (source : RequestedTaxonomySource) :
+    Certification.SoundAt RequestedCorrect execution.worker.erase source :=
+  execution.worker.erase_soundAt source
+
 #print axioms cbAnswer_correct
 #print axioms cbCheck_correct
 #print axioms cbAccept_sound
@@ -1106,5 +1269,11 @@ theorem BundleCardinalityHTExecution.worker_soundAt
 #print axioms bundleCardinalityHTCheck_correct
 #print axioms bundleCardinalityHTAccept_sound
 #print axioms BundleCardinalityHTExecution.worker_soundAt
+#print axioms htAccept_sound
+#print axioms HTExecution.worker_soundAt
+#print axioms kmExactAccept_sound
+#print axioms KMExactExecution.worker_soundAt
+#print axioms requestedExactAccept_sound
+#print axioms KMRequestedExecution.worker_soundAt
 
 end ContextCalculus.KMConcreteWorkerAdapters
