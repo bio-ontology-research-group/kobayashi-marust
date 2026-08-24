@@ -90,6 +90,14 @@
   Hyper, Join-3, direct Succ, r-Succ, ordered equality, ordinary Pred, and
   nominal r-Pred over the same typed source and terminal snapshot. This is the
   unified saturation premise for the remaining canonical-model bridge.
+- Prove ordered ground-resolution completeness modulo KM's retained-antichain
+  redundancy. The candidate-model argument now accepts a retained clause that
+  strengthens an inferred resolvent, instead of requiring the exact resolvent
+  to remain stored. The polarity-aware CB grounding preserves this
+  strengthening relation, including inequalities translated as negative
+  equality atoms. This removes the generic subsumption mismatch from the
+  source-bound canonical-model bridge; transporting each production rule into
+  the required ground closure remains open.
 
 ### Accept empty exact CB transfer partitions
 

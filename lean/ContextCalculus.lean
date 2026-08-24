@@ -1,6 +1,7 @@
 import ContextCalculus.Basic
 import ContextCalculus.CompletenessProp
 import ContextCalculus.CompletenessOrdered
+import ContextCalculus.CompletenessOrderedSubsumption
 import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
 import ContextCalculus.ELCompletion

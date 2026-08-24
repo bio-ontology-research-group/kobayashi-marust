@@ -1,5 +1,6 @@
 import ContextCalculus.CBFiniteOrderAdmissibilityWire
 import ContextCalculus.CompletenessEq
+import ContextCalculus.CompletenessOrderedSubsumption
 
 /-!
 # Ground CB clauses as propositional equality clauses
@@ -53,6 +54,35 @@ theorem mem_positiveAtoms_iff (clause : FCL) (atom : GroundAtom) :
       (∃ literal ∈ clause.head, positiveAtom? literal = some atom) ∨
       (∃ literal ∈ clause.body, inequalityAtom? literal = some atom) := by
   simp [positiveAtoms, List.mem_filterMap]
+
+/-- Production antichain subsumption is preserved exactly by the
+polarity-aware ground-clause translation. -/
+theorem groundClause_strengthens {stronger weaker : FCL}
+    (hstrengthens : CBProductionTrace.Strengthens stronger weaker) :
+    OrdResModulo.Strengthens (groundClause stronger) (groundClause weaker) := by
+  constructor
+  · intro atom hatom
+    rw [show (groundClause stronger).neg =
+        (negativeAtoms stronger).toFinset from rfl,
+      List.mem_toFinset, mem_negativeAtoms_iff] at hatom
+    rw [show (groundClause weaker).neg =
+        (negativeAtoms weaker).toFinset from rfl,
+      List.mem_toFinset, mem_negativeAtoms_iff]
+    rcases hatom with ⟨literal, hliteral, hatom⟩ |
+        ⟨literal, hliteral, hatom⟩
+    · exact Or.inl ⟨literal, hstrengthens.1 hliteral, hatom⟩
+    · exact Or.inr ⟨literal, hstrengthens.2 hliteral, hatom⟩
+  · intro atom hatom
+    rw [show (groundClause stronger).pos =
+        (positiveAtoms stronger).toFinset from rfl,
+      List.mem_toFinset, mem_positiveAtoms_iff] at hatom
+    rw [show (groundClause weaker).pos =
+        (positiveAtoms weaker).toFinset from rfl,
+      List.mem_toFinset, mem_positiveAtoms_iff]
+    rcases hatom with ⟨literal, hliteral, hatom⟩ |
+        ⟨literal, hliteral, hatom⟩
+    · exact Or.inl ⟨literal, hstrengthens.2 hliteral, hatom⟩
+    · exact Or.inr ⟨literal, hstrengthens.1 hliteral, hatom⟩
 
 theorem positiveAtom_eval {valuation : GroundAtom → Prop}
     {literal : FLit} {atom : GroundAtom}
@@ -165,6 +195,7 @@ theorem unsat_groundSet_iff (clauses : List FCL) :
   simp only [PropRes.Unsat, models_groundSet_iff]
 
 #print axioms groundClause_sat_iff
+#print axioms groundClause_strengthens
 #print axioms models_groundSet_iff
 #print axioms unsat_groundSet_iff
 
