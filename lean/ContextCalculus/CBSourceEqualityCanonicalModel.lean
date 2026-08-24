@@ -1,4 +1,5 @@
 import ContextCalculus.CBSourceGroundResolutionBridge
+import ContextCalculus.CompletenessTermRewriting
 
 /-!
 # Source-bound equality canonical model
@@ -352,6 +353,144 @@ def productiveEquivalenceSetoid
     refl := ProductiveEquivalence.refl
     symm := ProductiveEquivalence.symm
     trans := ProductiveEquivalence.trans }
+
+/-- Canonical reduction inside a productive equality class. Unlike the raw
+productive edges, this relation also orients equalities justified transitively
+or by a semantically tautological Eq critical pair. -/
+def ProductiveClassRewrite
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (smaller larger : FTerm) : Prop :=
+  ProductiveEquivalence context extension smaller larger ∧
+    smaller ∈ (hyperOf decoded).order.orderedTerms ∧
+    larger ∈ (hyperOf decoded).order.orderedTerms ∧
+    (hyperOf decoded).order.termLt smaller larger = true
+
+theorem productiveClassRewrite_wellFounded
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    WellFounded (ProductiveClassRewrite context extension) := by
+  let order := (hyperOf decoded).order
+  exact Subrelation.wf
+    (fun {_ _} hrewrite => by
+      simpa [DecodedSourceFiniteOrder.termLt] using hrewrite.2.2.2)
+    (measure order.termRank).wf
+
+theorem productiveClassRewrite_directlyJoinable
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    TermRewriting.DirectlyJoinable
+      (ProductiveClassRewrite context extension) := by
+  intro source left right hleft hright
+  by_cases hequal : left = right
+  · exact Or.inl hequal
+  · have hrankNe : (hyperOf decoded).order.termRank left ≠
+        (hyperOf decoded).order.termRank right := by
+      intro hrank
+      exact hequal (List.idxOf_inj hleft.2.1 |>.mp hrank)
+    rcases lt_or_gt_of_ne hrankNe with hlt | hgt
+    · exact Or.inr (Or.inl ⟨
+        ProductiveEquivalence.trans hleft.1
+          (ProductiveEquivalence.symm hright.1),
+        hleft.2.1, hright.2.1,
+        by simpa [DecodedSourceFiniteOrder.termLt] using hlt⟩)
+    · exact Or.inr (Or.inr ⟨
+        ProductiveEquivalence.trans hright.1
+          (ProductiveEquivalence.symm hleft.1),
+        hright.2.1, hleft.2.1,
+        by simpa [DecodedSourceFiniteOrder.termLt] using hgt⟩)
+
+noncomputable def productiveClassNormalForm
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) : FTerm → FTerm :=
+  TermRewriting.normalForm (ProductiveClassRewrite context extension)
+    (productiveClassRewrite_wellFounded context extension)
+
+theorem productiveClassNormalForm_mem_ordered
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (term : FTerm)
+    (hterm : term ∈ (hyperOf decoded).order.orderedTerms) :
+    productiveClassNormalForm context extension term ∈
+      (hyperOf decoded).order.orderedTerms :=
+  TermRewriting.normalForm_preserves
+    (ProductiveClassRewrite context extension)
+    (productiveClassRewrite_wellFounded context extension)
+    (fun candidate => candidate ∈ (hyperOf decoded).order.orderedTerms)
+    (fun {_ _} hrewrite _ => hrewrite.2.1) term hterm
+
+theorem productiveClassNormalForm_equivalent
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (term : FTerm) :
+    ProductiveEquivalence context extension term
+      (productiveClassNormalForm context extension term) := by
+  have hpath := TermRewriting.reflTransGen_normalForm
+    (ProductiveClassRewrite context extension)
+    (productiveClassRewrite_wellFounded context extension) term
+  refine Relation.ReflTransGen.trans_induction_on
+    (motive := fun {left right} _ =>
+      ProductiveEquivalence context extension left right) hpath ?_ ?_ ?_
+  · exact fun candidate => ProductiveEquivalence.refl candidate
+  · intro left right hstep
+    exact ProductiveEquivalence.symm hstep.1
+  · intro left middle right _ _ hleft hright
+    exact ProductiveEquivalence.trans hleft hright
+
+theorem productiveClassNormalForm_eq_of_equivalent
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    {left right : FTerm}
+    (hequivalent : ProductiveEquivalence context extension left right)
+    (hleft : left ∈ (hyperOf decoded).order.orderedTerms)
+    (hright : right ∈ (hyperOf decoded).order.orderedTerms) :
+    productiveClassNormalForm context extension left =
+      productiveClassNormalForm context extension right := by
+  by_cases hequal : left = right
+  · subst right
+    rfl
+  · have hrankNe : (hyperOf decoded).order.termRank left ≠
+        (hyperOf decoded).order.termRank right := by
+      intro hrank
+      exact hequal (List.idxOf_inj hleft |>.mp hrank)
+    rcases lt_or_gt_of_ne hrankNe with hlt | hgt
+    · exact TermRewriting.normalForm_eq_of_step
+        (ProductiveClassRewrite context extension)
+        (productiveClassRewrite_wellFounded context extension)
+        (productiveClassRewrite_directlyJoinable context extension)
+        ⟨hequivalent, hleft, hright,
+          by simpa [DecodedSourceFiniteOrder.termLt] using hlt⟩
+    · exact (TermRewriting.normalForm_eq_of_step
+        (ProductiveClassRewrite context extension)
+        (productiveClassRewrite_wellFounded context extension)
+        (productiveClassRewrite_directlyJoinable context extension)
+        ⟨ProductiveEquivalence.symm hequivalent, hright, hleft,
+          by simpa [DecodedSourceFiniteOrder.termLt] using hgt⟩).symm
 
 abbrev ProductiveSourceQuotient
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -1057,6 +1196,11 @@ theorem productiveGroundValuation_of_Itrue_positive
 #print axioms productiveEqualityRewrite_decreases
 #print axioms productiveEqualityRewrite_terms_mem_ordered
 #print axioms productiveEqualityRewrite_wellFounded
+#print axioms productiveClassRewrite_wellFounded
+#print axioms productiveClassRewrite_directlyJoinable
+#print axioms productiveClassNormalForm_mem_ordered
+#print axioms productiveClassNormalForm_equivalent
+#print axioms productiveClassNormalForm_eq_of_equivalent
 #print axioms sourceConceptHolds_iff
 #print axioms sourceRoleHolds_iff
 #print axioms productiveSourceGroundValuation_respectsEq
