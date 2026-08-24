@@ -6,6 +6,7 @@ import ContextCalculus.CBSourceLocalClosure
 import ContextCalculus.CBSourceHyperClosure
 import ContextCalculus.CBSourceJoin3Closure
 import ContextCalculus.CBSourceSuccClosure
+import ContextCalculus.CBSourceEqClosure
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -31,6 +32,7 @@ open ContextCalculus.CBSourceLocalClosure
 open ContextCalculus.CBSourceHyperClosure
 open ContextCalculus.CBSourceJoin3Closure
 open ContextCalculus.CBSourceSuccClosure
+open ContextCalculus.CBSourceEqClosure
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBInterContext
 open ContextCalculus.CBInterContextWire
@@ -246,6 +248,18 @@ theorem certifiedCBSourceSuccClosure
   exact ⟨decoded, hdecode⟩
 
 #print axioms certifiedCBSourceSuccClosure
+
+/-- Source-bound ordered-paramodulation fixpoint boundary. The decoded witness
+contains independently reconstructed closure over every terminal context. -/
+theorem certifiedCBSourceEqClosure
+    (wire : WireSourceEqClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceEqClosureDocument,
+      wire.decode = .ok decoded := by
+  obtain ⟨decoded, hdecode, _⟩ := wire.check_sound hcheck
+  exact ⟨decoded, hdecode⟩
+
+#print axioms certifiedCBSourceEqClosure
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :

@@ -70,6 +70,7 @@ surface_theorems=(
     certifiedCBSourceHyperClosure
     certifiedCBSourceJoin3Closure
     certifiedCBSourceSuccClosure
+    certifiedCBSourceEqClosure
     certifiedCBSharedProductionTaxonomyPublication
     certifiedCBExactTaxonomyPublication
     certifiedCBSourceExactTaxonomyPublication
@@ -111,6 +112,7 @@ done
     export KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER="$bin_root/cb-source-hyper-closure-check"
     export KM_CB_TEST_SOURCE_JOIN3_CLOSURE_CHECKER="$bin_root/cb-source-join3-closure-check"
     export KM_CB_TEST_SOURCE_SUCC_CLOSURE_CHECKER="$bin_root/cb-source-succ-closure-check"
+    export KM_CB_TEST_SOURCE_EQ_CLOSURE_CHECKER="$bin_root/cb-source-eq-closure-check"
     # Legacy fixture processes still load handcrafted source documents from
     # files. Production certified execution has no such escape hatch.
     export KM_CB_TEST_ALLOW_EXTERNAL_SOURCE=1

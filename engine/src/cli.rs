@@ -1397,6 +1397,12 @@ fn verify_cb_lean_publication(
         return Err("KM_CB_SOURCE_SUCC_CLOSURE_CANDIDATE is required with \
             KM_CB_SOURCE_SUCC_CLOSURE_CHECKER".to_string());
     }
+    let source_eq_checker = std::env::var_os("KM_CB_SOURCE_EQ_CLOSURE_CHECKER");
+    let source_eq_path = std::env::var_os("KM_CB_SOURCE_EQ_CLOSURE_CANDIDATE");
+    if source_eq_checker.is_some() && source_eq_path.is_none() {
+        return Err("KM_CB_SOURCE_EQ_CLOSURE_CANDIDATE is required with \
+            KM_CB_SOURCE_EQ_CLOSURE_CHECKER".to_string());
+    }
     let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
     let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
     if terminal_state_checker.is_some() && terminal_state_path.is_none() {
@@ -1685,19 +1691,13 @@ fn verify_cb_lean_publication(
     }
 
     if let Some(path) = source_succ_path.as_ref() {
-        let hyper = cb_source_hyper_closure_candidate(
+        let candidate = cb_source_succ_closure_candidate(
             input_typed_source.ok_or_else(|| {
                 "source-bound Succ certification requires an in-band typed source".to_string()
             })?, &live_state,
             certificate.pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
                 .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
-        let candidate = serde_json::json!({
-            "version": 1,
-            "join3_closure": {"version": 1, "hyper_closure": hyper},
-            "rsucc_enabled": live_state.rsucc_enabled,
-            "reach_concepts": live_state.reach_concept_ids,
-        });
         let file = std::fs::File::create(path).map_err(|error| {
             format!("cannot create source-bound CB Succ candidate {}: {error}",
                 std::path::Path::new(path).display())
@@ -1710,6 +1710,29 @@ fn verify_cb_lean_publication(
             .map_err(|error| format!("cannot finish source-bound CB Succ candidate: {error}"))?;
         writer.flush()
             .map_err(|error| format!("cannot flush source-bound CB Succ candidate: {error}"))?;
+    }
+
+    if let Some(path) = source_eq_path.as_ref() {
+        let succ = cb_source_succ_closure_candidate(
+            input_typed_source.ok_or_else(|| {
+                "source-bound Eq certification requires an in-band typed source".to_string()
+            })?, &live_state,
+            certificate.pointer("/derivation/insertion_evidence")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+        let candidate = serde_json::json!({"version": 1, "succ_closure": succ});
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!("cannot create source-bound CB Eq candidate {}: {error}",
+                std::path::Path::new(path).display())
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize source-bound CB Eq candidate: {error}"))?;
+        use std::io::Write;
+        writer.write_all(b"\n")
+            .map_err(|error| format!("cannot finish source-bound CB Eq candidate: {error}"))?;
+        writer.flush()
+            .map_err(|error| format!("cannot flush source-bound CB Eq candidate: {error}"))?;
     }
 
     if let Some(path) = terminal_state_path.as_ref() {
@@ -1907,6 +1930,18 @@ fn verify_cb_lean_publication(
                 std::path::Path::new(&succ_checker).display()))?;
         if !status.success() {
             return Err(format!("source-bound CB Succ checker rejected the candidate with {status}"));
+        }
+    }
+    if let Some(eq_checker) = source_eq_checker {
+        let path = source_eq_path.as_ref().ok_or_else(|| {
+            "source-bound CB Eq checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&eq_checker)
+            .arg(path).stdout(std::process::Stdio::null()).status()
+            .map_err(|error| format!("cannot run source-bound CB Eq checker {}: {error}",
+                std::path::Path::new(&eq_checker).display()))?;
+        if !status.success() {
+            return Err(format!("source-bound CB Eq checker rejected the candidate with {status}"));
         }
     }
     if let Some(checker) = checker {
@@ -4750,6 +4785,20 @@ fn cb_source_hyper_closure_candidate(
     }))
 }
 
+fn cb_source_succ_closure_candidate(
+    source: &serde_json::Value,
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    insertion_evidence: &[serde_json::Value],
+) -> Result<serde_json::Value, String> {
+    let hyper = cb_source_hyper_closure_candidate(source, live, insertion_evidence)?;
+    Ok(serde_json::json!({
+        "version": 1,
+        "join3_closure": {"version": 1, "hyper_closure": hyper},
+        "rsucc_enabled": live.rsucc_enabled,
+        "reach_concepts": live.reach_concept_ids,
+    }))
+}
+
 /// Reconstruct the exact Pred send partition from the terminal engine state.
 /// `pred_pool_seen` is the production record of every pool clause actually
 /// sent over an edge. Historical IDs removed by back-subsumption are omitted,
@@ -6734,18 +6783,24 @@ mod cb_derivation_candidate_tests {
         if let Some(succ_checker) =
             std::env::var_os("KM_CB_TEST_SOURCE_SUCC_CLOSURE_CHECKER")
         {
-            let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
-                .expect("construct source-bound Succ parent candidate");
-            let succ = serde_json::json!({
-                "version": 1,
-                "join3_closure": {"version": 1, "hyper_closure": hyper},
-                "rsucc_enabled": live.rsucc_enabled,
-                "reach_concepts": live.reach_concept_ids,
-            });
+            let succ = cb_source_succ_closure_candidate(&source, &live, &evidence)
+                .expect("construct source-bound Succ candidate");
             std::fs::write(&path, serde_json::to_vec(&succ).unwrap()).unwrap();
             let succ_status = std::process::Command::new(succ_checker)
                 .arg(&path).status().unwrap();
             assert!(succ_status.success(), "native source Succ closure was rejected");
+        }
+
+        if let Some(eq_checker) =
+            std::env::var_os("KM_CB_TEST_SOURCE_EQ_CLOSURE_CHECKER")
+        {
+            let succ = cb_source_succ_closure_candidate(&source, &live, &evidence)
+                .expect("construct source-bound Eq parent candidate");
+            let eq = serde_json::json!({"version": 1, "succ_closure": succ});
+            std::fs::write(&path, serde_json::to_vec(&eq).unwrap()).unwrap();
+            let eq_status = std::process::Command::new(eq_checker)
+                .arg(&path).status().unwrap();
+            assert!(eq_status.success(), "native source Eq closure was rejected");
         }
 
         let mut forged = candidate;

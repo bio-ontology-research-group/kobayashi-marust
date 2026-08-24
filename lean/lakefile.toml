@@ -153,6 +153,10 @@ name = "cb-source-succ-closure-check"
 root = "CBSourceSuccClosureCheck"
 
 [[lean_exe]]
+name = "cb-source-eq-closure-check"
+root = "CBSourceEqClosureCheck"
+
+[[lean_exe]]
 name = "cb-live-taxonomy-publication-check"
 root = "CBLiveTaxonomyPublicationCheck"
 

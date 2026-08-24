@@ -348,6 +348,15 @@ claim that the layer is already complete.
   its two retained premises. The standalone `cb-local-eq-closure-check` exposes
   this boundary. Rust emission and the ordered-calculus completeness theorem
   remain open.
+- `CBSourceEqClosure` removes the detached nested-run dependency for the live
+  certification path. It consumes the source-bound Succ parent, independently
+  enumerates every direct-position Eq candidate under the same root/non-root
+  partial literal order used by production Hyper, proves the oriented rewrite
+  and complete paramodulant semantically sound, and requires retained
+  strengthening in every terminal context. Native Rust emits and gates this
+  document. This establishes the source-bound Eq fixpoint; the canonical-model
+  theorem that turns ordered-paramodulation closure into equality completeness
+  remains open.
 - `CBFiniteOrderAdmissibilityWire` strengthens the order boundary required by
   the eventual ordered-paramodulation theorem. The finite production universe
   now contains every nested proper subterm, not only top-level literal

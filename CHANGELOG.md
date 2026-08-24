@@ -48,6 +48,14 @@
   the real cross-language fixture passes through local, Hyper, Join-3, and Succ
   closure checkers. Reach identifiers remain bounded and duplicate-free, but
   deriving that metadata independently from the typed source remains open.
+- Add source-bound Eq closure over the same terminal snapshot and production
+  partial order. Lean independently enumerates every provider/target/head-index
+  tuple, recomputes maximality, performs KM's first direct-position rewrite,
+  applies the exact equality/inequality suppression and head normalization,
+  and requires a retained strengthening. The rewrite and complete paramodulant
+  have semantic soundness theorems, every candidate has a checked origin, and
+  native Rust output passes the executable checker. The canonical-model theorem
+  connecting this closure to ordered-paramodulation completeness remains open.
 
 ### Accept empty exact CB transfer partitions
 
