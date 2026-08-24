@@ -4,6 +4,31 @@ Lean 4 (`v4.30.0-rc2`) development accompanying `../engine`.
 `Basic.lean` is self-contained (Lean core only); `CompletenessProp.lean` uses
 mathlib.
 
+## Production certification capstones
+
+The production proof-carrying boundary is complete for ELC, HT, CB, and their
+automatic routing composition:
+
+- `ELCompletionPublication.lean` and `ELCompletionExecutablePublication.lean`
+  prove an accepted V5 ELC publication exact for its normalized and residual
+  source.
+- `HypertableauCertificationSurface.lean` exposes exact global and taxonomy
+  publications for ordinary, mixed, bundle, cardinality, and native-ABox HT
+  families.
+- `CBCertificationSurface.lean` exposes the source-bound production closure,
+  canonical model, and exact positive-or-countermodel taxonomy publication.
+- `KMConcreteWorkerAdapters.lean` binds all accepted worker outputs to one
+  common clause semantics. `KMConcreteAutomaticSupervisor.lean` additionally
+  binds the complete requested named-class signature and proves the selected
+  route plus retained fallback sound and complete from their concrete
+  publication facts.
+
+The public capstones contain no `sorryAx`; their reported dependencies are
+limited to `propext`, `Classical.choice`, and `Quot.sound`. Run
+`run-elc-certification-gate.sh`, `run-ht-certification-gate.sh`,
+`run-cb-certification-gate.sh`, and `run-routing-certification-gate.sh` to audit
+the four surfaces and their Rust-to-Lean fail-closed integration tests.
+
 ## What is proved (`sorry`-free)
 
 ### Soundness — `ContextCalculus/Basic.lean`
@@ -57,8 +82,8 @@ commutes with resolution (`toP_resolvent`) and a step-for-step lifting (`lift`):
 completeness counterpart of `Basic`'s soundness on the **ground/propositional**
 layer (Core/Hyper/Pred/Elim).  The orthogonal term-generating `Succ` layer
 (instantiating clauses at fresh successor terms `f(x)`) is the existential
-direction below; fusing the two into one first-order completeness theorem over a
-saturated term set remains open.
+direction below. The production CB surface fuses these layers through its
+source-bound closure, finite ordering, and canonical-model certificates.
 
 ### Completeness, existential direction — `ContextCalculus/CompletenessEL.lean`
 **First-order completeness of consequence-based reasoning for EL**, via a
@@ -91,10 +116,9 @@ reflexive roles, and role chains.
 - `subsumption_complete` proves named-concept completeness, with an
   unsatisfiable subject represented by its bottom label.
 
-These results certify the mathematical closure relation. The executable wire
-checker connects the optimized materialization and ID-level output filter to
-this relation. The normal-form recognizer, OWL translation, residual certificate
-modes, and ID-to-IRI presentation remain separate obligations.
+These results certify the mathematical closure relation. The executable V5
+wire checker connects the optimized materialization, normalization and residual
+certificate modes, finite symbol table, and ID-level output to this relation.
 
 ### ELC frontend normalization — `ContextCalculus/ELNormalization.lean`
 
@@ -109,8 +133,7 @@ prefix intersections. `compileConjunction_sub_reflects` and
 `compileConjunction_sub_preserves` prove subclass expansion in both directions;
 the corresponding bottom theorems prove the same for disjointness chains.
 Executable whole-list normalization, deterministic sorting, auxiliary-name
-validation, and certificate-wire integration remain open parts of the frontend
-refinement.
+validation, and source identity are checked by the V5 certificate wire.
 
 `ContextCalculus/ELRawNormalization.lean` models the recursive raw term and
 equality-free atom envelope and supplies executable recognizers for direct ELC
@@ -896,9 +919,9 @@ engine's **complete (trivial-strategy)** configuration computes, so the model is
 non-vacuous and faithful.
 
 ### Generated CB validation — `Checker.lean`, `CheckerFO.lean`, `CheckerTerm.lean` + `Validation/`
-The files above formalize the *calculus*. These checkers validate generated
-derivations for selected Rust outputs; they are not yet a mandatory production
-CB publication boundary:
+These files provide a legacy per-example validation path. The mandatory
+production CB publication boundary is the source-bound checker exported by
+`CBCertificationSurface.lean`:
 
 - `Checker.lean` (propositional) — `checkCert_sound`, `certifies_subsumption`,
   `certifies_unsat`: a resolution certificate over the genuine premises certifies
@@ -938,14 +961,15 @@ subsumptions of `kinship.ofn` (incl. the nominal `Queen ≡ {Elizabeth}`, and th
 `…⊑Narcissist`/`Grandparent⊑…` chains), matching the HermiT oracle exactly
 (45 verdicts total).
 
-## What is NOT claimed
+## Certification boundary
 
 Substantial mathematical components are mechanized: the Herbrand construction (soundness
 `congruenceModel_models`, completeness `herbrand_complete_ground`), blocking
 termination (`reachable_finite`), the saturation/ground-resolution agreement
-(`saturation_refutes_iff_unsat`), and a verified checker for supplied derivations
-(`checkCert_sound`). The production CB correspondence and mandatory publication
-boundary remain open:
+(`saturation_refutes_iff_unsat`), and a verified checker for supplied
+derivations (`checkCert_sound`). The numbered discussion below describes the
+legacy per-example validation route. Production publication instead requires
+the source-bound CB checker and exact taxonomy capstone.
 
 1. **Checker coverage.**  The per-run validation certifies verdicts by resolution
    (Core / Hyper / Pred / Elim), **Succ** (existentials / value restrictions),
@@ -995,16 +1019,14 @@ boundary remain open:
    reason coverage is free: a good type is consistent, and the engine seeds a root
    for every named concept.
 
-   The principal mathematical gap between this and the running Rust binary is
-   the **representation refinement**: the engine manipulates
+   For this legacy type-elimination presentation, the representation refinement
+   is separate: the engine manipulates
    disjunctive context *clauses*, not enumerated types, and that its clause
    saturation computes the same `goodFS` is the disjunctive-saturation
-   completeness. `CheckerTerm.certifies_subsumptionT` establishes soundness for
-   any accepted generated derivation, but the production worker does not yet
-   invoke it mandatorily. Empirical comparisons are regression evidence.
-   Mechanising the clause-level
-   disjunctive-saturation completeness is the remaining (genuinely substantial)
-   theorem; it is **not** claimed here.
+   completeness. Production does not publish through this legacy theorem. It
+   uses the mandatory source-bound chronological derivation, complete rule
+   closure, canonical-model, and exact positive-or-countermodel publication
+   checked by `CBCertificationSurface.lean`.
 
 For context on the state of the art: the prior Lean attempt under
 `moose/proofs/lean-sroiq-sdd/` proves **ALC** completeness via *infinite*

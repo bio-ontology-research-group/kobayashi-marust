@@ -25,9 +25,9 @@ without access to the expected answer.
 - A Protégé 5.6 plugin, ontology profiling, bounded explanations, and
   incremental reasoning interfaces are included.
 - Lean provides sorry-free soundness and completeness certification for the
-  supported production hypertableau families and the source-bound ELC
-  publication path. Certification of CB and automatic routing remains in
-  progress.
+  production ELC, hypertableau, and CB publication boundaries and for their
+  automatic routing composition. Accepted routed taxonomies are bound to the
+  exact source clauses and requested named-class signature.
 
 ## Install
 
@@ -134,93 +134,41 @@ Run the production CB certification gate with:
 ./lean/run-cb-certification-gate.sh
 ```
 
-The CB gate builds every native `cb-*` checker declared in Lake, audits the
-public theorem surface for admitted axioms, and exercises the real
-Rust-to-Lean source-bound taxonomy path. In mandatory source-exact mode, KM
-publishes only after Lean checks every positive cell from a production trace
-and every negative cell from a finite or regular countermodel. Lean also binds
-the live chronological insertion history to final retained contexts and uses
-that invariant to prove terminal Pred transfers, arrivals, and explicit local
-imports sound. KM can construct this retained-clause soundness document from
-its in-band typed source and terminal snapshot without an external global-model
-fixture. The remaining CB certification work is native production of the
-global closure/completeness certificate and its exact negative evidence.
-Routing certification follows after that CB boundary is complete.
+Run the automatic-routing certification gate with:
 
-### Current certified HT boundary
+```sh
+./lean/run-routing-certification-gate.sh
+```
 
-`ContextCalculus.HypertableauCertificationSurface` exports the current
-production capstones for:
+The certified production boundary consists of four layers:
 
-- global HT classification;
-- regular taxonomy classification;
-- equality and cardinality taxonomy classification;
-- native-ABox taxonomy classification; and
-- native-ABox cardinality taxonomy classification.
+- ELC checks source normalization, NF1–NF7 closure, residual compilation,
+  materialized state, inconsistency, and the complete named taxonomy.
+- HT checks ordinary, mixed, bundle, cardinality, and native-ABox projections;
+  bounded search; blocking and frontier growth; and exact taxonomy or global
+  publications.
+- CB checks the chronological retained derivation, all local and
+  inter-context production rule families, quiescence, canonical closure, and
+  every positive or countermodel-backed negative taxonomy cell.
+- Routing checks the ordered selector, specialist fallback order, exact source
+  identity, the requested named-class signature, and evidence dispatch to the
+  ELC, HT, or CB checker. Profile choices can affect performance and coverage,
+  but cannot make an unchecked answer sound.
 
-Given a checked production-route structure, Lean proves termination of its
-bounded search and sound and complete classification relative to the checked
-source projection and finite semantic problem. The development covers the
-production control order for clauses, existential witnesses, equality,
-inequality, minimum cardinality, maximum cardinality, blocking, forbidden-pair
-learning, and iterative budget growth. Accepted SAT results carry a checked
-finite model. Accepted UNSAT and taxonomy results carry checked recursive
-evidence.
+Every public capstone is audited for `sorryAx`. Their axiom reports contain
+only Lean's standard `propext`, `Classical.choice`, and `Quot.sound` axioms.
+The four local gates build the relevant Lean surface and executable checkers,
+run tamper-rejection fixtures, and exercise the Rust-to-Lean publication paths.
 
-The gate builds the complete Lean development and the explicit capstone,
-audits its axiom report for `sorryAx`, checks that its inventory matches all 32
-HT checker executables declared in `lakefile.toml`, builds and runs those
-checkers, and executes the Rust-to-Lean integration tests. The exported
-capstones currently report only Lean's standard `propext`, `Classical.choice`,
-and `Quot.sound` axioms.
+This is a proof-carrying publication boundary. Lean proves the semantics of an
+answer whose exact source, requested signature, execution evidence, and output
+are accepted. Routing completeness requires the concrete selected route or its
+retained fallback to publish accepted evidence. The formalization does not
+verify the Rust compiler, operating system, scheduler, resource limits, or an
+execution that bypasses the mandatory checker.
 
-This is a proof-carrying checker boundary. It proves the semantics of results
-whose source projection and evidence are accepted by the Lean-derived checker
-contracts. It does not verify the Rust compiler, operating system, process
-supervision, or arbitrary unchecked Rust execution.
-
-The public surface now includes executable global and complete-taxonomy
-dispatchers. Their route tag is decoded from the publication document, and
-each ordinary, cardinality, native-ABox, or native-ABox-cardinality branch
-checks source semantics, the retained production run, and exact result binding
-as one object. The older `CertifiedHT…Route` theorems remain internal totality
-lemmas rather than the executable publication boundary. Raw `Ht` certificate
-constructors build evidence but do not publish a certified answer. The
-`tableau_cli` certified publication path requires the executable dispatcher;
-the gate checks that rejection suppresses output for all four HT families.
-
-### Current certified ELC boundary
-
-`ContextCalculus.ELCompletion.DecodedCertificate.checkV5_publication_semantics`
-is the public ELC capstone. A successful executable check proves source-level
-inconsistency and complete taxonomy publication for both pure EL inputs and
-inputs partitioned into direct clauses, canonical witnesses, and finitely
-checked residual clauses. It checks NF1–NF7 closure, reflexive roles, backward
-bottom propagation, the complete optimized Rust state, source normalization,
-the finite symbol table, and exact ID-level and named output.
-
-Set `KM_ELC_LEAN_REQUIRED=1` and point `KM_ELC_LEAN_CERT_CHECKER` at the built
-`elc-cert-check` executable to use this fail-closed boundary. Missing,
-malformed, or rejected evidence produces no ELC result. The positive-ABox
-rewrite and incremental reasoning API are outside this ELC publication
-boundary; certified mode declines the former, while native-ABox publication is
-covered by the separately certified HT layer.
-
-The ELC capstone has no admitted theorem. Its axiom report contains only
-Lean's standard `propext`, `Classical.choice`, and `Quot.sound` axioms.
-
-### Certification roadmap
-
-Certification releases are made only for complete layers:
-
-1. complete production HT certification (v0.3.205);
-2. complete ELC soundness and completeness certification (v0.3.206);
-3. complete CB soundness and completeness certification;
-4. complete automatic-routing soundness and completeness certification; and
-5. an integrated cross-layer audit followed by v1.0.0.
-
-CB and routing are not claimed complete until their respective public capstones,
-executable correspondence, axiom audits, and integration gates all pass.
+Version 1.0.0 records the integrated ELC, HT, CB, and automatic-routing
+certification milestone.
 
 ## Repository layout
 

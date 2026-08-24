@@ -2,6 +2,38 @@
 
 ## [unreleased]
 
+## [1.0.0] - 2026-08-24
+
+### Complete source-bound CB and automatic-routing certification
+
+- Export the accepted CB production taxonomy as an exact common-source matrix.
+  Every positive cell is backed by the checked chronological production
+  derivation; every negative cell is backed by a finite, blocked, or regular
+  countermodel. The complete source-bound closure and canonical-model chain is
+  included in the public CB surface.
+- Bind ELC, direct/mixed/bundle HT, all three cardinality HT publications, and
+  CB publications to one common proper-term clause semantics. Each executable
+  adapter fails closed unless its wire checker accepts the exact source and
+  answer proposed to routing.
+- Reconstruct complete row-major taxonomy answers from each accepted worker
+  document. Cardinality answers are read from the covered certificate cells;
+  bundle answers map target-only definers back through the checked source
+  embedding.
+- Add one evidence dispatcher for all HT families and one dispatcher for ELC,
+  HT, and CB. A route tag selects no theorem: acceptance always delegates to a
+  concrete source-bound checker.
+- Add the concrete automatic-supervisor capstone. It checks the ordered
+  selector and fallback sequence, proves every accepted publication exact, and
+  derives completeness from the selected route or retained fallback's concrete
+  publication fact.
+- Strengthen routed sources with the complete requested named-class signature.
+  An answer must use that exact signature and contain the complete row-major
+  matrix, preventing a vacuous empty taxonomy from satisfying the routing
+  contract.
+- Audit the ELC, HT, CB, and routing capstones. All four local certification
+  gates pass, reject `sorryAx`, and report only `propext`, `Classical.choice`,
+  and `Quot.sound` on the public surfaces.
+
 ### Bind live CB imports and Pred transfers to the chronological derivation
 
 - Separate clauses imported through inter-context Pred from ontology and core

@@ -42,12 +42,12 @@ jobs:
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "KM ${RELEASE_TAG}: 591/592 automatic ORE coverage" \
+              --title "KM ${RELEASE_TAG}" \
               --notes-file release-notes.md
             exit 0
           fi
           gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --title "KM ${RELEASE_TAG}: 591/592 automatic ORE coverage" \
+            --title "KM ${RELEASE_TAG}" \
             --notes-file release-notes.md
