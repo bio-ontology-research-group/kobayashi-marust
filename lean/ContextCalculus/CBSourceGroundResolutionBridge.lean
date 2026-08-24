@@ -299,6 +299,67 @@ theorem ordered_candidate_true_body_has_provider_selection
         (CBSourceHyperClosure.mem_providerSelections_iff _ _ _ _ _).mp
           hselection⟩
 
+/-- For every source instance whose body is true in the exact ordered
+candidate valuation, exhaustive production-provider enumeration reaches a raw
+Hyper conclusion. If head normalization keeps that conclusion, terminal Hyper
+closure supplies a retained strengthening of it. The `none` branch is the
+equality-tautology case handled by the quotient-model bridge. -/
+theorem SourceProductionClosed.ordered_candidate_hyper_step
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (closed : SourceProductionClosed decoded)
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (sourceClause : FCL)
+    (hsource : sourceClause ∈
+      (liveOf decoded).production.source.ontology)
+    (substitution : List (Int × FTerm))
+    (hsubstitution : substitution ∈
+      CBHyperClosure.substitutions (hyperOf decoded).order.orderedTerms
+        sourceClause) :
+    letI := linearOrder extension
+    letI := wellFoundedLT extension
+    (∀ literal ∈ (substCl substitution sourceClause).body,
+      OrdRes.Itrue (rawSet context.retained) literal) →
+      ∃ selection providers raw,
+        selection ∈ CBSourceHyperClosure.providerSelections
+          (hyperOf decoded).order context.root context.retained
+          (substCl substitution sourceClause).body ∧
+        CBHyperClosure.selectedProviders context.retained
+          (substCl substitution sourceClause).body selection = some providers ∧
+        CBHyperClosure.resolveProviders (substCl substitution sourceClause)
+          providers = some raw ∧
+        match CBLocalFactorClosureWire.normalizeGeneratedHead raw.head with
+        | none => True
+        | some filtered =>
+            ∃ retained ∈ context.retained,
+              CBProductionTrace.Strengthens retained { raw with head := filtered } := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  intro hbody
+  let instantiated := substCl substitution sourceClause
+  obtain ⟨selection, hselection⟩ :=
+    ordered_candidate_true_body_has_provider_selection context hcontext
+      extension instantiated.body hbody
+  obtain ⟨providers, raw, hproviders, hraw⟩ :=
+    CBSourceHyperClosure.hyperResolution_exists_of_mem_providerSelections
+      (hyperOf decoded).order context.root context.retained instantiated
+      selection hselection
+  refine ⟨selection, providers, raw, hselection, hproviders, hraw, ?_⟩
+  cases hnormal : CBLocalFactorClosureWire.normalizeGeneratedHead raw.head with
+  | none => trivial
+  | some filtered =>
+      apply closed.hyper context hcontext { raw with head := filtered }
+      simp only [CBSourceHyperClosure.hyperCandidates, List.mem_flatMap,
+        List.mem_filterMap]
+      refine ⟨sourceClause, hsource, substitution, hsubstitution, selection,
+        hselection, ?_⟩
+      simp [CBHyperClosure.hyperCandidate?, instantiated, hproviders, hraw,
+        hnormal]
+
 theorem SourceProductionClosed.context_ground_model
     [LinearOrder GroundAtom] [WellFoundedLT GroundAtom]
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -339,6 +400,7 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms ordered_candidate_true_has_production_provider
 #print axioms ordered_candidate_true_has_provider_location
 #print axioms ordered_candidate_true_body_has_provider_selection
+#print axioms SourceProductionClosed.ordered_candidate_hyper_step
 #print axioms SourceProductionClosed.retained_head_equality_normal
 #print axioms SourceProductionClosed.retained_factor_pair_covered
 #print axioms SourceProductionClosed.retained_eq_pair_covered

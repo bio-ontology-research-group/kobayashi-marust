@@ -421,6 +421,75 @@ theorem mem_providerSelections_iff
         (body.map (maximalProvidersFor order root retained)) :=
   mem_cartesianSelections_iff selection _
 
+theorem providerAt_of_mem_maximalProvidersFor
+    (order : DecodedSourceFiniteOrder production)
+    (root : Bool) (retained : List FCL) (literal : FLit)
+    (location : ProviderLocation)
+    (hlocation : location ∈ maximalProvidersFor order root retained literal) :
+    ∃ provider,
+      providerAt retained literal location = some (literal, provider) := by
+  obtain ⟨_, provider, hprovider, _, hhead⟩ :=
+    (mem_maximalProvidersFor_iff order root retained literal location).mp
+      hlocation
+  refine ⟨provider, ?_⟩
+  rcases location with ⟨clauseIndex, headIndex⟩
+  simp [providerAt, hprovider, hhead]
+
+theorem selectedProviders_exists_of_mem_providerSelections
+    (order : DecodedSourceFiniteOrder production)
+    (root : Bool) (retained : List FCL) :
+    ∀ {body selection},
+      selection ∈ providerSelections order root retained body →
+      ∃ providers,
+        selectedProviders retained body selection = some providers := by
+  intro body
+  induction body with
+  | nil =>
+      intro selection hselection
+      have hselects :=
+        (mem_providerSelections_iff order root retained [] selection).mp
+          hselection
+      cases selection with
+      | nil => exact ⟨[], rfl⟩
+      | cons location locations => simp [Selects] at hselects
+  | cons literal body ih =>
+      intro selection hselection
+      have hselects :=
+        (mem_providerSelections_iff order root retained
+          (literal :: body) selection).mp hselection
+      cases selection with
+      | nil => simp [Selects] at hselects
+      | cons location locations =>
+          simp only [List.map_cons, Selects] at hselects
+          obtain ⟨hlocation, hlocations⟩ := hselects
+          obtain ⟨provider, hprovider⟩ :=
+            providerAt_of_mem_maximalProvidersFor order root retained literal
+              location hlocation
+          have htailMember : locations ∈
+              providerSelections order root retained body :=
+            (mem_providerSelections_iff order root retained body locations).mpr
+              hlocations
+          obtain ⟨providers, hproviders⟩ := ih htailMember
+          exact ⟨(literal, provider) :: providers, by
+            simp [selectedProviders, hprovider, hproviders]⟩
+
+theorem hyperResolution_exists_of_mem_providerSelections
+    (order : DecodedSourceFiniteOrder production)
+    (root : Bool) (retained : List FCL) (source : FCL)
+    (selection : List ProviderLocation)
+    (hselection : selection ∈
+      providerSelections order root retained source.body) :
+    ∃ providers raw,
+      selectedProviders retained source.body selection = some providers ∧
+      resolveProviders source providers = some raw := by
+  obtain ⟨providers, hproviders⟩ :=
+    selectedProviders_exists_of_mem_providerSelections order root retained
+      hselection
+  have hdecoded := selectedProviders_sound retained hproviders
+  obtain ⟨raw, hraw⟩ := resolveProviders_exists_of_provider_heads source
+    providers (fun selected hselected => (hdecoded.2 selected hselected).2)
+  exact ⟨providers, raw, hproviders, hraw⟩
+
 def hyperCandidates (order : DecodedSourceFiniteOrder production)
     (root : Bool) (retained source : List FCL) : List FCL :=
   source.flatMap fun sourceClause =>
@@ -518,6 +587,9 @@ theorem WireSourceHyperClosureDocument.check_sound
 #print axioms total_rank_maximal_is_production_maximal
 #print axioms mem_maximalProvidersFor_iff
 #print axioms mem_providerSelections_iff
+#print axioms providerAt_of_mem_maximalProvidersFor
+#print axioms selectedProviders_exists_of_mem_providerSelections
+#print axioms hyperResolution_exists_of_mem_providerSelections
 #print axioms sourceHyperClosedB_sound
 #print axioms WireSourceHyperClosureDocument.check_sound
 

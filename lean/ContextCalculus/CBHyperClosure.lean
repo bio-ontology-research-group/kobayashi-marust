@@ -78,9 +78,14 @@ checked again, so malformed selections do not produce a candidate. -/
 def resolveProviders : FCL → List (FLit × FCL) → Option FCL
   | clause, [] => some clause
   | clause, (literal, provider) :: providers =>
-      if literal ∈ provider.head ∧ literal ∈ clause.body then
-        resolveProviders (resolvent provider clause literal) providers
-      else none
+      if literal ∈ clause.body then
+        if literal ∈ provider.head then
+          resolveProviders (resolvent provider clause literal) providers
+        else none
+      else
+        -- A prior resolution may have removed every duplicate occurrence of
+        -- this instantiated body literal. It is already discharged.
+        resolveProviders clause providers
 
 theorem resolveProviders_sound {D : Type} (model : TModel D)
     (assignment : Int → D) :
@@ -99,15 +104,43 @@ theorem resolveProviders_sound {D : Type} (model : TModel D)
   | cons selected providers ih =>
       rcases selected with ⟨literal, provider⟩
       intro conclusion hresolve hsource hproviders
-      by_cases hmembers : literal ∈ provider.head ∧ literal ∈ source.body
-      · simp only [resolveProviders, hmembers] at hresolve
-        apply ih hresolve
-        · exact resolution_sound (model.evalL assignment) provider source literal
-            (hproviders (literal, provider) (by simp)) hsource
-            hmembers.1 hmembers.2
-        · intro selected hselected
-          exact hproviders selected (by simp [hselected])
-      · simp [resolveProviders, hmembers] at hresolve
+      by_cases hbody : literal ∈ source.body
+      · by_cases hhead : literal ∈ provider.head
+        · simp only [resolveProviders, hbody, hhead] at hresolve
+          apply ih hresolve
+          · exact resolution_sound (model.evalL assignment) provider source literal
+              (hproviders (literal, provider) (by simp)) hsource hhead hbody
+          · intro selected hselected
+            exact hproviders selected (by simp [hselected])
+        · simp [resolveProviders, hbody, hhead] at hresolve
+      · simp only [resolveProviders, hbody] at hresolve
+        apply ih hresolve hsource
+        intro selected hselected
+        exact hproviders selected (by simp [hselected])
+
+theorem resolveProviders_exists_of_provider_heads
+    (source : FCL) (providers : List (FLit × FCL))
+    (hheads : ∀ selected ∈ providers,
+      selected.1 ∈ selected.2.head) :
+    ∃ conclusion,
+      resolveProviders source providers = some conclusion := by
+  induction providers generalizing source with
+  | nil => exact ⟨source, rfl⟩
+  | cons selected providers ih =>
+      rcases selected with ⟨literal, provider⟩
+      have hhead : literal ∈ provider.head :=
+        hheads (literal, provider) (by simp)
+      have htail : ∀ selected ∈ providers,
+          selected.1 ∈ selected.2.head := by
+        intro selected hselected
+        exact hheads selected (by simp [hselected])
+      by_cases hbody : literal ∈ source.body
+      · obtain ⟨conclusion, hconclusion⟩ :=
+          ih (resolvent provider source literal) htail
+        exact ⟨conclusion, by simp [resolveProviders, hbody, hhead,
+          hconclusion]⟩
+      · obtain ⟨conclusion, hconclusion⟩ := ih source htail
+        exact ⟨conclusion, by simp [resolveProviders, hbody, hconclusion]⟩
 
 /-! ## Provider enumeration independent of runtime indexes -/
 
@@ -328,10 +361,20 @@ example : resolveProviders
       ⟨[], [.P (.concept 0 (.const 0))]⟩)] =
     some ⟨[], [.P (.concept 1 (.const 0))]⟩ := by native_decide
 
+/-- Regression: distinct body atoms may collapse to one literal after a
+substitution. Resolving the first occurrence discharges all duplicates, and
+the later checked selection is skipped rather than rejecting the candidate. -/
+example :
+    let a : FLit := .P (.concept 0 (.const 0))
+    let b : FLit := .P (.concept 1 (.const 0))
+    resolveProviders ⟨[a, a], [b]⟩ [(a, ⟨[], [a]⟩), (a, ⟨[], [a]⟩)] =
+      some ⟨[], [b]⟩ := by native_decide
+
 #print axioms substitutionOf_mem_substitutions
 #print axioms substitutionOf_variables
 #print axioms substitutionOf_terms_mem
 #print axioms resolveProviders_sound
+#print axioms resolveProviders_exists_of_provider_heads
 #print axioms mem_maximalProvidersFor_iff
 #print axioms mem_providerSelections_iff
 #print axioms providerAt_sound
