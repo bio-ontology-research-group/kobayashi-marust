@@ -266,6 +266,244 @@ theorem productiveEqualityRewrite_wellFounded
       simpa [DecodedSourceFiniteOrder.termLt] using hdecrease)
     (measure order.termRank).wf
 
+/-- Equality on the source-model carrier is the equivalence closure of KM's
+productive equalities.  It deliberately does not close under the syntactic
+Skolem application constructor: Skolem functions are absent from the original
+OWL source signature and are reconstructed only after a source model exists. -/
+inductive ProductiveEquivalence
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) : FTerm → FTerm → Prop where
+  | productive {smaller larger}
+      (h : ProductiveEqualityRewrite context extension smaller larger) :
+      ProductiveEquivalence context extension larger smaller
+  | refl (term) : ProductiveEquivalence context extension term term
+  | symm {left right} : ProductiveEquivalence context extension left right →
+      ProductiveEquivalence context extension right left
+  | trans {left middle right} :
+      ProductiveEquivalence context extension left middle →
+      ProductiveEquivalence context extension middle right →
+      ProductiveEquivalence context extension left right
+
+def productiveEquivalenceSetoid
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) : Setoid FTerm where
+  r := ProductiveEquivalence context extension
+  iseqv := {
+    refl := ProductiveEquivalence.refl
+    symm := ProductiveEquivalence.symm
+    trans := ProductiveEquivalence.trans }
+
+abbrev ProductiveSourceQuotient
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) : Type :=
+  Quotient (productiveEquivalenceSetoid context extension)
+
+def sourceQuotientTerm
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (term : FTerm) :
+    ProductiveSourceQuotient context extension := Quotient.mk _ term
+
+def sourceConceptHolds
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (concept : Nat)
+    (element : ProductiveSourceQuotient context extension) : Prop :=
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  ∃ term, sourceQuotientTerm context extension term = element ∧
+    OrdRes.Itrue (rawSet context.retained) (.P (.concept concept term))
+
+def sourceRoleHolds
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (role : Nat)
+    (source target : ProductiveSourceQuotient context extension) : Prop :=
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  ∃ sourceTerm targetTerm,
+    sourceQuotientTerm context extension sourceTerm = source ∧
+    sourceQuotientTerm context extension targetTerm = target ∧
+    OrdRes.Itrue (rawSet context.retained)
+      (.P (.role role sourceTerm targetTerm))
+
+theorem sourceConceptHolds_iff
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (concept : Nat) (term : FTerm) :
+    sourceConceptHolds context extension concept
+        (sourceQuotientTerm context extension term) ↔
+      ∃ witness,
+        ProductiveEquivalence context extension witness term ∧
+        letI : LinearOrder FLit := linearOrder extension
+        letI : WellFoundedLT FLit := wellFoundedLT extension
+        OrdRes.Itrue (rawSet context.retained)
+          (.P (.concept concept witness)) := by
+  simp only [sourceConceptHolds]
+  constructor
+  · rintro ⟨witness, hequal, htrue⟩
+    exact ⟨witness, Quotient.eq.mp hequal, htrue⟩
+  · rintro ⟨witness, hequal, htrue⟩
+    exact ⟨witness, Quotient.sound hequal, htrue⟩
+
+theorem sourceRoleHolds_iff
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (role : Nat) (source target : FTerm) :
+    sourceRoleHolds context extension role
+        (sourceQuotientTerm context extension source)
+        (sourceQuotientTerm context extension target) ↔
+      ∃ sourceWitness targetWitness,
+        ProductiveEquivalence context extension sourceWitness source ∧
+        ProductiveEquivalence context extension targetWitness target ∧
+        letI : LinearOrder FLit := linearOrder extension
+        letI : WellFoundedLT FLit := wellFoundedLT extension
+        OrdRes.Itrue (rawSet context.retained)
+          (.P (.role role sourceWitness targetWitness)) := by
+  simp only [sourceRoleHolds]
+  constructor
+  · rintro ⟨sourceWitness, targetWitness, hsource, htarget, htrue⟩
+    exact ⟨sourceWitness, targetWitness, Quotient.eq.mp hsource,
+      Quotient.eq.mp htarget, htrue⟩
+  · rintro ⟨sourceWitness, targetWitness, hsource, htarget, htrue⟩
+    exact ⟨sourceWitness, targetWitness, Quotient.sound hsource,
+      Quotient.sound htarget, htrue⟩
+
+/-- Ground presentation of the source quotient.  Unlike the earlier
+Skolem-congruence draft, this relation is exactly the equality structure needed
+by `Eqv.congruenceModel` for the original source signature. -/
+noncomputable def productiveSourceGroundValuation
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    Eqv.GAtom Nat Nat FTerm → Prop
+  | .con concept term => sourceConceptHolds context extension concept
+      (sourceQuotientTerm context extension term)
+  | .rol role source target => sourceRoleHolds context extension role
+      (sourceQuotientTerm context extension source)
+      (sourceQuotientTerm context extension target)
+  | .eqa left right => ProductiveEquivalence context extension left right
+
+theorem productiveSourceGroundValuation_respectsEq
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    Eqv.RespectsEq (productiveSourceGroundValuation context extension) := by
+  constructor
+  · exact ProductiveEquivalence.refl
+  · exact ProductiveEquivalence.symm
+  · exact ProductiveEquivalence.trans
+  · intro concept left right hequal hconcept
+    change sourceConceptHolds context extension concept
+      (sourceQuotientTerm context extension right)
+    change sourceConceptHolds context extension concept
+      (sourceQuotientTerm context extension left) at hconcept
+    have hquot : sourceQuotientTerm context extension left =
+        sourceQuotientTerm context extension right := Quotient.sound hequal
+    rwa [hquot] at hconcept
+  · intro role left right target hequal hrole
+    change sourceRoleHolds context extension role
+      (sourceQuotientTerm context extension right)
+      (sourceQuotientTerm context extension target)
+    change sourceRoleHolds context extension role
+      (sourceQuotientTerm context extension left)
+      (sourceQuotientTerm context extension target) at hrole
+    have hquot : sourceQuotientTerm context extension left =
+        sourceQuotientTerm context extension right := Quotient.sound hequal
+    rwa [hquot] at hrole
+  · intro role source left right hequal hrole
+    change sourceRoleHolds context extension role
+      (sourceQuotientTerm context extension source)
+      (sourceQuotientTerm context extension right)
+    change sourceRoleHolds context extension role
+      (sourceQuotientTerm context extension source)
+      (sourceQuotientTerm context extension left) at hrole
+    have hquot : sourceQuotientTerm context extension left =
+        sourceQuotientTerm context extension right := Quotient.sound hequal
+    rwa [hquot] at hrole
+
+/-- Candidate interpretation of the original source signature.  Application
+is intentionally absent; existential witness functions are reconstructed by
+`CBEqEncoding.extendModel` only after this interpretation is shown to model
+the source ontology. -/
+noncomputable def productiveSourceInterpretation
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    Eqv.Interp (ProductiveSourceQuotient context extension) Nat Nat Nat where
+  c := sourceConceptHolds context extension
+  r := sourceRoleHolds context extension
+  nm := fun individual => sourceQuotientTerm context extension (.const individual)
+
+/-- The same source interpretation at the exact finite signature carried by
+the checked frontend binding. -/
+noncomputable def productiveBoundedSourceInterpretation
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    Eqv.Interp (ProductiveSourceQuotient context extension)
+      (Fin (liveOf decoded).production.bounds.concepts)
+      (Fin (liveOf decoded).production.bounds.roles)
+      (Fin (liveOf decoded).production.bounds.individuals) where
+  c := fun concept => sourceConceptHolds context extension concept.val
+  r := fun role => sourceRoleHolds context extension role.val
+  nm := fun individual =>
+    sourceQuotientTerm context extension (.const individual.val)
+
+theorem sourceQuotientTerm_productive_eq
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    {smaller larger : FTerm}
+    (hrewrite : ProductiveEqualityRewrite context extension smaller larger) :
+    sourceQuotientTerm context extension larger =
+      sourceQuotientTerm context extension smaller := by
+  exact Quotient.sound (ProductiveEquivalence.productive hrewrite)
+
 /-- Congruence generated by productive equalities.  KM need not rewrite inside
 function terms operationally, but every first-order model must interpret equal
 arguments identically; the `app` constructor supplies exactly that semantic
@@ -767,6 +1005,10 @@ theorem productiveGroundValuation_of_Itrue_positive
 #print axioms productiveEqualityRewrite_decreases
 #print axioms productiveEqualityRewrite_terms_mem_ordered
 #print axioms productiveEqualityRewrite_wellFounded
+#print axioms sourceConceptHolds_iff
+#print axioms sourceRoleHolds_iff
+#print axioms productiveSourceGroundValuation_respectsEq
+#print axioms sourceQuotientTerm_productive_eq
 #print axioms quotientTerm_productive_eq
 #print axioms productiveQuotientModel_evalT
 #print axioms productiveConceptHolds_iff
