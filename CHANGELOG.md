@@ -16,6 +16,11 @@
   surface. Exhaustive Pred coverage now consumes the same globally established
   retained-state invariant. Positive, empty-import, and forged-import fixtures
   pass, and the complete local CB certification gate passes without `sorryAx`.
+- Add a source-bound live-derivation wire that does not require a preassembled
+  global completeness/model fixture. Native KM constructs its production
+  contexts, retained imports, arenas, and chronological evidence directly from
+  the in-band typed source and terminal snapshot. A real Rust-to-Lean Pred test
+  accepts the native document and rejects a forged forward sender reference.
 
 ### Accept empty exact CB transfer partitions
 

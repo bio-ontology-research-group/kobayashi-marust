@@ -141,8 +141,10 @@ publishes only after Lean checks every positive cell from a production trace
 and every negative cell from a finite or regular countermodel. Lean also binds
 the live chronological insertion history to final retained contexts and uses
 that invariant to prove terminal Pred transfers, arrivals, and explicit local
-imports sound. The remaining CB certification work is total native producer
-coverage for the complete nested certificate and its exact negative evidence.
+imports sound. KM can construct this retained-clause soundness document from
+its in-band typed source and terminal snapshot without an external global-model
+fixture. The remaining CB certification work is native production of the
+global closure/completeness certificate and its exact negative evidence.
 Routing certification follows after that CB boundary is complete.
 
 ### Current certified HT boundary

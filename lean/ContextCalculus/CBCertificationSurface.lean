@@ -1,6 +1,7 @@
 import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBLiveInsertionDerivation
+import ContextCalculus.CBSourceLiveInsertionDerivation
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -21,6 +22,7 @@ open ContextCalculus.CBTaxonomyWire
 open ContextCalculus.CBSourceTaxonomyWire
 open ContextCalculus.CBLiveExactTaxonomyPublication
 open ContextCalculus.CBLiveInsertionDerivation
+open ContextCalculus.CBSourceLiveInsertionDerivation
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBInterContext
 open ContextCalculus.CBInterContextWire
@@ -147,6 +149,23 @@ theorem certifiedCBLiveProductionDerivation
         exact decoded.terminal_pred_arrival_valid model hontology arrival
 
 #print axioms certifiedCBLiveProductionDerivation
+
+/-- Native soundness boundary independent of a preassembled global
+completeness certificate. The exact typed source, terminal context snapshot,
+and chronological insertion evidence suffice to prove every retained clause
+context-valid. -/
+theorem certifiedCBSourceLiveProductionDerivation
+    (wire : WireSourceLiveInsertionDerivationDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceLiveInsertionDerivationDocument,
+      wire.decode = .ok decoded ∧
+      ∀ (D : Type) (model : CheckerTerm.TModel D),
+        (∀ source ∈ decoded.production.source.ontology,
+          CheckerTerm.valid model source) →
+        ProductionRetainedValid decoded.production model :=
+  wire.check_sound hcheck
+
+#print axioms certifiedCBSourceLiveProductionDerivation
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :

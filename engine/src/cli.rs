@@ -1361,6 +1361,15 @@ fn verify_cb_lean_publication(
     reasoner: &crate::reasoner::Reasoner,
     input_typed_source: Option<&serde_json::Value>,
 ) -> Result<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>, String> {
+    let source_live_checker =
+        std::env::var_os("KM_CB_SOURCE_LIVE_DERIVATION_CHECKER");
+    let source_live_path =
+        std::env::var_os("KM_CB_SOURCE_LIVE_DERIVATION_CANDIDATE");
+    if source_live_checker.is_some() && source_live_path.is_none() {
+        return Err("KM_CB_SOURCE_LIVE_DERIVATION_CANDIDATE is required with \
+            KM_CB_SOURCE_LIVE_DERIVATION_CHECKER"
+            .to_string());
+    }
     let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
     let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
     if terminal_state_checker.is_some() && terminal_state_path.is_none() {
@@ -1545,6 +1554,32 @@ fn verify_cb_lean_publication(
         "inconsistency_witness": inconsistency_witness,
     });
 
+    if let Some(path) = source_live_path.as_ref() {
+        let candidate = cb_source_live_derivation_candidate(
+            input_typed_source.ok_or_else(|| {
+                "source-bound live CB certification requires an in-band typed source".to_string()
+            })?,
+            &live_state,
+            certificate.pointer("/derivation/insertion_evidence")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
+        )?;
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!(
+                "cannot create source-bound CB live candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize source-bound CB live candidate: {error}"))?;
+        use std::io::Write;
+        writer.write_all(b"\n")
+            .map_err(|error| format!("cannot finish source-bound CB live candidate: {error}"))?;
+        writer.flush()
+            .map_err(|error| format!("cannot flush source-bound CB live candidate: {error}"))?;
+    }
+
     if let Some(path) = terminal_state_path.as_ref() {
         let terminal = cb_terminal_state_candidate(&global_model, &live_state)?;
         let file = std::fs::File::create(path).map_err(|error| {
@@ -1666,6 +1701,26 @@ fn verify_cb_lean_publication(
         exact_unresolved = Some(unresolved);
     }
 
+    if let Some(source_checker) = source_live_checker {
+        let path = source_live_path.as_ref().ok_or_else(|| {
+            "source-bound CB live checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&source_checker)
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-bound CB live checker {}: {error}",
+                    std::path::Path::new(&source_checker).display()
+                )
+            })?;
+        if !status.success() {
+            return Err(format!(
+                "source-bound CB live checker rejected the candidate with {status}"
+            ));
+        }
+    }
     if let Some(checker) = checker {
         let status = std::process::Command::new(&checker)
             .arg(&bundle_path)
@@ -4332,6 +4387,91 @@ fn cb_wire_predicate(predicate: &crate::engine::CbLivePred, bits: u32) -> serde_
     cb_wire_literal(&cb_live_pred_literal(predicate), bits)["predicate"]["predicate"].clone()
 }
 
+/// Construct the soundness certificate directly from the in-band typed source
+/// and the live terminal snapshot. Every final retained clause is an explicit
+/// local import and is replayed by an assumption entry. This local trace alone
+/// is intentionally conditional; the independently checked chronological
+/// insertion DAG discharges every import and prevents circular trust.
+fn cb_source_live_derivation_candidate(
+    source: &serde_json::Value,
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    insertion_evidence: &[serde_json::Value],
+) -> Result<serde_json::Value, String> {
+    let live_json = serde_json::to_value(live)
+        .map_err(|error| format!("cannot serialize live CB snapshot: {error}"))?;
+    let mut contexts = Vec::with_capacity(live.contexts.len());
+    for context in &live.contexts {
+        let arena = if context.root {
+            &live.root_clause_arena
+        } else {
+            &live.ordinary_clause_arena
+        };
+        let retained = context
+            .retained_clause_ids
+            .iter()
+            .map(|clause_id| {
+                arena
+                    .get(*clause_id as usize)
+                    .map(|clause| cb_wire_clause(clause, live.comp_ind_bits))
+                    .ok_or_else(|| {
+                        format!(
+                            "CB context {} retains missing clause {clause_id}",
+                            context.context_index
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let core = context
+            .core
+            .iter()
+            .map(|predicate| cb_wire_predicate(predicate, live.comp_ind_bits))
+            .collect::<Vec<_>>();
+        let trace = retained
+            .iter()
+            .enumerate()
+            .map(|(index, clause)| {
+                serde_json::json!({
+                    "clause": clause,
+                    "justification": {"assumption": {
+                        "index": core.len() + index
+                    }}
+                })
+            })
+            .collect::<Vec<_>>();
+        contexts.push(serde_json::json!({
+            "context_id": context.context_id,
+            "root": context.root,
+            "nominal_ground": context.nominal_ground,
+            "query_concept": context.query_concept,
+            "core": core,
+            "imports": retained,
+            "retained": retained,
+            "discarded": [],
+            "trace": trace,
+        }));
+    }
+    let production = serde_json::json!({
+        "version": 2,
+        "source": source,
+        "individual_count": live.runtime_individual_count,
+        "contexts": contexts,
+    });
+    Ok(serde_json::json!({
+        "version": 1,
+        "production": production,
+        "comp_ind_bits": live.comp_ind_bits,
+        "ordinary_clause_arena": live_json.get("ordinary_clause_arena")
+            .cloned().ok_or_else(|| "live CB snapshot omits ordinary arena".to_string())?,
+        "root_clause_arena": live_json.get("root_clause_arena")
+            .cloned().ok_or_else(|| "live CB snapshot omits root arena".to_string())?,
+        "insertion_history": live_json.get("insertion_history")
+            .cloned().ok_or_else(|| "live CB snapshot omits insertion history".to_string())?,
+        "contexts": live_json.get("contexts")
+            .cloned().ok_or_else(|| "live CB snapshot omits contexts".to_string())?,
+        "insertion_evidence": insertion_evidence,
+    }))
+}
+
 /// Reconstruct the exact Pred send partition from the terminal engine state.
 /// `pred_pool_seen` is the production record of every pool clause actually
 /// sent over an edge. Historical IDs removed by back-subsumption are omitted,
@@ -6168,6 +6308,97 @@ mod cb_derivation_candidate_tests {
         assert_eq!(evidence["edge_label"], cb_wire_term(crate::calc::X, 17));
         assert_eq!(evidence["payload"]["body"].as_array().unwrap().len(), 1);
         assert_eq!(evidence["matched_predicates"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn native_source_live_pred_candidate_passes_real_lean_checker() {
+        let Some(checker) =
+            std::env::var_os("KM_CB_TEST_SOURCE_LIVE_DERIVATION_CHECKER")
+        else {
+            return;
+        };
+        let fact = crate::engine::CbLivePred {
+            kind: "concept",
+            iri: 0,
+            first: crate::calc::X,
+            second: None,
+        };
+        let unit = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![cb_live_pred_literal(&fact)],
+        };
+        let mut live = live_snapshot();
+        live.root_clause_arena = vec![unit.clone(), unit.clone()];
+        live.source_ontology = vec![unit.clone()];
+        live.contexts[0].retained_clause_ids = vec![0];
+        live.contexts[1].retained_clause_ids = vec![1];
+        live.insertion_history = vec![
+            crate::engine::CbLiveInsertionEvent {
+                sequence: 0,
+                context_index: 0,
+                root: true,
+                clause_id: 0,
+                origin_hint: "ontology_fact",
+                origin_index: Some(0),
+                rule_hint: None,
+                rule_evidence: None,
+            },
+            crate::engine::CbLiveInsertionEvent {
+                sequence: 1,
+                context_index: 1,
+                root: true,
+                clause_id: 1,
+                origin_hint: "derived",
+                origin_index: None,
+                rule_hint: Some("pred-arrival"),
+                rule_evidence: Some(crate::engine::CbLiveRuleEvidence::Pred {
+                    sender_context_index: 0,
+                    sender_clause_id: 0,
+                    edge_label: crate::calc::X,
+                    payload: unit.clone(),
+                    provider_clause_ids: Vec::new(),
+                    matched_predicates: Vec::new(),
+                }),
+            },
+        ];
+        let prior = std::collections::HashMap::from([((0, true, 0), 0)]);
+        let pred = cb_pred_event_evidence(&live, &live.insertion_history[1], &prior)
+            .expect("exact source-bound Pred evidence");
+        let source = serde_json::json!({
+            "version": 1,
+            "concept_count": 1,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [{"gci": {"body": [], "head": [0]}}],
+            "role_chains": [],
+            "role_axioms": [],
+            "ontology": [cb_wire_clause(&unit, live.comp_ind_bits)],
+        });
+        let evidence = vec![
+            serde_json::json!({
+                "kind": "seed", "prior_events": [], "trace": [], "discarded": []
+            }),
+            pred,
+        ];
+        let candidate = cb_source_live_derivation_candidate(&source, &live, &evidence)
+            .expect("source-bound live candidate");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent().unwrap().join(".work/artifacts")
+            .join(format!("cb-source-live-pred-{}.json", std::process::id()));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
+        let status = std::process::Command::new(&checker).arg(&path).status().unwrap();
+        assert!(status.success(), "source-bound live Pred candidate was rejected");
+
+        let mut forged = candidate;
+        forged["insertion_evidence"][1]["sender_event"]["event_index"] =
+            serde_json::json!(1);
+        std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
+        let rejected = !std::process::Command::new(&checker)
+            .arg(&path).status().unwrap().success();
+        let _ = std::fs::remove_file(&path);
+        assert!(rejected, "source-bound live checker accepted a forward Pred reference");
     }
 
     #[test]

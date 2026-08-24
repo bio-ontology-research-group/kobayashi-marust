@@ -135,6 +135,16 @@ claim that the layer is already complete.
   The source-exact path no longer trusts that document: it extracts standalone
   production traces and combines them with independently checked finite or
   regular negative models under one exact typed source binding.
+- `CBSourceLiveInsertionDerivation` removes the legacy soundness path's
+  dependency on a preassembled global closure/model document. Its executable
+  wire accepts the exact typed source, a production context view reconstructed
+  from the terminal snapshot, the native clause arenas, and the chronological
+  insertion evidence. Every final clause is declared as a local import, but
+  only the independently checked event DAG proves that import context-valid.
+  The native producer and real checker accept an inter-context Pred example and
+  reject a forged forward sender reference. This closes native construction of
+  the retained-clause soundness certificate; it does not replace the separate
+  global closure and countermodel obligations needed for completeness.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the
