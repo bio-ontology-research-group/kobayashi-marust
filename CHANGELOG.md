@@ -84,6 +84,12 @@
   saturation and shared-base seeding; this corrects the shared-base omission
   of nominal equality clauses such as `o ≈ x`. A representation regression
   test and a forged missing-pool certificate test cover both sides.
+- Compose the nested source-bound certificate into one public production
+  closure theorem. A single accepted document now yields terminal quiescence,
+  source-valid retained clauses, and closure under local Resolution, Factor,
+  Hyper, Join-3, direct Succ, r-Succ, ordered equality, ordinary Pred, and
+  nominal r-Pred over the same typed source and terminal snapshot. This is the
+  unified saturation premise for the remaining canonical-model bridge.
 
 ### Accept empty exact CB transfer partitions
 

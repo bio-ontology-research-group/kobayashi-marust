@@ -73,6 +73,7 @@ surface_theorems=(
     certifiedCBSourceEqClosure
     certifiedCBSourceOrdinaryPredClosure
     certifiedCBSourceRootPredClosure
+    certifiedCBSourceProductionClosure
     certifiedCBSharedProductionTaxonomyPublication
     certifiedCBExactTaxonomyPublication
     certifiedCBSourceExactTaxonomyPublication

@@ -9,6 +9,7 @@ import ContextCalculus.CBSourceSuccClosure
 import ContextCalculus.CBSourceEqClosure
 import ContextCalculus.CBSourceOrdinaryPredClosure
 import ContextCalculus.CBSourceRootPredClosure
+import ContextCalculus.CBSourceProductionClosure
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -37,6 +38,7 @@ open ContextCalculus.CBSourceSuccClosure
 open ContextCalculus.CBSourceEqClosure
 open ContextCalculus.CBSourceOrdinaryPredClosure
 open ContextCalculus.CBSourceRootPredClosure
+open ContextCalculus.CBSourceProductionClosure
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBInterContext
 open ContextCalculus.CBInterContextWire
@@ -288,6 +290,19 @@ theorem certifiedCBSourceRootPredClosure
   exact ⟨decoded, hdecode⟩
 
 #print axioms certifiedCBSourceRootPredClosure
+
+/-- One accepted native source-bound document establishes terminal quiescence,
+sound retained derivations, and closure under every implemented local and
+inter-context CB rule family over the same typed source and snapshot. -/
+theorem certifiedCBSourceProductionClosure
+    (wire : WireSourceRootPredClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceRootPredClosureDocument,
+      wire.decode = .ok decoded ∧ SourceProductionClosed decoded :=
+  ContextCalculus.CBSourceProductionClosure.WireSourceRootPredClosureDocument.check_production_closed
+    wire hcheck
+
+#print axioms certifiedCBSourceProductionClosure
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :
