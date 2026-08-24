@@ -193,6 +193,21 @@ def elcWireOntology
     (ELCommonSourceWire.mapNormalOntology decoded.ontology)
     (ELCommonSourceWire.mapResidualOntology decoded.source_ontology)
 
+theorem elcWireEntails_iff
+    (decoded : ELCompletion.DecodedCertificate n) (sub sup : Fin n) :
+    Entails (elcWireOntology decoded) sub.val sup.val ↔
+      ELCompletion.EntailsSubWithResidual decoded.ontology
+        decoded.sourceResidualTheory sub sup := by
+  exact (entails_elcOntology_iff decoded.top.val decoded.bottom.val
+    (ELCommonSourceWire.mapNormalOntology decoded.ontology)
+    (ELCommonSourceWire.mapResidualOntology decoded.source_ontology)
+    sub.val sup.val).trans
+      ((ELCommonSourceWire.commonMappedCombinedEntails_iff_finite
+        decoded.top decoded.bottom decoded.ontology decoded.source_ontology
+        sub sup).trans
+        (ELCommonSourceWire.finiteELCSourceEntails_iff_publicationSource
+          decoded sub sup))
+
 /-- Acceptance of the production ELC wire yields its full publication
 semantics and, for every finite taxonomy coordinate, equivalence with the one
 proper-term source used by routed CB and HT workers. -/
@@ -210,10 +225,7 @@ theorem ELCompletion.WireCertificate.check_common_routing_source_sound
       wire hcheck with ⟨decoded, hdecode, hpublication, hcommon⟩
   refine ⟨decoded, hdecode, hpublication, ?_⟩
   intro sub sup
-  exact (entails_elcOntology_iff decoded.top.val decoded.bottom.val
-    (ELCommonSourceWire.mapNormalOntology decoded.ontology)
-    (ELCommonSourceWire.mapResidualOntology decoded.source_ontology)
-    sub.val sup.val).trans (hcommon sub sup)
+  exact elcWireEntails_iff decoded sub sup
 
 def directHTPublicationOntology :
     HTDirectTaxonomyCommonPublication.DecodedDirectTaxonomyPublication → List FCL
@@ -548,6 +560,7 @@ theorem cbCheck_common_routing_source_sound
 #print axioms unsatisfiable_directHTOntology_iff
 #print axioms entails_cbOntology_iff
 #print axioms ELCompletion.WireCertificate.check_common_routing_source_sound
+#print axioms elcWireEntails_iff
 #print axioms directHTCheck_common_routing_source_sound
 #print axioms mixedHTCheck_common_routing_source_sound
 #print axioms bundleHTCheck_common_routing_source_sound

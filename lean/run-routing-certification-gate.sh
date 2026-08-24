@@ -75,6 +75,12 @@ for theorem in \
     finiteELCSourceEntails_iff_publicationSource \
     WireCertificate.check_common_source_sound \
     WireCertificate.check_common_routing_source_sound \
+    elcWireEntails_iff \
+    elcBit_exact \
+    elcAnswer_correct \
+    elcCheck_correct \
+    elcAccept_sound \
+    ELCExecution.worker_soundAt \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
     WireDirectTaxonomyPublication.check_sound \
