@@ -6229,6 +6229,92 @@ fn native_abox_joint_source_classification_document(
         .map_err(|error| format!("cannot encode joint native ABox classification: {error}"))
 }
 
+/// Bind a normalized, source-bound cardinality taxonomy to the exact frontend
+/// projection that produced the HT input. The common Lean checker dispatches
+/// on the direct, mixed, or bundle shape of `projection` and rejects any
+/// mismatch between that source and the taxonomy's normalized target.
+fn cardinality_common_taxonomy_document(
+    inp: &TInput,
+    clauses: &[Clause],
+    normalized_taxonomy: &str,
+) -> Result<Vec<u8>, String> {
+    if inp.card_defs.is_empty() {
+        return Err("common cardinality taxonomy requires cardinality definitions".to_string());
+    }
+    if !inp.cardinality_projection_complete {
+        return Err(
+            "common cardinality taxonomy lacks complete frontend expansion evidence".to_string(),
+        );
+    }
+    let variable_count = direct_projection_variable_count(clauses);
+    let target = || {
+        clauses
+            .iter()
+            .map(direct_projection_target_clause)
+            .collect::<Vec<_>>()
+    };
+    let projection = if let Some(source) = inp.bundle_projection_source.as_ref() {
+        serde_json::to_value(BundleCardinalityProjectionDocument {
+            bundle: BundleProjectionDocument {
+                variable_count: variable_count.max(2),
+                source_concepts: &source.source_concepts,
+                concepts: &inp.concepts,
+                roles: &inp.roles,
+                functions: &source.functions,
+                direct: &source.direct,
+                bundles: &source.bundles,
+                domain_extras: &source.domain_extras,
+                target: target(),
+            },
+            definitions: bundle_cardinality_definitions(inp, source)?,
+            exact_pairs: &inp.cardinality_exact_pairs,
+        })
+    } else if let Some(source) = inp.mixed_projection_source.as_ref() {
+        serde_json::to_value(MixedCardinalityProjectionDocument {
+            mixed: MixedProjectionDocument {
+                variable_count,
+                concepts: &inp.concepts,
+                roles: &inp.roles,
+                functions: &source.functions,
+                direct: &source.direct,
+                pairs: &source.pairs,
+                target: target(),
+            },
+            definitions: &inp.card_defs,
+            exact_pairs: &inp.cardinality_exact_pairs,
+        })
+    } else {
+        let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+            "common cardinality taxonomy has no complete source projection".to_string()
+        })?;
+        serde_json::to_value(DirectCardinalityProjectionDocument {
+            variable_count,
+            concepts: &inp.concepts,
+            roles: &inp.roles,
+            source,
+            target: target(),
+            definitions: &inp.card_defs,
+            exact_pairs: &inp.cardinality_exact_pairs,
+        })
+    }
+    .map_err(|error| format!("cannot encode common cardinality projection: {error}"))?;
+    let normalized: serde_json::Value = serde_json::from_str(normalized_taxonomy)
+        .map_err(|error| format!("invalid source-bound cardinality taxonomy: {error}"))?;
+    let document = normalized
+        .get("source_bound_publication")
+        .cloned()
+        .ok_or_else(|| {
+            "normalized cardinality taxonomy omitted its checked source-bound publication"
+                .to_string()
+        })?;
+    serde_json::to_vec(&serde_json::json!({
+        "version": 1,
+        "common": { "version": 1, "projection": projection },
+        "document": document,
+    }))
+    .map_err(|error| format!("cannot encode common cardinality taxonomy: {error}"))
+}
+
 
 fn check_direct_ht_projection(
     inp: &TInput,
@@ -6589,6 +6675,13 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             std::env::var_os("KM_HT_LEAN_TAXONOMY_CERT_OUT").map(std::path::PathBuf::from);
         let lean_taxonomy_checker =
             std::env::var_os("KM_HT_LEAN_TAXONOMY_CERT_CHECKER").map(std::path::PathBuf::from);
+        let lean_cardinality_common_taxonomy_checker = std::env::var_os(
+            "KM_HT_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER")
+        })
+        .map(std::path::PathBuf::from);
         let lean_taxonomy_requested = lean_taxonomy_path.is_some()
             || lean_taxonomy_checker.is_some()
             || lean_native_abox_taxonomy_matrix_checker.is_some()
@@ -6840,6 +6933,16 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             if !native_abox_active && lean_taxonomy_requested && lean_taxonomy_checker.is_none() {
                 return Err(
                     "certified HT taxonomy publication requires both the global and taxonomy Lean checkers"
+                        .to_string(),
+                );
+            }
+            if !native_abox_active
+                && !inp.card_defs.is_empty()
+                && lean_taxonomy_requested
+                && lean_cardinality_common_taxonomy_checker.is_none()
+            {
+                return Err(
+                    "certified cardinality taxonomy requires KM_HT_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER"
                         .to_string(),
                 );
             }
@@ -7098,6 +7201,23 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             "KM_HT_LEAN_TAXONOMY_CERT checker {} rejected the certificate ({status})",
                             checker.display()
                         ));
+                    }
+                    if !native_abox_active && !inp.card_defs.is_empty() {
+                        let checker = lean_cardinality_common_taxonomy_checker
+                            .as_deref()
+                            .ok_or_else(|| {
+                                "missing common cardinality taxonomy Lean checker".to_string()
+                            })?;
+                        let common_taxonomy = cardinality_common_taxonomy_document(
+                            &inp,
+                            &source_decision_clauses,
+                            &taxonomy_certificate,
+                        )?;
+                        run_ht_projection_checker(
+                            &common_taxonomy,
+                            checker,
+                            "cardinality-common-taxonomy",
+                        )?;
                     }
                     if native_abox_active {
                         let source_checker = lean_native_abox_taxonomy_source_checker
@@ -8229,6 +8349,165 @@ mod tests {
         )
         .unwrap_err()
         .contains("rejected"));
+    }
+
+    #[test]
+    fn every_cardinality_taxonomy_projection_passes_the_common_lean_checker() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER")
+        else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{
+            BundleProjectionLit, BundleProjectionSource, CardDefJson, DirectProjectionAtom,
+            MixedProjectionSource, SkolemProjectionBundle, SkolemProjectionPair,
+        };
+
+        let check = |label: &str,
+                     producer: crate::orchestrate::cb_to_ht::TInput,
+                     clauses: Vec<Clause>,
+                     raw_definition: (C, bool, u32, R, C, bool),
+                     named: &[C]| {
+            let inp = consumer_input(&producer);
+            let mut reasoner = hypertableau::Ht::new_certified(clauses.clone());
+            reasoner.set_number(true);
+            reasoner.set_card_defs_raw(&[raw_definition]);
+            let normalized = reasoner
+                .lean_taxonomy_certificate_json(named)
+                .unwrap_or_else(|error| panic!("{label} normalized taxonomy failed: {error}"));
+            let publication = cardinality_common_taxonomy_document(&inp, &clauses, &normalized)
+                .unwrap_or_else(|error| panic!("{label} common publication failed: {error}"));
+            run_ht_projection_checker(
+                &publication,
+                std::path::Path::new(&checker),
+                &format!("{label}-common-cardinality-taxonomy"),
+            )
+            .unwrap_or_else(|error| panic!("{label} common checker failed: {error}"));
+
+            let mut forged: serde_json::Value = serde_json::from_slice(&publication).unwrap();
+            forged["common"]["projection"]["definitions"][0]["n"] = serde_json::json!(2);
+            assert!(
+                run_ht_projection_checker(
+                    &serde_json::to_vec(&forged).unwrap(),
+                    std::path::Path::new(&checker),
+                    &format!("forged-{label}-common-cardinality-taxonomy"),
+                )
+                .unwrap_err()
+                .contains("rejected"),
+                "{label} accepted a detached cardinality definition"
+            );
+        };
+
+        check(
+            "direct",
+            crate::orchestrate::cb_to_ht::TInput {
+                concepts: vec!["M".into(), "F".into()],
+                roles: vec!["r".into()],
+                direct_projection_source: Some(Vec::new()),
+                card_defs: vec![CardDefJson {
+                    marker: 0,
+                    min: false,
+                    n: 1,
+                    role: 0,
+                    filler: 1,
+                    exact: false,
+                }],
+                cardinality_projection_complete: true,
+                ..crate::orchestrate::cb_to_ht::TInput::default()
+            },
+            Vec::new(),
+            (0, false, 1, 0, 1, false),
+            &[0, 1],
+        );
+
+        let mixed_body = vec![DirectProjectionAtom::Con {
+            concept: "A".into(),
+            node: "x".into(),
+            neg: false,
+        }];
+        check(
+            "mixed",
+            crate::orchestrate::cb_to_ht::TInput {
+                concepts: vec!["A".into(), "F".into(), "M".into()],
+                roles: vec!["r".into()],
+                mixed_projection_source: Some(MixedProjectionSource {
+                    functions: vec!["f".into()],
+                    direct: Vec::new(),
+                    pairs: vec![SkolemProjectionPair {
+                        variable_names: vec!["x".into()],
+                        body: mixed_body,
+                        source: "x".into(),
+                        function: "f".into(),
+                        role: "r".into(),
+                        filler: "F".into(),
+                        neg: false,
+                    }],
+                }),
+                card_defs: vec![CardDefJson {
+                    marker: 2,
+                    min: false,
+                    n: 1,
+                    role: 0,
+                    filler: 1,
+                    exact: false,
+                }],
+                cardinality_projection_complete: true,
+                ..crate::orchestrate::cb_to_ht::TInput::default()
+            },
+            vec![Clause::new(
+                vec![con(false, 0, 0)],
+                vec![exists(0, false, 1, 0)],
+            )],
+            (2, false, 1, 0, 1, false),
+            &[0, 1, 2],
+        );
+
+        let bundle_body = vec![DirectProjectionAtom::Con {
+            concept: "A".into(),
+            node: "x".into(),
+            neg: false,
+        }];
+        check(
+            "bundle",
+            crate::orchestrate::cb_to_ht::TInput {
+                concepts: vec!["A".into(), "D".into(), "F".into(), "M".into()],
+                roles: vec!["r".into()],
+                bundle_projection_source: Some(BundleProjectionSource {
+                    source_concepts: vec!["A".into(), "F".into(), "M".into()],
+                    functions: vec!["f".into()],
+                    direct: Vec::new(),
+                    bundles: vec![SkolemProjectionBundle {
+                        variable_names: vec!["x".into()],
+                        body: bundle_body,
+                        source: "x".into(),
+                        function: "f".into(),
+                        role: "r".into(),
+                        fillers: vec![BundleProjectionLit {
+                            concept: "F".into(),
+                            neg: false,
+                        }],
+                        definer: "D".into(),
+                    }],
+                    domain_extras: Vec::new(),
+                }),
+                card_defs: vec![CardDefJson {
+                    marker: 3,
+                    min: false,
+                    n: 1,
+                    role: 0,
+                    filler: 2,
+                    exact: false,
+                }],
+                cardinality_projection_complete: true,
+                ..crate::orchestrate::cb_to_ht::TInput::default()
+            },
+            vec![
+                Clause::new(vec![con(false, 0, 0)], vec![exists(0, false, 1, 0)]),
+                Clause::new(vec![con(false, 1, 0)], vec![con(false, 2, 0)]),
+            ],
+            (3, false, 1, 0, 2, false),
+            &[0, 2, 3],
+        );
     }
 
     #[test]

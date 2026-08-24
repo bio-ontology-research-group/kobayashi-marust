@@ -249,6 +249,8 @@ done
     export KM_HT_TEST_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER="$bin_root/ht-source-bound-cardinality-global-check"
     export KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-cardinality-taxonomy-check"
     export KM_HT_TEST_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-cardinality-taxonomy-check"
+    export KM_HT_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER="$bin_root/ht-cardinality-common-taxonomy-check"
+    export KM_HT_TEST_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER="$bin_root/ht-cardinality-common-taxonomy-check"
     export KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-ordinary-taxonomy-check"
     export KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-ordinary-taxonomy-check"
     export KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER="$bin_root/ht-source-bound-native-abox-global-check"
@@ -290,6 +292,7 @@ done
       KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-decision-check" \
       cargo test --release native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident -- --nocapture
     cargo test --release native_abox_cardinality_global_decision_uses_joint_wire -- --nocapture
+    cargo test --release every_cardinality_taxonomy_projection_passes_the_common_lean_checker -- --nocapture
     cargo test --release source_matrix_passes_real_lean_checker -- --nocapture
     cargo test --release certified_input_coverage_matches_the_lean_truth_table -- --nocapture
     cargo test --release regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture

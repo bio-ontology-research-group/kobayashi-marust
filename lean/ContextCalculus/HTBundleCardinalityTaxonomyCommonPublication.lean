@@ -40,8 +40,6 @@ deriving Lean.FromJson, Lean.ToJson, Repr
 def WireBundleCardinalityTaxonomyPublication.sourceBoundB
     (wire : WireBundleCardinalityTaxonomyPublication) : Bool :=
   decide (
-    wire.common.projection.bundle.variable_count =
-      wire.document.source.certificate.variable_count ∧
     wire.common.projection.bundle.concepts.length =
       wire.document.source.certificate.concept_count ∧
     wire.common.projection.bundle.roles.length =
@@ -93,7 +91,6 @@ structure DecodedBundleCardinalityTaxonomyPublication where
   common : DecodedBundleCardinalityCommonSource
   taxonomy : DecodedNormalizedCardinalityTaxonomyCertificate
   exact : DecodedExactCardinalityTaxonomyCertificate
-  variableCount : common.projection.bundle.variableCount = taxonomy.target.variableCount
   conceptCount : common.projection.bundle.concepts.length = taxonomy.target.conceptCount
   roleCount : common.projection.bundle.roles.length = taxonomy.target.roleCount
   sourceExact : mapOntology common.projection.bundle.target =
@@ -117,39 +114,36 @@ def WireBundleCardinalityTaxonomyPublication.decode
         let common ← wire.common.decode
         let taxonomy ← wire.document.source.decode
         let exact ← wire.document.source.certificate.decodeExact
-        if hv : common.projection.bundle.variableCount = taxonomy.target.variableCount then
-          if hc : common.projection.bundle.concepts.length = taxonomy.target.conceptCount then
-            if hr : common.projection.bundle.roles.length = taxonomy.target.roleCount then
-              if hs : mapOntology common.projection.bundle.target =
-                  mapOntology taxonomy.normalization.source then
-                if hd : common.targetDefinitions.map mapCardinalityDef =
-                    taxonomy.target.definitions.map mapCardinalityDef then
-                  if hp : (pairedExactDefinitions common.targetPairs |>
-                      List.map mapCardinalityDef).toFinset =
-                      (exact.exactDefinitions.map mapCardinalityDef).toFinset then
-                    if hconcepts : exact.covered.concepts.Forall fun entry =>
-                        bundleConceptEntryBoundTo entry taxonomy exact then
-                      if hsubs : exact.covered.subsumptions.Forall fun entry =>
-                          bundleSubsumptionEntryBoundTo entry taxonomy exact then
-                        return {
-                          common, taxonomy, exact
-                          variableCount := hv
-                          conceptCount := hc
-                          roleCount := hr
-                          sourceExact := hs
-                          definitionsExact := hd
-                          pairedExact := hp
-                          conceptCellsBound := hconcepts
-                          subsumptionCellsBound := hsubs
-                        }
-                      else throw "a bundle-cardinality subsumption cell has a different target"
-                    else throw "a bundle-cardinality concept cell has a different target"
-                  else throw "bundle-cardinality exact definitions lack pair provenance"
-                else throw "bundle-cardinality target definitions differ"
-              else throw "bundle-cardinality target differs from normalized source"
-            else throw "bundle-cardinality role dimension differs"
-          else throw "bundle-cardinality target concept dimension differs"
-        else throw "bundle-cardinality variable dimension differs"
+        if hc : common.projection.bundle.concepts.length = taxonomy.target.conceptCount then
+          if hr : common.projection.bundle.roles.length = taxonomy.target.roleCount then
+            if hs : mapOntology common.projection.bundle.target =
+                mapOntology taxonomy.normalization.source then
+              if hd : common.targetDefinitions.map mapCardinalityDef =
+                  taxonomy.target.definitions.map mapCardinalityDef then
+                if hp : (pairedExactDefinitions common.targetPairs |>
+                    List.map mapCardinalityDef).toFinset =
+                    (exact.exactDefinitions.map mapCardinalityDef).toFinset then
+                  if hconcepts : exact.covered.concepts.Forall fun entry =>
+                      bundleConceptEntryBoundTo entry taxonomy exact then
+                    if hsubs : exact.covered.subsumptions.Forall fun entry =>
+                        bundleSubsumptionEntryBoundTo entry taxonomy exact then
+                      return {
+                        common, taxonomy, exact
+                        conceptCount := hc
+                        roleCount := hr
+                        sourceExact := hs
+                        definitionsExact := hd
+                        pairedExact := hp
+                        conceptCellsBound := hconcepts
+                        subsumptionCellsBound := hsubs
+                      }
+                    else throw "a bundle-cardinality subsumption cell has a different target"
+                  else throw "a bundle-cardinality concept cell has a different target"
+                else throw "bundle-cardinality exact definitions lack pair provenance"
+              else throw "bundle-cardinality target definitions differ"
+            else throw "bundle-cardinality target differs from normalized source"
+          else throw "bundle-cardinality role dimension differs"
+        else throw "bundle-cardinality target concept dimension differs"
       else throw "bundle-cardinality source and publication are not bound"
     else throw "source-bound bundle-cardinality taxonomy rejected"
   else throw s!"unsupported bundle-cardinality publication version {wire.version}"

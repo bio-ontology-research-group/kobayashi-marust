@@ -269,6 +269,21 @@ def SourceEntailsSub (direct : List (Hypertableau.Clause Nat Nat Nat))
     interpretation.models direct → ModelsSkolemPairs interpretation functions pairs →
       ∀ value, interpretation.concept sub value → interpretation.concept sup value
 
+def CommonUnsatisfiableConcept
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (pairs : List (SkolemPairSpec Nat Nat Nat Nat)) (concept : Nat) : Prop :=
+  ∀ (Domain : Type) (model : TModel Domain),
+    (∀ clause ∈ encodeMixed direct pairs, valid model clause) →
+      ∀ value, ¬model.conc concept value
+
+def SourceUnsatisfiableConcept
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (pairs : List (SkolemPairSpec Nat Nat Nat Nat)) (concept : Nat) : Prop :=
+  ∀ (Domain : Type) (interpretation : Interp Domain Nat Nat)
+    (functions : SkolemInterp Domain Nat),
+    interpretation.models direct → ModelsSkolemPairs interpretation functions pairs →
+      ∀ value, ¬interpretation.concept concept value
+
 theorem entailsSub_mixed_encode_iff
     (direct : List (Hypertableau.Clause Nat Nat Nat))
     (pairs : List (SkolemPairSpec Nat Nat Nat Nat))
@@ -288,10 +303,30 @@ theorem entailsSub_mixed_encode_iff
     exact hsource Domain (htInterp model) (skolemInterp model)
       hmixed.1 hmixed.2 value hsub
 
+theorem unsatisfiableConcept_mixed_encode_iff
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (pairs : List (SkolemPairSpec Nat Nat Nat Nat))
+    (hdirect : DirectMixed direct pairs) (concept : Nat) :
+    CommonUnsatisfiableConcept direct pairs concept ↔
+      SourceUnsatisfiableConcept direct pairs concept := by
+  constructor
+  · intro hcommon Domain interpretation functions hdirectModels hpairs value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    let model := mixedCheckerModel interpretation functions
+    exact hcommon Domain model
+      ((models_mixed_encode_iff model direct pairs hdirect).2 (by
+        simpa [model, htInterp, mixedCheckerModel, skolemInterp] using
+          And.intro hdirectModels hpairs)) value hconcept
+  · intro hsource Domain model hmodels value hconcept
+    have hmixed := (models_mixed_encode_iff model direct pairs hdirect).1 hmodels
+    exact hsource Domain (htInterp model) (skolemInterp model)
+      hmixed.1 hmixed.2 value hconcept
+
 #print axioms valid_roleClause_iff
 #print axioms valid_fillerClause_iff
 #print axioms valid_pair_iff
 #print axioms models_mixed_encode_iff
 #print axioms entailsSub_mixed_encode_iff
+#print axioms unsatisfiableConcept_mixed_encode_iff
 
 end ContextCalculus.HTSkolemPairCheckerTermEmbedding

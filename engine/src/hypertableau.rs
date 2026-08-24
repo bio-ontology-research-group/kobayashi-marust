@@ -11773,13 +11773,13 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
-    fn lean_source_bound_cardinality_taxonomy_passes(
+    fn lean_source_bound_cardinality_taxonomy_document(
         &self,
         source: &str,
         named: &[C],
         concept_runs: Vec<serde_json::Value>,
         subsumption_runs: Vec<Vec<serde_json::Value>>,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<String>, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER",
         )
@@ -11835,9 +11835,13 @@ impl Ht {
         }))
         .map_err(|error| error.to_string())?;
         if !self.lean_candidate_passes_with(&document, &checker)? {
-            return Ok(false);
+            return Ok(None);
         }
-        self.lean_executable_publication_passes("cardinality", &document)
+        if self.lean_executable_publication_passes("cardinality", &document)? {
+            Ok(Some(document))
+        } else {
+            Ok(None)
+        }
     }
 
     fn lean_ordinary_taxonomy_query_payload(document: &str) -> Result<serde_json::Value, String> {
@@ -17403,15 +17407,18 @@ impl Ht {
             return Err("Lean rejected the complete cardinality taxonomy run matrix".to_string());
         }
         let source = self.wrap_normalized_cardinality_taxonomy_certificate(payload)?;
-        if !self.lean_source_bound_cardinality_taxonomy_passes(
+        let source_bound = self.lean_source_bound_cardinality_taxonomy_document(
             &source,
             named,
             concept_runs,
             subsumption_runs,
-        )? {
-            return Err("Lean rejected the source-bound cardinality taxonomy".to_string());
-        }
-        Ok(source)
+        )?
+        .ok_or_else(|| "Lean rejected the source-bound cardinality taxonomy".to_string())?;
+        let mut published: serde_json::Value =
+            serde_json::from_str(&source).map_err(|error| error.to_string())?;
+        published["source_bound_publication"] =
+            serde_json::from_str(&source_bound).map_err(|error| error.to_string())?;
+        serde_json::to_string(&published).map_err(|error| error.to_string())
     }
 
     /// Produce a complete checker-ready named taxonomy. Every concept and every

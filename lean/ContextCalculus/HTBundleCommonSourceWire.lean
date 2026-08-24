@@ -209,6 +209,23 @@ def FiniteSourceEntails (decoded : DecodedBundleCommonSource)
         (decodedBundleSpecs decoded.projection.bundles) →
       ∀ value, interpretation.concept sub value → interpretation.concept sup value
 
+def DecodedBundleCommonSource.CommonUnsatisfiable
+    (decoded : DecodedBundleCommonSource)
+    (concept : Fin decoded.projection.sourceConcepts.length) : Prop :=
+  HTSkolemBundleCheckerTermEmbedding.CommonUnsatisfiableConcept
+    decoded.commonDirect decoded.commonBundles concept.val
+
+def FiniteSourceUnsatisfiable (decoded : DecodedBundleCommonSource)
+    (concept : Fin decoded.projection.sourceConcepts.length) : Prop :=
+  ∀ (Domain : Type)
+    (interpretation : Interp Domain (Fin decoded.projection.sourceConcepts.length)
+      (Fin decoded.projection.roles.length))
+    (functions : SkolemInterp Domain (Fin decoded.projection.functions.length)),
+    interpretation.models decoded.projection.direct →
+      ModelsBundles interpretation functions
+        (decodedBundleSpecs decoded.projection.bundles) →
+      ∀ value, ¬interpretation.concept concept value
+
 theorem DecodedBundleCommonSource.entails_source_iff
     (decoded : DecodedBundleCommonSource)
     (sub sup : Fin decoded.projection.sourceConcepts.length) :
@@ -256,6 +273,53 @@ theorem DecodedBundleCommonSource.entails_source_iff
           (hdirect (mapClause clause) (List.mem_map.mpr ⟨clause, hclause, rfl⟩)))
       hfiniteBundles value (by simpa [finInterp] using hsub)
     simpa [finInterp] using hresult
+
+theorem DecodedBundleCommonSource.unsatisfiable_source_iff
+    (decoded : DecodedBundleCommonSource)
+    (concept : Fin decoded.projection.sourceConcepts.length) :
+    decoded.CommonUnsatisfiable concept ↔
+      FiniteSourceUnsatisfiable decoded concept := by
+  change HTSkolemBundleCheckerTermEmbedding.CommonUnsatisfiableConcept
+      decoded.commonDirect decoded.commonBundles concept.val ↔
+    FiniteSourceUnsatisfiable decoded concept
+  rw [unsatisfiableConcept_bundles_encode_iff decoded.commonDirect
+    decoded.commonBundles decoded.directBundles concept.val]
+  constructor
+  · intro hnat Domain interpretation functions hdirect hbundles value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    have hbundleList : ModelsBundleList (natInterp interpretation)
+        (natFunctions functions) decoded.commonBundles := by
+      intro bundle hbundle
+      rcases List.mem_map.mp hbundle with ⟨source, hsource, rfl⟩
+      rcases List.get_of_mem hsource with ⟨index, hindex⟩
+      have hsourceModels := hbundles index
+      simp only [decodedBundleSpecs] at hsourceModels
+      rw [hindex] at hsourceModels
+      exact (models_mapBundle_nat_iff interpretation functions source.spec).2
+        hsourceModels
+    exact hnat Domain (natInterp interpretation) (natFunctions functions)
+      (by
+        intro clause hclause
+        rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
+        exact (modelsClause_map_natInterp interpretation source).2
+          (hdirect source hsource)) hbundleList value (by simpa using hconcept)
+  · intro hfin Domain interpretation functions hdirect hbundles value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    have hfiniteBundles : ModelsBundles (finInterp interpretation)
+        (finFunctions functions) (decodedBundleSpecs decoded.projection.bundles) := by
+      intro index
+      have hmapped : mapBundle (decoded.projection.bundles.get index).spec ∈
+          decoded.commonBundles := List.mem_map.mpr
+            ⟨decoded.projection.bundles.get index, List.get_mem _ _, rfl⟩
+      exact (models_mapBundle_fin_iff interpretation functions
+        (decoded.projection.bundles.get index).spec).2
+          (hbundles _ hmapped)
+    exact hfin Domain (finInterp interpretation) (finFunctions functions)
+      (by
+        intro clause hclause
+        exact (modelsClause_map_finInterp interpretation clause).2
+          (hdirect (mapClause clause) (List.mem_map.mpr ⟨clause, hclause, rfl⟩)))
+      hfiniteBundles value (by simpa [finInterp] using hconcept)
 
 theorem DecodedBundleCommonSource.finiteSource_entails_iff_target
     (decoded : DecodedBundleCommonSource)
@@ -334,6 +398,79 @@ theorem DecodedBundleCommonSource.finiteSource_entails_iff_target
       simpa [embedding] using hleft (.inr sup)
     simpa [J, pushforwardConcepts, hinverse, extended, indexedBundleExtension] using hsupJ
 
+theorem DecodedBundleCommonSource.finiteSource_unsatisfiable_iff_target
+    (decoded : DecodedBundleCommonSource)
+    (concept : Fin decoded.projection.sourceConcepts.length) :
+    FiniteSourceUnsatisfiable decoded concept ↔
+      UnsatisfiableConcept decoded.projection.target
+        (decoded.projection.sourceTargets concept) := by
+  constructor
+  · intro hsource Domain J htarget value hconcept
+    let embedding := bundleConceptEmbedding decoded.projection.sourceTargets
+      decoded.projection.bundles
+    let combined := indexedBundleOntology decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles) ++
+      indexedBundleDomainOntology (decodedBundleSpecs decoded.projection.bundles)
+        decoded.projection.domainExtras
+    have hrenamed : J.models (renameOntology embedding combined) :=
+      (models_iff_of_toFinset_eq J _ _ decoded.projection.exactProjection).2 htarget
+    let K := pullbackConcepts embedding J
+    have hcombined : K.models combined :=
+      (models_rename_pullback_iff embedding J combined).1 hrenamed
+    have hcore : K.models (indexedBundleOntology decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles)) := by
+      intro clause hclause
+      exact hcombined clause (List.mem_append_left _ hclause)
+    let base : SkolemInterp Domain (Fin decoded.projection.functions.length) :=
+      ⟨fun _ _ => value⟩
+    rcases indexedBundleProjection_complete K base decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles)
+        decoded.projection.uniqueFunctions hcore with
+      ⟨functions, hdirect, hbundles⟩
+    apply hsource Domain (indexedRestrict K) functions hdirect hbundles value
+    simpa [K, embedding, pullbackConcepts, indexedRestrict] using hconcept
+  · intro htarget Domain I functions hdirect hbundles value hconcept
+    have hpositive : 0 < decoded.projection.bundles.length :=
+      List.length_pos_of_ne_nil decoded.projection.nonemptyBundles
+    letI : Nonempty
+        (Sum (Fin decoded.projection.bundles.length)
+          (Fin decoded.projection.sourceConcepts.length)) :=
+      ⟨.inl ⟨0, hpositive⟩⟩
+    obtain ⟨inverse, hleft⟩ := decoded.projection.embeddingInjective.hasLeftInverse
+    let extended := indexedBundleExtension I
+      (decodedBundleSpecs decoded.projection.bundles)
+    have hcore : extended.models (indexedBundleOntology decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles)) :=
+      indexedBundleProjection_sound I functions decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles) hdirect hbundles
+    have hdomains : extended.models
+        (indexedBundleOntology decoded.projection.direct
+          (decodedBundleSpecs decoded.projection.bundles) ++
+        indexedBundleDomainOntology (decodedBundleSpecs decoded.projection.bundles)
+          decoded.projection.domainExtras) :=
+      (add_indexedBundleDomainOntology_of_direct_iff extended decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles) decoded.projection.domainExtras
+        decoded.projection.rboxSource decoded.projection.rboxTarget
+        decoded.projection.rboxDistinct decoded.projection.pathPremises
+        decoded.projection.domainPremises).2 hcore
+    let embedding := bundleConceptEmbedding decoded.projection.sourceTargets
+      decoded.projection.bundles
+    let J := pushforwardConcepts inverse extended
+    have hrenamed : J.models (renameOntology embedding
+        (indexedBundleOntology decoded.projection.direct
+          (decodedBundleSpecs decoded.projection.bundles) ++
+        indexedBundleDomainOntology (decodedBundleSpecs decoded.projection.bundles)
+          decoded.projection.domainExtras)) :=
+      (models_rename_pushforward_iff embedding inverse hleft extended _).2 hdomains
+    have hmodels : J.models decoded.projection.target :=
+      (models_iff_of_toFinset_eq J _ _ decoded.projection.exactProjection).1 hrenamed
+    apply htarget Domain J hmodels value
+    have hinverse : inverse (decoded.projection.sourceTargets concept) =
+        .inr concept := by
+      simpa [embedding] using hleft (.inr concept)
+    simpa [J, pushforwardConcepts, hinverse, extended,
+      indexedBundleExtension] using hconcept
+
 theorem DecodedBundleCommonSource.entails_target_iff
     (decoded : DecodedBundleCommonSource)
     (sub sup : Fin decoded.projection.sourceConcepts.length) :
@@ -343,6 +480,15 @@ theorem DecodedBundleCommonSource.entails_target_iff
         (decoded.projection.sourceTargets sup) :=
   (decoded.entails_source_iff sub sup).trans
     (decoded.finiteSource_entails_iff_target sub sup)
+
+theorem DecodedBundleCommonSource.unsatisfiable_target_iff
+    (decoded : DecodedBundleCommonSource)
+    (concept : Fin decoded.projection.sourceConcepts.length) :
+    decoded.CommonUnsatisfiable concept ↔
+      UnsatisfiableConcept decoded.projection.target
+        (decoded.projection.sourceTargets concept) :=
+  (decoded.unsatisfiable_source_iff concept).trans
+    (decoded.finiteSource_unsatisfiable_iff_target concept)
 
 theorem WireBundleCommonSource.check_sound (wire : WireBundleCommonSource)
     (decoded : DecodedBundleCommonSource) (_hdecode : wire.decode = .ok decoded)
@@ -355,6 +501,7 @@ theorem WireBundleCommonSource.check_sound (wire : WireBundleCommonSource)
   decoded.entails_target_iff sub sup
 
 #print axioms DecodedBundleCommonSource.entails_target_iff
+#print axioms DecodedBundleCommonSource.unsatisfiable_target_iff
 #print axioms WireBundleCommonSource.check_sound
 
 end ContextCalculus.HTBundleCommonSourceWire

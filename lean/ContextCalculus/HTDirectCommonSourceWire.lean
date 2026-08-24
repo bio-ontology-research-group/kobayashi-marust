@@ -224,6 +224,11 @@ def DecodedDirectCommonSource.CommonEntails
     (sub sup : Fin decoded.projection.concepts.length) : Prop :=
   CommonEntailsSub decoded.commonOntology sub.val sup.val
 
+def DecodedDirectCommonSource.CommonUnsatisfiable
+    (decoded : DecodedDirectCommonSource)
+    (concept : Fin decoded.projection.concepts.length) : Prop :=
+  HTCheckerTermEmbedding.CommonUnsatisfiableConcept decoded.commonOntology concept.val
+
 /-- Mapping finite HT identifiers into naturals preserves the full HT
 semantics, including existential atoms.  This is distinct from encoding into
 the proper-term common calculus, which additionally requires a direct source. -/
@@ -253,6 +258,31 @@ theorem entails_mapOntology_finite_iff
             (List.mem_map.mpr ⟨clause, hclause, rfl⟩)))
       value (by simpa [finInterp] using hsub)
 
+theorem unsatisfiable_mapOntology_finite_iff
+    (source : List
+      (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
+    (concept : Fin concepts) :
+    UnsatisfiableConcept (mapOntology source) concept.val ↔
+      UnsatisfiableConcept source concept := by
+  constructor
+  · intro hnat Domain interpretation hmodels value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    exact hnat Domain (natInterp interpretation)
+      (by
+        intro clause hclause
+        rcases List.mem_map.mp hclause with ⟨original, horiginal, rfl⟩
+        exact (modelsClause_map_natInterp interpretation original).2
+          (hmodels original horiginal)) value (by simpa using hconcept)
+  · intro hfin Domain interpretation hmodels value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    exact hfin Domain (finInterp interpretation)
+      (by
+        intro clause hclause
+        exact (modelsClause_map_finInterp interpretation clause).2
+          (hmodels (mapClause clause)
+            (List.mem_map.mpr ⟨clause, hclause, rfl⟩)))
+      value (by simpa [finInterp] using hconcept)
+
 theorem entails_mapOntology_iff
     (source : List
       (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
@@ -267,6 +297,21 @@ theorem entails_mapOntology_iff
   rw [entailsSub_encode_iff (mapOntology source) hcommonDirect sub.val sup.val]
   exact entails_mapOntology_finite_iff source sub sup
 
+theorem unsatisfiable_mapOntology_iff
+    (source : List
+      (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
+    (hdirect : ∀ clause ∈ source, clauseNoExistentials clause = true)
+    (concept : Fin concepts) :
+    HTCheckerTermEmbedding.CommonUnsatisfiableConcept
+        (mapOntology source) concept.val ↔
+      UnsatisfiableConcept source concept := by
+  have hcommonDirect : DirectOntology (mapOntology source) := by
+    intro clause hclause
+    rcases List.mem_map.mp hclause with ⟨original, horiginal, rfl⟩
+    exact direct_mapClause original (hdirect original horiginal)
+  rw [unsatisfiableConcept_encode_iff (mapOntology source) hcommonDirect concept.val]
+  exact unsatisfiable_mapOntology_finite_iff source concept
+
 /-- Accepted executable direct-source evidence has exactly the same taxonomy
 meaning in the common routing source and in the checked HT source. -/
 theorem DecodedDirectCommonSource.entails_iff
@@ -275,6 +320,13 @@ theorem DecodedDirectCommonSource.entails_iff
     decoded.CommonEntails sub sup ↔
       EntailsSub decoded.projection.source sub sup := by
   exact entails_mapOntology_iff decoded.projection.source decoded.direct sub sup
+
+theorem DecodedDirectCommonSource.unsatisfiable_iff
+    (decoded : DecodedDirectCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    decoded.CommonUnsatisfiable concept ↔
+      UnsatisfiableConcept decoded.projection.source concept :=
+  unsatisfiable_mapOntology_iff decoded.projection.source decoded.direct concept
 
 theorem WireDirectCommonSource.check_sound (wire : WireDirectCommonSource)
     (decoded : DecodedDirectCommonSource) (_hdecode : wire.decode = .ok decoded)
@@ -302,6 +354,22 @@ theorem DecodedDirectCommonSource.entails_target_iff
     exact htarget Domain interpretation
       ((decoded.projection.models_source_iff_target interpretation).1 hsource)
       value hsub
+
+theorem DecodedDirectCommonSource.unsatisfiable_target_iff
+    (decoded : DecodedDirectCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    decoded.CommonUnsatisfiable concept ↔
+      UnsatisfiableConcept decoded.projection.target concept := by
+  rw [decoded.unsatisfiable_iff concept]
+  constructor
+  · intro hsource Domain interpretation htarget value hconcept
+    exact hsource Domain interpretation
+      ((decoded.projection.models_source_iff_target interpretation).2 htarget)
+      value hconcept
+  · intro htarget Domain interpretation hsource value hconcept
+    exact htarget Domain interpretation
+      ((decoded.projection.models_source_iff_target interpretation).1 hsource)
+      value hconcept
 
 theorem WireDirectCommonSource.check_target_sound
     (wire : WireDirectCommonSource) (decoded : DecodedDirectCommonSource)

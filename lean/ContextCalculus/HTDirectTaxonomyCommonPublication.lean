@@ -44,31 +44,49 @@ def decodeDirectTaxonomy
 def DecodedDirectTaxonomyPublication.CommonSemantics :
     DecodedDirectTaxonomyPublication → Prop
   | .plain decoded direct =>
-      ∀ sub sup : Fin decoded.target.conceptCount,
+      (∀ concept : Fin decoded.target.conceptCount,
+        concept ∈ decoded.target.named →
+        (concept ∈ decoded.semantic.unsatisfiable ↔
+          HTCheckerTermEmbedding.CommonUnsatisfiableConcept
+            (mapOntology decoded.normalization.source) concept.val)) ∧
+      (∀ sub sup : Fin decoded.target.conceptCount,
         sub ∈ decoded.target.named → sup ∈ decoded.target.named →
         ((sub, sup) ∈ decoded.semantic.subsumptions ↔
           HTCheckerTermEmbedding.CommonEntailsSub
             (mapOntology decoded.normalization.source)
-            sub.val sup.val)
+            sub.val sup.val))
   | .mixed decoded direct =>
-      ∀ sub sup : Fin decoded.target.conceptCount,
+      (∀ concept : Fin decoded.target.conceptCount,
+        concept ∈ decoded.target.named →
+        (concept ∈ decoded.semantic.unsatisfiable ↔
+          HTCheckerTermEmbedding.CommonUnsatisfiableConcept
+            (mapOntology decoded.normalization.source) concept.val)) ∧
+      (∀ sub sup : Fin decoded.target.conceptCount,
         sub ∈ decoded.target.named → sup ∈ decoded.target.named →
         ((sub, sup) ∈ decoded.semantic.subsumptions ↔
           HTCheckerTermEmbedding.CommonEntailsSub
             (mapOntology decoded.normalization.source)
-            sub.val sup.val)
+            sub.val sup.val))
 
 theorem DecodedDirectTaxonomyPublication.common_semantics
     (decoded : DecodedDirectTaxonomyPublication) : decoded.CommonSemantics := by
   cases decoded with
   | plain decoded direct =>
-      intro sub sup hsub hsup
-      rw [decoded.subsumptions_exact sub sup hsub hsup]
-      exact (entails_mapOntology_iff decoded.normalization.source direct sub sup).symm
+      constructor
+      · intro concept hnamed
+        rw [decoded.unsatisfiable_exact concept hnamed]
+        exact (unsatisfiable_mapOntology_iff decoded.normalization.source direct concept).symm
+      · intro sub sup hsub hsup
+        rw [decoded.subsumptions_exact sub sup hsub hsup]
+        exact (entails_mapOntology_iff decoded.normalization.source direct sub sup).symm
   | mixed decoded direct =>
-      intro sub sup hsub hsup
-      rw [decoded.subsumptions_exact sub sup hsub hsup]
-      exact (entails_mapOntology_iff decoded.normalization.source direct sub sup).symm
+      constructor
+      · intro concept hnamed
+        rw [decoded.unsatisfiable_exact concept hnamed]
+        exact (unsatisfiable_mapOntology_iff decoded.normalization.source direct concept).symm
+      · intro sub sup hsub hsup
+        rw [decoded.subsumptions_exact sub sup hsub hsup]
+        exact (entails_mapOntology_iff decoded.normalization.source direct sub sup).symm
 
 structure WireDirectTaxonomyPublication where
   version : Nat

@@ -238,6 +238,22 @@ def FiniteSourceEntails (decoded : DecodedMixedCommonSource)
       ModelsSkolemPairs interpretation functions decoded.projection.pairs →
       ∀ value, interpretation.concept sub value → interpretation.concept sup value
 
+def DecodedMixedCommonSource.CommonUnsatisfiable
+    (decoded : DecodedMixedCommonSource)
+    (concept : Fin decoded.projection.concepts.length) : Prop :=
+  HTSkolemPairCheckerTermEmbedding.CommonUnsatisfiableConcept
+    decoded.commonDirect decoded.commonPairs concept.val
+
+def FiniteSourceUnsatisfiable (decoded : DecodedMixedCommonSource)
+    (concept : Fin decoded.projection.concepts.length) : Prop :=
+  ∀ (Domain : Type)
+    (interpretation : Interp Domain (Fin decoded.projection.concepts.length)
+      (Fin decoded.projection.roles.length))
+    (functions : SkolemInterp Domain (Fin decoded.projection.functions.length)),
+    interpretation.models decoded.projection.direct →
+      ModelsSkolemPairs interpretation functions decoded.projection.pairs →
+      ∀ value, ¬interpretation.concept concept value
+
 theorem DecodedMixedCommonSource.entails_iff
     (decoded : DecodedMixedCommonSource)
     (sub sup : Fin decoded.projection.concepts.length) :
@@ -276,6 +292,43 @@ theorem DecodedMixedCommonSource.entails_iff
       value (by simpa [finInterp] using hsub)
     simpa [finInterp] using hresult
 
+theorem DecodedMixedCommonSource.unsatisfiable_iff
+    (decoded : DecodedMixedCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    decoded.CommonUnsatisfiable concept ↔
+      FiniteSourceUnsatisfiable decoded concept := by
+  change HTSkolemPairCheckerTermEmbedding.CommonUnsatisfiableConcept
+      decoded.commonDirect decoded.commonPairs concept.val ↔
+    FiniteSourceUnsatisfiable decoded concept
+  rw [unsatisfiableConcept_mixed_encode_iff decoded.commonDirect
+    decoded.commonPairs decoded.directMixed concept.val]
+  constructor
+  · intro hnat Domain interpretation functions hdirect hpairs value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    exact hnat Domain (natInterp interpretation) (natFunctions functions)
+      (by
+        intro clause hclause
+        rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
+        exact (modelsClause_map_natInterp interpretation source).2
+          (hdirect source hsource))
+      (by
+        intro pair hpair
+        rcases List.mem_map.mp hpair with ⟨source, hsource, rfl⟩
+        exact (models_mapPair_nat_iff interpretation functions source).2
+          (hpairs source hsource)) value (by simpa using hconcept)
+  · intro hfin Domain interpretation functions hdirect hpairs value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    exact hfin Domain (finInterp interpretation) (finFunctions functions)
+      (by
+        intro clause hclause
+        exact (modelsClause_map_finInterp interpretation clause).2
+          (hdirect (mapClause clause) (List.mem_map.mpr ⟨clause, hclause, rfl⟩)))
+      (by
+        intro pair hpair
+        exact (models_mapPair_fin_iff interpretation functions pair).2
+          (hpairs (mapPair pair) (List.mem_map.mpr ⟨pair, hpair, rfl⟩)))
+      value (by simpa [finInterp] using hconcept)
+
 theorem DecodedMixedCommonSource.finiteSource_entails_iff_target
     (decoded : DecodedMixedCommonSource)
     (sub sup : Fin decoded.projection.concepts.length) :
@@ -294,6 +347,24 @@ theorem DecodedMixedCommonSource.finiteSource_entails_iff_target
         ⟨functions, hdirect, hpairs⟩
     exact htarget Domain interpretation hmodels value hsub
 
+theorem DecodedMixedCommonSource.finiteSource_unsatisfiable_iff_target
+    (decoded : DecodedMixedCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    FiniteSourceUnsatisfiable decoded concept ↔
+      UnsatisfiableConcept decoded.projection.target concept := by
+  constructor
+  · intro hsource Domain interpretation htarget value hconcept
+    let base : SkolemInterp Domain (Fin decoded.projection.functions.length) :=
+      ⟨fun _ _ => value⟩
+    rcases (decoded.projection.models_source_iff_target interpretation base).2 htarget with
+      ⟨functions, hdirect, hpairs⟩
+    exact hsource Domain interpretation functions hdirect hpairs value hconcept
+  · intro htarget Domain interpretation functions hdirect hpairs value hconcept
+    have hmodels : interpretation.models decoded.projection.target :=
+      (decoded.projection.models_source_iff_target interpretation functions).1
+        ⟨functions, hdirect, hpairs⟩
+    exact htarget Domain interpretation hmodels value hconcept
+
 theorem DecodedMixedCommonSource.entails_target_iff
     (decoded : DecodedMixedCommonSource)
     (sub sup : Fin decoded.projection.concepts.length) :
@@ -301,6 +372,14 @@ theorem DecodedMixedCommonSource.entails_target_iff
       EntailsSub decoded.projection.target sub sup :=
   (decoded.entails_iff sub sup).trans
     (decoded.finiteSource_entails_iff_target sub sup)
+
+theorem DecodedMixedCommonSource.unsatisfiable_target_iff
+    (decoded : DecodedMixedCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    decoded.CommonUnsatisfiable concept ↔
+      UnsatisfiableConcept decoded.projection.target concept :=
+  (decoded.unsatisfiable_iff concept).trans
+    (decoded.finiteSource_unsatisfiable_iff_target concept)
 
 theorem WireMixedCommonSource.check_sound (wire : WireMixedCommonSource)
     (decoded : DecodedMixedCommonSource) (_hdecode : wire.decode = .ok decoded)
@@ -356,6 +435,7 @@ example : rejected existentialBody.check = true := by native_decide
 
 #print axioms DecodedMixedCommonSource.entails_iff
 #print axioms DecodedMixedCommonSource.entails_target_iff
+#print axioms DecodedMixedCommonSource.unsatisfiable_target_iff
 #print axioms WireMixedCommonSource.check_sound
 
 end ContextCalculus.HTMixedCommonSourceWire

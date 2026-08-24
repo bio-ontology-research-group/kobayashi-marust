@@ -116,17 +116,25 @@ def WireMixedTaxonomyPublication.check
 def DecodedMixedTaxonomyPublication.CommonSemantics :
     DecodedMixedTaxonomyPublication → Prop
   | .plain common taxonomy _ conceptCount _ _ =>
-      ∀ sub sup : Fin common.projection.concepts.length,
+      (∀ concept : Fin common.projection.concepts.length,
+        Fin.cast conceptCount concept ∈ taxonomy.target.named →
+        (Fin.cast conceptCount concept ∈ taxonomy.semantic.unsatisfiable ↔
+          common.CommonUnsatisfiable concept)) ∧
+      (∀ sub sup : Fin common.projection.concepts.length,
         Fin.cast conceptCount sub ∈ taxonomy.target.named →
         Fin.cast conceptCount sup ∈ taxonomy.target.named →
         ((Fin.cast conceptCount sub, Fin.cast conceptCount sup) ∈
-            taxonomy.semantic.subsumptions ↔ common.CommonEntails sub sup)
+            taxonomy.semantic.subsumptions ↔ common.CommonEntails sub sup))
   | .mixed common taxonomy _ conceptCount _ _ =>
-      ∀ sub sup : Fin common.projection.concepts.length,
+      (∀ concept : Fin common.projection.concepts.length,
+        Fin.cast conceptCount concept ∈ taxonomy.target.named →
+        (Fin.cast conceptCount concept ∈ taxonomy.semantic.unsatisfiable ↔
+          common.CommonUnsatisfiable concept)) ∧
+      (∀ sub sup : Fin common.projection.concepts.length,
         Fin.cast conceptCount sub ∈ taxonomy.target.named →
         Fin.cast conceptCount sup ∈ taxonomy.target.named →
         ((Fin.cast conceptCount sub, Fin.cast conceptCount sup) ∈
-            taxonomy.semantic.subsumptions ↔ common.CommonEntails sub sup)
+            taxonomy.semantic.subsumptions ↔ common.CommonEntails sub sup))
 
 theorem target_entails_source_iff
     (target : List (Hypertableau.Clause
@@ -143,21 +151,48 @@ theorem target_entails_source_iff
   simpa using congrArg
     (fun ontology => EntailsSub ontology sub.val sup.val) hexact
 
+theorem target_unsatisfiable_source_iff
+    (target : List (Hypertableau.Clause
+      (Fin targetVars) (Fin targetConcepts) (Fin targetRoles)))
+    (source : List
+      (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
+    (hc : targetConcepts = concepts)
+    (hexact : mapOntology target = mapOntology source)
+    (concept : Fin targetConcepts) :
+    UnsatisfiableConcept target concept ↔
+      UnsatisfiableConcept source (Fin.cast hc concept) := by
+  rw [← unsatisfiable_mapOntology_finite_iff target concept]
+  rw [← unsatisfiable_mapOntology_finite_iff source (Fin.cast hc concept)]
+  simpa using congrArg
+    (fun ontology => UnsatisfiableConcept ontology concept.val) hexact
+
 theorem DecodedMixedTaxonomyPublication.common_semantics
     (decoded : DecodedMixedTaxonomyPublication) : decoded.CommonSemantics := by
   cases decoded with
   | plain common taxonomy hv hc hr hexact =>
-      intro sub sup hsub hsup
-      rw [taxonomy.subsumptions_exact _ _ hsub hsup]
-      rw [← target_entails_source_iff common.projection.target
-        taxonomy.normalization.source hc hexact]
-      exact (common.entails_target_iff sub sup).symm
+      constructor
+      · intro concept hnamed
+        rw [taxonomy.unsatisfiable_exact _ hnamed]
+        rw [← target_unsatisfiable_source_iff common.projection.target
+          taxonomy.normalization.source hc hexact]
+        exact (common.unsatisfiable_target_iff concept).symm
+      · intro sub sup hsub hsup
+        rw [taxonomy.subsumptions_exact _ _ hsub hsup]
+        rw [← target_entails_source_iff common.projection.target
+          taxonomy.normalization.source hc hexact]
+        exact (common.entails_target_iff sub sup).symm
   | mixed common taxonomy hv hc hr hexact =>
-      intro sub sup hsub hsup
-      rw [taxonomy.subsumptions_exact _ _ hsub hsup]
-      rw [← target_entails_source_iff common.projection.target
-        taxonomy.normalization.source hc hexact]
-      exact (common.entails_target_iff sub sup).symm
+      constructor
+      · intro concept hnamed
+        rw [taxonomy.unsatisfiable_exact _ hnamed]
+        rw [← target_unsatisfiable_source_iff common.projection.target
+          taxonomy.normalization.source hc hexact]
+        exact (common.unsatisfiable_target_iff concept).symm
+      · intro sub sup hsub hsup
+        rw [taxonomy.subsumptions_exact _ _ hsub hsup]
+        rw [← target_entails_source_iff common.projection.target
+          taxonomy.normalization.source hc hexact]
+        exact (common.entails_target_iff sub sup).symm
 
 def WireMixedTaxonomyPublication.SemanticallyValid
     (wire : WireMixedTaxonomyPublication) : Prop :=

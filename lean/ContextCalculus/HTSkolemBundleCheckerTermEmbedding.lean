@@ -167,6 +167,21 @@ def SourceEntailsSub (direct : List (Hypertableau.Clause Nat Nat Nat))
     interpretation.models direct → ModelsBundleList interpretation functions bundles →
       ∀ value, interpretation.concept sub value → interpretation.concept sup value
 
+def CommonUnsatisfiableConcept
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (bundles : List (BundleSpec Nat Nat Nat Nat)) (concept : Nat) : Prop :=
+  ∀ (Domain : Type) (model : TModel Domain),
+    (∀ clause ∈ encodeBundles direct bundles, valid model clause) →
+      ∀ value, ¬model.conc concept value
+
+def SourceUnsatisfiableConcept
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (bundles : List (BundleSpec Nat Nat Nat Nat)) (concept : Nat) : Prop :=
+  ∀ (Domain : Type) (interpretation : Interp Domain Nat Nat)
+    (functions : SkolemInterp Domain Nat),
+    interpretation.models direct → ModelsBundleList interpretation functions bundles →
+      ∀ value, ¬interpretation.concept concept value
+
 theorem entailsSub_bundles_encode_iff
     (direct : List (Hypertableau.Clause Nat Nat Nat))
     (bundles : List (BundleSpec Nat Nat Nat Nat))
@@ -186,8 +201,29 @@ theorem entailsSub_bundles_encode_iff
     exact hsource Domain (htInterp model) (skolemInterp model)
       hbundleModels.1 hbundleModels.2 value hsub
 
+theorem unsatisfiableConcept_bundles_encode_iff
+    (direct : List (Hypertableau.Clause Nat Nat Nat))
+    (bundles : List (BundleSpec Nat Nat Nat Nat))
+    (hdirect : DirectBundles direct bundles) (concept : Nat) :
+    CommonUnsatisfiableConcept direct bundles concept ↔
+      SourceUnsatisfiableConcept direct bundles concept := by
+  constructor
+  · intro hcommon Domain interpretation functions hdirectModels hbundles value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    let model := mixedCheckerModel interpretation functions
+    exact hcommon Domain model
+      ((models_bundles_encode_iff model direct bundles hdirect).2 (by
+        simpa [model, htInterp, mixedCheckerModel, skolemInterp] using
+          And.intro hdirectModels hbundles)) value hconcept
+  · intro hsource Domain model hmodels value hconcept
+    have hbundleModels :=
+      (models_bundles_encode_iff model direct bundles hdirect).1 hmodels
+    exact hsource Domain (htInterp model) (skolemInterp model)
+      hbundleModels.1 hbundleModels.2 value hconcept
+
 #print axioms valid_bundle_iff
 #print axioms models_bundles_encode_iff
 #print axioms entailsSub_bundles_encode_iff
+#print axioms unsatisfiableConcept_bundles_encode_iff
 
 end ContextCalculus.HTSkolemBundleCheckerTermEmbedding

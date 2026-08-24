@@ -221,6 +221,13 @@ def CommonEntailsSub (ontology : List (Hypertableau.Clause Nat Nat Nat))
     (∀ clause ∈ ontology, valid model (encodeClause clause)) →
       ∀ value, model.conc sub value → model.conc sup value
 
+def CommonUnsatisfiableConcept
+    (ontology : List (Hypertableau.Clause Nat Nat Nat))
+    (concept : Nat) : Prop :=
+  ∀ (Domain : Type) (model : TModel Domain),
+    (∀ clause ∈ ontology, valid model (encodeClause clause)) →
+      ∀ value, ¬model.conc concept value
+
 /-- Whole-taxonomy entailment is unchanged by signed direct normalization into
 the common proper-term source. -/
 theorem entailsSub_encode_iff
@@ -240,8 +247,26 @@ theorem entailsSub_encode_iff
     exact hht Domain (htInterp model)
       ((models_encode_iff model ontology hdirect).1 hmodels) value hsub
 
+theorem unsatisfiableConcept_encode_iff
+    (ontology : List (Hypertableau.Clause Nat Nat Nat))
+    (hdirect : DirectOntology ontology) (concept : Nat) :
+    CommonUnsatisfiableConcept ontology concept ↔
+      Hypertableau.UnsatisfiableConcept ontology concept := by
+  constructor
+  · intro hcommon Domain interpretation hmodels value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    let model := checkerModel interpretation
+    apply hcommon Domain model
+    · exact (models_encode_iff model ontology hdirect).2 (by
+        simpa [model, htInterp, checkerModel] using hmodels)
+    · exact hconcept
+  · intro hht Domain model hmodels value hconcept
+    exact hht Domain (htInterp model)
+      ((models_encode_iff model ontology hdirect).1 hmodels) value hconcept
+
 #print axioms modelsClause_encode_iff
 #print axioms models_encode_iff
 #print axioms entailsSub_encode_iff
+#print axioms unsatisfiableConcept_encode_iff
 
 end ContextCalculus.HTCheckerTermEmbedding
