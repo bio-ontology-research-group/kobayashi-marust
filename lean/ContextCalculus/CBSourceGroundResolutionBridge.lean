@@ -1,6 +1,7 @@
 import ContextCalculus.CBGroundResolutionBridge
 import ContextCalculus.CBLocalPropositionalModel
 import ContextCalculus.CBSourceProductionClosure
+import ContextCalculus.CBSourceCanonicalOrder
 
 /-!
 # Source-bound local ground models
@@ -23,6 +24,8 @@ open ContextCalculus.CBProductionTrace
 open ContextCalculus.CBLocalPropositionalModel
 open ContextCalculus.CBLocalFactorClosureWire
 open ContextCalculus.CBSourceEqClosure
+open ContextCalculus.CBSourceLinearExtension
+open ContextCalculus.CBSourceCanonicalOrder
 
 theorem SourceProductionClosed.retained_head_normal
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -135,6 +138,27 @@ theorem SourceProductionClosed.context_raw_model
   local_raw_model context.retained
     (closed.localResolution context hcontext) hbot
 
+/-- The local candidate model instantiated with the checked production-order
+extension, rather than an unrelated ambient order on literals. -/
+theorem SourceProductionClosed.context_canonical_raw_model
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (closed : SourceProductionClosed decoded)
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (hbot : PClause.bot ∉ rawSet context.retained) :
+    ∃ valuation : FLit → Prop,
+      ∀ clause ∈ context.retained,
+        ContextCalculus.sat valuation clause := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  exact
+    ContextCalculus.CBSourceGroundResolutionBridge.SourceProductionClosed.context_raw_model
+      closed context hcontext hbot
+
 theorem SourceProductionClosed.context_ground_model
     [LinearOrder GroundAtom] [WellFoundedLT GroundAtom]
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -170,6 +194,7 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.context_ground_model
 #print axioms SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.context_raw_model
+#print axioms SourceProductionClosed.context_canonical_raw_model
 #print axioms SourceProductionClosed.retained_head_equality_normal
 #print axioms SourceProductionClosed.retained_factor_pair_covered
 #print axioms SourceProductionClosed.retained_eq_pair_covered
