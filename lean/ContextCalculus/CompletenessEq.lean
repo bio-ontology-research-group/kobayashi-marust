@@ -98,6 +98,7 @@ inductive OClause (CN RN T : Type) where
   | func (r : RN)                              -- ≤1 r    (functional role)
   | nom (a : CN) (o : T)                       -- a ≡ {o} (nominal concept)
   | atMost (n : ℕ) (r : RN) (c : CN)           -- ≤n r.c  (qualified number restriction)
+  | guardedAtMost (a : CN) (n : ℕ) (r : RN) (c : CN) -- a ⊑ ≤n r.c
 
 abbrev Ontology (CN RN T : Type) := List (OClause CN RN T)
 
@@ -114,6 +115,9 @@ def satO {D : Type} (I : Interp D CN RN T) : OClause CN RN T → Prop
   | OClause.nom a o => ∀ x, I.c a x ↔ x = I.nm o
   | OClause.atMost n rr cc => ∀ x, ∀ f : Fin (n + 1) → D,
       (∀ i, I.r rr x (f i) ∧ I.c cc (f i)) → ∃ i j, i ≠ j ∧ f i = f j
+  | OClause.guardedAtMost a n rr cc => ∀ x, I.c a x →
+      ∀ f : Fin (n + 1) → D,
+        (∀ i, I.r rr x (f i) ∧ I.c cc (f i)) → ∃ i j, i ≠ j ∧ f i = f j
 
 def models {D : Type} (I : Interp D CN RN T) (O : Ontology CN RN T) : Prop :=
   ∀ cl ∈ O, satO I cl
@@ -167,6 +171,10 @@ def atMostHead (n : ℕ) (g : Fin (n + 1) → T) : List (GAtom CN RN T) :=
   (List.finRange (n + 1)).flatMap (fun i =>
     (List.finRange (n + 1)).flatMap (fun j =>
       if i < j then [GAtom.eqa (g i) (g j)] else []))
+
+def guardedAtMostBody (a : CN) (rr : RN) (cc : CN) (n : ℕ)
+    (x : T) (g : Fin (n + 1) → T) : List (GAtom CN RN T) :=
+  GAtom.con a x :: atMostBody rr cc n x g
 
 theorem mem_atMostBody {rr cc n x g} {ga : GAtom CN RN T} :
     ga ∈ atMostBody rr cc n x g ↔
@@ -222,6 +230,9 @@ structure Grounds (G : Finset (PClause (GAtom CN RN T))) (O : Ontology CN RN T)
             clImp [] [GAtom.con a o] ∈ G
   atMostI : ∀ n r c, OClause.atMost n r c ∈ O → ∀ x (g : Fin (n + 1) → T),
               clImp (atMostBody r c n x g) (atMostHead n g) ∈ G
+  guardedAtMostI : ∀ a n r c, OClause.guardedAtMost a n r c ∈ O →
+    ∀ x (g : Fin (n + 1) → T),
+      clImp (guardedAtMostBody a r c n x g) (atMostHead n g) ∈ G
 
 /-- Discharge one ground implication: from a member of `G` satisfied by `π`,
     pull out its `bs → hs` content. -/
@@ -352,6 +363,29 @@ theorem congruenceModel_models {π : Val CN RN T} (h : RespectsEq π)
       · have hi := (hf i).1; rw [← hg i] at hi; exact hi
       · have hi := (hf i).2; rw [← hg i] at hi; exact hi
     obtain ⟨ga, hga, hπ⟩ := useClause hG (hgr.atMostI n r c hcl x g) hbody
+    rw [mem_atMostHead] at hga
+    obtain ⟨i, j, hlt, rfl⟩ := hga
+    refine ⟨i, j, ne_of_lt hlt, ?_⟩
+    rw [← hg i, ← hg j]
+    exact Quotient.sound hπ
+  | guardedAtMost a n r c =>
+    intro q hguard
+    obtain ⟨x, rfl⟩ := Quotient.exists_rep q
+    intro f hf
+    have hrep : ∀ i, ∃ t : T, Quotient.mk _ t = f i :=
+      fun i => Quotient.exists_rep (f i)
+    choose g hg using hrep
+    have hbody : ∀ ga ∈ guardedAtMostBody a r c n x g, π ga := by
+      intro ga hga
+      simp only [guardedAtMostBody, List.mem_cons] at hga
+      rcases hga with rfl | hga
+      · exact hguard
+      · rw [mem_atMostBody] at hga
+        rcases hga with ⟨i, rfl⟩ | ⟨i, rfl⟩
+        · have hi := (hf i).1; rw [← hg i] at hi; exact hi
+        · have hi := (hf i).2; rw [← hg i] at hi; exact hi
+    obtain ⟨ga, hga, hπ⟩ := useClause hG
+      (hgr.guardedAtMostI a n r c hcl x g) hbody
     rw [mem_atMostHead] at hga
     obtain ⟨i, j, hlt, rfl⟩ := hga
     refine ⟨i, j, ne_of_lt hlt, ?_⟩
@@ -494,6 +528,9 @@ def clauseInsts (wit : CN → RN → CN → T → T) :
   | OClause.atMost n r c =>
       Finset.univ.image (fun p : T × (Fin (n + 1) → T) =>
         clImp (atMostBody r c n p.1 p.2) (atMostHead n p.2))
+  | OClause.guardedAtMost a n r c =>
+      Finset.univ.image (fun p : T × (Fin (n + 1) → T) =>
+        clImp (guardedAtMostBody a r c n p.1 p.2) (atMostHead n p.2))
 
 /-- **The grounder.**  Equality axioms together with every ontology-clause
     instance over the finite Herbrand universe. -/
@@ -555,6 +592,8 @@ theorem grounds_ground (wit : CN → RN → CN → T → T) (O : Ontology CN RN 
     simp only [clauseInsts]
     exact Finset.mem_union.mpr (Or.inr (Finset.mem_singleton.mpr rfl)))
   atMostI := fun n r c hcl x g => mem_ground_cl hcl (by
+    simp only [clauseInsts]; exact image_mem _ (x, g))
+  guardedAtMostI := fun a n r c hcl x g => mem_ground_cl hcl (by
     simp only [clauseInsts]; exact image_mem _ (x, g))
 
 /-- **Full equational Herbrand completeness, self-contained.**  Over a finite

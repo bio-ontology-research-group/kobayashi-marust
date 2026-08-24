@@ -30,6 +30,7 @@ inductive WireSourceClause where
   | functional (role : Nat)
   | nominal (concept individual : Nat)
   | atMost (cardinality role concept : Nat)
+  | guardedAtMost (source cardinality role concept : Nat)
 deriving DecidableEq, FromJson, ToJson
 
 structure WireRoleChain where
@@ -110,6 +111,12 @@ def WireSourceClause.decode (bounds : Bounds) : WireSourceClause →
       return .atMost cardinality
         (← checkedFin "source role" bounds.roles role)
         (← checkedFin "source concept" bounds.concepts concept)
+  | .guardedAtMost source cardinality role concept =>
+      return .guardedAtMost
+        (← checkedFin "source concept" bounds.concepts source)
+        cardinality
+        (← checkedFin "source role" bounds.roles role)
+        (← checkedFin "source concept" bounds.concepts concept)
 
 def WireRoleChain.decode (bounds : Bounds) (wire : WireRoleChain) :
     Except String (RoleChain (Fin bounds.roles)) :=
@@ -136,6 +143,49 @@ def WireRoleAxiom.decode (bounds : Bounds) : WireRoleAxiom →
         (← checkedFin "left disjoint role" bounds.roles left)
         (← checkedFin "right disjoint role" bounds.roles right)
 
+/-- Production clauses are sets of body and head literals: the Rust parser
+sorts and deduplicates both lists before saturation. Source encoders retain
+constructor order. This relation checks exact equality of the two literal sets
+without assigning semantic significance to list order or duplication. -/
+def ClauseEquivalent (left right : FCL) : Prop :=
+  left.body.toFinset = right.body.toFinset ∧
+    left.head.toFinset = right.head.toFinset
+
+instance (left right : FCL) : Decidable (ClauseEquivalent left right) :=
+  by unfold ClauseEquivalent; infer_instance
+
+def OntologyEquivalent (left right : List FCL) : Prop :=
+  (∀ clause ∈ left, ∃ encoded ∈ right, ClauseEquivalent clause encoded) ∧
+    ∀ encoded ∈ right, ∃ clause ∈ left, ClauseEquivalent clause encoded
+
+instance (left right : List FCL) : Decidable (OntologyEquivalent left right) :=
+  by unfold OntologyEquivalent; infer_instance
+
+private theorem ClauseEquivalent.mem_body_iff {left right : FCL}
+    (hequivalent : ClauseEquivalent left right) (literal : FLit) :
+    literal ∈ left.body ↔ literal ∈ right.body := by
+  simpa only [List.mem_toFinset] using
+    Finset.ext_iff.mp hequivalent.1 literal
+
+private theorem ClauseEquivalent.mem_head_iff {left right : FCL}
+    (hequivalent : ClauseEquivalent left right) (literal : FLit) :
+    literal ∈ left.head ↔ literal ∈ right.head := by
+  simpa only [List.mem_toFinset] using
+    Finset.ext_iff.mp hequivalent.2 literal
+
+private theorem ClauseEquivalent.valid_iff (model : TModel D)
+    {left right : FCL} (hequivalent : ClauseEquivalent left right) :
+    valid model left ↔ valid model right := by
+  constructor <;> intro hvalid assignment hbody
+  · rcases hvalid assignment (fun literal hliteral =>
+      hbody literal ((hequivalent.mem_body_iff literal).mp hliteral)) with
+      ⟨literal, hliteral, htrue⟩
+    exact ⟨literal, (hequivalent.mem_head_iff literal).mp hliteral, htrue⟩
+  · rcases hvalid assignment (fun literal hliteral =>
+      hbody literal ((hequivalent.mem_body_iff literal).mpr hliteral)) with
+      ⟨literal, hliteral, htrue⟩
+    exact ⟨literal, (hequivalent.mem_head_iff literal).mpr hliteral, htrue⟩
+
 structure DecodedSourceBinding where
   bounds : Bounds
   source : SourceOntology (Fin bounds.concepts) (Fin bounds.roles)
@@ -143,7 +193,7 @@ structure DecodedSourceBinding where
   ontology : List FCL
   allocation : Nat → Nat
   allocation_injective : Function.Injective allocation
-  exact_encoding : ontology.Perm (renameOntology allocation
+  exact_encoding : OntologyEquivalent ontology (renameOntology allocation
     (CBRoleChainEncoding.encode source))
 
 def WireSourceBinding.decode (wire : WireSourceBinding) :
@@ -162,7 +212,7 @@ def WireSourceBinding.decode (wire : WireSourceBinding) :
   if wire.version = 1 then
     if wire.function_allocation.isSome then
       throw "version-1 CB source binding must not carry a function allocation"
-    if hencoding : ontology.Perm (CBRoleChainEncoding.encode source) then
+    if hencoding : OntologyEquivalent ontology (CBRoleChainEncoding.encode source) then
       return {
         bounds, source, ontology
         allocation := id
@@ -177,7 +227,7 @@ def WireSourceBinding.decode (wire : WireSourceBinding) :
     let allocation ← allocationWire.decode
     if hcanonical : allocation.canonicalCount = source.clauses.length then
       if hproduction : allocation.productionCount = bounds.functions then
-        if hencoding : ontology.Perm (renameOntology allocation.rename
+        if hencoding : OntologyEquivalent ontology (renameOntology allocation.rename
             (CBRoleChainEncoding.encode source)) then
           return {
             bounds, source, ontology
@@ -199,8 +249,8 @@ def DecodedSourceBinding.Entails (decoded : DecodedSourceBinding)
     (∀ clause ∈ decoded.ontology, valid model clause) →
       ∀ element, model.conc sub.val element → model.conc sup.val element
 
-private theorem entails_of_perm {ontology encoded : List FCL}
-    (hperm : ontology.Perm encoded) (sub sup : Nat) :
+private theorem entails_of_equivalent {ontology encoded : List FCL}
+    (hequivalent : OntologyEquivalent ontology encoded) (sub sup : Nat) :
     (∀ (D : Type) (model : TModel D),
       (∀ clause ∈ ontology, valid model clause) →
         ∀ element, model.conc sub element → model.conc sup element) ↔
@@ -209,9 +259,15 @@ private theorem entails_of_perm {ontology encoded : List FCL}
         ∀ element, model.conc sub element → model.conc sup element) := by
   constructor <;> intro hentails D model hmodels element hsub
   · exact hentails D model (fun clause hclause =>
-      hmodels clause (hperm.mem_iff.mp hclause)) element hsub
+      let ⟨encodedClause, hencoded, hclauseEquivalent⟩ :=
+        hequivalent.1 clause hclause
+      (hclauseEquivalent.valid_iff model).2
+        (hmodels encodedClause hencoded)) element hsub
   · exact hentails D model (fun clause hclause =>
-      hmodels clause (hperm.mem_iff.mpr hclause)) element hsub
+      let ⟨ontologyClause, hontology, hclauseEquivalent⟩ :=
+        hequivalent.2 clause hclause
+      (hclauseEquivalent.valid_iff model).1
+        (hmodels ontologyClause hontology)) element hsub
 
 theorem DecodedSourceBinding.entails_iff_source (decoded : DecodedSourceBinding)
     (sub sup : Fin decoded.bounds.concepts) :
@@ -222,7 +278,7 @@ theorem DecodedSourceBinding.entails_iff_source (decoded : DecodedSourceBinding)
         CBRoleChainEncoding.models interpretation decoded.source → ∀ element,
           interpretation.c sub element → interpretation.c sup element := by
   rw [DecodedSourceBinding.Entails,
-    entails_of_perm decoded.exact_encoding sub.val sup.val]
+    entails_of_equivalent decoded.exact_encoding sub.val sup.val]
   change CBFunctionRenaming.Entails
       (renameOntology decoded.allocation (CBRoleChainEncoding.encode decoded.source))
       sub.val sup.val ↔ _
@@ -247,8 +303,10 @@ theorem DecodedSourceBinding.models_production (decoded : DecodedSourceBinding)
     ∀ clause ∈ decoded.ontology,
       valid (decoded.productionModel interpretation hmodels default) clause := by
   intro clause hclause
-  have hencoded := decoded.exact_encoding.mem_iff.mp hclause
+  rcases decoded.exact_encoding.1 clause hclause with
+    ⟨encodedClause, hencoded, hequivalent⟩
   rcases List.mem_map.mp hencoded with ⟨sourceClause, hsourceClause, rfl⟩
+  apply (hequivalent.valid_iff _).2
   exact (valid_pushforward_iff decoded.allocation decoded.allocation_injective
     (CBRoleChainEncoding.extendModel decoded.source interpretation hmodels default)
     sourceClause).2
@@ -259,7 +317,7 @@ theorem WireSourceBinding.check_sound (wire : WireSourceBinding)
     (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedSourceBinding,
       wire.decode = .ok decoded ∧
-        decoded.ontology.Perm (renameOntology decoded.allocation
+        OntologyEquivalent decoded.ontology (renameOntology decoded.allocation
           (CBRoleChainEncoding.encode decoded.source)) ∧
         ∀ sub sup : Fin decoded.bounds.concepts,
           decoded.Entails sub sup ↔

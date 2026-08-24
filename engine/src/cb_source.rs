@@ -60,6 +60,12 @@ pub enum NamedSourceClause {
         concept: String,
         individual: String,
     },
+    GuardedAtMost {
+        source: String,
+        cardinality: usize,
+        role: String,
+        concept: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -214,6 +220,10 @@ pub fn single_source_clause(clause: &JClause) -> Option<NamedSourceClause> {
         return None;
     }
 
+    if let Some(cardinality) = guarded_at_most(clause) {
+        return Some(cardinality);
+    }
+
     if clause.body.iter().all(|atom| concept(atom).is_some())
         && clause.head.iter().all(|atom| concept(atom).is_some())
     {
@@ -292,6 +302,91 @@ pub fn single_source_clause(clause: &JClause) -> Option<NamedSourceClause> {
         }
         _ => None,
     }
+}
+
+fn guarded_at_most(clause: &JClause) -> Option<NamedSourceClause> {
+    let mut edges = Vec::new();
+    let mut concepts = Vec::new();
+    for atom in &clause.body {
+        match atom {
+            JAtom::Role {
+                role,
+                source,
+                target,
+            } => edges.push((role.as_str(), variable(source)?, variable(target)?)),
+            JAtom::Concept { concept, term } => concepts.push((concept.as_str(), variable(term)?)),
+            JAtom::Eq { .. } => return None,
+        }
+    }
+    if edges.is_empty() || concepts.len() != edges.len() + 1 {
+        return None;
+    }
+    let role_name = edges[0].0;
+    let source_variable = edges[0].1;
+    let targets = edges.iter().map(|edge| edge.2).collect::<Vec<_>>();
+    if edges.iter().any(|&(role, source, target)| {
+        role != role_name || source != source_variable || target == source_variable
+    }) {
+        return None;
+    }
+    let mut distinct_targets = std::collections::BTreeSet::new();
+    if !targets
+        .iter()
+        .all(|target| distinct_targets.insert(*target))
+    {
+        return None;
+    }
+    let source_concepts = concepts
+        .iter()
+        .copied()
+        .filter(|(_, variable)| *variable == source_variable)
+        .map(|(concept, _)| concept)
+        .collect::<Vec<_>>();
+    if source_concepts.len() != 1 {
+        return None;
+    }
+    let filler_concepts = concepts
+        .iter()
+        .copied()
+        .filter(|(_, variable)| *variable != source_variable)
+        .collect::<Vec<_>>();
+    if filler_concepts.len() != targets.len() {
+        return None;
+    }
+    let filler = filler_concepts.first()?.0;
+    if targets.iter().any(|target| {
+        filler_concepts
+            .iter()
+            .filter(|(concept, variable)| *concept == filler && *variable == *target)
+            .count()
+            != 1
+    }) {
+        return None;
+    }
+    let expected_pairs = targets.len() * (targets.len() - 1) / 2;
+    if clause.head.len() != expected_pairs {
+        return None;
+    }
+    let mut expected = std::collections::BTreeSet::new();
+    for left in 0..targets.len() {
+        for right in (left + 1)..targets.len() {
+            expected.insert((targets[left], targets[right]));
+        }
+    }
+    let actual = clause
+        .head
+        .iter()
+        .map(equality)
+        .collect::<Option<std::collections::BTreeSet<_>>>()?;
+    if actual != expected {
+        return None;
+    }
+    Some(NamedSourceClause::GuardedAtMost {
+        source: source_concepts[0].to_string(),
+        cardinality: targets.len() - 1,
+        role: role_name.to_string(),
+        concept: filler.to_string(),
+    })
 }
 
 /// Recover a normalized constructor represented by exactly two adjacent
@@ -617,6 +712,18 @@ pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::
                 }}),
                 None,
             ),
+            NamedSourceClause::GuardedAtMost {
+                source,
+                cardinality,
+                role,
+                concept,
+            } => (
+                serde_json::json!({"guardedAtMost": {
+                    "source": concept_id(source)?, "cardinality": cardinality,
+                    "role": role_id(role)?, "concept": concept_id(concept)?
+                }}),
+                None,
+            ),
         };
         source_clauses.push(wire);
         allocation.push(if let Some(function) = function {
@@ -723,6 +830,13 @@ mod tests {
         JAtom::Eq {
             left: var(left),
             right: var(right),
+        }
+    }
+
+    fn c(name: &str, term: &str) -> JAtom {
+        JAtom::Concept {
+            concept: name.to_string(),
+            term: var(term),
         }
     }
 
@@ -957,6 +1071,62 @@ mod tests {
                     .expect("serialize normalized clauses")
             );
         }
+    }
+
+    #[test]
+    fn recognizes_actual_guarded_max_cardinality_clause() {
+        use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
+
+        let mut registry = IriRegistry::new();
+        let ontology = parse::parse_axioms(
+            &mut registry,
+            "Ontology(SubClassOf(<A> ObjectMaxCardinality(2 <R> <B>)))",
+        )
+        .expect("parse guarded maximum cardinality");
+        let (clauses, _, _) = normalise::normalise(&ontology);
+        let recovered = clauses
+            .iter()
+            .map(clause_to_json)
+            .filter_map(|clause| single_source_clause(&clause))
+            .collect::<Vec<_>>();
+        assert!(
+            recovered.iter().any(|clause| matches!(
+                clause,
+                NamedSourceClause::GuardedAtMost { cardinality: 2, .. }
+            )),
+            "normalized={}; recovered={recovered:?}",
+            serde_json::to_string(&clauses.iter().map(clause_to_json).collect::<Vec<_>>())
+                .expect("serialize guarded maximum cardinality clauses")
+        );
+    }
+
+    #[test]
+    fn guarded_max_cardinality_rejects_incomplete_or_repeated_witness_sets() {
+        let body = vec![
+            c("A", "x"),
+            r("R", "x", "y0"),
+            c("B", "y0"),
+            r("R", "x", "y1"),
+            c("B", "y1"),
+            r("R", "x", "y2"),
+            c("B", "y2"),
+        ];
+        let missing_pair = JClause {
+            body: body.clone(),
+            head: vec![eq("y0", "y1"), eq("y0", "y2")],
+        };
+        let repeated_target = JClause {
+            body: vec![
+                c("A", "x"),
+                r("R", "x", "y0"),
+                c("B", "y0"),
+                r("R", "x", "y0"),
+                c("B", "y0"),
+            ],
+            head: vec![eq("y0", "y0")],
+        };
+        assert_eq!(single_source_clause(&missing_pair), None);
+        assert_eq!(single_source_clause(&repeated_target), None);
     }
 
     #[test]

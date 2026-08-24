@@ -31,7 +31,7 @@ private def individual (name : Fin individualCount) : FTerm :=
 /-- Variable used for the `i`th qualified-successor slot. Slot variables are
     negative and therefore disjoint from the central variable `0`. -/
 private def slot (i : Nat) : FTerm :=
-  .var (-(Int.ofNat (i + 1)))
+  .var (-(Int.ofNat (i + 2)))
 
 private def atMostBodyL (n : Nat) (role : Fin roleCount)
     (concept : Fin conceptCount) : List FLit :=
@@ -73,21 +73,21 @@ private theorem mem_atMostHeadL {n : Nat} {literal : FLit} :
 
 private noncomputable def slotAssignment {n : Nat} (source : D)
     (values : Fin (n + 1) → D) (id : Int) : D :=
-  if h : ∃ i : Fin (n + 1), id = -(Int.ofNat (i.val + 1)) then
+  if h : ∃ i : Fin (n + 1), id = -(Int.ofNat (i.val + 2)) then
     values (Classical.choose h)
   else source
 
 @[simp] private theorem slotAssignment_slot {n : Nat} (source : D)
     (values : Fin (n + 1) → D) (i : Fin (n + 1)) :
-    slotAssignment source values (-(Int.ofNat (i.val + 1))) = values i := by
+    slotAssignment source values (-(Int.ofNat (i.val + 2))) = values i := by
   classical
   have hexists : ∃ j : Fin (n + 1),
-      -(Int.ofNat (i.val + 1)) = -(Int.ofNat (j.val + 1)) := ⟨i, rfl⟩
+      -(Int.ofNat (i.val + 2)) = -(Int.ofNat (j.val + 2)) := ⟨i, rfl⟩
   rw [slotAssignment, dif_pos hexists]
   congr 1
   apply Fin.ext
   have hchosen := Classical.choose_spec hexists
-  have hnat : i.val + 1 = (Classical.choose hexists).val + 1 :=
+  have hnat : i.val + 2 = (Classical.choose hexists).val + 2 :=
     Int.ofNat_injective (neg_injective hchosen)
   omega
 
@@ -97,9 +97,9 @@ private noncomputable def slotAssignment {n : Nat} (source : D)
   rw [slotAssignment, dif_neg]
   intro hexists
   rcases hexists with ⟨i, hi⟩
-  have hzero : Int.ofNat (i.val + 1) = 0 := neg_eq_zero.mp hi.symm
-  have hnat : i.val + 1 = 0 :=
-    Int.ofNat_injective (show Int.ofNat (i.val + 1) = Int.ofNat 0 from hzero)
+  have hzero : Int.ofNat (i.val + 2) = 0 := neg_eq_zero.mp hi.symm
+  have hnat : i.val + 2 = 0 :=
+    Int.ofNat_injective (show Int.ofNat (i.val + 2) = Int.ofNat 0 from hzero)
   omega
 
 /-- Encode one normalized source clause. Existential-right clauses use their
@@ -127,6 +127,8 @@ def encodeClause (index : Nat) :
       , ⟨[], [con concept (individual name)]⟩ ]
   | .atMost n role concept =>
       [⟨atMostBodyL n role concept, atMostHeadL n⟩]
+  | .guardedAtMost source n role concept =>
+      [⟨con source x :: atMostBodyL n role concept, atMostHeadL n⟩]
 
 def encodeFrom (index : Nat) :
     Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount) → List FCL
@@ -283,20 +285,20 @@ theorem valid_atMost_iff (model : TModel D) (n : Nat) (role : Fin roleCount)
       rw [mem_atMostBodyL] at hliteral
       rcases hliteral with ⟨i, rfl⟩ | ⟨i, rfl⟩
       · change model.rol role.val (slotAssignment source values 0)
-          (slotAssignment source values (-(Int.ofNat (i.val + 1))))
+          (slotAssignment source values (-(Int.ofNat (i.val + 2))))
         simpa only [slotAssignment_zero, slotAssignment_slot] using (hvalues i).1
       · change model.conc concept.val
-          (slotAssignment source values (-(Int.ofNat (i.val + 1))))
+          (slotAssignment source values (-(Int.ofNat (i.val + 2))))
         simpa only [slotAssignment_slot] using (hvalues i).2) with
       ⟨literal, hliteral, htrue⟩
     rw [mem_atMostHeadL] at hliteral
     rcases hliteral with ⟨i, j, hlt, rfl⟩
     refine ⟨i, j, ne_of_lt hlt, ?_⟩
-    change slotAssignment source values (-(Int.ofNat (i.val + 1))) =
-      slotAssignment source values (-(Int.ofNat (j.val + 1))) at htrue
+    change slotAssignment source values (-(Int.ofNat (i.val + 2))) =
+      slotAssignment source values (-(Int.ofNat (j.val + 2))) at htrue
     simpa only [slotAssignment_slot] using htrue
   · intro hsemantic assignment hbody
-    let values : Fin (n + 1) → D := fun i => assignment (-(Int.ofNat (i.val + 1)))
+    let values : Fin (n + 1) → D := fun i => assignment (-(Int.ofNat (i.val + 2)))
     rcases hsemantic (assignment 0) values (by
       intro i
       constructor
@@ -304,6 +306,58 @@ theorem valid_atMost_iff (model : TModel D) (n : Nat) (role : Fin roleCount)
           (mem_atMostBodyL.mpr (Or.inl ⟨i, rfl⟩))
       · exact hbody (con concept (slot i))
           (mem_atMostBodyL.mpr (Or.inr ⟨i, rfl⟩))) with
+      ⟨i, j, hne, heq⟩
+    rcases lt_or_gt_of_ne hne with hlt | hgt
+    · exact ⟨.eq (slot i) (slot j),
+        mem_atMostHeadL.mpr ⟨i, j, hlt, rfl⟩, heq⟩
+    · exact ⟨.eq (slot j) (slot i),
+        mem_atMostHeadL.mpr ⟨j, i, hgt, rfl⟩, heq.symm⟩
+
+theorem valid_guardedAtMost_iff (model : TModel D)
+    (source : Fin conceptCount) (n : Nat) (role : Fin roleCount)
+    (concept : Fin conceptCount) :
+    valid model ⟨con source x :: atMostBodyL n role concept, atMostHeadL n⟩ ↔
+      ∀ element, model.conc source.val element →
+        ∀ values : Fin (n + 1) → D,
+          (∀ i, model.rol role.val element (values i) ∧
+            model.conc concept.val (values i)) →
+          ∃ i j, i ≠ j ∧ values i = values j := by
+  constructor
+  · intro hvalid element hsource values hvalues
+    let assignment : Int → D := slotAssignment element values
+    rcases hvalid assignment (by
+      intro literal hliteral
+      simp only [List.mem_cons] at hliteral
+      rcases hliteral with rfl | hliteral
+      · change model.conc source.val (slotAssignment element values 0)
+        simpa only [slotAssignment_zero] using hsource
+      · rw [mem_atMostBodyL] at hliteral
+        rcases hliteral with ⟨i, rfl⟩ | ⟨i, rfl⟩
+        · change model.rol role.val (slotAssignment element values 0)
+            (slotAssignment element values (-(Int.ofNat (i.val + 2))))
+          simpa only [slotAssignment_zero, slotAssignment_slot] using (hvalues i).1
+        · change model.conc concept.val
+            (slotAssignment element values (-(Int.ofNat (i.val + 2))))
+          simpa only [slotAssignment_slot] using (hvalues i).2) with
+      ⟨literal, hliteral, htrue⟩
+    rw [mem_atMostHeadL] at hliteral
+    rcases hliteral with ⟨i, j, hlt, rfl⟩
+    refine ⟨i, j, ne_of_lt hlt, ?_⟩
+    change slotAssignment element values (-(Int.ofNat (i.val + 2))) =
+      slotAssignment element values (-(Int.ofNat (j.val + 2))) at htrue
+    simpa only [slotAssignment_slot] using htrue
+  · intro hsemantic assignment hbody
+    let values : Fin (n + 1) → D := fun i => assignment (-(Int.ofNat (i.val + 2)))
+    rcases hsemantic (assignment 0)
+      (hbody (con source x) (by simp)) values (by
+        intro i
+        constructor
+        · apply hbody (rol role x (slot i))
+          simp only [List.mem_cons]
+          exact Or.inr (mem_atMostBodyL.mpr (Or.inl ⟨i, rfl⟩))
+        · apply hbody (con concept (slot i))
+          simp only [List.mem_cons]
+          exact Or.inr (mem_atMostBodyL.mpr (Or.inr ⟨i, rfl⟩))) with
       ⟨i, j, hne, heq⟩
     rcases lt_or_gt_of_ne hne with hlt | hgt
     · exact ⟨.eq (slot i) (slot j),
@@ -385,6 +439,9 @@ theorem models_restrict
                 hencoded _ (by simp [encodeClause])⟩
           | atMost n role concept =>
               exact (valid_atMost_iff model n role concept).1
+                (hencoded _ (by simp [encodeClause]))
+          | guardedAtMost source n role concept =>
+              exact (valid_guardedAtMost_iff model source n role concept).1
                 (hencoded _ (by simp [encodeClause]))
         · apply ih (index := index + 1)
           · intro encoded hencoded
@@ -606,6 +663,16 @@ theorem models_extend
               intro i
               exact ⟨by simpa only [model, extendModel_rol] using (hvalues i).1,
                 by simpa only [model, extendModel_conc] using (hvalues i).2⟩
+          | guardedAtMost source n role concept =>
+              simp only [encodeClause, List.mem_singleton] at hhead
+              subst encoded
+              apply (valid_guardedAtMost_iff model source n role concept).2
+              intro element hsource values hvalues
+              apply hsemantic element
+              · simpa only [model, extendModel_conc] using hsource
+              · intro i
+                exact ⟨by simpa only [model, extendModel_rol] using (hvalues i).1,
+                  by simpa only [model, extendModel_conc] using (hvalues i).2⟩
         · apply ih (index := index + 1)
           · intro candidate hcand
             exact hsubset candidate (by simp [hcand])

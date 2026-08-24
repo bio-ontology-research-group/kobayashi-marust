@@ -29,6 +29,8 @@ def mapIndividualClause (name : Individual → Carrier) :
   | .func role => .func role
   | .nom concept individual => .nom concept (name individual)
   | .atMost cardinality role concept => .atMost cardinality role concept
+  | .guardedAtMost source cardinality role concept =>
+      .guardedAtMost source cardinality role concept
 
 def mapIndividuals (name : Individual → Carrier)
     (source : SourceOntology CN RN Individual) : SourceOntology CN RN Carrier :=

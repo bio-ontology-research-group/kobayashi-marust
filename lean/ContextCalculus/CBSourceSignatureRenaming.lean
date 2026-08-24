@@ -24,6 +24,8 @@ def mapClause (conceptMap : SourceConcept → TargetConcept)
   | .nom concept individual => .nom (conceptMap concept) individual
   | .atMost bound role concept =>
       .atMost bound (roleMap role) (conceptMap concept)
+  | .guardedAtMost source bound role concept =>
+      .guardedAtMost (conceptMap source) bound (roleMap role) (conceptMap concept)
 
 def mapChain (roleMap : SourceRole → TargetRole)
     (chain : RoleChain SourceRole) : RoleChain TargetRole where
@@ -88,6 +90,7 @@ theorem sat_mapClause_iff
   | func role => rfl
   | nom concept individual => rfl
   | atMost bound role concept => rfl
+  | guardedAtMost source bound role concept => rfl
 
 theorem sat_mapChain_iff
     (roleMap : SourceRole → TargetRole)
