@@ -17,6 +17,37 @@ pub enum NamedRoleAxiom {
     Disjoint(String, String),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NamedRoleChain {
+    pub body: Vec<String>,
+    pub sup: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NamedSourceClause {
+    Gci {
+        body: Vec<String>,
+        head: Vec<String>,
+    },
+    AllR {
+        source: String,
+        role: String,
+        filler: String,
+    },
+    ExL {
+        role: String,
+        filler: String,
+        conclusion: String,
+    },
+    SubR {
+        sub: String,
+        sup: String,
+    },
+    Functional {
+        role: String,
+    },
+}
+
 fn variable(term: &JTerm) -> Option<&str> {
     match term {
         JTerm::Var { name } => Some(name),
@@ -38,6 +69,13 @@ fn role(atom: &JAtom) -> Option<(&str, &str, &str)> {
 fn equality(atom: &JAtom) -> Option<(&str, &str)> {
     match atom {
         JAtom::Eq { left, right } => Some((variable(left)?, variable(right)?)),
+        _ => None,
+    }
+}
+
+fn concept(atom: &JAtom) -> Option<(&str, &str)> {
+    match atom {
+        JAtom::Concept { concept, term } => Some((concept, variable(term)?)),
         _ => None,
     }
 }
@@ -87,6 +125,137 @@ pub fn direct_role_axiom(clause: &JClause) -> Option<NamedRoleAxiom> {
                 && x != z
                 && y != z)
                 .then(|| NamedRoleAxiom::InverseFunctional(first_role.to_string()))
+        }
+        _ => None,
+    }
+}
+
+/// Recover an exact normalized role-chain clause. The normalizer emits a
+/// simple directed path with pairwise distinct path variables and a head edge
+/// between the path endpoints. Longer OWL chains are represented by several
+/// such binary clauses over fresh roles; each clause is retained exactly.
+pub fn role_chain(clause: &JClause) -> Option<NamedRoleChain> {
+    let [head] = clause.head.as_slice() else {
+        return None;
+    };
+    let (sup, path_start, path_end) = role(head)?;
+    if clause.body.len() < 2 || path_start == path_end {
+        return None;
+    }
+    let mut body = Vec::with_capacity(clause.body.len());
+    let mut path_variables = Vec::with_capacity(clause.body.len() + 1);
+    for (index, atom) in clause.body.iter().enumerate() {
+        let (body_role, source, target) = role(atom)?;
+        if index == 0 {
+            if source != path_start {
+                return None;
+            }
+            path_variables.push(source);
+        } else if path_variables.last().copied() != Some(source) {
+            return None;
+        }
+        path_variables.push(target);
+        body.push(body_role.to_string());
+    }
+    if path_variables.last().copied() != Some(path_end) {
+        return None;
+    }
+    let mut distinct = std::collections::BTreeSet::new();
+    if !path_variables
+        .iter()
+        .all(|variable| distinct.insert(*variable))
+    {
+        return None;
+    }
+    Some(NamedRoleChain {
+        body,
+        sup: sup.to_string(),
+    })
+}
+
+/// Recover one constructor whose verified encoding is exactly one production
+/// clause. Callers must try direct role axioms and role chains first because
+/// those constructors intentionally overlap with the broad role-only grammar.
+pub fn single_source_clause(clause: &JClause) -> Option<NamedSourceClause> {
+    if direct_role_axiom(clause).is_some() || role_chain(clause).is_some() {
+        return None;
+    }
+
+    if clause.body.iter().all(|atom| concept(atom).is_some())
+        && clause.head.iter().all(|atom| concept(atom).is_some())
+    {
+        let mut common_variable = None;
+        let mut body = Vec::with_capacity(clause.body.len());
+        let mut head = Vec::with_capacity(clause.head.len());
+        for (target, atom) in [(&mut body, &clause.body), (&mut head, &clause.head)] {
+            for item in atom {
+                let (name, variable) = concept(item)?;
+                if let Some(common) = common_variable {
+                    if common != variable {
+                        return None;
+                    }
+                } else {
+                    common_variable = Some(variable);
+                }
+                target.push(name.to_string());
+            }
+        }
+        return Some(NamedSourceClause::Gci { body, head });
+    }
+
+    match (clause.body.as_slice(), clause.head.as_slice()) {
+        ([trigger, edge], [result]) => {
+            if let (
+                Some((trigger_concept, trigger_variable)),
+                Some((role_name, edge_source, edge_target)),
+                Some((result_concept, result_variable)),
+            ) = (concept(trigger), role(edge), concept(result))
+            {
+                if trigger_variable == edge_source
+                    && edge_target == result_variable
+                    && edge_source != edge_target
+                {
+                    return Some(NamedSourceClause::AllR {
+                        source: trigger_concept.to_string(),
+                        role: role_name.to_string(),
+                        filler: result_concept.to_string(),
+                    });
+                }
+                if trigger_variable == edge_target
+                    && edge_source == result_variable
+                    && edge_source != edge_target
+                {
+                    return Some(NamedSourceClause::ExL {
+                        role: role_name.to_string(),
+                        filler: trigger_concept.to_string(),
+                        conclusion: result_concept.to_string(),
+                    });
+                }
+                return None;
+            }
+            if let (Some((first_role, x, y)), Some((second_role, x2, z)), Some((left, right))) =
+                (role(trigger), role(edge), equality(result))
+            {
+                return (first_role == second_role
+                    && x == x2
+                    && y == left
+                    && z == right
+                    && x != y
+                    && x != z
+                    && y != z)
+                    .then(|| NamedSourceClause::Functional {
+                        role: first_role.to_string(),
+                    });
+            }
+            None
+        }
+        ([premise], [conclusion]) => {
+            let (sub, x, y) = role(premise)?;
+            let (sup, x2, y2) = role(conclusion)?;
+            (x == x2 && y == y2 && x != y).then(|| NamedSourceClause::SubR {
+                sub: sub.to_string(),
+                sup: sup.to_string(),
+            })
         }
         _ => None,
     }
@@ -252,5 +421,137 @@ mod tests {
         assert!(recovered
             .iter()
             .all(|axiom| matches!(axiom, NamedRoleAxiom::Disjoint(_, _))));
+    }
+
+    #[test]
+    fn recognizes_role_chain_and_transitivity_normalizer_output() {
+        use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
+
+        for (source_axiom, expected_chains) in [
+            ("TransitiveObjectProperty(<R>)", 1),
+            ("SubObjectPropertyOf(ObjectPropertyChain(<R> <S>) <T>)", 1),
+            (
+                "SubObjectPropertyOf(ObjectPropertyChain(<R> <S> <T> <U>) <V>)",
+                3,
+            ),
+        ] {
+            let mut registry = IriRegistry::new();
+            let source = format!("Ontology({source_axiom})");
+            let ontology = parse::parse_axioms(&mut registry, &source).expect("parse role chain");
+            let (clauses, _, _) = normalise::normalise(&ontology);
+            let recovered = clauses
+                .iter()
+                .map(clause_to_json)
+                .filter_map(|clause| role_chain(&clause))
+                .collect::<Vec<_>>();
+            assert_eq!(recovered.len(), expected_chains, "{source_axiom}");
+            assert!(recovered.iter().all(|chain| chain.body.len() == 2));
+        }
+    }
+
+    #[test]
+    fn role_chain_rejects_broken_paths_and_non_role_atoms() {
+        let concept = JAtom::Concept {
+            concept: "C".into(),
+            term: var("x"),
+        };
+        let cases = [
+            JClause {
+                body: vec![r("R", "x", "y"), r("S", "z", "w")],
+                head: vec![r("T", "x", "w")],
+            },
+            JClause {
+                body: vec![r("R", "x", "y"), r("S", "y", "z")],
+                head: vec![r("T", "q", "z")],
+            },
+            JClause {
+                body: vec![r("R", "x", "y"), concept],
+                head: vec![r("T", "x", "y")],
+            },
+            JClause {
+                body: vec![r("R", "x", "y"), r("S", "y", "x")],
+                head: vec![r("T", "x", "x")],
+            },
+        ];
+        for clause in cases {
+            assert_eq!(role_chain(&clause), None);
+        }
+    }
+
+    #[test]
+    fn recognizes_actual_single_clause_source_constructors() {
+        use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
+
+        let cases: [(&str, fn(&NamedSourceClause) -> bool); 5] = [
+            ("SubClassOf(<A> <B>)", |value| {
+                matches!(value, NamedSourceClause::Gci { .. })
+            }),
+            ("SubClassOf(<A> ObjectAllValuesFrom(<R> <B>))", |value| {
+                matches!(value, NamedSourceClause::AllR { .. })
+            }),
+            ("SubClassOf(ObjectSomeValuesFrom(<R> <A>) <B>)", |value| {
+                matches!(value, NamedSourceClause::ExL { .. })
+            }),
+            ("SubObjectPropertyOf(<R> <S>)", |value| {
+                matches!(value, NamedSourceClause::SubR { .. })
+            }),
+            ("FunctionalObjectProperty(<R>)", |value| {
+                matches!(value, NamedSourceClause::Functional { .. })
+            }),
+        ];
+        for (source_axiom, expected) in cases {
+            let mut registry = IriRegistry::new();
+            let source = format!("Ontology({source_axiom})");
+            let ontology =
+                parse::parse_axioms(&mut registry, &source).expect("parse source clause");
+            let (clauses, _, _) = normalise::normalise(&ontology);
+            let recovered = clauses
+                .iter()
+                .map(clause_to_json)
+                .filter_map(|clause| single_source_clause(&clause))
+                .collect::<Vec<_>>();
+            assert!(
+                recovered.iter().any(expected),
+                "{source_axiom}: {recovered:?}; normalized={}",
+                serde_json::to_string(&clauses.iter().map(clause_to_json).collect::<Vec<_>>())
+                    .expect("serialize normalized clauses")
+            );
+        }
+    }
+
+    #[test]
+    fn single_clause_recovery_rejects_variable_and_role_mismatches() {
+        let cases = [
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "A".into(),
+                    term: var("x"),
+                }],
+                head: vec![JAtom::Concept {
+                    concept: "B".into(),
+                    term: var("y"),
+                }],
+            },
+            JClause {
+                body: vec![
+                    JAtom::Concept {
+                        concept: "A".into(),
+                        term: var("x"),
+                    },
+                    r("R", "z", "y"),
+                ],
+                head: vec![JAtom::Concept {
+                    concept: "B".into(),
+                    term: var("y"),
+                }],
+            },
+            JClause {
+                body: vec![r("R", "x", "y"), r("S", "x", "z")],
+                head: vec![eq("y", "z")],
+            },
+        ];
+        for clause in cases {
+            assert_eq!(single_source_clause(&clause), None);
+        }
     }
 }

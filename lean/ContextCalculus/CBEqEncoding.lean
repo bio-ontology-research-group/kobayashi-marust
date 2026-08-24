@@ -114,7 +114,7 @@ def encodeClause (index : Nat) :
   | .allR source role filler =>
       [⟨[con source x, rol role x y], [con filler y]⟩]
   | .exL role filler conclusion =>
-      [⟨[rol role x y, con filler y], [con conclusion x]⟩]
+      [⟨[con filler y, rol role x y], [con conclusion x]⟩]
   | .subR sub sup =>
       [⟨[rol sub x y], [rol sup x y]⟩]
   | .inv role inverse =>

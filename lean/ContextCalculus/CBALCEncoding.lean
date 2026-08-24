@@ -29,7 +29,7 @@ def encodeClause (index : Nat) : Ctx.Clause (Fin conceptCount) (Fin roleCount) �
       [ ⟨[con source x], [rol role x (.app index x)]⟩
       , ⟨[con source x], [con filler (.app index x)]⟩ ]
   | .exLeft role filler conclusion =>
-      [⟨[rol role x y, con filler y], [con conclusion x]⟩]
+      [⟨[con filler y, rol role x y], [con conclusion x]⟩]
   | .allRight source role filler =>
       [⟨[con source x, rol role x y], [con filler y]⟩]
 
@@ -70,7 +70,7 @@ theorem valid_gci_iff (model : TModel D) (body head : List (Fin conceptCount)) :
 
 theorem valid_exLeft_iff (model : TModel D) (role : Fin roleCount)
     (filler conclusion : Fin conceptCount) :
-    valid model ⟨[rol role x y, con filler y], [con conclusion x]⟩ ↔
+    valid model ⟨[con filler y, rol role x y], [con conclusion x]⟩ ↔
       ∀ source, (∃ target, model.rol role.val source target ∧
         model.conc filler.val target) → model.conc conclusion.val source := by
   constructor
@@ -82,8 +82,8 @@ theorem valid_exLeft_iff (model : TModel D) (role : Fin roleCount)
       intro literal hliteral
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hliteral
       rcases hliteral with rfl | rfl
-      · simpa [assignment, rol, x, y, TModel.evalL, TModel.evalT] using hrole
-      · simpa [assignment, con, y, TModel.evalL, TModel.evalT] using hfiller)
+      · simpa [assignment, con, y, TModel.evalL, TModel.evalT] using hfiller
+      · simpa [assignment, rol, x, y, TModel.evalL, TModel.evalT] using hrole)
     rcases hhead with ⟨literal, hliteral, htrue⟩
     simp only [List.mem_singleton] at hliteral
     subst literal
