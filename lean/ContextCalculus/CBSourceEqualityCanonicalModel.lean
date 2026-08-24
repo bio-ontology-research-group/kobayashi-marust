@@ -602,6 +602,45 @@ theorem evalGroundLiteral_productiveGroundValuation_iff
       unfold evalGroundLiteral productiveGroundValuation
       exact (productiveQuotientModel_eval_ineq context extension left right).symm
 
+/-- Every positive atom produced by the ordered candidate valuation remains
+true after equality congruence closure. -/
+theorem productiveGroundValuation_of_Itrue_positive
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (literal : FLit) (atom : GroundAtom)
+    (hatom : positiveAtom? literal = some atom)
+    (htrue :
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained) literal) :
+    productiveGroundValuation context extension atom := by
+  cases literal with
+  | P predicate =>
+      cases predicate with
+      | concept concept term =>
+          simp only [positiveAtom?, Option.some.injEq] at hatom
+          subst atom
+          change productiveConceptHolds context extension concept
+            (quotientTerm context extension term)
+          exact ⟨term, rfl, htrue⟩
+      | role role source target =>
+          simp only [positiveAtom?, Option.some.injEq] at hatom
+          subst atom
+          change productiveRoleHolds context extension role
+            (quotientTerm context extension source)
+            (quotientTerm context extension target)
+          exact ⟨source, target, rfl, rfl, htrue⟩
+  | eq left right =>
+      simp only [positiveAtom?, Option.some.injEq] at hatom
+      subst atom
+      exact ProductiveCongruence.productive (by
+        simpa [ProductiveEqualityRewrite] using htrue)
+  | ineq left right => simp [positiveAtom?] at hatom
+
 #print axioms retained_literal_mem_ordered
 #print axioms self_mem_termAndSubterms
 #print axioms retained_equality_term_mem_ordered
@@ -618,5 +657,6 @@ theorem evalGroundLiteral_productiveGroundValuation_iff
 #print axioms productiveQuotientModel_eval_ineq
 #print axioms productiveGroundValuation_respectsEq
 #print axioms evalGroundLiteral_productiveGroundValuation_iff
+#print axioms productiveGroundValuation_of_Itrue_positive
 
 end ContextCalculus.CBSourceEqualityCanonicalModel
