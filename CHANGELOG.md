@@ -106,6 +106,16 @@
   modulo-subsumption closure, and checked FCL strengthenings transport directly
   into that ground antichain. Establishing closure from all context-local and
   inter-context production families is the next remaining bridge.
+- Connect production's ordinary local Resolution rule exactly to ground
+  resolution for inequality-free retained contexts. The proof derives the
+  shared source literal from both translated atom occurrences, proves that
+  list-level literal removal commutes with finite ground-clause translation,
+  and transports the retained FCL strengthening into the ground antichain.
+  Consequently, the single composed source-bound production certificate now
+  yields a `sorry`-free canonical valuation for every clash-free terminal
+  context in this slice. Factor and ordered paramodulation must extend this
+  result across explicit equality/inequality polarity before contexts can be
+  assembled into the full source model.
 
 ### Accept empty exact CB transfer partitions
 

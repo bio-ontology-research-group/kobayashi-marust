@@ -50,6 +50,8 @@ import ContextCalculus.CBLocalEqEnumeration
 import ContextCalculus.CBLocalEqClosureWire
 import ContextCalculus.CBFiniteOrderAdmissibilityWire
 import ContextCalculus.CBGroundEqualityBridge
+import ContextCalculus.CBGroundResolutionBridge
+import ContextCalculus.CBSourceGroundResolutionBridge
 import ContextCalculus.CBRoleChainGroundCompleteness
 import ContextCalculus.CBNamedGroundCompleteness
 import ContextCalculus.CBBlockedCarrierWire
