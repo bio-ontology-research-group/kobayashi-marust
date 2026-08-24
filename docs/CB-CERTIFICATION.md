@@ -207,11 +207,17 @@ claim that the layer is already complete.
   every production context must occur exactly once with an empty local todo
   queue and a cleared dirty flag. Pred, Succ, and r-Succ pool high-water marks,
   the r-Succ reach driver and every successor-pair watermark must be complete.
-  Every predecessor-edge watermark must equal the pushed-set length from the
-  exact send snapshot. Kernel tests reject pending messages, truncation,
+  Every predecessor-edge watermark must equal the pushed-set length on the
+  corresponding edge incoming to that receiver context in the exact send
+  snapshot. A directed two-context fixture prevents confusing this with the
+  sender's outgoing edges. Kernel tests reject pending messages, truncation,
   incomplete pool scans, and stale edge scans. The standalone
-  `cb-terminal-state-check` checker exposes this boundary. Production emission
-  remains open.
+  `cb-terminal-state-check` checker exposes this boundary. Rust can now write
+  the document from the same live engine snapshot through
+  `KM_CB_TERMINAL_STATE_CANDIDATE` and require
+  `KM_CB_TERMINAL_STATE_CHECKER` before publication. This path fails closed
+  unless the enclosing production certificate already contains the exact Pred
+  send-coverage branch; native emission of that enclosing branch remains open.
 - `CBGlobalProductionClosure` supplies the semantic projection of the nested
   global certificate. Its theorem uses each exact context-index permutation to
   quantify over every production context, then exposes retained-strengthening

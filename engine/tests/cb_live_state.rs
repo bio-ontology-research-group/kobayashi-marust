@@ -161,7 +161,7 @@ fn mandatory_lean_mode_fails_without_complete_configuration() {
 }
 
 #[test]
-fn production_certification_rejects_an_external_source_file() {
+fn production_certification_ignores_an_external_source_file() {
     let global = snapshot_path("external-source-rejected");
     let bundle = snapshot_path("external-source-bundle");
     std::fs::write(&global, b"{}\n").unwrap();
@@ -182,9 +182,10 @@ fn production_certification_rejects_an_external_source_file() {
         .unwrap();
     assert_eq!(output.status.code(), Some(5));
     assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("in-band cb_typed_source"));
-    assert!(!bundle.exists());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Lean checker rejected"));
+    assert!(bundle.exists());
     std::fs::remove_file(global).unwrap();
+    std::fs::remove_file(bundle).unwrap();
 }
 
 #[test]
@@ -371,6 +372,34 @@ fn exact_lean_mode_requires_a_candidate_path() {
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr)
         .contains("KM_CB_EXACT_TAXONOMY_CANDIDATE is required"));
+    assert!(!bundle.exists());
+    std::fs::remove_file(global).unwrap();
+}
+
+#[test]
+fn terminal_state_checker_requires_a_candidate_path() {
+    let global = snapshot_path("terminal-config-global");
+    let bundle = snapshot_path("terminal-config-bundle");
+    std::fs::write(&global, b"{}\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .env("KM_CB_GLOBAL_MODEL_CERT", &global)
+        .env("KM_CB_LEAN_CERT_CHECKER", "/bin/true")
+        .env("KM_CB_CERT_BUNDLE", &bundle)
+        .env("KM_CB_TERMINAL_STATE_CHECKER", "/bin/true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(b"{\"clauses\":[]}")?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("KM_CB_TERMINAL_STATE_CANDIDATE is required"));
     assert!(!bundle.exists());
     std::fs::remove_file(global).unwrap();
 }

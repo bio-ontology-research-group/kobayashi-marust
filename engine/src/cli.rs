@@ -1361,6 +1361,13 @@ fn verify_cb_lean_publication(
     reasoner: &crate::reasoner::Reasoner,
     input_typed_source: Option<&serde_json::Value>,
 ) -> Result<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>, String> {
+    let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
+    let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
+    if terminal_state_checker.is_some() && terminal_state_path.is_none() {
+        return Err("KM_CB_TERMINAL_STATE_CANDIDATE is required with \
+            KM_CB_TERMINAL_STATE_CHECKER"
+            .to_string());
+    }
     let source_exact_checker = std::env::var_os("KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER");
     let source_exact_candidate_path =
         std::env::var_os("KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE");
@@ -1537,6 +1544,26 @@ fn verify_cb_lean_publication(
         "inconsistent": public_inconsistent,
         "inconsistency_witness": inconsistency_witness,
     });
+
+    if let Some(path) = terminal_state_path.as_ref() {
+        let terminal = cb_terminal_state_candidate(&global_model, &live_state)?;
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!(
+                "cannot create CB terminal-state candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &terminal)
+            .map_err(|error| format!("cannot serialize CB terminal-state candidate: {error}"))?;
+        use std::io::Write;
+        writer
+            .write_all(b"\n")
+            .map_err(|error| format!("cannot finish CB terminal-state candidate: {error}"))?;
+        writer
+            .flush()
+            .map_err(|error| format!("cannot flush CB terminal-state candidate: {error}"))?;
+    }
     let file = std::fs::File::create(&bundle_path).map_err(|error| {
         format!(
             "cannot create CB certificate bundle {}: {error}",
@@ -1652,6 +1679,26 @@ fn verify_cb_lean_publication(
             })?;
         if !status.success() {
             return Err(format!("CB Lean checker rejected the bundle with {status}"));
+        }
+    }
+    if let Some(terminal_checker) = terminal_state_checker {
+        let path = terminal_state_path
+            .as_ref()
+            .ok_or_else(|| "CB terminal-state checker has no candidate path".to_string())?;
+        let status = std::process::Command::new(&terminal_checker)
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run CB terminal-state checker {}: {error}",
+                    std::path::Path::new(&terminal_checker).display()
+                )
+            })?;
+        if !status.success() {
+            return Err(format!(
+                "CB terminal-state checker rejected the candidate with {status}"
+            ));
         }
     }
     if let Some(context_checker) = standalone_context_checker {
@@ -4252,6 +4299,79 @@ fn find_cb_production_contexts<'a>(
     None
 }
 
+/// Locate the exact Pred send-coverage branch inside a nested production
+/// certificate. The terminal-state emitter copies this checked branch and
+/// supplies only operational fields read from the same live engine snapshot.
+fn find_cb_pred_send_coverage(value: &serde_json::Value) -> Option<&serde_json::Value> {
+    if let Some(object) = value.as_object() {
+        let is_send_coverage = object.get("version").and_then(serde_json::Value::as_u64)
+            == Some(2)
+            && object.contains_key("inter_context")
+            && object.contains_key("ground_context_index")
+            && object.get("senders").is_some_and(serde_json::Value::is_array)
+            && object.contains_key("root_sender");
+        if is_send_coverage {
+            return Some(value);
+        }
+        for child in object.values() {
+            if let Some(found) = find_cb_pred_send_coverage(child) {
+                return Some(found);
+            }
+        }
+    } else if let Some(array) = value.as_array() {
+        for child in array {
+            if let Some(found) = find_cb_pred_send_coverage(child) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+/// Serialize the operational CB terminal document consumed by
+/// `CBTerminalStateWire`. In particular, `edge_seen` comes from each receiver
+/// context's predecessor map, while successor-pair reach watermarks come from
+/// that context's outgoing successor records. Lean independently relates both
+/// lists to the copied send-coverage branch.
+fn cb_terminal_state_candidate(
+    global_model: &serde_json::Value,
+    live: &crate::engine::CbLiveTerminalSnapshot,
+) -> Result<serde_json::Value, String> {
+    let send_coverage = find_cb_pred_send_coverage(global_model)
+        .ok_or_else(|| "CB global certificate has no Pred send-coverage branch".to_string())?;
+    let contexts = live
+        .contexts
+        .iter()
+        .map(|context| {
+            serde_json::json!({
+                "context_index": context.context_index,
+                "context_id": context.context_id,
+                "todo_count": context.todo_clause_ids.len(),
+                "dirty": context.dirty,
+                "pred_pool_len": context.pred_pool_ids.len(),
+                "pred_hwm": context.pred_hwm,
+                "succ_pool_len": context.succ_pool_ids.len(),
+                "succ_hwm": context.succ_hwm,
+                "rsucc_pool_len": context.rsucc_pool_ids.len(),
+                "rsucc_hwm": context.rsucc_hwm,
+                "rsucc_reach_len": context.rsucc_reach.len(),
+                "rsucc_offered": context.rsucc_offered,
+                "rsucc_pair_reach_hwm": context.successor_reach_hwm,
+                "rsucc_edges_grew": context.rsucc_edges_grew,
+                "edge_seen": context.predecessor_edge_seen,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(serde_json::json!({
+        "version": 1,
+        "send_coverage": send_coverage,
+        "pending_messages": live.pending_messages,
+        "message_truncated": live.message_truncated,
+        "nominal_truncated": live.nominal_truncated,
+        "contexts": contexts,
+    }))
+}
+
 #[cfg(test)]
 mod cb_derivation_candidate_tests {
     use super::*;
@@ -4334,6 +4454,47 @@ mod cb_derivation_candidate_tests {
             ]
         });
         assert!(find_cb_production_contexts(&forged, &live).is_none());
+    }
+
+    #[test]
+    fn terminal_state_candidate_uses_receiver_and_successor_watermarks() {
+        let send_coverage = serde_json::json!({
+            "version": 2,
+            "inter_context": {},
+            "ground_context_index": null,
+            "senders": [],
+            "root_sender": null,
+        });
+        let global = serde_json::json!({"nested": {"send": send_coverage}});
+        let mut live = live_snapshot();
+        live.pending_messages = 3;
+        live.contexts[0].todo_clause_ids = vec![4, 9];
+        live.contexts[0].pred_pool_ids = vec![1, 2, 3];
+        live.contexts[0].pred_hwm = 2;
+        live.contexts[0].predecessor_edge_seen = vec![5, 8];
+        live.contexts[0].successor_reach_hwm = vec![13];
+        let terminal = cb_terminal_state_candidate(&global, &live).unwrap();
+        assert_eq!(terminal["send_coverage"], send_coverage);
+        assert_eq!(terminal["pending_messages"], 3);
+        assert_eq!(terminal["contexts"][0]["todo_count"], 2);
+        assert_eq!(terminal["contexts"][0]["pred_pool_len"], 3);
+        assert_eq!(terminal["contexts"][0]["pred_hwm"], 2);
+        assert_eq!(
+            terminal["contexts"][0]["edge_seen"],
+            serde_json::json!([5, 8])
+        );
+        assert_eq!(
+            terminal["contexts"][0]["rsucc_pair_reach_hwm"],
+            serde_json::json!([13])
+        );
+    }
+
+    #[test]
+    fn terminal_state_candidate_requires_certified_send_coverage() {
+        let error =
+            cb_terminal_state_candidate(&serde_json::json!({"version": 1}), &live_snapshot())
+                .unwrap_err();
+        assert!(error.contains("no Pred send-coverage"));
     }
 
     #[test]

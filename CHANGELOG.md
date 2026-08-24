@@ -15,6 +15,12 @@
 - Rebuild the complete live-state and public CB certification surfaces after
   the correction. Their axiom reports remain limited to `propext`,
   `Classical.choice`, and `Quot.sound`.
+- Add native Rust terminal-state emission from the same deterministic live
+  snapshot used for publication. The emitter copies the enclosing
+  certificate's exact Pred send-coverage branch, serializes receiver-side
+  predecessor watermarks and outgoing r-Succ pair watermarks separately, and
+  can require the standalone Lean checker before stdout. Missing coverage,
+  missing candidate configuration, or checker rejection fails closed.
 
 ### Start the concrete automatic-routing certification
 
