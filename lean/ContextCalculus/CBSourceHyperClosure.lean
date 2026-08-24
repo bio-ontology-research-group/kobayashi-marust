@@ -30,8 +30,7 @@ def sourceProductionTerms
     (production : DecodedProductionRun) : List FTerm :=
   ((production.source.ontology.flatMap clauseTerms) ++
     (production.contexts.flatMap fun context =>
-      context.retained.flatMap clauseTerms) ++
-    (List.range production.source.bounds.individuals).map FTerm.const).eraseDups
+      context.retained.flatMap clauseTerms)).eraseDups
 
 def sourceProductionLiterals
     (production : DecodedProductionRun) : List FLit :=

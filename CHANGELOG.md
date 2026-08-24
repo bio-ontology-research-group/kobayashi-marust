@@ -65,6 +65,14 @@
   every arrival. Rust emits the nested document from its terminal snapshot and
   fails closed on checker rejection. The native Rust document passes the real
   checker. Nominal-ground r-Pred remains a separate open rule family.
+- Add source-bound nominal-ground r-Pred closure and compose it after ordinary
+  Pred over the same terminal snapshot. Lean reconstructs individual-labelled
+  edges, checks both the x-free per-source multi-edge branch and x-containing
+  per-edge branch, compares every sent pool index exactly, and checks every
+  receiver-provider arrival product. A non-empty native root send and arrival
+  passes both the established transfer checker and the new source-bound
+  checker. The source term-order refinement now enumerates actual source/live
+  terms instead of the reserved, unrepresentable individual-ID-zero slot.
 
 ### Accept empty exact CB transfer partitions
 

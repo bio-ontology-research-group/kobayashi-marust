@@ -8,6 +8,7 @@ import ContextCalculus.CBSourceJoin3Closure
 import ContextCalculus.CBSourceSuccClosure
 import ContextCalculus.CBSourceEqClosure
 import ContextCalculus.CBSourceOrdinaryPredClosure
+import ContextCalculus.CBSourceRootPredClosure
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -35,6 +36,7 @@ open ContextCalculus.CBSourceJoin3Closure
 open ContextCalculus.CBSourceSuccClosure
 open ContextCalculus.CBSourceEqClosure
 open ContextCalculus.CBSourceOrdinaryPredClosure
+open ContextCalculus.CBSourceRootPredClosure
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBInterContext
 open ContextCalculus.CBInterContextWire
@@ -274,6 +276,18 @@ theorem certifiedCBSourceOrdinaryPredClosure
   exact ⟨decoded, hdecode⟩
 
 #print axioms certifiedCBSourceOrdinaryPredClosure
+
+/-- Source-bound nominal-ground r-Pred send and arrival fixpoint boundary,
+composed with the ordinary Pred boundary over the same terminal snapshot. -/
+theorem certifiedCBSourceRootPredClosure
+    (wire : WireSourceRootPredClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceRootPredClosureDocument,
+      wire.decode = .ok decoded := by
+  obtain ⟨decoded, hdecode, _⟩ := wire.check_sound hcheck
+  exact ⟨decoded, hdecode⟩
+
+#print axioms certifiedCBSourceRootPredClosure
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :

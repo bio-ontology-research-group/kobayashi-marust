@@ -1411,6 +1411,14 @@ fn verify_cb_lean_publication(
         return Err("KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CANDIDATE is required with \
             KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CHECKER".to_string());
     }
+    let source_root_pred_checker =
+        std::env::var_os("KM_CB_SOURCE_ROOT_PRED_CLOSURE_CHECKER");
+    let source_root_pred_path =
+        std::env::var_os("KM_CB_SOURCE_ROOT_PRED_CLOSURE_CANDIDATE");
+    if source_root_pred_checker.is_some() && source_root_pred_path.is_none() {
+        return Err("KM_CB_SOURCE_ROOT_PRED_CLOSURE_CANDIDATE is required with \
+            KM_CB_SOURCE_ROOT_PRED_CLOSURE_CHECKER".to_string());
+    }
     let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
     let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
     if terminal_state_checker.is_some() && terminal_state_path.is_none() {
@@ -1769,6 +1777,29 @@ fn verify_cb_lean_publication(
         })?;
     }
 
+    if let Some(path) = source_root_pred_path.as_ref() {
+        let candidate = cb_source_root_pred_closure_candidate(
+            input_typed_source.ok_or_else(|| {
+                "source-bound root Pred certification requires an in-band typed source"
+                    .to_string()
+            })?, &live_state,
+            certificate.pointer("/derivation/insertion_evidence")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!("cannot create source-bound CB root Pred candidate {}: {error}",
+                std::path::Path::new(path).display())
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize source-bound CB root Pred candidate: {error}"))?;
+        use std::io::Write;
+        writer.write_all(b"\n")
+            .map_err(|error| format!("cannot finish source-bound CB root Pred candidate: {error}"))?;
+        writer.flush()
+            .map_err(|error| format!("cannot flush source-bound CB root Pred candidate: {error}"))?;
+    }
+
     if let Some(path) = terminal_state_path.as_ref() {
         let terminal = cb_terminal_state_candidate(&global_model, &live_state)?;
         let file = std::fs::File::create(path).map_err(|error| {
@@ -1990,6 +2021,19 @@ fn verify_cb_lean_publication(
         if !status.success() {
             return Err(format!(
                 "source-bound CB ordinary Pred checker rejected the candidate with {status}"));
+        }
+    }
+    if let Some(pred_checker) = source_root_pred_checker {
+        let path = source_root_pred_path.as_ref().ok_or_else(|| {
+            "source-bound CB root Pred checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&pred_checker)
+            .arg(path).stdout(std::process::Stdio::null()).status()
+            .map_err(|error| format!("cannot run source-bound CB root Pred checker {}: {error}",
+                std::path::Path::new(&pred_checker).display()))?;
+        if !status.success() {
+            return Err(format!(
+                "source-bound CB root Pred checker rejected the candidate with {status}"));
         }
     }
     if let Some(checker) = checker {
@@ -4793,9 +4837,9 @@ fn cb_source_finite_order_candidate(
         .iter().copied().filter(|term| *term <= X)
         .map(|term| cb_wire_term(term, live.comp_ind_bits))
         .collect::<Vec<_>>();
-    for individual in 0..live.runtime_individual_count {
-        ordered_terms.push(serde_json::json!({"constant": {"individual": individual}}));
-    }
+    ordered_terms.extend(raw_terms.iter().copied()
+        .filter(|term| (*term > X) && (*term < FTERM_BASE))
+        .map(|term| cb_wire_term(term, live.comp_ind_bits)));
     ordered_terms.extend(raw_terms.iter().copied()
         .filter(|term| (FTERM_BASE..COMP_BASE).contains(term))
         .map(|term| cb_wire_term(term, live.comp_ind_bits)));
@@ -4854,6 +4898,18 @@ fn cb_source_eq_closure_candidate(
 ) -> Result<serde_json::Value, String> {
     let succ = cb_source_succ_closure_candidate(source, live, insertion_evidence)?;
     Ok(serde_json::json!({"version": 1, "succ_closure": succ}))
+}
+
+fn cb_source_root_pred_closure_candidate(
+    source: &serde_json::Value,
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    insertion_evidence: &[serde_json::Value],
+) -> Result<serde_json::Value, String> {
+    let eq = cb_source_eq_closure_candidate(source, live, insertion_evidence)?;
+    Ok(serde_json::json!({
+        "version": 1,
+        "ordinary_pred_closure": {"version": 1, "eq_closure": eq}
+    }))
 }
 
 /// Reconstruct the exact Pred send partition from the terminal engine state.
@@ -5089,7 +5145,7 @@ mod cb_derivation_candidate_tests {
             non_root_concept_order_mode: "incomparable".to_string(),
             pred_trigger_literals: Vec::new(),
             role_count: 0,
-            function_count: 0,
+            function_count: 1,
             source_individual_count: 0,
             runtime_individual_count: 0,
             source_ontology: Vec::new(),
@@ -5333,7 +5389,7 @@ mod cb_derivation_candidate_tests {
             non_root_concept_order_mode: "incomparable".to_string(),
             pred_trigger_literals: Vec::new(),
             role_count: 0,
-            function_count: 1,
+            function_count: 0,
             source_individual_count: 0,
             runtime_individual_count: 0,
             source_ontology: vec![clause.clone()],
@@ -5350,7 +5406,7 @@ mod cb_derivation_candidate_tests {
         let production = accepted_pred_production();
         let global = serde_json::json!({"send": {
             "version": 2,
-            "inter_context": {"production": production},
+            "inter_context": {"production": production.clone()},
             "ground_context_index": null,
             "senders": [],
             "root_sender": null,
@@ -5374,30 +5430,34 @@ mod cb_derivation_candidate_tests {
         };
         let x = crate::calc::X;
         let individual = crate::calc::ind_term(1);
-        let a = crate::engine::CbLivePred {
-            kind: "concept", iri: 0, first: x, second: None,
-        };
         let b = crate::engine::CbLivePred {
             kind: "concept", iri: 1, first: x, second: None,
         };
         let clause = crate::engine::CbLiveClause {
-            body: vec![cb_live_pred_literal(&a)],
+            body: Vec::new(),
             head: vec![cb_live_pred_literal(&b)],
+        };
+        let ground_b = crate::engine::CbLivePred {
+            first: individual, ..b.clone()
+        };
+        let ground_clause = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![cb_live_pred_literal(&ground_b)],
         };
         let mut context = live_context(0, 9);
         context.nominal_ground = true;
-        context.retained_clause_ids = vec![0];
+        context.retained_clause_ids = vec![0, 1];
         context.pred_pool_ids = vec![0];
         context.pred_hwm = 1;
         context.predecessors = vec![crate::engine::CbLivePredecessorEdge {
             predecessor_context: 0,
             label: individual,
-            pushed: vec![a],
+            pushed: vec![ground_b],
             pred_pool_seen: vec![0],
             edge_seen: 1,
         }];
         context.predecessor_edge_seen = vec![1];
-        let live = crate::engine::CbLiveTerminalSnapshot {
+        let mut live = crate::engine::CbLiveTerminalSnapshot {
             version: 6,
             comp_ind_bits: 17,
             concept_count: 2,
@@ -5409,30 +5469,75 @@ mod cb_derivation_candidate_tests {
             non_root_concept_order_mode: "incomparable".to_string(),
             pred_trigger_literals: Vec::new(),
             role_count: 0,
-            function_count: 1,
+            function_count: 0,
             source_individual_count: 2,
             runtime_individual_count: 2,
             source_ontology: vec![clause.clone()],
             rsucc_enabled: true,
             reach_concept_ids: Vec::new(),
             ordinary_clause_arena: Vec::new(),
-            root_clause_arena: vec![clause],
+            root_clause_arena: vec![clause, ground_clause.clone()],
             pending_messages: 0,
             message_truncated: false,
             nominal_truncated: false,
             insertion_history: Vec::new(),
             contexts: vec![context],
         };
+        live.insertion_history = vec![
+            crate::engine::CbLiveInsertionEvent {
+                sequence: 0,
+                context_index: 0,
+                root: true,
+                clause_id: 0,
+                origin_hint: "ontology_fact",
+                origin_index: Some(0),
+                rule_hint: None,
+                rule_evidence: None,
+            },
+            crate::engine::CbLiveInsertionEvent {
+                sequence: 1,
+                context_index: 0,
+                root: true,
+                clause_id: 1,
+                origin_hint: "derived",
+                origin_index: None,
+                rule_hint: Some("pred-arrival"),
+                rule_evidence: Some(crate::engine::CbLiveRuleEvidence::Pred {
+                    sender_context_index: 0,
+                    sender_clause_id: 0,
+                    edge_label: individual,
+                    payload: ground_clause,
+                    provider_clause_ids: Vec::new(),
+                    matched_predicates: Vec::new(),
+                }),
+            },
+        ];
         let mut production = accepted_pred_production();
-        production["source"]["individual_count"] = serde_json::json!(2);
+        let wire_source_clause = cb_wire_clause(&live.source_ontology[0], live.comp_ind_bits);
+        production["source"] = serde_json::json!({
+            "version": 1,
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 2,
+            "source_clauses": [{"gci": {"body": [], "head": [1]}}],
+            "role_chains": [],
+            "role_axioms": [],
+            "ontology": [wire_source_clause.clone()]
+        });
         production["individual_count"] = serde_json::json!(2);
         production["contexts"][0]["context_id"] = serde_json::json!(9);
         production["contexts"][0]["root"] = serde_json::json!(true);
         production["contexts"][0]["nominal_ground"] = serde_json::json!(true);
         production["contexts"][0]["core"] = serde_json::json!([]);
+        production["contexts"][0]["retained"] = serde_json::json!([wire_source_clause.clone()]);
+        production["contexts"][0]["trace"] = serde_json::json!([{
+            "clause": wire_source_clause,
+            "justification": {"premise": {"index": 0, "substitution": []}}
+        }]);
         let global = serde_json::json!({"send": {
             "version": 2,
-            "inter_context": {"production": production},
+            "inter_context": {"production": production.clone()},
             "ground_context_index": null,
             "senders": [],
             "root_sender": null,
@@ -5448,8 +5553,26 @@ mod cb_derivation_candidate_tests {
         let path = root.join(format!("native-root-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
         let status = std::process::Command::new(checker).arg(&path).status().unwrap();
-        std::fs::remove_file(path).unwrap();
         assert!(status.success());
+
+        if let Some(root_checker) =
+            std::env::var_os("KM_CB_TEST_SOURCE_ROOT_PRED_CLOSURE_CHECKER")
+        {
+            let prior = std::collections::HashMap::from([((0, true, 0), 0)]);
+            let pred = cb_pred_event_evidence(&live, &live.insertion_history[1], &prior)
+                .expect("exact root Pred arrival evidence");
+            let source = production["source"].clone();
+            let evidence = vec![serde_json::json!({
+                "kind": "seed", "prior_events": [], "trace": [], "discarded": []
+            }), pred];
+            let root_candidate = cb_source_root_pred_closure_candidate(
+                &source, &live, &evidence).expect("construct source-bound root Pred candidate");
+            std::fs::write(&path, serde_json::to_vec(&root_candidate).unwrap()).unwrap();
+            let root_status = std::process::Command::new(root_checker)
+                .arg(&path).status().unwrap();
+            assert!(root_status.success(), "native source root Pred closure was rejected");
+        }
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

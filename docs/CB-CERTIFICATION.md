@@ -225,7 +225,13 @@ claim that the layer is already complete.
   terminal pool/edge watermarks, exact sent-pool-index lists, exact backward
   payloads, complete receiver provider products, and retained strengthening of
   every arrival. The executable Rust-to-Lean path passes. The remaining sender
-  case is the separate nominal-ground r-Pred eligibility and arrival closure.
+  case was the separate nominal-ground r-Pred eligibility and arrival closure.
+- `CBSourceRootPredClosure` now closes that nominal-ground case. It reconstructs
+  individual-labelled edges and independently checks the x-free per-source
+  multi-edge and x-containing per-edge branches before reusing the exhaustive
+  arrival-product checker. The native non-empty root fixture passes. The finite
+  source term universe excludes Rust's reserved ID-zero slot and contains the
+  actual source/live terms that production can represent.
 - `CBPredSendCoverageWire` applies the ordinary and root enumerators to every
   sender in one inter-context document. It bounds-checks every edge destination
   and label, decodes duplicate-free pushed sets, derives the ordinary or root
