@@ -326,6 +326,58 @@ example : duplicateAllocationExample.check =
     .error "CB function allocation reuses a production Skolem id" := by
   native_decide
 
+private def sparseNonExistentialExample : WireSourceBinding where
+  version := 2
+  concept_count := 2
+  role_count := 0
+  function_count := 0
+  individual_count := 0
+  source_clauses := [.gci [0] [1]]
+  role_chains := []
+  ontology := [⟨[concept 0 (.var 0)], [concept 1 (.var 0)]⟩]
+  function_allocation := some {
+    version := 1
+    canonical_count := 1
+    production_count := 0
+    allocation := [0]
+  }
+
+example : sparseNonExistentialExample.check = .ok true := by native_decide
+
+private def sparseMixedExample : WireSourceBinding where
+  version := 2
+  concept_count := 2
+  role_count := 1
+  function_count := 1
+  individual_count := 0
+  source_clauses := [.gci [0] [1], .exR 0 0 1]
+  role_chains := []
+  ontology :=
+    [ ⟨[concept 0 (.var 0)], [concept 1 (.var 0)]⟩
+    , ⟨[concept 0 (.var 0)], [role 0 (.var 0) (.app 0 (.var 0))]⟩
+    , ⟨[concept 0 (.var 0)], [concept 1 (.app 0 (.var 0))]⟩ ]
+  function_allocation := some {
+    version := 1
+    canonical_count := 2
+    production_count := 1
+    allocation := [1, 0]
+  }
+
+example : sparseMixedExample.check = .ok true := by native_decide
+
+private def malformedSentinelExample : WireSourceBinding :=
+  { sparseNonExistentialExample with
+    function_allocation := some {
+      version := 1
+      canonical_count := 1
+      production_count := 0
+      allocation := [2]
+    } }
+
+example : malformedSentinelExample.check =
+    .error "CB function allocation entry is neither bounded nor its canonical sentinel" := by
+  native_decide
+
 private def roleAxiomExample (roleAxiomWire : WireRoleAxiom)
     (encoded : WireClause) : WireSourceBinding where
   version := 1
