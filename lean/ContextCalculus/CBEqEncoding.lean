@@ -119,7 +119,7 @@ def encodeClause (index : Nat) :
       [⟨[rol sub x y], [rol sup x y]⟩]
   | .inv role inverse =>
       [ ⟨[rol role x y], [rol inverse y x]⟩
-      , ⟨[rol inverse y x], [rol role x y]⟩ ]
+      , ⟨[rol inverse x y], [rol role y x]⟩ ]
   | .func role =>
       [⟨[rol role x y, rol role x z], [.eq y z]⟩]
   | .nom concept name =>
@@ -170,7 +170,7 @@ theorem valid_subR_iff (model : TModel D) (sub sup : Fin roleCount) :
 
 theorem valid_inv_iff (model : TModel D) (role inverse : Fin roleCount) :
     (valid model ⟨[rol role x y], [rol inverse y x]⟩ ∧
-      valid model ⟨[rol inverse y x], [rol role x y]⟩) ↔
+      valid model ⟨[rol inverse x y], [rol role y x]⟩) ↔
       ∀ source target, model.rol role.val source target ↔
         model.rol inverse.val target source := by
   constructor
@@ -188,15 +188,17 @@ theorem valid_inv_iff (model : TModel D) (role inverse : Fin roleCount) :
       subst literal
       simpa [assignment, rol, x, y, TModel.evalL, TModel.evalT] using htrue
     · intro hinverse
-      rcases hbackward assignment (by
+      let reverseAssignment : Int → D := fun id =>
+        if id = -1 then source else target
+      rcases hbackward reverseAssignment (by
         intro literal hliteral
         simp only [List.mem_singleton] at hliteral
         subst literal
-        simpa [assignment, rol, x, y, TModel.evalL, TModel.evalT] using hinverse) with
+        simpa [reverseAssignment, rol, x, y, TModel.evalL, TModel.evalT] using hinverse) with
         ⟨literal, hliteral, htrue⟩
       simp only [List.mem_singleton] at hliteral
       subst literal
-      simpa [assignment, rol, x, y, TModel.evalL, TModel.evalT] using htrue
+      simpa [reverseAssignment, rol, x, y, TModel.evalL, TModel.evalT] using htrue
   · intro hsemantic
     constructor
     · intro assignment hbody
@@ -204,9 +206,9 @@ theorem valid_inv_iff (model : TModel D) (role inverse : Fin roleCount) :
         (hsemantic (assignment 0) (assignment (-1))).1
           (hbody (rol role x y) (by simp))⟩
     · intro assignment hbody
-      exact ⟨rol role x y, by simp,
-        (hsemantic (assignment 0) (assignment (-1))).2
-          (hbody (rol inverse y x) (by simp))⟩
+      exact ⟨rol role y x, by simp,
+        (hsemantic (assignment (-1)) (assignment 0)).2
+          (hbody (rol inverse x y) (by simp))⟩
 
 theorem valid_func_iff (model : TModel D) (role : Fin roleCount) :
     valid model ⟨[rol role x y, rol role x z], [.eq y z]⟩ ↔

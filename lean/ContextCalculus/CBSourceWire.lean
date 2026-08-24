@@ -143,8 +143,8 @@ structure DecodedSourceBinding where
   ontology : List FCL
   allocation : Nat → Nat
   allocation_injective : Function.Injective allocation
-  exact_encoding : ontology = renameOntology allocation
-    (CBRoleChainEncoding.encode source)
+  exact_encoding : ontology.Perm (renameOntology allocation
+    (CBRoleChainEncoding.encode source))
 
 def WireSourceBinding.decode (wire : WireSourceBinding) :
     Except String DecodedSourceBinding := do
@@ -162,7 +162,7 @@ def WireSourceBinding.decode (wire : WireSourceBinding) :
   if wire.version = 1 then
     if wire.function_allocation.isSome then
       throw "version-1 CB source binding must not carry a function allocation"
-    if hencoding : ontology = CBRoleChainEncoding.encode source then
+    if hencoding : ontology.Perm (CBRoleChainEncoding.encode source) then
       return {
         bounds, source, ontology
         allocation := id
@@ -177,8 +177,8 @@ def WireSourceBinding.decode (wire : WireSourceBinding) :
     let allocation ← allocationWire.decode
     if hcanonical : allocation.canonicalCount = source.clauses.length then
       if hproduction : allocation.productionCount = bounds.functions then
-        if hencoding : ontology = renameOntology allocation.rename
-            (CBRoleChainEncoding.encode source) then
+        if hencoding : ontology.Perm (renameOntology allocation.rename
+            (CBRoleChainEncoding.encode source)) then
           return {
             bounds, source, ontology
             allocation := allocation.rename
@@ -199,6 +199,20 @@ def DecodedSourceBinding.Entails (decoded : DecodedSourceBinding)
     (∀ clause ∈ decoded.ontology, valid model clause) →
       ∀ element, model.conc sub.val element → model.conc sup.val element
 
+private theorem entails_of_perm {ontology encoded : List FCL}
+    (hperm : ontology.Perm encoded) (sub sup : Nat) :
+    (∀ (D : Type) (model : TModel D),
+      (∀ clause ∈ ontology, valid model clause) →
+        ∀ element, model.conc sub element → model.conc sup element) ↔
+    (∀ (D : Type) (model : TModel D),
+      (∀ clause ∈ encoded, valid model clause) →
+        ∀ element, model.conc sub element → model.conc sup element) := by
+  constructor <;> intro hentails D model hmodels element hsub
+  · exact hentails D model (fun clause hclause =>
+      hmodels clause (hperm.mem_iff.mp hclause)) element hsub
+  · exact hentails D model (fun clause hclause =>
+      hmodels clause (hperm.mem_iff.mpr hclause)) element hsub
+
 theorem DecodedSourceBinding.entails_iff_source (decoded : DecodedSourceBinding)
     (sub sup : Fin decoded.bounds.concepts) :
     decoded.Entails sub sup ↔
@@ -207,7 +221,8 @@ theorem DecodedSourceBinding.entails_iff_source (decoded : DecodedSourceBinding)
           (Fin decoded.bounds.roles) (Fin decoded.bounds.individuals)),
         CBRoleChainEncoding.models interpretation decoded.source → ∀ element,
           interpretation.c sub element → interpretation.c sup element := by
-  rw [DecodedSourceBinding.Entails, decoded.exact_encoding]
+  rw [DecodedSourceBinding.Entails,
+    entails_of_perm decoded.exact_encoding sub.val sup.val]
   change CBFunctionRenaming.Entails
       (renameOntology decoded.allocation (CBRoleChainEncoding.encode decoded.source))
       sub.val sup.val ↔ _
@@ -231,9 +246,9 @@ theorem DecodedSourceBinding.models_production (decoded : DecodedSourceBinding)
     (default : D) :
     ∀ clause ∈ decoded.ontology,
       valid (decoded.productionModel interpretation hmodels default) clause := by
-  rw [decoded.exact_encoding]
   intro clause hclause
-  rcases List.mem_map.mp hclause with ⟨sourceClause, hsourceClause, rfl⟩
+  have hencoded := decoded.exact_encoding.mem_iff.mp hclause
+  rcases List.mem_map.mp hencoded with ⟨sourceClause, hsourceClause, rfl⟩
   exact (valid_pushforward_iff decoded.allocation decoded.allocation_injective
     (CBRoleChainEncoding.extendModel decoded.source interpretation hmodels default)
     sourceClause).2
@@ -244,8 +259,8 @@ theorem WireSourceBinding.check_sound (wire : WireSourceBinding)
     (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedSourceBinding,
       wire.decode = .ok decoded ∧
-        decoded.ontology = renameOntology decoded.allocation
-          (CBRoleChainEncoding.encode decoded.source) ∧
+        decoded.ontology.Perm (renameOntology decoded.allocation
+          (CBRoleChainEncoding.encode decoded.source)) ∧
         ∀ sub sup : Fin decoded.bounds.concepts,
           decoded.Entails sub sup ↔
             ∀ (D : Type)
@@ -415,6 +430,25 @@ example : reflexiveExample.check = .ok true := by native_decide
 example : irreflexiveExample.check = .ok true := by native_decide
 example : inverseFunctionalExample.check = .ok true := by native_decide
 example : disjointExample.check = .ok true := by native_decide
+
+private def interleavedSourceExample : WireSourceBinding where
+  version := 1
+  concept_count := 3
+  role_count := 1
+  function_count := 0
+  individual_count := 0
+  source_clauses := [.gci [0] [1], .gci [1] [2]]
+  role_chains := []
+  role_axioms := [.reflexive 0]
+  ontology :=
+    [ ⟨[concept 0 (.var 0)], [concept 1 (.var 0)]⟩
+    , ⟨[], [role 0 (.var 0) (.var 0)]⟩
+    , ⟨[concept 1 (.var 0)], [concept 2 (.var 0)]⟩ ]
+
+/-- Frontend axiom order may interleave semantic constructor families. The
+checker retains exact multiplicity and clause structure while accepting that
+semantically irrelevant list permutation. -/
+example : interleavedSourceExample.check = .ok true := by native_decide
 
 private def tamperRoleAxiomExample (wire : WireSourceBinding) : WireSourceBinding :=
   { wire with ontology := [] }

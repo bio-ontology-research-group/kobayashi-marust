@@ -29,6 +29,12 @@ pub enum NamedSourceClause {
         body: Vec<String>,
         head: Vec<String>,
     },
+    ExR {
+        source: String,
+        role: String,
+        filler: String,
+        function: String,
+    },
     AllR {
         source: String,
         role: String,
@@ -42,6 +48,10 @@ pub enum NamedSourceClause {
     SubR {
         sub: String,
         sup: String,
+    },
+    Inverse {
+        role: String,
+        inverse: String,
     },
     Functional {
         role: String,
@@ -76,6 +86,13 @@ fn equality(atom: &JAtom) -> Option<(&str, &str)> {
 fn concept(atom: &JAtom) -> Option<(&str, &str)> {
     match atom {
         JAtom::Concept { concept, term } => Some((concept, variable(term)?)),
+        _ => None,
+    }
+}
+
+fn unary_function(term: &JTerm) -> Option<(&str, &str)> {
+    match term {
+        JTerm::Fun { function, arg } => Some((function, variable(arg)?)),
         _ => None,
     }
 }
@@ -259,6 +276,84 @@ pub fn single_source_clause(clause: &JClause) -> Option<NamedSourceClause> {
         }
         _ => None,
     }
+}
+
+/// Recover a normalized constructor represented by exactly two adjacent
+/// production clauses. Clause order and term spelling are checked exactly;
+/// swapping either member therefore fails closed.
+pub fn paired_source_clause(first: &JClause, second: &JClause) -> Option<NamedSourceClause> {
+    if let ([first_trigger], [first_result], [second_trigger], [second_result]) = (
+        first.body.as_slice(),
+        first.head.as_slice(),
+        second.body.as_slice(),
+        second.head.as_slice(),
+    ) {
+        if let (
+            Some((source, x)),
+            JAtom::Role {
+                role: role_name,
+                source: role_source,
+                target: role_target,
+            },
+            Some((source2, x2)),
+            JAtom::Concept {
+                concept: filler,
+                term: filler_target,
+            },
+        ) = (
+            concept(first_trigger),
+            first_result,
+            concept(second_trigger),
+            second_result,
+        ) {
+            let role_source = variable(role_source)?;
+            let (function, function_arg) = unary_function(role_target)?;
+            let (filler_function, filler_arg) = unary_function(filler_target)?;
+            if source == source2
+                && x == x2
+                && x == role_source
+                && function == filler_function
+                && function_arg == x
+                && filler_arg == x
+            {
+                return Some(NamedSourceClause::ExR {
+                    source: source.to_string(),
+                    role: role_name.to_string(),
+                    filler: filler.to_string(),
+                    function: function.to_string(),
+                });
+            }
+        }
+
+        if let (
+            Some((role_name, x, y)),
+            Some((inverse, y2, x2)),
+            Some((inverse2, x3, y3)),
+            Some((role2, y4, x4)),
+        ) = (
+            role(first_trigger),
+            role(first_result),
+            role(second_trigger),
+            role(second_result),
+        ) {
+            if role_name == role2
+                && inverse == inverse2
+                && x == x2
+                && y == y2
+                && x == x3
+                && y == y3
+                && x == x4
+                && y == y4
+                && x != y
+            {
+                return Some(NamedSourceClause::Inverse {
+                    role: role_name.to_string(),
+                    inverse: inverse.to_string(),
+                });
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -553,5 +648,62 @@ mod tests {
         for clause in cases {
             assert_eq!(single_source_clause(&clause), None);
         }
+    }
+
+    #[test]
+    fn recognizes_actual_paired_source_constructors() {
+        use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
+
+        for (source_axiom, expected) in [
+            ("SubClassOf(<A> ObjectSomeValuesFrom(<R> <B>))", "exR"),
+            ("InverseObjectProperties(<R> <S>)", "inverse"),
+        ] {
+            let mut registry = IriRegistry::new();
+            let source = format!("Ontology({source_axiom})");
+            let ontology = parse::parse_axioms(&mut registry, &source).expect("parse paired axiom");
+            let (clauses, _, _) = normalise::normalise(&ontology);
+            let clauses = clauses.iter().map(clause_to_json).collect::<Vec<_>>();
+            let recovered = clauses
+                .windows(2)
+                .filter_map(|pair| paired_source_clause(&pair[0], &pair[1]))
+                .collect::<Vec<_>>();
+            assert!(
+                recovered.iter().any(|clause| matches!(
+                    (expected, clause),
+                    ("exR", NamedSourceClause::ExR { .. })
+                        | ("inverse", NamedSourceClause::Inverse { .. })
+                )),
+                "{source_axiom}: {}",
+                serde_json::to_string(&clauses).expect("serialize paired clauses")
+            );
+        }
+    }
+
+    #[test]
+    fn paired_source_rejects_crossed_existential_witnesses() {
+        let trigger = JAtom::Concept {
+            concept: "A".into(),
+            term: var("x"),
+        };
+        let fun = |name: &str| JTerm::Fun {
+            function: name.into(),
+            arg: Box::new(var("x")),
+        };
+        let first = JClause {
+            body: vec![trigger.clone()],
+            head: vec![JAtom::Role {
+                role: "R".into(),
+                source: var("x"),
+                target: fun("f"),
+            }],
+        };
+        let second = JClause {
+            body: vec![trigger],
+            head: vec![JAtom::Concept {
+                concept: "B".into(),
+                term: fun("g"),
+            }],
+        };
+        assert_eq!(paired_source_clause(&first, &second), None);
     }
 }
