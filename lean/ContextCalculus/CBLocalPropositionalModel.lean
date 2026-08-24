@@ -116,9 +116,26 @@ theorem local_raw_model [LinearOrder FLit] [WellFoundedLT FLit]
   exact hmodel (rawClause clause)
     ((mem_rawSet_iff retained _).mpr ⟨clause, hclause, rfl⟩)
 
+/-- The same result with the canonical ordered-resolution valuation exposed.
+Later Hyper completeness needs its producer witness, not merely an existential
+valuation extensionally satisfying the retained antichain. -/
+theorem local_raw_canonical_model [LinearOrder FLit] [WellFoundedLT FLit]
+    (retained : List FCL)
+    (hclosed : ∀ candidate ∈ localResolutionCandidates retained,
+      ∃ clause ∈ retained, Strengthens clause candidate)
+    (hbot : PClause.bot ∉ rawSet retained) :
+    ∀ clause ∈ retained,
+      ContextCalculus.sat (OrdRes.Itrue (rawSet retained)) clause := by
+  intro clause hclause
+  rw [← rawClause_sat_iff]
+  exact OrdResModulo.model_correct (rawSet retained)
+    (local_raw_closedModulo retained hclosed) hbot (rawClause clause)
+    ((mem_rawSet_iff retained _).mpr ⟨clause, hclause, rfl⟩)
+
 #print axioms rawClause_resolvent
 #print axioms local_raw_resolution_closed
 #print axioms local_raw_closedModulo
 #print axioms local_raw_model
+#print axioms local_raw_canonical_model
 
 end ContextCalculus.CBLocalPropositionalModel

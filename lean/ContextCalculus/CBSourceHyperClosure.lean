@@ -379,11 +379,47 @@ def maximalProvidersFor
           decide (provider.head[headIndex]? = some literal)).map fun headIndex =>
             (clauseIndex, headIndex)
 
+theorem mem_maximalProvidersFor_iff
+    (order : DecodedSourceFiniteOrder production)
+    (root : Bool) (retained : List FCL) (literal : FLit)
+    (location : ProviderLocation) :
+    location ∈ maximalProvidersFor order root retained literal ↔
+      location.1 < retained.length ∧
+      ∃ provider, retained[location.1]? = some provider ∧
+        location.2 ∈ order.maximalHeadIndices root provider.head ∧
+        provider.head[location.2]? = some literal := by
+  rcases location with ⟨clauseIndex, headIndex⟩
+  simp only [maximalProvidersFor, List.mem_flatMap, List.mem_range]
+  constructor
+  · rintro ⟨candidateIndex, hbound, hmember⟩
+    cases hprovider : retained[candidateIndex]? with
+    | none => simp [hprovider] at hmember
+    | some provider =>
+        simp only [hprovider, List.mem_map, List.mem_filter,
+          decide_eq_true_eq] at hmember
+        rcases hmember with ⟨selectedHead, ⟨hmaximal, hliteral⟩, heq⟩
+        simp only [Prod.mk.injEq] at heq
+        rcases heq with ⟨rfl, rfl⟩
+        exact ⟨hbound, provider, hprovider, hmaximal, hliteral⟩
+  · rintro ⟨hbound, provider, hprovider, hmaximal, hliteral⟩
+    refine ⟨clauseIndex, hbound, ?_⟩
+    simp only [hprovider, List.mem_map, List.mem_filter, decide_eq_true_eq]
+    exact ⟨headIndex, ⟨hmaximal, hliteral⟩, rfl⟩
+
 def providerSelections
     (order : DecodedSourceFiniteOrder production)
     (root : Bool) (retained : List FCL) (body : List FLit) :
     List (List ProviderLocation) :=
   cartesianSelections (body.map (maximalProvidersFor order root retained))
+
+theorem mem_providerSelections_iff
+    (order : DecodedSourceFiniteOrder production)
+    (root : Bool) (retained : List FCL) (body : List FLit)
+    (selection : List ProviderLocation) :
+    selection ∈ providerSelections order root retained body ↔
+      Selects selection
+        (body.map (maximalProvidersFor order root retained)) :=
+  mem_cartesianSelections_iff selection _
 
 def hyperCandidates (order : DecodedSourceFiniteOrder production)
     (root : Bool) (retained source : List FCL) : List FCL :=
@@ -480,6 +516,8 @@ theorem WireSourceHyperClosureDocument.check_sound
 #print axioms mem_maximalHeadIndices_iff
 #print axioms incomparable_pair_both_maximal
 #print axioms total_rank_maximal_is_production_maximal
+#print axioms mem_maximalProvidersFor_iff
+#print axioms mem_providerSelections_iff
 #print axioms sourceHyperClosedB_sound
 #print axioms WireSourceHyperClosureDocument.check_sound
 

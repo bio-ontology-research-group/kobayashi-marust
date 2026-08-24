@@ -159,6 +159,146 @@ theorem SourceProductionClosed.context_canonical_raw_model
     ContextCalculus.CBSourceGroundResolutionBridge.SourceProductionClosed.context_raw_model
       closed context hcontext hbot
 
+/-- The exact Bachmair–Ganzinger candidate valuation induced by KM's checked
+production order satisfies every retained clause in the context. -/
+theorem SourceProductionClosed.context_ordered_candidate_model
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (closed : SourceProductionClosed decoded)
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (hbot : PClause.bot ∉ rawSet context.retained) :
+    letI := linearOrder extension
+    letI := wellFoundedLT extension
+    ∀ clause ∈ context.retained,
+      ContextCalculus.sat (OrdRes.Itrue (rawSet context.retained)) clause := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  exact local_raw_canonical_model context.retained
+    (closed.localResolution context hcontext) hbot
+
+/-- Every literal made true by the exact ordered candidate valuation has a
+concrete retained producer whose selected occurrence is maximal under KM's
+production order. -/
+theorem ordered_candidate_true_has_production_provider
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (literal : FLit) :
+    letI := linearOrder extension
+    letI := wellFoundedLT extension
+    OrdRes.Itrue (rawSet context.retained) literal →
+      ∃ provider ∈ context.retained, ∃ index,
+        provider.head[index]? = some literal ∧
+        index ∈ (hyperOf decoded).order.maximalHeadIndices
+          context.root provider.head := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  intro htrue
+  obtain ⟨raw, hraw, hstrict, _, _⟩ :=
+    (OrdRes.Itrue_def (rawSet context.retained) literal).mp htrue
+  obtain ⟨provider, hprovider, hrawProvider⟩ :=
+    (mem_rawSet_iff context.retained raw).mp hraw
+  subst raw
+  have hliteralHead : literal ∈ provider.head :=
+    List.mem_toFinset.mp hstrict.1
+  obtain ⟨index, hbound, hget⟩ :=
+    List.mem_iff_getElem.mp hliteralHead
+  have hindex : provider.head[index]? = some literal :=
+    List.getElem?_eq_some_iff.mpr ⟨hbound, hget⟩
+  refine ⟨provider, hprovider, index, hindex, ?_⟩
+  apply canonical_max_is_production_maximal
+    (hyperOf decoded).order context hcontext provider hprovider extension index
+    literal hindex
+  intro other hother
+  have hotherSupport := retained_head_mem_ordered
+    (hyperOf decoded).order context hcontext provider hprovider other hother
+  have hliteralSupport := retained_head_mem_ordered
+    (hyperOf decoded).order context hcontext provider hprovider literal
+      hliteralHead
+  rw [← supported_rank_le_iff extension
+    ((extension.mem_linear_iff other).mpr hotherSupport)
+    ((extension.mem_linear_iff literal).mpr hliteralSupport)]
+  by_cases hequal : other = literal
+  · subst other
+    exact le_rfl
+  · exact le_of_lt (hstrict.2.2 other
+      (ContextCalculus.OrdRes.mem_lits.mpr
+        (Or.inr (List.mem_toFinset.mpr hother))) hequal)
+
+theorem ordered_candidate_true_has_provider_location
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (literal : FLit) :
+    letI := linearOrder extension
+    letI := wellFoundedLT extension
+    OrdRes.Itrue (rawSet context.retained) literal →
+      ∃ location,
+        location ∈ CBSourceHyperClosure.maximalProvidersFor
+          (hyperOf decoded).order context.root context.retained literal := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  intro htrue
+  obtain ⟨provider, hprovider, headIndex, hhead, hmaximal⟩ :=
+    ordered_candidate_true_has_production_provider context hcontext extension
+      literal htrue
+  obtain ⟨clauseIndex, hbound, hget⟩ :=
+    List.mem_iff_getElem.mp hprovider
+  have hproviderAt : context.retained[clauseIndex]? = some provider :=
+    List.getElem?_eq_some_iff.mpr ⟨hbound, hget⟩
+  refine ⟨(clauseIndex, headIndex), ?_⟩
+  rw [CBSourceHyperClosure.mem_maximalProvidersFor_iff]
+  exact ⟨hbound, provider, hproviderAt, hmaximal, hhead⟩
+
+theorem ordered_candidate_true_body_has_provider_selection
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (body : List FLit) :
+    letI := linearOrder extension
+    letI := wellFoundedLT extension
+    (∀ literal ∈ body,
+      OrdRes.Itrue (rawSet context.retained) literal) →
+      ∃ selection,
+        selection ∈ CBSourceHyperClosure.providerSelections
+          (hyperOf decoded).order context.root context.retained body := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  induction body with
+  | nil =>
+      intro _
+      exact ⟨[], by simp [CBSourceHyperClosure.providerSelections,
+        CBPredEnumeration.cartesianSelections]⟩
+  | cons literal body ih =>
+      intro htrue
+      obtain ⟨location, hlocation⟩ :=
+        ordered_candidate_true_has_provider_location context hcontext extension
+          literal (htrue literal (by simp))
+      obtain ⟨selection, hselection⟩ := ih (fun candidate hcandidate =>
+        htrue candidate (by simp [hcandidate]))
+      refine ⟨location :: selection, ?_⟩
+      rw [CBSourceHyperClosure.mem_providerSelections_iff]
+      simp only [List.map_cons, CBPredEnumeration.Selects]
+      exact ⟨hlocation,
+        (CBSourceHyperClosure.mem_providerSelections_iff _ _ _ _ _).mp
+          hselection⟩
+
 theorem SourceProductionClosed.context_ground_model
     [LinearOrder GroundAtom] [WellFoundedLT GroundAtom]
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -195,6 +335,10 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.context_raw_model
 #print axioms SourceProductionClosed.context_canonical_raw_model
+#print axioms SourceProductionClosed.context_ordered_candidate_model
+#print axioms ordered_candidate_true_has_production_provider
+#print axioms ordered_candidate_true_has_provider_location
+#print axioms ordered_candidate_true_body_has_provider_selection
 #print axioms SourceProductionClosed.retained_head_equality_normal
 #print axioms SourceProductionClosed.retained_factor_pair_covered
 #print axioms SourceProductionClosed.retained_eq_pair_covered
