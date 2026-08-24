@@ -5450,13 +5450,13 @@ mod cb_derivation_candidate_tests {
         let mut context = live_context(0, 9);
         context.nominal_ground = true;
         context.retained_clause_ids = vec![0, 1];
-        context.pred_pool_ids = vec![0];
-        context.pred_hwm = 1;
+        context.pred_pool_ids = vec![0, 1];
+        context.pred_hwm = 2;
         context.predecessors = vec![crate::engine::CbLivePredecessorEdge {
             predecessor_context: 0,
             label: individual,
             pushed: vec![ground_b],
-            pred_pool_seen: vec![0],
+            pred_pool_seen: vec![0, 1],
             edge_seen: 1,
         }];
         context.predecessor_edge_seen = vec![1];
@@ -5517,6 +5517,7 @@ mod cb_derivation_candidate_tests {
         ];
         let mut production = accepted_pred_production();
         let wire_source_clause = cb_wire_clause(&live.source_ontology[0], live.comp_ind_bits);
+        let wire_ground_clause = cb_wire_clause(&live.root_clause_arena[1], live.comp_ind_bits);
         production["source"] = serde_json::json!({
             "version": 1,
             "concept_count": 2,
@@ -5533,11 +5534,19 @@ mod cb_derivation_candidate_tests {
         production["contexts"][0]["root"] = serde_json::json!(true);
         production["contexts"][0]["nominal_ground"] = serde_json::json!(true);
         production["contexts"][0]["core"] = serde_json::json!([]);
-        production["contexts"][0]["retained"] = serde_json::json!([wire_source_clause.clone()]);
-        production["contexts"][0]["trace"] = serde_json::json!([{
-            "clause": wire_source_clause,
-            "justification": {"premise": {"index": 0, "substitution": []}}
-        }]);
+        production["contexts"][0]["imports"] = serde_json::json!([wire_ground_clause.clone()]);
+        production["contexts"][0]["retained"] =
+            serde_json::json!([wire_source_clause.clone(), wire_ground_clause.clone()]);
+        production["contexts"][0]["trace"] = serde_json::json!([
+            {
+                "clause": wire_source_clause,
+                "justification": {"premise": {"index": 0, "substitution": []}}
+            },
+            {
+                "clause": wire_ground_clause,
+                "justification": {"assumption": {"index": 0}}
+            }
+        ]);
         let global = serde_json::json!({"send": {
             "version": 2,
             "inter_context": {"production": production.clone()},
@@ -5549,7 +5558,7 @@ mod cb_derivation_candidate_tests {
         let candidate = cb_pred_send_coverage_candidate(&global, &live).unwrap();
         assert_eq!(candidate["senders"], serde_json::json!([]));
         assert_eq!(candidate["ground_context_index"], 0);
-        assert_eq!(candidate["root_sender"]["transfer_indices"], serde_json::json!([0]));
+        assert_eq!(candidate["root_sender"]["transfer_indices"], serde_json::json!([0, 1]));
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent().unwrap().join(".work/artifacts");
         std::fs::create_dir_all(&root).unwrap();
@@ -6859,7 +6868,11 @@ mod cb_derivation_candidate_tests {
         live.root_clause_arena = vec![unit.clone(), unit.clone()];
         live.source_ontology = vec![unit.clone()];
         live.contexts[0].retained_clause_ids = vec![0];
+        live.contexts[0].pred_pool_ids = vec![0];
+        live.contexts[0].pred_hwm = 1;
         live.contexts[1].retained_clause_ids = vec![1];
+        live.contexts[1].pred_pool_ids = vec![1];
+        live.contexts[1].pred_hwm = 1;
         live.insertion_history = vec![
             crate::engine::CbLiveInsertionEvent {
                 sequence: 0,
@@ -6934,6 +6947,15 @@ mod cb_derivation_candidate_tests {
             .arg(&path).status().unwrap();
         assert!(!dirty_status.success(),
             "source-bound live checker accepted a dirty context");
+
+        let mut missing_pool_entry = candidate.clone();
+        missing_pool_entry["contexts"][0]["pred_pool_ids"] = serde_json::json!([]);
+        missing_pool_entry["contexts"][0]["pred_hwm"] = serde_json::json!(0);
+        std::fs::write(&path, serde_json::to_vec(&missing_pool_entry).unwrap()).unwrap();
+        let missing_pool_status = std::process::Command::new(&checker)
+            .arg(&path).status().unwrap();
+        assert!(!missing_pool_status.success(),
+            "source-bound live checker accepted a missing eligible Pred-pool entry");
 
         if let Some(local_checker) =
             std::env::var_os("KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER")

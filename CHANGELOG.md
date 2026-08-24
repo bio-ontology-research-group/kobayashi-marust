@@ -73,6 +73,17 @@
   passes both the established transfer checker and the new source-bound
   checker. The source term-order refinement now enumerates actual source/live
   terms instead of the reserved, unrepresentable individual-ID-zero slot.
+- Require source-bound certificates to describe a genuinely quiescent terminal
+  state: no queued clauses or messages, no dirty contexts or r-Succ edges, no
+  truncation, and complete Pred, Succ, and r-Succ watermarks. Lean exposes the
+  global and per-context terminal invariants, and native forged-state tests
+  reject pending messages and dirty contexts.
+- Close the Pred-pool population gap. Lean now requires bounded,
+  duplicate-free pool IDs and proves that every Pred-eligible retained clause
+  occurs in the pool. KM uses one eligibility predicate for both ordinary
+  saturation and shared-base seeding; this corrects the shared-base omission
+  of nominal equality clauses such as `o ≈ x`. A representation regression
+  test and a forged missing-pool certificate test cover both sides.
 
 ### Accept empty exact CB transfer partitions
 

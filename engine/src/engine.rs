@@ -2091,6 +2091,23 @@ impl Context {
     }
 }
 
+/// Exact eligibility predicate for the append-only Pred propagation pool.
+/// Seeding and ordinary saturation must use this one definition: otherwise a
+/// context-independent nominal equality can disappear only when it enters via
+/// the shared base, making propagation depend on a representation choice.
+fn pred_pool_eligible(clause: &ContextClause) -> bool {
+    clause.head.iter().all(|literal| {
+        literal.is_function_free()
+            && match literal {
+                Lit::P(_) => true,
+                Lit::Eq { s, t } => {
+                    is_individual(*s) && (*t == X || *t == Y || is_individual(*t))
+                }
+                Lit::Ineq { .. } => false,
+            }
+    })
+}
+
 impl ClauseLayer {
     /// Place an already-derived clause into this layer's worked-off set without
     /// firing any rules: clause-key set, active redundancy index, semi-naive
@@ -2106,10 +2123,7 @@ impl ClauseLayer {
         let (pred_eligible, succ_eligible) = {
             let clause = &arena[cid as usize];
             (
-                clause
-                    .head
-                    .iter()
-                    .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
+                pred_pool_eligible(clause),
                 clause
                     .max_head_predicates()
                     .any(|(p, _)| is_function(p.max_term())),
@@ -4628,16 +4642,7 @@ impl Engine {
             // other equalities stay local, as before.  Succ-eligible: some
             // maximal head predicate is on a function term (succ-trigger
             // candidate) or is an Su^r ground form (r-Succ candidate).
-            let pred_eligible = clause.head.iter().all(|l| {
-                l.is_function_free()
-                    && match l {
-                        Lit::P(_) => true,
-                        Lit::Eq { s, t } => {
-                            is_individual(*s) && (*t == X || *t == Y || is_individual(*t))
-                        }
-                        Lit::Ineq { .. } => false,
-                    }
-            });
+            let pred_eligible = pred_pool_eligible(&clause);
             let succ_eligible = clause
                 .max_head_predicates()
                 .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
@@ -11634,6 +11639,24 @@ mod base_delta_tests {
             ground_body_keys: ctx.ground_body_keys().into_iter().collect(),
             bridge_keys: ctx.bridge_keys().into_iter().collect(),
         }
+    }
+
+    #[test]
+    fn shared_seed_preserves_nominal_pred_equalities() {
+        let sig = Sig::default();
+        let nominal = ind_term(1);
+        let arena = vec![ContextClause::new(
+            Vec::new(),
+            vec![Lit::eq(nominal, X)],
+            true,
+            &sig,
+        )];
+        assert!(pred_pool_eligible(&arena[0]));
+
+        let mut seeded = ClauseLayer::default();
+        assert!(seeded.seed(&arena, 0));
+        assert_eq!(seeded.pred_pool, vec![0],
+            "shared-base seeding dropped a nominal Pred equality");
     }
 
     /// `Engine::seed_worked_off` at the layer level: the combined view gates the

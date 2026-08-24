@@ -1,4 +1,5 @@
 import ContextCalculus.CBLiveInsertionDerivation
+import ContextCalculus.CBPredSendEnumeration
 
 /-!
 # Source-bound live CB insertion derivations
@@ -18,6 +19,12 @@ open ContextCalculus.CBProductionTraceWire
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBLiveInsertionDerivation
 open ContextCalculus.CBInterContextWire
+open ContextCalculus.CBPredSendEnumeration
+
+def predPoolCoversRetained (retainedClauseIds : List Nat)
+    (retained : List FCL) (predPoolIds : List Nat) : Bool :=
+  (retainedClauseIds.zip retained).all fun entry =>
+    !predClauseEligible entry.2 || decide (entry.1 ∈ predPoolIds)
 
 structure DecodedSourcePredecessorEdge (production : DecodedProductionRun) where
   predecessorIndex : Fin production.contexts.length
@@ -92,6 +99,11 @@ structure DecodedSourceLiveContext
   todo_empty : wireTodoCount = 0
   clean : wireDirty = false
   predPoolIds : List Nat
+  pred_pool_ids_nodup : predPoolIds.Nodup
+  pred_pool_ids_bounded : predPoolIds.all fun clauseId =>
+    clauseId < (if rootDomain then root else ordinary).length
+  pred_pool_covers_retained :
+    predPoolCoversRetained retainedClauseIds retained predPoolIds = true
   predHwm : Nat
   pred_hwm_eq : predHwm = predPoolIds.length
   succPoolIds : List Nat
@@ -132,60 +144,71 @@ def decodeSourceLiveContext (production : DecodedProductionRun)
                 if hretained : retained = context.retained then
                   if htodo : wire.todo_clause_ids.length = 0 then
                     if hclean : wire.dirty = false then
-                      if hpredHwm : wire.pred_hwm = wire.pred_pool_ids.length then
-                        if hsuccHwm : wire.succ_hwm = wire.succ_pool_ids.length then
-                          if hrsuccHwm : wire.rsucc_hwm = wire.rsucc_pool_ids.length then
-                            let rSuccReach ← wire.rsucc_reach.mapM
-                              (WireLivePredicate.decode production.bounds bits)
-                            if hrsuccOffered : wire.rsucc_offered = rSuccReach.length then
-                              if hrsuccClean : wire.rsucc_edges_grew = false then
-                                let predecessors ← wire.predecessors.mapM
-                                  (decodeSourcePredecessorEdge production bits)
-                                if hseenBounded : predecessors.all fun edge =>
-                                    edge.predPoolSeen.all fun index =>
-                                      index < wire.pred_pool_ids.length then
-                                  let successors ← wire.successors.mapM
-                                    (decodeSourceSuccessorEdge production bits
-                                      rSuccReach.length)
-                                  return {
-                                    contextIndex
-                                    contextId := wire.context_id
-                                    rootDomain := wire.root
-                                    context_id_eq := hid
-                                    root_eq := hroot
-                                    retainedClauseIds := wire.retained_clause_ids
-                                    retained_clause_ids_nodup := hretainedIds
-                                    retained
-                                    retained_eq := hretained
-                                    wireTodoCount := wire.todo_clause_ids.length
-                                    wireDirty := wire.dirty
-                                    todo_empty := htodo
-                                    clean := hclean
-                                    predPoolIds := wire.pred_pool_ids
-                                    predHwm := wire.pred_hwm
-                                    pred_hwm_eq := hpredHwm
-                                    succPoolIds := wire.succ_pool_ids
-                                    succHwm := wire.succ_hwm
-                                    succ_hwm_eq := hsuccHwm
-                                    rSuccPoolIds := wire.rsucc_pool_ids
-                                    rSuccHwm := wire.rsucc_hwm
-                                    rsucc_hwm_eq := hrsuccHwm
-                                    rSuccReach
-                                    rSuccOffered := wire.rsucc_offered
-                                    wireRSuccEdgesGrew := wire.rsucc_edges_grew
-                                    rsucc_offered_eq := hrsuccOffered
-                                    rsucc_edges_clean := hrsuccClean
-                                    predecessors
-                                    pred_pool_seen_bounded := hseenBounded
-                                    successors
-                                  }
-                                else
-                                  throw "source-bound CB predecessor sent-pool index is outside the pool"
-                              else throw "source-bound CB context still has dirty r-Succ edges"
-                            else throw "source-bound CB r-Succ offers are incomplete"
-                          else throw "source-bound CB r-Succ pool watermark is incomplete"
-                        else throw "source-bound CB Succ pool watermark is incomplete"
-                      else throw "source-bound CB Pred pool watermark is incomplete"
+                      if hpredNodup : wire.pred_pool_ids.Nodup then
+                        if hpredBounded : wire.pred_pool_ids.all fun clauseId =>
+                            clauseId < arena.length then
+                          if hpredCoverage : predPoolCoversRetained
+                              wire.retained_clause_ids retained wire.pred_pool_ids = true then
+                            if hpredHwm : wire.pred_hwm = wire.pred_pool_ids.length then
+                              if hsuccHwm : wire.succ_hwm = wire.succ_pool_ids.length then
+                                if hrsuccHwm : wire.rsucc_hwm = wire.rsucc_pool_ids.length then
+                                  let rSuccReach ← wire.rsucc_reach.mapM
+                                    (WireLivePredicate.decode production.bounds bits)
+                                  if hrsuccOffered : wire.rsucc_offered = rSuccReach.length then
+                                    if hrsuccClean : wire.rsucc_edges_grew = false then
+                                      let predecessors ← wire.predecessors.mapM
+                                        (decodeSourcePredecessorEdge production bits)
+                                      if hseenBounded : predecessors.all fun edge =>
+                                          edge.predPoolSeen.all fun index =>
+                                            index < wire.pred_pool_ids.length then
+                                        let successors ← wire.successors.mapM
+                                          (decodeSourceSuccessorEdge production bits
+                                            rSuccReach.length)
+                                        return {
+                                          contextIndex
+                                          contextId := wire.context_id
+                                          rootDomain := wire.root
+                                          context_id_eq := hid
+                                          root_eq := hroot
+                                          retainedClauseIds := wire.retained_clause_ids
+                                          retained_clause_ids_nodup := hretainedIds
+                                          retained
+                                          retained_eq := hretained
+                                          wireTodoCount := wire.todo_clause_ids.length
+                                          wireDirty := wire.dirty
+                                          todo_empty := htodo
+                                          clean := hclean
+                                          predPoolIds := wire.pred_pool_ids
+                                          pred_pool_ids_nodup := hpredNodup
+                                          pred_pool_ids_bounded := hpredBounded
+                                          pred_pool_covers_retained := hpredCoverage
+                                          predHwm := wire.pred_hwm
+                                          pred_hwm_eq := hpredHwm
+                                          succPoolIds := wire.succ_pool_ids
+                                          succHwm := wire.succ_hwm
+                                          succ_hwm_eq := hsuccHwm
+                                          rSuccPoolIds := wire.rsucc_pool_ids
+                                          rSuccHwm := wire.rsucc_hwm
+                                          rsucc_hwm_eq := hrsuccHwm
+                                          rSuccReach
+                                          rSuccOffered := wire.rsucc_offered
+                                          wireRSuccEdgesGrew := wire.rsucc_edges_grew
+                                          rsucc_offered_eq := hrsuccOffered
+                                          rsucc_edges_clean := hrsuccClean
+                                          predecessors
+                                          pred_pool_seen_bounded := hseenBounded
+                                          successors
+                                        }
+                                      else
+                                        throw "source-bound CB predecessor sent-pool index is outside the pool"
+                                    else throw "source-bound CB context still has dirty r-Succ edges"
+                                  else throw "source-bound CB r-Succ offers are incomplete"
+                                else throw "source-bound CB r-Succ pool watermark is incomplete"
+                              else throw "source-bound CB Succ pool watermark is incomplete"
+                            else throw "source-bound CB Pred pool watermark is incomplete"
+                          else throw "source-bound CB Pred pool omits an eligible retained clause"
+                        else throw "source-bound CB Pred pool clause id is outside its arena"
+                      else throw "source-bound CB Pred pool contains a duplicate clause id"
                     else throw "source-bound CB context remains dirty"
                   else throw "source-bound CB context has pending clauses"
                 else throw "source-bound CB retained clauses differ from production"
@@ -337,6 +360,19 @@ theorem DecodedSourceLiveInsertionDerivationDocument.terminal_context
     context.rsucc_edges_clean, ?_⟩
   intro edge _hedge
   exact edge.reach_hwm_eq
+
+theorem DecodedSourceLiveInsertionDerivationDocument.pred_pool_contains_eligible_retained
+    (decoded : DecodedSourceLiveInsertionDerivationDocument)
+    (context : DecodedSourceLiveContext decoded.production
+      decoded.ordinaryArena decoded.rootArena)
+    (_hcontext : context ∈ decoded.contexts)
+    (entry : Nat × FCL)
+    (hentry : entry ∈ context.retainedClauseIds.zip context.retained)
+    (heligible : predClauseEligible entry.2 = true) :
+    entry.1 ∈ context.predPoolIds := by
+  have hcovered := List.all_eq_true.mp context.pred_pool_covers_retained entry hentry
+  simp only [heligible, Bool.not_true, Bool.false_or, decide_eq_true_eq] at hcovered
+  exact hcovered
 
 theorem DecodedSourceLiveInsertionDerivationDocument.retained_contextValid
     (decoded : DecodedSourceLiveInsertionDerivationDocument)
