@@ -17,10 +17,12 @@ open ContextCalculus.CBGroundEqualityBridge
 open ContextCalculus.CBGroundResolutionBridge
 open ContextCalculus.CBSourceProductionClosure
 open ContextCalculus.CBSourceRootPredClosure
+open ContextCalculus.CBSourceLiveInsertionDerivation
 open ContextCalculus.CBProductionTraceWire
 open ContextCalculus.CBProductionTrace
 open ContextCalculus.CBLocalPropositionalModel
 open ContextCalculus.CBLocalFactorClosureWire
+open ContextCalculus.CBSourceEqClosure
 
 theorem SourceProductionClosed.retained_head_normal
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -74,6 +76,46 @@ theorem SourceProductionClosed.retained_factor_pair_covered
   (localOf decoded).factor_pair_covered context hcontext sourceIndex
     firstHeadIndex secondHeadIndex source hsource common first second hfirst
     hsecond hdistinct filtered hnormalize
+
+theorem SourceProductionClosed.retained_eq_pair_covered
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (_closed : SourceProductionClosed decoded)
+    (context : DecodedSourceLiveContext (liveOf decoded).production
+      (liveOf decoded).ordinaryArena (liveOf decoded).rootArena)
+    (hcontext : context ∈ (liveOf decoded).contexts)
+    (equalityIndex equalityHeadIndex targetIndex targetHeadIndex : Nat)
+    (equalityClause targetClause : FCL)
+    (hequalityClause : context.retained[equalityIndex]? = some equalityClause)
+    (htargetClause : context.retained[targetIndex]? = some targetClause)
+    (hmaxEquality : equalityHeadIndex ∈
+      (hyperOf decoded).order.maximalHeadIndices context.rootDomain
+        equalityClause.head)
+    (hmaxTarget : targetHeadIndex ∈
+      (hyperOf decoded).order.maximalHeadIndices context.rootDomain
+        targetClause.head)
+    (left right : FTerm)
+    (hequality : equalityClause.head[equalityHeadIndex]? =
+      some (.eq left right))
+    (target rewritten : FLit)
+    (htarget : targetClause.head[targetHeadIndex]? = some target)
+    (hdifferent : target ≠ .eq left right)
+    (hrewrite : directRewrite (hyperOf decoded).order left right target =
+      some rewritten)
+    (hproduction : CBLocalEqEnumeration.productionCase left right target = true)
+    (filtered : List FLit)
+    (hnormalize : normalizeGeneratedHead
+      (CBLocalEqEnumeration.directParamodulant targetClause equalityClause
+        target (.eq left right) rewritten).head = some filtered) :
+    ∃ retained ∈ context.retained,
+      CBProductionTrace.Strengthens retained
+        { CBLocalEqEnumeration.directParamodulant targetClause equalityClause
+            target (.eq left right) rewritten with head := filtered } :=
+  sourceEq_pair_covered (hyperOf decoded).order context
+    ((eqOf decoded).eq_closed context hcontext)
+    equalityIndex equalityHeadIndex targetIndex targetHeadIndex equalityClause
+    targetClause hequalityClause htargetClause hmaxEquality hmaxTarget left right
+    hequality target rewritten htarget hdifferent hrewrite hproduction filtered
+    hnormalize
 
 /-- Feature-independent local candidate valuation obtained from the same
 source-bound production certificate. Equality coherence is established by the
@@ -130,5 +172,6 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.context_raw_model
 #print axioms SourceProductionClosed.retained_head_equality_normal
 #print axioms SourceProductionClosed.retained_factor_pair_covered
+#print axioms SourceProductionClosed.retained_eq_pair_covered
 
 end ContextCalculus.CBSourceGroundResolutionBridge

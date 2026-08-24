@@ -228,6 +228,74 @@ theorem sourceEqClosedB_sound
   have hany := List.all_eq_true.mp hclosed candidate hcandidate
   simpa only [List.any_eq_true, decide_eq_true_eq] using hany
 
+/-- Eliminate the finite candidate enumerator from the semantic Eq-closure
+surface. Every concrete maximal equality/target pair accepted by production's
+rewrite guards has a retained strengthening of its normalized paramodulant. -/
+theorem sourceEq_pair_covered
+    (order : DecodedSourceFiniteOrder production)
+    (context : DecodedSourceLiveContext production ordinary rootArena)
+    (hclosed : sourceEqClosedB order context = true)
+    (equalityIndex equalityHeadIndex targetIndex targetHeadIndex : Nat)
+    (equalityClause targetClause : FCL)
+    (hequalityClause : context.retained[equalityIndex]? = some equalityClause)
+    (htargetClause : context.retained[targetIndex]? = some targetClause)
+    (hmaxEquality : equalityHeadIndex ∈
+      order.maximalHeadIndices context.rootDomain equalityClause.head)
+    (hmaxTarget : targetHeadIndex ∈
+      order.maximalHeadIndices context.rootDomain targetClause.head)
+    (left right : FTerm)
+    (hequality : equalityClause.head[equalityHeadIndex]? =
+      some (.eq left right))
+    (target rewritten : FLit)
+    (htarget : targetClause.head[targetHeadIndex]? = some target)
+    (hdifferent : target ≠ .eq left right)
+    (hrewrite : directRewrite order left right target = some rewritten)
+    (hproduction : productionCase left right target = true)
+    (filtered : List FLit)
+    (hnormalize : normalizeGeneratedHead
+      (CBLocalEqEnumeration.directParamodulant targetClause equalityClause
+        target (.eq left right) rewritten).head = some filtered) :
+    ∃ retained ∈ context.retained,
+      Strengthens retained
+        { CBLocalEqEnumeration.directParamodulant targetClause equalityClause
+            target (.eq left right) rewritten with head := filtered } := by
+  have hequalityBound : equalityIndex < context.retained.length :=
+    (List.getElem?_eq_some_iff.mp hequalityClause).1
+  have htargetBound : targetIndex < context.retained.length :=
+    (List.getElem?_eq_some_iff.mp htargetClause).1
+  have hequalityHeadBound : equalityHeadIndex < equalityClause.head.length :=
+    (List.getElem?_eq_some_iff.mp hequality).1
+  have htargetHeadBound : targetHeadIndex < targetClause.head.length :=
+    (List.getElem?_eq_some_iff.mp htarget).1
+  let signature : EqSignature :=
+    { equalityIndex, equalityHeadIndex, targetIndex, targetHeadIndex }
+  let conclusion : FCL :=
+    { CBLocalEqEnumeration.directParamodulant targetClause equalityClause
+        target (.eq left right) rewritten with head := filtered }
+  let candidate : EqCandidate := {
+    signature, left, right
+    equality := .eq left right
+    target, rewritten, conclusion }
+  have hcandidateAt : candidateAt? order context.rootDomain context.retained
+      equalityIndex equalityHeadIndex targetIndex targetHeadIndex =
+      some candidate := by
+    simp [candidateAt?, hequalityClause, htargetClause, hmaxEquality,
+      hmaxTarget, hequality, htarget, hdifferent, hrewrite, hproduction,
+      hnormalize, candidate, signature, conclusion]
+  have hsignature : signature ∈ signatures context.retained := by
+    simp only [signatures, List.mem_flatMap, List.mem_range]
+    refine ⟨equalityIndex, hequalityBound, ?_⟩
+    simp only [hequalityClause, List.mem_flatMap, List.mem_range]
+    refine ⟨equalityHeadIndex, hequalityHeadBound, ?_⟩
+    refine ⟨targetIndex, htargetBound, ?_⟩
+    simp only [htargetClause, List.mem_map, List.mem_range]
+    exact ⟨targetHeadIndex, htargetHeadBound, rfl⟩
+  have hcandidate : candidate ∈
+      candidates order context.rootDomain context.retained := by
+    rw [candidates, List.mem_filterMap]
+    exact ⟨signature, hsignature, by rw [hcandidateAt]⟩
+  exact sourceEqClosedB_sound order context hclosed candidate hcandidate
+
 structure WireSourceEqClosureDocument where
   version : Nat
   succ_closure : WireSourceSuccClosureDocument
@@ -278,6 +346,7 @@ theorem WireSourceEqClosureDocument.check_sound
 #print axioms eval_directRewrite_iff
 #print axioms directParamodulant_sound
 #print axioms mem_candidates_has_checked_origin
+#print axioms sourceEq_pair_covered
 #print axioms WireSourceEqClosureDocument.check_sound
 
 end ContextCalculus.CBSourceEqClosure

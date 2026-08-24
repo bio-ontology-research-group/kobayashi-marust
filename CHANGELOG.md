@@ -137,6 +137,13 @@
   and obtains its coverage from the same composed terminal certificate. This
   is the pairwise equality-consistency premise needed by the ordered canonical
   term-model construction.
+- Eliminate the ordered-paramodulation enumerator from the source-bound
+  semantic surface. Given concrete retained equality and target clauses, the
+  theorem checks their terminal indices, maximal-head membership, direct
+  rewrite, production-case guard, and normalized head, reconstructs the exact
+  Eq candidate, and obtains a retained strengthening from the same terminal
+  certificate. The composed production theorem now exposes both Factor-pair
+  and Eq-pair closure without trusting Rust's serialized candidate list.
 
 ### Accept empty exact CB transfer partitions
 
