@@ -4784,6 +4784,9 @@ fn cb_source_live_derivation_candidate(
         "contexts": live_json.get("contexts")
             .cloned().ok_or_else(|| "live CB snapshot omits contexts".to_string())?,
         "insertion_evidence": insertion_evidence,
+        "pending_messages": live.pending_messages,
+        "message_truncated": live.message_truncated,
+        "nominal_truncated": live.nominal_truncated,
     }))
 }
 
@@ -6915,6 +6918,22 @@ mod cb_derivation_candidate_tests {
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
         let status = std::process::Command::new(&checker).arg(&path).status().unwrap();
         assert!(status.success(), "source-bound live Pred candidate was rejected");
+
+        let mut pending = candidate.clone();
+        pending["pending_messages"] = serde_json::json!(1);
+        std::fs::write(&path, serde_json::to_vec(&pending).unwrap()).unwrap();
+        let pending_status = std::process::Command::new(&checker)
+            .arg(&path).status().unwrap();
+        assert!(!pending_status.success(),
+            "source-bound live checker accepted pending messages");
+
+        let mut dirty = candidate.clone();
+        dirty["contexts"][0]["dirty"] = serde_json::json!(true);
+        std::fs::write(&path, serde_json::to_vec(&dirty).unwrap()).unwrap();
+        let dirty_status = std::process::Command::new(&checker)
+            .arg(&path).status().unwrap();
+        assert!(!dirty_status.success(),
+            "source-bound live checker accepted a dirty context");
 
         if let Some(local_checker) =
             std::env::var_os("KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER")
