@@ -1,5 +1,6 @@
 import ContextCalculus.CBGroundEqualityBridge
 import ContextCalculus.CBSourceLocalClosure
+import ContextCalculus.CBLocalEqEnumeration
 
 /-!
 # Production local Resolution as ground resolution
@@ -17,6 +18,7 @@ open ContextCalculus ContextCalculus.CheckerTerm
 open ContextCalculus.CBProductionTrace ContextCalculus.PropRes
 open ContextCalculus.CBGroundEqualityBridge
 open ContextCalculus.CBSourceLocalClosure
+open ContextCalculus.CBClauseShape
 
 def InequalityFree (clause : FCL) : Prop :=
   (∀ literal ∈ clause.body, inequalityAtom? literal = none) ∧
@@ -26,6 +28,43 @@ def literalOfGroundAtom : GroundAtom → FLit
   | .con concept term => .P (.concept concept term)
   | .rol role source target => .P (.role role source target)
   | .eqa left right => .eq left right
+
+theorem literalOfGroundAtom_injective :
+    Function.Injective literalOfGroundAtom := by
+  intro first second hequal
+  cases first <;> cases second <;> simp_all [literalOfGroundAtom]
+
+/-- With KM's checked body polarity, every positive ground-clause occurrence
+comes from a positive literal in the CB head.  The alternative polarity source,
+a disequality in the body, is impossible. -/
+theorem mem_positiveAtoms_of_predicateBody
+    (clause : FCL) (hbody : PredicateBody clause) (atom : GroundAtom) :
+    atom ∈ positiveAtoms clause ↔
+      ∃ literal ∈ clause.head, positiveAtom? literal = some atom := by
+  rw [CBGroundEqualityBridge.mem_positiveAtoms_iff]
+  constructor
+  · rintro (hhead | ⟨literal, hliteral, hinequality⟩)
+    · exact hhead
+    · obtain ⟨predicate, rfl⟩ := hbody literal hliteral
+      simp [inequalityAtom?] at hinequality
+  · exact Or.inl
+
+/-- Negative ground-clause occurrences have exactly the two expected origins:
+a positive predicate/equality body literal, or a head disequality. -/
+theorem mem_negativeAtoms_of_predicateBody
+    (clause : FCL) (_hbody : PredicateBody clause) (atom : GroundAtom) :
+    atom ∈ negativeAtoms clause ↔
+      (∃ literal ∈ clause.body, positiveAtom? literal = some atom) ∨
+      (∃ literal ∈ clause.head, inequalityAtom? literal = some atom) :=
+  CBGroundEqualityBridge.mem_negativeAtoms_iff clause atom
+
+theorem filterMap_inequality_eq_nil_of_predicateBody
+    (clause : FCL) (hbody : PredicateBody clause) :
+    clause.body.filterMap inequalityAtom? = [] := by
+  apply List.filterMap_eq_nil_iff.mpr
+  intro literal hliteral
+  obtain ⟨predicate, rfl⟩ := hbody literal hliteral
+  rfl
 
 theorem literalOfGroundAtom_positive {literal : FLit} {atom : GroundAtom}
     (hpositive : positiveAtom? literal = some atom) :
@@ -82,6 +121,117 @@ theorem filterMap_positive_without (literals : List FLit) (literal : FLit)
     subst source
     exact hne (Option.some.inj (hencoded.symm.trans hliteral))
 
+theorem filterMap_inequality_without (literals : List FLit)
+    (literal : FLit) (atom : GroundAtom)
+    (hliteral : inequalityAtom? literal = some atom) :
+    ((without literal literals).filterMap inequalityAtom?).toFinset =
+      (literals.filterMap inequalityAtom?).toFinset.erase atom := by
+  ext candidate
+  constructor
+  · intro hcandidate
+    simp only [List.mem_toFinset, List.mem_filterMap] at hcandidate
+    obtain ⟨source, hsource, hencoded⟩ := hcandidate
+    rw [mem_without] at hsource
+    rw [Finset.mem_erase]
+    refine ⟨?_, ?_⟩
+    · intro heq
+      subst candidate
+      cases source <;> cases literal <;> simp_all [inequalityAtom?]
+      next s₁ t₁ s₂ t₂ =>
+        injection hencoded.trans hliteral.symm with hs ht
+        exact hsource.2 hs ht
+    · rw [List.mem_toFinset, List.mem_filterMap]
+      exact ⟨source, hsource.1, hencoded⟩
+  · intro hcandidate
+    rw [Finset.mem_erase] at hcandidate
+    rw [List.mem_toFinset, List.mem_filterMap] at hcandidate
+    obtain ⟨hne, source, hsource, hencoded⟩ := hcandidate
+    rw [List.mem_toFinset, List.mem_filterMap]
+    refine ⟨source, (mem_without).mpr ⟨hsource, ?_⟩, hencoded⟩
+    intro heq
+    subst source
+    exact hne (Option.some.inj (hencoded.symm.trans hliteral))
+
+theorem filterMap_positive_without_ineq (literals : List FLit)
+    (left right : FTerm) :
+    ((without (.ineq left right) literals).filterMap positiveAtom?).toFinset =
+      (literals.filterMap positiveAtom?).toFinset := by
+  ext atom
+  simp only [List.mem_toFinset, List.mem_filterMap]
+  constructor
+  · rintro ⟨literal, hliteral, hatom⟩
+    exact ⟨literal, (mem_without.mp hliteral).1, hatom⟩
+  · rintro ⟨literal, hliteral, hatom⟩
+    refine ⟨literal, mem_without.mpr ⟨hliteral, ?_⟩, hatom⟩
+    intro hequal
+    subst literal
+    simp [positiveAtom?] at hatom
+
+theorem filterMap_inequality_without_eq (literals : List FLit)
+    (left right : FTerm) :
+    ((without (.eq left right) literals).filterMap inequalityAtom?).toFinset =
+      (literals.filterMap inequalityAtom?).toFinset := by
+  ext atom
+  simp only [List.mem_toFinset, List.mem_filterMap]
+  constructor
+  · rintro ⟨literal, hliteral, hatom⟩
+    exact ⟨literal, (mem_without.mp hliteral).1, hatom⟩
+  · rintro ⟨literal, hliteral, hatom⟩
+    refine ⟨literal, mem_without.mpr ⟨hliteral, ?_⟩, hatom⟩
+    intro hequal
+    subst literal
+    simp [inequalityAtom?] at hatom
+
+theorem equalityAtom_not_mem_body_positive
+    (clause : FCL) (hbody : PredicateBody clause) (left right : FTerm) :
+    .eqa left right ∉ (clause.body.filterMap positiveAtom?).toFinset := by
+  intro hmember
+  rw [List.mem_toFinset, List.mem_filterMap] at hmember
+  obtain ⟨literal, hliteral, hatom⟩ := hmember
+  obtain ⟨predicate, rfl⟩ := hbody literal hliteral
+  cases predicate <;> simp [positiveAtom?] at hatom
+
+/-- Equality--disequality production cancellation is exactly propositional
+resolution after the polarity-aware ground translation. -/
+theorem groundClause_productionParamodulant_cancel
+    (equalityClause targetClause : FCL) (left right : FTerm)
+    (hequalityBody : PredicateBody equalityClause)
+    (htargetBody : PredicateBody targetClause) :
+    groundClause
+        (CBLocalEqEnumeration.productionParamodulant targetClause equalityClause
+          (.ineq left right) (.eq left right) none) =
+      PropRes.resolvent (groundClause equalityClause)
+        (groundClause targetClause) (.eqa left right) := by
+  rw [PClause.mk.injEq]
+  constructor
+  · simp only [groundClause, CBLocalEqEnumeration.productionParamodulant,
+      negativeAtoms, List.filterMap_append, List.toFinset_append,
+      PropRes.resolvent]
+    rw [filterMap_inequality_without targetClause.head (.ineq left right)
+      (.eqa left right) rfl]
+    rw [filterMap_inequality_without_eq equalityClause.head left right]
+    have hnotBody :=
+      equalityAtom_not_mem_body_positive targetClause htargetBody left right
+    have hnotBody' :
+        ¬ ∃ literal ∈ targetClause.body,
+          positiveAtom? literal = some (.eqa left right) := by
+      simpa [List.mem_filterMap] using hnotBody
+    ext atom
+    by_cases hatom : atom = .eqa left right
+    · subst atom
+      simp [hnotBody', or_assoc, or_left_comm, or_comm]
+    · simp [hatom, or_assoc, or_left_comm, or_comm]
+  · simp only [groundClause, CBLocalEqEnumeration.productionParamodulant,
+      positiveAtoms, List.filterMap_append, List.toFinset_append,
+      PropRes.resolvent]
+    rw [filterMap_positive_without equalityClause.head (.eq left right)
+      (.eqa left right) rfl]
+    rw [filterMap_positive_without_ineq targetClause.head left right]
+    rw [filterMap_inequality_eq_nil_of_predicateBody _ hequalityBody,
+      filterMap_inequality_eq_nil_of_predicateBody _ htargetBody]
+    simp only [List.toFinset_nil, Finset.union_empty]
+    ac_rfl
+
 theorem filterMap_inequality_eq_nil (literals : List FLit)
     (hfree : ∀ literal ∈ literals, inequalityAtom? literal = none) :
     literals.filterMap inequalityAtom? = [] := by
@@ -102,7 +252,7 @@ theorem positiveAtoms_eq (clause : FCL) (hfree : InequalityFree clause) :
 
 theorem resolvent_inequalityFree {positive negative : FCL} {literal : FLit}
     (hpositive : InequalityFree positive) (hnegative : InequalityFree negative)
-    (hhead : literal ∈ positive.head) (hbody : literal ∈ negative.body) :
+    (_hhead : literal ∈ positive.head) (_hbody : literal ∈ negative.body) :
     InequalityFree (ContextCalculus.resolvent positive negative literal) := by
   constructor
   · intro candidate hcandidate
@@ -223,6 +373,10 @@ theorem local_ground_model [LinearOrder GroundAtom] [WellFoundedLT GroundAtom]
     (local_ground_closedModulo retained hfree hclosed) hbot
 
 #print axioms positiveAtom_injective
+#print axioms literalOfGroundAtom_injective
+#print axioms mem_positiveAtoms_of_predicateBody
+#print axioms mem_negativeAtoms_of_predicateBody
+#print axioms groundClause_productionParamodulant_cancel
 #print axioms filterMap_positive_without
 #print axioms groundClause_resolvent
 #print axioms local_ground_resolution_closed

@@ -24,6 +24,7 @@ open ContextCalculus.CBSourceLinearExtension
 open ContextCalculus.CBSourceCanonicalOrder
 open ContextCalculus.CBLocalPropositionalModel
 open ContextCalculus.CBGroundEqualityBridge
+open ContextCalculus.CBGroundResolutionBridge
 open ContextCalculus.Eqv
 open ContextCalculus.CBClauseShape
 
@@ -59,6 +60,57 @@ theorem retained_clause_predicateBody
     (clause : FCL) (hclause : clause ∈ context.retained) :
     PredicateBody clause :=
   context.retained_predicate_body clause hclause
+
+/-- Ground atoms inherit the checked production extension through their unique
+positive CB literal.  This is the polarity-aware order used for the equational
+ordered-model bridge. -/
+@[reducible] noncomputable def sourceGroundLinearOrder
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) : LinearOrder GroundAtom := by
+  letI : LinearOrder FLit := linearOrder extension
+  exact LinearOrder.lift' literalOfGroundAtom literalOfGroundAtom_injective
+
+theorem sourceGround_lt_wf
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    @WellFounded GroundAtom (sourceGroundLinearOrder context extension).lt := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  exact InvImage.wf literalOfGroundAtom wellFounded_lt
+
+@[simp] theorem sourceGround_le_iff
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (left right : GroundAtom) :
+    letI : LinearOrder GroundAtom := sourceGroundLinearOrder context extension
+    left ≤ right ↔
+      letI : LinearOrder FLit := linearOrder extension
+      literalOfGroundAtom left ≤ literalOfGroundAtom right := by
+  rfl
+
+@[simp] theorem sourceGround_lt_iff
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (left right : GroundAtom) :
+    letI : LinearOrder GroundAtom := sourceGroundLinearOrder context extension
+    left < right ↔
+      letI : LinearOrder FLit := linearOrder extension
+      literalOfGroundAtom left < literalOfGroundAtom right := by
+  rfl
 
 /-- Every production context has the unique checked live-state context with
 the same retained clauses and root-domain flag. -/
