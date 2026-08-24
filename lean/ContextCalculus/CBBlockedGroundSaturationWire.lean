@@ -75,13 +75,14 @@ def WireBlockedGroundSaturationDocument.check
   let _ ← wire.decode
   return true
 
-theorem DecodedBlockedGroundSaturationDocument.source_model
+theorem DecodedBlockedGroundSaturationDocument.source_model_nonempty
     (decoded : DecodedBlockedGroundSaturationDocument)
     (hbot : PClause.bot ∉ decoded.certificate.terminal) :
     ∃ (D : Type) (interpretation : Eqv.Interp D
         (Fin (productionRun decoded.carrier.admissibility).source.bounds.concepts)
         (Fin (productionRun decoded.carrier.admissibility).source.bounds.roles)
         (Fin (productionRun decoded.carrier.admissibility).source.bounds.individuals)),
+      Nonempty D ∧
       CBRoleChainEncoding.models interpretation (blockedSource decoded.carrier) := by
   have hencodedSat : ¬ PropRes.Unsat (encodedBlockedGround decoded.carrier) := by
     intro hunsat
@@ -101,8 +102,22 @@ theorem DecodedBlockedGroundSaturationDocument.source_model
       (fun atom => valuation (atomIndex atom))
       (blockedGround decoded.carrier) hgroundModels hderivable
     exact PClause.not_sat_bot _ hfalse
-  exact source_complete_ground_named decoded.carrier.name decoded.carrier.witness
-    decoded.carrier.minimumWitness (blockedSource decoded.carrier) hnotDerivable
+  letI : Nonempty decoded.carrier.Carrier :=
+    ⟨⟨0, decoded.carrier.carrier_nonempty⟩⟩
+  exact source_complete_ground_named_nonempty decoded.carrier.name
+    decoded.carrier.witness decoded.carrier.minimumWitness
+    (blockedSource decoded.carrier) hnotDerivable
+
+theorem DecodedBlockedGroundSaturationDocument.source_model
+    (decoded : DecodedBlockedGroundSaturationDocument)
+    (hbot : PClause.bot ∉ decoded.certificate.terminal) :
+    ∃ (D : Type) (interpretation : Eqv.Interp D
+        (Fin (productionRun decoded.carrier.admissibility).source.bounds.concepts)
+        (Fin (productionRun decoded.carrier.admissibility).source.bounds.roles)
+        (Fin (productionRun decoded.carrier.admissibility).source.bounds.individuals)),
+      CBRoleChainEncoding.models interpretation (blockedSource decoded.carrier) := by
+  obtain ⟨D, interpretation, _, hmodels⟩ := decoded.source_model_nonempty hbot
+  exact ⟨D, interpretation, hmodels⟩
 
 theorem WireBlockedGroundSaturationDocument.check_sound
     (wire : WireBlockedGroundSaturationDocument) (hcheck : wire.check = .ok true) :
@@ -126,6 +141,7 @@ theorem WireBlockedGroundSaturationDocument.check_sound
         decoded.source_model⟩
 
 #print axioms DecodedBlockedGroundSaturationDocument.source_model
+#print axioms DecodedBlockedGroundSaturationDocument.source_model_nonempty
 #print axioms WireBlockedGroundSaturationDocument.check_sound
 
 end ContextCalculus.CBBlockedGroundSaturationWire

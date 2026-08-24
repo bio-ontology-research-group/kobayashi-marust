@@ -108,9 +108,24 @@ theorem source_complete_ground_named
   exact ⟨D, restrictIndividualNames name carrierInterpretation,
     (models_mapIndividuals_iff name carrierInterpretation source).mp hmodels⟩
 
+theorem source_complete_ground_named_nonempty [Nonempty Carrier]
+    (name : Individual → Carrier)
+    (wit : CN → RN → CN → Carrier → Carrier)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → Carrier → Fin n → Carrier)
+    (source : SourceOntology CN RN Individual)
+    (hclash : ¬ PropRes.Derivable (namedGroundSource name wit minWit source)
+      PropRes.PClause.bot) :
+    ∃ (D : Type) (interpretation : Interp D CN RN Individual),
+      Nonempty D ∧ CBRoleChainEncoding.models interpretation source := by
+  obtain ⟨D, carrierInterpretation, hnonempty, hmodels⟩ :=
+    source_complete_ground_nonempty wit minWit (mapIndividuals name source) hclash
+  exact ⟨D, restrictIndividualNames name carrierInterpretation, hnonempty,
+    (models_mapIndividuals_iff name carrierInterpretation source).mp hmodels⟩
+
 #print axioms satO_mapIndividualClause_iff
 #print axioms models_mapIndividuals_iff
 #print axioms source_complete_ground_named
+#print axioms source_complete_ground_named_nonempty
 
 end FiniteCarrier
 

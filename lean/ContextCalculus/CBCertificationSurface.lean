@@ -3,6 +3,7 @@ import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
+import ContextCalculus.CBGlobalModelWire
 
 /-!
 # Public CB certification surface
@@ -40,6 +41,33 @@ theorem certifiedCBGlobalProductionClosure
           decoded⟩
 
 #print axioms certifiedCBGlobalProductionClosure
+
+/-- The model-existence half of CB completeness over the finite blocked
+grounding. One accepted document proves every production rule family closed
+and, when its complete blocked saturation omits bottom, constructs a nonempty
+model of the exact production clause list, including checked Skolem allocation.
+-/
+theorem certifiedCBClashFreeGlobalProductionModel
+    (wire : CBGlobalModelWire.WireCBGlobalModelDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : CBGlobalModelWire.DecodedCBGlobalModelDocument,
+      wire.decode = .ok decoded ∧
+      GlobalProductionClosed decoded.global ∧
+      (PropRes.PClause.bot ∉ decoded.blocked.certificate.terminal →
+        ∃ (D : Type) (model : CheckerTerm.TModel D), Nonempty D ∧
+          ∀ clause ∈
+              (CBGlobalClosureWire.rProduction decoded.global.rsucc).source.ontology,
+            CheckerTerm.valid model clause) := by
+  cases hdecode : wire.decode with
+  | error message =>
+      simp [CBGlobalModelWire.WireCBGlobalModelDocument.check, hdecode] at hcheck
+  | ok decoded =>
+      exact ⟨decoded, rfl,
+        CBGlobalProductionClosure.DecodedCBGlobalClosureDocument.production_closed
+          decoded.global,
+        decoded.production_model⟩
+
+#print axioms certifiedCBClashFreeGlobalProductionModel
 
 /-- The compact native CB publication capstone: one typed source, one shared
 chronological production DAG, and one complete positive-or-countermodel matrix

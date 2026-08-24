@@ -717,7 +717,14 @@
   closure for local Resolution, Factor, Eq, Hyper, Join-3, Succ, and r-Succ.
   The theorem reuses the global decoder's source, context-snapshot, runtime-
   bound, and order identity checks and has no `sorryAx`. Live emission of the
-  complete nested document and the canonical-model theorem remain open.
+  complete nested document and deriving its model branch directly from that
+  closure remain open.
+- Strengthen the finite grounding completeness theorem with an explicit
+  nonempty quotient-domain witness. Compose it with the global model document,
+  typed source binding, and injective production Skolem allocation. A
+  clash-free blocked saturation now yields a nonempty `TModel` of the exact
+  production clause list from the same globally closed run, exposed as
+  `certifiedCBClashFreeGlobalProductionModel` without `sorryAx`.
 - Bridge production ground clauses to the propositional equality clauses used
   by the existing congruence-quotient completeness construction. Translate
   disequalities with the correct body/head polarity and prove exact

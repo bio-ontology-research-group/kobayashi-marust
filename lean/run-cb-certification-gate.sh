@@ -63,6 +63,7 @@ fi
 
 surface_theorems=(
     certifiedCBGlobalProductionClosure
+    certifiedCBClashFreeGlobalProductionModel
     certifiedCBStandaloneContextProof
     certifiedCBSharedProductionTaxonomyPublication
     certifiedCBExactTaxonomyPublication

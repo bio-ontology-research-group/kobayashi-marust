@@ -93,6 +93,38 @@ theorem DecodedCBGlobalModelDocument.source_model
         (blockedSource decoded.blocked.carrier) :=
   decoded.blocked.source_model hbot
 
+theorem DecodedCBGlobalModelDocument.source_model_nonempty
+    (decoded : DecodedCBGlobalModelDocument)
+    (hbot : PClause.bot ∉ decoded.blocked.certificate.terminal) :
+    ∃ (D : Type) (interpretation : Eqv.Interp D
+        (Fin (productionRun decoded.blocked.carrier.admissibility).source.bounds.concepts)
+        (Fin (productionRun decoded.blocked.carrier.admissibility).source.bounds.roles)
+        (Fin (productionRun decoded.blocked.carrier.admissibility).source.bounds.individuals)),
+      Nonempty D ∧ CBRoleChainEncoding.models interpretation
+        (blockedSource decoded.blocked.carrier) :=
+  decoded.blocked.source_model_nonempty hbot
+
+/-- A clash-free blocked saturation yields a nonempty model of the exact
+production clause list used by the globally closed run. Function allocation is
+transported through the checked typed-source binding rather than assumed to be
+the identity. -/
+theorem DecodedCBGlobalModelDocument.production_model
+    (decoded : DecodedCBGlobalModelDocument)
+    (hbot : PClause.bot ∉ decoded.blocked.certificate.terminal) :
+    ∃ (D : Type) (model : TModel D), Nonempty D ∧
+      ∀ clause ∈ (rProduction decoded.global.rsucc).source.ontology,
+        valid model clause := by
+  obtain ⟨D, interpretation, hnonempty, hsource⟩ :=
+    decoded.source_model_nonempty hbot
+  let element : D := Classical.choice hnonempty
+  let binding := (productionRun decoded.blocked.carrier.admissibility).source
+  let model := binding.productionModel interpretation hsource element
+  refine ⟨D, model, hnonempty, ?_⟩
+  intro clause hclause
+  apply binding.models_production interpretation hsource element clause
+  rw [← decoded.source_ontology_eq]
+  exact hclause
+
 theorem WireCBGlobalModelDocument.check_sound
     (wire : WireCBGlobalModelDocument) (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedCBGlobalModelDocument,
@@ -112,6 +144,8 @@ theorem WireCBGlobalModelDocument.check_sound
       exact ⟨decoded, rfl, decoded.contexts_eq, decoded.source_model⟩
 
 #print axioms DecodedCBGlobalModelDocument.source_model
+#print axioms DecodedCBGlobalModelDocument.source_model_nonempty
+#print axioms DecodedCBGlobalModelDocument.production_model
 #print axioms WireCBGlobalModelDocument.check_sound
 
 end ContextCalculus.CBGlobalModelWire

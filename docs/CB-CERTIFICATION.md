@@ -222,6 +222,18 @@ claim that the layer is already complete.
   the public certification surface. Constructing the source-level canonical
   model from these production closure facts and emitting the complete nested
   document from the live Rust state remain open.
+- `certifiedCBClashFreeGlobalProductionModel` composes that all-rule closure
+  with the independently checked finite blocked grounding. If the complete
+  blocked saturation omits bottom, Lean constructs a nonempty congruence-
+  quotient model, transports source individual names, role chains, role
+  axioms, and cardinality witnesses, then pushes canonical Skolem functions
+  through the checked production allocation. The resulting `TModel` satisfies
+  the exact production clause list from the globally closed run. Earlier
+  model-existence lemmas now retain the nonempty-domain witness explicitly,
+  matching OWL semantics. The remaining refinement is to derive or emit the
+  blocked saturation from the live production closure rather than accepting it
+  as an independently checked branch; infinite regular countermodels remain a
+  separate evidence family.
 - `CBLocalResolutionClosureWire` independently enumerates every ordinary local
   resolution candidate in every terminal production context: all ordered
   retained-clause pairs and every literal occurring in the first clause's head

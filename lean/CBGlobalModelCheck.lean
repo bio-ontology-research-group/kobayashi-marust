@@ -4,6 +4,8 @@ open Lean
 open ContextCalculus.CBGlobalModelWire
 
 #print axioms DecodedCBGlobalModelDocument.source_model
+#print axioms DecodedCBGlobalModelDocument.source_model_nonempty
+#print axioms DecodedCBGlobalModelDocument.production_model
 #print axioms WireCBGlobalModelDocument.check_sound
 
 def checkFile (path : System.FilePath) : IO UInt32 := do

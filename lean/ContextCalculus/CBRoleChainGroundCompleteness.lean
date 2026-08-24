@@ -299,9 +299,35 @@ theorem source_complete_ground
   exact ⟨Eqv.QDom valuation respects, Eqv.congruenceModel valuation respects,
     quotient_models_source hmodels⟩
 
+/-- The Herbrand quotient produced by finite grounding is nonempty whenever
+the checked carrier is nonempty. This is the form required at the OWL boundary,
+where interpretations have a nonempty object domain. -/
+theorem source_complete_ground_nonempty [Nonempty T]
+    (wit : CN → RN → CN → T → T)
+    (minWit : (a : CN) → (n : Nat) → RN → CN → T → Fin n → T)
+    (source : SourceOntology CN RN T)
+    (hclash : ¬ PropRes.Derivable (groundSource wit minWit source) PClause.bot) :
+    ∃ (D : Type) (interpretation : Interp D CN RN T),
+      Nonempty D ∧ CBRoleChainEncoding.models interpretation source := by
+  have hsatisfiable : ∃ valuation : GAtom CN RN T → Prop,
+      ∀ clause ∈ groundSource wit minWit source, clause.sat valuation := by
+    by_contra hunsat
+    exact hclash (PropRes.completeness (groundSource wit minWit source) hunsat)
+  obtain ⟨valuation, hmodels⟩ := hsatisfiable
+  let hbase : ∀ clause ∈ Eqv.ground wit minWit source.clauses,
+      clause.sat valuation :=
+    fun clause hclause => hmodels clause (mem_groundSource_base hclause)
+  let respects := Eqv.respectsEq_of_grounds hbase
+    (Eqv.grounds_ground wit minWit source.clauses)
+  let element : Eqv.QDom valuation respects :=
+    Quotient.mk _ (Classical.choice inferInstance)
+  exact ⟨Eqv.QDom valuation respects, Eqv.congruenceModel valuation respects,
+    ⟨element⟩, quotient_models_source hmodels⟩
+
 #print axioms quotient_satisfies_chain
 #print axioms quotient_models_source
 #print axioms source_complete_ground
+#print axioms source_complete_ground_nonempty
 
 end Finite
 
