@@ -1,5 +1,6 @@
 import ContextCalculus.CBRoleChainEncoding
 import ContextCalculus.CBTermDerivationWire
+import ContextCalculus.CBFunctionAllocationWire
 
 /-!
 # Exact production-source binding for CB certificates
@@ -16,6 +17,8 @@ namespace ContextCalculus.CBSourceWire
 open Lean ContextCalculus CheckerTerm Eqv
 open ContextCalculus.CBTermWire
 open ContextCalculus.CBRoleChainEncoding
+open ContextCalculus.CBFunctionRenaming
+open ContextCalculus.CBFunctionAllocationWire
 
 inductive WireSourceClause where
   | gci (body head : List Nat)
@@ -43,6 +46,7 @@ structure WireSourceBinding where
   source_clauses : List WireSourceClause
   role_chains : List WireRoleChain
   ontology : List WireClause
+  function_allocation : Option WireFunctionAllocation := none
 deriving FromJson, ToJson
 
 def WireSourceBinding.bounds (wire : WireSourceBinding) : Bounds :=
@@ -109,11 +113,14 @@ structure DecodedSourceBinding where
   source : SourceOntology (Fin bounds.concepts) (Fin bounds.roles)
     (Fin bounds.individuals)
   ontology : List FCL
-  exact_encoding : ontology = CBRoleChainEncoding.encode source
+  allocation : Nat → Nat
+  allocation_injective : Function.Injective allocation
+  exact_encoding : ontology = renameOntology allocation
+    (CBRoleChainEncoding.encode source)
 
 def WireSourceBinding.decode (wire : WireSourceBinding) :
     Except String DecodedSourceBinding := do
-  if wire.version != 1 then
+  if wire.version != 1 && wire.version != 2 then
     throw s!"unsupported CB source-binding version {wire.version}"
   if wire.concept_count = 0 then
     throw "concept_count must be positive"
@@ -123,9 +130,35 @@ def WireSourceBinding.decode (wire : WireSourceBinding) :
   let source : SourceOntology (Fin bounds.concepts) (Fin bounds.roles)
       (Fin bounds.individuals) := { clauses, chains }
   let ontology ← wire.ontology.mapM (WireClause.decode bounds)
-  if hencoding : ontology = CBRoleChainEncoding.encode source then
-    return { bounds, source, ontology, exact_encoding := hencoding }
-  else throw "decoded CB ontology differs from the verified source encoding"
+  if wire.version = 1 then
+    if wire.function_allocation.isSome then
+      throw "version-1 CB source binding must not carry a function allocation"
+    if hencoding : ontology = CBRoleChainEncoding.encode source then
+      return {
+        bounds, source, ontology
+        allocation := id
+        allocation_injective := Function.injective_id
+        exact_encoding := by simpa using hencoding
+      }
+    else throw "decoded CB ontology differs from the verified source encoding"
+  else
+    let allocationWire ← match wire.function_allocation with
+      | some allocation => pure allocation
+      | none => throw "version-2 CB source binding has no function allocation"
+    let allocation ← allocationWire.decode
+    if hcanonical : allocation.canonicalCount = source.clauses.length then
+      if hproduction : allocation.productionCount = bounds.functions then
+        if hencoding : ontology = renameOntology allocation.rename
+            (CBRoleChainEncoding.encode source) then
+          return {
+            bounds, source, ontology
+            allocation := allocation.rename
+            allocation_injective := allocation.rename_injective
+            exact_encoding := hencoding
+          }
+        else throw "decoded CB ontology differs from the allocated verified source encoding"
+      else throw "CB function allocation production count differs from function_count"
+    else throw "CB function allocation does not cover the canonical source namespace"
 
 def WireSourceBinding.check (wire : WireSourceBinding) : Except String Bool := do
   let _ ← wire.decode
@@ -146,13 +179,44 @@ theorem DecodedSourceBinding.entails_iff_source (decoded : DecodedSourceBinding)
         CBRoleChainEncoding.models interpretation decoded.source → ∀ element,
           interpretation.c sub element → interpretation.c sup element := by
   rw [DecodedSourceBinding.Entails, decoded.exact_encoding]
+  change CBFunctionRenaming.Entails
+      (renameOntology decoded.allocation (CBRoleChainEncoding.encode decoded.source))
+      sub.val sup.val ↔ _
+  rw [CBFunctionRenaming.entails_rename_iff decoded.allocation
+    decoded.allocation_injective]
   exact CBRoleChainEncoding.entailsSub_iff_source decoded.source sub sup
+
+noncomputable def DecodedSourceBinding.productionModel
+    (decoded : DecodedSourceBinding)
+    (interpretation : Eqv.Interp D (Fin decoded.bounds.concepts)
+      (Fin decoded.bounds.roles) (Fin decoded.bounds.individuals))
+    (hmodels : CBRoleChainEncoding.models interpretation decoded.source)
+    (default : D) : TModel D :=
+  pushforwardModel decoded.allocation
+    (CBRoleChainEncoding.extendModel decoded.source interpretation hmodels default)
+
+theorem DecodedSourceBinding.models_production (decoded : DecodedSourceBinding)
+    (interpretation : Eqv.Interp D (Fin decoded.bounds.concepts)
+      (Fin decoded.bounds.roles) (Fin decoded.bounds.individuals))
+    (hmodels : CBRoleChainEncoding.models interpretation decoded.source)
+    (default : D) :
+    ∀ clause ∈ decoded.ontology,
+      valid (decoded.productionModel interpretation hmodels default) clause := by
+  rw [decoded.exact_encoding]
+  intro clause hclause
+  rcases List.mem_map.mp hclause with ⟨sourceClause, hsourceClause, rfl⟩
+  exact (valid_pushforward_iff decoded.allocation decoded.allocation_injective
+    (CBRoleChainEncoding.extendModel decoded.source interpretation hmodels default)
+    sourceClause).2
+    (CBRoleChainEncoding.models_extend decoded.source interpretation hmodels default
+      sourceClause hsourceClause)
 
 theorem WireSourceBinding.check_sound (wire : WireSourceBinding)
     (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedSourceBinding,
       wire.decode = .ok decoded ∧
-        decoded.ontology = CBRoleChainEncoding.encode decoded.source ∧
+        decoded.ontology = renameOntology decoded.allocation
+          (CBRoleChainEncoding.encode decoded.source) ∧
         ∀ sub sup : Fin decoded.bounds.concepts,
           decoded.Entails sub sup ↔
             ∀ (D : Type)
@@ -186,6 +250,51 @@ private def detachedExample : WireSourceBinding :=
 
 example : detachedExample.check =
     .error "decoded CB ontology differs from the verified source encoding" := by
+  native_decide
+
+private def role (id : Nat) (source target : WireTerm) : WireLiteral :=
+  .predicate (.role id source target)
+
+private def allocatedExample : WireSourceBinding where
+  version := 2
+  concept_count := 2
+  role_count := 1
+  function_count := 2
+  individual_count := 0
+  source_clauses := [.exR 0 0 1]
+  role_chains := []
+  ontology :=
+    [ ⟨[concept 0 (.var 0)], [role 0 (.var 0) (.app 1 (.var 0))]⟩
+    , ⟨[concept 0 (.var 0)], [concept 1 (.app 1 (.var 0))]⟩ ]
+  function_allocation := some {
+    version := 1
+    canonical_count := 1
+    production_count := 2
+    allocation := [1]
+  }
+
+example : allocatedExample.check = .ok true := by native_decide
+
+private def duplicateAllocationExample : WireSourceBinding where
+  version := 2
+  concept_count := 2
+  role_count := 0
+  function_count := 2
+  individual_count := 0
+  source_clauses := [.gci [0] [1], .gci [1] [0]]
+  role_chains := []
+  ontology :=
+    [ ⟨[concept 0 (.var 0)], [concept 1 (.var 0)]⟩
+    , ⟨[concept 1 (.var 0)], [concept 0 (.var 0)]⟩ ]
+  function_allocation := some {
+    version := 1
+    canonical_count := 2
+    production_count := 2
+    allocation := [1, 1]
+  }
+
+example : duplicateAllocationExample.check =
+    .error "CB function allocation reuses a production Skolem id" := by
   native_decide
 
 #print axioms DecodedSourceBinding.entails_iff_source

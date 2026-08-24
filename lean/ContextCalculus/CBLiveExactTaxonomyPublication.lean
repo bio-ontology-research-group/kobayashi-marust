@@ -238,15 +238,12 @@ def WireExactCell.decode (live : DecodedLiveTaxonomyPublication)
                     countermodel.refutes
                   let blockedBinding :=
                     (productionRun live.derivation.live.global.blocked.carrier.admissibility).source
-                  let model := CBRoleChainEncoding.extendModel
-                    (blockedSource live.derivation.live.global.blocked.carrier)
-                    interpretation hsource element
+                  let model := blockedBinding.productionModel interpretation
+                    (by simpa [blockedBinding, blockedSource] using hsource) element
                   have hblockedValid : ∀ clause ∈ blockedBinding.ontology,
                       valid model clause := by
-                    rw [blockedBinding.exact_encoding]
-                    exact CBRoleChainEncoding.models_extend
-                      (blockedSource live.derivation.live.global.blocked.carrier)
-                      interpretation hsource element
+                    exact blockedBinding.models_production interpretation
+                      (by simpa [blockedBinding, blockedSource] using hsource) element
                   have hproductionValid : ∀ clause ∈ production.source.ontology,
                       valid model clause := by
                     change ∀ clause ∈
@@ -256,13 +253,19 @@ def WireExactCell.decode (live : DecodedLiveTaxonomyPublication)
                     simpa [blockedBinding] using hblockedValid
                   have hcoreModel : model.conc wire.sub element := by
                     have hcoreModel' : model.conc countermodel.sub.val element := by
-                      simpa [model, CBRoleChainEncoding.extendModel] using hcore
+                      simpa [model,
+                        CBSourceWire.DecodedSourceBinding.productionModel,
+                        CBFunctionRenaming.pushforwardModel,
+                        CBRoleChainEncoding.extendModel] using hcore
                     exact hcounterSub ▸ hcoreModel'
                   have hsuperModel := hentails D model hproductionValid element hcoreModel
                   have hsuperModel' : model.conc countermodel.sup.val element :=
                     hcounterSup.symm ▸ hsuperModel
                   have hsuperInterpretation : interpretation.c countermodel.sup element := by
-                    simpa [model, CBRoleChainEncoding.extendModel] using hsuperModel'
+                    simpa [model,
+                      CBSourceWire.DecodedSourceBinding.productionModel,
+                      CBFunctionRenaming.pushforwardModel,
+                      CBRoleChainEncoding.extendModel] using hsuperModel'
                   exact hsuper hsuperInterpretation
                 return {
                   sub := wire.sub

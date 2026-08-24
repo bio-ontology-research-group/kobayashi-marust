@@ -278,26 +278,23 @@ theorem WireProductionRun.check_source_sound (wire : WireProductionRun)
           (hmodels : CBRoleChainEncoding.models interpretation
             decoded.source.source) (default : D) (assignment : Int → D),
           CoreHolds
-            (CBRoleChainEncoding.extendModel decoded.source.source
-              interpretation hmodels default) assignment context.core →
+            (decoded.source.productionModel interpretation hmodels default)
+              assignment context.core →
           (∀ clause ∈ context.retained,
               HoldsAt
-                (CBRoleChainEncoding.extendModel decoded.source.source
-                  interpretation hmodels default) assignment clause) ∧
+                (decoded.source.productionModel interpretation hmodels default)
+                  assignment clause) ∧
           (∀ discarded ∈ context.discarded,
               HoldsAt
-                (CBRoleChainEncoding.extendModel decoded.source.source
-                  interpretation hmodels default) assignment
+                (decoded.source.productionModel interpretation hmodels default)
+                  assignment
                 discarded.clause) := by
   rcases wire.check_sound hcheck with ⟨decoded, hdecode, hsound⟩
   refine ⟨decoded, hdecode, ?_⟩
   intro context hcontext D interpretation hmodels default assignment hcore
   apply hsound context hcontext D
-    (CBRoleChainEncoding.extendModel decoded.source.source
-      interpretation hmodels default) assignment
-  · rw [decoded.source.exact_encoding]
-    exact CBRoleChainEncoding.models_extend decoded.source.source
-      interpretation hmodels default
+    (decoded.source.productionModel interpretation hmodels default) assignment
+  · exact decoded.source.models_production interpretation hmodels default
   · exact hcore
 
 private def x : WireTerm := .var 0

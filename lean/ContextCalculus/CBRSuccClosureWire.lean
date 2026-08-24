@@ -186,6 +186,32 @@ theorem DecodedContextRSuccClosure.complete_delivery
   exact ⟨coverage.targetIndex, coverage.strengtheningIndex,
     coverage.target_eq, coverage.edge_delivered, coverage.strengthens⟩
 
+theorem WireRSuccClosureDocument.check_sound
+    (wire : WireRSuccClosureDocument) (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedRSuccClosureDocument,
+      wire.decode = .ok decoded ∧
+      decoded.contexts.map (·.sourceIndex.val) =
+        List.range (productionOf decoded.succ).contexts.length ∧
+      ∀ context ∈ decoded.contexts,
+        ∀ offer ∈ rSuccOffers (sendCoverageOf decoded.succ)
+            decoded.reachConcepts decoded.succ.join3.hyper.literalOrder
+            context.sourceIndex.val
+            ((productionOf decoded.succ).contexts.get context.sourceIndex).retained,
+          ∃ targetIndex strengtheningIndex,
+            offer.edge.targetIndex = targetIndex.val ∧
+            edgeDelivered decoded.succ.join3 context.sourceIndex.val
+              targetIndex.val { edge := offer.edge.label, pushed := offer.pushed } = true ∧
+            Strengthens
+              (((productionOf decoded.succ).contexts.get targetIndex).retained.get
+                strengtheningIndex) (succHypothesis offer.pushed) := by
+  cases hdecode : wire.decode with
+  | error message => simp [WireRSuccClosureDocument.check, hdecode] at hcheck
+  | ok decoded =>
+      refine ⟨decoded, rfl, decoded.context_indices_exact, ?_⟩
+      intro context _
+      exact context.complete_delivery
+
 #print axioms DecodedContextRSuccClosure.complete_delivery
+#print axioms WireRSuccClosureDocument.check_sound
 
 end ContextCalculus.CBRSuccClosureWire

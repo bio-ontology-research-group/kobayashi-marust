@@ -16,8 +16,12 @@ namespace ContextCalculus.CBGlobalClosureWire
 
 open Lean ContextCalculus ContextCalculus.CheckerTerm
 open ContextCalculus.CBTermWire
+open ContextCalculus.CBProductionTrace
 open ContextCalculus.CBProductionTraceWire
 open ContextCalculus.CBRSuccClosureWire
+open ContextCalculus.CBSuccClosureWire
+open ContextCalculus.CBRSuccClosure
+open ContextCalculus.CBInterContext
 open ContextCalculus.CBFiniteOrderAdmissibilityWire
 
 def rProduction (rsucc : DecodedRSuccClosureDocument) :=
@@ -104,13 +108,29 @@ theorem WireCBGlobalClosureDocument.check_sound
       decoded.rsucc.succ.join3.hyper.literalOrder.orderedLiterals =
         decoded.order.eqClosure.literalOrder.orderedLiterals ∧
       subtermCondition decoded.order.eqClosure.literalOrder.termOrder = true ∧
-      unaryMonotoneCondition decoded.order.eqClosure.literalOrder.termOrder = true := by
+      unaryMonotoneCondition decoded.order.eqClosure.literalOrder.termOrder = true ∧
+      ∀ context ∈ decoded.rsucc.contexts,
+        ∀ offer ∈ rSuccOffers (sendCoverageOf decoded.rsucc.succ)
+            decoded.rsucc.reachConcepts
+            decoded.rsucc.succ.join3.hyper.literalOrder
+            context.sourceIndex.val
+            ((productionOf decoded.rsucc.succ).contexts.get
+              context.sourceIndex).retained,
+          ∃ targetIndex strengtheningIndex,
+            offer.edge.targetIndex = targetIndex.val ∧
+            edgeDelivered decoded.rsucc.succ.join3 context.sourceIndex.val
+              targetIndex.val { edge := offer.edge.label, pushed := offer.pushed } = true ∧
+            Strengthens
+              (((productionOf decoded.rsucc.succ).contexts.get targetIndex).retained.get
+                strengtheningIndex) (succHypothesis offer.pushed) := by
   cases hdecode : wire.decode with
   | error message => simp [WireCBGlobalClosureDocument.check, hdecode] at hcheck
   | ok decoded =>
-      exact ⟨decoded, rfl, decoded.contexts_eq, decoded.terms_eq,
+      refine ⟨decoded, rfl, decoded.contexts_eq, decoded.terms_eq,
         decoded.literals_eq, decoded.order.subterm_condition,
-        decoded.order.unary_monotone_condition⟩
+        decoded.order.unary_monotone_condition, ?_⟩
+      intro context _
+      exact context.complete_delivery
 
 #print axioms WireCBGlobalClosureDocument.check_sound
 

@@ -30,6 +30,8 @@ import ContextCalculus.CBALCEncoding
 import ContextCalculus.CBEqEncoding
 import ContextCalculus.CBRoleChainEncoding
 import ContextCalculus.CBSourceWire
+import ContextCalculus.CBFunctionRenaming
+import ContextCalculus.CBFunctionAllocationWire
 import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBProductionTrace
 import ContextCalculus.CBProductionTraceWire
