@@ -5583,6 +5583,23 @@ mod cb_derivation_candidate_tests {
             let root_status = std::process::Command::new(root_checker)
                 .arg(&path).status().unwrap();
             assert!(root_status.success(), "native source root Pred closure was rejected");
+
+            if let Some(canonical_checker) =
+                std::env::var_os("KM_CB_TEST_SOURCE_CANONICAL_CLOSURE_CHECKER")
+            {
+                let canonical_candidate = serde_json::json!({
+                    "version": 1,
+                    "production_closure": root_candidate,
+                });
+                std::fs::write(
+                    &path,
+                    serde_json::to_vec(&canonical_candidate).unwrap(),
+                ).unwrap();
+                let canonical_status = std::process::Command::new(canonical_checker)
+                    .arg(&path).status().unwrap();
+                assert!(canonical_status.success(),
+                    "native source canonical closure was rejected");
+            }
         }
         std::fs::remove_file(path).unwrap();
     }

@@ -165,6 +165,10 @@ name = "cb-source-root-pred-closure-check"
 root = "CBSourceRootPredClosureCheck"
 
 [[lean_exe]]
+name = "cb-source-canonical-closure-check"
+root = "CBSourceCanonicalClosureCheck"
+
+[[lean_exe]]
 name = "cb-live-taxonomy-publication-check"
 root = "CBLiveTaxonomyPublicationCheck"
 

@@ -10,6 +10,7 @@ import ContextCalculus.CBSourceEqClosure
 import ContextCalculus.CBSourceOrdinaryPredClosure
 import ContextCalculus.CBSourceRootPredClosure
 import ContextCalculus.CBSourceProductionClosure
+import ContextCalculus.CBSourceCanonicalClosure
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -39,6 +40,7 @@ open ContextCalculus.CBSourceEqClosure
 open ContextCalculus.CBSourceOrdinaryPredClosure
 open ContextCalculus.CBSourceRootPredClosure
 open ContextCalculus.CBSourceProductionClosure
+open ContextCalculus.CBSourceCanonicalClosure
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBInterContext
 open ContextCalculus.CBInterContextWire
@@ -303,6 +305,25 @@ theorem certifiedCBSourceProductionClosure
     wire hcheck
 
 #print axioms certifiedCBSourceProductionClosure
+
+/-- The canonical-model-ready native boundary. In addition to the complete
+production fixpoint, Lean computes and checks total well-founded ranks that
+extend KM's root and non-root literal orders over their exact finite support. -/
+theorem certifiedCBSourceCanonicalClosure
+    (wire : WireSourceCanonicalClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceCanonicalClosureDocument,
+      wire.decode = .ok decoded ∧
+      SourceProductionClosed decoded.productionClosure ∧
+      ∀ root : Bool,
+        ∃ extension : CBSourceLinearExtension.ComputedLinearExtension
+            (hyperOf decoded.productionClosure).order root,
+          LinearExtensionOn (hyperOf decoded.productionClosure).order root
+            (hyperOf decoded.productionClosure).order.orderedLiterals
+            extension.rank :=
+  wire.check_sound hcheck
+
+#print axioms certifiedCBSourceCanonicalClosure
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :
