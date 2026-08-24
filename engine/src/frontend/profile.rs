@@ -654,10 +654,10 @@ impl<'a> SourceProfileBuilder<'a> {
             "AsymmetricObjectProperty" => {
                 self.logical_rbox(head);
                 // `normalise.rs` clausifies asymmetry exactly, but `rbox.rs`
-                // records it under the SAME `role-constraint` reason as
-                // `DisjointObjectProperties`, which is dropped. The normalized
-                // recheck cannot tell the two apart, so the source certificate
-                // declines here to keep both gates in agreement.
+                // records it under the same conservative `role-constraint`
+                // category as disjoint roles. Keep the source-profile
+                // certificate closed until the exact typed-source route checks
+                // the normalized constructor directly.
                 self.inverse_cardinality_certificate_invalid = true;
                 self.object_roles(&args);
             }

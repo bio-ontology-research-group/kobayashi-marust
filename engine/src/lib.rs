@@ -7,6 +7,7 @@
 //! `{"clauses":[...]}` contract.
 
 pub mod calc;
+pub mod cb_source;
 pub mod clause;
 pub mod cli;
 pub mod elcomplete;

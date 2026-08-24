@@ -555,11 +555,24 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 "owl:imports is not resolved; provide a self-contained ontology".into(),
             ));
         }
+        "DisjointObjectProperties" => {
+            let roles: Vec<String> = args
+                .iter()
+                .map(|role| reg.short(role.as_atom().unwrap_or("")))
+                .collect();
+            for left in 0..roles.len() {
+                for right in (left + 1)..roles.len() {
+                    o.add(Axiom::DisjointRoles(
+                        roles[left].clone(),
+                        roles[right].clone(),
+                    ));
+                }
+            }
+        }
         "Declaration"
         | "Prefix"
         | "Annotation"
         | "AnnotationAssertion"
-        | "DisjointObjectProperties"
         | "ObjectPropertyDomain"
         | "ObjectPropertyRange" => {
             // not part of the SROIQ core we validate here
