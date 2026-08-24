@@ -2,6 +2,7 @@ import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
+import ContextCalculus.CBGlobalProductionClosure
 
 /-!
 # Public CB certification surface
@@ -18,6 +19,27 @@ open ContextCalculus.CBTaxonomyWire
 open ContextCalculus.CBSourceTaxonomyWire
 open ContextCalculus.CBLiveExactTaxonomyPublication
 open ContextCalculus.CBStandaloneContextProofWire
+open ContextCalculus.CBGlobalClosureWire
+open ContextCalculus.CBGlobalProductionClosure
+
+/-- An accepted global-closure document covers every production context for
+local Resolution, Factor, Eq, Hyper, Join-3, Succ, and r-Succ. All branches are
+bound to the same source, retained context snapshots, and finite orders by the
+global decoder. -/
+theorem certifiedCBGlobalProductionClosure
+    (wire : WireCBGlobalClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedCBGlobalClosureDocument,
+      wire.decode = .ok decoded ∧ GlobalProductionClosed decoded := by
+  cases hdecode : wire.decode with
+  | error message =>
+      simp [WireCBGlobalClosureDocument.check, hdecode] at hcheck
+  | ok decoded =>
+      exact ⟨decoded, rfl,
+        CBGlobalProductionClosure.DecodedCBGlobalClosureDocument.production_closed
+          decoded⟩
+
+#print axioms certifiedCBGlobalProductionClosure
 
 /-- The compact native CB publication capstone: one typed source, one shared
 chronological production DAG, and one complete positive-or-countermodel matrix

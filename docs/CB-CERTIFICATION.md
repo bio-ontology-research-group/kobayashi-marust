@@ -211,8 +211,17 @@ claim that the layer is already complete.
   exact send snapshot. Kernel tests reject pending messages, truncation,
   incomplete pool scans, and stale edge scans. The standalone
   `cb-terminal-state-check` checker exposes this boundary. Production emission
-  and the semantic theorem connecting these finite bookkeeping conditions to
-  rule closure remain open.
+  remains open.
+- `CBGlobalProductionClosure` supplies the semantic projection of the nested
+  global certificate. Its theorem uses each exact context-index permutation to
+  quantify over every production context, then exposes retained-strengthening
+  closure for local Resolution, Factor, Eq, Hyper, Join-3, Succ, and r-Succ.
+  The global decoder already requires the two closure branches to share the
+  typed source, runtime bounds, retained context snapshots, and finite term and
+  literal orders. `certifiedCBGlobalProductionClosure` places this theorem on
+  the public certification surface. Constructing the source-level canonical
+  model from these production closure facts and emitting the complete nested
+  document from the live Rust state remain open.
 - `CBLocalResolutionClosureWire` independently enumerates every ordinary local
   resolution candidate in every terminal production context: all ordered
   retained-clause pairs and every literal occurring in the first clause's head

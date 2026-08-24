@@ -711,6 +711,13 @@
   strict order whenever both applications occur. Prove these conditions,
   production-term trichotomy, and well-foundedness. The corresponding model
   theorem remains part of the unreleased CB certification layer.
+- Expose the complete nested production closure on the public CB certification
+  surface. `CBGlobalProductionClosure` uses exact context-index coverage to
+  quantify over every production context and yields retained-strengthening
+  closure for local Resolution, Factor, Eq, Hyper, Join-3, Succ, and r-Succ.
+  The theorem reuses the global decoder's source, context-snapshot, runtime-
+  bound, and order identity checks and has no `sorryAx`. Live emission of the
+  complete nested document and the canonical-model theorem remain open.
 - Bridge production ground clauses to the propositional equality clauses used
   by the existing congruence-quotient completeness construction. Translate
   disequalities with the correct body/head polarity and prove exact

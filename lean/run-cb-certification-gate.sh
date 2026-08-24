@@ -62,6 +62,7 @@ if grep -q 'sorryAx' "$surface_log"; then
 fi
 
 surface_theorems=(
+    certifiedCBGlobalProductionClosure
     certifiedCBStandaloneContextProof
     certifiedCBSharedProductionTaxonomyPublication
     certifiedCBExactTaxonomyPublication
