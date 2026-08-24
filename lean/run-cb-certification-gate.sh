@@ -67,6 +67,8 @@ surface_theorems=(
     certifiedCBStandaloneContextProof
     certifiedCBSourceLiveProductionDerivation
     certifiedCBSourceLocalClosure
+    certifiedCBSourceHyperClosure
+    certifiedCBSourceJoin3Closure
     certifiedCBSharedProductionTaxonomyPublication
     certifiedCBExactTaxonomyPublication
     certifiedCBSourceExactTaxonomyPublication

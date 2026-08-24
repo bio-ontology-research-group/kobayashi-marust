@@ -141,6 +141,14 @@ name = "cb-source-local-closure-check"
 root = "CBSourceLocalClosureCheck"
 
 [[lean_exe]]
+name = "cb-source-hyper-closure-check"
+root = "CBSourceHyperClosureCheck"
+
+[[lean_exe]]
+name = "cb-source-join3-closure-check"
+root = "CBSourceJoin3ClosureCheck"
+
+[[lean_exe]]
 name = "cb-live-taxonomy-publication-check"
 root = "CBLiveTaxonomyPublicationCheck"
 

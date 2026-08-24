@@ -151,8 +151,12 @@ claim that the layer is already complete.
   Factor candidate in every terminal context, checks a retained strengthening,
   and checks terminal head normalization. Rust can emit and independently gate
   this document without serializing or being trusted for candidate coverage.
-  Eq, Hyper, Join-3, Succ, r-Succ, and exact Pred delivery still need the same
-  source-bound treatment before this becomes a global closure theorem.
+  `CBSourceHyperClosure` and `CBSourceJoin3Closure` now give Hyper and residual
+  Join-3 the same source-bound treatment: Lean reconstructs the finite universe
+  and independently enumerates candidate firings. The remaining binding is to
+  prove that the supplied finite literal order is exactly the production
+  `lteq` decision on each context. Eq, Succ, r-Succ, and exact Pred delivery
+  still need source-bound closure before this becomes a global theorem.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the

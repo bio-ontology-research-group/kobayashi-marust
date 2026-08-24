@@ -3,6 +3,8 @@ import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBLiveInsertionDerivation
 import ContextCalculus.CBSourceLiveInsertionDerivation
 import ContextCalculus.CBSourceLocalClosure
+import ContextCalculus.CBSourceHyperClosure
+import ContextCalculus.CBSourceJoin3Closure
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -25,6 +27,8 @@ open ContextCalculus.CBLiveExactTaxonomyPublication
 open ContextCalculus.CBLiveInsertionDerivation
 open ContextCalculus.CBSourceLiveInsertionDerivation
 open ContextCalculus.CBSourceLocalClosure
+open ContextCalculus.CBSourceHyperClosure
+open ContextCalculus.CBSourceJoin3Closure
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBInterContext
 open ContextCalculus.CBInterContextWire
@@ -191,6 +195,42 @@ theorem certifiedCBSourceLocalClosure
   wire.check_sound hcheck
 
 #print axioms certifiedCBSourceLocalClosure
+
+/-- Source-bound Hyper fixpoint boundary. Lean reconstructs the exact finite
+term and literal universe, enumerates every source substitution and maximal
+provider selection, and checks retained strengthening of each conclusion. -/
+theorem certifiedCBSourceHyperClosure
+    (wire : WireSourceHyperClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceHyperClosureDocument,
+      wire.decode = .ok decoded ∧
+      ∀ context ∈ decoded.localClosure.live.production.contexts,
+        ∀ candidate ∈ CBSourceHyperClosure.hyperCandidates decoded.order
+            context.retained
+            decoded.localClosure.live.production.source.ontology,
+          ∃ clause ∈ context.retained,
+            CBProductionTrace.Strengthens clause candidate :=
+  wire.check_sound hcheck
+
+#print axioms certifiedCBSourceHyperClosure
+
+/-- Source-bound residual Join-3 fixpoint boundary. Lean enumerates every
+bounded consumer/provider/equality-bridge tuple and requires retained
+strengthening of every checked conclusion. -/
+theorem certifiedCBSourceJoin3Closure
+    (wire : WireSourceJoin3ClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceJoin3ClosureDocument,
+      wire.decode = .ok decoded ∧
+      ∀ context ∈
+          decoded.hyperClosure.localClosure.live.production.contexts,
+        ∀ candidate ∈ CBSourceJoin3Closure.candidates
+            decoded.hyperClosure.order context.retained,
+          ∃ clause ∈ context.retained,
+            CBProductionTrace.Strengthens clause candidate.2 :=
+  wire.check_sound hcheck
+
+#print axioms certifiedCBSourceJoin3Closure
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :

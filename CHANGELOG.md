@@ -25,6 +25,12 @@
   enumerates all terminal candidates and checks a retained strengthening, plus
   terminal head normalization, so Rust emits no trusted candidate list. The
   native source-live fixture passes the standalone local-closure checker.
+- Add source-bound Hyper and residual Join-3 closure checkers. Lean reconstructs
+  the exact finite term/literal universe from the typed source and terminal
+  contexts, enumerates substitutions, maximal providers, and bounded Join-3
+  tuples, then requires retained strengthening. These checkers remove trusted
+  candidate lists; binding their finite order to production `lteq` remains an
+  explicit integration obligation.
 
 ### Accept empty exact CB transfer partitions
 
