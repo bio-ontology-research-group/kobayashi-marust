@@ -47,6 +47,62 @@ def normalizeGeneratedHead (head : List FLit) : Option (List FLit) := do
 def terminalHeadNormal (head : List FLit) : Bool :=
   normalizeGeneratedHead head = some head
 
+theorem terminalHeadNormal_components {head : List FLit}
+    (hnormal : terminalHeadNormal head = true) :
+    filterReflexiveHead head = some head ∧
+      hasEqualityComplement head = false := by
+  unfold terminalHeadNormal at hnormal
+  simp only [decide_eq_true_eq] at hnormal
+  cases hfilter : filterReflexiveHead head with
+  | none => simp [normalizeGeneratedHead, hfilter] at hnormal
+  | some filtered =>
+      by_cases hcomplement : hasEqualityComplement filtered = true
+      · simp [normalizeGeneratedHead, hfilter, hcomplement] at hnormal
+      · have hfiltered : filtered = head := by
+          simpa [normalizeGeneratedHead, hfilter, hcomplement] using hnormal
+        subst filtered
+        exact ⟨rfl, Bool.eq_false_of_not_eq_true hcomplement⟩
+
+theorem terminalHeadNormal_no_reflexive_eq {head : List FLit}
+    (hnormal : terminalHeadNormal head = true) (term : FTerm) :
+    FLit.eq term term ∉ head := by
+  intro hmember
+  have hfilter := (terminalHeadNormal_components hnormal).1
+  have hany : head.any isReflexiveEquality = true :=
+    List.any_eq_true.mpr ⟨.eq term term, hmember, by
+      simp [isReflexiveEquality]⟩
+  simp [filterReflexiveHead, hany] at hfilter
+
+theorem terminalHeadNormal_no_reflexive_ineq {head : List FLit}
+    (hnormal : terminalHeadNormal head = true) (term : FTerm) :
+    FLit.ineq term term ∉ head := by
+  intro hmember
+  have hfilter := (terminalHeadNormal_components hnormal).1
+  unfold filterReflexiveHead at hfilter
+  split at hfilter
+  · contradiction
+  next hreflexive =>
+    simp only [Option.some.injEq] at hfilter
+    have hfiltered : FLit.ineq term term ∈
+        head.filter fun literal => !isReflexiveInequality literal := by
+      rw [hfilter]
+      exact hmember
+    rw [List.mem_filter] at hfiltered
+    simp [isReflexiveInequality] at hfiltered
+
+theorem terminalHeadNormal_no_complement {head : List FLit}
+    (hnormal : terminalHeadNormal head = true) {left right : FTerm}
+    (hequality : FLit.eq left right ∈ head) :
+    FLit.ineq left right ∉ head := by
+  intro hinequality
+  have hnone := (terminalHeadNormal_components hnormal).2
+  have hany : hasEqualityComplement head = true := by
+    unfold hasEqualityComplement
+    apply List.any_eq_true.mpr
+    exact ⟨.eq left right, hequality, by simp [hinequality]⟩
+  rw [hany] at hnone
+  contradiction
+
 theorem HoldsAt.filterReflexiveHead_sound {D : Type}
     (model : TModel D) (assignment : Int → D) (source : FCL)
     (filtered : List FLit) (hfilter : filterReflexiveHead source.head = some filtered)
@@ -466,5 +522,9 @@ example : terminalHeadNormal
 #print axioms HoldsAt.normalizeGeneratedHead_sound
 #print axioms factorCandidate_sound
 #print axioms mem_factorCandidates_iff
+#print axioms terminalHeadNormal_components
+#print axioms terminalHeadNormal_no_reflexive_eq
+#print axioms terminalHeadNormal_no_reflexive_ineq
+#print axioms terminalHeadNormal_no_complement
 
 end ContextCalculus.CBLocalFactorClosureWire

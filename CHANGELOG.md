@@ -124,6 +124,12 @@
   the remaining obligation cleanly: Factor and Eq closure must show that this
   valuation can be replaced by an equality-coherent term interpretation, while
   Succ and Pred assemble those local interpretations globally.
+- Expose the equality-normal-form invariants implied by every accepted
+  source-bound terminal context. No retained head contains reflexive equality,
+  reflexive inequality, or a matching equality/inequality pair. These are now
+  proved consequences of the executable head normalizer, rather than comments
+  about Rust filtering, and provide the first premises for turning the raw
+  literal candidate valuation into an equality-coherent term model.
 
 ### Accept empty exact CB transfer partitions
 

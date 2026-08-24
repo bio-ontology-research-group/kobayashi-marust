@@ -19,6 +19,37 @@ open ContextCalculus.CBSourceProductionClosure
 open ContextCalculus.CBSourceRootPredClosure
 open ContextCalculus.CBProductionTraceWire
 open ContextCalculus.CBLocalPropositionalModel
+open ContextCalculus.CBLocalFactorClosureWire
+
+theorem SourceProductionClosed.retained_head_normal
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (closed : SourceProductionClosed decoded)
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (clause : FCL) (hclause : clause ∈ context.retained) :
+    terminalHeadNormal clause.head = true :=
+  (closed.localFactor context hcontext).1 clause hclause
+
+theorem SourceProductionClosed.retained_head_equality_normal
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (closed : SourceProductionClosed decoded)
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (hcontext : context ∈ (liveOf decoded).production.contexts)
+    (clause : FCL) (hclause : clause ∈ context.retained) :
+    (∀ term, FLit.eq term term ∉ clause.head) ∧
+    (∀ term, FLit.ineq term term ∉ clause.head) ∧
+    (∀ left right, FLit.eq left right ∈ clause.head →
+      FLit.ineq left right ∉ clause.head) := by
+  have hnormal :=
+    ContextCalculus.CBSourceGroundResolutionBridge.SourceProductionClosed.retained_head_normal
+      closed context hcontext clause hclause
+  exact ⟨terminalHeadNormal_no_reflexive_eq hnormal,
+    terminalHeadNormal_no_reflexive_ineq hnormal,
+    fun _ _ => terminalHeadNormal_no_complement hnormal⟩
 
 /-- Feature-independent local candidate valuation obtained from the same
 source-bound production certificate. Equality coherence is established by the
@@ -73,5 +104,6 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.context_ground_model
 #print axioms SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.context_raw_model
+#print axioms SourceProductionClosed.retained_head_equality_normal
 
 end ContextCalculus.CBSourceGroundResolutionBridge
