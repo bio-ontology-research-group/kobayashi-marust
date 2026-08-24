@@ -153,10 +153,14 @@ claim that the layer is already complete.
   this document without serializing or being trusted for candidate coverage.
   `CBSourceHyperClosure` and `CBSourceJoin3Closure` now give Hyper and residual
   Join-3 the same source-bound treatment: Lean reconstructs the finite universe
-  and independently enumerates candidate firings. The remaining binding is to
-  prove that the supplied finite literal order is exactly the production
-  `lteq` decision on each context. Eq, Succ, r-Succ, and exact Pred delivery
-  still need source-bound closure before this becomes a global theorem.
+  and independently enumerates candidate firings. The checker now implements
+  production's partial literal order, including root/non-root modes,
+  predecessor-trigger priority, incomparable concepts, and Sequoia definers;
+  it also reconstructs the exact unsigned production term order. Rust emits and
+  gates this evidence natively. Deriving the internal and predecessor-trigger
+  metadata entirely from the typed source, plus separately certifying the
+  total-order residue routes, remains open. Eq, Succ, r-Succ, and exact Pred
+  delivery still need source-bound closure before this becomes global.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the

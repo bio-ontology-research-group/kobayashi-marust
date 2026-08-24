@@ -19,19 +19,20 @@ open ContextCalculus.CBSourceHyperClosure
 open ContextCalculus.CBJoin3Closure
 
 def candidateAt? (order : DecodedSourceFiniteOrder production)
-    (retained : List FCL) (signature : Join3Signature) : Option FCL := do
+    (root : Bool) (retained : List FCL)
+    (signature : Join3Signature) : Option FCL := do
   let consumer ← retained[signature.consumerIndex]?
   let ground ← consumer.body[signature.bodyIndex]?
   let (general, term) ← (variants ground)[signature.variantIndex]?
   let provider ← retained[signature.providerIndex]?
-  if signature.providerHeadIndex ∈ order.maximalHeadIndices provider.head then
+  if signature.providerHeadIndex ∈ order.maximalHeadIndices root provider.head then
     pure ()
   else none
   let providerLiteral ← provider.head[signature.providerHeadIndex]?
   if providerLiteral = general then pure () else none
   let bridge ← retained[signature.bridgeIndex]?
   if signature.providerIndex ≠ signature.bridgeIndex then pure () else none
-  if signature.bridgeHeadIndex ∈ order.maximalHeadIndices bridge.head then
+  if signature.bridgeHeadIndex ∈ order.maximalHeadIndices root bridge.head then
     pure ()
   else none
   let bridgeLiteral ← bridge.head[signature.bridgeHeadIndex]?
@@ -39,7 +40,7 @@ def candidateAt? (order : DecodedSourceFiniteOrder production)
   join3Candidate? consumer provider bridge ground general term
 
 def signatures (order : DecodedSourceFiniteOrder production)
-    (retained : List FCL) : List Join3Signature :=
+    (root : Bool) (retained : List FCL) : List Join3Signature :=
   (List.range retained.length).flatMap fun consumerIndex =>
     match retained[consumerIndex]? with
     | none => []
@@ -53,30 +54,31 @@ def signatures (order : DecodedSourceFiniteOrder production)
               match retained[providerIndex]? with
               | none => []
               | some provider =>
-                (order.maximalHeadIndices provider.head).flatMap fun providerHeadIndex =>
+                (order.maximalHeadIndices root provider.head).flatMap fun providerHeadIndex =>
                   (List.range retained.length).flatMap fun bridgeIndex =>
                     match retained[bridgeIndex]? with
                     | none => []
                     | some bridge =>
-                      (order.maximalHeadIndices bridge.head).map fun bridgeHeadIndex =>
+                      (order.maximalHeadIndices root bridge.head).map fun bridgeHeadIndex =>
                         {
                           consumerIndex, bodyIndex, variantIndex, providerIndex,
                           providerHeadIndex, bridgeIndex, bridgeHeadIndex }
 
 def candidates (order : DecodedSourceFiniteOrder production)
-    (retained : List FCL) : List (Join3Signature × FCL) :=
-  (signatures order retained).filterMap fun signature =>
-    (candidateAt? order retained signature).map fun conclusion =>
+    (root : Bool) (retained : List FCL) : List (Join3Signature × FCL) :=
+  (signatures order root retained).filterMap fun signature =>
+    (candidateAt? order root retained signature).map fun conclusion =>
       (signature, conclusion)
 
 theorem mem_candidates_has_checked_origin
     (order : DecodedSourceFiniteOrder production) (retained : List FCL)
+    (root : Bool)
     (candidate : Join3Signature × FCL)
-    (hmember : candidate ∈ candidates order retained) :
-    candidateAt? order retained candidate.1 = some candidate.2 := by
+    (hmember : candidate ∈ candidates order root retained) :
+    candidateAt? order root retained candidate.1 = some candidate.2 := by
   simp only [candidates, List.mem_filterMap] at hmember
   obtain ⟨signature, _hsignature, hcandidate⟩ := hmember
-  cases hresult : candidateAt? order retained signature with
+  cases hresult : candidateAt? order root retained signature with
   | none => simp [hresult] at hcandidate
   | some conclusion =>
       simp only [hresult, Option.map_some, Option.some.injEq,
@@ -87,7 +89,7 @@ theorem mem_candidates_has_checked_origin
 def sourceJoin3ClosedB (order : DecodedSourceFiniteOrder production)
     (context : DecodedProductionContext production.bounds
       production.source.ontology) : Bool :=
-  (candidates order context.retained).all fun candidate =>
+  (candidates order context.root context.retained).all fun candidate =>
     hasStrengthening context.retained candidate.2
 
 theorem sourceJoin3ClosedB_sound
@@ -95,7 +97,7 @@ theorem sourceJoin3ClosedB_sound
     (context : DecodedProductionContext production.bounds
       production.source.ontology)
     (hclosed : sourceJoin3ClosedB order context = true) :
-    ∀ candidate ∈ candidates order context.retained,
+    ∀ candidate ∈ candidates order context.root context.retained,
       ∃ clause ∈ context.retained, Strengthens clause candidate.2 := by
   intro candidate hcandidate
   have h := List.all_eq_true.mp hclosed candidate hcandidate
@@ -132,7 +134,7 @@ def WireSourceJoin3ClosureDocument.check
 theorem DecodedSourceJoin3ClosureDocument.complete_coverage
     (decoded : DecodedSourceJoin3ClosureDocument) :
     ∀ context ∈ decoded.hyperClosure.localClosure.live.production.contexts,
-      ∀ candidate ∈ candidates decoded.hyperClosure.order context.retained,
+      ∀ candidate ∈ candidates decoded.hyperClosure.order context.root context.retained,
         ∃ clause ∈ context.retained, Strengthens clause candidate.2 := by
   intro context hcontext
   exact sourceJoin3ClosedB_sound decoded.hyperClosure.order context
@@ -143,7 +145,7 @@ theorem WireSourceJoin3ClosureDocument.check_sound
     ∃ decoded : DecodedSourceJoin3ClosureDocument,
       wire.decode = .ok decoded ∧
       ∀ context ∈ decoded.hyperClosure.localClosure.live.production.contexts,
-        ∀ candidate ∈ candidates decoded.hyperClosure.order context.retained,
+        ∀ candidate ∈ candidates decoded.hyperClosure.order context.root context.retained,
           ∃ clause ∈ context.retained, Strengthens clause candidate.2 := by
   cases hdecode : wire.decode with
   | error message => simp [WireSourceJoin3ClosureDocument.check, hdecode] at hcheck

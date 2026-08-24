@@ -1185,7 +1185,7 @@ def WireProductionBoundGlobalModelDocument.decode
     Except String DecodedLiveStateDocument := do
   if wire.version != 1 then
     throw s!"unsupported production-bound CB global-model version {wire.version}"
-  if wire.live_state.version != 5 then
+  if wire.live_state.version != 6 then
     throw s!"unsupported CB live-state version {wire.live_state.version}"
   let global ← wire.global_model.decode
   let production := rProduction global.global.rsucc

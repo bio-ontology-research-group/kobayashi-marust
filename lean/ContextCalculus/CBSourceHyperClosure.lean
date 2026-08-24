@@ -39,17 +39,73 @@ def sourceProductionLiterals
     (production.contexts.flatMap fun context =>
       context.retained.flatMap clauseLiterals)).eraseDups
 
+def supportedProductionTerm : FTerm → Bool
+  | .var _ | .const _ => true
+  | .app _ (.var 0) | .app _ (.const _) => true
+  | .app _ _ => false
+
+/-- Structural image of KM's unsigned production term ids: neighbours ordered
+by variable index, then individuals, then `f(x)`, then lexicographic `f(o)`. -/
+def productionTermLt : FTerm → FTerm → Bool
+  | .var left, .var right => left < right
+  | .var _, _ => true
+  | _, .var _ => false
+  | .const left, .const right => left < right
+  | .const _, .app _ _ => true
+  | .app _ _, .const _ => false
+  | .app left (.var 0), .app right (.var 0) => left < right
+  | .app _ (.var 0), .app _ (.const _) => true
+  | .app _ (.const _), .app _ (.var 0) => false
+  | .app left (.const leftIndividual),
+      .app right (.const rightIndividual) =>
+      left < right || (left = right && leftIndividual < rightIndividual)
+  | .app _ _, .app _ _ => false
+
+inductive SourceConceptOrderMode where
+  | incomparable
+  | sequoia
+  | total
+  | internalTotal
+deriving DecidableEq, FromJson, ToJson
+
+def SourceConceptOrderMode.directReadoutSafe : SourceConceptOrderMode → Bool
+  | .incomparable | .sequoia => true
+  | .total | .internalTotal => false
+
 structure WireSourceFiniteOrder where
   ordered_terms : List WireTerm
   ordered_literals : List WireLiteral
+  root_concept_mode : SourceConceptOrderMode
+  non_root_concept_mode : SourceConceptOrderMode
+  internal_concepts : List Bool
+  pred_triggers : List WireLiteral
 deriving FromJson, ToJson
 
 structure DecodedSourceFiniteOrder
     (production : DecodedProductionRun) where
   orderedTerms : List FTerm
   orderedLiterals : List FLit
+  rootConceptMode : SourceConceptOrderMode
+  nonRootConceptMode : SourceConceptOrderMode
+  internalConcepts : List Bool
+  predTriggers : List FLit
   terms_nodup : orderedTerms.Nodup
+  terms_supported : (orderedTerms.all supportedProductionTerm) = true
+  terms_sorted : orderedTerms.Pairwise fun left right =>
+    productionTermLt left right = true
   literals_nodup : orderedLiterals.Nodup
+  internal_count : internalConcepts.length = production.bounds.concepts
+  root_mode_safe : rootConceptMode.directReadoutSafe = true
+  non_root_mode_safe : nonRootConceptMode.directReadoutSafe = true
+  query_concepts_named : (production.contexts.all fun context =>
+    match context.queryConcept with
+    | none => true
+    | some concept => internalConcepts[concept]?.getD true = false) = true
+  pred_triggers_nodup : predTriggers.Nodup
+  pred_triggers_predicates : (predTriggers.all fun literal =>
+    match literal with | .P _ => true | _ => false) = true
+  pred_triggers_present : (predTriggers.all fun literal =>
+    literal ∈ sourceProductionLiterals production) = true
   terms_exact : orderedTerms.toFinset =
     (sourceProductionTerms production).toFinset
   literals_exact : orderedLiterals.toFinset =
@@ -62,59 +118,212 @@ def WireSourceFiniteOrder.decode (production : DecodedProductionRun)
     (WireTerm.decode production.bounds)
   let orderedLiterals ← wire.ordered_literals.mapM
     (WireLiteral.decode production.bounds)
+  let predTriggers ← wire.pred_triggers.mapM
+    (WireLiteral.decode production.bounds)
   if htermsNodup : orderedTerms.Nodup then
-    if hliteralsNodup : orderedLiterals.Nodup then
-      if htermsExact : orderedTerms.toFinset =
-          (sourceProductionTerms production).toFinset then
-        if hliteralsExact : orderedLiterals.toFinset =
-            (sourceProductionLiterals production).toFinset then
-          return {
-            orderedTerms
-            orderedLiterals
-            terms_nodup := htermsNodup
-            literals_nodup := hliteralsNodup
-            terms_exact := htermsExact
-            literals_exact := hliteralsExact
-          }
-        else throw "source-bound CB literal order omits or invents a literal"
-      else throw "source-bound CB term order omits or invents a term"
-    else throw "source-bound CB literal order contains a duplicate"
+    if htermsSupported : orderedTerms.all supportedProductionTerm = true then
+      if htermsSorted : (orderedTerms.Pairwise fun left right =>
+          productionTermLt left right = true) then
+        if hliteralsNodup : orderedLiterals.Nodup then
+          if hinternalCount : wire.internal_concepts.length =
+              production.bounds.concepts then
+            if hrootSafe : wire.root_concept_mode.directReadoutSafe = true then
+             if hnonRootSafe : wire.non_root_concept_mode.directReadoutSafe = true then
+              if hqueriesNamed : (production.contexts.all fun context =>
+                  match context.queryConcept with
+                  | none => true
+                  | some concept =>
+                      wire.internal_concepts[concept]?.getD true = false) = true then
+               if htriggersNodup : predTriggers.Nodup then
+              if htriggersPredicates : (predTriggers.all fun literal =>
+                  match literal with | .P _ => true | _ => false) = true then
+                if htriggersPresent : (predTriggers.all fun literal =>
+                    literal ∈ sourceProductionLiterals production) = true then
+                  if htermsExact : orderedTerms.toFinset =
+                      (sourceProductionTerms production).toFinset then
+                    if hliteralsExact : orderedLiterals.toFinset =
+                        (sourceProductionLiterals production).toFinset then
+                      return {
+                        orderedTerms
+                        orderedLiterals
+                        rootConceptMode := wire.root_concept_mode
+                        nonRootConceptMode := wire.non_root_concept_mode
+                        internalConcepts := wire.internal_concepts
+                        predTriggers
+                        terms_nodup := htermsNodup
+                        terms_supported := htermsSupported
+                        terms_sorted := htermsSorted
+                        literals_nodup := hliteralsNodup
+                        internal_count := hinternalCount
+                        root_mode_safe := hrootSafe
+                        non_root_mode_safe := hnonRootSafe
+                        query_concepts_named := hqueriesNamed
+                        pred_triggers_nodup := htriggersNodup
+                        pred_triggers_predicates := htriggersPredicates
+                        pred_triggers_present := htriggersPresent
+                        terms_exact := htermsExact
+                        literals_exact := hliteralsExact
+                      }
+                    else throw "source-bound CB literal order omits or invents a literal"
+                  else throw "source-bound CB term order omits or invents a term"
+                else throw "source-bound CB predecessor trigger is absent"
+              else throw "source-bound CB predecessor trigger is not a predicate"
+               else throw "source-bound CB predecessor triggers contain a duplicate"
+              else throw "source-bound CB query concept is marked internal"
+             else throw "source-bound CB non-root order needs a residue certificate"
+            else throw "source-bound CB root order needs a residue certificate"
+          else throw "source-bound CB internal-concept mask has the wrong length"
+        else throw "source-bound CB literal order contains a duplicate"
+      else throw "source-bound CB terms do not follow production term order"
+    else throw "source-bound CB term universe has an unsupported shape"
   else throw "source-bound CB term order contains a duplicate"
 
-def DecodedSourceFiniteOrder.rank
-    (order : DecodedSourceFiniteOrder production) (literal : FLit) : Nat :=
-  order.orderedLiterals.idxOf literal
+def DecodedSourceFiniteOrder.termRank
+    (order : DecodedSourceFiniteOrder production) (term : FTerm) : Nat :=
+  order.orderedTerms.idxOf term
+
+def DecodedSourceFiniteOrder.termLt
+    (order : DecodedSourceFiniteOrder production) (left right : FTerm) : Bool :=
+  order.termRank left < order.termRank right
+
+def DecodedSourceFiniteOrder.termLe
+    (order : DecodedSourceFiniteOrder production) (left right : FTerm) : Bool :=
+  order.termRank left ≤ order.termRank right
+
+def DecodedSourceFiniteOrder.isInternal
+    (order : DecodedSourceFiniteOrder production) (concept : Nat) : Bool :=
+  order.internalConcepts[concept]?.getD true
+
+def DecodedSourceFiniteOrder.isPredTrigger
+    (order : DecodedSourceFiniteOrder production) (predicate : FPred) : Bool :=
+  .P predicate ∈ order.predTriggers
+
+def DecodedSourceFiniteOrder.predMaxTerm
+    (order : DecodedSourceFiniteOrder production) : FPred → FTerm
+  | .concept _ term => term
+  | .role _ source target =>
+      if order.termLe source target then target else source
+
+def DecodedSourceFiniteOrder.sameTermConceptLe
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (left right : Nat) : Bool :=
+  let mode := if root then order.rootConceptMode else order.nonRootConceptMode
+  match mode with
+  | .incomparable => left = right
+  | .total => left ≤ right
+  | .sequoia =>
+      match order.isInternal left, order.isInternal right with
+      | true, true => left ≤ right
+      | false, false => left = right
+      | false, true => true
+      | true, false => false
+  | .internalTotal =>
+      match order.isInternal left, order.isInternal right with
+      | true, true | false, false => left ≤ right
+      | false, true => true
+      | true, false => false
+
+def DecodedSourceFiniteOrder.predLe
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (left right : FPred) : Bool :=
+  if order.isPredTrigger right then left = right
+  else if order.isPredTrigger left then true
+  else match left, right with
+  | .concept leftIri leftTerm, .concept rightIri rightTerm =>
+      if leftTerm = rightTerm then
+        order.sameTermConceptLe root leftIri rightIri
+      else order.termLt leftTerm rightTerm
+  | left, right =>
+      let leftMax := order.predMaxTerm left
+      let rightMax := order.predMaxTerm right
+      if leftMax ≠ rightMax then order.termLt leftMax rightMax
+      else match left, right with
+      | .role leftIri leftSource leftTarget,
+          .role rightIri rightSource rightTarget =>
+          order.termLt leftSource rightSource ||
+            (leftSource = rightSource &&
+              (order.termLt leftTarget rightTarget ||
+                (leftTarget = rightTarget && leftIri ≤ rightIri)))
+      | .concept leftIri _, .concept rightIri _ => leftIri ≤ rightIri
+      | .role .., .concept .. => false
+      | .concept .., .role .. => true
+
+def DecodedSourceFiniteOrder.literalLe
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (left right : FLit) : Bool :=
+  match left, right with
+  | .eq leftSource leftTarget, .eq rightSource rightTarget
+  | .eq leftSource leftTarget, .ineq rightSource rightTarget
+  | .ineq leftSource leftTarget, .ineq rightSource rightTarget =>
+      order.termLt leftSource rightSource ||
+        (leftSource = rightSource && order.termLe leftTarget rightTarget)
+  | .ineq leftSource leftTarget, .eq rightSource rightTarget =>
+      order.termLt leftSource rightSource ||
+        (leftSource = rightSource && order.termLt leftTarget rightTarget)
+  | .eq source _, .P (.concept _ term)
+  | .ineq source _, .P (.concept _ term) => order.termLe source term
+  | .eq source _, .P (.role _ leftTerm rightTerm)
+  | .ineq source _, .P (.role _ leftTerm rightTerm) =>
+      order.termLe source leftTerm || order.termLe source rightTerm
+  | .P (.concept _ term), .eq source _
+  | .P (.concept _ term), .ineq source _ => !(order.termLe source term)
+  | .P (.role _ leftTerm rightTerm), .eq source _
+  | .P (.role _ leftTerm rightTerm), .ineq source _ =>
+      !(order.termLe source leftTerm || order.termLe source rightTerm)
+  | .P leftPredicate, .P rightPredicate =>
+      order.predLe root leftPredicate rightPredicate
 
 def DecodedSourceFiniteOrder.maximalHeadIndices
-    (order : DecodedSourceFiniteOrder production) (head : List FLit) : List Nat :=
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (head : List FLit) : List Nat :=
   (List.range head.length).filter fun index =>
     match head[index]? with
     | none => false
-    | some literal => head.all fun other => order.rank other ≤ order.rank literal
+    | some literal => head.all fun other => order.literalLe root other literal
+
+theorem mem_maximalHeadIndices_iff
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (head : List FLit) (index : Nat) :
+    index ∈ order.maximalHeadIndices root head ↔
+      index < head.length ∧
+      ∃ literal, head[index]? = some literal ∧
+        ∀ other ∈ head, order.literalLe root other literal = true := by
+  simp only [DecodedSourceFiniteOrder.maximalHeadIndices,
+    List.mem_filter, List.mem_range]
+  constructor
+  · rintro ⟨hindex, hmaximal⟩
+    cases hliteral : head[index]? with
+    | none => simp [hliteral] at hmaximal
+    | some literal =>
+        refine ⟨hindex, literal, rfl, ?_⟩
+        simpa [hliteral, List.all_eq_true] using hmaximal
+  · rintro ⟨hindex, literal, hliteral, hmaximal⟩
+    refine ⟨hindex, ?_⟩
+    simpa [hliteral, List.all_eq_true] using hmaximal
 
 def maximalProvidersFor
     (order : DecodedSourceFiniteOrder production)
-    (retained : List FCL) (literal : FLit) : List ProviderLocation :=
+    (root : Bool) (retained : List FCL) (literal : FLit) : List ProviderLocation :=
   (List.range retained.length).flatMap fun clauseIndex =>
     match retained[clauseIndex]? with
     | none => []
     | some provider =>
-        ((order.maximalHeadIndices provider.head).filter fun headIndex =>
+        ((order.maximalHeadIndices root provider.head).filter fun headIndex =>
           decide (provider.head[headIndex]? = some literal)).map fun headIndex =>
             (clauseIndex, headIndex)
 
 def providerSelections
     (order : DecodedSourceFiniteOrder production)
-    (retained : List FCL) (body : List FLit) :
+    (root : Bool) (retained : List FCL) (body : List FLit) :
     List (List ProviderLocation) :=
-  cartesianSelections (body.map (maximalProvidersFor order retained))
+  cartesianSelections (body.map (maximalProvidersFor order root retained))
 
 def hyperCandidates (order : DecodedSourceFiniteOrder production)
-    (retained source : List FCL) : List FCL :=
+    (root : Bool) (retained source : List FCL) : List FCL :=
   source.flatMap fun sourceClause =>
     (substitutions order.orderedTerms sourceClause).flatMap fun substitution =>
       let instantiated := substCl substitution sourceClause
-      (providerSelections order retained instantiated.body).filterMap fun selection =>
+      (providerSelections order root retained instantiated.body).filterMap fun selection =>
         hyperCandidate? retained sourceClause substitution selection
 
 theorem hyperCandidates_sound {D : Type} (model : TModel D)
@@ -122,7 +331,7 @@ theorem hyperCandidates_sound {D : Type} (model : TModel D)
     (retained source : List FCL)
     (hsource : ∀ clause ∈ source, valid model clause)
     (hretained : ∀ clause ∈ retained, HoldsAt model assignment clause) :
-    ∀ conclusion ∈ hyperCandidates order retained source,
+    ∀ conclusion ∈ hyperCandidates order root retained source,
       HoldsAt model assignment conclusion := by
   intro conclusion hconclusion
   simp only [hyperCandidates, List.mem_flatMap, List.mem_filterMap] at hconclusion
@@ -134,7 +343,7 @@ theorem hyperCandidates_sound {D : Type} (model : TModel D)
 def sourceHyperClosedB (order : DecodedSourceFiniteOrder production)
     (context : DecodedProductionContext production.bounds
       production.source.ontology) : Bool :=
-  (hyperCandidates order context.retained production.source.ontology).all
+  (hyperCandidates order context.root context.retained production.source.ontology).all
     (hasStrengthening context.retained)
 
 theorem sourceHyperClosedB_sound
@@ -142,7 +351,7 @@ theorem sourceHyperClosedB_sound
     (context : DecodedProductionContext production.bounds
       production.source.ontology)
     (hclosed : sourceHyperClosedB order context = true) :
-    ∀ candidate ∈ hyperCandidates order context.retained
+    ∀ candidate ∈ hyperCandidates order context.root context.retained
         production.source.ontology,
       ∃ clause ∈ context.retained, Strengthens clause candidate := by
   intro candidate hcandidate
@@ -181,7 +390,7 @@ def WireSourceHyperClosureDocument.check
 theorem DecodedSourceHyperClosureDocument.complete_coverage
     (decoded : DecodedSourceHyperClosureDocument) :
     ∀ context ∈ decoded.localClosure.live.production.contexts,
-      ∀ candidate ∈ hyperCandidates decoded.order context.retained
+      ∀ candidate ∈ hyperCandidates decoded.order context.root context.retained
           decoded.localClosure.live.production.source.ontology,
         ∃ clause ∈ context.retained, Strengthens clause candidate := by
   intro context hcontext
@@ -193,7 +402,7 @@ theorem WireSourceHyperClosureDocument.check_sound
     ∃ decoded : DecodedSourceHyperClosureDocument,
       wire.decode = .ok decoded ∧
       ∀ context ∈ decoded.localClosure.live.production.contexts,
-        ∀ candidate ∈ hyperCandidates decoded.order context.retained
+        ∀ candidate ∈ hyperCandidates decoded.order context.root context.retained
             decoded.localClosure.live.production.source.ontology,
           ∃ clause ∈ context.retained, Strengthens clause candidate := by
   cases hdecode : wire.decode with
@@ -201,6 +410,7 @@ theorem WireSourceHyperClosureDocument.check_sound
   | ok decoded => exact ⟨decoded, rfl, decoded.complete_coverage⟩
 
 #print axioms hyperCandidates_sound
+#print axioms mem_maximalHeadIndices_iff
 #print axioms sourceHyperClosedB_sound
 #print axioms WireSourceHyperClosureDocument.check_sound
 

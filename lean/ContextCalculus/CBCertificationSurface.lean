@@ -206,7 +206,7 @@ theorem certifiedCBSourceHyperClosure
       wire.decode = .ok decoded ∧
       ∀ context ∈ decoded.localClosure.live.production.contexts,
         ∀ candidate ∈ CBSourceHyperClosure.hyperCandidates decoded.order
-            context.retained
+            context.root context.retained
             decoded.localClosure.live.production.source.ontology,
           ∃ clause ∈ context.retained,
             CBProductionTrace.Strengthens clause candidate :=
@@ -225,7 +225,7 @@ theorem certifiedCBSourceJoin3Closure
       ∀ context ∈
           decoded.hyperClosure.localClosure.live.production.contexts,
         ∀ candidate ∈ CBSourceJoin3Closure.candidates
-            decoded.hyperClosure.order context.retained,
+            decoded.hyperClosure.order context.root context.retained,
           ∃ clause ∈ context.retained,
             CBProductionTrace.Strengthens clause candidate.2 :=
   wire.check_sound hcheck

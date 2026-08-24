@@ -29,8 +29,17 @@
   the exact finite term/literal universe from the typed source and terminal
   contexts, enumerates substitutions, maximal providers, and bounded Join-3
   tuples, then requires retained strengthening. These checkers remove trusted
-  candidate lists; binding their finite order to production `lteq` remains an
-  explicit integration obligation.
+  candidate lists. The following ordering refinement binds those candidates to
+  production's partial-order shape.
+- Replace the temporary total literal-rank approximation with KM's executable
+  partial ordering: predecessor triggers remain at the bottom, same-term named
+  concepts can stay incomparable, Sequoia internal definers sit above named
+  concepts, and root/non-root domains select their own mode. Lean also requires
+  the exact Rust variable/individual/`f(x)`/`f(o)` term order and rejects unsafe
+  bare-total modes, internal query concepts, duplicate terms, and unsupported
+  term shapes. Native snapshots now emit the effective modes, internal mask,
+  and predecessor triggers; real Rust-to-Lean Hyper and Join-3 candidates pass,
+  while a forged duplicate term universe is rejected.
 
 ### Accept empty exact CB transfer partitions
 

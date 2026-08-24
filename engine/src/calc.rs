@@ -663,6 +663,45 @@ fn seq_order() -> bool {
     }
 }
 
+/// Exact same-term concept-order regime consumed by `pred_lteq`. This is
+/// exposed only for the proof-carrying terminal snapshot; it does not alter
+/// ordering decisions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ConceptOrderMode {
+    Incomparable,
+    Sequoia,
+    Total,
+    InternalTotal,
+}
+
+impl ConceptOrderMode {
+    pub(crate) fn wire_name(self) -> &'static str {
+        match self {
+            Self::Incomparable => "incomparable",
+            Self::Sequoia => "sequoia",
+            Self::Total => "total",
+            Self::InternalTotal => "internalTotal",
+        }
+    }
+}
+
+/// Read back the effective branch of `pred_lteq` for one ordering domain.
+/// The result is observational metadata for Lean certificate generation.
+pub(crate) fn concept_order_mode(root: bool) -> ConceptOrderMode {
+    let root_mode = root_ordered_mode();
+    if root_mode == 2 || (root_mode == 1 && root) {
+        ConceptOrderMode::InternalTotal
+    } else if ordered_all() || branch_ordered() {
+        ConceptOrderMode::Total
+    } else if seq_order() {
+        ConceptOrderMode::Sequoia
+    } else if root || !root_only_incomp() {
+        ConceptOrderMode::Incomparable
+    } else {
+        ConceptOrderMode::Total
+    }
+}
+
 thread_local! {
     /// Direction B (docs/DISJUNCTION-SPLITTING.md): when set, same-term concepts
     /// are TOTALLY ordered (an ordered-resolution, tame, terminating closure).

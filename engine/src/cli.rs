@@ -1379,6 +1379,18 @@ fn verify_cb_lean_publication(
             KM_CB_SOURCE_LOCAL_CLOSURE_CHECKER"
             .to_string());
     }
+    let source_hyper_checker = std::env::var_os("KM_CB_SOURCE_HYPER_CLOSURE_CHECKER");
+    let source_hyper_path = std::env::var_os("KM_CB_SOURCE_HYPER_CLOSURE_CANDIDATE");
+    if source_hyper_checker.is_some() && source_hyper_path.is_none() {
+        return Err("KM_CB_SOURCE_HYPER_CLOSURE_CANDIDATE is required with \
+            KM_CB_SOURCE_HYPER_CLOSURE_CHECKER".to_string());
+    }
+    let source_join3_checker = std::env::var_os("KM_CB_SOURCE_JOIN3_CLOSURE_CHECKER");
+    let source_join3_path = std::env::var_os("KM_CB_SOURCE_JOIN3_CLOSURE_CANDIDATE");
+    if source_join3_checker.is_some() && source_join3_path.is_none() {
+        return Err("KM_CB_SOURCE_JOIN3_CLOSURE_CANDIDATE is required with \
+            KM_CB_SOURCE_JOIN3_CLOSURE_CHECKER".to_string());
+    }
     let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
     let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
     if terminal_state_checker.is_some() && terminal_state_path.is_none() {
@@ -1619,6 +1631,53 @@ fn verify_cb_lean_publication(
         })?;
     }
 
+    if let Some(path) = source_hyper_path.as_ref() {
+        let candidate = cb_source_hyper_closure_candidate(
+            input_typed_source.ok_or_else(|| {
+                "source-bound Hyper certification requires an in-band typed source".to_string()
+            })?,
+            &live_state,
+            certificate.pointer("/derivation/insertion_evidence")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
+        )?;
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!("cannot create source-bound CB Hyper candidate {}: {error}",
+                std::path::Path::new(path).display())
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize source-bound CB Hyper candidate: {error}"))?;
+        use std::io::Write;
+        writer.write_all(b"\n")
+            .map_err(|error| format!("cannot finish source-bound CB Hyper candidate: {error}"))?;
+        writer.flush()
+            .map_err(|error| format!("cannot flush source-bound CB Hyper candidate: {error}"))?;
+    }
+
+    if let Some(path) = source_join3_path.as_ref() {
+        let hyper = cb_source_hyper_closure_candidate(
+            input_typed_source.ok_or_else(|| {
+                "source-bound Join-3 certification requires an in-band typed source".to_string()
+            })?, &live_state,
+            certificate.pointer("/derivation/insertion_evidence")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+        let candidate = serde_json::json!({"version": 1, "hyper_closure": hyper});
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!("cannot create source-bound CB Join-3 candidate {}: {error}",
+                std::path::Path::new(path).display())
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize source-bound CB Join-3 candidate: {error}"))?;
+        use std::io::Write;
+        writer.write_all(b"\n")
+            .map_err(|error| format!("cannot finish source-bound CB Join-3 candidate: {error}"))?;
+        writer.flush()
+            .map_err(|error| format!("cannot flush source-bound CB Join-3 candidate: {error}"))?;
+    }
+
     if let Some(path) = terminal_state_path.as_ref() {
         let terminal = cb_terminal_state_candidate(&global_model, &live_state)?;
         let file = std::fs::File::create(path).map_err(|error| {
@@ -1778,6 +1837,30 @@ fn verify_cb_lean_publication(
             return Err(format!(
                 "source-bound CB local-closure checker rejected the candidate with {status}"
             ));
+        }
+    }
+    if let Some(hyper_checker) = source_hyper_checker {
+        let path = source_hyper_path.as_ref().ok_or_else(|| {
+            "source-bound CB Hyper checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&hyper_checker)
+            .arg(path).stdout(std::process::Stdio::null()).status()
+            .map_err(|error| format!("cannot run source-bound CB Hyper checker {}: {error}",
+                std::path::Path::new(&hyper_checker).display()))?;
+        if !status.success() {
+            return Err(format!("source-bound CB Hyper checker rejected the candidate with {status}"));
+        }
+    }
+    if let Some(join3_checker) = source_join3_checker {
+        let path = source_join3_path.as_ref().ok_or_else(|| {
+            "source-bound CB Join-3 checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&join3_checker)
+            .arg(path).stdout(std::process::Stdio::null()).status()
+            .map_err(|error| format!("cannot run source-bound CB Join-3 checker {}: {error}",
+                std::path::Path::new(&join3_checker).display()))?;
+        if !status.success() {
+            return Err(format!("source-bound CB Join-3 checker rejected the candidate with {status}"));
         }
     }
     if let Some(checker) = checker {
@@ -4531,6 +4614,96 @@ fn cb_source_live_derivation_candidate(
     }))
 }
 
+fn cb_source_finite_order_candidate(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+) -> Result<serde_json::Value, String> {
+    use crate::calc::{COMP_BASE, FTERM_BASE, X};
+
+    let mut raw_terms = Vec::new();
+    let mut note_term = |term: crate::calc::Term| {
+        if !raw_terms.contains(&term) {
+            raw_terms.push(term);
+        }
+        if (FTERM_BASE..COMP_BASE).contains(&term) && !raw_terms.contains(&X) {
+            raw_terms.push(X);
+        }
+    };
+    let mut literals = Vec::new();
+    let mut note_clause = |clause: &crate::engine::CbLiveClause| {
+        for literal in clause.body.iter().chain(&clause.head) {
+            note_term(literal.first);
+            if let Some(second) = literal.second {
+                note_term(second);
+            }
+            let wire = cb_wire_literal(literal, live.comp_ind_bits);
+            if wire.is_null() {
+                return Err("live CB ordering contains an unsupported literal".to_string());
+            }
+            cb_push_unique(&mut literals, wire);
+        }
+        Ok(())
+    };
+    for clause in &live.source_ontology {
+        note_clause(clause)?;
+    }
+    for context in &live.contexts {
+        let arena = if context.root {
+            &live.root_clause_arena
+        } else {
+            &live.ordinary_clause_arena
+        };
+        for &clause_id in &context.retained_clause_ids {
+            let clause = arena.get(clause_id as usize).ok_or_else(|| {
+                format!("CB ordering context retains missing clause {clause_id}")
+            })?;
+            note_clause(clause)?;
+        }
+    }
+    raw_terms.sort_unstable();
+    let mut ordered_terms = raw_terms
+        .iter().copied().filter(|term| *term <= X)
+        .map(|term| cb_wire_term(term, live.comp_ind_bits))
+        .collect::<Vec<_>>();
+    for individual in 0..live.runtime_individual_count {
+        ordered_terms.push(serde_json::json!({"constant": {"individual": individual}}));
+    }
+    ordered_terms.extend(raw_terms.iter().copied()
+        .filter(|term| (FTERM_BASE..COMP_BASE).contains(term))
+        .map(|term| cb_wire_term(term, live.comp_ind_bits)));
+    ordered_terms.extend(raw_terms.iter().copied()
+        .filter(|term| *term >= COMP_BASE)
+        .map(|term| cb_wire_term(term, live.comp_ind_bits)));
+    ordered_terms.dedup();
+
+    let pred_triggers = live.pred_trigger_literals.iter()
+        .map(|literal| cb_wire_literal(literal, live.comp_ind_bits))
+        .collect::<Vec<_>>();
+    if pred_triggers.iter().any(serde_json::Value::is_null) {
+        return Err("live CB predecessor trigger is unsupported".to_string());
+    }
+    Ok(serde_json::json!({
+        "ordered_terms": ordered_terms,
+        "ordered_literals": literals,
+        "root_concept_mode": live.root_concept_order_mode,
+        "non_root_concept_mode": live.non_root_concept_order_mode,
+        "internal_concepts": live.concept_internal,
+        "pred_triggers": pred_triggers,
+    }))
+}
+
+fn cb_source_hyper_closure_candidate(
+    source: &serde_json::Value,
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    insertion_evidence: &[serde_json::Value],
+) -> Result<serde_json::Value, String> {
+    let live_candidate = cb_source_live_derivation_candidate(source, live, insertion_evidence)?;
+    Ok(serde_json::json!({
+        "version": 1,
+        "local_closure": {"version": 1, "live": live_candidate},
+        "order": cb_source_finite_order_candidate(live)?,
+    }))
+}
+
 /// Reconstruct the exact Pred send partition from the terminal engine state.
 /// `pred_pool_seen` is the production record of every pool clause actually
 /// sent over an edge. Historical IDs removed by back-subsumption are omitted,
@@ -4753,10 +4926,16 @@ mod cb_derivation_candidate_tests {
 
     fn live_snapshot() -> crate::engine::CbLiveTerminalSnapshot {
         crate::engine::CbLiveTerminalSnapshot {
-            version: 5,
+            version: 6,
             comp_ind_bits: 17,
             concept_count: 1,
             concept_names: vec!["A".to_string()],
+            concept_internal: vec![false],
+            forward_role_succ_trigger: Vec::new(),
+            backward_role_succ_trigger: Vec::new(),
+            root_concept_order_mode: "incomparable".to_string(),
+            non_root_concept_order_mode: "incomparable".to_string(),
+            pred_trigger_literals: Vec::new(),
             role_count: 0,
             function_count: 0,
             source_individual_count: 0,
@@ -4991,10 +5170,16 @@ mod cb_derivation_candidate_tests {
         }];
         context.predecessor_edge_seen = vec![1];
         let live = crate::engine::CbLiveTerminalSnapshot {
-            version: 5,
+            version: 6,
             comp_ind_bits: 17,
             concept_count: 2,
             concept_names: vec!["A".into(), "B".into()],
+            concept_internal: vec![false, false],
+            forward_role_succ_trigger: Vec::new(),
+            backward_role_succ_trigger: Vec::new(),
+            root_concept_order_mode: "incomparable".to_string(),
+            non_root_concept_order_mode: "incomparable".to_string(),
+            pred_trigger_literals: Vec::new(),
             role_count: 0,
             function_count: 1,
             source_individual_count: 0,
@@ -5061,10 +5246,16 @@ mod cb_derivation_candidate_tests {
         }];
         context.predecessor_edge_seen = vec![1];
         let live = crate::engine::CbLiveTerminalSnapshot {
-            version: 5,
+            version: 6,
             comp_ind_bits: 17,
             concept_count: 2,
             concept_names: vec!["A".into(), "B".into()],
+            concept_internal: vec![false, false],
+            forward_role_succ_trigger: Vec::new(),
+            backward_role_succ_trigger: Vec::new(),
+            root_concept_order_mode: "incomparable".to_string(),
+            non_root_concept_order_mode: "incomparable".to_string(),
+            pred_trigger_literals: Vec::new(),
             role_count: 0,
             function_count: 1,
             source_individual_count: 2,
@@ -6458,6 +6649,40 @@ mod cb_derivation_candidate_tests {
             let local_status = std::process::Command::new(local_checker)
                 .arg(&path).status().unwrap();
             assert!(local_status.success(), "native source local closure was rejected");
+        }
+
+        if let Some(hyper_checker) =
+            std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER")
+        {
+            let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
+                .expect("construct source-bound Hyper candidate");
+            std::fs::write(&path, serde_json::to_vec(&hyper).unwrap()).unwrap();
+            let hyper_status = std::process::Command::new(hyper_checker)
+                .arg(&path).status().unwrap();
+            assert!(hyper_status.success(), "native source Hyper closure was rejected");
+
+            let mut forged = hyper;
+            let first_term = forged["order"]["ordered_terms"][0].clone();
+            forged["order"]["ordered_terms"].as_array_mut().unwrap()
+                .push(first_term);
+            std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
+            let forged_status = std::process::Command::new(
+                std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER").unwrap())
+                .arg(&path).status().unwrap();
+            assert!(!forged_status.success(),
+                "source Hyper checker accepted a duplicate term universe");
+        }
+
+        if let Some(join3_checker) =
+            std::env::var_os("KM_CB_TEST_SOURCE_JOIN3_CLOSURE_CHECKER")
+        {
+            let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
+                .expect("construct source-bound Join-3 parent candidate");
+            let join3 = serde_json::json!({"version": 1, "hyper_closure": hyper});
+            std::fs::write(&path, serde_json::to_vec(&join3).unwrap()).unwrap();
+            let join3_status = std::process::Command::new(join3_checker)
+                .arg(&path).status().unwrap();
+            assert!(join3_status.success(), "native source Join-3 closure was rejected");
         }
 
         let mut forged = candidate;

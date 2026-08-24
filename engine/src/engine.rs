@@ -3418,6 +3418,13 @@ pub struct CbLiveTerminalSnapshot {
     pub concept_count: usize,
     /// Exact name interner consumed by the production taxonomy readout.
     pub concept_names: Vec<String>,
+    /// Ordering metadata consumed by the source-bound Lean closure checker.
+    pub concept_internal: Vec<bool>,
+    pub forward_role_succ_trigger: Vec<bool>,
+    pub backward_role_succ_trigger: Vec<bool>,
+    pub root_concept_order_mode: String,
+    pub non_root_concept_order_mode: String,
+    pub pred_trigger_literals: Vec<CbLiveLit>,
     pub role_count: usize,
     pub function_count: usize,
     pub source_individual_count: usize,
@@ -3458,8 +3465,15 @@ mod cb_live_snapshot_tests {
             serde_json::to_vec(&first).unwrap(),
             serde_json::to_vec(&second).unwrap()
         );
-        assert_eq!(first.version, 5);
+        assert_eq!(first.version, 6);
         assert_eq!(first.concept_count, engine.sig.concept_names.len());
+        assert_eq!(first.concept_internal, engine.sig.concept_internal);
+        assert_eq!(first.forward_role_succ_trigger,
+            engine.sig.forward_role_succ_trigger);
+        assert_eq!(first.backward_role_succ_trigger,
+            engine.sig.backward_role_succ_trigger);
+        assert!(!first.root_concept_order_mode.is_empty());
+        assert!(!first.non_root_concept_order_mode.is_empty());
         assert_eq!(first.role_count, engine.sig.role_names.len());
         assert_eq!(first.source_ontology.len(), engine.ont.clauses.len());
         assert!(first.rsucc_enabled);
@@ -8220,11 +8234,45 @@ impl Engine {
             }
         }
 
+        let mut pred_trigger_literals = Vec::new();
+        let mut see_predicate = |predicate: Pred| {
+            if predicate.is_pred_trigger(&self.sig) {
+                pred_trigger_literals.push(Lit::P(predicate));
+            }
+        };
+        for clause in &self.ont.clauses {
+            clause.body.iter().copied().for_each(&mut see_predicate);
+            for literal in &clause.head {
+                if let Lit::P(predicate) = *literal {
+                    see_predicate(predicate);
+                }
+            }
+        }
+        for arena in &self.cc_arena {
+            for clause in arena {
+                clause.body.iter().copied().for_each(&mut see_predicate);
+                for literal in &clause.head {
+                    if let Lit::P(predicate) = *literal {
+                        see_predicate(predicate);
+                    }
+                }
+            }
+        }
+        pred_trigger_literals.sort_unstable();
+        pred_trigger_literals.dedup();
+
         CbLiveTerminalSnapshot {
-            version: 5,
+            version: 6,
             comp_ind_bits: active_comp_ind_bits(),
             concept_count: self.sig.concept_names.len(),
             concept_names: self.sig.concept_names.clone(),
+            concept_internal: self.sig.concept_internal.clone(),
+            forward_role_succ_trigger: self.sig.forward_role_succ_trigger.clone(),
+            backward_role_succ_trigger: self.sig.backward_role_succ_trigger.clone(),
+            root_concept_order_mode: concept_order_mode(true).wire_name().to_string(),
+            non_root_concept_order_mode: concept_order_mode(false).wire_name().to_string(),
+            pred_trigger_literals: pred_trigger_literals
+                .into_iter().map(Into::into).collect(),
             role_count: self.sig.role_names.len(),
             function_count,
             source_individual_count: ind_id(self.nom_base) as usize,

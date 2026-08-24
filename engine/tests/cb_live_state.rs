@@ -56,7 +56,7 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
     let snapshot: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     std::fs::remove_file(&path).unwrap();
-    assert_eq!(snapshot["version"], 5);
+    assert_eq!(snapshot["version"], 6);
     assert!(snapshot["concept_count"].is_number());
     assert_eq!(
         snapshot["concept_names"].as_array().unwrap().len(),
@@ -255,7 +255,7 @@ fn mandatory_lean_rejection_prevents_publication() {
     let production_bound = &derivation_document["production_bound"];
     assert_eq!(production_bound["version"], 1);
     let live_state = &production_bound["live_state"];
-    assert_eq!(live_state["version"], 5);
+    assert_eq!(live_state["version"], 6);
     assert!(live_state["concept_count"].is_number());
     assert_eq!(
         live_state["concept_names"].as_array().unwrap().len(),
