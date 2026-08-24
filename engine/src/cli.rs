@@ -4328,6 +4328,153 @@ fn find_cb_pred_send_coverage(value: &serde_json::Value) -> Option<&serde_json::
     None
 }
 
+fn cb_wire_predicate(predicate: &crate::engine::CbLivePred, bits: u32) -> serde_json::Value {
+    cb_wire_literal(&cb_live_pred_literal(predicate), bits)["predicate"]["predicate"].clone()
+}
+
+/// Reconstruct the exact Pred send partition from the terminal engine state.
+/// `pred_pool_seen` is the production record of every pool clause actually
+/// sent over an edge. Historical IDs removed by back-subsumption are omitted,
+/// because the independent Lean enumerators range over the final retained
+/// snapshot. Sorting the remaining records clause-major/edge-minor reproduces
+/// those enumerators; the checker rejects any omitted or ineligible send. Only
+/// the checked production trace and optional Nom allocation are copied from
+/// the enclosing document.
+fn cb_pred_send_coverage_candidate(
+    global_model: &serde_json::Value,
+    live: &crate::engine::CbLiveTerminalSnapshot,
+) -> Result<serde_json::Value, String> {
+    let prior = find_cb_pred_send_coverage(global_model)
+        .ok_or_else(|| "CB global certificate has no Pred send-coverage branch".to_string())?;
+    let production = prior
+        .pointer("/inter_context/production")
+        .cloned()
+        .ok_or_else(|| "CB Pred send-coverage branch has no production trace".to_string())?;
+    let ground = live
+        .contexts
+        .iter()
+        .find(|context| context.nominal_ground)
+        .map(|context| context.context_index);
+    if live.contexts.iter().filter(|context| context.nominal_ground).count() > 1 {
+        return Err("CB live state has multiple nominal-ground contexts".to_string());
+    }
+
+    let mut transfers = Vec::new();
+    let mut ordinary_senders = Vec::new();
+    let mut root_sender = None;
+    for sender in &live.contexts {
+        let mut edges = Vec::new();
+        for receiver in &live.contexts {
+            for edge in &receiver.predecessors {
+                if edge.predecessor_context == sender.context_index {
+                    edges.push((receiver, edge));
+                }
+            }
+        }
+        let arena = if sender.root {
+            &live.root_clause_arena
+        } else {
+            &live.ordinary_clause_arena
+        };
+        let mut sends = Vec::new();
+        for (edge_index, (_, edge)) in edges.iter().enumerate() {
+            for clause_id in &edge.pred_pool_seen {
+                let Some(retained_index) = sender
+                    .retained_clause_ids
+                    .iter()
+                    .position(|retained| retained == clause_id)
+                else {
+                    continue;
+                };
+                sends.push((retained_index, edge_index, *clause_id));
+            }
+        }
+        sends.sort_unstable();
+        sends.dedup();
+        let mut transfer_indices = Vec::with_capacity(sends.len());
+        for (retained_index, edge_index, clause_id) in sends {
+            let (receiver, edge) = edges[edge_index];
+            let clause = arena.get(clause_id as usize).ok_or_else(|| {
+                format!(
+                    "CB Pred sender {} references missing clause {clause_id}",
+                    sender.context_index
+                )
+            })?;
+            let map = |term| cb_pred_backwards(term, edge.label, live.comp_ind_bits);
+            let mut payload = crate::engine::CbLiveClause {
+                body: clause
+                    .body
+                    .iter()
+                    .map(|literal| cb_map_live_literal(literal, map))
+                    .collect(),
+                head: clause
+                    .head
+                    .iter()
+                    .map(|literal| cb_map_live_literal(literal, map))
+                    .collect(),
+            };
+            for predicate in &sender.core {
+                cb_push_unique(
+                    &mut payload.body,
+                    cb_map_live_literal(&cb_live_pred_literal(predicate), map),
+                );
+            }
+            let transfer_index = transfers.len();
+            transfer_indices.push(transfer_index);
+            transfers.push(serde_json::json!({
+                "sender_context_index": sender.context_index,
+                "sender_context_id": sender.context_id,
+                "receiver_context_index": receiver.context_index,
+                "receiver_context_id": receiver.context_id,
+                "retained_clause_index": retained_index,
+                "substitution": [
+                    {"variableId": -1, "term": {"var": {"index": 0}}},
+                    {"variableId": 0, "term": cb_wire_term(edge.label, live.comp_ind_bits)},
+                ],
+                "payload": cb_wire_clause(&payload, live.comp_ind_bits),
+            }));
+        }
+        let wire_edges = edges
+            .iter()
+            .map(|(receiver, edge)| {
+                serde_json::json!({
+                    "receiver_context_index": receiver.context_index,
+                    "receiver_context_id": receiver.context_id,
+                    "label": cb_wire_term(edge.label, live.comp_ind_bits),
+                    "pushed": edge.pushed.iter().map(|predicate|
+                        cb_wire_predicate(predicate, live.comp_ind_bits)).collect::<Vec<_>>(),
+                })
+            })
+            .collect::<Vec<_>>();
+        let snapshot = serde_json::json!({
+            "sender_context_index": sender.context_index,
+            "sender_context_id": sender.context_id,
+            "edges": wire_edges,
+            "transfer_indices": transfer_indices,
+        });
+        if Some(sender.context_index) == ground {
+            root_sender = Some(snapshot);
+        } else {
+            ordinary_senders.push(snapshot);
+        }
+    }
+
+    Ok(serde_json::json!({
+        "version": 2,
+        "inter_context": {
+            "version": 1,
+            "production": production,
+            "transfers": transfers,
+            "arrivals": [],
+        },
+        "ground_context_index": ground,
+        "senders": ordinary_senders,
+        "root_sender": root_sender,
+        "nominal_allocation": prior.get("nominal_allocation").cloned()
+            .unwrap_or(serde_json::Value::Null),
+    }))
+}
+
 /// Serialize the operational CB terminal document consumed by
 /// `CBTerminalStateWire`. In particular, `edge_seen` comes from each receiver
 /// context's predecessor map, while successor-pair reach watermarks come from
@@ -4337,8 +4484,7 @@ fn cb_terminal_state_candidate(
     global_model: &serde_json::Value,
     live: &crate::engine::CbLiveTerminalSnapshot,
 ) -> Result<serde_json::Value, String> {
-    let send_coverage = find_cb_pred_send_coverage(global_model)
-        .ok_or_else(|| "CB global certificate has no Pred send-coverage branch".to_string())?;
+    let send_coverage = cb_pred_send_coverage_candidate(global_model, live)?;
     let contexts = live
         .contexts
         .iter()
@@ -4376,9 +4522,12 @@ fn cb_terminal_state_candidate(
 mod cb_derivation_candidate_tests {
     use super::*;
 
-    fn live_context(context_id: usize) -> crate::engine::CbLiveContextSnapshot {
+    fn live_context(
+        context_index: usize,
+        context_id: usize,
+    ) -> crate::engine::CbLiveContextSnapshot {
         crate::engine::CbLiveContextSnapshot {
-            context_index: context_id,
+            context_index,
             context_id,
             root: true,
             nominal_ground: false,
@@ -4422,8 +4571,48 @@ mod cb_derivation_candidate_tests {
             message_truncated: false,
             nominal_truncated: false,
             insertion_history: Vec::new(),
-            contexts: vec![live_context(7), live_context(11)],
+            contexts: vec![live_context(0, 7), live_context(1, 11)],
         }
+    }
+
+    fn accepted_pred_production() -> serde_json::Value {
+        let x = serde_json::json!({"var": {"index": 0}});
+        let a = serde_json::json!({"predicate": {"predicate": {"concept": {
+            "concept": 0, "term": x.clone()
+        }}}});
+        let b = serde_json::json!({"predicate": {"predicate": {"concept": {
+            "concept": 1, "term": x.clone()
+        }}}});
+        let clause = serde_json::json!({"body": [a.clone()], "head": [b.clone()]});
+        serde_json::json!({
+            "version": 2,
+            "source": {
+                "version": 1,
+                "concept_count": 2,
+                "role_count": 0,
+                "function_count": 1,
+                "individual_count": 0,
+                "source_clauses": [{"gci": {"body": [0], "head": [1]}}],
+                "role_chains": [],
+                "role_axioms": [],
+                "ontology": [clause.clone()],
+                "function_allocation": null
+            },
+            "individual_count": 0,
+            "contexts": [{
+                "context_id": 7,
+                "root": false,
+                "nominal_ground": false,
+                "query_concept": null,
+                "core": [{"concept": {"concept": 0, "term": x}}],
+                "retained": [clause.clone()],
+                "discarded": [],
+                "trace": [{
+                    "clause": clause,
+                    "justification": {"premise": {"index": 0, "substitution": []}}
+                }]
+            }]
+        })
     }
 
     #[test]
@@ -4460,10 +4649,11 @@ mod cb_derivation_candidate_tests {
     fn terminal_state_candidate_uses_receiver_and_successor_watermarks() {
         let send_coverage = serde_json::json!({
             "version": 2,
-            "inter_context": {},
+            "inter_context": {"production": {"marker": "production"}},
             "ground_context_index": null,
             "senders": [],
             "root_sender": null,
+            "nominal_allocation": null,
         });
         let global = serde_json::json!({"nested": {"send": send_coverage}});
         let mut live = live_snapshot();
@@ -4474,7 +4664,14 @@ mod cb_derivation_candidate_tests {
         live.contexts[0].predecessor_edge_seen = vec![5, 8];
         live.contexts[0].successor_reach_hwm = vec![13];
         let terminal = cb_terminal_state_candidate(&global, &live).unwrap();
-        assert_eq!(terminal["send_coverage"], send_coverage);
+        assert_eq!(
+            terminal["send_coverage"]["inter_context"]["production"],
+            serde_json::json!({"marker": "production"})
+        );
+        assert_eq!(terminal["send_coverage"]["inter_context"]["transfers"], serde_json::json!([]));
+        assert_eq!(terminal["send_coverage"]["senders"].as_array().unwrap().len(), 2);
+        assert_eq!(terminal["send_coverage"]["senders"][0]["sender_context_index"], 0);
+        assert_eq!(terminal["send_coverage"]["senders"][1]["sender_context_index"], 1);
         assert_eq!(terminal["pending_messages"], 3);
         assert_eq!(terminal["contexts"][0]["todo_count"], 2);
         assert_eq!(terminal["contexts"][0]["pred_pool_len"], 3);
@@ -4495,6 +4692,222 @@ mod cb_derivation_candidate_tests {
             cb_terminal_state_candidate(&serde_json::json!({"version": 1}), &live_snapshot())
                 .unwrap_err();
         assert!(error.contains("no Pred send-coverage"));
+    }
+
+    #[test]
+    fn pred_send_candidate_reconstructs_actual_clause_major_transfer() {
+        let x = crate::calc::X;
+        let function = crate::calc::FTERM_BASE;
+        let a = crate::engine::CbLivePred {
+            kind: "concept",
+            iri: 0,
+            first: x,
+            second: None,
+        };
+        let b = crate::engine::CbLivePred {
+            kind: "concept",
+            iri: 1,
+            first: x,
+            second: None,
+        };
+        let clause = crate::engine::CbLiveClause {
+            body: vec![cb_live_pred_literal(&a)],
+            head: vec![cb_live_pred_literal(&b)],
+        };
+        let mut live = live_snapshot();
+        live.concept_count = 2;
+        live.ordinary_clause_arena = vec![clause];
+        live.contexts[0].root = false;
+        live.contexts[0].retained_clause_ids = vec![0];
+        live.contexts[0].pred_pool_ids = vec![0];
+        live.contexts[0].pred_hwm = 1;
+        live.contexts[1].predecessors = vec![crate::engine::CbLivePredecessorEdge {
+            predecessor_context: 0,
+            label: function,
+            pushed: vec![a],
+            // ID 9 was sent historically and then removed by back-subsumption.
+            pred_pool_seen: vec![0, 9],
+            edge_seen: 1,
+        }];
+        live.contexts[1].predecessor_edge_seen = vec![1];
+        let global = serde_json::json!({
+            "send": {
+                "version": 2,
+                "inter_context": {"production": {"marker": "production"}},
+                "ground_context_index": null,
+                "senders": [],
+                "root_sender": null,
+                "nominal_allocation": null
+            }
+        });
+        let candidate = cb_pred_send_coverage_candidate(&global, &live).unwrap();
+        assert_eq!(candidate["senders"][0]["transfer_indices"], serde_json::json!([0]));
+        assert_eq!(candidate["senders"][1]["transfer_indices"], serde_json::json!([]));
+        assert_eq!(candidate["inter_context"]["transfers"].as_array().unwrap().len(), 1);
+        let transfer = &candidate["inter_context"]["transfers"][0];
+        assert_eq!(transfer["sender_context_index"], 0);
+        assert_eq!(transfer["receiver_context_index"], 1);
+        assert_eq!(transfer["retained_clause_index"], 0);
+        assert_eq!(transfer["substitution"][1]["term"], cb_wire_term(function, 17));
+        assert_eq!(
+            transfer["payload"]["head"][0],
+            cb_wire_literal(
+                &cb_map_live_literal(&cb_live_pred_literal(&b), |term| {
+                    cb_pred_backwards(term, function, 17)
+                }),
+                17
+            )
+        );
+    }
+
+    #[test]
+    fn native_pred_send_candidate_passes_real_lean_checker() {
+        let Some(checker) = std::env::var_os("KM_CB_TEST_PRED_SEND_COVERAGE_CHECKER") else {
+            return;
+        };
+        let x = crate::calc::X;
+        let function = crate::calc::FTERM_BASE;
+        let a = crate::engine::CbLivePred {
+            kind: "concept", iri: 0, first: x, second: None,
+        };
+        let b = crate::engine::CbLivePred {
+            kind: "concept", iri: 1, first: x, second: None,
+        };
+        let clause = crate::engine::CbLiveClause {
+            body: vec![cb_live_pred_literal(&a)],
+            head: vec![cb_live_pred_literal(&b)],
+        };
+        let mut context = live_context(0, 7);
+        context.root = false;
+        context.core = vec![a.clone()];
+        context.retained_clause_ids = vec![0];
+        context.pred_pool_ids = vec![0];
+        context.pred_hwm = 1;
+        context.predecessors = vec![crate::engine::CbLivePredecessorEdge {
+            predecessor_context: 0,
+            label: function,
+            pushed: vec![a],
+            pred_pool_seen: vec![0],
+            edge_seen: 1,
+        }];
+        context.predecessor_edge_seen = vec![1];
+        let live = crate::engine::CbLiveTerminalSnapshot {
+            version: 5,
+            comp_ind_bits: 17,
+            concept_count: 2,
+            concept_names: vec!["A".into(), "B".into()],
+            role_count: 0,
+            function_count: 1,
+            source_individual_count: 0,
+            runtime_individual_count: 0,
+            source_ontology: vec![clause.clone()],
+            rsucc_enabled: true,
+            reach_concept_ids: Vec::new(),
+            ordinary_clause_arena: vec![clause],
+            root_clause_arena: Vec::new(),
+            pending_messages: 0,
+            message_truncated: false,
+            nominal_truncated: false,
+            insertion_history: Vec::new(),
+            contexts: vec![context],
+        };
+        let production = accepted_pred_production();
+        let global = serde_json::json!({"send": {
+            "version": 2,
+            "inter_context": {"production": production},
+            "ground_context_index": null,
+            "senders": [],
+            "root_sender": null,
+            "nominal_allocation": null
+        }});
+        let candidate = cb_pred_send_coverage_candidate(&global, &live).unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent().unwrap().join(".work/artifacts");
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join(format!("native-pred-send-{}.json", std::process::id()));
+        std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
+        let status = std::process::Command::new(checker).arg(&path).status().unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert!(status.success());
+    }
+
+    #[test]
+    fn native_root_pred_send_candidate_passes_real_lean_checker() {
+        let Some(checker) = std::env::var_os("KM_CB_TEST_PRED_SEND_COVERAGE_CHECKER") else {
+            return;
+        };
+        let x = crate::calc::X;
+        let individual = crate::calc::ind_term(1);
+        let a = crate::engine::CbLivePred {
+            kind: "concept", iri: 0, first: x, second: None,
+        };
+        let b = crate::engine::CbLivePred {
+            kind: "concept", iri: 1, first: x, second: None,
+        };
+        let clause = crate::engine::CbLiveClause {
+            body: vec![cb_live_pred_literal(&a)],
+            head: vec![cb_live_pred_literal(&b)],
+        };
+        let mut context = live_context(0, 9);
+        context.nominal_ground = true;
+        context.retained_clause_ids = vec![0];
+        context.pred_pool_ids = vec![0];
+        context.pred_hwm = 1;
+        context.predecessors = vec![crate::engine::CbLivePredecessorEdge {
+            predecessor_context: 0,
+            label: individual,
+            pushed: vec![a],
+            pred_pool_seen: vec![0],
+            edge_seen: 1,
+        }];
+        context.predecessor_edge_seen = vec![1];
+        let live = crate::engine::CbLiveTerminalSnapshot {
+            version: 5,
+            comp_ind_bits: 17,
+            concept_count: 2,
+            concept_names: vec!["A".into(), "B".into()],
+            role_count: 0,
+            function_count: 1,
+            source_individual_count: 2,
+            runtime_individual_count: 2,
+            source_ontology: vec![clause.clone()],
+            rsucc_enabled: true,
+            reach_concept_ids: Vec::new(),
+            ordinary_clause_arena: Vec::new(),
+            root_clause_arena: vec![clause],
+            pending_messages: 0,
+            message_truncated: false,
+            nominal_truncated: false,
+            insertion_history: Vec::new(),
+            contexts: vec![context],
+        };
+        let mut production = accepted_pred_production();
+        production["source"]["individual_count"] = serde_json::json!(2);
+        production["individual_count"] = serde_json::json!(2);
+        production["contexts"][0]["context_id"] = serde_json::json!(9);
+        production["contexts"][0]["root"] = serde_json::json!(true);
+        production["contexts"][0]["nominal_ground"] = serde_json::json!(true);
+        production["contexts"][0]["core"] = serde_json::json!([]);
+        let global = serde_json::json!({"send": {
+            "version": 2,
+            "inter_context": {"production": production},
+            "ground_context_index": null,
+            "senders": [],
+            "root_sender": null,
+            "nominal_allocation": null
+        }});
+        let candidate = cb_pred_send_coverage_candidate(&global, &live).unwrap();
+        assert_eq!(candidate["senders"], serde_json::json!([]));
+        assert_eq!(candidate["ground_context_index"], 0);
+        assert_eq!(candidate["root_sender"]["transfer_indices"], serde_json::json!([0]));
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent().unwrap().join(".work/artifacts");
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join(format!("native-root-pred-send-{}.json", std::process::id()));
+        std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
+        let status = std::process::Command::new(checker).arg(&path).status().unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert!(status.success());
     }
 
     #[test]

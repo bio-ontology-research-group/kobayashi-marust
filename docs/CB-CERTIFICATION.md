@@ -199,11 +199,17 @@ claim that the layer is already complete.
   separate because KM also marks query and top contexts as calculus roots. It
   binds every runtime individual-table extension to a checked Nom allocation
   over the identical source bounds and ontology. A standalone
-  `cb-pred-send-coverage-check` executable exposes this boundary. Binding the
-  predecessor snapshots to serialized terminal Rust state remains open. The
-  checked partition may be empty: a production run with no eligible
-  predecessor edge is a valid closed run, and a kernel-evaluated fixture
-  verifies its zero-transfer document.
+  `cb-pred-send-coverage-check` executable exposes this boundary. Rust now
+  reconstructs every sender edge and final transfer from the terminal
+  predecessor maps and retained `pred_pool_seen` records. It filters only
+  historical IDs removed by back-subsumption, orders the remainder exactly as
+  the Lean ordinary and nominal-root enumerators require, and derives every
+  payload by the production backward substitution. Real-checker integration
+  tests accept both sender modes. The checked partition may be empty: a run
+  with no eligible predecessor edge is a valid closed run, and a
+  kernel-evaluated fixture verifies its zero-transfer document. Native
+  production-trace and Nom-allocation construction remain separate producer
+  obligations; this emitter copies those checked branches.
 - `CBTerminalStateWire` rejects termination-as-evidence and instead checks the
   concrete fixpoint bookkeeping used by KM. The global message queue must be
   empty, neither the message cap nor Nom budget may have truncated the run, and
@@ -219,8 +225,10 @@ claim that the layer is already complete.
   the document from the same live engine snapshot through
   `KM_CB_TERMINAL_STATE_CANDIDATE` and require
   `KM_CB_TERMINAL_STATE_CHECKER` before publication. This path fails closed
-  unless the enclosing production certificate already contains the exact Pred
-  send-coverage branch; native emission of that enclosing branch remains open.
+  unless the enclosing production certificate supplies the checked production
+  trace and any required Nom allocation; Rust reconstructs the Pred edge and
+  transfer partition from the same live snapshot rather than trusting the
+  enclosing copy.
 - `CBGlobalProductionClosure` supplies the semantic projection of the nested
   global certificate. Its theorem uses each exact context-index permutation to
   quantify over every production context, then exposes retained-strengthening

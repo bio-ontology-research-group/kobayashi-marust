@@ -9,6 +9,13 @@
   transfer partition; rejecting that state made the executable certificate
   format incomplete. A kernel-evaluated no-edge fixture checks the empty
   ordinary partition through the full send-coverage decoder.
+- Reconstruct the terminal Pred sender snapshots and complete transfer
+  partition natively from each live predecessor edge and its final retained
+  `pred_pool_seen` records. The producer removes historical IDs eliminated by
+  back-subsumption, orders final sends clause-major/edge-minor, derives each
+  backward-substituted payload, and separates the nominal-ground sender. Real
+  Lean checker tests accept both ordinary and nominal-root documents. The
+  release gate now requires both cross-language paths.
 
 ### Correct the CB terminal predecessor-edge binding
 
@@ -24,8 +31,8 @@
   the correction. Their axiom reports remain limited to `propext`,
   `Classical.choice`, and `Quot.sound`.
 - Add native Rust terminal-state emission from the same deterministic live
-  snapshot used for publication. The emitter copies the enclosing
-  certificate's exact Pred send-coverage branch, serializes receiver-side
+  snapshot used for publication. The emitter reconstructs the enclosing
+  certificate's Pred edge and transfer evidence, serializes receiver-side
   predecessor watermarks and outgoing r-Succ pair watermarks separately, and
   can require the standalone Lean checker before stdout. Missing coverage,
   missing candidate configuration, or checker rejection fails closed.
