@@ -71,6 +71,14 @@ def SourceConceptOrderMode.directReadoutSafe : SourceConceptOrderMode → Bool
   | .incomparable | .sequoia => true
   | .total | .internalTotal => false
 
+/-- Equalities and inequalities emitted by KM store their greater term on the
+left.  Make that production invariant part of the fail-closed source
+certificate instead of trusting the runtime serializer. -/
+def sourceEqualityOriented (orderedTerms : List FTerm) : FLit → Bool
+  | .eq left right | .ineq left right =>
+      orderedTerms.idxOf right ≤ orderedTerms.idxOf left
+  | .P _ => true
+
 structure WireSourceFiniteOrder where
   ordered_terms : List WireTerm
   ordered_literals : List WireLiteral
@@ -93,6 +101,8 @@ structure DecodedSourceFiniteOrder
   terms_sorted : orderedTerms.Pairwise fun left right =>
     productionTermLt left right = true
   literals_nodup : orderedLiterals.Nodup
+  equalities_oriented :
+    (orderedLiterals.all (sourceEqualityOriented orderedTerms)) = true
   internal_count : internalConcepts.length = production.bounds.concepts
   root_mode_safe : rootConceptMode.directReadoutSafe = true
   non_root_mode_safe : nonRootConceptMode.directReadoutSafe = true
@@ -124,7 +134,9 @@ def WireSourceFiniteOrder.decode (production : DecodedProductionRun)
       if htermsSorted : (orderedTerms.Pairwise fun left right =>
           productionTermLt left right = true) then
         if hliteralsNodup : orderedLiterals.Nodup then
-          if hinternalCount : wire.internal_concepts.length =
+          if hequalitiesOriented :
+              orderedLiterals.all (sourceEqualityOriented orderedTerms) = true then
+           if hinternalCount : wire.internal_concepts.length =
               production.bounds.concepts then
             if hrootSafe : wire.root_concept_mode.directReadoutSafe = true then
              if hnonRootSafe : wire.non_root_concept_mode.directReadoutSafe = true then
@@ -153,6 +165,7 @@ def WireSourceFiniteOrder.decode (production : DecodedProductionRun)
                         terms_supported := htermsSupported
                         terms_sorted := htermsSorted
                         literals_nodup := hliteralsNodup
+                        equalities_oriented := hequalitiesOriented
                         internal_count := hinternalCount
                         root_mode_safe := hrootSafe
                         non_root_mode_safe := hnonRootSafe
@@ -171,7 +184,8 @@ def WireSourceFiniteOrder.decode (production : DecodedProductionRun)
               else throw "source-bound CB query concept is marked internal"
              else throw "source-bound CB non-root order needs a residue certificate"
             else throw "source-bound CB root order needs a residue certificate"
-          else throw "source-bound CB internal-concept mask has the wrong length"
+           else throw "source-bound CB internal-concept mask has the wrong length"
+          else throw "source-bound CB equality is not oriented by the term order"
         else throw "source-bound CB literal order contains a duplicate"
       else throw "source-bound CB terms do not follow production term order"
     else throw "source-bound CB term universe has an unsupported shape"
@@ -188,6 +202,32 @@ def DecodedSourceFiniteOrder.termLt
 def DecodedSourceFiniteOrder.termLe
     (order : DecodedSourceFiniteOrder production) (left right : FTerm) : Bool :=
   order.termRank left ≤ order.termRank right
+
+theorem DecodedSourceFiniteOrder.equality_oriented_of_mem
+    (order : DecodedSourceFiniteOrder production) {left right : FTerm}
+    (hmember : FLit.eq left right ∈ order.orderedLiterals) :
+    order.termLe right left = true := by
+  have hall := List.all_eq_true.mp order.equalities_oriented
+  simpa [sourceEqualityOriented, DecodedSourceFiniteOrder.termLe] using
+    hall (.eq left right) hmember
+
+theorem DecodedSourceFiniteOrder.inequality_oriented_of_mem
+    (order : DecodedSourceFiniteOrder production) {left right : FTerm}
+    (hmember : FLit.ineq left right ∈ order.orderedLiterals) :
+    order.termLe right left = true := by
+  have hall := List.all_eq_true.mp order.equalities_oriented
+  simpa [sourceEqualityOriented, DecodedSourceFiniteOrder.termLe] using
+    hall (.ineq left right) hmember
+
+theorem DecodedSourceFiniteOrder.strictly_oriented_of_ne
+    (order : DecodedSourceFiniteOrder production) {left right : FTerm}
+    (hleft : left ∈ order.orderedTerms)
+    (horiented : order.termLe right left = true) (hne : left ≠ right) :
+    order.termLt right left = true := by
+  simp only [DecodedSourceFiniteOrder.termLe, decide_eq_true_eq] at horiented
+  simp only [DecodedSourceFiniteOrder.termLt, decide_eq_true_eq]
+  exact Nat.lt_of_le_of_ne horiented (fun hrank =>
+    hne ((List.idxOf_inj hleft).mp hrank.symm))
 
 def DecodedSourceFiniteOrder.isInternal
     (order : DecodedSourceFiniteOrder production) (concept : Nat) : Bool :=

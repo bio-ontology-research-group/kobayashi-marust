@@ -57,6 +57,7 @@ import ContextCalculus.CBSourceLinearExtension
 import ContextCalculus.CBSourceCanonicalClosure
 import ContextCalculus.CBSourceCanonicalOrder
 import ContextCalculus.CBSourceEqualityFreeCompleteness
+import ContextCalculus.CBSourceEqualityCanonicalModel
 import ContextCalculus.CBRoleChainGroundCompleteness
 import ContextCalculus.CBNamedGroundCompleteness
 import ContextCalculus.CBBlockedCarrierWire
