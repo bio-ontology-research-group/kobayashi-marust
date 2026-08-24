@@ -571,6 +571,28 @@ def acceptedExample : WirePredSendCoverageDocument where
   root_sender := none
   nominal_allocation := none
 
+/-- A closed production run need not contain a predecessor edge.  Its exact
+Pred transfer partition is then empty, which is a valid terminal state rather
+than missing evidence. -/
+def acceptedNoTransferExample : WirePredSendCoverageDocument where
+  version := 2
+  inter_context := {
+    interContextExample with
+    transfers := []
+    arrivals := []
+  }
+  ground_context_index := none
+  senders := [{
+    sender_context_index := 0
+    sender_context_id := 7
+    edges := []
+    transfer_indices := []
+  }]
+  root_sender := none
+  nominal_allocation := none
+
+example : acceptedNoTransferExample.check = .ok true := by native_decide
+
 /-- A two-context fixture whose only predecessor edge is directed from context
 0 to context 1.  It prevents terminal-state tests from accidentally treating
 incoming and outgoing edge watermarks as interchangeable. -/

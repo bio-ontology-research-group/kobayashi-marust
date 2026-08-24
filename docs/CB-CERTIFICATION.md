@@ -200,7 +200,10 @@ claim that the layer is already complete.
   binds every runtime individual-table extension to a checked Nom allocation
   over the identical source bounds and ontology. A standalone
   `cb-pred-send-coverage-check` executable exposes this boundary. Binding the
-  predecessor snapshots to serialized terminal Rust state remains open.
+  predecessor snapshots to serialized terminal Rust state remains open. The
+  checked partition may be empty: a production run with no eligible
+  predecessor edge is a valid closed run, and a kernel-evaluated fixture
+  verifies its zero-transfer document.
 - `CBTerminalStateWire` rejects termination-as-evidence and instead checks the
   concrete fixpoint bookkeeping used by KM. The global message queue must be
   empty, neither the message cap nor Nom budget may have truncated the run, and

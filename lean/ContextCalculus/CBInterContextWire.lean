@@ -207,8 +207,6 @@ def WireInterContextRun.decode (wire : WireInterContextRun) :
     Except String DecodedCompleteInterContextRun := do
   if wire.version != 1 then
     throw s!"unsupported CB inter-context version {wire.version}"
-  if wire.transfers.isEmpty then
-    throw "CB inter-context evidence must contain at least one transfer"
   let production ← wire.production.decode
   let transfers ← wire.transfers.mapM (WirePredTransfer.decode production)
   let base : DecodedInterContextRun := { production, transfers }

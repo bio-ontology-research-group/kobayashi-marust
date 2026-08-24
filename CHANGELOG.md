@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Accept empty exact CB transfer partitions
+
+- Permit exact CB inter-context and Pred send-coverage certificates with zero
+  transfers. A saturated run with no eligible predecessor edge has an empty
+  transfer partition; rejecting that state made the executable certificate
+  format incomplete. A kernel-evaluated no-edge fixture checks the empty
+  ordinary partition through the full send-coverage decoder.
+
 ### Correct the CB terminal predecessor-edge binding
 
 - Correct the executable Lean terminal-state checker to compare each
