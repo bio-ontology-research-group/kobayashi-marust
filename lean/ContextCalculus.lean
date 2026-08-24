@@ -53,6 +53,7 @@ import ContextCalculus.CBGroundEqualityBridge
 import ContextCalculus.CBGroundResolutionBridge
 import ContextCalculus.CBLocalPropositionalModel
 import ContextCalculus.CBSourceGroundResolutionBridge
+import ContextCalculus.CBSourceLinearExtension
 import ContextCalculus.CBRoleChainGroundCompleteness
 import ContextCalculus.CBNamedGroundCompleteness
 import ContextCalculus.CBBlockedCarrierWire
