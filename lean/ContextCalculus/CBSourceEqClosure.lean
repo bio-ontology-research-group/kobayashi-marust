@@ -48,6 +48,38 @@ def directRewrite (order : DecodedSourceFiniteOrder production)
   | .ineq source target =>
       if source = left then some (orderedIneq order right target) else none
 
+/-- Exact source-bound counterpart of KM's production Eq rewrite. -/
+def productionRewrite (order : DecodedSourceFiniteOrder production)
+    (left right : FTerm) : FLit → Option (Option FLit)
+  | .P predicate => (directRewrite order left right (.P predicate)).map some
+  | .eq source other =>
+      if source = left then
+        if right = other then none else some (some (orderedEq order right other))
+      else none
+  | .ineq source other =>
+      if source = left then
+        if right = other then some none
+        else some (some (orderedIneq order right other))
+      else none
+
+theorem productionRewrite_eq_some_of_directRewrite
+    (order : DecodedSourceFiniteOrder production) (left right : FTerm)
+    (target rewritten : FLit)
+    (hrewrite : directRewrite order left right target = some rewritten)
+    (hcase : productionCase left right target = true) :
+    productionRewrite order left right target = some (some rewritten) := by
+  cases target with
+  | P predicate => simp_all [productionRewrite]
+  | eq source other =>
+      simp_all [directRewrite, productionRewrite, productionCase]
+  | ineq source other =>
+      simp_all [directRewrite, productionRewrite, productionCase]
+
+theorem productionRewrite_ineq_cancels
+    (order : DecodedSourceFiniteOrder production) (left right : FTerm) :
+    productionRewrite order left right (.ineq left right) = some none := by
+  simp [productionRewrite]
+
 theorem eval_orderedEq_iff {D : Type} (model : TModel D)
     (assignment : Int → D) (order : DecodedSourceFiniteOrder production)
     (left right : FTerm) :
@@ -164,9 +196,8 @@ def candidateAt? (order : DecodedSourceFiniteOrder production)
   let .eq left right := equality | none
   let target ← targetClause.head[targetHeadIndex]?
   if target = equality then none else pure ()
-  let rewritten ← directRewrite order left right target
-  if productionCase left right target then pure () else none
-  let raw := CBLocalEqEnumeration.directParamodulant targetClause equalityClause
+  let rewritten ← productionRewrite order left right target
+  let raw := CBLocalEqEnumeration.productionParamodulant targetClause equalityClause
     target equality rewritten
   let head ← normalizeGeneratedHead raw.head
   some {
@@ -275,13 +306,27 @@ theorem sourceEq_pair_covered
   let candidate : EqCandidate := {
     signature, left, right
     equality := .eq left right
-    target, rewritten, conclusion }
+    target, rewritten := some rewritten, conclusion }
+  have hproductionRewrite : productionRewrite order left right target =
+      some (some rewritten) :=
+    productionRewrite_eq_some_of_directRewrite order left right target rewritten
+      hrewrite hproduction
+  have hproductionNormalize : normalizeGeneratedHead
+      (CBLocalEqEnumeration.productionParamodulant targetClause equalityClause
+        target (.eq left right) (some rewritten)).head = some filtered := by
+    simpa [CBLocalEqEnumeration.productionParamodulant,
+      CBLocalEqEnumeration.directParamodulant] using hnormalize
+  have hproductionBody :
+      (CBLocalEqEnumeration.productionParamodulant targetClause equalityClause
+        target (.eq left right) (some rewritten)).body =
+      (CBLocalEqEnumeration.directParamodulant targetClause equalityClause
+        target (.eq left right) rewritten).body := rfl
   have hcandidateAt : candidateAt? order context.rootDomain context.retained
       equalityIndex equalityHeadIndex targetIndex targetHeadIndex =
       some candidate := by
     simp [candidateAt?, hequalityClause, htargetClause, hmaxEquality,
-      hmaxTarget, hequality, htarget, hdifferent, hrewrite, hproduction,
-      hnormalize, candidate, signature, conclusion]
+      hmaxTarget, hequality, htarget, hdifferent, hproductionRewrite,
+      hproductionNormalize, hproductionBody, candidate, signature, conclusion]
   have hsignature : signature ∈ signatures context.retained := by
     simp only [signatures, List.mem_flatMap, List.mem_range]
     refine ⟨equalityIndex, hequalityBound, ?_⟩

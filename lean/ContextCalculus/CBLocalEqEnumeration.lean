@@ -53,6 +53,24 @@ def productionCase (left right : FTerm) : FLit → Bool
   | .ineq source other => decide (source = left ∧ right ≠ other)
   | .P _ => true
 
+/-- The exact result of KM's production Eq rewrite.  An outer `none` means
+the production branch is suppressed.  `some none` is the special
+equality--disequality cancellation branch: rewriting `s != t` with `s = t`
+removes the selected disequality instead of retaining the reflexive literal
+`t != t`. -/
+def productionRewrite (order : DecodedFiniteTermOrderDocument)
+    (left right : FTerm) : FLit → Option (Option FLit)
+  | .P predicate => (directRewrite order left right (.P predicate)).map some
+  | .eq source other =>
+      if source = left then
+        if right = other then none else some (some (orderedEq order right other))
+      else none
+  | .ineq source other =>
+      if source = left then
+        if right = other then some none
+        else some (some (orderedIneq order right other))
+      else none
+
 theorem eval_orderedEq_iff {D : Type} (model : TModel D) (assignment : Int → D)
     (order : DecodedFiniteTermOrderDocument) (left right : FTerm) :
     model.evalL assignment (orderedEq order left right) ↔
@@ -156,6 +174,94 @@ theorem directParamodulant_sound {D : Type} (model : TModel D)
   · exact ⟨eqHead, by
       simp [directParamodulant, mem_without, heqHead, heqChosen], heqTrue⟩
 
+def productionParamodulant (targetClause equalityClause : FCL)
+    (target equality : FLit) (rewritten : Option FLit) : FCL :=
+  ⟨targetClause.body ++ equalityClause.body,
+    rewritten.toList ++ (without target targetClause.head ++
+      without equality equalityClause.head)⟩
+
+/-- Regression for KM's equality--disequality cancellation branch. -/
+theorem productionRewrite_ineq_cancels
+    (order : DecodedFiniteTermOrderDocument) (left right : FTerm) :
+    productionRewrite order left right (.ineq left right) = some none := by
+  simp [productionRewrite]
+
+theorem unit_eq_ineq_productionParamodulant_is_bottom
+    (left right : FTerm) :
+    productionParamodulant ⟨[], [.ineq left right]⟩
+      ⟨[], [.eq left right]⟩ (.ineq left right) (.eq left right) none =
+      ⟨[], []⟩ := by
+  simp [productionParamodulant, without]
+
+theorem productionParamodulant_sound {D : Type} (model : TModel D)
+    (assignment : Int → D) (order : DecodedFiniteTermOrderDocument)
+    (targetClause equalityClause : FCL) (left right : FTerm)
+    (target equality : FLit) (rewritten : Option FLit)
+    (hequalityLiteral : equality = .eq left right)
+    (hrewrite : productionRewrite order left right target = some rewritten)
+    (htargetValid : CBProductionTrace.HoldsAt model assignment targetClause)
+    (hequalityValid : CBProductionTrace.HoldsAt model assignment equalityClause) :
+    CBProductionTrace.HoldsAt model assignment
+      (productionParamodulant targetClause equalityClause target equality rewritten) := by
+  intro hbody
+  have htargetBody : ∀ literal ∈ targetClause.body,
+      model.evalL assignment literal := fun literal hliteral =>
+    hbody literal (by simp [productionParamodulant, hliteral])
+  have hequalityBody : ∀ literal ∈ equalityClause.body,
+      model.evalL assignment literal := fun literal hliteral =>
+    hbody literal (by simp [productionParamodulant, hliteral])
+  obtain ⟨eqHead, heqHead, heqTrue⟩ := hequalityValid hequalityBody
+  by_cases heqChosen : eqHead = equality
+  · subst eqHead
+    subst equality
+    simp only [TModel.evalL] at heqTrue
+    obtain ⟨targetHead, htargetHead, htargetTrue⟩ := htargetValid htargetBody
+    by_cases htargetChosen : targetHead = target
+    · subst targetHead
+      cases target with
+      | P predicate =>
+          simp only [productionRewrite] at hrewrite
+          cases hdirect : directRewrite order left right (.P predicate) with
+          | none => simp [hdirect] at hrewrite
+          | some literal =>
+              simp [hdirect] at hrewrite
+              subst rewritten
+              refine ⟨literal, by simp [productionParamodulant], ?_⟩
+              exact (eval_directRewrite_iff model assignment order left right
+                (.P predicate) literal heqTrue hdirect).mpr htargetTrue
+      | eq source other =>
+          by_cases hsource : source = left
+          · subst source
+            by_cases hother : right = other
+            · simp [productionRewrite, hother] at hrewrite
+            · simp [productionRewrite, hother] at hrewrite
+              subst rewritten
+              refine ⟨orderedEq order right other,
+                by simp [productionParamodulant], ?_⟩
+              rw [eval_orderedEq_iff]
+              simpa only [TModel.evalL, heqTrue] using htargetTrue
+          · simp [productionRewrite, hsource] at hrewrite
+      | ineq source other =>
+          by_cases hsource : source = left
+          · subst source
+            by_cases hother : right = other
+            · subst other
+              simp [productionRewrite] at hrewrite
+              subst rewritten
+              exact (htargetTrue heqTrue).elim
+            · simp [productionRewrite, hother] at hrewrite
+              subst rewritten
+              refine ⟨orderedIneq order right other,
+                by simp [productionParamodulant], ?_⟩
+              rw [eval_orderedIneq_iff]
+              simpa only [TModel.evalL, heqTrue] using htargetTrue
+          · simp [productionRewrite, hsource] at hrewrite
+    · exact ⟨targetHead, by
+        simp [productionParamodulant, mem_without, htargetHead, htargetChosen],
+        htargetTrue⟩
+  · exact ⟨eqHead, by
+      simp [productionParamodulant, mem_without, heqHead, heqChosen], heqTrue⟩
+
 structure EqSignature where
   equalityIndex : Nat
   equalityHeadIndex : Nat
@@ -169,7 +275,7 @@ structure EqCandidate where
   right : FTerm
   equality : FLit
   target : FLit
-  rewritten : FLit
+  rewritten : Option FLit
   conclusion : FCL
 deriving DecidableEq, Repr
 
@@ -186,9 +292,8 @@ def eqCandidate? (literalOrder : DecodedFiniteLiteralOrderDocument)
   let .eq left right := equality | none
   let target ← targetClause.head[targetHeadIndex]?
   if target = equality then none else pure ()
-  let rewritten ← directRewrite literalOrder.termOrder left right target
-  if productionCase left right target then pure () else none
-  let raw := directParamodulant targetClause equalityClause target equality rewritten
+  let rewritten ← productionRewrite literalOrder.termOrder left right target
+  let raw := productionParamodulant targetClause equalityClause target equality rewritten
   let head ← CBLocalFactorClosureWire.normalizeGeneratedHead raw.head
   some {
     signature := { equalityIndex, equalityHeadIndex, targetIndex, targetHeadIndex }
@@ -250,6 +355,9 @@ theorem mem_eqCandidates_iff (literalOrder : DecodedFiniteLiteralOrderDocument)
 
 #print axioms eval_directRewrite_iff
 #print axioms directParamodulant_sound
+#print axioms productionParamodulant_sound
+#print axioms productionRewrite_ineq_cancels
+#print axioms unit_eq_ineq_productionParamodulant_is_bottom
 #print axioms mem_eqCandidates_iff
 
 end ContextCalculus.CBLocalEqEnumeration

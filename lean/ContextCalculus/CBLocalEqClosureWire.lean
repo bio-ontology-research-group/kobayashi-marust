@@ -44,11 +44,10 @@ structure DecodedEqCoverage
   target : FLit
   target_eq : (context.retained.get targetIndex).head.get targetHeadIndex = target
   target_ne_equality : target ≠ .eq left right
-  rewritten : FLit
-  rewrite_eq : directRewrite literalOrder.termOrder left right target = some rewritten
-  production_case : productionCase left right target = true
+  rewritten : Option FLit
+  rewrite_eq : productionRewrite literalOrder.termOrder left right target = some rewritten
   raw : FCL
-  raw_eq : raw = directParamodulant
+  raw_eq : raw = productionParamodulant
     (context.retained.get targetIndex) (context.retained.get equalityIndex)
     target (.eq left right) rewritten
   conclusion : FCL
@@ -94,12 +93,11 @@ def WireEqCoverage.decode (literalOrder : DecodedFiniteLiteralOrderDocument)
                   literalOrder.maximalHeadIndices targetClause.head then
                 let targetLiteral := targetClause.head.get targetHeadIndex
                 if hdistinct : targetLiteral ≠ .eq left right then
-                  match hrewrite : directRewrite literalOrder.termOrder left right
+                  match hrewrite : productionRewrite literalOrder.termOrder left right
                       targetLiteral with
                   | none => throw "Eq target is not rewritable by the selected equality"
                   | some rewritten =>
-                    if hcase : productionCase left right targetLiteral = true then
-                      let raw := directParamodulant targetClause equalityClause
+                      let raw := productionParamodulant targetClause equalityClause
                         targetLiteral (.eq left right) rewritten
                       match hnormalize : normalizeGeneratedHead raw.head with
                       | none => throw "Eq candidate is tautological and must not be serialized"
@@ -128,7 +126,6 @@ def WireEqCoverage.decode (literalOrder : DecodedFiniteLiteralOrderDocument)
                               target := targetLiteral, target_eq := rfl
                               target_ne_equality := hdistinct
                               rewritten, rewrite_eq := hrewrite
-                              production_case := hcase
                               raw, raw_eq := rfl
                               conclusion, normalize_eq := hnormalize
                               conclusion_body_eq := rfl
@@ -136,7 +133,6 @@ def WireEqCoverage.decode (literalOrder : DecodedFiniteLiteralOrderDocument)
                               strengtheningIndex, strengthens := hstrengthens }
                           else throw "retained clause does not strengthen Eq candidate"
                         else throw "Eq strengthening index is outside retained clauses"
-                    else throw "Eq candidate violates a production suppression condition"
                 else throw "Eq target is the selected equality literal"
               else throw "Eq target literal is not maximal"
             else throw "Eq target head index is outside its clause"
@@ -156,7 +152,7 @@ theorem DecodedEqCoverage.conclusion_sound {D : Type}
     HoldsAt model assignment coverage.conclusion := by
   have hraw : HoldsAt model assignment coverage.raw := by
     rw [coverage.raw_eq]
-    exact directParamodulant_sound model assignment literalOrder.termOrder
+    exact productionParamodulant_sound model assignment literalOrder.termOrder
       (context.retained.get coverage.targetIndex)
       (context.retained.get coverage.equalityIndex)
       coverage.left coverage.right coverage.target (.eq coverage.left coverage.right)
