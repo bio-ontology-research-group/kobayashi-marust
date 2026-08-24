@@ -32,6 +32,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMAutomaticRouting \
         ContextCalculus.KMAutomaticSupervisor \
         ContextCalculus.KMWorkerPublication \
+        ContextCalculus.KMCommonRoutingSource \
         ContextCalculus.ELCheckerTermEmbedding \
         ContextCalculus.ELNormalCheckerTermEmbedding \
         ContextCalculus.ELCommonSourceWire \
@@ -72,6 +73,7 @@ for theorem in \
     commonMappedCombinedEntails_iff_finite \
     finiteELCSourceEntails_iff_publicationSource \
     WireCertificate.check_common_source_sound \
+    WireCertificate.check_common_routing_source_sound \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
     WireDirectTaxonomyPublication.check_sound \
