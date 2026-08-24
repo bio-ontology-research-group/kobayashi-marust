@@ -7,6 +7,7 @@ import ContextCalculus.HTDirectCardinalityTaxonomyCommonPublication
 import ContextCalculus.HTMixedCardinalityTaxonomyCommonPublication
 import ContextCalculus.HTBundleCardinalityTaxonomyCommonPublication
 import ContextCalculus.CBSourceProductionTaxonomyWire
+import ContextCalculus.CBLiveExactTaxonomyPublication
 
 /-!
 # One semantic source for certified KM routing
@@ -494,6 +495,53 @@ theorem bundleCardinalityHTCheck_common_routing_source_sound
     ⟨decoded, hdecode, _⟩
   exact ⟨decoded, hdecode, bundleCardinalityHTRoutingSemantics decoded⟩
 
+def cbPublicationOntology
+    (decoded : CBLiveExactTaxonomyPublication.DecodedLiveExactTaxonomyPublication) :
+    List FCL :=
+  (CBLiveExactTaxonomyPublication.productionOf decoded.live).source.ontology
+
+theorem cbExactEntails_iff_common
+    (live : CBLiveTaxonomyPublication.DecodedLiveTaxonomyPublication)
+    (sub sup : Nat) :
+    CBLiveExactTaxonomyPublication.ExactEntails live sub sup ↔
+      Entails
+        (CBLiveExactTaxonomyPublication.productionOf live).source.ontology
+        sub sup := by
+  rfl
+
+def CBRoutingSemantics
+    (decoded :
+      CBLiveExactTaxonomyPublication.DecodedLiveExactTaxonomyPublication) : Prop :=
+  decoded.named.toFinset =
+      (CBLiveExactTaxonomyPublication.liveNamedConcepts decoded.live).toFinset ∧
+  decoded.cells.map (fun cell => (cell.sub, cell.sup)) =
+      CBLiveExactTaxonomyPublication.coordinates decoded.named ∧
+  ∀ index : Fin decoded.cells.length,
+    (decoded.cells.get index).answer = true ↔
+      Entails (cbPublicationOntology decoded)
+        (decoded.cells.get index).sub (decoded.cells.get index).sup
+
+theorem cbRoutingSemantics
+    (decoded :
+      CBLiveExactTaxonomyPublication.DecodedLiveExactTaxonomyPublication) :
+    CBRoutingSemantics decoded := by
+  refine ⟨decoded.named_exact, decoded.coordinates_exact, ?_⟩
+  intro index
+  exact (decoded.cell_exact index).trans
+    (cbExactEntails_iff_common decoded.live
+      (decoded.cells.get index).sub (decoded.cells.get index).sup)
+
+theorem cbCheck_common_routing_source_sound
+    (wire : CBLiveExactTaxonomyPublication.WireLiveExactTaxonomyPublication)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded :
+        CBLiveExactTaxonomyPublication.DecodedLiveExactTaxonomyPublication,
+      wire.decode = .ok decoded ∧ CBRoutingSemantics decoded := by
+  rcases CBLiveExactTaxonomyPublication.WireLiveExactTaxonomyPublication.check_sound
+      wire hcheck with
+    ⟨decoded, hdecode, _, _, _⟩
+  exact ⟨decoded, hdecode, cbRoutingSemantics decoded⟩
+
 #print axioms models_elcOntology_iff
 #print axioms entails_elcOntology_iff
 #print axioms entails_directHTOntology_iff
@@ -506,5 +554,6 @@ theorem bundleCardinalityHTCheck_common_routing_source_sound
 #print axioms directCardinalityHTCheck_common_routing_source_sound
 #print axioms mixedCardinalityHTCheck_common_routing_source_sound
 #print axioms bundleCardinalityHTCheck_common_routing_source_sound
+#print axioms cbCheck_common_routing_source_sound
 
 end ContextCalculus.KMCommonRoutingSource

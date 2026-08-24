@@ -104,6 +104,7 @@ for theorem in \
     mixedCardinalityHTCheck_common_routing_source_sound \
     WireBundleCardinalityCommonSource.check_sound \
     bundleCardinalityHTCheck_common_routing_source_sound \
+    cbCheck_common_routing_source_sound \
     WireHTCommonSource.check_sound \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
