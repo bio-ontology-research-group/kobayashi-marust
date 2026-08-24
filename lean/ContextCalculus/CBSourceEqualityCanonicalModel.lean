@@ -23,6 +23,8 @@ open ContextCalculus.CBSourceGroundResolutionBridge
 open ContextCalculus.CBSourceLinearExtension
 open ContextCalculus.CBSourceCanonicalOrder
 open ContextCalculus.CBLocalPropositionalModel
+open ContextCalculus.CBGroundEqualityBridge
+open ContextCalculus.Eqv
 
 theorem self_mem_termAndSubterms (term : FTerm) :
     term ∈ termAndSubterms term := by
@@ -539,6 +541,134 @@ theorem productiveQuotientModel_equality_of_true
     productiveQuotientModel_evalT]
   exact not_congr Quotient.eq
 
+/-- Ground valuation presented by the quotient model.  Terms are first mapped
+to the exact representatives used by KM's unary function interpretation. -/
+noncomputable def productiveGroundValuation
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) : GroundAtom → Prop
+  | .con concept term =>
+      productiveConceptHolds context extension concept
+        (quotientTerm context extension
+          (quotientNormalizedTerm context extension term))
+  | .rol role source target =>
+      productiveRoleHolds context extension role
+        (quotientTerm context extension
+          (quotientNormalizedTerm context extension source))
+        (quotientTerm context extension
+          (quotientNormalizedTerm context extension target))
+  | .eqa left right =>
+      ProductiveCongruence context extension
+        (quotientNormalizedTerm context extension left)
+        (quotientNormalizedTerm context extension right)
+
+theorem productiveGroundValuation_respectsEq
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) :
+    RespectsEq (productiveGroundValuation context extension) := by
+  constructor
+  · intro term
+    exact ProductiveCongruence.refl _
+  · intro left right hequal
+    exact ProductiveCongruence.symm hequal
+  · intro left middle right hleft hright
+    exact ProductiveCongruence.trans hleft hright
+  · intro concept left right hequal hconcept
+    change ProductiveCongruence context extension
+      (quotientNormalizedTerm context extension left)
+      (quotientNormalizedTerm context extension right) at hequal
+    have hquot : quotientTerm context extension
+        (quotientNormalizedTerm context extension left) =
+        quotientTerm context extension
+          (quotientNormalizedTerm context extension right) :=
+      Quotient.sound hequal
+    change productiveConceptHolds context extension concept
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension right))
+    change productiveConceptHolds context extension concept
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension left)) at hconcept
+    rw [hquot] at hconcept
+    exact hconcept
+  · intro role left right target hequal hrole
+    change ProductiveCongruence context extension
+      (quotientNormalizedTerm context extension left)
+      (quotientNormalizedTerm context extension right) at hequal
+    have hquot : quotientTerm context extension
+        (quotientNormalizedTerm context extension left) =
+        quotientTerm context extension
+          (quotientNormalizedTerm context extension right) :=
+      Quotient.sound hequal
+    change productiveRoleHolds context extension role
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension right))
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension target))
+    change productiveRoleHolds context extension role
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension left))
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension target)) at hrole
+    rw [hquot] at hrole
+    exact hrole
+  · intro role source left right hequal hrole
+    change ProductiveCongruence context extension
+      (quotientNormalizedTerm context extension left)
+      (quotientNormalizedTerm context extension right) at hequal
+    have hquot : quotientTerm context extension
+        (quotientNormalizedTerm context extension left) =
+        quotientTerm context extension
+          (quotientNormalizedTerm context extension right) :=
+      Quotient.sound hequal
+    change productiveRoleHolds context extension role
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension source))
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension right))
+    change productiveRoleHolds context extension role
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension source))
+      (quotientTerm context extension
+        (quotientNormalizedTerm context extension left)) at hrole
+    rw [hquot] at hrole
+    exact hrole
+
+theorem evalGroundLiteral_productiveGroundValuation_iff
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (literal : FLit) :
+    evalGroundLiteral (productiveGroundValuation context extension) literal ↔
+      (productiveQuotientModel context extension).evalL
+        (quotientAssignment context extension) literal := by
+  cases literal with
+  | P predicate =>
+      cases predicate with
+      | concept concept term =>
+          unfold evalGroundLiteral productiveGroundValuation
+          rw [TModel.evalL, productiveQuotientModel_evalT]
+          rfl
+      | role role source target =>
+          unfold evalGroundLiteral productiveGroundValuation
+          rw [TModel.evalL, productiveQuotientModel_evalT,
+            productiveQuotientModel_evalT]
+          rfl
+  | eq left right =>
+      unfold evalGroundLiteral productiveGroundValuation
+      exact (productiveQuotientModel_eval_eq context extension left right).symm
+  | ineq left right =>
+      unfold evalGroundLiteral productiveGroundValuation
+      exact (productiveQuotientModel_eval_ineq context extension left right).symm
+
 #print axioms retained_literal_mem_ordered
 #print axioms self_mem_termAndSubterms
 #print axioms retained_equality_term_mem_ordered
@@ -555,5 +685,7 @@ theorem productiveQuotientModel_equality_of_true
 #print axioms productiveQuotientModel_eval_eq
 #print axioms productiveQuotientModel_equality_of_true
 #print axioms productiveQuotientModel_eval_ineq
+#print axioms productiveGroundValuation_respectsEq
+#print axioms evalGroundLiteral_productiveGroundValuation_iff
 
 end ContextCalculus.CBSourceEqualityCanonicalModel
