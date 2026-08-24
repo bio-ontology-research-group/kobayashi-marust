@@ -421,6 +421,20 @@ noncomputable def productiveClassNormalForm
   TermRewriting.normalForm (ProductiveClassRewrite context extension)
     (productiveClassRewrite_wellFounded context extension)
 
+@[simp] theorem productiveClassNormalForm_idempotent
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (term : FTerm) :
+    productiveClassNormalForm context extension
+        (productiveClassNormalForm context extension term) =
+      productiveClassNormalForm context extension term :=
+  TermRewriting.normalForm_idempotent
+    (ProductiveClassRewrite context extension)
+    (productiveClassRewrite_wellFounded context extension) term
+
 theorem productiveClassNormalForm_mem_ordered
     {decoded : DecodedSourceRootPredClosureDocument}
     (context : DecodedProductionContext
@@ -626,6 +640,94 @@ noncomputable def normalProductiveSourceInterpretation
   c := normalSourceConceptHolds context hcontext extension
   r := normalSourceRoleHolds context hcontext extension
   nm := fun individual => sourceQuotientTerm context extension (.const individual)
+
+noncomputable def normalSourceLiteralValuation
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) : FLit → Prop
+  | .P (.concept concept term) =>
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained)
+        (.P (.concept concept
+          (productiveClassNormalForm context extension term)))
+  | .P (.role role source target) =>
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained)
+        (.P (.role role
+          (productiveClassNormalForm context extension source)
+          (productiveClassNormalForm context extension target)))
+  | .eq left right => ProductiveEquivalence context extension left right
+  | .ineq left right => ¬ ProductiveEquivalence context extension left right
+
+/-- Rejected generated heads are tautological in the canonical productive
+equality valuation, including both reflexive equalities and complementary
+equality/disequality pairs. -/
+theorem normalSourceLiteralValuation_sat_of_normalizeGeneratedHead_none
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (clause : FCL)
+    (hnone : CBLocalFactorClosureWire.normalizeGeneratedHead clause.head = none) :
+    ContextCalculus.sat (normalSourceLiteralValuation context extension) clause := by
+  intro _
+  cases hfilter : CBLocalFactorClosureWire.filterReflexiveHead clause.head with
+  | none =>
+      unfold CBLocalFactorClosureWire.filterReflexiveHead at hfilter
+      by_cases hany : clause.head.any
+          CBLocalFactorClosureWire.isReflexiveEquality = true
+      · obtain ⟨literal, hliteral, hreflexive⟩ := List.any_eq_true.mp hany
+        cases literal with
+        | P predicate =>
+            simp [CBLocalFactorClosureWire.isReflexiveEquality] at hreflexive
+        | ineq left right =>
+            simp [CBLocalFactorClosureWire.isReflexiveEquality] at hreflexive
+        | eq left right =>
+            simp only [CBLocalFactorClosureWire.isReflexiveEquality,
+              decide_eq_true_eq] at hreflexive
+            subst right
+            exact ⟨.eq left left, hliteral, ProductiveEquivalence.refl left⟩
+      · simp [hany] at hfilter
+  | some filtered =>
+      have hfiltered : filtered = clause.head.filter fun literal =>
+          !CBLocalFactorClosureWire.isReflexiveInequality literal := by
+        unfold CBLocalFactorClosureWire.filterReflexiveHead at hfilter
+        split at hfilter
+        · contradiction
+        next _ => exact Option.some.inj hfilter |>.symm
+      have hcomplement :
+          CBLocalFactorClosureWire.hasEqualityComplement filtered = true := by
+        by_contra hfalse
+        have hfalse' :
+            CBLocalFactorClosureWire.hasEqualityComplement filtered = false :=
+          Bool.eq_false_of_not_eq_true hfalse
+        simp [CBLocalFactorClosureWire.normalizeGeneratedHead, hfilter,
+          hfalse'] at hnone
+      obtain ⟨literal, hliteral, hpaired⟩ := List.any_eq_true.mp hcomplement
+      cases literal with
+      | P predicate =>
+          simp [CBLocalFactorClosureWire.hasEqualityComplement] at hpaired
+      | ineq left right =>
+          simp [CBLocalFactorClosureWire.hasEqualityComplement] at hpaired
+      | eq left right =>
+          have hequality : .eq left right ∈ clause.head := by
+            rw [hfiltered, List.mem_filter] at hliteral
+            exact hliteral.1
+          have hinequalityFiltered : .ineq left right ∈ filtered := by
+            simpa [CBLocalFactorClosureWire.hasEqualityComplement] using hpaired
+          have hinequality : .ineq left right ∈ clause.head := by
+            rw [hfiltered, List.mem_filter] at hinequalityFiltered
+            exact hinequalityFiltered.1
+          by_cases hequal : ProductiveEquivalence context extension left right
+          · exact ⟨.eq left right, hequality, hequal⟩
+          · exact ⟨.ineq left right, hinequality, hequal⟩
 
 @[simp] theorem normalSourceConceptHolds_mk
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -1352,6 +1454,7 @@ theorem productiveGroundValuation_of_Itrue_positive
 #print axioms productiveEqualityRewrite_wellFounded
 #print axioms productiveClassRewrite_wellFounded
 #print axioms productiveClassRewrite_directlyJoinable
+#print axioms productiveClassNormalForm_idempotent
 #print axioms productiveClassNormalForm_mem_ordered
 #print axioms productiveClassNormalForm_equivalent
 #print axioms productiveClassNormalForm_eq_of_equivalent
@@ -1359,6 +1462,7 @@ theorem productiveGroundValuation_of_Itrue_positive
 #print axioms productiveClassNormalForm_eq_of_equivalent_any
 #print axioms normalSourceConceptHolds_mk
 #print axioms normalSourceRoleHolds_mk
+#print axioms normalSourceLiteralValuation_sat_of_normalizeGeneratedHead_none
 #print axioms sourceConceptHolds_iff
 #print axioms sourceRoleHolds_iff
 #print axioms productiveSourceGroundValuation_respectsEq

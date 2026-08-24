@@ -115,11 +115,18 @@ theorem reflTransGen_normalForm
           (ih smaller hsmaller)
       · rw [normalForm_eq_self_of_irreducible step wf hexists]
 
+theorem normalForm_idempotent
+    (wf : WellFounded step) (term : Term) :
+    normalForm step wf (normalForm step wf term) = normalForm step wf term :=
+  normalForm_eq_self_of_irreducible step wf
+    (normalForm_irreducible step wf term)
+
 #print axioms normalForm_eq_of_reducible
 #print axioms normalForm_eq_self_of_irreducible
 #print axioms normalForm_eq_of_step
 #print axioms normalForm_irreducible
 #print axioms normalForm_preserves
 #print axioms reflTransGen_normalForm
+#print axioms normalForm_idempotent
 
 end ContextCalculus.TermRewriting
