@@ -1,5 +1,6 @@
 import ContextCalculus.ELCommonSourceWire
 import ContextCalculus.HTCheckerTermEmbedding
+import ContextCalculus.HTDirectTaxonomyCommonPublication
 import ContextCalculus.CBSourceProductionTaxonomyWire
 
 /-!
@@ -23,6 +24,11 @@ def Entails (ontology : List FCL) (sub sup : Nat) : Prop :=
   ∀ (Domain : Type) (model : TModel Domain),
     (∀ clause ∈ ontology, valid model clause) →
     ∀ value, model.conc sub value → model.conc sup value
+
+def Unsatisfiable (ontology : List FCL) (concept : Nat) : Prop :=
+  ∀ (Domain : Type) (model : TModel Domain),
+    (∀ clause ∈ ontology, valid model clause) →
+    ∀ value, ¬ model.conc concept value
 
 private def x : FTerm := .var 0
 
@@ -115,6 +121,13 @@ theorem entails_directHTOntology_iff
   simp only [Entails, directHTOntology,
     HTCheckerTermEmbedding.CommonEntailsSub, List.forall_mem_map]
 
+theorem unsatisfiable_directHTOntology_iff
+    (ontology : List (Hypertableau.Clause Nat Nat Nat)) (concept : Nat) :
+    Unsatisfiable (directHTOntology ontology) concept ↔
+      HTCheckerTermEmbedding.CommonUnsatisfiableConcept ontology concept := by
+  simp only [Unsatisfiable, directHTOntology,
+    HTCheckerTermEmbedding.CommonUnsatisfiableConcept, List.forall_mem_map]
+
 theorem entails_cbOntology_iff (ontology : List FCL) (sub sup : Nat) :
     Entails ontology sub sup ↔
       CBSourceProductionTaxonomyWire.Entails ontology sub sup := by
@@ -151,10 +164,80 @@ theorem ELCompletion.WireCertificate.check_common_routing_source_sound
     (ELCommonSourceWire.mapResidualOntology decoded.source_ontology)
     sub.val sup.val).trans (hcommon sub sup)
 
+def directHTPublicationOntology :
+    HTDirectTaxonomyCommonPublication.DecodedDirectTaxonomyPublication → List FCL
+  | .plain decoded _ =>
+      directHTOntology (HTDirectCommonSourceWire.mapOntology
+        decoded.normalization.source)
+  | .mixed decoded _ =>
+      directHTOntology (HTDirectCommonSourceWire.mapOntology
+        decoded.normalization.source)
+
+def DirectHTRoutingSemantics
+    (decoded :
+      HTDirectTaxonomyCommonPublication.DecodedDirectTaxonomyPublication) : Prop :=
+  match decoded with
+  | .plain publication _ =>
+      (∀ concept : Fin publication.target.conceptCount,
+        concept ∈ publication.target.named →
+        (concept ∈ publication.semantic.unsatisfiable ↔
+          Unsatisfiable (directHTPublicationOntology decoded) concept.val)) ∧
+      (∀ sub sup : Fin publication.target.conceptCount,
+        sub ∈ publication.target.named → sup ∈ publication.target.named →
+        ((sub, sup) ∈ publication.semantic.subsumptions ↔
+          Entails (directHTPublicationOntology decoded) sub.val sup.val))
+  | .mixed publication _ =>
+      (∀ concept : Fin publication.target.conceptCount,
+        concept ∈ publication.target.named →
+        (concept ∈ publication.semantic.unsatisfiable ↔
+          Unsatisfiable (directHTPublicationOntology decoded) concept.val)) ∧
+      (∀ sub sup : Fin publication.target.conceptCount,
+        sub ∈ publication.target.named → sup ∈ publication.target.named →
+        ((sub, sup) ∈ publication.semantic.subsumptions ↔
+          Entails (directHTPublicationOntology decoded) sub.val sup.val))
+
+theorem directHTRoutingSemantics
+    (decoded :
+      HTDirectTaxonomyCommonPublication.DecodedDirectTaxonomyPublication) :
+    DirectHTRoutingSemantics decoded := by
+  have hcommon :=
+    HTDirectTaxonomyCommonPublication.DecodedDirectTaxonomyPublication.common_semantics
+      decoded
+  cases decoded with
+  | plain publication direct | mixed publication direct =>
+      constructor
+      · intro concept hnamed
+        exact (hcommon.1 concept hnamed).trans
+          (unsatisfiable_directHTOntology_iff
+            (HTDirectCommonSourceWire.mapOntology publication.normalization.source)
+            concept.val).symm
+      · intro sub sup hsub hsup
+        exact (hcommon.2 sub sup hsub hsup).trans
+          (entails_directHTOntology_iff
+            (HTDirectCommonSourceWire.mapOntology publication.normalization.source)
+            sub.val sup.val).symm
+
+theorem directHTCheck_common_routing_source_sound
+    (wire :
+      HTDirectTaxonomyCommonPublication.WireDirectTaxonomyPublication)
+    (hcheck : wire.check = .ok true) :
+    wire.document.runs.check = true ∧
+      wire.document.payloadBoundB = true ∧
+      ∃ decoded :
+          HTDirectTaxonomyCommonPublication.DecodedDirectTaxonomyPublication,
+        wire.decode = .ok decoded ∧ DirectHTRoutingSemantics decoded := by
+  rcases HTDirectTaxonomyCommonPublication.WireDirectTaxonomyPublication.check_sound
+      wire hcheck with
+    ⟨hruns, hpayload, decoded, hdecode, _⟩
+  exact ⟨hruns, hpayload, decoded, hdecode,
+    directHTRoutingSemantics decoded⟩
+
 #print axioms models_elcOntology_iff
 #print axioms entails_elcOntology_iff
 #print axioms entails_directHTOntology_iff
+#print axioms unsatisfiable_directHTOntology_iff
 #print axioms entails_cbOntology_iff
 #print axioms ELCompletion.WireCertificate.check_common_routing_source_sound
+#print axioms directHTCheck_common_routing_source_sound
 
 end ContextCalculus.KMCommonRoutingSource
