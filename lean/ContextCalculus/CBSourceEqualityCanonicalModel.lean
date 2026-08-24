@@ -664,6 +664,52 @@ noncomputable def normalSourceLiteralValuation
   | .eq left right => ProductiveEquivalence context extension left right
   | .ineq left right => ¬ ProductiveEquivalence context extension left right
 
+theorem normalSourceLiteralValuation_equality_of_Itrue
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (left right : FTerm)
+    (htrue :
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained) (.eq left right)) :
+    normalSourceLiteralValuation context extension (.eq left right) := by
+  exact ProductiveEquivalence.productive (by
+    simpa [ProductiveEqualityRewrite] using htrue)
+
+theorem normalSourceLiteralValuation_concept_of_normal
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (concept : Nat) (term : FTerm)
+    (hnormal : productiveClassNormalForm context extension term = term) :
+    normalSourceLiteralValuation context extension (.P (.concept concept term)) ↔
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained) (.P (.concept concept term)) := by
+  simp [normalSourceLiteralValuation, hnormal]
+
+theorem normalSourceLiteralValuation_role_of_normal
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root) (role : Nat)
+    (source target : FTerm)
+    (hsource : productiveClassNormalForm context extension source = source)
+    (htarget : productiveClassNormalForm context extension target = target) :
+    normalSourceLiteralValuation context extension
+        (.P (.role role source target)) ↔
+      letI : LinearOrder FLit := linearOrder extension
+      letI : WellFoundedLT FLit := wellFoundedLT extension
+      OrdRes.Itrue (rawSet context.retained) (.P (.role role source target)) := by
+  simp [normalSourceLiteralValuation, hsource, htarget]
+
 /-- Rejected generated heads are tautological in the canonical productive
 equality valuation, including both reflexive equalities and complementary
 equality/disequality pairs. -/
@@ -1462,6 +1508,9 @@ theorem productiveGroundValuation_of_Itrue_positive
 #print axioms productiveClassNormalForm_eq_of_equivalent_any
 #print axioms normalSourceConceptHolds_mk
 #print axioms normalSourceRoleHolds_mk
+#print axioms normalSourceLiteralValuation_equality_of_Itrue
+#print axioms normalSourceLiteralValuation_concept_of_normal
+#print axioms normalSourceLiteralValuation_role_of_normal
 #print axioms normalSourceLiteralValuation_sat_of_normalizeGeneratedHead_none
 #print axioms sourceConceptHolds_iff
 #print axioms sourceRoleHolds_iff
