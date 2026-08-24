@@ -19,6 +19,37 @@ open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBLiveInsertionDerivation
 open ContextCalculus.CBInterContextWire
 
+structure DecodedSourcePredecessorEdge (production : DecodedProductionRun) where
+  predecessorIndex : Fin production.contexts.length
+  label : FTerm
+  pushed : List FPred
+
+def decodeSourcePredecessorEdge (production : DecodedProductionRun)
+    (bits : Nat) (wire : WireLivePredecessorEdge) :
+    Except String (DecodedSourcePredecessorEdge production) := do
+  if hindex : wire.predecessor_context < production.contexts.length then
+    let predecessorIndex : Fin production.contexts.length :=
+      ⟨wire.predecessor_context, hindex⟩
+    let label ← decodeRawTerm production.bounds bits wire.label
+    let pushed ← wire.pushed.mapM
+      (WireLivePredicate.decode production.bounds bits)
+    return { predecessorIndex, label, pushed }
+  else throw "source-bound CB predecessor edge has an invalid context"
+
+structure DecodedSourceSuccessorEdge (production : DecodedProductionRun) where
+  targetIndex : Fin production.contexts.length
+  label : FTerm
+
+def decodeSourceSuccessorEdge (production : DecodedProductionRun)
+    (bits : Nat) (wire : WireLiveSuccessorEdge) :
+    Except String (DecodedSourceSuccessorEdge production) := do
+  if hindex : wire.target_context < production.contexts.length then
+    let targetIndex : Fin production.contexts.length :=
+      ⟨wire.target_context, hindex⟩
+    let label ← decodeRawTerm production.bounds bits wire.label
+    return { targetIndex, label }
+  else throw "source-bound CB successor edge has an invalid context"
+
 structure DecodedSourceLiveContext
     (production : DecodedProductionRun) (ordinary root : List FCL) where
   contextIndex : Fin production.contexts.length
@@ -29,6 +60,8 @@ structure DecodedSourceLiveContext
   retainedClauseIds : List Nat
   retained : List FCL
   retained_eq : retained = (production.contexts.get contextIndex).retained
+  predecessors : List (DecodedSourcePredecessorEdge production)
+  successors : List (DecodedSourceSuccessorEdge production)
 
 def decodeSourceLiveContext (production : DecodedProductionRun)
     (bits : Nat) (ordinary root : List FCL) (wire : WireLiveContext) :
@@ -49,6 +82,10 @@ def decodeSourceLiveContext (production : DecodedProductionRun)
                 | some clause => pure clause
                 | none => throw "source-bound CB retained clause id is outside its arena"
               if hretained : retained = context.retained then
+                let predecessors ← wire.predecessors.mapM
+                  (decodeSourcePredecessorEdge production bits)
+                let successors ← wire.successors.mapM
+                  (decodeSourceSuccessorEdge production bits)
                 return {
                   contextIndex
                   contextId := wire.context_id
@@ -58,6 +95,8 @@ def decodeSourceLiveContext (production : DecodedProductionRun)
                   retainedClauseIds := wire.retained_clause_ids
                   retained
                   retained_eq := hretained
+                  predecessors
+                  successors
                 }
               else throw "source-bound CB retained clauses differ from production"
             else throw "source-bound CB context core differs from production"

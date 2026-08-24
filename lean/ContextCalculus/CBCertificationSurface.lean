@@ -5,6 +5,7 @@ import ContextCalculus.CBSourceLiveInsertionDerivation
 import ContextCalculus.CBSourceLocalClosure
 import ContextCalculus.CBSourceHyperClosure
 import ContextCalculus.CBSourceJoin3Closure
+import ContextCalculus.CBSourceSuccClosure
 import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
@@ -29,6 +30,7 @@ open ContextCalculus.CBSourceLiveInsertionDerivation
 open ContextCalculus.CBSourceLocalClosure
 open ContextCalculus.CBSourceHyperClosure
 open ContextCalculus.CBSourceJoin3Closure
+open ContextCalculus.CBSourceSuccClosure
 open ContextCalculus.CBLiveStateWire
 open ContextCalculus.CBInterContext
 open ContextCalculus.CBInterContextWire
@@ -231,6 +233,19 @@ theorem certifiedCBSourceJoin3Closure
   wire.check_sound hcheck
 
 #print axioms certifiedCBSourceJoin3Closure
+
+/-- Source-bound residual Succ fixpoint boundary. Lean independently
+reconstructs direct Succ and r-Succ offers from retained clauses and live edges,
+then requires delivery and retained target strengthening for every offer. -/
+theorem certifiedCBSourceSuccClosure
+    (wire : WireSourceSuccClosureDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedSourceSuccClosureDocument,
+      wire.decode = .ok decoded := by
+  obtain ⟨decoded, hdecode, _, _⟩ := wire.check_sound hcheck
+  exact ⟨decoded, hdecode⟩
+
+#print axioms certifiedCBSourceSuccClosure
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :

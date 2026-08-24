@@ -40,6 +40,14 @@
   term shapes. Native snapshots now emit the effective modes, internal mask,
   and predecessor triggers; real Rust-to-Lean Hyper and Join-3 candidates pass,
   while a forged duplicate term universe is rejected.
+- Add source-bound direct Succ and r-Succ closure. Lean decodes the live forward
+  and reverse edge maps, independently selects every maximal direct Succ offer
+  and every enabled successor-edge × central-reach pair, and checks both exact
+  reverse-edge delivery and retained strengthening of the target hypothesis.
+  Rust emits and gates the nested certificate from the same terminal snapshot;
+  the real cross-language fixture passes through local, Hyper, Join-3, and Succ
+  closure checkers. Reach identifiers remain bounded and duplicate-free, but
+  deriving that metadata independently from the typed source remains open.
 
 ### Accept empty exact CB transfer partitions
 

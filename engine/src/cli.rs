@@ -1391,6 +1391,12 @@ fn verify_cb_lean_publication(
         return Err("KM_CB_SOURCE_JOIN3_CLOSURE_CANDIDATE is required with \
             KM_CB_SOURCE_JOIN3_CLOSURE_CHECKER".to_string());
     }
+    let source_succ_checker = std::env::var_os("KM_CB_SOURCE_SUCC_CLOSURE_CHECKER");
+    let source_succ_path = std::env::var_os("KM_CB_SOURCE_SUCC_CLOSURE_CANDIDATE");
+    if source_succ_checker.is_some() && source_succ_path.is_none() {
+        return Err("KM_CB_SOURCE_SUCC_CLOSURE_CANDIDATE is required with \
+            KM_CB_SOURCE_SUCC_CLOSURE_CHECKER".to_string());
+    }
     let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
     let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
     if terminal_state_checker.is_some() && terminal_state_path.is_none() {
@@ -1678,6 +1684,34 @@ fn verify_cb_lean_publication(
             .map_err(|error| format!("cannot flush source-bound CB Join-3 candidate: {error}"))?;
     }
 
+    if let Some(path) = source_succ_path.as_ref() {
+        let hyper = cb_source_hyper_closure_candidate(
+            input_typed_source.ok_or_else(|| {
+                "source-bound Succ certification requires an in-band typed source".to_string()
+            })?, &live_state,
+            certificate.pointer("/derivation/insertion_evidence")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+        let candidate = serde_json::json!({
+            "version": 1,
+            "join3_closure": {"version": 1, "hyper_closure": hyper},
+            "rsucc_enabled": live_state.rsucc_enabled,
+            "reach_concepts": live_state.reach_concept_ids,
+        });
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!("cannot create source-bound CB Succ candidate {}: {error}",
+                std::path::Path::new(path).display())
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize source-bound CB Succ candidate: {error}"))?;
+        use std::io::Write;
+        writer.write_all(b"\n")
+            .map_err(|error| format!("cannot finish source-bound CB Succ candidate: {error}"))?;
+        writer.flush()
+            .map_err(|error| format!("cannot flush source-bound CB Succ candidate: {error}"))?;
+    }
+
     if let Some(path) = terminal_state_path.as_ref() {
         let terminal = cb_terminal_state_candidate(&global_model, &live_state)?;
         let file = std::fs::File::create(path).map_err(|error| {
@@ -1861,6 +1895,18 @@ fn verify_cb_lean_publication(
                 std::path::Path::new(&join3_checker).display()))?;
         if !status.success() {
             return Err(format!("source-bound CB Join-3 checker rejected the candidate with {status}"));
+        }
+    }
+    if let Some(succ_checker) = source_succ_checker {
+        let path = source_succ_path.as_ref().ok_or_else(|| {
+            "source-bound CB Succ checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&succ_checker)
+            .arg(path).stdout(std::process::Stdio::null()).status()
+            .map_err(|error| format!("cannot run source-bound CB Succ checker {}: {error}",
+                std::path::Path::new(&succ_checker).display()))?;
+        if !status.success() {
+            return Err(format!("source-bound CB Succ checker rejected the candidate with {status}"));
         }
     }
     if let Some(checker) = checker {
@@ -6683,6 +6729,23 @@ mod cb_derivation_candidate_tests {
             let join3_status = std::process::Command::new(join3_checker)
                 .arg(&path).status().unwrap();
             assert!(join3_status.success(), "native source Join-3 closure was rejected");
+        }
+
+        if let Some(succ_checker) =
+            std::env::var_os("KM_CB_TEST_SOURCE_SUCC_CLOSURE_CHECKER")
+        {
+            let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
+                .expect("construct source-bound Succ parent candidate");
+            let succ = serde_json::json!({
+                "version": 1,
+                "join3_closure": {"version": 1, "hyper_closure": hyper},
+                "rsucc_enabled": live.rsucc_enabled,
+                "reach_concepts": live.reach_concept_ids,
+            });
+            std::fs::write(&path, serde_json::to_vec(&succ).unwrap()).unwrap();
+            let succ_status = std::process::Command::new(succ_checker)
+                .arg(&path).status().unwrap();
+            assert!(succ_status.success(), "native source Succ closure was rejected");
         }
 
         let mut forged = candidate;

@@ -159,8 +159,13 @@ claim that the layer is already complete.
   it also reconstructs the exact unsigned production term order. Rust emits and
   gates this evidence natively. Deriving the internal and predecessor-trigger
   metadata entirely from the typed source, plus separately certifying the
-  total-order residue routes, remains open. Eq, Succ, r-Succ, and exact Pred
-  delivery still need source-bound closure before this becomes global.
+  total-order residue routes, remains open. `CBSourceSuccClosure` now decodes
+  the terminal forward and reverse edge maps, independently enumerates direct
+  Succ offers and the complete enabled r-Succ edge × central-reach product, and
+  requires reverse-edge delivery plus retained target strengthening. Its native
+  Rust-to-Lean path passes. Deriving reach identifiers from the typed source,
+  Eq, and exact Pred delivery still need source-bound closure before this
+  becomes global.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the
