@@ -143,6 +143,64 @@ theorem HoldsAt.normalizeGeneratedHead_sound {D : Type}
         exact HoldsAt.filterReflexiveHead_sound model assignment source
           intermediate hfilter hsource
 
+/-- Rejected head normalization is not a missing inference. It proves the raw
+clause tautological in the actual first-order equality semantics: either the
+head contains `t ≈ t`, or it contains both `s ≈ t` and `s ≉ t`. -/
+theorem HoldsAt.of_normalizeGeneratedHead_none {D : Type}
+    (model : TModel D) (assignment : Int → D) (source : FCL)
+    (hnone : normalizeGeneratedHead source.head = none) :
+    HoldsAt model assignment source := by
+  intro _
+  cases hfilter : filterReflexiveHead source.head with
+  | none =>
+      unfold filterReflexiveHead at hfilter
+      by_cases hany : source.head.any isReflexiveEquality = true
+      · obtain ⟨literal, hliteral, hreflexive⟩ :=
+          List.any_eq_true.mp hany
+        cases literal with
+        | P predicate => simp [isReflexiveEquality] at hreflexive
+        | ineq left right => simp [isReflexiveEquality] at hreflexive
+        | eq left right =>
+            simp only [isReflexiveEquality, decide_eq_true_eq] at hreflexive
+            subst right
+            exact ⟨.eq left left, hliteral, rfl⟩
+      · simp [hany] at hfilter
+  | some filtered =>
+      have hfiltered : filtered =
+          source.head.filter fun literal => !isReflexiveInequality literal := by
+        unfold filterReflexiveHead at hfilter
+        split at hfilter
+        · contradiction
+        next _ => exact Option.some.inj hfilter |>.symm
+      have hcomplement : hasEqualityComplement filtered = true := by
+        by_contra hfalse
+        have hfalse' : hasEqualityComplement filtered = false :=
+          Bool.eq_false_of_not_eq_true hfalse
+        simp [normalizeGeneratedHead, hfilter, hfalse'] at hnone
+      obtain ⟨literal, hliteral, hpaired⟩ :=
+        List.any_eq_true.mp hcomplement
+      cases literal with
+      | P predicate => simp [hasEqualityComplement] at hpaired
+      | ineq left right => simp [hasEqualityComplement] at hpaired
+      | eq left right =>
+          simp only at hpaired
+          have hequality : FLit.eq left right ∈ source.head := by
+            have hmember := hliteral
+            rw [hfiltered, List.mem_filter] at hmember
+            have := hmember
+            exact this.1
+          have hinequalityFiltered : FLit.ineq left right ∈ filtered := by
+            simpa [hasEqualityComplement] using hpaired
+          have hinequality : FLit.ineq left right ∈ source.head := by
+            have hmember := hinequalityFiltered
+            rw [hfiltered, List.mem_filter] at hmember
+            have := hmember
+            exact this.1
+          by_cases heq : model.evalT assignment left =
+              model.evalT assignment right
+          · exact ⟨.eq left right, hequality, heq⟩
+          · exact ⟨.ineq left right, hinequality, heq⟩
+
 structure FactorSignature where
   sourceIndex : Nat
   firstHeadIndex : Nat
@@ -520,6 +578,7 @@ example : terminalHeadNormal
 
 #print axioms WireLocalFactorClosureDocument.check_sound
 #print axioms HoldsAt.normalizeGeneratedHead_sound
+#print axioms HoldsAt.of_normalizeGeneratedHead_none
 #print axioms factorCandidate_sound
 #print axioms mem_factorCandidates_iff
 #print axioms terminalHeadNormal_components

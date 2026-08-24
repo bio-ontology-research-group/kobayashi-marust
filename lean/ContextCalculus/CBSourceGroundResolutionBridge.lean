@@ -198,11 +198,15 @@ theorem ordered_candidate_true_has_production_provider
       ∃ provider ∈ context.retained, ∃ index,
         provider.head[index]? = some literal ∧
         index ∈ (hyperOf decoded).order.maximalHeadIndices
-          context.root provider.head := by
+          context.root provider.head ∧
+        (∀ bodyLiteral ∈ provider.body,
+          OrdRes.Itrue (rawSet context.retained) bodyLiteral) ∧
+        (∀ other ∈ provider.head, other ≠ literal →
+          ¬ OrdRes.Itrue (rawSet context.retained) other) := by
   letI : LinearOrder FLit := linearOrder extension
   letI : WellFoundedLT FLit := wellFoundedLT extension
   intro htrue
-  obtain ⟨raw, hraw, hstrict, _, _⟩ :=
+  obtain ⟨raw, hraw, hstrict, hnegative, hotherFalse⟩ :=
     (OrdRes.Itrue_def (rawSet context.retained) literal).mp htrue
   obtain ⟨provider, hprovider, hrawProvider⟩ :=
     (mem_rawSet_iff context.retained raw).mp hraw
@@ -213,25 +217,29 @@ theorem ordered_candidate_true_has_production_provider
     List.mem_iff_getElem.mp hliteralHead
   have hindex : provider.head[index]? = some literal :=
     List.getElem?_eq_some_iff.mpr ⟨hbound, hget⟩
-  refine ⟨provider, hprovider, index, hindex, ?_⟩
-  apply canonical_max_is_production_maximal
-    (hyperOf decoded).order context hcontext provider hprovider extension index
-    literal hindex
-  intro other hother
-  have hotherSupport := retained_head_mem_ordered
-    (hyperOf decoded).order context hcontext provider hprovider other hother
-  have hliteralSupport := retained_head_mem_ordered
-    (hyperOf decoded).order context hcontext provider hprovider literal
-      hliteralHead
-  rw [← supported_rank_le_iff extension
-    ((extension.mem_linear_iff other).mpr hotherSupport)
-    ((extension.mem_linear_iff literal).mpr hliteralSupport)]
-  by_cases hequal : other = literal
-  · subst other
-    exact le_rfl
-  · exact le_of_lt (hstrict.2.2 other
-      (ContextCalculus.OrdRes.mem_lits.mpr
-        (Or.inr (List.mem_toFinset.mpr hother))) hequal)
+  refine ⟨provider, hprovider, index, hindex, ?_, ?_, ?_⟩
+  · apply canonical_max_is_production_maximal
+      (hyperOf decoded).order context hcontext provider hprovider extension index
+      literal hindex
+    intro other hother
+    have hotherSupport := retained_head_mem_ordered
+      (hyperOf decoded).order context hcontext provider hprovider other hother
+    have hliteralSupport := retained_head_mem_ordered
+      (hyperOf decoded).order context hcontext provider hprovider literal
+        hliteralHead
+    rw [← supported_rank_le_iff extension
+      ((extension.mem_linear_iff other).mpr hotherSupport)
+      ((extension.mem_linear_iff literal).mpr hliteralSupport)]
+    by_cases hequal : other = literal
+    · subst other
+      exact le_rfl
+    · exact le_of_lt (hstrict.2.2 other
+        (ContextCalculus.OrdRes.mem_lits.mpr
+          (Or.inr (List.mem_toFinset.mpr hother))) hequal)
+  · intro bodyLiteral hbodyLiteral
+    exact hnegative bodyLiteral (List.mem_toFinset.mpr hbodyLiteral)
+  · intro other hother hne
+    exact hotherFalse other (List.mem_toFinset.mpr hother) hne
 
 theorem ordered_candidate_true_has_provider_location
     {decoded : DecodedSourceRootPredClosureDocument}
@@ -251,7 +259,7 @@ theorem ordered_candidate_true_has_provider_location
   letI : LinearOrder FLit := linearOrder extension
   letI : WellFoundedLT FLit := wellFoundedLT extension
   intro htrue
-  obtain ⟨provider, hprovider, headIndex, hhead, hmaximal⟩ :=
+  obtain ⟨provider, hprovider, headIndex, hhead, hmaximal, _, _⟩ :=
     ordered_candidate_true_has_production_provider context hcontext extension
       literal htrue
   obtain ⟨clauseIndex, hbound, hget⟩ :=
