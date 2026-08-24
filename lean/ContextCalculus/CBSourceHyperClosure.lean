@@ -278,7 +278,8 @@ def DecodedSourceFiniteOrder.maximalHeadIndices
   (List.range head.length).filter fun index =>
     match head[index]? with
     | none => false
-    | some literal => head.all fun other => order.literalLe root other literal
+    | some literal => head.all fun other =>
+        decide (other = literal) || !order.literalLe root literal other
 
 theorem mem_maximalHeadIndices_iff
     (order : DecodedSourceFiniteOrder production) (root : Bool)
@@ -286,7 +287,8 @@ theorem mem_maximalHeadIndices_iff
     index ∈ order.maximalHeadIndices root head ↔
       index < head.length ∧
       ∃ literal, head[index]? = some literal ∧
-        ∀ other ∈ head, order.literalLe root other literal = true := by
+        ∀ other ∈ head, other = literal ∨
+          order.literalLe root literal other = false := by
   simp only [DecodedSourceFiniteOrder.maximalHeadIndices,
     List.mem_filter, List.mem_range]
   constructor
@@ -295,10 +297,35 @@ theorem mem_maximalHeadIndices_iff
     | none => simp [hliteral] at hmaximal
     | some literal =>
         refine ⟨hindex, literal, rfl, ?_⟩
-        simpa [hliteral, List.all_eq_true] using hmaximal
+        simpa [hliteral, List.all_eq_true, Bool.or_eq_true,
+          Bool.not_eq_true] using hmaximal
   · rintro ⟨hindex, literal, hliteral, hmaximal⟩
     refine ⟨hindex, ?_⟩
-    simpa [hliteral, List.all_eq_true] using hmaximal
+    simpa [hliteral, List.all_eq_true, Bool.or_eq_true,
+      Bool.not_eq_true] using hmaximal
+
+theorem incomparable_pair_both_maximal
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (left right : FLit)
+    (hleftRight : order.literalLe root left right = false)
+    (hrightLeft : order.literalLe root right left = false) :
+    0 ∈ order.maximalHeadIndices root [left, right] ∧
+      1 ∈ order.maximalHeadIndices root [left, right] := by
+  constructor <;> rw [mem_maximalHeadIndices_iff]
+  · exact ⟨by simp, left, by simp, by
+      intro other hother
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+        or_false] at hother
+      rcases hother with rfl | rfl
+      · exact Or.inl rfl
+      · exact Or.inr hleftRight⟩
+  · exact ⟨by simp, right, by simp, by
+      intro other hother
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+        or_false] at hother
+      rcases hother with rfl | rfl
+      · exact Or.inr hrightLeft
+      · exact Or.inl rfl⟩
 
 def maximalProvidersFor
     (order : DecodedSourceFiniteOrder production)
@@ -410,6 +437,7 @@ theorem WireSourceHyperClosureDocument.check_sound
 
 #print axioms hyperCandidates_sound
 #print axioms mem_maximalHeadIndices_iff
+#print axioms incomparable_pair_both_maximal
 #print axioms sourceHyperClosedB_sound
 #print axioms WireSourceHyperClosureDocument.check_sound
 

@@ -144,6 +144,15 @@
   Eq candidate, and obtains a retained strengthening from the same terminal
   certificate. The composed production theorem now exposes both Factor-pair
   and Eq-pair closure without trusting Rust's serialized candidate list.
+- Correct source-bound maximal-head reconstruction to match production Rust.
+  Maximality in KM's partial order means that no distinct head literal is
+  greater; it does not mean that every other literal is below the candidate.
+  The former Lean predicate omitted every member of a mutually incomparable
+  disjunction and therefore under-checked Hyper, Eq, Join-3, and Succ closure.
+  Lean now proves that both members of an incomparable pair are maximal, a Rust
+  regression test checks the same bitmask, and the full local CB certification
+  gate, including native Rust-to-Lean closure documents, passes with the
+  expanded candidate set.
 
 ### Accept empty exact CB transfer partitions
 

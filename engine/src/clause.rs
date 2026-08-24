@@ -487,3 +487,20 @@ pub fn compute_max_head_mask(head: &[Lit], root: bool, sig: &Sig) -> u64 {
     }
     mask
 }
+
+#[cfg(test)]
+mod maximal_head_tests {
+    use super::*;
+
+    #[test]
+    fn incomparable_same_term_concepts_are_both_maximal() {
+        let mut sig = Sig::default();
+        let left = sig.concept("Left");
+        let right = sig.concept("Right");
+        let head = [
+            Lit::P(Pred::Concept { iri: left, t: X }),
+            Lit::P(Pred::Concept { iri: right, t: X }),
+        ];
+        assert_eq!(compute_max_head_mask(&head, true, &sig), 0b11);
+    }
+}
