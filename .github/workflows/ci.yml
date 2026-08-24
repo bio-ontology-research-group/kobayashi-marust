@@ -1,10 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  # Full Rust and Lean validation is intentionally a milestone gate. Development
+  # commits are validated locally; maintainers dispatch this workflow after a
+  # major proof, engine, or release milestone is ready.
   workflow_dispatch:
 
 jobs:
