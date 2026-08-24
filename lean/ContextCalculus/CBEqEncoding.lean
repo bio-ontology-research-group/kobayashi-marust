@@ -1,4 +1,5 @@
 import ContextCalculus.CBALCEncoding
+import ContextCalculus.CBClauseShape
 import ContextCalculus.CompletenessEq
 import Mathlib.Data.Nat.Pairing
 
@@ -208,6 +209,38 @@ def encode
     (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount)) :
     List FCL :=
   encodeFrom 0 ontology
+
+open ContextCalculus.CBClauseShape
+
+/-- Exact source encoding invariant: equality and disequality never occur in
+clause bodies. -/
+theorem encodeClause_predicateBody
+    (index : Nat)
+    (clause : OClause (Fin conceptCount) (Fin roleCount) (Fin individualCount)) :
+    ∀ encoded ∈ encodeClause index clause, PredicateBody encoded := by
+  cases clause <;>
+    simp [encodeClause, PredicateBody, con, rol, CBALCEncoding.con,
+      CBALCEncoding.rol, atMostBodyL,
+      guardedAtLeastClauses, atLeastRoleClauses, atLeastConceptClauses,
+      atLeastDistinctClauses] <;> aesop
+
+theorem encodeFrom_predicateBody
+    (index : Nat)
+    (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount)) :
+    ∀ clause ∈ encodeFrom index ontology, PredicateBody clause := by
+  induction ontology generalizing index with
+  | nil => simp [encodeFrom]
+  | cons source rest ih =>
+      intro clause hclause
+      simp only [encodeFrom, List.mem_append] at hclause
+      exact hclause.elim
+        (encodeClause_predicateBody index source clause)
+        (ih (index + 1) clause)
+
+theorem encode_predicateBody
+    (ontology : Ontology (Fin conceptCount) (Fin roleCount) (Fin individualCount)) :
+    ∀ clause ∈ encode ontology, PredicateBody clause := by
+  simpa [encode] using encodeFrom_predicateBody 0 ontology
 
 /-- Restrict a nested-term model to the exact bounded source signature. -/
 def restrictModel (model : TModel D) :

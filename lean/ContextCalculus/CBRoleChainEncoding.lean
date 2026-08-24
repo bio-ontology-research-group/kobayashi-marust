@@ -117,6 +117,32 @@ private theorem mem_chainBody {chain : RoleChain (Fin roleCount)} {literal : FLi
         literal = rol (chain.body.get i) (node i.val) (node (i.val + 1)) := by
   simpa only [chainBody, List.mem_ofFn, eq_comm]
 
+open ContextCalculus.CBClauseShape
+
+theorem encodeChain_predicateBody (chain : RoleChain (Fin roleCount)) :
+    PredicateBody (encodeChain chain) := by
+  intro literal hliteral
+  change literal ∈ chainBody chain at hliteral
+  rw [mem_chainBody] at hliteral
+  obtain ⟨index, rfl⟩ := hliteral
+  exact ⟨_, rfl⟩
+
+theorem encodeRoleAxiom_predicateBody
+    (roleAxiom : RoleAxiom (Fin roleCount)) :
+    PredicateBody (encodeRoleAxiom roleAxiom) := by
+  cases roleAxiom <;> simp [encodeRoleAxiom, PredicateBody, rol]
+
+theorem encode_predicateBody
+    (source : SourceOntology (Fin conceptCount) (Fin roleCount)
+      (Fin individualCount)) :
+    ∀ clause ∈ encode source, PredicateBody clause := by
+  intro clause hclause
+  simp only [encode, List.mem_append, List.mem_map] at hclause
+  rcases hclause with (hbase | ⟨chain, _, rfl⟩) | ⟨roleAxiom, _, rfl⟩
+  · exact CBEqEncoding.encode_predicateBody source.clauses clause hbase
+  · exact encodeChain_predicateBody chain
+  · exact encodeRoleAxiom_predicateBody roleAxiom
+
 theorem valid_encodeChain_iff (model : TModel D)
     (chain : RoleChain (Fin roleCount)) :
     valid model (encodeChain chain) ↔

@@ -21,6 +21,7 @@ open Lean ContextCalculus ContextCalculus.CheckerTerm
 open ContextCalculus.CBTermWire ContextCalculus.CBSourceWire
 open ContextCalculus.CBProductionTrace
 open ContextCalculus.CBRoleChainEncoding
+open ContextCalculus.CBClauseShape
 
 inductive WireProductionJustification where
   | premise (index : Nat) (substitution : List WireSubstitutionEntry)
@@ -128,6 +129,7 @@ structure DecodedProductionContext (bounds : Bounds) (ontology : List FCL) where
   assumptions : List FCL
   assumptions_eq : assumptions = core.map assumptionClause ++ imports
   retained : List FCL
+  retained_predicate_body : ∀ clause ∈ retained, PredicateBody clause
   imports_retained : ∀ imported ∈ imports, imported ∈ retained
   discarded : List (DecodedDiscardedClause retained)
   trace : List Entry
@@ -148,32 +150,36 @@ def WireProductionContext.decode (bounds : Bounds) (ontology : List FCL)
       let retained ← wire.retained.mapM (WireClause.decode bounds)
       let discarded ← wire.discarded.mapM (WireDiscardedClause.decode bounds retained)
       let trace ← wire.trace.mapM (WireProductionEntry.decode bounds)
-      if himportsRetained : ∀ imported ∈ imports, imported ∈ retained then
-        if hretained : retained = terminal trace then
-          if htrace : check ontology assumptions trace = true then
-            if hnominalRoot : wire.nominal_ground = true → wire.root = true then
-              return {
-                contextId := wire.context_id
-                root := wire.root
-                nominalGround := wire.nominal_ground
-                nominal_ground_root := hnominalRoot
-                queryConcept
-                core
-                core_nodup := hdecodedCoreNodup
-                imports
-                imports_retained := himportsRetained
-                assumptions
-                assumptions_eq := rfl
-                retained
-                discarded
-                trace
-                retained_eq := hretained
-                trace_valid := htrace
-              }
-            else throw "nominal ground context is not a root context"
-          else throw "production context trace was rejected"
-        else throw "production retained clauses differ from the checked trace terminal"
-      else throw "production context import is absent from the retained state"
+      if hretainedBodies : retained.all predicateBodyB = true then
+        if himportsRetained : ∀ imported ∈ imports, imported ∈ retained then
+          if hretained : retained = terminal trace then
+            if htrace : check ontology assumptions trace = true then
+              if hnominalRoot : wire.nominal_ground = true → wire.root = true then
+                return {
+                  contextId := wire.context_id
+                  root := wire.root
+                  nominalGround := wire.nominal_ground
+                  nominal_ground_root := hnominalRoot
+                  queryConcept
+                  core
+                  core_nodup := hdecodedCoreNodup
+                  imports
+                  imports_retained := himportsRetained
+                  assumptions
+                  assumptions_eq := rfl
+                  retained
+                  retained_predicate_body :=
+                    (all_predicateBodyB_eq_true_iff retained).mp hretainedBodies
+                  discarded
+                  trace
+                  retained_eq := hretained
+                  trace_valid := htrace
+                }
+              else throw "nominal ground context is not a root context"
+            else throw "production context trace was rejected"
+          else throw "production retained clauses differ from the checked trace terminal"
+        else throw "production context import is absent from the retained state"
+      else throw "production retained clause body contains a non-predicate literal"
     else throw "decoded production context core contains duplicates"
   else throw "production context core contains duplicate predicates"
 

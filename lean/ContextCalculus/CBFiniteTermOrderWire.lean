@@ -148,7 +148,7 @@ theorem WireFiniteTermOrderDocument.check_sound
 def acceptedExample : WireFiniteTermOrderDocument where
   version := 1
   factor_closure := CBLocalFactorClosureWire.acceptedExample
-  ordered_terms := [.var (-4), .var (-3), .var (-2), .var (-1), .var 0]
+  ordered_terms := [.var (-3), .var (-2), .var (-1), .var 0]
 
 private def rejected (result : Except String Bool) : Bool :=
   match result with | .error _ => true | .ok _ => false

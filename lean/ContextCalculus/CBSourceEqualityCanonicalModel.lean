@@ -25,6 +25,40 @@ open ContextCalculus.CBSourceCanonicalOrder
 open ContextCalculus.CBLocalPropositionalModel
 open ContextCalculus.CBGroundEqualityBridge
 open ContextCalculus.Eqv
+open ContextCalculus.CBClauseShape
+
+/-- Every normalized source body has exactly KM's supported positive-predicate
+polarity.  The fact comes from the checked source binding, not an assumption of
+the canonical-model theorem. -/
+theorem source_clause_predicateBody
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (sourceClause : FCL)
+    (hsource : sourceClause ∈
+      (liveOf decoded).production.source.ontology) :
+    PredicateBody sourceClause :=
+  (liveOf decoded).production.source.ontology_predicateBody
+    sourceClause hsource
+
+theorem source_instance_predicateBody
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (sourceClause : FCL)
+    (hsource : sourceClause ∈
+      (liveOf decoded).production.source.ontology)
+    (substitution : List (Int × FTerm)) :
+    PredicateBody (substCl substitution sourceClause) :=
+  predicateBody_substCl substitution sourceClause
+    (source_clause_predicateBody sourceClause hsource)
+
+/-- Retained clauses carry the same invariant as checked evidence in every
+production context. -/
+theorem retained_clause_predicateBody
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (clause : FCL) (hclause : clause ∈ context.retained) :
+    PredicateBody clause :=
+  context.retained_predicate_body clause hclause
 
 theorem self_mem_termAndSubterms (term : FTerm) :
     term ∈ termAndSubterms term := by
@@ -642,6 +676,9 @@ theorem productiveGroundValuation_of_Itrue_positive
   | ineq left right => simp [positiveAtom?] at hatom
 
 #print axioms retained_literal_mem_ordered
+#print axioms source_clause_predicateBody
+#print axioms source_instance_predicateBody
+#print axioms retained_clause_predicateBody
 #print axioms self_mem_termAndSubterms
 #print axioms retained_equality_term_mem_ordered
 #print axioms retained_equality_strictly_decreases

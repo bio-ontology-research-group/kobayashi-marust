@@ -180,6 +180,15 @@ private theorem ClauseEquivalent.mem_head_iff {left right : FCL}
   simpa only [List.mem_toFinset] using
     Finset.ext_iff.mp hequivalent.2 literal
 
+open ContextCalculus.CBClauseShape
+
+theorem ClauseEquivalent.predicateBody_left {left right : FCL}
+    (hequivalent : ClauseEquivalent left right)
+    (hright : PredicateBody right) : PredicateBody left := by
+  intro literal hliteral
+  apply hright literal
+  exact (hequivalent.mem_body_iff literal).mp hliteral
+
 private theorem ClauseEquivalent.valid_iff (model : TModel D)
     {left right : FCL} (hequivalent : ClauseEquivalent left right) :
     valid model left ↔ valid model right := by
@@ -202,6 +211,27 @@ structure DecodedSourceBinding where
   allocation_injective : Function.Injective allocation
   exact_encoding : OntologyEquivalent ontology (renameOntology allocation
     (CBRoleChainEncoding.encode source))
+
+theorem predicateBody_renameClause (allocation : Nat → Nat) (clause : FCL)
+    (hbody : PredicateBody clause) :
+    PredicateBody (renameClause allocation clause) := by
+  intro literal hliteral
+  simp only [renameClause, List.mem_map] at hliteral
+  obtain ⟨source, hsource, rfl⟩ := hliteral
+  obtain ⟨predicate, rfl⟩ := hbody source hsource
+  exact ⟨renamePred allocation predicate, rfl⟩
+
+/-- The checked production ontology inherits the exact source body polarity. -/
+theorem DecodedSourceBinding.ontology_predicateBody
+    (decoded : DecodedSourceBinding) :
+    ∀ clause ∈ decoded.ontology, PredicateBody clause := by
+  intro clause hclause
+  obtain ⟨encoded, hencoded, hequivalent⟩ :=
+    decoded.exact_encoding.1 clause hclause
+  rcases List.mem_map.mp hencoded with ⟨sourceClause, hsource, rfl⟩
+  apply hequivalent.predicateBody_left
+  exact predicateBody_renameClause decoded.allocation sourceClause
+    (CBRoleChainEncoding.encode_predicateBody decoded.source sourceClause hsource)
 
 def WireSourceBinding.decode (wire : WireSourceBinding) :
     Except String DecodedSourceBinding := do

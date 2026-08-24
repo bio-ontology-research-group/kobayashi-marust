@@ -143,7 +143,6 @@ private def x : WireTerm := .var 0
 private def y : WireTerm := .var (-1)
 private def z : WireTerm := .var (-2)
 private def a : WireTerm := .var (-3)
-private def b : WireTerm := .var (-4)
 
 def acceptedExample : WireFiniteLiteralOrderDocument where
   version := 1
@@ -151,7 +150,7 @@ def acceptedExample : WireFiniteLiteralOrderDocument where
   ordered_literals := [
     .predicate (.concept 0 x),
     .predicate (.concept 1 x),
-    .equality a b,
+    .predicate (.concept 0 a),
     .equality x y,
     .equality x z,
     .inequality y z,

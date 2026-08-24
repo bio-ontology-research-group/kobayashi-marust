@@ -244,14 +244,14 @@ theorem WireLocalResolutionClosureDocument.check_sound
 
 private def x : WireTerm := .var 0
 private def y : WireTerm := .var (-1)
-private def eqxx : WireLiteral := .equality x x
+private def pyy : WireLiteral := .predicate (.concept 0 y)
 private def eqxy : WireLiteral := .equality x y
 
 private def resolutionPremise : WireClause :=
-  ⟨[eqxx], [eqxx, eqxy]⟩
+  ⟨[pyy], [pyy, eqxy]⟩
 
 private def resolutionResult : WireClause :=
-  ⟨[eqxx], [eqxy, eqxx]⟩
+  ⟨[pyy], [eqxy, pyy]⟩
 
 private def resolutionTerminal : WireCBTerminalStateDocument :=
   let terminal := CBTerminalStateWire.acceptedExample
@@ -263,7 +263,7 @@ private def resolutionTerminal : WireCBTerminalStateDocument :=
       retained := context.retained ++ [resolutionPremise, resolutionResult]
       trace := context.trace ++
         [⟨resolutionPremise, .tautology⟩,
-         ⟨resolutionResult, .resolve 1 1 eqxx⟩] }
+         ⟨resolutionResult, .resolve 1 1 pyy⟩] }
   { terminal with
     send_coverage := { send with
       inter_context := { inter with
@@ -283,22 +283,22 @@ def acceptedExample : WireLocalResolutionClosureDocument where
     generated := [{
       positive_index := 1
       negative_index := 1
-      literal := eqxx
+      literal := pyy
       strengthening_retained := 2
     }, {
       positive_index := 1
       negative_index := 2
-      literal := eqxx
+      literal := pyy
       strengthening_retained := 2
     }, {
       positive_index := 2
       negative_index := 1
-      literal := eqxx
+      literal := pyy
       strengthening_retained := 2
     }, {
       positive_index := 2
       negative_index := 2
-      literal := eqxx
+      literal := pyy
       strengthening_retained := 2
     }]
   }]
@@ -309,18 +309,18 @@ private def rejected (result : Except String Bool) : Bool :=
 example : acceptedExample.check = .ok true := by native_decide
 
 example : resolutionSignatures
-    [⟨[], []⟩, ⟨[.eq (.var 0) (.var 0)],
-      [.eq (.var 0) (.var 0), .eq (.var 0) (.var (-1))]⟩,
-      ⟨[.eq (.var 0) (.var 0)],
-        [.eq (.var 0) (.var (-1)), .eq (.var 0) (.var 0)]⟩] =
+    [⟨[], []⟩, ⟨[.P (.concept 0 (.var (-1)))],
+      [.P (.concept 0 (.var (-1))), .eq (.var 0) (.var (-1))]⟩,
+      ⟨[.P (.concept 0 (.var (-1)))],
+        [.eq (.var 0) (.var (-1)), .P (.concept 0 (.var (-1)))]⟩] =
     [{ positiveIndex := 1, negativeIndex := 1,
-       literal := .eq (.var 0) (.var 0) },
+       literal := .P (.concept 0 (.var (-1))) },
      { positiveIndex := 1, negativeIndex := 2,
-       literal := .eq (.var 0) (.var 0) },
+       literal := .P (.concept 0 (.var (-1))) },
      { positiveIndex := 2, negativeIndex := 1,
-       literal := .eq (.var 0) (.var 0) },
+       literal := .P (.concept 0 (.var (-1))) },
      { positiveIndex := 2, negativeIndex := 2,
-       literal := .eq (.var 0) (.var 0) }] := by native_decide
+       literal := .P (.concept 0 (.var (-1))) }] := by native_decide
 
 example : rejected ({ acceptedExample with contexts :=
     [{ context_index := 0, context_id := 7, generated := [] }] }).check = true := by
