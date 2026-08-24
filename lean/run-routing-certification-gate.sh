@@ -96,11 +96,14 @@ for theorem in \
     modelsProjectedDefs_map_natInterp \
     modelsProjectedDefs_map_finInterp \
     WireDirectCardinalityCommonSource.check_sound \
+    directCardinalityHTCheck_common_routing_source_sound \
     valid_shiftClauseFunctions_iff \
     models_shiftOntologyFunctions_iff \
     functionView_mergedModel \
     WireMixedCardinalityCommonSource.check_sound \
+    mixedCardinalityHTCheck_common_routing_source_sound \
     WireBundleCardinalityCommonSource.check_sound \
+    bundleCardinalityHTCheck_common_routing_source_sound \
     WireHTCommonSource.check_sound \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \

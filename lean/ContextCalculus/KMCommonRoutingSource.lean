@@ -3,6 +3,9 @@ import ContextCalculus.HTCheckerTermEmbedding
 import ContextCalculus.HTDirectTaxonomyCommonPublication
 import ContextCalculus.HTMixedTaxonomyCommonPublication
 import ContextCalculus.HTBundleTaxonomyCommonPublication
+import ContextCalculus.HTDirectCardinalityTaxonomyCommonPublication
+import ContextCalculus.HTMixedCardinalityTaxonomyCommonPublication
+import ContextCalculus.HTBundleCardinalityTaxonomyCommonPublication
 import ContextCalculus.CBSourceProductionTaxonomyWire
 
 /-!
@@ -413,6 +416,84 @@ theorem bundleHTCheck_common_routing_source_sound
   exact ⟨hruns, hpayload, decoded, hdecode,
     bundleHTRoutingSemantics decoded⟩
 
+def DirectCardinalityHTRoutingSemantics
+    (decoded : HTDirectCardinalityTaxonomyCommonPublication.DecodedDirectCardinalityTaxonomyPublication) : Prop :=
+  decoded.CommonSemantics ∧
+  (∀ sub sup : Fin decoded.common.projection.concepts.length,
+    decoded.common.CommonEntails sub sup ↔
+      Entails decoded.common.commonOntology sub.val sup.val) ∧
+  (∀ concept : Fin decoded.common.projection.concepts.length,
+    decoded.common.CommonUnsatisfiable concept ↔
+      Unsatisfiable decoded.common.commonOntology concept.val)
+
+theorem directCardinalityHTRoutingSemantics
+    (decoded : HTDirectCardinalityTaxonomyCommonPublication.DecodedDirectCardinalityTaxonomyPublication) :
+    DirectCardinalityHTRoutingSemantics decoded := by
+  exact ⟨decoded.common_semantics, fun _ _ => Iff.rfl, fun _ => Iff.rfl⟩
+
+theorem directCardinalityHTCheck_common_routing_source_sound
+    (wire : HTDirectCardinalityTaxonomyCommonPublication.WireDirectCardinalityTaxonomyPublication)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : HTDirectCardinalityTaxonomyCommonPublication.DecodedDirectCardinalityTaxonomyPublication,
+      wire.decode = .ok decoded ∧
+        DirectCardinalityHTRoutingSemantics decoded := by
+  rcases HTDirectCardinalityTaxonomyCommonPublication.WireDirectCardinalityTaxonomyPublication.check_sound
+      wire hcheck with
+    ⟨decoded, hdecode, _⟩
+  exact ⟨decoded, hdecode, directCardinalityHTRoutingSemantics decoded⟩
+
+def MixedCardinalityHTRoutingSemantics
+    (decoded : HTMixedCardinalityTaxonomyCommonPublication.DecodedMixedCardinalityTaxonomyPublication) : Prop :=
+  decoded.CommonSemantics ∧
+  (∀ sub sup : Fin decoded.common.projection.mixed.concepts.length,
+    decoded.common.CommonEntails sub sup ↔
+      Entails decoded.common.commonOntology sub.val sup.val) ∧
+  (∀ concept : Fin decoded.common.projection.mixed.concepts.length,
+    decoded.common.CommonUnsatisfiable concept ↔
+      Unsatisfiable decoded.common.commonOntology concept.val)
+
+theorem mixedCardinalityHTRoutingSemantics
+    (decoded : HTMixedCardinalityTaxonomyCommonPublication.DecodedMixedCardinalityTaxonomyPublication) :
+    MixedCardinalityHTRoutingSemantics decoded := by
+  exact ⟨decoded.common_semantics, fun _ _ => Iff.rfl, fun _ => Iff.rfl⟩
+
+theorem mixedCardinalityHTCheck_common_routing_source_sound
+    (wire : HTMixedCardinalityTaxonomyCommonPublication.WireMixedCardinalityTaxonomyPublication)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : HTMixedCardinalityTaxonomyCommonPublication.DecodedMixedCardinalityTaxonomyPublication,
+      wire.decode = .ok decoded ∧
+        MixedCardinalityHTRoutingSemantics decoded := by
+  rcases HTMixedCardinalityTaxonomyCommonPublication.WireMixedCardinalityTaxonomyPublication.check_sound
+      wire hcheck with
+    ⟨decoded, hdecode, _⟩
+  exact ⟨decoded, hdecode, mixedCardinalityHTRoutingSemantics decoded⟩
+
+def BundleCardinalityHTRoutingSemantics
+    (decoded : HTBundleCardinalityTaxonomyCommonPublication.DecodedBundleCardinalityTaxonomyPublication) : Prop :=
+  decoded.CommonSemantics ∧
+  (∀ sub sup : Fin decoded.common.projection.bundle.sourceConcepts.length,
+    decoded.common.CommonEntails sub sup ↔
+      Entails decoded.common.commonOntology sub.val sup.val) ∧
+  (∀ concept : Fin decoded.common.projection.bundle.sourceConcepts.length,
+    decoded.common.CommonUnsatisfiable concept ↔
+      Unsatisfiable decoded.common.commonOntology concept.val)
+
+theorem bundleCardinalityHTRoutingSemantics
+    (decoded : HTBundleCardinalityTaxonomyCommonPublication.DecodedBundleCardinalityTaxonomyPublication) :
+    BundleCardinalityHTRoutingSemantics decoded := by
+  exact ⟨decoded.common_semantics, fun _ _ => Iff.rfl, fun _ => Iff.rfl⟩
+
+theorem bundleCardinalityHTCheck_common_routing_source_sound
+    (wire : HTBundleCardinalityTaxonomyCommonPublication.WireBundleCardinalityTaxonomyPublication)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : HTBundleCardinalityTaxonomyCommonPublication.DecodedBundleCardinalityTaxonomyPublication,
+      wire.decode = .ok decoded ∧
+        BundleCardinalityHTRoutingSemantics decoded := by
+  rcases HTBundleCardinalityTaxonomyCommonPublication.WireBundleCardinalityTaxonomyPublication.check_sound
+      wire hcheck with
+    ⟨decoded, hdecode, _⟩
+  exact ⟨decoded, hdecode, bundleCardinalityHTRoutingSemantics decoded⟩
+
 #print axioms models_elcOntology_iff
 #print axioms entails_elcOntology_iff
 #print axioms entails_directHTOntology_iff
@@ -422,5 +503,8 @@ theorem bundleHTCheck_common_routing_source_sound
 #print axioms directHTCheck_common_routing_source_sound
 #print axioms mixedHTCheck_common_routing_source_sound
 #print axioms bundleHTCheck_common_routing_source_sound
+#print axioms directCardinalityHTCheck_common_routing_source_sound
+#print axioms mixedCardinalityHTCheck_common_routing_source_sound
+#print axioms bundleCardinalityHTCheck_common_routing_source_sound
 
 end ContextCalculus.KMCommonRoutingSource
