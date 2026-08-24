@@ -281,6 +281,44 @@ theorem ordered_candidate_true_has_production_provider
   · intro other hother hne
     exact hotherFalse other (List.mem_toFinset.mpr hother) hne
 
+/-- The provider selected by the ordered candidate construction has the exact
+strictness needed by the equality canonical-model induction: every different
+head literal is strictly smaller than the produced literal in the checked
+linear extension. -/
+theorem ordered_candidate_true_has_strict_provider
+    {decoded : DecodedSourceRootPredClosureDocument}
+    (context : DecodedProductionContext
+      (liveOf decoded).production.bounds
+      (liveOf decoded).production.source.ontology)
+    (extension : ComputedLinearExtension
+      (hyperOf decoded).order context.root)
+    (literal : FLit) :
+    letI := linearOrder extension
+    letI := wellFoundedLT extension
+    OrdRes.Itrue (rawSet context.retained) literal →
+      ∃ provider ∈ context.retained,
+        literal ∈ provider.head ∧
+        (∀ bodyLiteral ∈ provider.body,
+          OrdRes.Itrue (rawSet context.retained) bodyLiteral) ∧
+        ∀ other ∈ provider.head, other ≠ literal → other < literal := by
+  letI : LinearOrder FLit := linearOrder extension
+  letI : WellFoundedLT FLit := wellFoundedLT extension
+  intro htrue
+  obtain ⟨raw, hraw, hstrict, hnegative, _⟩ :=
+    (OrdRes.Itrue_def (rawSet context.retained) literal).mp htrue
+  obtain ⟨provider, hprovider, hrawProvider⟩ :=
+    (mem_rawSet_iff context.retained raw).mp hraw
+  subst raw
+  have hliteralHead : literal ∈ provider.head :=
+    List.mem_toFinset.mp hstrict.1
+  refine ⟨provider, hprovider, hliteralHead, ?_, ?_⟩
+  · intro bodyLiteral hbodyLiteral
+    exact hnegative bodyLiteral (List.mem_toFinset.mpr hbodyLiteral)
+  · intro other hother hdifferent
+    exact hstrict.2.2 other
+      (ContextCalculus.OrdRes.mem_lits.mpr
+        (Or.inr (List.mem_toFinset.mpr hother))) hdifferent
+
 theorem ordered_candidate_true_has_provider_location
     {decoded : DecodedSourceRootPredClosureDocument}
     (context : DecodedProductionContext
@@ -608,6 +646,7 @@ theorem SourceProductionClosed.all_context_ground_models
 #print axioms SourceProductionClosed.context_canonical_raw_model
 #print axioms SourceProductionClosed.context_ordered_candidate_model
 #print axioms ordered_candidate_true_has_production_provider
+#print axioms ordered_candidate_true_has_strict_provider
 #print axioms ordered_candidate_true_has_provider_location
 #print axioms ordered_candidate_true_body_has_provider_selection
 #print axioms ordered_candidate_true_body_has_productive_selection
