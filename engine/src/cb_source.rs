@@ -56,6 +56,22 @@ pub enum NamedSourceClause {
     Functional {
         role: String,
     },
+    Nominal {
+        concept: String,
+        individual: String,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecoveredSource {
+    pub clauses: Vec<NamedSourceClause>,
+    pub chains: Vec<NamedRoleChain>,
+    pub role_axioms: Vec<NamedRoleAxiom>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecoveryError {
+    pub production_index: usize,
 }
 
 fn variable(term: &JTerm) -> Option<&str> {
@@ -353,7 +369,336 @@ pub fn paired_source_clause(first: &JClause, second: &JClause) -> Option<NamedSo
             }
         }
     }
+    if let ([], [first_result], [second_trigger], [second_result]) = (
+        first.body.as_slice(),
+        first.head.as_slice(),
+        second.body.as_slice(),
+        second.head.as_slice(),
+    ) {
+        if let (
+            JAtom::Concept {
+                concept,
+                term: fact_term,
+            },
+            JAtom::Concept {
+                concept: concept2,
+                term: concept_term,
+            },
+            JAtom::Eq { left, right },
+        ) = (first_result, second_trigger, second_result)
+        {
+            let x = variable(concept_term)?;
+            let left_variable = variable(left)?;
+            let (right_individual, fact_individual) = match (right, fact_term) {
+                (JTerm::Ind { name: right }, JTerm::Ind { name: fact }) => {
+                    (right.as_str(), fact.as_str())
+                }
+                _ => return None,
+            };
+            if concept == concept2 && x == left_variable && right_individual == fact_individual {
+                return Some(NamedSourceClause::Nominal {
+                    concept: concept.to_string(),
+                    individual: right_individual.to_string(),
+                });
+            }
+        }
+    }
     None
+}
+
+/// Recover the complete supported typed source from one production clause
+/// stream. Every production clause must be consumed exactly once. Multi-clause
+/// constructors are consumed atomically and all unsupported or malformed
+/// shapes report their first production index.
+pub fn recover_source(clauses: &[JClause]) -> Result<RecoveredSource, RecoveryError> {
+    let mut recovered = RecoveredSource {
+        clauses: Vec::new(),
+        chains: Vec::new(),
+        role_axioms: Vec::new(),
+    };
+    let mut index = 0;
+    while index < clauses.len() {
+        if let Some(next) = clauses.get(index + 1) {
+            if let Some(source) = paired_source_clause(&clauses[index], next) {
+                recovered.clauses.push(source);
+                index += 2;
+                continue;
+            }
+        }
+        if let Some(source) = single_source_clause(&clauses[index]) {
+            recovered.clauses.push(source);
+            index += 1;
+            continue;
+        }
+        if let Some(chain) = role_chain(&clauses[index]) {
+            recovered.chains.push(chain);
+            index += 1;
+            continue;
+        }
+        if let Some(axiom) = direct_role_axiom(&clauses[index]) {
+            recovered.role_axioms.push(axiom);
+            index += 1;
+            continue;
+        }
+        return Err(RecoveryError {
+            production_index: index,
+        });
+    }
+    Ok(recovered)
+}
+
+fn production_term(term: crate::calc::Term) -> serde_json::Value {
+    use crate::calc::{COMP_BASE, FTERM_BASE, X, Y};
+    if term == X {
+        serde_json::json!({"var": {"index": 0}})
+    } else if term <= Y {
+        serde_json::json!({"var": {"index": i64::from(term) - i64::from(X)}})
+    } else if term < FTERM_BASE {
+        serde_json::json!({"constant": {"individual": term - X}})
+    } else if term < COMP_BASE {
+        serde_json::json!({"app": {
+            "function": term - FTERM_BASE,
+            "argument": {"var": {"index": 0}}
+        }})
+    } else {
+        // Input clauses never contain runtime-composed f(o) terms.
+        serde_json::Value::Null
+    }
+}
+
+fn production_predicate(predicate: crate::calc::Pred) -> serde_json::Value {
+    match predicate {
+        crate::calc::Pred::Concept { iri, t } => serde_json::json!({"predicate": {
+            "predicate": {"concept": {"concept": iri, "term": production_term(t)}}
+        }}),
+        crate::calc::Pred::Role { iri, s, t } => serde_json::json!({"predicate": {
+            "predicate": {"role": {
+                "role": iri, "source": production_term(s), "target": production_term(t)
+            }}
+        }}),
+    }
+}
+
+fn production_literal(literal: crate::calc::Lit) -> serde_json::Value {
+    match literal {
+        crate::calc::Lit::P(predicate) => production_predicate(predicate),
+        crate::calc::Lit::Eq { s, t } => serde_json::json!({"equality": {
+            "left": production_term(s), "right": production_term(t)
+        }}),
+        crate::calc::Lit::Ineq { s, t } => serde_json::json!({"inequality": {
+            "left": production_term(s), "right": production_term(t)
+        }}),
+    }
+}
+
+/// Compile a fully recovered source into the exact version-2 Lean wire. The
+/// production parser state comes from `reasoner::Builder` itself, so concept,
+/// role, function, individual, variable, ordering, and equality conventions
+/// cannot drift from the worker. Unsupported streams fail closed.
+pub(crate) fn typed_source_candidate(clauses: &[JClause]) -> Result<serde_json::Value, String> {
+    let recovered = recover_source(clauses).map_err(|error| {
+        format!(
+            "normalized clause {} has no certified typed-source constructor",
+            error.production_index
+        )
+    })?;
+    let production = crate::reasoner::cb_production_input(clauses);
+    if production.dropped != 0 {
+        return Err(format!(
+            "production parser dropped {} clauses while compiling the typed source",
+            production.dropped
+        ));
+    }
+    let concepts = production
+        .concept_names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| (name.as_str(), index))
+        .collect::<std::collections::HashMap<_, _>>();
+    let roles = production
+        .role_names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| (name.as_str(), index))
+        .collect::<std::collections::HashMap<_, _>>();
+    let concept_id = |name: &str| {
+        concepts
+            .get(name)
+            .copied()
+            .ok_or_else(|| format!("recovered source concept {name} was not interned"))
+    };
+    let role_id = |name: &str| {
+        roles
+            .get(name)
+            .copied()
+            .ok_or_else(|| format!("recovered source role {name} was not interned"))
+    };
+    let individual_id = |name: &str| {
+        production
+            .individual_ids
+            .get(name)
+            .copied()
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| format!("recovered source individual {name} was not interned"))
+    };
+
+    let mut source_clauses = Vec::with_capacity(recovered.clauses.len());
+    let function_count = production
+        .function_ids
+        .values()
+        .copied()
+        .max()
+        .and_then(|value| usize::try_from(value).ok())
+        .map_or(0, |maximum| maximum + 1);
+    let mut allocation = Vec::with_capacity(recovered.clauses.len());
+    for (index, clause) in recovered.clauses.iter().enumerate() {
+        let (wire, function) = match clause {
+            NamedSourceClause::Gci { body, head } => (
+                serde_json::json!({"gci": {
+                    "body": body.iter().map(|name| concept_id(name)).collect::<Result<Vec<_>, _>>()?,
+                    "head": head.iter().map(|name| concept_id(name)).collect::<Result<Vec<_>, _>>()?
+                }}),
+                None,
+            ),
+            NamedSourceClause::ExR {
+                source,
+                role,
+                filler,
+                function,
+            } => (
+                serde_json::json!({"exR": {
+                    "source": concept_id(source)?, "role": role_id(role)?,
+                    "filler": concept_id(filler)?
+                }}),
+                Some(function.as_str()),
+            ),
+            NamedSourceClause::AllR {
+                source,
+                role,
+                filler,
+            } => (
+                serde_json::json!({"allR": {
+                    "source": concept_id(source)?, "role": role_id(role)?,
+                    "filler": concept_id(filler)?
+                }}),
+                None,
+            ),
+            NamedSourceClause::ExL {
+                role,
+                filler,
+                conclusion,
+            } => (
+                serde_json::json!({"exL": {
+                    "role": role_id(role)?, "filler": concept_id(filler)?,
+                    "conclusion": concept_id(conclusion)?
+                }}),
+                None,
+            ),
+            NamedSourceClause::SubR { sub, sup } => (
+                serde_json::json!({"subR": {"sub": role_id(sub)?, "sup": role_id(sup)?}}),
+                None,
+            ),
+            NamedSourceClause::Inverse { role, inverse } => (
+                serde_json::json!({"inverse": {
+                    "role": role_id(role)?, "inverse": role_id(inverse)?
+                }}),
+                None,
+            ),
+            NamedSourceClause::Functional { role } => (
+                serde_json::json!({"functional": {"role": role_id(role)?}}),
+                None,
+            ),
+            NamedSourceClause::Nominal {
+                concept,
+                individual,
+            } => (
+                serde_json::json!({"nominal": {
+                    "concept": concept_id(concept)?, "individual": individual_id(individual)?
+                }}),
+                None,
+            ),
+        };
+        source_clauses.push(wire);
+        allocation.push(if let Some(function) = function {
+            production
+                .function_ids
+                .get(function)
+                .copied()
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| format!("existential function {function} was not interned"))?
+        } else {
+            function_count + index
+        });
+    }
+
+    let role_chains = recovered
+        .chains
+        .iter()
+        .map(|chain| {
+            Ok(serde_json::json!({
+                "body": chain.body.iter().map(|name| role_id(name)).collect::<Result<Vec<_>, String>>()?,
+                "sup": role_id(&chain.sup)?
+            }))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let role_axioms = recovered
+        .role_axioms
+        .iter()
+        .map(|axiom| match axiom {
+            NamedRoleAxiom::Symmetric(role) => {
+                Ok(serde_json::json!({"symmetric": {"role": role_id(role)?}}))
+            }
+            NamedRoleAxiom::Asymmetric(role) => {
+                Ok(serde_json::json!({"asymmetric": {"role": role_id(role)?}}))
+            }
+            NamedRoleAxiom::Reflexive(role) => {
+                Ok(serde_json::json!({"reflexive": {"role": role_id(role)?}}))
+            }
+            NamedRoleAxiom::Irreflexive(role) => {
+                Ok(serde_json::json!({"irreflexive": {"role": role_id(role)?}}))
+            }
+            NamedRoleAxiom::InverseFunctional(role) => Ok(serde_json::json!({
+                "inverseFunctional": {"role": role_id(role)?}
+            })),
+            NamedRoleAxiom::Disjoint(left, right) => Ok(serde_json::json!({"disjoint": {
+                "left": role_id(left)?, "right": role_id(right)?
+            }})),
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let ontology = production
+        .clauses
+        .iter()
+        .map(|clause| {
+            serde_json::json!({
+                "body": clause.body.iter().copied().map(production_predicate).collect::<Vec<_>>(),
+                "head": clause.head.iter().copied().map(production_literal).collect::<Vec<_>>()
+            })
+        })
+        .collect::<Vec<_>>();
+    let individual_count = production
+        .individual_ids
+        .values()
+        .copied()
+        .max()
+        .and_then(|value| usize::try_from(value).ok())
+        .map_or(1, |maximum| maximum + 1);
+    Ok(serde_json::json!({
+        "version": 2,
+        "concept_count": production.concept_names.len(),
+        "role_count": production.role_names.len(),
+        "function_count": function_count,
+        "individual_count": individual_count,
+        "source_clauses": source_clauses,
+        "role_chains": role_chains,
+        "role_axioms": role_axioms,
+        "ontology": ontology,
+        "function_allocation": {
+            "version": 1,
+            "canonical_count": recovered.clauses.len(),
+            "production_count": function_count,
+            "allocation": allocation
+        }
+    }))
 }
 
 #[cfg(test)]
@@ -705,5 +1050,97 @@ mod tests {
             }],
         };
         assert_eq!(paired_source_clause(&first, &second), None);
+    }
+
+    #[test]
+    fn recovers_a_complete_mixed_normalizer_stream() {
+        use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
+
+        let mut registry = IriRegistry::new();
+        let ontology = parse::parse_axioms(
+            &mut registry,
+            "Ontology(
+                SubClassOf(<A> <B>)
+                InverseObjectProperties(<R> <S>)
+                SubClassOf(<B> ObjectSomeValuesFrom(<R> <C>))
+                SubObjectPropertyOf(ObjectPropertyChain(<R> <S>) <T>)
+                IrreflexiveObjectProperty(<T>)
+            )",
+        )
+        .expect("parse mixed source");
+        let (clauses, _, _) = normalise::normalise(&ontology);
+        let clauses = clauses.iter().map(clause_to_json).collect::<Vec<_>>();
+        let recovered = recover_source(&clauses).expect("recover every normalized clause");
+        assert!(recovered
+            .clauses
+            .iter()
+            .any(|clause| matches!(clause, NamedSourceClause::Gci { .. })));
+        assert!(recovered
+            .clauses
+            .iter()
+            .any(|clause| matches!(clause, NamedSourceClause::Inverse { .. })));
+        assert!(recovered
+            .clauses
+            .iter()
+            .any(|clause| matches!(clause, NamedSourceClause::ExR { .. })));
+        assert_eq!(recovered.chains.len(), 1);
+        assert_eq!(recovered.role_axioms.len(), 1);
+    }
+
+    #[test]
+    fn recovers_production_order_nominal_pair() {
+        let individual = JTerm::Ind { name: "i".into() };
+        let clauses = vec![
+            JClause {
+                body: vec![],
+                head: vec![JAtom::Concept {
+                    concept: "N".into(),
+                    term: individual.clone(),
+                }],
+            },
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "N".into(),
+                    term: var("x"),
+                }],
+                head: vec![JAtom::Eq {
+                    left: var("x"),
+                    right: individual,
+                }],
+            },
+        ];
+        assert_eq!(
+            recover_source(&clauses).expect("recover nominal").clauses,
+            vec![NamedSourceClause::Nominal {
+                concept: "N".into(),
+                individual: "i".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn complete_recovery_reports_first_uncovered_clause() {
+        let clauses = vec![
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "A".into(),
+                    term: var("x"),
+                }],
+                head: vec![JAtom::Concept {
+                    concept: "B".into(),
+                    term: var("x"),
+                }],
+            },
+            JClause {
+                body: vec![r("R", "x", "y")],
+                head: vec![eq("x", "y"), eq("y", "x")],
+            },
+        ];
+        assert_eq!(
+            recover_source(&clauses),
+            Err(RecoveryError {
+                production_index: 1
+            })
+        );
     }
 }

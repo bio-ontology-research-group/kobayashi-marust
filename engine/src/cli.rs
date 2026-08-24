@@ -466,8 +466,38 @@ pub fn run_engine() {
     }
 
     let t1 = std::time::Instant::now();
+    let cb_typed_source = if let Some(source) = input.cb_typed_source.clone() {
+        Some(source)
+    } else if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some()
+        || std::env::var_os("KM_CB_DUMP_TYPED_SOURCE").is_some()
+    {
+        match crate::cb_source::typed_source_candidate(&input.clauses) {
+            Ok(source) => Some(source),
+            Err(error) => {
+                eprintln!("CB typed-source compilation declined: {error}");
+                exit(5);
+            }
+        }
+    } else {
+        None
+    };
+    if let (Some(path), Some(source)) = (
+        std::env::var_os("KM_CB_DUMP_TYPED_SOURCE"),
+        cb_typed_source.as_ref(),
+    ) {
+        let file = match std::fs::File::create(&path) {
+            Ok(file) => file,
+            Err(error) => {
+                eprintln!("CB typed-source dump failed: {error}");
+                exit(5);
+            }
+        };
+        if let Err(error) = serde_json::to_writer_pretty(file, source) {
+            eprintln!("CB typed-source dump failed: {error}");
+            exit(5);
+        }
+    }
     let mut r = Reasoner::new(&input.clauses);
-    let cb_typed_source = input.cb_typed_source.clone();
     // Likewise the parsed `JClause` block (String-owning IRIs, several times
     // the raw JSON size) is fully interned into the Reasoner; drop it before
     // saturation rather than at end of function.

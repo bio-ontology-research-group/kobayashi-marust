@@ -62,6 +62,32 @@ struct Builder {
     dropped: usize,
 }
 
+/// Exact production parser state needed to bind a typed CB source to the same
+/// symbols and normalized clauses that `Reasoner::new` consumes. Keeping this
+/// adapter beside `Builder` prevents the certificate compiler from duplicating
+/// interning, variable allocation, sorting, or equality handling.
+pub(crate) struct CbProductionInput {
+    pub(crate) concept_names: Vec<String>,
+    pub(crate) role_names: Vec<String>,
+    pub(crate) function_ids: HashMap<String, i32>,
+    pub(crate) individual_ids: HashMap<String, i32>,
+    pub(crate) clauses: Vec<OntologyClause>,
+    pub(crate) dropped: usize,
+}
+
+pub(crate) fn cb_production_input(input: &[JClause]) -> CbProductionInput {
+    let mut builder = Builder::new();
+    let clauses = builder.clauses(input);
+    CbProductionInput {
+        concept_names: builder.sig.concept_names,
+        role_names: builder.sig.role_names,
+        function_ids: builder.fn_id,
+        individual_ids: builder.ind_id,
+        clauses,
+        dropped: builder.dropped,
+    }
+}
+
 impl Builder {
     fn new() -> Builder {
         Builder {
@@ -98,6 +124,15 @@ impl Builder {
             JTerm::Var { name } => {
                 if name == "x" {
                     return Some(X);
+                }
+                // The normalized frontend reserves `y` for the distinguished
+                // predecessor/neighbour variable used by Succ/Pred. Further
+                // variables start at z₁ below. Without this branch `y` was
+                // accidentally allocated as z₁, leaving Y unused and making
+                // the production ontology differ from both the calculus rules
+                // and the certified source encoding.
+                if name == "y" {
+                    return Some(Y);
                 }
                 if let Some(&v) = varmap.get(name) {
                     return Some(v);
@@ -1169,6 +1204,17 @@ mod tests {
         let mut rr = Reasoner::new(&clauses);
         rr.saturate();
         rr
+    }
+
+    #[test]
+    fn normalized_variables_use_the_calculus_reserved_namespace() {
+        let mut builder = Builder::new();
+        let mut variables = HashMap::new();
+        assert_eq!(builder.term(&vn("x"), &mut variables), Some(X));
+        assert_eq!(builder.term(&vn("y"), &mut variables), Some(Y));
+        assert_eq!(builder.term(&vn("z"), &mut variables), Some(zvar(1)));
+        assert_eq!(builder.term(&vn("w"), &mut variables), Some(zvar(2)));
+        assert_eq!(builder.term(&vn("z"), &mut variables), Some(zvar(1)));
     }
 
     #[test]
