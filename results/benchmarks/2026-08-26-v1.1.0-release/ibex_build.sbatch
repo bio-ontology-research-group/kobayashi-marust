@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=km-v110-final-build
+#SBATCH --account=pi-hohndor
+#SBATCH --partition=debug
+#SBATCH --nodelist=gpu510-32
+#SBATCH --nodes=1
+#SBATCH --oversubscribe
+#SBATCH --time=00:20:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --export=NONE
+#SBATCH --output=/ibex/scratch/hohndor/km/v1.1.0-final-20260826/build-%j.out
+set -euo pipefail
+root=/ibex/scratch/hohndor/km/v1.1.0-final-20260826
+archive=$root/source/v1.1.0-engine-source-20260826.tar.gz
+expected=ab00cb88cfa0464907f399cecbbc0d4f177dfbc2ed467afa9e90bd1373f0f0ba
+[[ $(sha256sum "$archive" | awk '{print $1}') == "$expected" ]]
+mkdir -p "$root/build/source"
+tar -xzf "$archive" -C "$root/build/source"
+export CARGO_TARGET_DIR=$root/target CARGO_BUILD_JOBS=4
+cd "$root/build/source/engine"
+cargo build --release --locked --bin km
+install -m 755 "$CARGO_TARGET_DIR/release/km" "$root/km"
+sha256sum "$root/km" | tee "$root/km.sha256"
+ldd "$root/km" > "$root/km.ldd.txt"
+"$root/km" routes > "$root/km.routes.txt"
+echo BUILD_COMPLETE

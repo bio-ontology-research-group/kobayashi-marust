@@ -257,7 +257,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Typed `mBackendCacheHandler->getIndividualAssociationData(neighbourIndiId, …)`
     /// as an opaque handle: the individual tag itself when an association is
     /// installed, `INVALID` (the C++ `nullptr`) otherwise.
-    pub(crate) fn native_association_handle_for_individual(&self, individual_tag: Cint64) -> Cint64 {
+    pub(crate) fn native_association_handle_for_individual(
+        &self,
+        individual_tag: Cint64,
+    ) -> Cint64 {
         if self
             .native_nominal_backend_replay
             .get(&individual_tag)
@@ -376,10 +379,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// `initializeNeighbourExpansionWithPropagation` (cpp 25620–25626): the
     /// neighbour's FULL_CONCEPT_SET label must carry a cardinality extension
     /// (`CARDINALITY_HASH`) or a non-deterministic element.
-    pub(crate) fn native_label_has_nondeterministic_consequences(
-        &self,
-        assoc_tag: Cint64,
-    ) -> bool {
+    pub(crate) fn native_label_has_nondeterministic_consequences(&self, assoc_tag: Cint64) -> bool {
         self.native_nominal_backend_replay
             .get(&assoc_tag)
             .is_some_and(|replay| {
@@ -645,9 +645,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED,
             );
         let mut roles = Vec::new();
-        for &(role, minimum_restricting_cardinality) in
-            &replay.cached_at_most_cardinalities
-        {
+        for &(role, minimum_restricting_cardinality) in &replay.cached_at_most_cardinalities {
             let current = calc_alg_context
                 .process_context()
                 .node(node)
@@ -665,9 +663,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let cached_neighbours = replay
                 .cached_neighbour_roles
                 .iter()
-                .filter(|(_, cached_role, inversed, _)| {
-                    *cached_role == role && !*inversed
-                })
+                .filter(|(_, cached_role, inversed, _)| *cached_role == role && !*inversed)
                 .map(|(neighbour, _, _, _)| *neighbour)
                 .collect::<HashSet<_>>()
                 .len() as Cint64;
@@ -767,9 +763,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context_mut()
                     .node_mut(node)
                     .clear_processing_restriction_flags(
-                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
-                            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED,
-                    );
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                        | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED,
+                );
             }
 
             // W6-DEFER[api]: `testIndividualNodeBackendCacheSameMergedBlockingCritical`
@@ -811,19 +807,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
                         | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED,
                 )
-                && self
-                    .test_individual_node_backend_cache_expansion_blocking_critical_cardinality(
-                        node,
-                        calc_alg_context,
-                    )
+                && self.test_individual_node_backend_cache_expansion_blocking_critical_cardinality(
+                    node,
+                    calc_alg_context,
+                )
             {
                 calc_alg_context
                     .process_context_mut()
                     .node_mut(node)
                     .clear_processing_restriction_flags(
-                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
-                            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
-                    );
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                        | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+                );
             }
 
             // W6-DEFER[api]: the INDIRECTNOMINALEXPANSIONBLOCKED release needs
@@ -1709,10 +1704,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .ontology_arenas()
                 .concept(adding_concept)
                 .get_concept_tag();
-            if node_id == wn
-                && !negate
-                && (10..320).contains(&tag)
-                && self.ddb_analysis_dumps < 24
+            if node_id == wn && !negate && (10..320).contains(&tag) && self.ddb_analysis_dumps < 24
             {
                 self.ddb_analysis_dumps += 1;
                 let bt = std::backtrace::Backtrace::force_capture().to_string();

@@ -196,21 +196,60 @@ fn run_with_input_and_executable_checker(
         .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER", executable_checker)
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER",
+            executable_checker,
+        )
         .env("KM_HT_LEAN_CERT_CHECKER", global_checker)
         .env("KM_HT_LEAN_TAXONOMY_CERT_CHECKER", taxonomy_checker)
         .env("KM_HT_LEAN_CERT_OUT", &global_out)
@@ -245,9 +284,8 @@ fn run_with_input(
     taxonomy_checker: &str,
     output_stem: &str,
 ) -> std::process::Output {
-    let executable_checker =
-        std::env::var("KM_HT_TEST_LEAN_EXECUTABLE_PUBLICATION_CHECKER")
-            .unwrap_or_else(|_| "/bin/true".to_string());
+    let executable_checker = std::env::var("KM_HT_TEST_LEAN_EXECUTABLE_PUBLICATION_CHECKER")
+        .unwrap_or_else(|_| "/bin/true".to_string());
     run_with_input_and_executable_checker(
         input,
         global_checker,
@@ -271,16 +309,40 @@ fn run_raw_certified(input: &str, projection_checker: Option<&str>) -> std::proc
         .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -320,16 +382,40 @@ fn run_certification_bypass_probe(
         .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
         // A branch that bypasses certification would incorrectly succeed.
         .env("KM_HT_LEAN_CERT_CHECKER", "/bin/false")
         .stdin(Stdio::piped())
@@ -378,16 +464,40 @@ fn run_projection_only_certification() -> std::process::Output {
         .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -437,16 +547,40 @@ fn run_native_abox_taxonomy_certification(
         .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER", "/bin/true")
         .env(
             "KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER",
@@ -468,8 +602,14 @@ fn run_native_abox_taxonomy_certification(
             "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
             source_taxonomy_checker,
         )
-        .env("KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER",
+            "/bin/true",
+        )
         .env(
             "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_GLOBAL_CHECKER",
             "/bin/true",
@@ -478,7 +618,10 @@ fn run_native_abox_taxonomy_certification(
             "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
             "/bin/true",
         )
-        .env("KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER", executable_checker)
+        .env(
+            "KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER",
+            executable_checker,
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -533,16 +676,40 @@ fn run_frontier_gated_certification(frontier_checker: &str) -> std::process::Out
         .env("KM_HT_LEAN_FRONTIER_CHECKER", frontier_checker)
         .env("KM_HT_LEAN_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -578,16 +745,40 @@ fn run_rejected_cyclic_fold_probe() -> std::process::Output {
         .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+            "/bin/true",
+        )
         // This probe isolates finite progress under a fixed cap. Production
         // history has dedicated real-checker regressions in the library gate.
         .env("KM_HT_LEAN_PRODUCTION_TRACE_CHECKER", "/bin/true")
@@ -623,7 +814,10 @@ fn certified_publication_requires_checker_and_source_projection() {
 fn every_iterative_frontier_is_checker_gated() {
     let rejected = run_frontier_gated_certification("/bin/false");
     assert!(!rejected.status.success());
-    assert!(rejected.stdout.is_empty(), "unchecked frontier published output");
+    assert!(
+        rejected.stdout.is_empty(),
+        "unchecked frontier published output"
+    );
     assert!(
         String::from_utf8_lossy(&rejected.stderr)
             .contains("Lean rejected the regular decision frontier"),
@@ -643,7 +837,10 @@ fn every_iterative_frontier_is_checker_gated() {
 fn rejected_blocker_folds_make_finite_progress_at_one_budget() {
     let output = run_rejected_cyclic_fold_probe();
     assert!(!output.status.success());
-    assert!(output.stdout.is_empty(), "rejected cyclic candidate published output");
+    assert!(
+        output.stdout.is_empty(),
+        "rejected cyclic candidate published output"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("configured regular decision node cap"),
@@ -656,7 +853,10 @@ fn rejected_blocker_folds_make_finite_progress_at_one_budget() {
 fn certified_publication_cannot_bypass_through_bridge_rules_or_legacy_tableau() {
     let bridge = run_certification_bypass_probe(&[("KM_HT_BRIDGE", "1")], true);
     assert!(!bridge.status.success());
-    assert!(bridge.stdout.is_empty(), "rejected certificate published output");
+    assert!(
+        bridge.stdout.is_empty(),
+        "rejected certificate published output"
+    );
     assert!(
         String::from_utf8_lossy(&bridge.stderr).contains("rejected the certificate"),
         "{}",
@@ -701,8 +901,14 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
         "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
     ] {
         let output = run_isolated_certification_interface(interface);
-        assert!(!output.status.success(), "{interface} bypassed certification");
-        assert!(output.stdout.is_empty(), "{interface} published unchecked output");
+        assert!(
+            !output.status.success(),
+            "{interface} bypassed certification"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "{interface} published unchecked output"
+        );
         assert!(
             String::from_utf8_lossy(&output.stderr)
                 .contains("requires the global consistency route"),
@@ -714,8 +920,7 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
 
 #[test]
 fn native_abox_taxonomy_requires_the_joint_source_classification_checker() {
-    let output =
-        run_native_abox_taxonomy_certification("/bin/true", None, "/bin/true", false);
+    let output = run_native_abox_taxonomy_certification("/bin/true", None, "/bin/true", false);
     assert!(!output.status.success());
     assert!(output.stdout.is_empty(), "unchecked taxonomy was published");
     assert!(
@@ -728,12 +933,8 @@ fn native_abox_taxonomy_requires_the_joint_source_classification_checker() {
 
 #[test]
 fn native_abox_taxonomy_is_gated_by_the_joint_checker() {
-    let rejected = run_native_abox_taxonomy_certification(
-        "/bin/true",
-        Some("/bin/false"),
-        "/bin/true",
-        false,
-    );
+    let rejected =
+        run_native_abox_taxonomy_certification("/bin/true", Some("/bin/false"), "/bin/true", false);
     assert!(!rejected.status.success());
     assert!(
         rejected.stdout.is_empty(),
@@ -746,12 +947,8 @@ fn native_abox_taxonomy_is_gated_by_the_joint_checker() {
         String::from_utf8_lossy(&rejected.stderr),
     );
 
-    let accepted = run_native_abox_taxonomy_certification(
-        "/bin/true",
-        Some("/bin/true"),
-        "/bin/true",
-        false,
-    );
+    let accepted =
+        run_native_abox_taxonomy_certification("/bin/true", Some("/bin/true"), "/bin/true", false);
     assert!(
         accepted.status.success(),
         "{}",
@@ -764,10 +961,7 @@ fn native_abox_taxonomy_is_gated_by_the_joint_checker() {
 
 #[test]
 fn executable_publication_dispatcher_gates_every_production_family() {
-    for (label, input) in [
-        ("ordinary", WIRE),
-        ("cardinality", CARDINALITY_SIDE_WIRE),
-    ] {
+    for (label, input) in [("ordinary", WIRE), ("cardinality", CARDINALITY_SIDE_WIRE)] {
         let output = run_with_input_and_executable_checker(
             input,
             "/bin/true",
@@ -775,7 +969,10 @@ fn executable_publication_dispatcher_gates_every_production_family() {
             &format!("rejected-executable-{label}"),
             "/bin/false",
         );
-        assert!(!output.status.success(), "{label} bypassed the executable dispatcher");
+        assert!(
+            !output.status.success(),
+            "{label} bypassed the executable dispatcher"
+        );
         assert!(
             output.stdout.is_empty(),
             "{label} published output rejected by the executable dispatcher"
@@ -789,7 +986,10 @@ fn executable_publication_dispatcher_gates_every_production_family() {
             "/bin/false",
             cardinality,
         );
-        assert!(!output.status.success(), "{label} bypassed the executable dispatcher");
+        assert!(
+            !output.status.success(),
+            "{label} bypassed the executable dispatcher"
+        );
         assert!(
             output.stdout.is_empty(),
             "{label} published output rejected by the executable dispatcher"
@@ -799,12 +999,8 @@ fn executable_publication_dispatcher_gates_every_production_family() {
 
 #[test]
 fn joint_checker_does_not_replace_the_source_taxonomy_checker() {
-    let output = run_native_abox_taxonomy_certification(
-        "/bin/false",
-        Some("/bin/true"),
-        "/bin/true",
-        false,
-    );
+    let output =
+        run_native_abox_taxonomy_certification("/bin/false", Some("/bin/true"), "/bin/true", false);
     assert!(!output.status.success());
     assert!(output.stdout.is_empty(), "unchecked taxonomy was published");
     assert!(
@@ -818,10 +1014,12 @@ fn joint_checker_does_not_replace_the_source_taxonomy_checker() {
 fn projection_check_alone_cannot_publish_an_unchecked_global_verdict() {
     let output = run_projection_only_certification();
     assert!(!output.status.success());
-    assert!(output.stdout.is_empty(), "unchecked global verdict was published");
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("requires KM_HT_LEAN_CERT_CHECKER"),
+        output.stdout.is_empty(),
+        "unchecked global verdict was published"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("requires KM_HT_LEAN_CERT_CHECKER"),
         "{}",
         String::from_utf8_lossy(&output.stderr),
     );

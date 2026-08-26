@@ -709,3 +709,16 @@ fn the_projection_declaration_universe_is_base_plus_proxies() {
         assert_eq!(slice_text.contains(&source_half), mirror.selected);
     }
 }
+
+#[test]
+fn large_source_prefilter_requires_a_mirror_scale_complement_family() {
+    assert!(mirror_parse_worthwhile(1024, 0));
+    assert!(!mirror_parse_worthwhile(
+        MIRROR_PREFILTER_LARGE_BYTES,
+        MIRROR_PREFILTER_MIN_COMPLEMENTS - 1
+    ));
+    assert!(mirror_parse_worthwhile(
+        MIRROR_PREFILTER_LARGE_BYTES,
+        MIRROR_PREFILTER_MIN_COMPLEMENTS
+    ));
+}

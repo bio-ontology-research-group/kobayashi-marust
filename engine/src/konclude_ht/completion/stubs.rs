@@ -7462,7 +7462,10 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         has_equivalent_non_candidates: bool,
         possible_subsumers: &[ConceptId],
         possible_subsumer_template: Option<
-            &[(ClassificationInitializePossibleClassSubsumptionData, Option<ConceptId>)],
+            &[(
+                ClassificationInitializePossibleClassSubsumptionData,
+                Option<ConceptId>,
+            )],
         >,
         label_tags: Option<&std::collections::HashSet<Cint64>>,
         concepts: &Arena<Concept>,
@@ -7489,7 +7492,10 @@ impl SatisfiableTaskClassificationMessageAnalyser {
     fn possible_subsumer_message_template(
         labels: &[ClassificationAnalyserConceptLabel],
         concepts: &Arena<Concept>,
-    ) -> Vec<(ClassificationInitializePossibleClassSubsumptionData, Option<ConceptId>)> {
+    ) -> Vec<(
+        ClassificationInitializePossibleClassSubsumptionData,
+        Option<ConceptId>,
+    )> {
         let mut template = Vec::new();
         for label in Self::sorted_labels_by_concept_tag(labels, concepts) {
             if !label.negated
@@ -7523,7 +7529,10 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         eq_concepts_non_candidate_possible_subsumers: bool,
         eq_concept_non_candidate_possible_subsumer_list: Option<Vec<ConceptId>>,
         possible_subsumer_template: Option<
-            &[(ClassificationInitializePossibleClassSubsumptionData, Option<ConceptId>)],
+            &[(
+                ClassificationInitializePossibleClassSubsumptionData,
+                Option<ConceptId>,
+            )],
         >,
         cached_label_tags: Option<&std::collections::HashSet<Cint64>>,
         concepts: &Arena<Concept>,
@@ -16737,8 +16746,10 @@ mod tests {
                 &concepts,
             )
             .expect("ordinary message");
-        let template = SatisfiableTaskClassificationMessageAnalyser::
-            possible_subsumer_message_template(&labels, &concepts);
+        let template =
+            SatisfiableTaskClassificationMessageAnalyser::possible_subsumer_message_template(
+                &labels, &concepts,
+            );
         let cached = analyser
             .create_possible_class_subsumption_message_with_equivalent_non_candidates(
                 &adapter,
@@ -16768,9 +16779,8 @@ mod tests {
         };
         assert_eq!(concepts_in(cached), concepts_in(ordinary));
 
-        let state = ClassificationAnalyserPossibleSubsumptionState::initialized(vec![
-            missing_candidate,
-        ]);
+        let state =
+            ClassificationAnalyserPossibleSubsumptionState::initialized(vec![missing_candidate]);
         let ordinary = analyser
             .create_possible_class_subsumption_message(
                 &adapter,

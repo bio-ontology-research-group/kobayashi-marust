@@ -3,8 +3,11 @@
 **/target/
 Cargo.lock.orig
 
+# Repository-local transient builds, logs, inputs, and benchmark artifacts
+/.work/
+
 # Lean / Lake
-/lean/.lake/
+/lean/.lake
 **/.lake/
 *.olean
 *.ilean

@@ -15,6 +15,7 @@ pub mod config;
 pub mod engine_run;
 pub mod explain;
 pub mod features;
+mod flat_nf1;
 pub mod frontend_run;
 pub mod input;
 pub mod mirror;
@@ -36,17 +37,13 @@ use config::Mechanism;
 /// the frontend keeps it as an ordinary named class, so bare `Nothing` must
 /// not be interpreted as OWL bottom here.
 fn is_bottom(s: &str) -> bool {
-    s == "owl:Nothing"
-        || s == "http://www.w3.org/2002/07/owl#Nothing"
-        || s == "\u{22A5}"
+    s == "owl:Nothing" || s == "http://www.w3.org/2002/07/owl#Nothing" || s == "\u{22A5}"
 }
 
 /// Flatten full-IRI rows into the same lexicographic order as sorting all
 /// `[subject, superclass]` pairs globally, but compare each repeated subject
 /// only at row granularity.
-fn flatten_grouped_subsumptions(
-    grouped: BTreeMap<String, Vec<String>>,
-) -> Vec<[String; 2]> {
+fn flatten_grouped_subsumptions(grouped: BTreeMap<String, Vec<String>>) -> Vec<[String; 2]> {
     let pair_count: usize = grouped.values().map(Vec::len).sum();
     let mut pairs = Vec::with_capacity(pair_count);
     for (subject, mut supers) in grouped {
@@ -60,9 +57,13 @@ fn flatten_grouped_subsumptions(
     pairs
 }
 
-struct GroupedJsonTaxonomy {
-    iris: Vec<Arc<str>>,
-    rows: BTreeMap<u32, Vec<u32>>,
+pub(super) struct GroupedJsonTaxonomy {
+    pub(super) iris: Vec<Arc<str>>,
+    pub(super) rows: BTreeMap<u32, Vec<u32>>,
+    /// An acyclic named-subclass graph whose transitive closure is emitted one
+    /// subject at a time. This avoids retaining every pair for very large flat
+    /// taxonomies while preserving the canonical subject/superclass order.
+    pub(super) reachability_graph: Option<Vec<Vec<u32>>>,
 }
 
 struct JsonIriIds<'a> {
@@ -78,8 +79,7 @@ struct JsonIriIds<'a> {
 
 impl<'a> JsonIriIds<'a> {
     fn new(map: &'a BTreeMap<String, String>) -> Self {
-        let distinct: std::collections::BTreeSet<&str> =
-            map.values().map(String::as_str).collect();
+        let distinct: std::collections::BTreeSet<&str> = map.values().map(String::as_str).collect();
         let mut by_iri = BTreeMap::new();
         let mut iris = Vec::with_capacity(distinct.len());
         for iri in distinct {
@@ -130,6 +130,7 @@ impl<'a> JsonIriIds<'a> {
             return GroupedJsonTaxonomy {
                 iris: self.iris,
                 rows,
+                reachability_graph: None,
             };
         }
 
@@ -155,6 +156,7 @@ impl<'a> JsonIriIds<'a> {
         GroupedJsonTaxonomy {
             iris,
             rows: remapped,
+            reachability_graph: None,
         }
     }
 }
@@ -736,11 +738,46 @@ impl serde::Serialize for JsonClassification {
 
         struct GroupedPairs<'a>(&'a GroupedJsonTaxonomy);
         impl serde::Serialize for GroupedPairs<'_> {
-            fn serialize<S: serde::Serializer>(
-                &self,
-                serializer: S,
-            ) -> Result<S::Ok, S::Error> {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 use serde::ser::SerializeSeq;
+                if let Some(graph) = &self.0.reachability_graph {
+                    let mut seq = serializer.serialize_seq(None)?;
+                    let mut seen = vec![0u32; graph.len()];
+                    let mut generation = 0u32;
+                    let mut stack = Vec::new();
+                    let mut reached = Vec::new();
+                    for (subject, successors) in graph.iter().enumerate() {
+                        generation = generation.wrapping_add(1);
+                        if generation == 0 {
+                            seen.fill(0);
+                            generation = 1;
+                        }
+                        // Taxonomy output omits reflexive pairs. Mark the
+                        // source before traversal so a non-trivial cycle emits
+                        // every equivalent peer but never source ⊑ source.
+                        seen[subject] = generation;
+                        stack.clear();
+                        reached.clear();
+                        stack.extend(successors.iter().copied());
+                        while let Some(superclass) = stack.pop() {
+                            let index = superclass as usize;
+                            if seen[index] == generation {
+                                continue;
+                            }
+                            seen[index] = generation;
+                            reached.push(superclass);
+                            stack.extend(graph[index].iter().copied());
+                        }
+                        reached.sort_unstable();
+                        for superclass in &reached {
+                            seq.serialize_element(&(
+                                self.0.iris[subject].as_ref(),
+                                self.0.iris[*superclass as usize].as_ref(),
+                            ))?;
+                        }
+                    }
+                    return seq.end();
+                }
                 let len = self.0.rows.values().map(Vec::len).sum();
                 let mut seq = serializer.serialize_seq(Some(len))?;
                 for (subject, supers) in &self.0.rows {
@@ -813,6 +850,36 @@ fn classify_with_evidence_mode(
     let _environment_guard = crate::routing::EnvironmentGuard::capture();
     let t_start = std::time::Instant::now();
     let timing = std::env::var_os("KM_TIMING").is_some();
+    // The normal JSON CLI can retain grouped taxonomy rows. For a large source
+    // whose class-producing projection is an acyclic graph of named NF1 edges,
+    // scan and close that graph directly. The strict source contract may also
+    // contain existential leaves and a positive role-only RBox: Lean's
+    // edge-safety theorem proves that neither can feed a named conclusion in
+    // the absence of NF4/NF5 consumers. The scanner otherwise returns None
+    // before any answer exists, preserving the complete frontend as fallback.
+    // Public/library classification keeps its established flat result contract
+    // and therefore does not enter this path.
+    let automatic_route = std::env::var("KM_ROUTE").as_deref() == Ok("auto");
+    if retain_grouped_output && automatic_route {
+        if let Some(grouped_subsumptions) = flat_nf1::try_classify(ont)? {
+            if timing {
+                eprintln!(
+                    "KM_TIMING frontend done @ {:.2}s route=flat_nf1",
+                    t_start.elapsed().as_secs_f64()
+                );
+            }
+            return Ok(ClassificationEvidence {
+                classification: Classification {
+                    consistent: true,
+                    subsumptions: Vec::new(),
+                    unsatisfiable: Vec::new(),
+                    dropped: 0,
+                },
+                grouped_subsumptions: Some(grouped_subsumptions),
+                consistency_certified: true,
+            });
+        }
+    }
     // Certified private negative-existential mirror route: a family of private
     // `N ≡ ¬∃R.F` definitions is a family of top-level disjunctions the CB
     // calculus cannot absorb, but removing them leaves a positive fragment that
@@ -843,6 +910,67 @@ fn classify_with_evidence_mode(
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
 
+    // Opt-in development gate for the disjoint-union ABox projection. The
+    // source profile proves only closure of the TBox fragment under disjoint
+    // unions; it does not assume consistency. Obtain that verdict from the
+    // exact HT global mechanism over the complete typed ABox and its TBox-only
+    // clause view first. A consistent result reuses that view; a decline
+    // recursively restores the complete v1 nominal clause view; an
+    // inconsistent result is already the complete OWL classification.
+    if automatic_requested
+        && meta.profile.disjoint_union_abox_candidate
+        && !meta.profile.positive_abox_tbox_separable
+        && meta.profile.source.abox_axioms >= 8
+        && std::env::var_os("KM_ABOX_DISJOINT_UNION_CHECK").is_some()
+        && std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_none()
+        && std::env::var_os("KM_DISJOINT_UNION_ABOX_DECLINED").is_none()
+    {
+        match disjoint_union_global_consistency(clauses_path.path(), &meta) {
+            Ok(Some(false)) => {
+                if std::env::var_os("KM_DISJOINT_UNION_TRACE").is_some() {
+                    eprintln!("KM_DISJOINT_UNION result=inconsistent");
+                }
+                return Ok(ClassificationEvidence {
+                    classification: Classification {
+                        consistent: false,
+                        subsumptions: Vec::new(),
+                        unsatisfiable: Vec::new(),
+                        dropped: 0,
+                    },
+                    grouped_subsumptions: None,
+                    consistency_certified: true,
+                });
+            }
+            Ok(Some(true)) => {
+                if std::env::var_os("KM_DISJOINT_UNION_TRACE").is_some() {
+                    eprintln!("KM_DISJOINT_UNION result=consistent");
+                }
+                std::env::set_var("KM_DISJOINT_UNION_ABOX_CONSISTENT", "1");
+                // The frontend's precheck pass retained the complete typed
+                // ABox for the exact verdict but deliberately emitted the
+                // TBox-only clause view. Continue with that same view, avoiding
+                // a second source parse and normalization.
+            }
+            Ok(None) => {
+                if std::env::var_os("KM_DISJOINT_UNION_TRACE").is_some() {
+                    eprintln!("KM_DISJOINT_UNION result=decline");
+                }
+                // Rebuild the ordinary nominal-aware v1 input. The decline
+                // marker prevents another probe and is restored by the outer
+                // environment guard on every return path.
+                std::env::set_var("KM_DISJOINT_UNION_ABOX_DECLINED", "1");
+                return classify_with_evidence_mode(initial_cfg, ont, retain_grouped_output);
+            }
+            Err(error) => {
+                if std::env::var_os("KM_DISJOINT_UNION_TRACE").is_some() {
+                    eprintln!("KM_DISJOINT_UNION result=error error={error}");
+                }
+                std::env::set_var("KM_DISJOINT_UNION_ABOX_DECLINED", "1");
+                return classify_with_evidence_mode(initial_cfg, ont, retain_grouped_output);
+            }
+        }
+    }
+
     let routed_cfg = if matches!(
         selected_route,
         crate::routing::Route::Auto | crate::routing::Route::Manual
@@ -854,20 +982,45 @@ fn classify_with_evidence_mode(
         // manual mode so the absorption portfolio can explicitly request its
         // plain/absorbed pass without the tree overriding it.
         selected_route.apply_environment();
+        let subject_worker_override = std::env::var("KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|&workers| (1..=8).contains(&workers))
+            .map(|workers| workers.to_string());
         if selected_route == crate::routing::Route::CertifiedNominals
             && crate::routing::sequential_typed_bridge_candidate(&meta.profile)
         {
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
             // Subject classifications share only immutable ontology input and
             // are merged deterministically after all complete-or-defer jobs.
-            std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", "4");
+            std::env::set_var(
+                "KM_BRIDGE_SUBJECT_WORKERS",
+                subject_worker_override.as_deref().unwrap_or_else(|| {
+                    crate::routing::certified_nominal_subject_workers(&meta.profile)
+                }),
+            );
+        }
+        // Explicit complete-bridge projections (notably the certified private
+        // mirror slice) can opt into the same bounded subject partitioning.
+        // The override is captured before route normalization and remains a
+        // scheduling-only diagnostic until a focused exact-output gate selects
+        // a source-derived default.
+        if selected_route == crate::routing::Route::HtBridge {
+            if let Some(subject_workers) = subject_worker_override.as_deref() {
+                std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", subject_workers);
+            }
         }
         if selected_route == crate::routing::Route::ProductionAll {
             if let Some(subject_workers) =
                 crate::routing::production_bridge_subject_workers(&meta.profile)
             {
                 std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
-                std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", subject_workers);
+                std::env::set_var(
+                    "KM_BRIDGE_SUBJECT_WORKERS",
+                    subject_worker_override
+                        .as_deref()
+                        .unwrap_or(subject_workers),
+                );
             }
         }
         if selected_route == crate::routing::Route::CertifiedElProduction
@@ -930,7 +1083,8 @@ fn classify_with_evidence_mode(
         });
     }
 
-    let mut consistency_certified = false;
+    let mut consistency_certified = meta.profile.disjoint_union_abox_candidate
+        && std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some();
     // A positive-EL ABox certificate performs the same exact completion needed
     // by an atomic ELC leaf. Retain that result so the leaf does not recompute
     // the complete fixpoint after the certificate extracts consistency.
@@ -1045,17 +1199,21 @@ fn classify_with_evidence_mode(
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
     let atomic_attempt = if matches!(cfg.mechanism, Mechanism::Elc) {
-        certified_el_out.take().map(Some).map(Ok).unwrap_or_else(|| {
-            run_atomic_mechanism(
-                cfg,
-                clauses_path.path(),
-                elc_input_path,
-                &named_set,
-                selected_route,
-                &meta.profile,
-                &mut cached_input,
-            )
-        })
+        certified_el_out
+            .take()
+            .map(Some)
+            .map(Ok)
+            .unwrap_or_else(|| {
+                run_atomic_mechanism(
+                    cfg,
+                    clauses_path.path(),
+                    elc_input_path,
+                    &named_set,
+                    selected_route,
+                    &meta.profile,
+                    &mut cached_input,
+                )
+            })
     } else {
         run_atomic_mechanism(
             cfg,
@@ -1074,10 +1232,7 @@ fn classify_with_evidence_mode(
             // resource failure, or worker error must retain the exact automatic
             // coverage by rerunning the established absorbed production route.
             crate::routing::Route::ProductionAll.apply_environment();
-            std::env::set_var(
-                "KM_ROUTE",
-                crate::routing::Route::ProductionAll.as_str(),
-            );
+            std::env::set_var("KM_ROUTE", crate::routing::Route::ProductionAll.as_str());
             let fallback_cfg = Config::from_env();
             return classify_with_evidence_mode(&fallback_cfg, ont, retain_grouped_output);
         }
@@ -1299,8 +1454,7 @@ fn classify_with_evidence_mode(
     // The JSON-only path stores one compact id per pair. Full IRIs remain in a
     // sorted dictionary and are borrowed only while serializing.
     let mut iri_ids = retain_grouped_output.then(|| JsonIriIds::new(&meta.iri_map));
-    let mut unsat_set: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
+    let mut unsat_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut unsat_names: HashSet<&str> = HashSet::new();
     if let Some(compact) = &out.compact_subsumptions {
         for (subject, super_ids) in &compact.rows {
@@ -1433,6 +1587,48 @@ fn classify_with_evidence_mode(
         grouped_subsumptions,
         consistency_certified: consistency_certified || out.dropped == 0,
     })
+}
+
+/// Obtain an exact full-ontology consistency verdict from the isolated general
+/// HT mechanism. The temporary route environment is restored before return;
+/// a structural defer is not an error and leaves the established v1.0 route
+/// untouched.
+fn disjoint_union_global_consistency(
+    clauses_path: &Path,
+    _meta: &frontend_run::Meta,
+) -> Result<Option<bool>, OrchestrateError> {
+    let _guard = crate::routing::EnvironmentGuard::capture();
+    crate::routing::Route::HtGeneral.apply_environment();
+    std::env::set_var("KM_ROUTE", "manual");
+    std::env::set_var("KM_HT_GLOBAL", "1");
+    std::env::set_var("KM_HT_TOTAL_GLOBAL", "1");
+    std::env::set_var("KM_HT_REQUIRE_MASKED_DISJOINT_UNION_SHAPE", "1");
+    // `ht_general` is normally a clause-only route. This use is an exact
+    // full-ontology consistency check, so retain the complete typed ABox.
+    std::env::set_var("KM_HT_GLOBAL_NATIVE_ABOX", "1");
+    std::env::set_var("KM_HT_PAR", "1");
+    let cfg = Config::from_env();
+    // `KM_HT_GLOBAL` asks only whether the complete ontology has a model. The
+    // named set controls taxonomy subjects; it contributes neither clauses nor
+    // typed ABox roots. Supplying every public class here made a consistency-
+    // only preprocessing probe allocate and initialize a complete
+    // classification universe that its verdict never reads. Keep that query
+    // universe empty while preserving the unchanged ontology and ABox input.
+    let named = HashSet::new();
+    let budget = std::env::var("KM_ABOX_DISJOINT_UNION_BUDGET_S")
+        .ok()
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|seconds| seconds.is_finite() && *seconds > 0.0)
+        .unwrap_or(3.0);
+    match race::run_ht_only_bounded(
+        &cfg,
+        clauses_path,
+        &named,
+        std::time::Duration::from_secs_f64(budget),
+    )? {
+        Some(output) if output.dropped == 0 => Ok(Some(!output.inconsistent)),
+        Some(_) | None => Ok(None),
+    }
 }
 
 /// KM_HT_RULES (Stage 2): consistency check of a DL-safe-rule ontology. Reads the
@@ -1664,10 +1860,8 @@ mod tests {
                 std::sync::Arc::from("http://a.example/A"),
                 std::sync::Arc::from("http://z.example/A"),
             ],
-            rows: std::collections::BTreeMap::from([
-                (3, vec![0, 0, 1]),
-                (4, vec![0, 2]),
-            ]),
+            rows: std::collections::BTreeMap::from([(3, vec![0, 0, 1]), (4, vec![0, 2])]),
+            reachability_graph: None,
         };
         let classification = super::Classification {
             consistent: true,
@@ -1691,6 +1885,78 @@ mod tests {
     }
 
     #[test]
+    fn reachability_graph_json_matches_materialized_closure() {
+        let iris = vec![
+            std::sync::Arc::from("A"),
+            std::sync::Arc::from("B"),
+            std::sync::Arc::from("C"),
+        ];
+        let graph = super::GroupedJsonTaxonomy {
+            iris,
+            rows: std::collections::BTreeMap::new(),
+            reachability_graph: Some(vec![vec![1], vec![2], vec![]]),
+        };
+        let streamed = super::JsonClassification {
+            classification: super::Classification {
+                consistent: true,
+                subsumptions: Vec::new(),
+                unsatisfiable: Vec::new(),
+                dropped: 0,
+            },
+            grouped_subsumptions: Some(graph),
+        };
+        let materialized = super::Classification {
+            consistent: true,
+            subsumptions: vec![
+                ["A".into(), "B".into()],
+                ["A".into(), "C".into()],
+                ["B".into(), "C".into()],
+            ],
+            unsatisfiable: Vec::new(),
+            dropped: 0,
+        };
+        let mut actual = Vec::new();
+        streamed.write_json(&mut actual).unwrap();
+        assert_eq!(actual, materialized.to_json());
+    }
+
+    #[test]
+    fn reachability_graph_json_handles_cycles_without_reflexive_pairs() {
+        let graph = super::GroupedJsonTaxonomy {
+            iris: vec![
+                std::sync::Arc::from("A"),
+                std::sync::Arc::from("B"),
+                std::sync::Arc::from("C"),
+            ],
+            rows: std::collections::BTreeMap::new(),
+            reachability_graph: Some(vec![vec![1], vec![0, 2], vec![]]),
+        };
+        let streamed = super::JsonClassification {
+            classification: super::Classification {
+                consistent: true,
+                subsumptions: Vec::new(),
+                unsatisfiable: Vec::new(),
+                dropped: 0,
+            },
+            grouped_subsumptions: Some(graph),
+        };
+        let materialized = super::Classification {
+            consistent: true,
+            subsumptions: vec![
+                ["A".into(), "B".into()],
+                ["A".into(), "C".into()],
+                ["B".into(), "A".into()],
+                ["B".into(), "C".into()],
+            ],
+            unsatisfiable: Vec::new(),
+            dropped: 0,
+        };
+        let mut actual = Vec::new();
+        streamed.write_json(&mut actual).unwrap();
+        assert_eq!(actual, materialized.to_json());
+    }
+
+    #[test]
     fn json_iri_ids_share_repeated_values_and_reorder_fallbacks() {
         let map = std::collections::BTreeMap::from([
             ("local:a".to_string(), "http://z.example/Z".to_string()),
@@ -1709,7 +1975,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["http://a.example/A", "http://z.example/Z"]
         );
-        assert_eq!(grouped.rows, std::collections::BTreeMap::from([(1, vec![0, 0])]));
+        assert_eq!(
+            grouped.rows,
+            std::collections::BTreeMap::from([(1, vec![0, 0])])
+        );
     }
 
     /// Regression: the in-process CB fast path published a resource-truncated

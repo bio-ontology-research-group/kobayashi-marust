@@ -127,8 +127,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let Some(assoc_tag) = self.native_association_tag(indi_node, calc_alg_context) else {
             return false;
         };
-        let loc_backend_sync_data =
-            self.get_localized_individual_backend_cache_snychronisation_data(
+        let loc_backend_sync_data = self
+            .get_localized_individual_backend_cache_snychronisation_data(
                 indi_node,
                 calc_alg_context,
             );
@@ -283,8 +283,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if !self.native_selective_neighbour_expansion_declined
             && !calc_alg_context.has_pending_signal()
         {
-            let loc_backend_sync_data =
-                self.get_localized_individual_backend_cache_snychronisation_data(
+            let loc_backend_sync_data = self
+                .get_localized_individual_backend_cache_snychronisation_data(
                     indi_node,
                     calc_alg_context,
                 );

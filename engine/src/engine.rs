@@ -2100,9 +2100,7 @@ fn pred_pool_eligible(clause: &ContextClause) -> bool {
         literal.is_function_free()
             && match literal {
                 Lit::P(_) => true,
-                Lit::Eq { s, t } => {
-                    is_individual(*s) && (*t == X || *t == Y || is_individual(*t))
-                }
+                Lit::Eq { s, t } => is_individual(*s) && (*t == X || *t == Y || is_individual(*t)),
                 Lit::Ineq { .. } => false,
             }
     })
@@ -3482,10 +3480,14 @@ mod cb_live_snapshot_tests {
         assert_eq!(first.version, 6);
         assert_eq!(first.concept_count, engine.sig.concept_names.len());
         assert_eq!(first.concept_internal, engine.sig.concept_internal);
-        assert_eq!(first.forward_role_succ_trigger,
-            engine.sig.forward_role_succ_trigger);
-        assert_eq!(first.backward_role_succ_trigger,
-            engine.sig.backward_role_succ_trigger);
+        assert_eq!(
+            first.forward_role_succ_trigger,
+            engine.sig.forward_role_succ_trigger
+        );
+        assert_eq!(
+            first.backward_role_succ_trigger,
+            engine.sig.backward_role_succ_trigger
+        );
         assert!(!first.root_concept_order_mode.is_empty());
         assert!(!first.non_root_concept_order_mode.is_empty());
         assert_eq!(first.role_count, engine.sig.role_names.len());
@@ -4509,7 +4511,7 @@ impl Engine {
                             }
                             if self.equality {
                                 let __t = self.prof_time.then(std::time::Instant::now);
-                            let results = self.eq_from_pred(id, cid, &clause, *max, root);
+                                let results = self.eq_from_pred(id, cid, &clause, *max, root);
                                 if let Some(t) = __t {
                                     prof_add(&EQRULE_NS, t);
                                 }
@@ -8276,8 +8278,7 @@ impl Engine {
             backward_role_succ_trigger: self.sig.backward_role_succ_trigger.clone(),
             root_concept_order_mode: concept_order_mode(true).wire_name().to_string(),
             non_root_concept_order_mode: concept_order_mode(false).wire_name().to_string(),
-            pred_trigger_literals: pred_trigger_literals
-                .into_iter().map(Into::into).collect(),
+            pred_trigger_literals: pred_trigger_literals.into_iter().map(Into::into).collect(),
             role_count: self.sig.role_names.len(),
             function_count,
             source_individual_count: ind_id(self.nom_base) as usize,
@@ -11361,16 +11362,16 @@ mod rsucc_rolechain_tests {
 
         // Interleaves every delta shape with pure-churn rounds the gate must skip:
         let schedule: Vec<GateRound> = vec![
-            (vec![(fa, ta)], vec![r0]),   // edge + reach  -> run
-            (vec![], vec![]),             // churn         -> SKIP
-            (vec![], vec![r1]),           // reach only    -> run
-            (vec![], vec![]),             // churn         -> SKIP
-            (vec![(fb, tb)], vec![]),     // edge only     -> run
-            (vec![], vec![]),             // churn         -> SKIP
-            (vec![(fb, tb2)], vec![]),    // re-target fb  -> run (new (fb,tb2) pair)
-            (vec![(fc, tc)], vec![r2]),   // edge + reach  -> run
-            (vec![(fa, ta)], vec![]),     // re-insert unchanged edge -> no delta -> SKIP
-            (vec![], vec![]),             // churn         -> SKIP
+            (vec![(fa, ta)], vec![r0]), // edge + reach  -> run
+            (vec![], vec![]),           // churn         -> SKIP
+            (vec![], vec![r1]),         // reach only    -> run
+            (vec![], vec![]),           // churn         -> SKIP
+            (vec![(fb, tb)], vec![]),   // edge only     -> run
+            (vec![], vec![]),           // churn         -> SKIP
+            (vec![(fb, tb2)], vec![]),  // re-target fb  -> run (new (fb,tb2) pair)
+            (vec![(fc, tc)], vec![r2]), // edge + reach  -> run
+            (vec![(fa, ta)], vec![]),   // re-insert unchanged edge -> no delta -> SKIP
+            (vec![], vec![]),           // churn         -> SKIP
         ];
 
         let (g_fired, g_pushed, u_fired, u_pushed, gated_runs, rounds) =
@@ -11410,8 +11411,8 @@ mod rsucc_rolechain_tests {
             .collect();
         let n_edges = 4_000usize; // successor edges on the context
         let churn_per_reach = 200usize; // churn rounds between reach-growth events
-        // Build a schedule: seed all edges in round 0, then alternate a single
-        // reach-growth round with a long run of pure-churn rounds.
+                                        // Build a schedule: seed all edges in round 0, then alternate a single
+                                        // reach-growth round with a long run of pure-churn rounds.
         let mut schedule: Vec<GateRound> = Vec::new();
         let all_edges: Vec<(Term, usize)> =
             (0..n_edges).map(|i| (fterm(i as i32 + 1), i)).collect();
@@ -11655,8 +11656,11 @@ mod base_delta_tests {
 
         let mut seeded = ClauseLayer::default();
         assert!(seeded.seed(&arena, 0));
-        assert_eq!(seeded.pred_pool, vec![0],
-            "shared-base seeding dropped a nominal Pred equality");
+        assert_eq!(
+            seeded.pred_pool,
+            vec![0],
+            "shared-base seeding dropped a nominal Pred equality"
+        );
     }
 
     /// `Engine::seed_worked_off` at the layer level: the combined view gates the

@@ -659,7 +659,10 @@ mod tests {
             EFEXTRACTALL,
         );
 
-        assert!(Arc::ptr_eq(&shared, &adapter.concept_reference_linking_data_hash));
+        assert!(Arc::ptr_eq(
+            &shared,
+            &adapter.concept_reference_linking_data_hash
+        ));
         adapter
             .get_concept_reference_linking_data_hash_mut()
             .insert(concept, 101);

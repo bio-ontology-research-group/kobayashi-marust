@@ -703,12 +703,52 @@ pub fn parse_axioms_observed<'a, F>(
 where
     F: FnMut(&Node<'a>),
 {
+    parse_axioms_observed_filtered(reg, text, |node| {
+        observe(node);
+        true
+    })
+}
+
+/// Build the ontology while allowing a source-certified caller to omit an
+/// axiom from the rich syntax representation. The callback still sees every
+/// source node and decides only whether [`add_axiom`] should materialise it.
+/// Callers must reparse without filtering unless their completed source
+/// certificate proves the omission semantics-preserving.
+pub fn parse_axioms_observed_filtered<'a, F>(
+    reg: &mut IriRegistry,
+    text: &'a str,
+    mut observe_and_retain: F,
+) -> Result<Ontology, OutOfFragment>
+where
+    F: FnMut(&Node<'a>) -> bool,
+{
     let mut o = Ontology::new();
     for_each_ontology_child(text, |node| {
-        observe(node);
-        add_axiom(reg, &mut o, node)
+        if observe_and_retain(node) {
+            add_axiom(reg, &mut o, node)?;
+        }
+        Ok(())
     })?;
     Ok(o)
+}
+
+/// Source-level ABox axiom screen. This is used only to avoid constructing a
+/// representation that a later complete source certificate may discard. It
+/// is not itself a semantic admission test.
+pub fn is_abox_axiom_node(node: &Node<'_>) -> bool {
+    matches!(
+        node,
+        Node::List(
+            "ClassAssertion"
+                | "ObjectPropertyAssertion"
+                | "NegativeObjectPropertyAssertion"
+                | "DataPropertyAssertion"
+                | "NegativeDataPropertyAssertion"
+                | "SameIndividual"
+                | "DifferentIndividuals",
+            _
+        )
+    )
 }
 
 /// If `node` is `Declaration(Class(<name>))`, return the raw class token.
@@ -737,6 +777,26 @@ mod axiom_drop_regression_tests {
         let mut reg = IriRegistry::new();
         let o = parse_axioms(&mut reg, txt).expect("parse");
         o.tbox().chain(o.rbox()).chain(o.abox()).cloned().collect()
+    }
+
+    #[test]
+    fn filtered_parser_observes_but_does_not_materialize_abox_nodes() {
+        let text = "Ontology(SubClassOf(<A> <B>) ClassAssertion(<A> <a>) \
+                    ObjectPropertyAssertion(<r> <a> <b>))";
+        let mut reg = IriRegistry::new();
+        let mut observed_abox = 0;
+        let ontology = parse_axioms_observed_filtered(&mut reg, text, |node| {
+            if is_abox_axiom_node(node) {
+                observed_abox += 1;
+                false
+            } else {
+                true
+            }
+        })
+        .expect("filtered source");
+        assert_eq!(observed_abox, 2);
+        assert_eq!(ontology.tbox().count(), 1);
+        assert_eq!(ontology.abox().count(), 0);
     }
 
     /// Regression: `DisjointUnion` fell into the silent catch-all and produced

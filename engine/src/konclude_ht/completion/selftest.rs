@@ -25060,7 +25060,10 @@ fn generating_concept_is_parked_on_a_successor_creation_blocked_node() {
     let mut con_pro_des = ConceptProcessDescriptor::new();
     con_pro_des.concept_des = con_des;
     con_pro_des.dep_track_point = dep;
-    let mut con_pro_des = env.ctx.process_context_mut().alloc_con_proc_desc(con_pro_des);
+    let mut con_pro_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_proc_desc(con_pro_des);
 
     let nodes_before = env.ctx.process_context().node_count();
     let mut process_indi = node;
@@ -25132,7 +25135,10 @@ fn generating_concept_is_not_parked_when_the_saturation_node_is_cardinality_prob
     let mut con_pro_des = ConceptProcessDescriptor::new();
     con_pro_des.concept_des = con_des;
     con_pro_des.dep_track_point = dep;
-    let mut con_pro_des = env.ctx.process_context_mut().alloc_con_proc_desc(con_pro_des);
+    let mut con_pro_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_proc_desc(con_pro_des);
 
     let nodes_before = env.ctx.process_context().node_count();
     let mut process_indi = node;
@@ -26019,35 +26025,37 @@ fn push_synthetic_or_branch(
     };
     let node_count_at_push = env.ctx.process_context().node_count();
     let alternative_order = (0..disjuncts.len()).collect();
-    env.algo.or_branch_stack.push(super::algorithm::OrBranchPoint {
-        node,
-        disjuncts: disjuncts
-            .into_iter()
-            .map(|target| NegLink {
-                target,
-                negated: false,
-            })
-            .collect(),
-        alternative_order,
-        current_alt,
-        branching_concept: ConceptId::NONE,
-        negate: false,
-        next_alt,
-        dep_track_point: alt_track_points
-            .first()
-            .copied()
-            .unwrap_or(TrackPointId::NONE),
-        branch_node: BranchNodeId::NONE,
-        or_dependency_node: DependencyId::NONE,
-        alt_track_points,
-        parent_used_branch_node: BranchNodeId::NONE,
-        node_label_snapshot,
-        node_queue_snapshot,
-        node_count_at_push,
-        kind: super::algorithm::BranchKind::Disjunction,
-        // No branch epoch: the walk must not pop an epoch this test never pushed.
-        own_epoch: false,
-    });
+    env.algo
+        .or_branch_stack
+        .push(super::algorithm::OrBranchPoint {
+            node,
+            disjuncts: disjuncts
+                .into_iter()
+                .map(|target| NegLink {
+                    target,
+                    negated: false,
+                })
+                .collect(),
+            alternative_order,
+            current_alt,
+            branching_concept: ConceptId::NONE,
+            negate: false,
+            next_alt,
+            dep_track_point: alt_track_points
+                .first()
+                .copied()
+                .unwrap_or(TrackPointId::NONE),
+            branch_node: BranchNodeId::NONE,
+            or_dependency_node: DependencyId::NONE,
+            alt_track_points,
+            parent_used_branch_node: BranchNodeId::NONE,
+            node_label_snapshot,
+            node_queue_snapshot,
+            node_count_at_push,
+            kind: super::algorithm::BranchKind::Disjunction,
+            // No branch epoch: the walk must not pop an epoch this test never pushed.
+            own_epoch: false,
+        });
 }
 
 /// The 9540 / 12653 thrash escape, DIAGNOSTIC PATH ONLY: this pins the shape of
@@ -26429,8 +26437,11 @@ fn reusable_replay_record() -> super::algorithm::NativeNominalBackendReplay {
 
 /// A non-deterministic reuse dependency track point, stamped onto `node`'s
 /// backend-sync data exactly as `prepareBackendIndividual*ReuseExpansion` does.
-fn install_reuse_track_point(env: &mut SelfTestEnv, node: NodeId, branching_tag: i64) -> TrackPointId
-{
+fn install_reuse_track_point(
+    env: &mut SelfTestEnv,
+    node: NodeId,
+    branching_tag: i64,
+) -> TrackPointId {
     env.ctx
         .processing_data_box_mut()
         .set_maximum_deterministic_branch_tag(0);
@@ -26484,10 +26495,7 @@ fn label_descriptor_of(
     {
         return None;
     }
-    Some((
-        env.ctx.process_context().con_desc(con_des).is_negated(),
-        tp,
-    ))
+    Some((env.ctx.process_context().con_desc(con_des).is_negated(), tp))
 }
 
 fn new_test_concept(env: &mut SelfTestEnv, tag: Cint64) -> ConceptId {
@@ -26530,8 +26538,8 @@ fn backend_expansion_reuse_replays_only_nondeterministic_values_under_the_branch
     );
     // Both non-deterministic values land, with their recorded polarity, under
     // the ONE non-deterministic reuse track point.
-    let (chosen_negated, chosen_tp) = label_descriptor_of(&env, node, chosen_disjunct)
-        .expect("the chosen disjunct is replayed");
+    let (chosen_negated, chosen_tp) =
+        label_descriptor_of(&env, node, chosen_disjunct).expect("the chosen disjunct is replayed");
     assert!(!chosen_negated);
     assert_eq!(chosen_tp, reuse_tp, "model choices ride the reuse branch");
     let (negated_negated, negated_tp) =
@@ -26664,14 +26672,7 @@ fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() 
     let mut replay = reusable_replay_record();
     replay.cached_concept_values = vec![(contested, false, false)];
     let node = make_reuse_nominal(&mut env, 10, replay);
-    let branch_tp = real_dependency_track_point(
-        &mut env,
-        node,
-        ConDescId::NONE,
-        DepKind::Or,
-        1,
-        3,
-    );
+    let branch_tp = real_dependency_track_point(&mut env, node, ConDescId::NONE, DepKind::Or, 1, 3);
     env.ctx
         .processing_data_box_mut()
         .set_maximum_deterministic_branch_tag(0);
@@ -26700,14 +26701,7 @@ fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() 
     let mut replay = reusable_replay_record();
     replay.cached_concept_values = vec![(contested, false, false)];
     let node = make_reuse_nominal(&mut env, 10, replay);
-    let branch_tp = real_dependency_track_point(
-        &mut env,
-        node,
-        ConDescId::NONE,
-        DepKind::Or,
-        1,
-        3,
-    );
+    let branch_tp = real_dependency_track_point(&mut env, node, ConDescId::NONE, DepKind::Or, 1, 3);
     env.ctx
         .processing_data_box_mut()
         .set_maximum_deterministic_branch_tag(0);
@@ -26975,11 +26969,12 @@ fn prepare_backend_individual_prioritized_reuse_expansion_opens_a_two_way_reuse_
             .has_nondeterministic_dependency(reuse_tp, &mut env.ctx),
         "the reuse anchor is a NON-deterministic track point"
     );
-    assert!(env
-        .ctx
-        .process_context()
-        .node(indi)
-        .backend_reuse_expansion_queued);
+    assert!(
+        env.ctx
+            .process_context()
+            .node(indi)
+            .backend_reuse_expansion_queued
+    );
 }
 
 /// The discarding alternative deactivates the reuse and returns the individual
@@ -27171,11 +27166,12 @@ fn backend_expansion_reuse_activation_declines_an_unrepresentable_record() {
         .activate_backend_individual_expansion_reuse(node, &mut env.ctx));
     assert_eq!(env.algo.native_reuse_activation_unrepresentable_count, 1);
     assert_eq!(env.algo.native_reuse_activation_queued_count, 0);
-    assert!(!env
-        .ctx
-        .process_context()
-        .node(node)
-        .backend_reuse_expansion_queued);
+    assert!(
+        !env.ctx
+            .process_context()
+            .node(node)
+            .backend_reuse_expansion_queued
+    );
 
     // An association with no non-deterministic slot at all is equally inert.
     let mut empty = reusable_replay_record();
@@ -27206,11 +27202,12 @@ fn backend_expansion_reuse_activation_never_overrules_the_two_way_branch() {
         .algo
         .activate_backend_individual_expansion_reuse(discarded, &mut env.ctx));
     assert_eq!(env.algo.native_reuse_activation_declined_state_count, 1);
-    assert!(!env
-        .ctx
-        .process_context()
-        .node(discarded)
-        .backend_reuse_expansion_queued);
+    assert!(
+        !env.ctx
+            .process_context()
+            .node(discarded)
+            .backend_reuse_expansion_queued
+    );
 
     let reusing = make_reuse_nominal(&mut env, 67, reusable_replay_record());
     env.ctx
@@ -27238,11 +27235,12 @@ fn backend_expansion_reuse_activation_is_off_when_the_mechanism_is_disarmed() {
     assert!(env.algo.individual_node_initializing(node, &mut env.ctx));
     assert_eq!(env.algo.native_reuse_activation_reached_count, 0);
     assert_eq!(env.algo.native_reuse_activation_queued_count, 0);
-    assert!(!env
-        .ctx
-        .process_context()
-        .node(node)
-        .backend_reuse_expansion_queued);
+    assert!(
+        !env.ctx
+            .process_context()
+            .node(node)
+            .backend_reuse_expansion_queued
+    );
 }
 
 /// The deferral is SCOPED to retained nodes. A node materialized inside this job

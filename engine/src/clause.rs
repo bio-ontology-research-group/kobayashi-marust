@@ -402,11 +402,7 @@ mod strengthens_tests {
     #[test]
     fn strengthens_matches_test_strengthening_and_subset_oracle() {
         let (a, b, c) = (cpt(1, X), cpt(2, X), cpt(3, X));
-        let (ha, hb, hc) = (
-            Lit::P(cpt(10, X)),
-            Lit::P(cpt(11, X)),
-            Lit::P(cpt(12, X)),
-        );
+        let (ha, hb, hc) = (Lit::P(cpt(10, X)), Lit::P(cpt(11, X)), Lit::P(cpt(12, X)));
         let bodies = vec![
             vec![],
             vec![a],
@@ -456,7 +452,7 @@ mod strengthens_tests {
         let (a, b) = (cpt(1, X), cpt(2, X));
         let x = cc(vec![a], vec![]); // body {a}
         let y = cc(vec![a, b], vec![]); // body {a,b} ⊋ {a}
-        // Fewer body atoms strengthens: -1 from x, +1 from y.
+                                        // Fewer body atoms strengthens: -1 from x, +1 from y.
         assert_eq!(x.test_strengthening(&y), -1);
         assert_eq!(y.test_strengthening(&x), 1);
         assert!(x.strengthens(&y));

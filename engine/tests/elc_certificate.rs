@@ -33,11 +33,17 @@ fn run(checker: Option<&str>) -> std::process::Output {
 fn certified_elc_publication_fails_closed_without_or_after_checker_rejection() {
     let missing = run(None);
     assert_eq!(missing.status.code(), Some(3));
-    assert!(missing.stdout.is_empty(), "unchecked ELC result was published");
+    assert!(
+        missing.stdout.is_empty(),
+        "unchecked ELC result was published"
+    );
 
     let rejected = run(Some("/bin/false"));
     assert_eq!(rejected.status.code(), Some(3));
-    assert!(rejected.stdout.is_empty(), "rejected ELC result was published");
+    assert!(
+        rejected.stdout.is_empty(),
+        "rejected ELC result was published"
+    );
 }
 
 #[test]
@@ -46,7 +52,11 @@ fn certified_elc_publication_passes_the_real_source_checker() {
         return;
     };
     let accepted = run(checker.to_str());
-    assert!(accepted.status.success(), "{}", String::from_utf8_lossy(&accepted.stderr));
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
     let output: serde_json::Value =
         serde_json::from_slice(&accepted.stdout).expect("checked ELC JSON output");
     assert_eq!(output["inconsistent"], false);
@@ -86,5 +96,8 @@ fn automatic_el_decline_retries_exactly_but_forced_el_remains_atomic() {
 
     let forced = classify_with_failed_elc("elc");
     assert!(!forced.status.success());
-    assert!(forced.stdout.is_empty(), "forced failed ELC published output");
+    assert!(
+        forced.stdout.is_empty(),
+        "forced failed ELC published output"
+    );
 }

@@ -87,6 +87,21 @@ const OWL_NOTHING: &str = "http://www.w3.org/2002/07/owl#Nothing";
 const OWL_TOP_ROLE: &str = "http://www.w3.org/2002/07/owl#topObjectProperty";
 const OWL_BOTTOM_ROLE: &str = "http://www.w3.org/2002/07/owl#bottomObjectProperty";
 
+// The mirror decomposition exists for a large family of private negative
+// definitions. Parsing every large ontology a second time before the ordinary
+// frontend is pure overhead when the source contains only a handful of
+// complements. Keep small fixtures and small real ontologies unrestricted,
+// but require enough lexical candidates to amortize the duplicate structural
+// parse above one MiB. A refusal only falls through to the complete ordinary
+// pipeline; it cannot change an answer.
+const MIRROR_PREFILTER_LARGE_BYTES: usize = 1 << 20;
+const MIRROR_PREFILTER_MIN_COMPLEMENTS: usize = 1_000;
+
+fn mirror_parse_worthwhile(file_bytes: usize, complement_candidates: usize) -> bool {
+    file_bytes < MIRROR_PREFILTER_LARGE_BYTES
+        || complement_candidates >= MIRROR_PREFILTER_MIN_COMPLEMENTS
+}
+
 // ---------------------------------------------------------------------------
 // premises
 // ---------------------------------------------------------------------------
@@ -1572,6 +1587,18 @@ pub fn try_classify(cfg: &Config, ont: &Path) -> Result<Option<Classification>, 
     }
     let prepared = super::input::prepare(ont)?;
     let text = std::fs::read_to_string(prepared.path())?;
+    let complement_candidates = text
+        .match_indices("ObjectComplementOf(")
+        .take(MIRROR_PREFILTER_MIN_COMPLEMENTS)
+        .count();
+    if !mirror_parse_worthwhile(text.len(), complement_candidates) {
+        timing(format_args!(
+            "declined by lexical prefilter: bytes={} complements_below={}",
+            text.len(),
+            complement_candidates
+        ));
+        return Ok(None);
+    }
     let fragment = match detect(&text) {
         Ok(Some(fragment)) => fragment,
         Ok(None) => return Ok(None),
@@ -1606,17 +1633,25 @@ pub fn try_classify(cfg: &Config, ont: &Path) -> Result<Option<Classification>, 
         a.set(true);
         ActiveGuard
     });
-    // The projections are ELI terminologies with a transitive mirror role, and
-    // the reconstruction needs them classified EXACTLY: an existential
+    // The slice projection is an ELI terminology with a transitive mirror role,
+    // and the reconstruction needs it classified EXACTLY: an existential
     // consequence reached through the mirror role's inverse (`X ⊑ ∃R.F` where
     // `F` is conjunction-defined through `R⁻`) is a real entailment that the
     // consequence-based arm does not derive. The Konclude bridge is the arm
-    // that is complete on this fragment and answers-or-defers, so both
-    // projections are routed to it and a defer is a refusal, not a fallback.
-    let base = {
+    // that is complete on this fragment and answers-or-defers, so the
+    // projection is routed to it and a defer is a refusal, not a fallback.
+    //
+    // `MirrorProxyConservativeExtension.oldEntails_iff_sliceEntails` proves
+    // that adding these fresh one-way/exact proxy predicates preserves every
+    // old-signature subsumption. The slice taxonomy therefore already is the
+    // exact base taxonomy; classifying the proxy-free projection a second time
+    // cannot strengthen the result. Keep the former dynamic cross-check behind
+    // an explicit diagnostic switch for same-binary differential measurements.
+    let double_check = std::env::var_os("KM_MIRROR_DOUBLE_CHECK").is_some();
+    let base = double_check.then(|| {
         let _route = EnvVar::set("KM_ROUTE", PROJECTION_ROUTE);
         super::classify(cfg, base_path.path())
-    };
+    });
     let slice = {
         let _route = EnvVar::set("KM_ROUTE", PROJECTION_ROUTE);
         let _exclude = EnvVar::set("KM_QUERY_EXCLUDE_PREFIX", PROXY_INTERNAL_PREFIX);
@@ -1627,32 +1662,50 @@ pub fn try_classify(cfg: &Config, ont: &Path) -> Result<Option<Classification>, 
         super::classify(cfg, slice_path.path())
     };
     drop(guard);
-    let (base, slice) = match (base, slice) {
-        (Ok(base), Ok(slice)) => (base, slice),
-        (base, slice) => {
-            let reason = base.err().or(slice.err());
+    let slice = match slice {
+        Ok(slice) => slice,
+        Err(reason) => {
             timing(format_args!(
                 "declined: projection did not classify exactly: {}",
                 reason
-                    .map(|e| e.to_string())
-                    .unwrap_or_else(|| "unknown".into())
             ));
             return Ok(None);
         }
     };
+    let base = match base {
+        Some(Ok(base)) => Some(base),
+        Some(Err(reason)) => {
+            timing(format_args!(
+                "declined: diagnostic base projection did not classify exactly: {}",
+                reason
+            ));
+            return Ok(None);
+        }
+        None => None,
+    };
     timing(format_args!(
-        "projections classified: base {} pairs, slice {} pairs",
-        base.subsumptions.len(),
-        slice.subsumptions.len()
+        "slice classified: {} pairs{}",
+        slice.subsumptions.len(),
+        if base.is_some() {
+            ", base cross-check enabled"
+        } else {
+            ""
+        }
     ));
 
-    let base = index(&base);
     let slice = index(&slice);
-    timing(format_args!(
-        "base pairs {} / slice base pairs {}",
-        base.base_pairs, slice.base_pairs
-    ));
-    match reconstruct(&fragment, &base, &slice) {
+    let base = base.as_ref().map(index);
+    if let Some(base) = &base {
+        timing(format_args!(
+            "base pairs {} / slice base pairs {}",
+            base.base_pairs, slice.base_pairs
+        ));
+    }
+    // Passing the slice as both views makes the old runtime comparison
+    // definitionally true when the theorem-backed single-projection path is
+    // active; all remaining reconstruction checks still inspect the slice.
+    let base_view = base.as_ref().unwrap_or(&slice);
+    match reconstruct(&fragment, base_view, &slice) {
         Ok(classification) => {
             timing(format_args!(
                 "reconstructed {} public pairs, {} unsatisfiable",

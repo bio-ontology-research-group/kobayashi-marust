@@ -553,9 +553,16 @@ fn atom_eq(a: &JAtom, b: &JAtom) -> bool {
                     arg: y,
                 },
             ) => f == g && term_eq(x, y),
-            (JTerm::Aux { root: r1, label: l1 }, JTerm::Aux { root: r2, label: l2 }) => {
-                r1 == r2 && l1 == l2
-            }
+            (
+                JTerm::Aux {
+                    root: r1,
+                    label: l1,
+                },
+                JTerm::Aux {
+                    root: r2,
+                    label: l2,
+                },
+            ) => r1 == r2 && l1 == l2,
             _ => false,
         }
     }
@@ -582,9 +589,16 @@ fn atom_eq(a: &JAtom, b: &JAtom) -> bool {
                 target: t2,
             },
         ) => r1 == r2 && term_eq(s1, s2) && term_eq(t1, t2),
-        (JAtom::Eq { left: l1, right: r1 }, JAtom::Eq { left: l2, right: r2 }) => {
-            term_eq(l1, l2) && term_eq(r1, r2)
-        }
+        (
+            JAtom::Eq {
+                left: l1,
+                right: r1,
+            },
+            JAtom::Eq {
+                left: l2,
+                right: r2,
+            },
+        ) => term_eq(l1, l2) && term_eq(r1, r2),
         _ => false,
     }
 }
@@ -1437,15 +1451,51 @@ struct State {
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanElStep {
-    Refl { a: u32 },
-    Top { a: u32 },
-    Nf1 { a: u32, sub: u32, sup: u32 },
-    Nf2 { a: u32, left: u32, right: u32, sup: u32 },
-    Nf5 { a: u32, sub: u32 },
-    Nf4 { a: u32, target: u32, filler: u32, sup: u32, role: u32 },
-    BottomEdge { a: u32, target: u32, role: u32 },
-    Nf3 { a: u32, sub: u32, filler: u32, role: u32 },
-    Nf6 { a: u32, target: u32, sub: u32, sup: u32 },
+    Refl {
+        a: u32,
+    },
+    Top {
+        a: u32,
+    },
+    Nf1 {
+        a: u32,
+        sub: u32,
+        sup: u32,
+    },
+    Nf2 {
+        a: u32,
+        left: u32,
+        right: u32,
+        sup: u32,
+    },
+    Nf5 {
+        a: u32,
+        sub: u32,
+    },
+    Nf4 {
+        a: u32,
+        target: u32,
+        filler: u32,
+        sup: u32,
+        role: u32,
+    },
+    BottomEdge {
+        a: u32,
+        target: u32,
+        role: u32,
+    },
+    Nf3 {
+        a: u32,
+        sub: u32,
+        filler: u32,
+        role: u32,
+    },
+    Nf6 {
+        a: u32,
+        target: u32,
+        sub: u32,
+        sup: u32,
+    },
     Nf7 {
         a: u32,
         middle: u32,
@@ -1454,7 +1504,10 @@ enum LeanElStep {
         second: u32,
         sup: u32,
     },
-    Reflexive { a: u32, role: u32 },
+    Reflexive {
+        a: u32,
+        role: u32,
+    },
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -1473,23 +1526,45 @@ enum LeanElClause {
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanRawTerm {
-    Var { name: u32 },
-    Fun { function: u32, argument: Box<LeanRawTerm> },
+    Var {
+        name: u32,
+    },
+    Fun {
+        function: u32,
+        argument: Box<LeanRawTerm>,
+    },
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanRawAtom {
-    Concept { concept: u32, term: LeanRawTerm },
-    Role { role: u32, source: LeanRawTerm, target: LeanRawTerm },
+    Concept {
+        concept: u32,
+        term: LeanRawTerm,
+    },
+    Role {
+        role: u32,
+        source: LeanRawTerm,
+        target: LeanRawTerm,
+    },
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanResidualAtom {
-    Concept { concept: u32, term: LeanRawTerm },
-    Role { role: u32, source: LeanRawTerm, target: LeanRawTerm },
-    Eq { left: LeanRawTerm, right: LeanRawTerm },
+    Concept {
+        concept: u32,
+        term: LeanRawTerm,
+    },
+    Role {
+        role: u32,
+        source: LeanRawTerm,
+        target: LeanRawTerm,
+    },
+    Eq {
+        left: LeanRawTerm,
+        right: LeanRawTerm,
+    },
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -1508,9 +1583,19 @@ enum LeanResidualOrigin {
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanCompiledResidualAtom {
-    Concept { concept: u32, slot: usize },
-    Role { role: u32, source: usize, target: usize },
-    Eq { left: usize, right: usize },
+    Concept {
+        concept: u32,
+        slot: usize,
+    },
+    Role {
+        role: u32,
+        source: usize,
+        target: usize,
+    },
+    Eq {
+        left: usize,
+        right: usize,
+    },
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -1608,6 +1693,7 @@ impl LeanElCertificate {
             unresolved: Vec::new(),
             subsumptions,
             inconsistent: self.public_inconsistent,
+            compact: None,
         }
     }
 }
@@ -1654,7 +1740,11 @@ fn build_lean_el_certificate(
         for &(a, known) in &sub_snapshot {
             for nf in &nfs.nf1 {
                 if known == nf.sub && subs.insert((a, nf.sup)) {
-                    steps.push(LeanElStep::Nf1 { a, sub: nf.sub, sup: nf.sup });
+                    steps.push(LeanElStep::Nf1 {
+                        a,
+                        sub: nf.sub,
+                        sup: nf.sup,
+                    });
                     changed = true;
                 }
             }
@@ -1696,7 +1786,8 @@ fn build_lean_el_certificate(
                 changed = true;
             }
             for nf in &nfs.nf4 {
-                if role == nf.role && subs.contains(&(target, nf.filler))
+                if role == nf.role
+                    && subs.contains(&(target, nf.filler))
                     && subs.insert((a, nf.sup))
                 {
                     steps.push(LeanElStep::Nf4 {
@@ -1725,9 +1816,7 @@ fn build_lean_el_certificate(
                     continue;
                 }
                 for nf in &nfs.nf7 {
-                    if role == nf.r1 && second == nf.r2
-                        && edges.insert((a, nf.sup, end))
-                    {
+                    if role == nf.r1 && second == nf.r2 && edges.insert((a, nf.sup, end)) {
                         steps.push(LeanElStep::Nf7 {
                             a,
                             middle,
@@ -1793,22 +1882,40 @@ fn build_lean_el_certificate(
     }
 
     let mut ontology = Vec::new();
-    ontology.extend(nfs.nf1.iter().map(|x| LeanElClause::Nf1 { sub: x.sub, sup: x.sup }));
+    ontology.extend(nfs.nf1.iter().map(|x| LeanElClause::Nf1 {
+        sub: x.sub,
+        sup: x.sup,
+    }));
     ontology.extend(nfs.nf2.iter().map(|x| LeanElClause::Nf2 {
-        left: x.sub1, right: x.sub2, sup: x.sup,
+        left: x.sub1,
+        right: x.sub2,
+        sup: x.sup,
     }));
     ontology.extend(nfs.nf3.iter().map(|x| LeanElClause::Nf3 {
-        sub: x.sub, role: x.role, filler: x.filler,
+        sub: x.sub,
+        role: x.role,
+        filler: x.filler,
     }));
     ontology.extend(nfs.nf4.iter().map(|x| LeanElClause::Nf4 {
-        role: x.role, filler: x.filler, sup: x.sup,
+        role: x.role,
+        filler: x.filler,
+        sup: x.sup,
     }));
     ontology.extend(nfs.nf5.iter().map(|&sub| LeanElClause::Nf5 { sub }));
-    ontology.extend(nfs.nf6.iter().map(|x| LeanElClause::Nf6 { sub: x.sub, sup: x.sup }));
-    ontology.extend(nfs.nf7.iter().map(|x| LeanElClause::Nf7 {
-        first: x.r1, second: x.r2, sup: x.sup,
+    ontology.extend(nfs.nf6.iter().map(|x| LeanElClause::Nf6 {
+        sub: x.sub,
+        sup: x.sup,
     }));
-    ontology.extend(nfs.reflexive_roles.iter().map(|&role| LeanElClause::Reflexive { role }));
+    ontology.extend(nfs.nf7.iter().map(|x| LeanElClause::Nf7 {
+        first: x.r1,
+        second: x.r2,
+        sup: x.sup,
+    }));
+    ontology.extend(
+        nfs.reflexive_roles
+            .iter()
+            .map(|&role| LeanElClause::Reflexive { role }),
+    );
     steps.reverse();
     let mut active_concepts: Vec<u32> = nfs
         .concept_names
@@ -1825,22 +1932,27 @@ fn build_lean_el_certificate(
     let mut rust_subsumptions = Vec::new();
     let mut rust_edges = Vec::new();
     for &sub in &active_concepts {
-        rust_subsumptions.extend(st.sub_super[sub as usize].iter().map(|&sup| {
-            LeanElSubFact { sub, sup }
-        }));
-        rust_edges.extend(st.edges[sub as usize].iter().map(|&(role, target)| {
-            LeanElEdgeFact { source: sub, role, target }
-        }));
+        rust_subsumptions.extend(
+            st.sub_super[sub as usize]
+                .iter()
+                .map(|&sup| LeanElSubFact { sub, sup }),
+        );
+        rust_edges.extend(
+            st.edges[sub as usize]
+                .iter()
+                .map(|&(role, target)| LeanElEdgeFact {
+                    source: sub,
+                    role,
+                    target,
+                }),
+        );
     }
     rust_subsumptions.sort_unstable_by_key(|fact| (fact.sub, fact.sup));
     rust_edges.sort_unstable_by_key(|fact| (fact.source, fact.role, fact.target));
     let mut public_subsumptions: Vec<_> = rust_subsumptions
         .iter()
         .filter(|fact| {
-            fact.sub != TOP
-                && fact.sub != BOTTOM
-                && fact.sup != fact.sub
-                && fact.sup != TOP
+            fact.sub != TOP && fact.sub != BOTTOM && fact.sup != fact.sub && fact.sup != TOP
         })
         .cloned()
         .collect();
@@ -1869,10 +1981,14 @@ fn build_lean_el_certificate(
                 Ok(LeanRawTerm::Var { name: id })
             }
             JTerm::Fun { function, arg } => Ok(LeanRawTerm::Fun {
-                function: interner.id(function).ok_or_else(|| format!("uninterned function {function}"))?,
+                function: interner
+                    .id(function)
+                    .ok_or_else(|| format!("uninterned function {function}"))?,
                 argument: Box::new(raw_term(arg, interner, variables)?),
             }),
-            JTerm::Ind { .. } | JTerm::Aux { .. } => Err("non-EL raw term in Lean certificate".into()),
+            JTerm::Ind { .. } | JTerm::Aux { .. } => {
+                Err("non-EL raw term in Lean certificate".into())
+            }
         }
     }
     fn raw_atom(
@@ -1882,11 +1998,19 @@ fn build_lean_el_certificate(
     ) -> Result<LeanRawAtom, String> {
         match atom {
             JAtom::Concept { concept, term } => Ok(LeanRawAtom::Concept {
-                concept: interner.id(concept).ok_or_else(|| format!("uninterned concept {concept}"))?,
+                concept: interner
+                    .id(concept)
+                    .ok_or_else(|| format!("uninterned concept {concept}"))?,
                 term: raw_term(term, interner, variables)?,
             }),
-            JAtom::Role { role, source, target } => Ok(LeanRawAtom::Role {
-                role: interner.id(role).ok_or_else(|| format!("uninterned role {role}"))?,
+            JAtom::Role {
+                role,
+                source,
+                target,
+            } => Ok(LeanRawAtom::Role {
+                role: interner
+                    .id(role)
+                    .ok_or_else(|| format!("uninterned role {role}"))?,
                 source: raw_term(source, interner, variables)?,
                 target: raw_term(target, interner, variables)?,
             }),
@@ -1896,8 +2020,16 @@ fn build_lean_el_certificate(
     let mut raw_ontology = Vec::with_capacity(raw_clauses.len());
     for clause in raw_clauses {
         raw_ontology.push(LeanRawClause {
-            body: clause.body.iter().map(|a| raw_atom(a, interner, &mut variables)).collect::<Result<_, _>>()?,
-            head: clause.head.iter().map(|a| raw_atom(a, interner, &mut variables)).collect::<Result<_, _>>()?,
+            body: clause
+                .body
+                .iter()
+                .map(|a| raw_atom(a, interner, &mut variables))
+                .collect::<Result<_, _>>()?,
+            head: clause
+                .head
+                .iter()
+                .map(|a| raw_atom(a, interner, &mut variables))
+                .collect::<Result<_, _>>()?,
         });
     }
     let mut source_ontology: Vec<_> = raw_ontology
@@ -1990,8 +2122,12 @@ fn build_lean_el_certificate(
         .map_or(0, |maximum| maximum + 1);
     let mut concept_origins = vec![LeanConceptOrigin::Source; symbol_count];
     for (&id, prefix_ids) in &nfs.conjunction_origins {
-        let slot = concept_origins.get_mut(id as usize).ok_or_else(|| format!("origin id {id} out of bounds"))?;
-        *slot = LeanConceptOrigin::Conjunction { prefix_ids: prefix_ids.clone() };
+        let slot = concept_origins
+            .get_mut(id as usize)
+            .ok_or_else(|| format!("origin id {id} out of bounds"))?;
+        *slot = LeanConceptOrigin::Conjunction {
+            prefix_ids: prefix_ids.clone(),
+        };
     }
     Ok(LeanElCertificate {
         version: 5,
@@ -2299,12 +2435,7 @@ const PAR_NF4_MAX_EDGES: usize = 65_536;
 /// deterministic. Every emitted conclusion is exactly one that the ordinary
 /// edge-side NF4 rule would attempt; delaying and deduplicating attempts does
 /// not change the finite monotone closure.
-fn fire_edge_nf4_batch(
-    idx: &Idx,
-    st: &mut State,
-    prof: &mut Prof,
-    parallel_nf4: bool,
-) -> bool {
+fn fire_edge_nf4_batch(idx: &Idx, st: &mut State, prof: &mut Prof, parallel_nf4: bool) -> bool {
     if !parallel_nf4 || idx.nf4_by_filler.is_empty() {
         return false;
     }
@@ -2530,9 +2661,7 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                     }
                 }
             }
-            Item::Edge(c, r, d)
-            | Item::EdgeSerial(c, r, d)
-            | Item::EdgeAfterNf4(c, r, d) => {
+            Item::Edge(c, r, d) | Item::EdgeSerial(c, r, d) | Item::EdgeAfterNf4(c, r, d) => {
                 let nf4_already_fired = matches!(item, Item::EdgeAfterNf4(..));
                 prof.edge_items += 1;
                 // R∃⁻ (NF4), ELK backward-link join: this new edge `(c,r,d)` is a
@@ -2858,14 +2987,16 @@ fn build_lean_residual_compilations(
         match term {
             JTerm::Var { name } => {
                 let source_name = clause.origins.iter().find_map(|origin| match origin {
-                    ROrigin::Source { source, name: source_name } if source == name => {
-                        Some(*source_name)
-                    }
+                    ROrigin::Source {
+                        source,
+                        name: source_name,
+                    } if source == name => Some(*source_name),
                     _ => None,
                 });
                 // A variable occurring only as the ignored argument of a
                 // constant Skolem interpretation need not own a compiled slot.
-                let name = source_name.or_else(|| (clause.nvars > 0).then_some(0))
+                let name = source_name
+                    .or_else(|| (clause.nvars > 0).then_some(0))
                     .ok_or_else(|| format!("residual variable {name} has no slot"))?;
                 Ok(LeanRawTerm::Var { name: name as u32 })
             }
@@ -2892,7 +3023,11 @@ fn build_lean_residual_compilations(
                     .ok_or_else(|| format!("uninterned residual concept {concept}"))?,
                 term: raw_term(term, clause, interner)?,
             }),
-            JAtom::Role { role, source, target } => Ok(LeanResidualAtom::Role {
+            JAtom::Role {
+                role,
+                source,
+                target,
+            } => Ok(LeanResidualAtom::Role {
                 role: interner
                     .id(role)
                     .ok_or_else(|| format!("uninterned residual role {role}"))?,
@@ -2992,12 +3127,7 @@ fn build_lean_source_partition(
             JTerm::Fun { function: candidate, arg }
                 if candidate == function && source_var(arg) == Some(variable))
     }
-    fn is_role_half(
-        clause: &JClause,
-        sub: &str,
-        role: &str,
-        function: &str,
-    ) -> bool {
+    fn is_role_half(clause: &JClause, sub: &str, role: &str, function: &str) -> bool {
         let [JAtom::Concept { concept, term }] = clause.body.as_slice() else {
             return false;
         };
@@ -3017,12 +3147,7 @@ fn build_lean_source_partition(
             && source_var(source) == Some(variable)
             && matching_fun(target, function, variable)
     }
-    fn is_filler_half(
-        clause: &JClause,
-        sub: &str,
-        filler: &str,
-        function: &str,
-    ) -> bool {
+    fn is_filler_half(clause: &JClause, sub: &str, filler: &str, function: &str) -> bool {
         let [JAtom::Concept { concept, term }] = clause.body.as_slice() else {
             return false;
         };
@@ -3036,9 +3161,7 @@ fn build_lean_source_partition(
         else {
             return false;
         };
-        concept == sub
-            && candidate_filler == filler
-            && matching_fun(target, function, variable)
+        concept == sub && candidate_filler == filler && matching_fun(target, function, variable)
     }
 
     let mut witnesses: Vec<_> = skolem_witnesses.iter().collect();
@@ -4929,6 +5052,11 @@ pub struct ElResult {
     /// `concept -> [super-concepts]` (full internal names; `owl:Nothing` for ⊥).
     pub subsumptions: std::collections::BTreeMap<String, Vec<String>>,
     pub inconsistent: bool,
+    /// Worker-only dictionary-coded taxonomy. Public [`classify`] never sets
+    /// this field; the isolated ELC worker may use it to avoid materialising
+    /// and then re-interning millions of repeated superclass strings.
+    #[serde(skip)]
+    pub(crate) compact: Option<crate::json_io::CompactElcOutput>,
 }
 
 /// Decide consistency of a positive ground ABox against a pure EL++ TBox.
@@ -5417,6 +5545,7 @@ impl IncrementalElClassifier {
             unresolved: Vec::new(),
             subsumptions,
             inconsistent: self.is_inconsistent(),
+            compact: None,
         }
     }
 
@@ -5475,7 +5604,7 @@ fn seed_reflexive_edges(nfs: &Nfs, idx: &Idx, state: &mut State) {
     }
 }
 
-pub fn classify(clauses: Vec<JClause>) -> Option<ElResult> {
+fn configured_cert_mode() -> CertMode {
     // Default OFF: on the ORE 2015 corpus every non-EL residual is a live
     // covering disjunction / non-inert inverse bridge / multi-successor
     // functionality, none of which the canonical EL model satisfies, so the
@@ -5485,13 +5614,28 @@ pub fn classify(clauses: Vec<JClause>) -> Option<ElResult> {
     // whose non-EL part IS model-satisfiable); `KM_ELC_CERT=2` additionally
     // repairs violated residuals by disjunct choice and certifies via the
     // intersection of the choice-pass models.
-    let cert = match std::env::var("KM_ELC_CERT").as_deref() {
+    match std::env::var("KM_ELC_CERT").as_deref() {
         Ok("1") | Ok("on") => CertMode::Check,
         Ok("2") | Ok("repair") => CertMode::Repair,
         _ => CertMode::Off,
-    };
+    }
+}
+
+pub fn classify(clauses: Vec<JClause>) -> Option<ElResult> {
+    let cert = configured_cert_mode();
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
     classify_inner(clauses, cert, debug)
+}
+
+/// Worker-specialized entry point. Dense acyclic NF1 taxonomies may retain
+/// their interned relation IDs through the existing compact binary handoff;
+/// library callers continue to receive the established string map.
+pub(crate) fn classify_worker(clauses: Vec<JClause>) -> Option<ElResult> {
+    let cert = configured_cert_mode();
+    let debug = std::env::var("KM_ELC_DEBUG").is_ok();
+    let compact_nf1_output = std::env::var_os("KM_ELC_OUTPUT_BINARY").is_some()
+        && std::env::var_os("KM_NO_ELC_OUTPUT_BINARY").is_none();
+    classify_inner_mode(clauses, cert, debug, compact_nf1_output)
 }
 
 /// KM_ELC_HOIST (P1) — *semantic* common-disjunct extraction, the EL-side
@@ -5678,7 +5822,166 @@ fn residue_stats(residual: &[JClause], it: &Interner, sub_super: &mut [HashSet<u
 /// Core of [`classify`] with the certificate mode explicit (the env read is in
 /// `classify`; tests drive this directly to avoid racy `set_var` across
 /// parallel test threads).
+///
+/// Exact fast path for a pure, satisfiable atomic taxonomy whose directed
+/// subclass graph is acyclic.  General EL completion inserts every reachable
+/// pair through a hash-set worklist.  On million-class taxonomies that means
+/// hashing the complete published relation even though NF1 closure is just
+/// graph reachability.  Reverse-topological vector unions derive exactly the
+/// same least transitive closure while storing each published pair once.
+///
+/// The deliberately narrow screen excludes bottom, TOP premises, every other
+/// normal form, residuals, and Lean publication requests.  A cycle declines
+/// to the general completion path rather than adding SCC logic here.
+fn acyclic_nf1_taxonomy(
+    nfs: &Nfs,
+    residual_is_empty: bool,
+    it: &Interner,
+    lean_cert_requested: bool,
+    compact_output: bool,
+) -> Option<ElResult> {
+    if !residual_is_empty
+        || lean_cert_requested
+        || std::env::var_os("KM_ELC_NO_ACYCLIC_NF1").is_some()
+        || !nfs.nf2.is_empty()
+        || !nfs.nf3.is_empty()
+        || !nfs.nf4.is_empty()
+        || !nfs.nf5.is_empty()
+        || !nfs.nf6.is_empty()
+        || !nfs.nf7.is_empty()
+        || !nfs.reflexive_roles.is_empty()
+        || !nfs.role_names.is_empty()
+        || nfs.nf1.iter().any(|a| a.sub == TOP || a.sup == BOTTOM)
+    {
+        return None;
+    }
+
+    let n = it.len();
+    let mut outgoing = vec![Vec::<u32>::new(); n];
+    for ax in &nfs.nf1 {
+        if ax.sub == ax.sup || ax.sup == TOP {
+            continue;
+        }
+        outgoing[ax.sub as usize].push(ax.sup);
+    }
+    let mut indegree = vec![0u32; n];
+    for successors in &mut outgoing {
+        successors.sort_unstable();
+        successors.dedup();
+        for &sup in successors.iter() {
+            indegree[sup as usize] = indegree[sup as usize].saturating_add(1);
+        }
+    }
+
+    let mut queue = VecDeque::new();
+    for &concept in &nfs.concept_names {
+        if concept != TOP && concept != BOTTOM && indegree[concept as usize] == 0 {
+            queue.push_back(concept);
+        }
+    }
+    let expected = nfs
+        .concept_names
+        .iter()
+        .filter(|&&c| c != TOP && c != BOTTOM)
+        .count();
+    let mut order = Vec::with_capacity(expected);
+    while let Some(concept) = queue.pop_front() {
+        order.push(concept);
+        for &sup in &outgoing[concept as usize] {
+            let degree = &mut indegree[sup as usize];
+            *degree -= 1;
+            if *degree == 0 {
+                queue.push_back(sup);
+            }
+        }
+    }
+    if order.len() != expected {
+        return None;
+    }
+
+    let mut closure = vec![Vec::<u32>::new(); n];
+    for &concept in order.iter().rev() {
+        let successors = &outgoing[concept as usize];
+        if successors.len() == 1 {
+            let sup = successors[0];
+            let mut reached = closure[sup as usize].clone();
+            match reached.binary_search(&sup) {
+                Ok(_) => {}
+                Err(at) => reached.insert(at, sup),
+            }
+            closure[concept as usize] = reached;
+        } else if !successors.is_empty() {
+            let mut reached: HashSet<u32> = HashSet::default();
+            for &sup in successors {
+                reached.insert(sup);
+                reached.extend(closure[sup as usize].iter().copied());
+            }
+            let mut reached: Vec<u32> = reached.into_iter().collect();
+            reached.sort_unstable();
+            closure[concept as usize] = reached;
+        }
+    }
+    drop(outgoing);
+    drop(indegree);
+
+    if compact_output && expected >= 1_000 {
+        let mut rows = Vec::new();
+        for &concept in &nfs.concept_names {
+            if concept == TOP || concept == BOTTOM {
+                continue;
+            }
+            let reached = std::mem::take(&mut closure[concept as usize]);
+            if !reached.is_empty() {
+                rows.push((concept, reached));
+            }
+        }
+        return Some(ElResult {
+            unresolved: Vec::new(),
+            subsumptions: std::collections::BTreeMap::new(),
+            inconsistent: false,
+            compact: Some(crate::json_io::CompactElcOutput {
+                names: it.names.clone(),
+                rows,
+                inconsistent: false,
+                dropped: 0,
+            }),
+        });
+    }
+
+    let mut subsumptions = std::collections::BTreeMap::new();
+    for &concept in &nfs.concept_names {
+        if concept == TOP || concept == BOTTOM {
+            continue;
+        }
+        let reached = std::mem::take(&mut closure[concept as usize]);
+        if !reached.is_empty() {
+            subsumptions.insert(
+                it.name(concept).to_string(),
+                reached
+                    .into_iter()
+                    .map(|sup| it.name(sup).to_string())
+                    .collect(),
+            );
+        }
+    }
+    Some(ElResult {
+        unresolved: Vec::new(),
+        subsumptions,
+        inconsistent: false,
+        compact: None,
+    })
+}
+
 fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<ElResult> {
+    classify_inner_mode(clauses, cert, debug, false)
+}
+
+fn classify_inner_mode(
+    clauses: Vec<JClause>,
+    cert: CertMode,
+    debug: bool,
+    compact_nf1_output: bool,
+) -> Option<ElResult> {
     let lean_cert_path = std::env::var_os("KM_ELC_LEAN_CERT_OUT").map(std::path::PathBuf::from);
     let lean_cert_checker =
         std::env::var_os("KM_ELC_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
@@ -5709,6 +6012,15 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     // mentions it explicitly. The inconsistency readout queries TOP ⊑ BOTTOM,
     // so omitting this initialization could miss an ontology-level clash.
     nfs.concept_names.insert(TOP);
+    if let Some(result) = acyclic_nf1_taxonomy(
+        &nfs,
+        residual.is_empty(),
+        &it,
+        lean_cert_requested,
+        compact_nf1_output,
+    ) {
+        return Some(result);
+    }
     // ELK discards the OWL parse tree once axioms are indexed. `to_nf` has
     // interned the EL part into `nfs` (u32-keyed) and cloned the non-EL part into
     // `residual`; the original `clauses` (millions of `JClause`, each owning
@@ -5825,10 +6137,8 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
         let path = if let Some(path) = lean_cert_path.as_deref() {
             path
         } else {
-            temporary_path = std::env::temp_dir().join(format!(
-                "km-elc-cert-{}.json",
-                std::process::id()
-            ));
+            temporary_path =
+                std::env::temp_dir().join(format!("km-elc-cert-{}.json", std::process::id()));
             temporary_path.as_path()
         };
         let file = match std::fs::File::create(path) {
@@ -5957,6 +6267,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     drop(rcs);
     drop(residual);
     drop(skolem_target);
+
     let mut subsumptions = std::collections::BTreeMap::new();
     for c in 0..sub_super.len() {
         let cid = c as u32;
@@ -5993,6 +6304,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
         subsumptions,
         inconsistent: el_inconsistent,
         unresolved,
+        compact: None,
     })
 }
 
@@ -6014,12 +6326,28 @@ mod tests {
         reflexive.insert(4);
         let nfs = Nfs {
             nf1: vec![Nf1 { sub: 2, sup: 3 }],
-            nf2: vec![Nf2 { sub1: 2, sub2: 3, sup: TOP }],
-            nf3: vec![Nf3 { sub: 3, role: 4, filler: 2 }],
-            nf4: vec![Nf4 { role: 4, filler: 3, sup: 2 }],
+            nf2: vec![Nf2 {
+                sub1: 2,
+                sub2: 3,
+                sup: TOP,
+            }],
+            nf3: vec![Nf3 {
+                sub: 3,
+                role: 4,
+                filler: 2,
+            }],
+            nf4: vec![Nf4 {
+                role: 4,
+                filler: 3,
+                sup: 2,
+            }],
             nf5: vec![],
             nf6: vec![Nf6 { sub: 4, sup: 5 }],
-            nf7: vec![Nf7 { r1: 5, r2: 4, sup: 6 }],
+            nf7: vec![Nf7 {
+                r1: 5,
+                r2: 4,
+                sup: 6,
+            }],
             reflexive_roles: reflexive,
             concept_names: concepts,
             role_names: roles,
@@ -6059,16 +6387,15 @@ mod tests {
         assert_eq!(verified.inconsistent, cert.public_inconsistent);
         assert!(verified.unresolved.is_empty());
         assert!(cert.public_subsumptions.iter().all(|fact| {
-            fact.sub != TOP
-                && fact.sub != BOTTOM
-                && fact.sup != fact.sub
-                && fact.sup != TOP
+            fact.sub != TOP && fact.sub != BOTTOM && fact.sup != fact.sub && fact.sup != TOP
         }));
 
         state.sub_super[2].insert(6);
-        assert!(build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new(), Vec::new())
-            .unwrap_err()
-            .contains("Rust-only subsumption"));
+        assert!(
+            build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new(), Vec::new())
+                .unwrap_err()
+                .contains("Rust-only subsumption")
+        );
     }
 
     fn clauses(json: &str) -> Vec<JClause> {
@@ -6140,11 +6467,8 @@ mod tests {
                 let named: std::collections::HashSet<&str> =
                     frontend.named.iter().map(String::as_str).collect();
                 let tbox = classify(frontend.clauses.clone()).expect("pure EL TBox");
-                let abox = positive_abox_classify(
-                    frontend.clauses,
-                    &frontend.nominal_abox,
-                )
-                .expect("positive EL ABox");
+                let abox = positive_abox_classify(frontend.clauses, &frontend.nominal_abox)
+                    .expect("positive EL ABox");
                 assert!(abox.consistent);
                 let abox = abox.classification.expect("completion ran");
                 for subject in named {
@@ -6199,15 +6523,9 @@ mod tests {
         let idx = build_idx(&nfs, interner.len());
         let mut state = init_state(&nfs, interner.len());
         run(&idx, &mut state, &mut Prof::default());
-        let certificate = build_lean_el_certificate(
-            &nfs,
-            &state,
-            &interner,
-            &source,
-            Vec::new(),
-            Vec::new(),
-        )
-        .expect("v5 certificate");
+        let certificate =
+            build_lean_el_certificate(&nfs, &state, &interner, &source, Vec::new(), Vec::new())
+                .expect("v5 certificate");
         let path = std::env::temp_dir().join(format!(
             "km-elc-v5-cert-{}-{}.json",
             std::process::id(),
@@ -6223,7 +6541,10 @@ mod tests {
                 .expect("run Lean v5 checker")
                 .success()
         };
-        assert!(run_checker(&certificate), "exact source partition must pass");
+        assert!(
+            run_checker(&certificate),
+            "exact source partition must pass"
+        );
 
         let a = interner.id("A").expect("A is interned");
         let source_var = LeanRawTerm::Var { name: 0 };
@@ -6283,7 +6604,10 @@ mod tests {
 
         let mut omitted_source = certificate.clone();
         omitted_source.source_ontology.clear();
-        assert!(!run_checker(&omitted_source), "source omission must fail closed");
+        assert!(
+            !run_checker(&omitted_source),
+            "source omission must fail closed"
+        );
 
         let mut duplicate_symbol = certificate.clone();
         let b = interner.id("B").expect("B is interned");
@@ -6295,7 +6619,10 @@ mod tests {
 
         let mut old_version = certificate.clone();
         old_version.version = 4;
-        assert!(!run_checker(&old_version), "wire downgrade must fail closed");
+        assert!(
+            !run_checker(&old_version),
+            "wire downgrade must fail closed"
+        );
         let _ = std::fs::remove_file(path);
     }
 
@@ -6321,6 +6648,82 @@ mod tests {
 
     fn subs_of(res: &ElResult, sub: &str) -> Vec<String> {
         res.subsumptions.get(sub).cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn acyclic_nf1_fast_path_is_exact_on_chain_and_diamond() {
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("A", "x")], &[c("C", "x")]),
+            cl(&[c("B", "x")], &[c("D", "x")]),
+            cl(&[c("C", "x")], &[c("D", "x")]),
+        ));
+        let mut interner = Interner::new();
+        let (mut nfs, residual, _) = to_nf(&cs, &mut interner).expect("normal forms");
+        nfs.concept_names.insert(TOP);
+        let result = acyclic_nf1_taxonomy(&nfs, residual.is_empty(), &interner, false, false)
+            .expect("acyclic NF1 path");
+        assert_eq!(subs_of(&result, "A"), vec!["B", "C", "D"]);
+        assert_eq!(subs_of(&result, "B"), vec!["D"]);
+        assert_eq!(subs_of(&result, "C"), vec!["D"]);
+        assert!(subs_of(&result, "D").is_empty());
+        assert!(!result.inconsistent);
+    }
+
+    #[test]
+    fn acyclic_nf1_fast_path_declines_cycles_and_bottom() {
+        for cs in [
+            clauses(&format!(
+                "[{},{}]",
+                cl(&[c("A", "x")], &[c("B", "x")]),
+                cl(&[c("B", "x")], &[c("A", "x")]),
+            )),
+            clauses(&format!("[{}]", cl(&[c("A", "x")], &[]))),
+        ] {
+            let mut interner = Interner::new();
+            let (mut nfs, residual, _) = to_nf(&cs, &mut interner).expect("normal forms");
+            nfs.concept_names.insert(TOP);
+            assert!(
+                acyclic_nf1_taxonomy(&nfs, residual.is_empty(), &interner, false, false).is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn acyclic_nf1_worker_keeps_dictionary_coded_rows() {
+        let mut interner = Interner::new();
+        let mut concepts = HashSet::default();
+        concepts.insert(TOP);
+        let ids: Vec<u32> = (0..1_000)
+            .map(|index| {
+                let id = interner.intern(&format!("C{index}"));
+                concepts.insert(id);
+                id
+            })
+            .collect();
+        let nfs = Nfs {
+            nf1: vec![Nf1 {
+                sub: ids[0],
+                sup: ids[1],
+            }],
+            nf2: vec![],
+            nf3: vec![],
+            nf4: vec![],
+            nf5: vec![],
+            nf6: vec![],
+            nf7: vec![],
+            reflexive_roles: HashSet::default(),
+            concept_names: concepts,
+            role_names: HashSet::default(),
+            conjunction_origins: HashMap::default(),
+        };
+        let result =
+            acyclic_nf1_taxonomy(&nfs, true, &interner, false, true).expect("compact NF1 result");
+        assert!(result.subsumptions.is_empty());
+        let compact = result.compact.expect("dictionary-coded worker result");
+        assert_eq!(compact.names[ids[0] as usize], "C0");
+        assert!(compact.rows.contains(&(ids[0], vec![ids[1]])));
     }
 
     #[test]
@@ -7004,7 +7407,10 @@ mod tests {
             .expect("supported residual");
         assert_eq!(compiled.clauses[0].nvars, 2);
         assert_eq!(compiled.clauses[0].pins.len(), 1);
-        assert_ne!(compiled.clauses[0].pins[0].0, 0, "source slot must remain unpinned");
+        assert_ne!(
+            compiled.clauses[0].pins[0].0, 0,
+            "source slot must remain unpinned"
+        );
         assert!(matches!(compiled.clauses[0].body[0], RAtom::C { v: 0, .. }));
     }
 
@@ -7513,14 +7919,20 @@ mod tests {
             vec![RAtom::C { cid: 2, v: 0 }],
             vec![(0, 3)],
         );
-        assert!(residual_pins_are_alive(&[clause], &[true, false, true, true]));
+        assert!(residual_pins_are_alive(
+            &[clause],
+            &[true, false, true, true]
+        ));
         let clause = rc(
             1,
             vec![RAtom::C { cid: 2, v: 0 }],
             vec![RAtom::C { cid: 2, v: 0 }],
             vec![(0, 3)],
         );
-        assert!(!residual_pins_are_alive(&[clause], &[true, false, true, false]));
+        assert!(!residual_pins_are_alive(
+            &[clause],
+            &[true, false, true, false]
+        ));
     }
 
     /// `≤1 R.C` guarded by concept `g`, over variables `x, y1, y2`.
@@ -8126,7 +8538,10 @@ mod tests {
         let mut prof = Prof::default();
         assert!(fire_edge_nf4_batch(&idx, &mut st, &mut prof, true));
         assert_eq!(prof.nf4_batch_calls, 0);
-        assert!(st.worklist.iter().all(|item| matches!(item, Item::EdgeSerial(..))));
+        assert!(st
+            .worklist
+            .iter()
+            .all(|item| matches!(item, Item::EdgeSerial(..))));
         run(&idx, &mut st, &mut prof);
         assert!(st.sub_super[PARENT as usize].contains(&SUP));
         assert_eq!(prof.nf4_edge_scan, PAR_NF4_MIN_EDGES as u64);
@@ -8602,7 +9017,10 @@ mod tests {
             st.edge_epoch,
         );
         assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
-        assert!(idx.members[&A].len() >= 3, "the new members must be indexed");
+        assert!(
+            idx.members[&A].len() >= 3,
+            "the new members must be indexed"
+        );
     }
 
     #[test]
@@ -8657,7 +9075,10 @@ mod tests {
             Some(&delta),
             st.edge_epoch,
         );
-        assert!(!idx.nodes.contains(&Q), "the dead node must leave the domain");
+        assert!(
+            !idx.nodes.contains(&Q),
+            "the dead node must leave the domain"
+        );
         assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
     }
 
@@ -8684,7 +9105,9 @@ mod tests {
 
         st.start_journal();
         // exactly the mirror re-sync the repair pass performs for Q -> P
-        let subs_moved = !st.sub_super[Q as usize].iter().eq(st.sub_super[P as usize].iter());
+        let subs_moved = !st.sub_super[Q as usize]
+            .iter()
+            .eq(st.sub_super[P as usize].iter());
         st.sub_super[Q as usize] = st.sub_super[P as usize].clone();
         if subs_moved {
             let State {
@@ -8799,8 +9222,8 @@ mod tests {
         ));
         let before = classify_inner(original, CertMode::Repair, false)
             .expect("the idle bridge pair is repairable");
-        let after = classify_inner(rewritten, CertMode::Off, false)
-            .expect("the rewritten set is pure EL");
+        let after =
+            classify_inner(rewritten, CertMode::Off, false).expect("the rewritten set is pure EL");
         assert_eq!(before.subsumptions, after.subsumptions);
         assert!(subs_of(&after, "A").contains(&"H".to_string()));
     }
@@ -8921,7 +9344,11 @@ mod tests {
     fn conjunction_aux_names_are_component_boundary_injective() {
         let left = vec!["a/b".to_string(), "c".to_string()];
         let right = vec!["a".to_string(), "b/c".to_string()];
-        assert_eq!(left.join("/"), right.join("/"), "regression witness must collide");
+        assert_eq!(
+            left.join("/"),
+            right.join("/"),
+            "regression witness must collide"
+        );
         assert_ne!(conjunction_aux_name(&left), conjunction_aux_name(&right));
         assert_eq!(
             conjunction_aux_name(&["é".to_string(), "x/y".to_string()]),

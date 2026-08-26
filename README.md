@@ -28,6 +28,9 @@ without access to the expected answer.
   production ELC, hypertableau, and CB publication boundaries and for their
   automatic routing composition. Accepted routed taxonomies are bound to the
   exact source clauses and requested named-class signature.
+- On the completed ORE panel, the automatic route has lower mean and median
+  wall time and peak process-tree RSS than the retained correct-completion
+  results for ELK, HermiT, Konclude, and Sequoia.
 
 ## Install
 
@@ -75,10 +78,19 @@ manually chosen configurations. Correct counts require agreement with the
 retained or independently adjudicated full-IRI result signature. Times and
 memory are computed over correct completions.
 
-| Reasoner | Tested version / commit | Correct | Completed | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
-|---|---|---:|---:|---:|---:|---:|---:|
-| KM | v0.2.36; benchmark binary `bbef8d7` | 591/592 | 591/592 | 3.2383 | 0.1628 | 427.88 | 35.39 |
-| Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 589/592 | 3.2657 | 0.2813 | 558.09 | 76.53 |
+| Reasoner | Tested version / commit | Correct completions | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
+|---|---|---:|---:|---:|---:|---:|
+| KM | v1.1.0; binary `fd9d7f1a…b6a88a` | 591/592 | 1.3997 | 0.1303 | 225.70 | 27.02 |
+| ELK | 0.6.0 | 531/592 | 1.5208 | 0.7520 | 493.33 | 234.30 |
+| Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 3.2765 | 0.2814 | 559.90 | 76.87 |
+| Sequoia | 0.6.1-alpha; `c5248ec7be30` | 339/592 | 7.3704 | 2.5371 | 2207.35 | 536.15 |
+| HermiT | 1.4.6.519-SNAPSHOT | 557/592 | 13.1172 | 1.8782 | 1331.72 | 714.22 |
+
+Metrics are computed independently over each reasoner's correct completions;
+incorrect, incomplete, timed-out, and failed runs do not make a reasoner look
+faster. The final KM row is accepted only when the release binary's SHA-256 is
+recorded by all 592 result, profile, and checkpoint records and the aggregate
+gate passes strictly on all four metrics.
 
 The benchmark corpus, limits, canonical signatures, adjudications, special
 cases, and route history are documented in

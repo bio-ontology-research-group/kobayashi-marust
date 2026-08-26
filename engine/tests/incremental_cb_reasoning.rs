@@ -522,10 +522,7 @@ fn retained_cb_disjunction_and_role_updates_match_each_fresh_worker_revision() {
         .expect("retained normalised role-chain insertion");
     snapshot.extend(role_chain_delta);
     assert_eq!(update.strategy, ChangeStrategy::CbDelta);
-    assert_eq!(
-        session.is_subsumed_by("Source", "ChainReached"),
-        Some(true)
-    );
+    assert_eq!(session.is_subsumed_by("Source", "ChainReached"), Some(true));
     assert_fresh_cb(&session, &snapshot, false);
 
     let fresh_successor = vec![
@@ -538,10 +535,7 @@ fn retained_cb_disjunction_and_role_updates_match_each_fresh_worker_revision() {
             vec![concept("Filler2", fun("h"))],
         ),
         clause(
-            vec![
-                role("R2", var("x"), var("y")),
-                concept("Filler2", var("y")),
-            ],
+            vec![role("R2", var("x"), var("y")), concept("Filler2", var("y"))],
             vec![concept("Reached2", var("x"))],
         ),
     ];

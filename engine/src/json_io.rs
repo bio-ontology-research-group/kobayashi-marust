@@ -281,12 +281,45 @@ pub struct JOutput {
 /// Dictionary-coded complete EL taxonomy used only for the worker-to-
 /// orchestrator handoff. Each concept name is owned once and relation rows
 /// carry integer endpoints, avoiding one allocated `String` per taxonomy pair.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompactElcOutput {
     pub names: Vec<String>,
     pub rows: Vec<(u32, Vec<u32>)>,
     pub inconsistent: bool,
     pub dropped: usize,
+}
+
+/// Write an already dictionary-coded complete EL result without rebuilding a
+/// string-to-id map. The producer must use row endpoints into `compact.names`;
+/// validate that boundary here so malformed internal output still fails
+/// closed instead of emitting a corrupt worker document.
+pub fn write_compact_elc_output_binary<W: Write>(
+    mut writer: W,
+    compact: &CompactElcOutput,
+) -> io::Result<()> {
+    writer.write_all(ELC_OUTPUT_BINARY_MAGIC)?;
+    writer.write_all(&[u8::from(compact.inconsistent)])?;
+    write_len(&mut writer, compact.dropped)?;
+    write_len(&mut writer, compact.names.len())?;
+    for name in &compact.names {
+        write_string(&mut writer, name)?;
+    }
+    write_len(&mut writer, compact.rows.len())?;
+    let name_count = compact.names.len();
+    for (subject, supers) in &compact.rows {
+        if *subject as usize >= name_count {
+            return Err(invalid_binary("subject id out of range"));
+        }
+        writer.write_all(&subject.to_le_bytes())?;
+        write_len(&mut writer, supers.len())?;
+        for superclass in supers {
+            if *superclass as usize >= name_count {
+                return Err(invalid_binary("superclass id out of range"));
+            }
+            writer.write_all(&superclass.to_le_bytes())?;
+        }
+    }
+    Ok(())
 }
 
 /// Write a complete EL result in a compact, versioned representation. The
@@ -669,6 +702,27 @@ mod elc_binary_tests {
         assert!(decode_elc_output_binary(br#"{"subsumptions":{}}"#)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn preinterned_elc_output_round_trips_without_reindexing() {
+        let compact = CompactElcOutput {
+            names: vec!["Top".into(), "Bottom".into(), "A".into(), "B".into()],
+            rows: vec![(2, vec![3]), (3, vec![0])],
+            inconsistent: false,
+            dropped: 0,
+        };
+        let mut bytes = Vec::new();
+        write_compact_elc_output_binary(&mut bytes, &compact).unwrap();
+        assert_eq!(decode_elc_output_binary(&bytes).unwrap(), Some(compact));
+
+        let invalid = CompactElcOutput {
+            names: vec!["A".into()],
+            rows: vec![(1, vec![])],
+            inconsistent: false,
+            dropped: 0,
+        };
+        assert!(write_compact_elc_output_binary(Vec::new(), &invalid).is_err());
     }
 
     #[test]

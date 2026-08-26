@@ -1,0 +1,60 @@
+#!/bin/bash
+#SBATCH --job-name=km-v110-v11-exact
+#SBATCH --account=pi-hohndor
+#SBATCH --partition=batch
+#SBATCH --constraint=cpu_intel_gold_6248
+#SBATCH --array=0-18%6
+#SBATCH --nodes=1
+#SBATCH --exclusive
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=24G
+#SBATCH --time=00:05:00
+#SBATCH --export=NONE
+#SBATCH --output=/ibex/scratch/hohndor/km/v1-cert-overhead-v11-20260826/panel/slurm-%A_%a.out
+
+set -euo pipefail
+v10_root=/ibex/scratch/hohndor/km/v1-cert-overhead-v10-20260826
+root=/ibex/scratch/hohndor/km/v1-cert-overhead-v11-20260826
+corpus=/ibex/scratch/hohndor/km/corpus
+v10_hash=a800d74983811ccaee8ea135f0d7989d1b9fdac27397a9163651094478698372
+v11_hash=decd89c157e8bcd9f8182589f0db03f606b8fc09fd6ce169525887a53533102c
+positive=(1012 1306 2046 2253 4033 4557 5602 5760 6233 7993 9768 10750 13482 14216 15280)
+ht=(148 7499)
+controls=(3377 7246)
+ids=("${positive[@]}" "${ht[@]}" "${controls[@]}")
+id=${ids[$SLURM_ARRAY_TASK_ID]}
+input=$corpus/ore_ont_${id}.owl
+cpu_model=$(/usr/bin/awk -F: '/model name/{sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo)
+[[ $cpu_model == *"Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"* ]]
+[[ $(sha256sum "$v10_root/km" | cut -d' ' -f1) == "$v10_hash" ]]
+[[ $(sha256sum "$root/km" | cut -d' ' -f1) == "$v11_hash" ]]
+work=${SLURM_TMPDIR:-/tmp}/km-v110-v11-panel-${SLURM_JOB_ID}-${SLURM_ARRAY_TASK_ID}
+mkdir -p "$work" "$root/panel/results"
+trap 'rm -rf "$work"' EXIT
+
+for arm in v10 v11; do
+  if [[ $arm == v10 ]]; then bin=$v10_root/km; else bin=$root/km; fi
+  timeout -k 5 240 /usr/bin/time -f '%e %M %x' -o "$work/$arm.measure" \
+    env KM_ROUTE=auto KM_TIMING=1 "$bin" classify "$input" \
+      > "$work/$arm.json" 2> "$work/$arm.stderr"
+  read -r wall rss exit_code < "$work/$arm.measure"
+  [[ $exit_code == 0 ]]
+  echo "MEASURE ontology=$id arm=$arm wall=$wall rss_kib=$rss exit=$exit_code"
+done
+
+cmp "$work/v10.json" "$work/v11.json"
+if (( SLURM_ARRAY_TASK_ID < ${#positive[@]} )); then
+  grep -q 'route=positive_empty_source' "$work/v11.stderr"
+  expected_route=positive_empty_source
+elif (( SLURM_ARRAY_TASK_ID < ${#positive[@]} + ${#ht[@]} )); then
+  grep -q 'route=ht_general' "$work/v11.stderr"
+  expected_route=ht_general
+else
+  ! grep -qE 'route=(positive_empty_source|ht_general)' "$work/v11.stderr"
+  expected_route=unchanged-control
+fi
+sha256sum "$work/v11.json"
+install -m 644 "$work/v10.measure" "$root/panel/results/${id}.v10.measure"
+install -m 644 "$work/v11.measure" "$root/panel/results/${id}.v11.measure"
+install -m 644 "$work/v11.stderr" "$root/panel/results/${id}.v11.stderr"
+echo "EXACT_PAIR ontology=$id route=$expected_route"

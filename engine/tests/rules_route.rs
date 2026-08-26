@@ -150,7 +150,10 @@ fn same_individual_guard_does_not_fire_without_the_merge() {
     // Control: identical ontology WITHOUT `SameIndividual(a, b)`. Now no single
     // node carries both A and B, the guarded rule never fires, and the ontology
     // is consistent — proving the guard is a real condition, not always-on.
-    let out = classify(&["--route", "ht_rules"], &fixture("rule_same_consistent.ofn"));
+    let out = classify(
+        &["--route", "ht_rules"],
+        &fixture("rule_same_consistent.ofn"),
+    );
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     let v = json_of(&out);
     assert_eq!(

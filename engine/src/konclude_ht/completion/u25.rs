@@ -99,7 +99,9 @@ use super::super::process::dependency::BranchTreeNode;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::BackendSyncDataId;
-use super::super::process::{BranchNodeId, ClashDescId, ConDescId, NodeId, SatNodeId, TrackPointId};
+use super::super::process::{
+    BranchNodeId, ClashDescId, ConDescId, NodeId, SatNodeId, TrackPointId,
+};
 use super::algorithm::{BackendExpansionReuseBranch, BranchKind, OrBranchPoint};
 use super::context::CalculationAlgorithmContextBase;
 
@@ -781,8 +783,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .track_point(first_alt_tp)
                 .get_branch_node();
         }
-        let new_indi_proc_node =
-            self.enter_backend_expansion_reuse_alternative(*indi_proc_node, first_alt_tp, calc_alg_context);
+        let new_indi_proc_node = self.enter_backend_expansion_reuse_alternative(
+            *indi_proc_node,
+            first_alt_tp,
+            calc_alg_context,
+        );
 
         *indi_proc_node = new_indi_proc_node;
         self.native_reuse_branch_fork_count += 1;
@@ -965,13 +970,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         // descriptor.
                         let present = {
                             let pc = calc_alg_context.process_context();
-                            pc.label_set(con_set_label).get_concept_descriptor_in_context(
-                                pc,
-                                calc_alg_context.ontology_arenas(),
-                                concept,
-                                &mut con_des,
-                                &mut dep_track_point,
-                            )
+                            pc.label_set(con_set_label)
+                                .get_concept_descriptor_in_context(
+                                    pc,
+                                    calc_alg_context.ontology_arenas(),
+                                    concept,
+                                    &mut con_des,
+                                    &mut dep_track_point,
+                                )
                         };
                         if present {
                             let present_negated = calc_alg_context
@@ -1026,7 +1032,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
 
             // --- non-deterministic different individuals vs existing merges ---
-            if reusable && !replay.cached_nondeterministic_different_individuals.is_empty() {
+            if reusable
+                && !replay
+                    .cached_nondeterministic_different_individuals
+                    .is_empty()
+            {
                 let merged_hash = calc_alg_context
                     .process_context()
                     .node(indi_node)
@@ -1557,7 +1567,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .backend_sync_data(loc_backend_sync_data)
             .has_reuse_non_deterministic_different_individual_stated()
-            && !replay.cached_nondeterministic_different_individuals.is_empty()
+            && !replay
+                .cached_nondeterministic_different_individuals
+                .is_empty()
         {
             let own_tag = self.native_nominal_tag_for_node(indi_node, calc_alg_context);
             for &diff_indi_id in &replay.cached_nondeterministic_different_individuals {
@@ -1579,8 +1591,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     continue;
                 }
                 // corrIndiNode = getCorrectedMergedIntoIndividualNode(modifingIndiNode, ctx);
-                let corr_indi_node = self
-                    .get_corrected_merged_into_individual_node(modifing_indi_node, calc_alg_context);
+                let corr_indi_node = self.get_corrected_merged_into_individual_node(
+                    modifing_indi_node,
+                    calc_alg_context,
+                );
                 let merged_hash = calc_alg_context
                     .process_context()
                     .node(corr_indi_node)

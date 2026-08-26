@@ -99,7 +99,10 @@ fn chain_domain_opt_out_reproduces_the_historical_gap() {
     // WITHOUT the recognition the chain feeding the domain restriction is
     // never composed, the clash is missed, and the witness looks consistent.
     // This is the exact under-detection documented for the pre-fix binaries.
-    let out = classify(&[("KM_NO_CHAIN_DOMAIN", "1")], &fixture("chain_domain_unsat.ofn"));
+    let out = classify(
+        &[("KM_NO_CHAIN_DOMAIN", "1")],
+        &fixture("chain_domain_unsat.ofn"),
+    );
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     let v = json_of(&out);
     assert_eq!(

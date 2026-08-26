@@ -464,7 +464,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if neighbour_node.is_none() {
             return false;
         }
-        let Some(exp_tag) = self.native_nominal_tag_for_node(exp_indi_node, calc_alg_context) else {
+        let Some(exp_tag) = self.native_nominal_tag_for_node(exp_indi_node, calc_alg_context)
+        else {
             return false;
         };
         let Some(neighbour_assoc_tag) =
@@ -633,11 +634,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
             // neighbourExpansionData = (*neighbourExpansionDataHash)[neighbourIndiId];
             // if (!neighbourExpansionData.isNeighbourPossiblyInfluenced())
-            let loc_sync_data = self
-                .get_localized_individual_backend_cache_snychronisation_data(
-                    loc_backend_sync_data_indi_node,
-                    calc_alg_context,
-                );
+            let loc_sync_data = self.get_localized_individual_backend_cache_snychronisation_data(
+                loc_backend_sync_data_indi_node,
+                calc_alg_context,
+            );
             if calc_alg_context
                 .process_context()
                 .backend_sync_data(loc_sync_data)
@@ -647,7 +647,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
 
             // neighbourAssData = mBackendCacheHandler->getIndividualAssociationData(neighbourIndiId, ctx);
-            let neighbour_ass_data = self.native_association_handle_for_individual(neighbour_indi_id);
+            let neighbour_ass_data =
+                self.native_association_handle_for_individual(neighbour_indi_id);
             // expandable = concept ? canExpandDirectlyInfluencedNeighbourWithPropagation(…) : true;
             let mut expandable = true;
             if concept.is_some() {
@@ -668,8 +669,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // if (nonDeterministicConsequencesMissingExpansion) { expandable =
             //     cardExtData || neighbourConSetLabel->hasNondeterministicElements(); }
             if non_deterministic_consequences_missing_expansion {
-                expandable =
-                    self.native_label_has_nondeterministic_consequences(neighbour_indi_id);
+                expandable = self.native_label_has_nondeterministic_consequences(neighbour_indi_id);
             }
             if !expandable {
                 continue;
@@ -890,9 +890,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             break;
                         }
                         let mut op_concept_testing_negation = op_link.negated;
-                        if con_operator
-                            .has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
-                        {
+                        if con_operator.has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST) {
                             op_concept_testing_negation = !op_concept_testing_negation;
                         }
                         if con_negation
@@ -1002,9 +1000,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             break;
                         }
                         let mut op_concept_testing_negation = op_link.negated;
-                        if con_operator
-                            .has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
-                        {
+                        if con_operator.has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST) {
                             op_concept_testing_negation = !op_concept_testing_negation;
                         }
                         if con_negation
@@ -1023,14 +1019,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             op_link.target,
                             op_concept_testing_negation,
                             true,
-                        )
-                            || nondeterministic
-                                && !self.native_has_concept_in_full_concept_set_label(
-                                    neighbour_ass_data,
-                                    op_link.target,
-                                    op_concept_testing_negation,
-                                    false,
-                                )
+                        ) || nondeterministic
+                            && !self.native_has_concept_in_full_concept_set_label(
+                                neighbour_ass_data,
+                                op_link.target,
+                                op_concept_testing_negation,
+                                false,
+                            )
                         {
                             neighbour_potentially_influenced = true;
                         }

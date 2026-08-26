@@ -10023,9 +10023,7 @@ impl Ht {
         document: &str,
     ) -> Result<bool, String> {
         let checker = std::env::var_os("KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER")
-            .or_else(|| {
-                std::env::var_os("KM_HT_TEST_LEAN_EXECUTABLE_PUBLICATION_CHECKER")
-            })
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_EXECUTABLE_PUBLICATION_CHECKER"))
             .ok_or_else(|| {
                 "certified HT publication requires KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER"
                     .to_string()
@@ -11473,10 +11471,19 @@ impl Ht {
         frontiers: &[serde_json::Value],
         terminal: serde_json::Value,
     ) -> Result<Option<serde_json::Value>, String> {
-        let checker = std::env::var_os("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER")
+        // `KM_HT_TOTAL_GLOBAL` uses the same exhaustive search and the same
+        // checker-ready rooted run as proof-carrying publication, but it does
+        // not request the complete taxonomy/certificate bundle.  Give that
+        // decision-only route a separate checker name: setting one checker
+        // must not make `tableau::ht_lean_certification_requested` activate
+        // the much broader publication protocol and demand every HT checker.
+        let checker = std::env::var_os("KM_HT_TOTAL_GLOBAL_ROOTED_ORDINARY_RUN_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER")
+            })
             .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"))
             .ok_or_else(|| {
-                "native ABox publication requires KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"
+                "native ABox publication requires KM_HT_TOTAL_GLOBAL_ROOTED_ORDINARY_RUN_CHECKER or KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"
                     .to_string()
             })?;
         let document = serde_json::json!({
@@ -17407,13 +17414,14 @@ impl Ht {
             return Err("Lean rejected the complete cardinality taxonomy run matrix".to_string());
         }
         let source = self.wrap_normalized_cardinality_taxonomy_certificate(payload)?;
-        let source_bound = self.lean_source_bound_cardinality_taxonomy_document(
-            &source,
-            named,
-            concept_runs,
-            subsumption_runs,
-        )?
-        .ok_or_else(|| "Lean rejected the source-bound cardinality taxonomy".to_string())?;
+        let source_bound = self
+            .lean_source_bound_cardinality_taxonomy_document(
+                &source,
+                named,
+                concept_runs,
+                subsumption_runs,
+            )?
+            .ok_or_else(|| "Lean rejected the source-bound cardinality taxonomy".to_string())?;
         let mut published: serde_json::Value =
             serde_json::from_str(&source).map_err(|error| error.to_string())?;
         published["source_bound_publication"] =
@@ -18214,10 +18222,7 @@ impl Ht {
     /// concepts, for the total certification search. The optimized lookup keeps
     /// one representative only because this method is never used by the fast
     /// tableau verdict path.
-    pub(crate) fn set_certification_card_defs_raw(
-        &mut self,
-        defs: &[(C, bool, u32, R, C, bool)],
-    ) {
+    pub(crate) fn set_certification_card_defs_raw(&mut self, defs: &[(C, bool, u32, R, C, bool)]) {
         let exact: Vec<_> = defs
             .iter()
             .map(|&(marker, is_min, n, role, filler, _)| {
@@ -27328,11 +27333,16 @@ mod tests {
         let rows = wire["subsumptions"].as_array().unwrap();
         assert_eq!(rows.len(), 2);
         assert!(rows.iter().all(|row| row.as_array().unwrap().len() == 2));
-        assert!(wire["concepts"][0]["regular"].is_object());
+        assert!(
+            wire["concepts"][0]["plain"]["payload"]["evidence"]["satisfiable_concept"].is_object()
+        );
         assert!(
             wire["subsumptions"][0][0]["plain"]["payload"]["evidence"]["subsumption"].is_object()
         );
-        assert!(wire["subsumptions"][0][1]["regular"]["evidence"]["non_subsumption"].is_object());
+        assert!(
+            wire["subsumptions"][0][1]["plain"]["payload"]["evidence"]["non_subsumption"]
+                .is_object()
+        );
         assert!(t.lean_taxonomy_certificate_json(&[A, A]).is_err());
     }
 
@@ -28150,9 +28160,18 @@ mod tests {
             .lean_cardinality_address_frontier_json(&frontier)
             .expect("serialize the tagged cardinality frontier");
         let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
-        assert_eq!(wire["addresses"][1][0]["kind"], serde_json::json!(1));
-        assert_eq!(wire["addresses"][1][0]["index"], serde_json::json!(0));
-        assert_eq!(wire["addresses"][2][0]["index"], serde_json::json!(1));
+        assert_eq!(
+            wire["frontier"]["addresses"][1][0]["kind"],
+            serde_json::json!(1)
+        );
+        assert_eq!(
+            wire["frontier"]["addresses"][1][0]["index"],
+            serde_json::json!(0)
+        );
+        assert_eq!(
+            wire["frontier"]["addresses"][2][0]["index"],
+            serde_json::json!(1)
+        );
 
         if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
             let mut checker = std::path::PathBuf::from(checker);
@@ -29948,9 +29967,7 @@ mod tests {
     fn cardinality_taxonomy_retains_shared_exact_recognition_indices() {
         if std::env::var_os("KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER")
             .or_else(|| {
-                std::env::var_os(
-                    "KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
-                )
+                std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER")
             })
             .is_none()
         {

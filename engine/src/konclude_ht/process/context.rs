@@ -925,10 +925,8 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.var_binding_path_merging_hashes
             .clear_preserving_capacity();
-        self.var_binding_trigger_linkers
-            .clear_preserving_capacity();
-        self.var_binding_trigger_hashes
-            .clear_preserving_capacity();
+        self.var_binding_trigger_linkers.clear_preserving_capacity();
+        self.var_binding_trigger_hashes.clear_preserving_capacity();
         self.concept_nominal_schema_grounding_datas
             .clear_preserving_capacity();
         self.concept_nominal_schema_grounding_hashes
@@ -936,8 +934,7 @@ impl ProcessContext {
         self.distinct_hashes.clear_preserving_capacity();
         self.conn_succ_sets.clear_preserving_capacity();
         self.conn_succ_corr_hashes.clear_preserving_capacity();
-        self.disjoint_succ_role_hashes
-            .clear_preserving_capacity();
+        self.disjoint_succ_role_hashes.clear_preserving_capacity();
         self.nominal_conn_sets.clear_preserving_capacity();
         self.blocking_follow_sets.clear_preserving_capacity();
         self.analized_con_exp_datas.clear_preserving_capacity();
@@ -948,8 +945,7 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.successor_individual_atmost_reactivation_datas
             .clear_preserving_capacity();
-        self.datatypes_value_space_datas
-            .clear_preserving_capacity();
+        self.datatypes_value_space_datas.clear_preserving_capacity();
         self.sig_block_cand_hashes.clear_preserving_capacity();
         self.blocking_test_datas.clear_preserving_capacity();
         self.blocking_alt_datas.clear_preserving_capacity();
@@ -958,8 +954,7 @@ impl ProcessContext {
         self.reapply_con_descs.clear_preserving_capacity();
         self.con_var_bind_path_set_hashes
             .clear_preserving_capacity();
-        self.con_prop_binding_set_hashes
-            .clear_preserving_capacity();
+        self.con_prop_binding_set_hashes.clear_preserving_capacity();
         self.prop_bindings.clear_preserving_capacity();
         self.prop_binding_descs.clear_preserving_capacity();
         self.prop_binding_reapply_con_descs
@@ -967,11 +962,9 @@ impl ProcessContext {
         self.prop_binding_reapply_con_hashes
             .clear_preserving_capacity();
         self.prop_binding_sets.clear_preserving_capacity();
-        self.prop_var_bind_trans_exts
-            .clear_preserving_capacity();
+        self.prop_var_bind_trans_exts.clear_preserving_capacity();
         self.prop_rep_trans_exts.clear_preserving_capacity();
-        self.rep_var_bind_path_set_datas
-            .clear_preserving_capacity();
+        self.rep_var_bind_path_set_datas.clear_preserving_capacity();
         self.rep_var_bind_path_set_migrate_datas
             .clear_preserving_capacity();
         self.rep_var_bind_path_joining_key_datas
@@ -989,8 +982,7 @@ impl ProcessContext {
         self.rep_joining_hashes.clear_preserving_capacity();
         self.rep_prop_descs.clear_preserving_capacity();
         self.rep_prop_sets.clear_preserving_capacity();
-        self.con_rep_prop_set_hashes
-            .clear_preserving_capacity();
+        self.con_rep_prop_set_hashes.clear_preserving_capacity();
         self.backend_neighbour_expansion_controlling_datas
             .clear_preserving_capacity();
         self.backend_sync_datas.clear_preserving_capacity();
@@ -1002,8 +994,7 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.blocking_indi_node_linked_cand_datas
             .clear_preserving_capacity();
-        self.blocking_indi_node_linkers
-            .clear_preserving_capacity();
+        self.blocking_indi_node_linkers.clear_preserving_capacity();
         self.sig_block_con_exp_datas.clear_preserving_capacity();
         self.reusing_con_exp_datas.clear_preserving_capacity();
         self.signature_blocking_review_sets
@@ -1011,8 +1002,7 @@ impl ProcessContext {
         self.reusing_review_datas.clear_preserving_capacity();
         self.node_switch_histories.clear_preserving_capacity();
         self.branching_trees.clear_preserving_capacity();
-        self.marker_indi_node_hashes
-            .clear_preserving_capacity();
+        self.marker_indi_node_hashes.clear_preserving_capacity();
         self.marker_indi_node_datas.clear_preserving_capacity();
         self.unsat_cache_ret_datas.clear_preserving_capacity();
         self.referred_individual_tracking_vectors
@@ -1021,10 +1011,8 @@ impl ProcessContext {
         self.individual_process_node_linkers
             .clear_preserving_capacity();
         self.backward_prop_links.clear_preserving_capacity();
-        self.backward_prop_reapply_descs
-            .clear_preserving_capacity();
-        self.role_backward_prop_hashes
-            .clear_preserving_capacity();
+        self.backward_prop_reapply_descs.clear_preserving_capacity();
+        self.role_backward_prop_hashes.clear_preserving_capacity();
         self.linked_data_value_assertion_datas
             .clear_preserving_capacity();
         self.data_value_role_assertion_linkers
@@ -1033,13 +1021,10 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.critical_pred_role_card_hashes
             .clear_preserving_capacity();
-        self.individual_merging_hashes
-            .clear_preserving_capacity();
+        self.individual_merging_hashes.clear_preserving_capacity();
         self.succ_role_hashes.clear_preserving_capacity();
-        self.indi_unsorted_proc_queues
-            .clear_preserving_capacity();
-        self.indi_rotation_proc_queues
-            .clear_preserving_capacity();
+        self.indi_unsorted_proc_queues.clear_preserving_capacity();
+        self.indi_rotation_proc_queues.clear_preserving_capacity();
         self.indi_depth_proc_queues.clear_preserving_capacity();
         self.indi_proc_node_descs.clear_preserving_capacity();
         self.indi_proc_queues.clear_preserving_capacity();
@@ -1058,26 +1043,20 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.con_sat_descs.clear_preserving_capacity();
         self.con_sat_proc_linkers.clear_preserving_capacity();
-        self.critical_sat_concept_queues
-            .clear_preserving_capacity();
+        self.critical_sat_concept_queues.clear_preserving_capacity();
         self.critical_sat_concept_type_queues
             .clear_preserving_capacity();
         self.extended_con_ref_linking_datas
             .clear_preserving_capacity();
-        self.imp_reapply_con_sat_descs
-            .clear_preserving_capacity();
-        self.indi_sat_node_ext_datas
-            .clear_preserving_capacity();
+        self.imp_reapply_con_sat_descs.clear_preserving_capacity();
+        self.indi_sat_node_ext_datas.clear_preserving_capacity();
         self.indi_sat_process_node_linkers
             .clear_preserving_capacity();
         self.indi_sat_succ_link_data_linkers
             .clear_preserving_capacity();
-        self.linked_role_sat_succ_datas
-            .clear_preserving_capacity();
-        self.linked_role_sat_succ_hashes
-            .clear_preserving_capacity();
-        self.reapply_con_sat_label_sets
-            .clear_preserving_capacity();
+        self.linked_role_sat_succ_datas.clear_preserving_capacity();
+        self.linked_role_sat_succ_hashes.clear_preserving_capacity();
+        self.reapply_con_sat_label_sets.clear_preserving_capacity();
         self.role_backward_sat_prop_hashes
             .clear_preserving_capacity();
         self.role_sat_proc_linkers.clear_preserving_capacity();
@@ -1085,8 +1064,7 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.sat_atmost_successor_merging_hashes
             .clear_preserving_capacity();
-        self.sat_concept_extension_maps
-            .clear_preserving_capacity();
+        self.sat_concept_extension_maps.clear_preserving_capacity();
         self.sat_critical_ind_node_con_test_sets
             .clear_preserving_capacity();
         self.sat_critical_ind_node_proc_queues
@@ -1107,8 +1085,7 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.sat_indi_node_succ_ext_datas
             .clear_preserving_capacity();
-        self.sat_influenced_nominal_sets
-            .clear_preserving_capacity();
+        self.sat_influenced_nominal_sets.clear_preserving_capacity();
         self.sat_linked_succ_indi_all_concept_ext_datas
             .clear_preserving_capacity();
         self.sat_modified_process_update_linkers
@@ -1118,8 +1095,7 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.sat_nominal_dependent_node_hashes
             .clear_preserving_capacity();
-        self.sat_nominal_handling_datas
-            .clear_preserving_capacity();
+        self.sat_nominal_handling_datas.clear_preserving_capacity();
         self.sat_succ_datas.clear_preserving_capacity();
         self.sat_successor_all_concept_ext_datas
             .clear_preserving_capacity();

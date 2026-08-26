@@ -372,11 +372,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                         && calc_alg_context
                                             .process_context()
                                             .node(anc_prev_indi_node)
-                                        .individual_ancestor_depth()
-                                        >= calc_alg_context
-                                            .process_context()
-                                            .node(blocking_test_indi)
                                             .individual_ancestor_depth()
+                                            >= calc_alg_context
+                                                .process_context()
+                                                .node(blocking_test_indi)
+                                                .individual_ancestor_depth()
                                         && !invalid_descendant
                                     {
                                         if calc_alg_context
@@ -1649,9 +1649,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         // Dropping the cursor makes the scan reach every descriptor;
                         // keeping it is the second incremental cut-off that bounds the
                         // scan to the descriptors added since the last synchronization.
-                        if !native_assoc_tag.is_some_and(|tag| {
-                            self.native_association_completely_propagated(tag)
-                        }) {
+                        if !native_assoc_tag
+                            .is_some_and(|tag| self.native_association_completely_propagated(tag))
+                        {
                             last_synched_con_des = Id::NONE;
                         }
                         // conSet = indiNode->getReapplyConceptLabelSet(false);

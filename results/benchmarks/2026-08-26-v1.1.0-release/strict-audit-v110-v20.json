@@ -1,0 +1,76 @@
+{
+  "all_four_improve": false,
+  "baseline": {
+    "mean_peak_mb": 231.03204737732628,
+    "mean_wall_s": 1.5620037225042283,
+    "median_peak_mb": 26.65,
+    "median_wall_s": 0.1348,
+    "rows": 592,
+    "status": {
+      "error": 1,
+      "ok": 591
+    },
+    "successful": 591,
+    "verdict": {
+      "consistency_mismatch": 2,
+      "error": 1,
+      "match": 588,
+      "nogold": 1
+    }
+  },
+  "baseline_binary_sha256": "33b536962de62789387d98479d9d4f5d28edc142eb9e7260e9805eb7d79b2c97",
+  "behavioral_differences": {},
+  "candidate": {
+    "mean_peak_mb": 225.69637901861256,
+    "mean_wall_s": 1.3996642978003386,
+    "median_peak_mb": 27.02,
+    "median_wall_s": 0.1303,
+    "rows": 592,
+    "status": {
+      "error": 1,
+      "ok": 591
+    },
+    "successful": 591,
+    "verdict": {
+      "consistency_mismatch": 2,
+      "error": 1,
+      "match": 588,
+      "nogold": 1
+    }
+  },
+  "candidate_binary_sha256": "fd9d7f1a1f4365a3262aeb37be8095631489257ea1e030e400a647d382b6a88a",
+  "candidate_minus_baseline": {
+    "mean_peak_mb": -5.335668358713718,
+    "mean_wall_s": -0.16233942470388962,
+    "median_peak_mb": 0.370000000000001,
+    "median_wall_s": -0.004500000000000004
+  },
+  "improvements": {
+    "mean_peak_mb": true,
+    "mean_wall_s": true,
+    "median_peak_mb": false,
+    "median_wall_s": true
+  },
+  "route_differences": {
+    "ore_ont_12528.owl": [
+      "elc",
+      "flat_nf1"
+    ],
+    "ore_ont_15803.owl": [
+      "certified_el_production",
+      "flat_nf1"
+    ],
+    "ore_ont_5519.owl": [
+      "elc",
+      "flat_nf1"
+    ],
+    "ore_ont_6223.owl": [
+      "elc",
+      "flat_nf1"
+    ],
+    "ore_ont_6477.owl": [
+      "elc",
+      "flat_nf1"
+    ]
+  }
+}

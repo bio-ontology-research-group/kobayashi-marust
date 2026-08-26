@@ -339,17 +339,20 @@ pub fn run_elc() {
         );
     }
     let t2 = Instant::now();
-    match elcomplete::classify(clauses) {
-        Some(res) => {
+    match elcomplete::classify_worker(clauses) {
+        Some(mut res) => {
             if timing {
                 eprintln!(
                     "KM_ELC_TIMING classify={:.2}s ({} subjects)",
                     t2.elapsed().as_secs_f64(),
-                    res.subsumptions.len()
+                    res.compact
+                        .as_ref()
+                        .map_or(res.subsumptions.len(), |compact| compact.rows.len())
                 );
             }
             let t3 = Instant::now();
             let partial = !res.unresolved.is_empty();
+            let direct_compact = res.compact.take();
             let out = ElcOutput {
                 subsumptions: res.subsumptions,
                 inconsistent: res.inconsistent,
@@ -361,7 +364,8 @@ pub fn run_elc() {
             // Keep the established JSON path for the ORE median band.  The
             // compact handoff is reserved for very dense taxonomies, where
             // repeated superclass strings dominate transfer and decoding.
-            let compact = !partial
+            let compact = direct_compact.is_some()
+                || (!partial
                 // Two million relations require a large subject set in the
                 // production taxonomies.  This guard keeps the relation-count
                 // scan entirely off the sparse path.
@@ -376,8 +380,10 @@ pub fn run_elc() {
                             .unwrap_or(2_000_000);
                     out.subsumptions.values().map(Vec::len).sum::<usize>()
                         >= compact_min_relations
-                };
-            let write_result = if compact {
+                });
+            let write_result = if let Some(compact) = direct_compact.as_ref() {
+                crate::json_io::write_compact_elc_output_binary(&mut w, compact)
+            } else if compact {
                 crate::json_io::write_elc_output_binary(
                     &mut w,
                     &out.subsumptions,
@@ -1080,14 +1086,14 @@ fn cb_join_event_evidence(
                 return None;
             }
             let references = [*consumer_clause_id, *provider_clause_id, *bridge_clause_id]
-            .into_iter()
-            .map(|clause_id| {
-                prior
-                    .get(&(event.context_index, event.root, clause_id))
-                    .copied()
-                    .map(|event_index| serde_json::json!({"event_index": event_index}))
-            })
-            .collect::<Option<Vec<_>>>()?;
+                .into_iter()
+                .map(|clause_id| {
+                    prior
+                        .get(&(event.context_index, event.root, clause_id))
+                        .copied()
+                        .map(|event_index| serde_json::json!({"event_index": event_index}))
+                })
+                .collect::<Option<Vec<_>>>()?;
             Some(serde_json::json!({
                 "kind": "local",
                 "prior_events": references,
@@ -1361,19 +1367,15 @@ fn verify_cb_lean_publication(
     reasoner: &crate::reasoner::Reasoner,
     input_typed_source: Option<&serde_json::Value>,
 ) -> Result<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>, String> {
-    let source_live_checker =
-        std::env::var_os("KM_CB_SOURCE_LIVE_DERIVATION_CHECKER");
-    let source_live_path =
-        std::env::var_os("KM_CB_SOURCE_LIVE_DERIVATION_CANDIDATE");
+    let source_live_checker = std::env::var_os("KM_CB_SOURCE_LIVE_DERIVATION_CHECKER");
+    let source_live_path = std::env::var_os("KM_CB_SOURCE_LIVE_DERIVATION_CANDIDATE");
     if source_live_checker.is_some() && source_live_path.is_none() {
         return Err("KM_CB_SOURCE_LIVE_DERIVATION_CANDIDATE is required with \
             KM_CB_SOURCE_LIVE_DERIVATION_CHECKER"
             .to_string());
     }
-    let source_local_checker =
-        std::env::var_os("KM_CB_SOURCE_LOCAL_CLOSURE_CHECKER");
-    let source_local_path =
-        std::env::var_os("KM_CB_SOURCE_LOCAL_CLOSURE_CANDIDATE");
+    let source_local_checker = std::env::var_os("KM_CB_SOURCE_LOCAL_CLOSURE_CHECKER");
+    let source_local_path = std::env::var_os("KM_CB_SOURCE_LOCAL_CLOSURE_CANDIDATE");
     if source_local_checker.is_some() && source_local_path.is_none() {
         return Err("KM_CB_SOURCE_LOCAL_CLOSURE_CANDIDATE is required with \
             KM_CB_SOURCE_LOCAL_CLOSURE_CHECKER"
@@ -1383,41 +1385,47 @@ fn verify_cb_lean_publication(
     let source_hyper_path = std::env::var_os("KM_CB_SOURCE_HYPER_CLOSURE_CANDIDATE");
     if source_hyper_checker.is_some() && source_hyper_path.is_none() {
         return Err("KM_CB_SOURCE_HYPER_CLOSURE_CANDIDATE is required with \
-            KM_CB_SOURCE_HYPER_CLOSURE_CHECKER".to_string());
+            KM_CB_SOURCE_HYPER_CLOSURE_CHECKER"
+            .to_string());
     }
     let source_join3_checker = std::env::var_os("KM_CB_SOURCE_JOIN3_CLOSURE_CHECKER");
     let source_join3_path = std::env::var_os("KM_CB_SOURCE_JOIN3_CLOSURE_CANDIDATE");
     if source_join3_checker.is_some() && source_join3_path.is_none() {
         return Err("KM_CB_SOURCE_JOIN3_CLOSURE_CANDIDATE is required with \
-            KM_CB_SOURCE_JOIN3_CLOSURE_CHECKER".to_string());
+            KM_CB_SOURCE_JOIN3_CLOSURE_CHECKER"
+            .to_string());
     }
     let source_succ_checker = std::env::var_os("KM_CB_SOURCE_SUCC_CLOSURE_CHECKER");
     let source_succ_path = std::env::var_os("KM_CB_SOURCE_SUCC_CLOSURE_CANDIDATE");
     if source_succ_checker.is_some() && source_succ_path.is_none() {
         return Err("KM_CB_SOURCE_SUCC_CLOSURE_CANDIDATE is required with \
-            KM_CB_SOURCE_SUCC_CLOSURE_CHECKER".to_string());
+            KM_CB_SOURCE_SUCC_CLOSURE_CHECKER"
+            .to_string());
     }
     let source_eq_checker = std::env::var_os("KM_CB_SOURCE_EQ_CLOSURE_CHECKER");
     let source_eq_path = std::env::var_os("KM_CB_SOURCE_EQ_CLOSURE_CANDIDATE");
     if source_eq_checker.is_some() && source_eq_path.is_none() {
         return Err("KM_CB_SOURCE_EQ_CLOSURE_CANDIDATE is required with \
-            KM_CB_SOURCE_EQ_CLOSURE_CHECKER".to_string());
+            KM_CB_SOURCE_EQ_CLOSURE_CHECKER"
+            .to_string());
     }
     let source_ordinary_pred_checker =
         std::env::var_os("KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CHECKER");
     let source_ordinary_pred_path =
         std::env::var_os("KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CANDIDATE");
     if source_ordinary_pred_checker.is_some() && source_ordinary_pred_path.is_none() {
-        return Err("KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CANDIDATE is required with \
-            KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CHECKER".to_string());
+        return Err(
+            "KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CANDIDATE is required with \
+            KM_CB_SOURCE_ORDINARY_PRED_CLOSURE_CHECKER"
+                .to_string(),
+        );
     }
-    let source_root_pred_checker =
-        std::env::var_os("KM_CB_SOURCE_ROOT_PRED_CLOSURE_CHECKER");
-    let source_root_pred_path =
-        std::env::var_os("KM_CB_SOURCE_ROOT_PRED_CLOSURE_CANDIDATE");
+    let source_root_pred_checker = std::env::var_os("KM_CB_SOURCE_ROOT_PRED_CLOSURE_CHECKER");
+    let source_root_pred_path = std::env::var_os("KM_CB_SOURCE_ROOT_PRED_CLOSURE_CANDIDATE");
     if source_root_pred_checker.is_some() && source_root_pred_path.is_none() {
         return Err("KM_CB_SOURCE_ROOT_PRED_CLOSURE_CANDIDATE is required with \
-            KM_CB_SOURCE_ROOT_PRED_CLOSURE_CHECKER".to_string());
+            KM_CB_SOURCE_ROOT_PRED_CLOSURE_CHECKER"
+            .to_string());
     }
     let terminal_state_checker = std::env::var_os("KM_CB_TERMINAL_STATE_CHECKER");
     let terminal_state_path = std::env::var_os("KM_CB_TERMINAL_STATE_CANDIDATE");
@@ -1427,36 +1435,30 @@ fn verify_cb_lean_publication(
             .to_string());
     }
     let source_exact_checker = std::env::var_os("KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER");
-    let source_exact_candidate_path =
-        std::env::var_os("KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE");
+    let source_exact_candidate_path = std::env::var_os("KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE");
     if source_exact_checker.is_some() && source_exact_candidate_path.is_none() {
         return Err("KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE is required with \
             KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER"
             .to_string());
     }
-    let standalone_context_checker =
-        std::env::var_os("KM_CB_STANDALONE_CONTEXT_PROOF_CHECKER");
-    let standalone_context_path =
-        std::env::var_os("KM_CB_STANDALONE_CONTEXT_PROOF_CANDIDATE");
+    let standalone_context_checker = std::env::var_os("KM_CB_STANDALONE_CONTEXT_PROOF_CHECKER");
+    let standalone_context_path = std::env::var_os("KM_CB_STANDALONE_CONTEXT_PROOF_CANDIDATE");
     if standalone_context_checker.is_some() && standalone_context_path.is_none() {
         return Err("KM_CB_STANDALONE_CONTEXT_PROOF_CANDIDATE is required with \
             KM_CB_STANDALONE_CONTEXT_PROOF_CHECKER"
             .to_string());
     }
-    let source_production_checker =
-        std::env::var_os("KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER");
-    let source_production_path =
-        std::env::var_os("KM_CB_SOURCE_PRODUCTION_TAXONOMY_CANDIDATE");
+    let source_production_checker = std::env::var_os("KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER");
+    let source_production_path = std::env::var_os("KM_CB_SOURCE_PRODUCTION_TAXONOMY_CANDIDATE");
     if source_production_checker.is_some() && source_production_path.is_none() {
-        return Err("KM_CB_SOURCE_PRODUCTION_TAXONOMY_CANDIDATE is required with \
+        return Err(
+            "KM_CB_SOURCE_PRODUCTION_TAXONOMY_CANDIDATE is required with \
             KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER"
-            .to_string());
+                .to_string(),
+        );
     }
     let checker = std::env::var_os("KM_CB_LEAN_CERT_CHECKER");
-    if checker.is_none()
-        && source_exact_checker.is_none()
-        && source_production_checker.is_none()
-    {
+    if checker.is_none() && source_exact_checker.is_none() && source_production_checker.is_none() {
         return Err(
             "KM_CB_LEAN_CERT_CHECKER, KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER, or \
              KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER is required"
@@ -1493,9 +1495,7 @@ fn verify_cb_lean_publication(
         serde_json::from_slice(&global_bytes)
             .map_err(|error| format!("cannot parse test-only external CB certificate: {error}"))?
     } else {
-        return Err(
-            "certified CB worker input requires an in-band cb_typed_source".to_string(),
-        );
+        return Err("certified CB worker input requires an in-band cb_typed_source".to_string());
     };
     let live_state = reasoner.live_terminal_snapshot()?;
     let public_answer = reasoner.subsumptions();
@@ -1609,7 +1609,8 @@ fn verify_cb_lean_publication(
                 "source-bound live CB certification requires an in-band typed source".to_string()
             })?,
             &live_state,
-            certificate.pointer("/derivation/insertion_evidence")
+            certificate
+                .pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
                 .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
         )?;
@@ -1623,9 +1624,11 @@ fn verify_cb_lean_publication(
         serde_json::to_writer(&mut writer, &candidate)
             .map_err(|error| format!("cannot serialize source-bound CB live candidate: {error}"))?;
         use std::io::Write;
-        writer.write_all(b"\n")
+        writer
+            .write_all(b"\n")
             .map_err(|error| format!("cannot finish source-bound CB live candidate: {error}"))?;
-        writer.flush()
+        writer
+            .flush()
             .map_err(|error| format!("cannot flush source-bound CB live candidate: {error}"))?;
     }
 
@@ -1635,7 +1638,8 @@ fn verify_cb_lean_publication(
                 "source-bound local CB certification requires an in-band typed source".to_string()
             })?,
             &live_state,
-            certificate.pointer("/derivation/insertion_evidence")
+            certificate
+                .pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
                 .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
         )?;
@@ -1665,21 +1669,27 @@ fn verify_cb_lean_publication(
                 "source-bound Hyper certification requires an in-band typed source".to_string()
             })?,
             &live_state,
-            certificate.pointer("/derivation/insertion_evidence")
+            certificate
+                .pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
                 .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
         )?;
         let file = std::fs::File::create(path).map_err(|error| {
-            format!("cannot create source-bound CB Hyper candidate {}: {error}",
-                std::path::Path::new(path).display())
+            format!(
+                "cannot create source-bound CB Hyper candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
         })?;
         let mut writer = std::io::BufWriter::new(file);
-        serde_json::to_writer(&mut writer, &candidate)
-            .map_err(|error| format!("cannot serialize source-bound CB Hyper candidate: {error}"))?;
+        serde_json::to_writer(&mut writer, &candidate).map_err(|error| {
+            format!("cannot serialize source-bound CB Hyper candidate: {error}")
+        })?;
         use std::io::Write;
-        writer.write_all(b"\n")
+        writer
+            .write_all(b"\n")
             .map_err(|error| format!("cannot finish source-bound CB Hyper candidate: {error}"))?;
-        writer.flush()
+        writer
+            .flush()
             .map_err(|error| format!("cannot flush source-bound CB Hyper candidate: {error}"))?;
     }
 
@@ -1687,22 +1697,30 @@ fn verify_cb_lean_publication(
         let hyper = cb_source_hyper_closure_candidate(
             input_typed_source.ok_or_else(|| {
                 "source-bound Join-3 certification requires an in-band typed source".to_string()
-            })?, &live_state,
-            certificate.pointer("/derivation/insertion_evidence")
+            })?,
+            &live_state,
+            certificate
+                .pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
-                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
+        )?;
         let candidate = serde_json::json!({"version": 1, "hyper_closure": hyper});
         let file = std::fs::File::create(path).map_err(|error| {
-            format!("cannot create source-bound CB Join-3 candidate {}: {error}",
-                std::path::Path::new(path).display())
+            format!(
+                "cannot create source-bound CB Join-3 candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
         })?;
         let mut writer = std::io::BufWriter::new(file);
-        serde_json::to_writer(&mut writer, &candidate)
-            .map_err(|error| format!("cannot serialize source-bound CB Join-3 candidate: {error}"))?;
+        serde_json::to_writer(&mut writer, &candidate).map_err(|error| {
+            format!("cannot serialize source-bound CB Join-3 candidate: {error}")
+        })?;
         use std::io::Write;
-        writer.write_all(b"\n")
+        writer
+            .write_all(b"\n")
             .map_err(|error| format!("cannot finish source-bound CB Join-3 candidate: {error}"))?;
-        writer.flush()
+        writer
+            .flush()
             .map_err(|error| format!("cannot flush source-bound CB Join-3 candidate: {error}"))?;
     }
 
@@ -1710,21 +1728,28 @@ fn verify_cb_lean_publication(
         let candidate = cb_source_succ_closure_candidate(
             input_typed_source.ok_or_else(|| {
                 "source-bound Succ certification requires an in-band typed source".to_string()
-            })?, &live_state,
-            certificate.pointer("/derivation/insertion_evidence")
+            })?,
+            &live_state,
+            certificate
+                .pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
-                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
+        )?;
         let file = std::fs::File::create(path).map_err(|error| {
-            format!("cannot create source-bound CB Succ candidate {}: {error}",
-                std::path::Path::new(path).display())
+            format!(
+                "cannot create source-bound CB Succ candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
         })?;
         let mut writer = std::io::BufWriter::new(file);
         serde_json::to_writer(&mut writer, &candidate)
             .map_err(|error| format!("cannot serialize source-bound CB Succ candidate: {error}"))?;
         use std::io::Write;
-        writer.write_all(b"\n")
+        writer
+            .write_all(b"\n")
             .map_err(|error| format!("cannot finish source-bound CB Succ candidate: {error}"))?;
-        writer.flush()
+        writer
+            .flush()
             .map_err(|error| format!("cannot flush source-bound CB Succ candidate: {error}"))?;
     }
 
@@ -1732,21 +1757,28 @@ fn verify_cb_lean_publication(
         let candidate = cb_source_eq_closure_candidate(
             input_typed_source.ok_or_else(|| {
                 "source-bound Eq certification requires an in-band typed source".to_string()
-            })?, &live_state,
-            certificate.pointer("/derivation/insertion_evidence")
+            })?,
+            &live_state,
+            certificate
+                .pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
-                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
+        )?;
         let file = std::fs::File::create(path).map_err(|error| {
-            format!("cannot create source-bound CB Eq candidate {}: {error}",
-                std::path::Path::new(path).display())
+            format!(
+                "cannot create source-bound CB Eq candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
         })?;
         let mut writer = std::io::BufWriter::new(file);
         serde_json::to_writer(&mut writer, &candidate)
             .map_err(|error| format!("cannot serialize source-bound CB Eq candidate: {error}"))?;
         use std::io::Write;
-        writer.write_all(b"\n")
+        writer
+            .write_all(b"\n")
             .map_err(|error| format!("cannot finish source-bound CB Eq candidate: {error}"))?;
-        writer.flush()
+        writer
+            .flush()
             .map_err(|error| format!("cannot flush source-bound CB Eq candidate: {error}"))?;
     }
 
@@ -1755,14 +1787,19 @@ fn verify_cb_lean_publication(
             input_typed_source.ok_or_else(|| {
                 "source-bound ordinary Pred certification requires an in-band typed source"
                     .to_string()
-            })?, &live_state,
-            certificate.pointer("/derivation/insertion_evidence")
+            })?,
+            &live_state,
+            certificate
+                .pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
-                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
+        )?;
         let candidate = serde_json::json!({"version": 1, "eq_closure": eq});
         let file = std::fs::File::create(path).map_err(|error| {
-            format!("cannot create source-bound CB ordinary Pred candidate {}: {error}",
-                std::path::Path::new(path).display())
+            format!(
+                "cannot create source-bound CB ordinary Pred candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
         })?;
         let mut writer = std::io::BufWriter::new(file);
         serde_json::to_writer(&mut writer, &candidate).map_err(|error| {
@@ -1780,24 +1817,31 @@ fn verify_cb_lean_publication(
     if let Some(path) = source_root_pred_path.as_ref() {
         let candidate = cb_source_root_pred_closure_candidate(
             input_typed_source.ok_or_else(|| {
-                "source-bound root Pred certification requires an in-band typed source"
-                    .to_string()
-            })?, &live_state,
-            certificate.pointer("/derivation/insertion_evidence")
+                "source-bound root Pred certification requires an in-band typed source".to_string()
+            })?,
+            &live_state,
+            certificate
+                .pointer("/derivation/insertion_evidence")
                 .and_then(serde_json::Value::as_array)
-                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?)?;
+                .ok_or_else(|| "CB certificate omits insertion evidence".to_string())?,
+        )?;
         let file = std::fs::File::create(path).map_err(|error| {
-            format!("cannot create source-bound CB root Pred candidate {}: {error}",
-                std::path::Path::new(path).display())
+            format!(
+                "cannot create source-bound CB root Pred candidate {}: {error}",
+                std::path::Path::new(path).display()
+            )
         })?;
         let mut writer = std::io::BufWriter::new(file);
-        serde_json::to_writer(&mut writer, &candidate)
-            .map_err(|error| format!("cannot serialize source-bound CB root Pred candidate: {error}"))?;
+        serde_json::to_writer(&mut writer, &candidate).map_err(|error| {
+            format!("cannot serialize source-bound CB root Pred candidate: {error}")
+        })?;
         use std::io::Write;
-        writer.write_all(b"\n")
-            .map_err(|error| format!("cannot finish source-bound CB root Pred candidate: {error}"))?;
-        writer.flush()
-            .map_err(|error| format!("cannot flush source-bound CB root Pred candidate: {error}"))?;
+        writer.write_all(b"\n").map_err(|error| {
+            format!("cannot finish source-bound CB root Pred candidate: {error}")
+        })?;
+        writer.flush().map_err(|error| {
+            format!("cannot flush source-bound CB root Pred candidate: {error}")
+        })?;
     }
 
     if let Some(path) = terminal_state_path.as_ref() {
@@ -1870,9 +1914,8 @@ fn verify_cb_lean_publication(
             )
         })?;
         let mut writer = std::io::BufWriter::new(file);
-        serde_json::to_writer(&mut writer, &document).map_err(|error| {
-            format!("cannot serialize source-production CB taxonomy: {error}")
-        })?;
+        serde_json::to_writer(&mut writer, &document)
+            .map_err(|error| format!("cannot serialize source-production CB taxonomy: {error}"))?;
         writer
             .write_all(b"\n")
             .map_err(|error| format!("cannot finish source-production CB taxonomy: {error}"))?;
@@ -1922,9 +1965,9 @@ fn verify_cb_lean_publication(
     }
 
     if let Some(source_checker) = source_live_checker {
-        let path = source_live_path.as_ref().ok_or_else(|| {
-            "source-bound CB live checker has no candidate path".to_string()
-        })?;
+        let path = source_live_path
+            .as_ref()
+            .ok_or_else(|| "source-bound CB live checker has no candidate path".to_string())?;
         let status = std::process::Command::new(&source_checker)
             .arg(path)
             .stdout(std::process::Stdio::null())
@@ -1962,51 +2005,83 @@ fn verify_cb_lean_publication(
         }
     }
     if let Some(hyper_checker) = source_hyper_checker {
-        let path = source_hyper_path.as_ref().ok_or_else(|| {
-            "source-bound CB Hyper checker has no candidate path".to_string()
-        })?;
+        let path = source_hyper_path
+            .as_ref()
+            .ok_or_else(|| "source-bound CB Hyper checker has no candidate path".to_string())?;
         let status = std::process::Command::new(&hyper_checker)
-            .arg(path).stdout(std::process::Stdio::null()).status()
-            .map_err(|error| format!("cannot run source-bound CB Hyper checker {}: {error}",
-                std::path::Path::new(&hyper_checker).display()))?;
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-bound CB Hyper checker {}: {error}",
+                    std::path::Path::new(&hyper_checker).display()
+                )
+            })?;
         if !status.success() {
-            return Err(format!("source-bound CB Hyper checker rejected the candidate with {status}"));
+            return Err(format!(
+                "source-bound CB Hyper checker rejected the candidate with {status}"
+            ));
         }
     }
     if let Some(join3_checker) = source_join3_checker {
-        let path = source_join3_path.as_ref().ok_or_else(|| {
-            "source-bound CB Join-3 checker has no candidate path".to_string()
-        })?;
+        let path = source_join3_path
+            .as_ref()
+            .ok_or_else(|| "source-bound CB Join-3 checker has no candidate path".to_string())?;
         let status = std::process::Command::new(&join3_checker)
-            .arg(path).stdout(std::process::Stdio::null()).status()
-            .map_err(|error| format!("cannot run source-bound CB Join-3 checker {}: {error}",
-                std::path::Path::new(&join3_checker).display()))?;
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-bound CB Join-3 checker {}: {error}",
+                    std::path::Path::new(&join3_checker).display()
+                )
+            })?;
         if !status.success() {
-            return Err(format!("source-bound CB Join-3 checker rejected the candidate with {status}"));
+            return Err(format!(
+                "source-bound CB Join-3 checker rejected the candidate with {status}"
+            ));
         }
     }
     if let Some(succ_checker) = source_succ_checker {
-        let path = source_succ_path.as_ref().ok_or_else(|| {
-            "source-bound CB Succ checker has no candidate path".to_string()
-        })?;
+        let path = source_succ_path
+            .as_ref()
+            .ok_or_else(|| "source-bound CB Succ checker has no candidate path".to_string())?;
         let status = std::process::Command::new(&succ_checker)
-            .arg(path).stdout(std::process::Stdio::null()).status()
-            .map_err(|error| format!("cannot run source-bound CB Succ checker {}: {error}",
-                std::path::Path::new(&succ_checker).display()))?;
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-bound CB Succ checker {}: {error}",
+                    std::path::Path::new(&succ_checker).display()
+                )
+            })?;
         if !status.success() {
-            return Err(format!("source-bound CB Succ checker rejected the candidate with {status}"));
+            return Err(format!(
+                "source-bound CB Succ checker rejected the candidate with {status}"
+            ));
         }
     }
     if let Some(eq_checker) = source_eq_checker {
-        let path = source_eq_path.as_ref().ok_or_else(|| {
-            "source-bound CB Eq checker has no candidate path".to_string()
-        })?;
+        let path = source_eq_path
+            .as_ref()
+            .ok_or_else(|| "source-bound CB Eq checker has no candidate path".to_string())?;
         let status = std::process::Command::new(&eq_checker)
-            .arg(path).stdout(std::process::Stdio::null()).status()
-            .map_err(|error| format!("cannot run source-bound CB Eq checker {}: {error}",
-                std::path::Path::new(&eq_checker).display()))?;
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-bound CB Eq checker {}: {error}",
+                    std::path::Path::new(&eq_checker).display()
+                )
+            })?;
         if !status.success() {
-            return Err(format!("source-bound CB Eq checker rejected the candidate with {status}"));
+            return Err(format!(
+                "source-bound CB Eq checker rejected the candidate with {status}"
+            ));
         }
     }
     if let Some(pred_checker) = source_ordinary_pred_checker {
@@ -2014,26 +2089,39 @@ fn verify_cb_lean_publication(
             "source-bound CB ordinary Pred checker has no candidate path".to_string()
         })?;
         let status = std::process::Command::new(&pred_checker)
-            .arg(path).stdout(std::process::Stdio::null()).status()
-            .map_err(|error| format!(
-                "cannot run source-bound CB ordinary Pred checker {}: {error}",
-                std::path::Path::new(&pred_checker).display()))?;
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-bound CB ordinary Pred checker {}: {error}",
+                    std::path::Path::new(&pred_checker).display()
+                )
+            })?;
         if !status.success() {
             return Err(format!(
-                "source-bound CB ordinary Pred checker rejected the candidate with {status}"));
+                "source-bound CB ordinary Pred checker rejected the candidate with {status}"
+            ));
         }
     }
     if let Some(pred_checker) = source_root_pred_checker {
-        let path = source_root_pred_path.as_ref().ok_or_else(|| {
-            "source-bound CB root Pred checker has no candidate path".to_string()
-        })?;
+        let path = source_root_pred_path
+            .as_ref()
+            .ok_or_else(|| "source-bound CB root Pred checker has no candidate path".to_string())?;
         let status = std::process::Command::new(&pred_checker)
-            .arg(path).stdout(std::process::Stdio::null()).status()
-            .map_err(|error| format!("cannot run source-bound CB root Pred checker {}: {error}",
-                std::path::Path::new(&pred_checker).display()))?;
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-bound CB root Pred checker {}: {error}",
+                    std::path::Path::new(&pred_checker).display()
+                )
+            })?;
         if !status.success() {
             return Err(format!(
-                "source-bound CB root Pred checker rejected the candidate with {status}"));
+                "source-bound CB root Pred checker rejected the candidate with {status}"
+            ));
         }
     }
     if let Some(checker) = checker {
@@ -2495,69 +2583,70 @@ fn cb_finite_countermodel(
                     .collect();
                 let mut clause = Vec::with_capacity(body.len() + head.len());
                 let mut tautology = false;
-                let mut push_literal =
-                    |literal: &serde_json::Value, positive: bool| -> Result<(), String> {
-                        let kind = literal
-                            .get("kind")
-                            .and_then(serde_json::Value::as_str)
-                            .ok_or_else(|| "CB live literal has no kind".to_string())?;
-                        let first = literal
-                            .get("first")
-                            .and_then(serde_json::Value::as_u64)
-                            .and_then(|value| u32::try_from(value).ok())
-                            .ok_or_else(|| "CB live literal has no first term".to_string())?;
-                        let first = eval_term(first, &variables)?;
-                        let truth_atom = match kind {
-                            "concept" => {
-                                let iri = literal
-                                    .get("iri")
-                                    .and_then(serde_json::Value::as_u64)
-                                    .and_then(|value| usize::try_from(value).ok())
-                                    .ok_or_else(|| "CB concept literal has no iri".to_string())?;
-                                if iri >= concept_count {
-                                    return Err("CB live concept literal exceeds its bound".to_string());
-                                }
-                                Some(iri * domain_size + first)
+                let mut push_literal = |literal: &serde_json::Value,
+                                        positive: bool|
+                 -> Result<(), String> {
+                    let kind = literal
+                        .get("kind")
+                        .and_then(serde_json::Value::as_str)
+                        .ok_or_else(|| "CB live literal has no kind".to_string())?;
+                    let first = literal
+                        .get("first")
+                        .and_then(serde_json::Value::as_u64)
+                        .and_then(|value| u32::try_from(value).ok())
+                        .ok_or_else(|| "CB live literal has no first term".to_string())?;
+                    let first = eval_term(first, &variables)?;
+                    let truth_atom = match kind {
+                        "concept" => {
+                            let iri = literal
+                                .get("iri")
+                                .and_then(serde_json::Value::as_u64)
+                                .and_then(|value| usize::try_from(value).ok())
+                                .ok_or_else(|| "CB concept literal has no iri".to_string())?;
+                            if iri >= concept_count {
+                                return Err("CB live concept literal exceeds its bound".to_string());
                             }
-                            "role" => {
-                                let iri = literal
-                                    .get("iri")
-                                    .and_then(serde_json::Value::as_u64)
-                                    .and_then(|value| usize::try_from(value).ok())
-                                    .ok_or_else(|| "CB role literal has no iri".to_string())?;
-                                if iri >= role_count {
-                                    return Err("CB live role literal exceeds its bound".to_string());
-                                }
-                                let second = literal
-                                    .get("second")
-                                    .and_then(serde_json::Value::as_u64)
-                                    .and_then(|value| u32::try_from(value).ok())
-                                    .ok_or_else(|| "CB role literal has no second term".to_string())?;
-                                let second = eval_term(second, &variables)?;
-                                Some(concept_atoms + iri * role_width + first * domain_size + second)
-                            }
-                            "equality" | "inequality" => {
-                                let second = literal
-                                    .get("second")
-                                    .and_then(serde_json::Value::as_u64)
-                                    .and_then(|value| u32::try_from(value).ok())
-                                    .ok_or_else(|| format!("CB {kind} literal has no second term"))?;
-                                let equal = first == eval_term(second, &variables)?;
-                                let true_now = if kind == "equality" { equal } else { !equal };
-                                if true_now == positive {
-                                    tautology = true;
-                                }
-                                None
-                            }
-                            other => return Err(format!("unsupported CB live literal kind {other}")),
-                        };
-                        if let Some(atom) = truth_atom {
-                            let encoded = i32::try_from(atom + 1)
-                                .map_err(|_| "CB finite atom id exceeds i32".to_string())?;
-                            clause.push(if positive { encoded } else { -encoded });
+                            Some(iri * domain_size + first)
                         }
-                        Ok(())
+                        "role" => {
+                            let iri = literal
+                                .get("iri")
+                                .and_then(serde_json::Value::as_u64)
+                                .and_then(|value| usize::try_from(value).ok())
+                                .ok_or_else(|| "CB role literal has no iri".to_string())?;
+                            if iri >= role_count {
+                                return Err("CB live role literal exceeds its bound".to_string());
+                            }
+                            let second = literal
+                                .get("second")
+                                .and_then(serde_json::Value::as_u64)
+                                .and_then(|value| u32::try_from(value).ok())
+                                .ok_or_else(|| "CB role literal has no second term".to_string())?;
+                            let second = eval_term(second, &variables)?;
+                            Some(concept_atoms + iri * role_width + first * domain_size + second)
+                        }
+                        "equality" | "inequality" => {
+                            let second = literal
+                                .get("second")
+                                .and_then(serde_json::Value::as_u64)
+                                .and_then(|value| u32::try_from(value).ok())
+                                .ok_or_else(|| format!("CB {kind} literal has no second term"))?;
+                            let equal = first == eval_term(second, &variables)?;
+                            let true_now = if kind == "equality" { equal } else { !equal };
+                            if true_now == positive {
+                                tautology = true;
+                            }
+                            None
+                        }
+                        other => return Err(format!("unsupported CB live literal kind {other}")),
                     };
+                    if let Some(atom) = truth_atom {
+                        let encoded = i32::try_from(atom + 1)
+                            .map_err(|_| "CB finite atom id exceeds i32".to_string())?;
+                        clause.push(if positive { encoded } else { -encoded });
+                    }
+                    Ok(())
+                };
                 for literal in body {
                     push_literal(literal, false)?;
                 }
@@ -2649,9 +2738,7 @@ fn cb_blocked_taxonomy_countermodel(
     let concept_count = count("concept_count")?;
     let role_count = count("role_count")?;
     let saturation = live_publication
-        .pointer(
-            "/derivation/production_bound/global_model/blocked_saturation/saturation",
-        )
+        .pointer("/derivation/production_bound/global_model/blocked_saturation/saturation")
         .ok_or_else(|| "live CB publication has no blocked saturation".to_string())?;
     let atom_count = saturation
         .get("atom_count")
@@ -2745,8 +2832,7 @@ fn cb_blocked_taxonomy_countermodel(
     });
 
     let mut clauses = premises.clone();
-    let mut seen: std::collections::BTreeSet<CbPropClause> =
-        clauses.iter().cloned().collect();
+    let mut seen: std::collections::BTreeSet<CbPropClause> = clauses.iter().cloned().collect();
     let mut trace: Vec<serde_json::Value> = premises
         .iter()
         .enumerate()
@@ -3036,7 +3122,9 @@ fn cb_regular_arbitrary_chain_source(
                     "filler": field("concept")?,
                 }}))
             }
-            other => Err(format!("unsupported certified CB source constructor {other}")),
+            other => Err(format!(
+                "unsupported certified CB source constructor {other}"
+            )),
         }
     }
 
@@ -3087,7 +3175,7 @@ fn cb_regular_arbitrary_chain_countermodel(
     sub: usize,
     sup: usize,
 ) -> Result<Option<serde_json::Value>, String> {
-    use crate::tableau::{Atom, Clause, CLit};
+    use crate::tableau::{Atom, CLit, Clause};
 
     let numeric = |value: u64, kind: &str| -> Result<u32, String> {
         u32::try_from(value).map_err(|_| format!("{kind} id exceeds the HT numeric bound"))
@@ -3250,14 +3338,7 @@ fn cb_regular_arbitrary_chain_countermodel(
                 ));
             }
             "functional" => {
-                cardinality_defs.push((
-                    0,
-                    false,
-                    1,
-                    role(payload, "role")?,
-                    0,
-                    false,
-                ));
+                cardinality_defs.push((0, false, 1, role(payload, "role")?, 0, false));
                 clauses.push(Clause::new(Vec::new(), vec![pos(0, 0)]));
                 clauses.push(Clause::new(Vec::new(), vec![pos(0, 0)]));
             }
@@ -3355,11 +3436,7 @@ fn cb_regular_arbitrary_chain_countermodel(
             Vec::new(),
         );
     }
-    tableau.set_certificate_signature_floor(
-        source.concept_count + 1,
-        target_role_count,
-        3,
-    );
+    tableau.set_certificate_signature_floor(source.concept_count + 1, target_role_count, 3);
     let anchored = tableau.lean_cb_anchored_cardinality_countermodel_json(
         u32::try_from(sub + 1).map_err(|_| "subclass id exceeds u32".to_string())?,
         u32::try_from(sup + 1).map_err(|_| "superclass id exceeds u32".to_string())?,
@@ -3789,10 +3866,16 @@ fn cb_standalone_context_proof_document(
                 .ok_or_else(|| "CB insertion event has no clause id".to_string())?;
             let raw_clause = self
                 .live
-                .get(if root { "root_clause_arena" } else { "ordinary_clause_arena" })
+                .get(if root {
+                    "root_clause_arena"
+                } else {
+                    "ordinary_clause_arena"
+                })
                 .and_then(serde_json::Value::as_array)
                 .and_then(|arena| arena.get(clause_id))
-                .ok_or_else(|| "CB insertion event references a missing arena clause".to_string())?;
+                .ok_or_else(|| {
+                    "CB insertion event references a missing arena clause".to_string()
+                })?;
             let clause = cb_wire_clause(&cb_decode_live_clause_json(raw_clause)?, self.bits);
             let core = context
                 .get("core")
@@ -3836,7 +3919,9 @@ fn cb_standalone_context_proof_document(
                     for reference in references {
                         let dependency = reference_index(reference, "local premise")?;
                         if dependency >= event_index {
-                            return Err("local CB evidence references a non-earlier event".to_string());
+                            return Err(
+                                "local CB evidence references a non-earlier event".to_string()
+                            );
                         }
                         prior_nodes.push(self.append(dependency)?);
                     }
@@ -3852,8 +3937,9 @@ fn cb_standalone_context_proof_document(
                 }
                 "pred" => {
                     let sender = reference_index(
-                        proof.get("sender_event").ok_or_else(||
-                            "CB Pred evidence has no sender".to_string())?,
+                        proof
+                            .get("sender_event")
+                            .ok_or_else(|| "CB Pred evidence has no sender".to_string())?,
                         "Pred sender",
                     )?;
                     if sender >= event_index {
@@ -3883,9 +3969,11 @@ fn cb_standalone_context_proof_document(
                             "CB Pred evidence has no matched predicates".to_string())?,
                     }})
                 }
-                other => return Err(format!(
-                    "CB event {event_index} has no chronological proof ({other})"
-                )),
+                other => {
+                    return Err(format!(
+                        "CB event {event_index} has no chronological proof ({other})"
+                    ))
+                }
             };
             let node_index = self.nodes.len();
             self.nodes.push(serde_json::json!({
@@ -3924,9 +4012,7 @@ fn cb_standalone_context_proof_document(
     Ok((document, builder.event_nodes))
 }
 
-fn cb_public_witness_events(
-    live_publication: &serde_json::Value,
-) -> Result<Vec<usize>, String> {
+fn cb_public_witness_events(live_publication: &serde_json::Value) -> Result<Vec<usize>, String> {
     let live_unit_clause = |concept: usize| {
         serde_json::json!({"body": [], "head": [{
             "kind": "concept", "iri": concept,
@@ -4065,10 +4151,7 @@ fn cb_exact_taxonomy_candidate(
                     serde_json::json!({"unsatisfiable": {"live_index": index}}),
                 )
             } else if let Some(&index) = positive_index.get(&(sub, sup)) {
-                (
-                    true,
-                    serde_json::json!({"positive": {"live_index": index}}),
-                )
+                (true, serde_json::json!({"positive": {"live_index": index}}))
             } else if let Some(model) = cb_one_element_countermodel(live_state, sub, sup)? {
                 (
                     false,
@@ -4083,8 +4166,7 @@ fn cb_exact_taxonomy_candidate(
                 cb_blocked_taxonomy_countermodel(live_publication, sub, sup)?
             {
                 (false, serde_json::json!({"blocked": countermodel}))
-            } else if let Some(countermodel) = regular_countermodel(sub, sup)?
-            {
+            } else if let Some(countermodel) = regular_countermodel(sub, sup)? {
                 (
                     false,
                     serde_json::json!({"regularArbitraryChain": countermodel}),
@@ -4159,7 +4241,9 @@ fn cb_live_terminal_event_for_clause(
         .enumerate()
         .rev()
         .find(|(_, event)| {
-            event.get("context_index").and_then(serde_json::Value::as_u64)
+            event
+                .get("context_index")
+                .and_then(serde_json::Value::as_u64)
                 == Some(context_index as u64)
                 && event.get("root").and_then(serde_json::Value::as_bool) == Some(root)
                 && event.get("clause_id").and_then(serde_json::Value::as_u64)
@@ -4201,9 +4285,8 @@ fn cb_source_exact_taxonomy_candidate(
             "concept": concept, "term": {"var": {"index": 0}}
         }}}})
     };
-    let unit_clause = |concept: usize| {
-        serde_json::json!({"body": [], "head": [concept_literal(concept)]})
-    };
+    let unit_clause =
+        |concept: usize| serde_json::json!({"body": [], "head": [concept_literal(concept)]});
     let live_unit_clause = |concept: usize| {
         serde_json::json!({"body": [], "head": [{
             "kind": "concept", "iri": concept,
@@ -4280,11 +4363,8 @@ fn cb_source_exact_taxonomy_candidate(
                 .and_then(serde_json::Value::as_u64)
                 .and_then(|value| usize::try_from(value).ok())
                 .ok_or_else(|| "unsatisfiable CB witness has no context index".to_string())?;
-            let event = cb_live_terminal_event_for_clause(
-                live_publication,
-                context_index,
-                &empty_clause,
-            )?;
+            let event =
+                cb_live_terminal_event_for_clause(live_publication, context_index, &empty_clause)?;
             let trace = cb_standalone_production_trace(live_publication, event)?;
             serde_json::json!({"positiveProduction": {"trace": trace}})
         } else if let Some(negative) = live_evidence.get("negative") {
@@ -4341,11 +4421,14 @@ fn cb_source_exact_taxonomy_candidate(
         "public_subsumptions": public_subsumptions,
         "cells": cells,
     });
-    Ok((serde_json::json!({
-        "version": 1,
-        "source": source.source_binding,
-        "taxonomy": taxonomy,
-    }), unresolved))
+    Ok((
+        serde_json::json!({
+            "version": 1,
+            "source": source.source_binding,
+            "taxonomy": taxonomy,
+        }),
+        unresolved,
+    ))
 }
 
 fn cb_source_production_taxonomy_candidate(
@@ -4372,12 +4455,8 @@ fn cb_source_production_taxonomy_candidate(
             "concept": concept, "term": {"var": {"index": 0}}
         }})
     };
-    let concept_literal = |concept: usize| {
-        serde_json::json!({"predicate": {"predicate": concept_predicate(concept)}})
-    };
-    let unit = |concept: usize| {
-        serde_json::json!({"body": [], "head": [concept_literal(concept)]})
-    };
+    let concept_literal = |concept: usize| serde_json::json!({"predicate": {"predicate": concept_predicate(concept)}});
+    let unit = |concept: usize| serde_json::json!({"body": [], "head": [concept_literal(concept)]});
     let mut reflexive_nodes = std::collections::HashMap::new();
     for value in &named {
         let concept = value
@@ -4460,14 +4539,11 @@ fn cb_source_production_taxonomy_candidate(
                     .and_then(serde_json::Value::as_u64)
                     .and_then(|value| usize::try_from(value).ok())
                     .ok_or_else(|| "positive CB cell has no context".to_string())?;
-                let event = cb_live_terminal_event_for_clause(
-                    live_publication,
-                    context,
-                    &live_unit(sup),
-                )?;
-                *event_nodes
-                    .get(&event)
-                    .ok_or_else(|| "positive CB witness is absent from the shared DAG".to_string())?
+                let event =
+                    cb_live_terminal_event_for_clause(live_publication, context, &live_unit(sup))?;
+                *event_nodes.get(&event).ok_or_else(|| {
+                    "positive CB witness is absent from the shared DAG".to_string()
+                })?
             } else if let Some(index) = live_cell
                 .pointer("/evidence/unsatisfiable/live_index")
                 .and_then(serde_json::Value::as_u64)
@@ -4482,8 +4558,9 @@ fn cb_source_production_taxonomy_candidate(
                     .and_then(|value| usize::try_from(value).ok())
                     .ok_or_else(|| "unsatisfiable CB row has no context".to_string())?;
                 let event = cb_live_terminal_event_for_clause(live_publication, context, &empty)?;
-                *event_nodes.get(&event).ok_or_else(||
-                    "unsatisfiable CB witness is absent from the shared DAG".to_string())?
+                *event_nodes.get(&event).ok_or_else(|| {
+                    "unsatisfiable CB witness is absent from the shared DAG".to_string()
+                })?
             } else {
                 return Err("true CB cell has no shared production witness".to_string());
             };
@@ -4506,21 +4583,24 @@ fn cb_source_production_taxonomy_candidate(
             "evidence": evidence,
         }));
     }
-    Ok((serde_json::json!({
-        "version": 1,
-        "source": legacy.get("source").cloned().ok_or_else(||
-            "source-exact CB candidate has no source".to_string())?,
-        "proof": proof_document.get("proof").cloned().ok_or_else(||
-            "standalone CB document has no proof".to_string())?,
-        "concept_names": taxonomy.get("concept_names").cloned().ok_or_else(||
-            "source-exact CB taxonomy has no concept names".to_string())?,
-        "named_concepts": named,
-        "published": taxonomy.get("published").cloned().ok_or_else(||
-            "source-exact CB taxonomy has no publication bits".to_string())?,
-        "public_subsumptions": taxonomy.get("public_subsumptions").cloned().ok_or_else(||
-            "source-exact CB taxonomy has no public payload".to_string())?,
-        "cells": cells,
-    }), unresolved))
+    Ok((
+        serde_json::json!({
+            "version": 1,
+            "source": legacy.get("source").cloned().ok_or_else(||
+                "source-exact CB candidate has no source".to_string())?,
+            "proof": proof_document.get("proof").cloned().ok_or_else(||
+                "standalone CB document has no proof".to_string())?,
+            "concept_names": taxonomy.get("concept_names").cloned().ok_or_else(||
+                "source-exact CB taxonomy has no concept names".to_string())?,
+            "named_concepts": named,
+            "published": taxonomy.get("published").cloned().ok_or_else(||
+                "source-exact CB taxonomy has no publication bits".to_string())?,
+            "public_subsumptions": taxonomy.get("public_subsumptions").cloned().ok_or_else(||
+                "source-exact CB taxonomy has no public payload".to_string())?,
+            "cells": cells,
+        }),
+        unresolved,
+    ))
 }
 
 /// Translate the exact grouped answer into the semantic ids and live-context
@@ -4644,11 +4724,11 @@ fn find_cb_production_contexts<'a>(
                             candidate
                                 .get("context_id")
                                 .and_then(serde_json::Value::as_u64)
-                            == Some(context.context_id as u64)
+                                == Some(context.context_id as u64)
                                 && candidate
                                     .get("trace")
                                     .is_some_and(serde_json::Value::is_array)
-                    });
+                        });
                 if exact {
                     return Some(contexts);
                 }
@@ -4674,11 +4754,12 @@ fn find_cb_production_contexts<'a>(
 /// supplies only operational fields read from the same live engine snapshot.
 fn find_cb_pred_send_coverage(value: &serde_json::Value) -> Option<&serde_json::Value> {
     if let Some(object) = value.as_object() {
-        let is_send_coverage = object.get("version").and_then(serde_json::Value::as_u64)
-            == Some(2)
+        let is_send_coverage = object.get("version").and_then(serde_json::Value::as_u64) == Some(2)
             && object.contains_key("inter_context")
             && object.contains_key("ground_context_index")
-            && object.get("senders").is_some_and(serde_json::Value::is_array)
+            && object
+                .get("senders")
+                .is_some_and(serde_json::Value::is_array)
             && object.contains_key("root_sender");
         if is_send_coverage {
             return Some(value);
@@ -4829,29 +4910,45 @@ fn cb_source_finite_order_candidate(
             &live.ordinary_clause_arena
         };
         for &clause_id in &context.retained_clause_ids {
-            let clause = arena.get(clause_id as usize).ok_or_else(|| {
-                format!("CB ordering context retains missing clause {clause_id}")
-            })?;
+            let clause = arena
+                .get(clause_id as usize)
+                .ok_or_else(|| format!("CB ordering context retains missing clause {clause_id}"))?;
             note_clause(clause)?;
         }
     }
     raw_terms.sort_unstable();
     let mut ordered_terms = raw_terms
-        .iter().copied().filter(|term| *term <= X)
+        .iter()
+        .copied()
+        .filter(|term| *term <= X)
         .map(|term| cb_wire_term(term, live.comp_ind_bits))
         .collect::<Vec<_>>();
-    ordered_terms.extend(raw_terms.iter().copied()
-        .filter(|term| (*term > X) && (*term < FTERM_BASE))
-        .map(|term| cb_wire_term(term, live.comp_ind_bits)));
-    ordered_terms.extend(raw_terms.iter().copied()
-        .filter(|term| (FTERM_BASE..COMP_BASE).contains(term))
-        .map(|term| cb_wire_term(term, live.comp_ind_bits)));
-    ordered_terms.extend(raw_terms.iter().copied()
-        .filter(|term| *term >= COMP_BASE)
-        .map(|term| cb_wire_term(term, live.comp_ind_bits)));
+    ordered_terms.extend(
+        raw_terms
+            .iter()
+            .copied()
+            .filter(|term| (*term > X) && (*term < FTERM_BASE))
+            .map(|term| cb_wire_term(term, live.comp_ind_bits)),
+    );
+    ordered_terms.extend(
+        raw_terms
+            .iter()
+            .copied()
+            .filter(|term| (FTERM_BASE..COMP_BASE).contains(term))
+            .map(|term| cb_wire_term(term, live.comp_ind_bits)),
+    );
+    ordered_terms.extend(
+        raw_terms
+            .iter()
+            .copied()
+            .filter(|term| *term >= COMP_BASE)
+            .map(|term| cb_wire_term(term, live.comp_ind_bits)),
+    );
     ordered_terms.dedup();
 
-    let pred_triggers = live.pred_trigger_literals.iter()
+    let pred_triggers = live
+        .pred_trigger_literals
+        .iter()
         .map(|literal| cb_wire_literal(literal, live.comp_ind_bits))
         .collect::<Vec<_>>();
     if pred_triggers.iter().any(serde_json::Value::is_null) {
@@ -4938,7 +5035,13 @@ fn cb_pred_send_coverage_candidate(
         .iter()
         .find(|context| context.nominal_ground)
         .map(|context| context.context_index);
-    if live.contexts.iter().filter(|context| context.nominal_ground).count() > 1 {
+    if live
+        .contexts
+        .iter()
+        .filter(|context| context.nominal_ground)
+        .count()
+        > 1
+    {
         return Err("CB live state has multiple nominal-ground contexts".to_string());
     }
 
@@ -5257,10 +5360,25 @@ mod cb_derivation_candidate_tests {
             terminal["send_coverage"]["inter_context"]["production"],
             serde_json::json!({"marker": "production"})
         );
-        assert_eq!(terminal["send_coverage"]["inter_context"]["transfers"], serde_json::json!([]));
-        assert_eq!(terminal["send_coverage"]["senders"].as_array().unwrap().len(), 2);
-        assert_eq!(terminal["send_coverage"]["senders"][0]["sender_context_index"], 0);
-        assert_eq!(terminal["send_coverage"]["senders"][1]["sender_context_index"], 1);
+        assert_eq!(
+            terminal["send_coverage"]["inter_context"]["transfers"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            terminal["send_coverage"]["senders"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            terminal["send_coverage"]["senders"][0]["sender_context_index"],
+            0
+        );
+        assert_eq!(
+            terminal["send_coverage"]["senders"][1]["sender_context_index"],
+            1
+        );
         assert_eq!(terminal["pending_messages"], 3);
         assert_eq!(terminal["contexts"][0]["todo_count"], 2);
         assert_eq!(terminal["contexts"][0]["pred_pool_len"], 3);
@@ -5330,14 +5448,29 @@ mod cb_derivation_candidate_tests {
             }
         });
         let candidate = cb_pred_send_coverage_candidate(&global, &live).unwrap();
-        assert_eq!(candidate["senders"][0]["transfer_indices"], serde_json::json!([0]));
-        assert_eq!(candidate["senders"][1]["transfer_indices"], serde_json::json!([]));
-        assert_eq!(candidate["inter_context"]["transfers"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            candidate["senders"][0]["transfer_indices"],
+            serde_json::json!([0])
+        );
+        assert_eq!(
+            candidate["senders"][1]["transfer_indices"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            candidate["inter_context"]["transfers"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         let transfer = &candidate["inter_context"]["transfers"][0];
         assert_eq!(transfer["sender_context_index"], 0);
         assert_eq!(transfer["receiver_context_index"], 1);
         assert_eq!(transfer["retained_clause_index"], 0);
-        assert_eq!(transfer["substitution"][1]["term"], cb_wire_term(function, 17));
+        assert_eq!(
+            transfer["substitution"][1]["term"],
+            cb_wire_term(function, 17)
+        );
         assert_eq!(
             transfer["payload"]["head"][0],
             cb_wire_literal(
@@ -5357,10 +5490,16 @@ mod cb_derivation_candidate_tests {
         let x = crate::calc::X;
         let function = crate::calc::FTERM_BASE;
         let a = crate::engine::CbLivePred {
-            kind: "concept", iri: 0, first: x, second: None,
+            kind: "concept",
+            iri: 0,
+            first: x,
+            second: None,
         };
         let b = crate::engine::CbLivePred {
-            kind: "concept", iri: 1, first: x, second: None,
+            kind: "concept",
+            iri: 1,
+            first: x,
+            second: None,
         };
         let clause = crate::engine::CbLiveClause {
             body: vec![cb_live_pred_literal(&a)],
@@ -5417,11 +5556,16 @@ mod cb_derivation_candidate_tests {
         }});
         let candidate = cb_pred_send_coverage_candidate(&global, &live).unwrap();
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap().join(".work/artifacts");
+            .parent()
+            .unwrap()
+            .join(".work/artifacts");
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(checker).arg(&path).status().unwrap();
+        let status = std::process::Command::new(checker)
+            .arg(&path)
+            .status()
+            .unwrap();
         std::fs::remove_file(path).unwrap();
         assert!(status.success());
     }
@@ -5434,14 +5578,18 @@ mod cb_derivation_candidate_tests {
         let x = crate::calc::X;
         let individual = crate::calc::ind_term(1);
         let b = crate::engine::CbLivePred {
-            kind: "concept", iri: 1, first: x, second: None,
+            kind: "concept",
+            iri: 1,
+            first: x,
+            second: None,
         };
         let clause = crate::engine::CbLiveClause {
             body: Vec::new(),
             head: vec![cb_live_pred_literal(&b)],
         };
         let ground_b = crate::engine::CbLivePred {
-            first: individual, ..b.clone()
+            first: individual,
+            ..b.clone()
         };
         let ground_clause = crate::engine::CbLiveClause {
             body: Vec::new(),
@@ -5558,31 +5706,46 @@ mod cb_derivation_candidate_tests {
         let candidate = cb_pred_send_coverage_candidate(&global, &live).unwrap();
         assert_eq!(candidate["senders"], serde_json::json!([]));
         assert_eq!(candidate["ground_context_index"], 0);
-        assert_eq!(candidate["root_sender"]["transfer_indices"], serde_json::json!([0, 1]));
+        assert_eq!(
+            candidate["root_sender"]["transfer_indices"],
+            serde_json::json!([0, 1])
+        );
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap().join(".work/artifacts");
+            .parent()
+            .unwrap()
+            .join(".work/artifacts");
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-root-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(checker).arg(&path).status().unwrap();
+        let status = std::process::Command::new(checker)
+            .arg(&path)
+            .status()
+            .unwrap();
         assert!(status.success());
 
-        if let Some(root_checker) =
-            std::env::var_os("KM_CB_TEST_SOURCE_ROOT_PRED_CLOSURE_CHECKER")
+        if let Some(root_checker) = std::env::var_os("KM_CB_TEST_SOURCE_ROOT_PRED_CLOSURE_CHECKER")
         {
             let prior = std::collections::HashMap::from([((0, true, 0), 0)]);
             let pred = cb_pred_event_evidence(&live, &live.insertion_history[1], &prior)
                 .expect("exact root Pred arrival evidence");
             let source = production["source"].clone();
-            let evidence = vec![serde_json::json!({
-                "kind": "seed", "prior_events": [], "trace": [], "discarded": []
-            }), pred];
-            let root_candidate = cb_source_root_pred_closure_candidate(
-                &source, &live, &evidence).expect("construct source-bound root Pred candidate");
+            let evidence = vec![
+                serde_json::json!({
+                    "kind": "seed", "prior_events": [], "trace": [], "discarded": []
+                }),
+                pred,
+            ];
+            let root_candidate = cb_source_root_pred_closure_candidate(&source, &live, &evidence)
+                .expect("construct source-bound root Pred candidate");
             std::fs::write(&path, serde_json::to_vec(&root_candidate).unwrap()).unwrap();
             let root_status = std::process::Command::new(root_checker)
-                .arg(&path).status().unwrap();
-            assert!(root_status.success(), "native source root Pred closure was rejected");
+                .arg(&path)
+                .status()
+                .unwrap();
+            assert!(
+                root_status.success(),
+                "native source root Pred closure was rejected"
+            );
 
             if let Some(canonical_checker) =
                 std::env::var_os("KM_CB_TEST_SOURCE_CANONICAL_CLOSURE_CHECKER")
@@ -5591,14 +5754,15 @@ mod cb_derivation_candidate_tests {
                     "version": 1,
                     "production_closure": root_candidate,
                 });
-                std::fs::write(
-                    &path,
-                    serde_json::to_vec(&canonical_candidate).unwrap(),
-                ).unwrap();
+                std::fs::write(&path, serde_json::to_vec(&canonical_candidate).unwrap()).unwrap();
                 let canonical_status = std::process::Command::new(canonical_checker)
-                    .arg(&path).status().unwrap();
-                assert!(canonical_status.success(),
-                    "native source canonical closure was rejected");
+                    .arg(&path)
+                    .status()
+                    .unwrap();
+                assert!(
+                    canonical_status.success(),
+                    "native source canonical closure was rejected"
+                );
             }
         }
         std::fs::remove_file(path).unwrap();
@@ -5629,27 +5793,32 @@ mod cb_derivation_candidate_tests {
         live.contexts[0].retained_clause_ids = vec![0, 1];
         let answer = std::collections::BTreeMap::from([(
             "A".to_string(),
-            std::collections::BTreeSet::from([
-                "B".to_string(),
-                "owl:Nothing".to_string(),
-            ]),
+            std::collections::BTreeSet::from(["B".to_string(), "owl:Nothing".to_string()]),
         )]);
-        let (rows, cells, unsatisfiable) =
-            cb_live_publication_rows(&live, &answer).unwrap();
-        assert_eq!(rows, vec![serde_json::json!({
-            "sub": 0,
-            "supers": [1],
-            "unsatisfiable": true,
-        })]);
-        assert_eq!(cells, vec![serde_json::json!({
-            "sub": 0,
-            "sup": 1,
-            "context_index": 0,
-        })]);
-        assert_eq!(unsatisfiable, vec![serde_json::json!({
-            "sub": 0,
-            "context_index": 0,
-        })]);
+        let (rows, cells, unsatisfiable) = cb_live_publication_rows(&live, &answer).unwrap();
+        assert_eq!(
+            rows,
+            vec![serde_json::json!({
+                "sub": 0,
+                "supers": [1],
+                "unsatisfiable": true,
+            })]
+        );
+        assert_eq!(
+            cells,
+            vec![serde_json::json!({
+                "sub": 0,
+                "sup": 1,
+                "context_index": 0,
+            })]
+        );
+        assert_eq!(
+            unsatisfiable,
+            vec![serde_json::json!({
+                "sub": 0,
+                "context_index": 0,
+            })]
+        );
 
         live.contexts[0].retained_clause_ids = vec![1];
         assert!(cb_live_publication_rows(&live, &answer)
@@ -5696,14 +5865,16 @@ mod cb_derivation_candidate_tests {
         let (candidate, unresolved) = cb_exact_taxonomy_candidate(&live).unwrap();
         assert_eq!(candidate["named_concepts"], serde_json::json!([0, 1, 2]));
         assert_eq!(candidate["cells"].as_array().unwrap().len(), 9);
-        assert_eq!(unresolved, 0, "all three omitted cells have one-element models");
+        assert_eq!(
+            unresolved, 0,
+            "all three omitted cells have one-element models"
+        );
         assert_eq!(candidate["cells"][0]["evidence"], "reflexive");
         assert_eq!(
             candidate["cells"][1]["evidence"],
             serde_json::json!({"positive": {"live_index": 0}})
         );
-        assert!(candidate["cells"][2]["evidence"]["negative"]["model"]
-            .is_object());
+        assert!(candidate["cells"][2]["evidence"]["negative"]["model"].is_object());
         assert_eq!(
             candidate["cells"][6]["evidence"],
             serde_json::json!({"unsatisfiable": {"live_index": 0}})
@@ -5723,11 +5894,8 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn canonical_binary_role_chains_allocate_finite_fresh_roles() {
-        let (target_roles, rules, derivations) = cb_canonical_binary_role_chains(
-            5,
-            &[(vec![0, 1], 2), (vec![0, 1, 2, 3], 4)],
-        )
-        .unwrap();
+        let (target_roles, rules, derivations) =
+            cb_canonical_binary_role_chains(5, &[(vec![0, 1], 2), (vec![0, 1, 2, 3], 4)]).unwrap();
         assert_eq!(target_roles, 7);
         assert_eq!(rules.len(), 4);
         assert_eq!(derivations.len(), 2);
@@ -5795,53 +5963,72 @@ mod cb_derivation_candidate_tests {
         assert_eq!(safe.concept_count, 4);
         assert_eq!(safe.role_count, 3);
         assert_eq!(safe.individual_count, 1);
-        assert_eq!(safe.chains, vec![serde_json::json!({
-            "body": [0, 1, 2], "sup": 2
-        })]);
-        assert_eq!(safe.clauses[0], serde_json::json!({
-            "core": {"clause": {"base": {"clause": {
-                "gci": {"body": [0], "head": [1, 2]}
-            }}}}
-        }));
-        assert_eq!(safe.clauses[5], serde_json::json!({
-            "core": {"clause": {"base": {"clause": {
-                "inv": {"role": 1, "inverse": 2}
-            }}}}
-        }));
+        assert_eq!(
+            safe.chains,
+            vec![serde_json::json!({
+                "body": [0, 1, 2], "sup": 2
+            })]
+        );
+        assert_eq!(
+            safe.clauses[0],
+            serde_json::json!({
+                "core": {"clause": {"base": {"clause": {
+                    "gci": {"body": [0], "head": [1, 2]}
+                }}}}
+            })
+        );
+        assert_eq!(
+            safe.clauses[5],
+            serde_json::json!({
+                "core": {"clause": {"base": {"clause": {
+                    "inv": {"role": 1, "inverse": 2}
+                }}}}
+            })
+        );
         assert_eq!(safe.clauses[6], serde_json::json!({"func": {"role": 2}}));
-        assert_eq!(safe.clauses[7], serde_json::json!({
-            "core": {"clause": {"nominal": {"clause": {
-                "concept": 3, "individual": 0
-            }}}}
-        }));
-        assert_eq!(safe.clauses[8], serde_json::json!({
-            "atMost": {"bound": 2, "role": 0, "filler": 1}
-        }));
+        assert_eq!(
+            safe.clauses[7],
+            serde_json::json!({
+                "core": {"clause": {"nominal": {"clause": {
+                    "concept": 3, "individual": 0
+                }}}}
+            })
+        );
+        assert_eq!(
+            safe.clauses[8],
+            serde_json::json!({
+                "atMost": {"bound": 2, "role": 0, "filler": 1}
+            })
+        );
     }
 
     #[test]
     fn source_exact_taxonomy_uses_real_production_traces_and_models() {
         let checker = std::env::var_os("KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER")
             .expect("the source-exact taxonomy test requires the real Lean checker");
-        let context_checker =
-            std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER")
-                .expect("the standalone context test requires the real Lean checker");
-        let production_checker =
-            std::env::var_os("KM_CB_TEST_SOURCE_PRODUCTION_TAXONOMY_CHECKER")
-                .expect("the shared-production taxonomy test requires the real Lean checker");
+        let context_checker = std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER")
+            .expect("the standalone context test requires the real Lean checker");
+        let production_checker = std::env::var_os("KM_CB_TEST_SOURCE_PRODUCTION_TAXONOMY_CHECKER")
+            .expect("the shared-production taxonomy test requires the real Lean checker");
         let term = |variable: i64| serde_json::json!({"var": {"index": variable}});
-        let concept = |id: usize| serde_json::json!({"predicate": {"predicate": {
-            "concept": {"concept": id, "term": term(0)}
-        }}});
+        let concept = |id: usize| {
+            serde_json::json!({"predicate": {"predicate": {
+                "concept": {"concept": id, "term": term(0)}
+            }}})
+        };
         let unit = |id: usize| serde_json::json!({"body": [], "head": [concept(id)]});
         let gci = serde_json::json!({"body": [concept(0)], "head": [concept(1)]});
-        let live_concept = |id: usize| serde_json::json!({
-            "kind": "concept", "iri": id,
-            "first": crate::calc::X, "second": null
-        });
-        let live_unit = |id: usize| serde_json::json!({
-            "body": [], "head": [live_concept(id)]
-        });
+        let live_concept = |id: usize| {
+            serde_json::json!({
+                "kind": "concept", "iri": id,
+                "first": crate::calc::X, "second": null
+            })
+        };
+        let live_unit = |id: usize| {
+            serde_json::json!({
+                "body": [], "head": [live_concept(id)]
+            })
+        };
         let live_gci = serde_json::json!({
             "body": [live_concept(0)], "head": [live_concept(1)]
         });
@@ -5926,7 +6113,11 @@ mod cb_derivation_candidate_tests {
         let witness_events = cb_public_witness_events(&publication).unwrap();
         let (context_document, event_nodes) =
             cb_standalone_context_proof_document(&publication, &witness_events).unwrap();
-        assert_eq!(event_nodes.len(), 3, "the shared DAG must deduplicate witnesses");
+        assert_eq!(
+            event_nodes.len(),
+            3,
+            "the shared DAG must deduplicate witnesses"
+        );
         std::fs::write(&proof_path, serde_json::to_vec(&context_document).unwrap()).unwrap();
         assert!(
             std::process::Command::new(&context_checker)
@@ -5973,9 +6164,14 @@ mod cb_derivation_candidate_tests {
             .status()
             .unwrap()
             .success();
-        assert!(accepted, "Lean must accept the exact production trace and countermodel matrix");
+        assert!(
+            accepted,
+            "Lean must accept the exact production trace and countermodel matrix"
+        );
         let regular_source = cb_regular_arbitrary_chain_source(
-            publication.pointer("/derivation/production_bound/global_model").unwrap(),
+            publication
+                .pointer("/derivation/production_bound/global_model")
+                .unwrap(),
         )
         .unwrap();
         let regular = cb_regular_arbitrary_chain_countermodel(&regular_source, 1, 0)
@@ -6000,7 +6196,10 @@ mod cb_derivation_candidate_tests {
             .status()
             .unwrap()
             .success();
-        assert!(rejected, "Lean must reject a forged source-exact publication bit");
+        assert!(
+            rejected,
+            "Lean must reject a forged source-exact publication bit"
+        );
         let _ = std::fs::remove_file(path);
         let _ = std::fs::remove_file(proof_path);
         let _ = std::fs::remove_file(production_path);
@@ -6008,17 +6207,19 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn certified_typed_source_rejects_disagreeing_embedded_runs() {
-        let source = |concept_count| serde_json::json!({
-            "version": 1,
-            "concept_count": concept_count,
-            "role_count": 0,
-            "function_count": 0,
-            "individual_count": 0,
-            "source_clauses": [],
-            "role_chains": [],
-            "role_axioms": [],
-            "ontology": []
-        });
+        let source = |concept_count| {
+            serde_json::json!({
+                "version": 1,
+                "concept_count": concept_count,
+                "role_count": 0,
+                "function_count": 0,
+                "individual_count": 0,
+                "source_clauses": [],
+                "role_chains": [],
+                "role_axioms": [],
+                "ontology": []
+            })
+        };
         let forged = serde_json::json!({
             "first": source(1),
             "second": source(2),
@@ -6030,8 +6231,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_regular_countermodel_passes_the_exact_lean_wire_checker() {
-        let Some(checker) = std::env::var_os("KM_CB_TEST_REGULAR_ARBITRARY_CHAIN_CHECKER")
-        else {
+        let Some(checker) = std::env::var_os("KM_CB_TEST_REGULAR_ARBITRARY_CHAIN_CHECKER") else {
             return;
         };
         let binding = serde_json::json!({
@@ -6084,11 +6284,13 @@ mod cb_derivation_candidate_tests {
         assert!(check(&document), "Lean must accept the native countermodel");
 
         let term = |index| serde_json::json!({"var": {"index": index}});
-        let role_literal = |role, source, target| serde_json::json!({
-            "predicate": {"predicate": {"role": {
-                "role": role, "source": term(source), "target": term(target)
-            }}}
-        });
+        let role_literal = |role, source, target| {
+            serde_json::json!({
+                "predicate": {"predicate": {"role": {
+                    "role": role, "source": term(source), "target": term(target)
+                }}}
+            })
+        };
         let chain_binding = serde_json::json!({
             "version": 1,
             "concept_count": 2,
@@ -6111,10 +6313,9 @@ mod cb_derivation_candidate_tests {
             &serde_json::json!({"production": {"source": chain_binding}}),
         )
         .unwrap();
-        let chain_countermodel =
-            cb_regular_arbitrary_chain_countermodel(&chain_source, 0, 1)
-                .expect("construct an arbitrary-chain countermodel")
-                .expect("the role-only source does not entail the concept query");
+        let chain_countermodel = cb_regular_arbitrary_chain_countermodel(&chain_source, 0, 1)
+            .expect("construct an arbitrary-chain countermodel")
+            .expect("the role-only source does not entail the concept query");
         document = serde_json::json!({
             "concept_count": chain_source.concept_count,
             "role_count": chain_source.role_count,
@@ -6199,10 +6400,9 @@ mod cb_derivation_candidate_tests {
             &serde_json::json!({"production": {"source": multi_functional_binding}}),
         )
         .unwrap();
-        let multi_countermodel =
-            cb_regular_arbitrary_chain_countermodel(&multi_source, 0, 1)
-                .expect("construct a repeated-definition countermodel")
-                .expect("two functional roles do not entail the concept query");
+        let multi_countermodel = cb_regular_arbitrary_chain_countermodel(&multi_source, 0, 1)
+            .expect("construct a repeated-definition countermodel")
+            .expect("two functional roles do not entail the concept query");
         document = serde_json::json!({
             "concept_count": multi_source.concept_count,
             "role_count": multi_source.role_count,
@@ -6218,11 +6418,13 @@ mod cb_derivation_candidate_tests {
             "Lean must accept repeated universal-marker definitions"
         );
 
-        let concept_literal = |concept, value| serde_json::json!({
-            "predicate": {"predicate": {"concept": {
-                "concept": concept, "term": value
-            }}}
-        });
+        let concept_literal = |concept, value| {
+            serde_json::json!({
+                "predicate": {"predicate": {"concept": {
+                    "concept": concept, "term": value
+                }}}
+            })
+        };
         let gci_binding = serde_json::json!({
             "version": 1,
             "concept_count": 3,
@@ -6314,8 +6516,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn typed_regular_cardinality_countermodel_respects_function_allocation() {
-        let Some(checker) =
-            std::env::var_os("KM_CB_TEST_TYPED_REGULAR_ARBITRARY_CHAIN_CHECKER")
+        let Some(checker) = std::env::var_os("KM_CB_TEST_TYPED_REGULAR_ARBITRARY_CHAIN_CHECKER")
         else {
             return;
         };
@@ -6462,9 +6663,7 @@ mod cb_derivation_candidate_tests {
                     "first": first, "second": second}]
             }]
         });
-        assert!(cb_finite_countermodel(&state, 0, 1, 1)
-            .unwrap()
-            .is_none());
+        assert!(cb_finite_countermodel(&state, 0, 1, 1).unwrap().is_none());
         let model = cb_finite_countermodel(&state, 0, 1, 2)
             .unwrap()
             .expect("two distinct constants need and admit two elements");
@@ -6488,9 +6687,7 @@ mod cb_derivation_candidate_tests {
                     "second": crate::calc::FTERM_BASE + 1}]
             }]
         });
-        assert!(cb_finite_countermodel(&state, 0, 1, 1)
-            .unwrap()
-            .is_none());
+        assert!(cb_finite_countermodel(&state, 0, 1, 1).unwrap().is_none());
         let model = cb_finite_countermodel(&state, 0, 1, 2)
             .unwrap()
             .expect("a fixed-point-free unary function exists on two elements");
@@ -6866,9 +7063,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_source_live_pred_candidate_passes_real_lean_checker() {
-        let Some(checker) =
-            std::env::var_os("KM_CB_TEST_SOURCE_LIVE_DERIVATION_CHECKER")
-        else {
+        let Some(checker) = std::env::var_os("KM_CB_TEST_SOURCE_LIVE_DERIVATION_CHECKER") else {
             return;
         };
         let fact = crate::engine::CbLivePred {
@@ -6942,102 +7137,141 @@ mod cb_derivation_candidate_tests {
         let candidate = cb_source_live_derivation_candidate(&source, &live, &evidence)
             .expect("source-bound live candidate");
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap().join(".work/artifacts")
+            .parent()
+            .unwrap()
+            .join(".work/artifacts")
             .join(format!("cb-source-live-pred-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(&checker).arg(&path).status().unwrap();
-        assert!(status.success(), "source-bound live Pred candidate was rejected");
+        let status = std::process::Command::new(&checker)
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(
+            status.success(),
+            "source-bound live Pred candidate was rejected"
+        );
 
         let mut pending = candidate.clone();
         pending["pending_messages"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&pending).unwrap()).unwrap();
         let pending_status = std::process::Command::new(&checker)
-            .arg(&path).status().unwrap();
-        assert!(!pending_status.success(),
-            "source-bound live checker accepted pending messages");
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(
+            !pending_status.success(),
+            "source-bound live checker accepted pending messages"
+        );
 
         let mut dirty = candidate.clone();
         dirty["contexts"][0]["dirty"] = serde_json::json!(true);
         std::fs::write(&path, serde_json::to_vec(&dirty).unwrap()).unwrap();
         let dirty_status = std::process::Command::new(&checker)
-            .arg(&path).status().unwrap();
-        assert!(!dirty_status.success(),
-            "source-bound live checker accepted a dirty context");
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(
+            !dirty_status.success(),
+            "source-bound live checker accepted a dirty context"
+        );
 
         let mut missing_pool_entry = candidate.clone();
         missing_pool_entry["contexts"][0]["pred_pool_ids"] = serde_json::json!([]);
         missing_pool_entry["contexts"][0]["pred_hwm"] = serde_json::json!(0);
         std::fs::write(&path, serde_json::to_vec(&missing_pool_entry).unwrap()).unwrap();
         let missing_pool_status = std::process::Command::new(&checker)
-            .arg(&path).status().unwrap();
-        assert!(!missing_pool_status.success(),
-            "source-bound live checker accepted a missing eligible Pred-pool entry");
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(
+            !missing_pool_status.success(),
+            "source-bound live checker accepted a missing eligible Pred-pool entry"
+        );
 
-        if let Some(local_checker) =
-            std::env::var_os("KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER")
-        {
+        if let Some(local_checker) = std::env::var_os("KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER") {
             let local = serde_json::json!({"version": 1, "live": candidate});
             std::fs::write(&path, serde_json::to_vec(&local).unwrap()).unwrap();
             let local_status = std::process::Command::new(local_checker)
-                .arg(&path).status().unwrap();
-            assert!(local_status.success(), "native source local closure was rejected");
+                .arg(&path)
+                .status()
+                .unwrap();
+            assert!(
+                local_status.success(),
+                "native source local closure was rejected"
+            );
         }
 
-        if let Some(hyper_checker) =
-            std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER")
-        {
+        if let Some(hyper_checker) = std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER") {
             let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Hyper candidate");
             std::fs::write(&path, serde_json::to_vec(&hyper).unwrap()).unwrap();
             let hyper_status = std::process::Command::new(hyper_checker)
-                .arg(&path).status().unwrap();
-            assert!(hyper_status.success(), "native source Hyper closure was rejected");
+                .arg(&path)
+                .status()
+                .unwrap();
+            assert!(
+                hyper_status.success(),
+                "native source Hyper closure was rejected"
+            );
 
             let mut forged = hyper;
             let first_term = forged["order"]["ordered_terms"][0].clone();
-            forged["order"]["ordered_terms"].as_array_mut().unwrap()
+            forged["order"]["ordered_terms"]
+                .as_array_mut()
+                .unwrap()
                 .push(first_term);
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
             let forged_status = std::process::Command::new(
-                std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER").unwrap())
-                .arg(&path).status().unwrap();
-            assert!(!forged_status.success(),
-                "source Hyper checker accepted a duplicate term universe");
+                std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER").unwrap(),
+            )
+            .arg(&path)
+            .status()
+            .unwrap();
+            assert!(
+                !forged_status.success(),
+                "source Hyper checker accepted a duplicate term universe"
+            );
         }
 
-        if let Some(join3_checker) =
-            std::env::var_os("KM_CB_TEST_SOURCE_JOIN3_CLOSURE_CHECKER")
-        {
+        if let Some(join3_checker) = std::env::var_os("KM_CB_TEST_SOURCE_JOIN3_CLOSURE_CHECKER") {
             let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Join-3 parent candidate");
             let join3 = serde_json::json!({"version": 1, "hyper_closure": hyper});
             std::fs::write(&path, serde_json::to_vec(&join3).unwrap()).unwrap();
             let join3_status = std::process::Command::new(join3_checker)
-                .arg(&path).status().unwrap();
-            assert!(join3_status.success(), "native source Join-3 closure was rejected");
+                .arg(&path)
+                .status()
+                .unwrap();
+            assert!(
+                join3_status.success(),
+                "native source Join-3 closure was rejected"
+            );
         }
 
-        if let Some(succ_checker) =
-            std::env::var_os("KM_CB_TEST_SOURCE_SUCC_CLOSURE_CHECKER")
-        {
+        if let Some(succ_checker) = std::env::var_os("KM_CB_TEST_SOURCE_SUCC_CLOSURE_CHECKER") {
             let succ = cb_source_succ_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Succ candidate");
             std::fs::write(&path, serde_json::to_vec(&succ).unwrap()).unwrap();
             let succ_status = std::process::Command::new(succ_checker)
-                .arg(&path).status().unwrap();
-            assert!(succ_status.success(), "native source Succ closure was rejected");
+                .arg(&path)
+                .status()
+                .unwrap();
+            assert!(
+                succ_status.success(),
+                "native source Succ closure was rejected"
+            );
         }
 
-        if let Some(eq_checker) =
-            std::env::var_os("KM_CB_TEST_SOURCE_EQ_CLOSURE_CHECKER")
-        {
+        if let Some(eq_checker) = std::env::var_os("KM_CB_TEST_SOURCE_EQ_CLOSURE_CHECKER") {
             let succ = cb_source_succ_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Eq parent candidate");
             let eq = serde_json::json!({"version": 1, "succ_closure": succ});
             std::fs::write(&path, serde_json::to_vec(&eq).unwrap()).unwrap();
             let eq_status = std::process::Command::new(eq_checker)
-                .arg(&path).status().unwrap();
+                .arg(&path)
+                .status()
+                .unwrap();
             assert!(eq_status.success(), "native source Eq closure was rejected");
         }
 
@@ -7049,26 +7283,33 @@ mod cb_derivation_candidate_tests {
             let pred = serde_json::json!({"version": 1, "eq_closure": eq});
             std::fs::write(&path, serde_json::to_vec(&pred).unwrap()).unwrap();
             let pred_status = std::process::Command::new(pred_checker)
-                .arg(&path).status().unwrap();
-            assert!(pred_status.success(),
-                "native source ordinary Pred closure was rejected");
+                .arg(&path)
+                .status()
+                .unwrap();
+            assert!(
+                pred_status.success(),
+                "native source ordinary Pred closure was rejected"
+            );
         }
 
         let mut forged = candidate;
-        forged["insertion_evidence"][1]["sender_event"]["event_index"] =
-            serde_json::json!(1);
+        forged["insertion_evidence"][1]["sender_event"]["event_index"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
         let rejected = !std::process::Command::new(&checker)
-            .arg(&path).status().unwrap().success();
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success();
         let _ = std::fs::remove_file(&path);
-        assert!(rejected, "source-bound live checker accepted a forward Pred reference");
+        assert!(
+            rejected,
+            "source-bound live checker accepted a forward Pred reference"
+        );
     }
 
     #[test]
     fn pred_standalone_dag_passes_the_real_lean_checker() {
-        let Some(checker) =
-            std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER")
-        else {
+        let Some(checker) = std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER") else {
             return;
         };
         let predicate = |iri| crate::engine::CbLivePred {

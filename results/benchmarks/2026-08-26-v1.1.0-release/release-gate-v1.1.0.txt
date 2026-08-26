@@ -1,0 +1,37 @@
+{
+  "comparisons": {
+    "elk": {
+      "mean_peak_mib": true,
+      "mean_wall_s": true,
+      "median_peak_mib": true,
+      "median_wall_s": true
+    },
+    "hermit": {
+      "mean_peak_mib": true,
+      "mean_wall_s": true,
+      "median_peak_mib": true,
+      "median_wall_s": true
+    },
+    "konclude": {
+      "mean_peak_mib": true,
+      "mean_wall_s": true,
+      "median_peak_mib": true,
+      "median_wall_s": true
+    },
+    "sequoia_strict": {
+      "mean_peak_mib": true,
+      "mean_wall_s": true,
+      "median_peak_mib": true,
+      "median_wall_s": true
+    }
+  },
+  "errors": 0,
+  "metrics": {
+    "mean_peak_mib": 225.69637901861256,
+    "mean_wall_s": 1.3996642978003386,
+    "median_peak_mib": 27.02,
+    "median_wall_s": 0.1303
+  },
+  "successful": 591,
+  "terminal": 592
+}

@@ -1172,22 +1172,26 @@ impl SaturationTaskHandleAlgorithm {
         // classifying without those assertions.
         let has_unmaterialized_model_role_assertions = {
             let individual = calc_alg_context.ontology_arenas().individual(nominal_indi);
-            individual.get_assertion_role_linker().iter().any(|assertion| {
-                !covered_model_assertions.contains(&(
-                    assertion.individual,
-                    assertion.role,
-                    false,
-                ))
-            }) || individual
-                .get_reverse_assertion_role_linker()
+            individual
+                .get_assertion_role_linker()
                 .iter()
                 .any(|assertion| {
                     !covered_model_assertions.contains(&(
                         assertion.individual,
                         assertion.role,
-                        true,
+                        false,
                     ))
                 })
+                || individual
+                    .get_reverse_assertion_role_linker()
+                    .iter()
+                    .any(|assertion| {
+                        !covered_model_assertions.contains(&(
+                            assertion.individual,
+                            assertion.role,
+                            true,
+                        ))
+                    })
         };
         if has_unmaterialized_model_role_assertions {
             self.update_direct_adding_individual_status_flags(

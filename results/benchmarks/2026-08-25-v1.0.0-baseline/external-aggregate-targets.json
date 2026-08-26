@@ -1,0 +1,33 @@
+{
+  "arms": {
+    "elk": {
+      "correct_completions": 531,
+      "mean_peak_mib": 493.3271563088512,
+      "mean_wall_s": 1.5207743879472693,
+      "median_peak_mib": 234.3,
+      "median_wall_s": 0.752
+    },
+    "hermit": {
+      "correct_completions": 557,
+      "mean_peak_mib": 1331.7202513464993,
+      "mean_wall_s": 13.117216337522441,
+      "median_peak_mib": 714.22,
+      "median_wall_s": 1.8782
+    },
+    "konclude": {
+      "correct_completions": 587,
+      "mean_peak_mib": 559.899199318569,
+      "mean_wall_s": 3.2764586030664393,
+      "median_peak_mib": 76.87,
+      "median_wall_s": 0.2814
+    },
+    "sequoia_strict": {
+      "correct_completions": 339,
+      "mean_peak_mib": 2207.3510029498525,
+      "mean_wall_s": 7.370391150442479,
+      "median_peak_mib": 536.15,
+      "median_wall_s": 2.5371
+    }
+  },
+  "eligible_ontologies": 589
+}

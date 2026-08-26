@@ -147,9 +147,7 @@ impl TopRoleScan {
 /// Call only when [`TopRoleScan::eliminable`] holds.
 pub fn elide_vacuous_inclusions(ontology: &mut Ontology, reg: &IriRegistry) -> usize {
     ontology.retain_axioms(|axiom| match axiom {
-        Axiom::RoleInclusion(_, sup) | Axiom::RoleChain(_, sup) => {
-            !is_builtin_top_role(reg, sup)
-        }
+        Axiom::RoleInclusion(_, sup) | Axiom::RoleChain(_, sup) => !is_builtin_top_role(reg, sup),
         _ => true,
     })
 }
@@ -159,9 +157,7 @@ pub fn elide_vacuous_inclusions(ontology: &mut Ontology, reg: &IriRegistry) -> u
 /// they are what puts the builtin into the `TInput` role table.
 pub fn elide_vacuous_rbox_rows(rbox: &mut Vec<RboxRecord>, reg: &IriRegistry) {
     rbox.retain(|record| match record {
-        RboxRecord::Subrole(_, sup)
-        | RboxRecord::Chain(_, _, sup)
-        | RboxRecord::ChainN(_, sup) => {
+        RboxRecord::Subrole(_, sup) | RboxRecord::Chain(_, _, sup) | RboxRecord::ChainN(_, sup) => {
             !is_builtin_top_role(reg, sup)
         }
         _ => true,
@@ -248,7 +244,10 @@ mod tests {
         let mentions_top = |name: &str| name.contains("topObjectProperty");
         for clause in &result.clauses {
             let json = serde_json::to_string(clause).expect("clause json");
-            assert!(!mentions_top(&json), "clause still mentions the builtin: {json}");
+            assert!(
+                !mentions_top(&json),
+                "clause still mentions the builtin: {json}"
+            );
         }
         for row in &result.rbox {
             assert!(

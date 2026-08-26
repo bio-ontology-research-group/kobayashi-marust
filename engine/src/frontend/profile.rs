@@ -234,6 +234,13 @@ pub struct OntologyProfile {
     /// before it may publish the nominal-free taxonomy.
     #[serde(default)]
     pub positive_el_abox_materializable: bool,
+    /// Source-only admission gate for the disjoint-union ABox projection. This
+    /// is not itself a consistency certificate: the orchestrator must first
+    /// obtain an exact full-ontology consistency verdict. The gate excludes
+    /// every constructor that can connect otherwise disjoint model components
+    /// through a concept nominal, universal role, key, import, or rule.
+    #[serde(default)]
+    pub disjoint_union_abox_candidate: bool,
     /// Source-only certificate for the inverse-aware cardinality route. Every
     /// object role used by a number restriction (including functionality) is
     /// in a role-hierarchy component disjoint from inverse/symmetric and
@@ -680,7 +687,10 @@ impl<'a> SourceProfileBuilder<'a> {
             "ObjectPropertyDomain" => {
                 self.logical_rbox(head);
                 self.stats.domain_axioms += 1;
-                self.object_property_domain_range_certificate(args.first().copied(), args.get(1).copied());
+                self.object_property_domain_range_certificate(
+                    args.first().copied(),
+                    args.get(1).copied(),
+                );
                 let domain_role = args.first().and_then(|arg| arg.as_atom());
                 if let Some(r) = args.first() {
                     self.object_role(r);
@@ -695,7 +705,10 @@ impl<'a> SourceProfileBuilder<'a> {
             "ObjectPropertyRange" => {
                 self.logical_rbox(head);
                 self.stats.range_axioms += 1;
-                self.object_property_domain_range_certificate(args.first().copied(), args.get(1).copied());
+                self.object_property_domain_range_certificate(
+                    args.first().copied(),
+                    args.get(1).copied(),
+                );
                 let range_role = args.first().and_then(|arg| arg.as_atom());
                 if let Some(r) = args.first() {
                     self.object_role(r);
@@ -877,7 +890,19 @@ impl<'a> SourceProfileBuilder<'a> {
         }
     }
 
-    pub fn finish(mut self, file_bytes: u64) -> OntologyProfile {
+    pub fn finish(self, file_bytes: u64) -> OntologyProfile {
+        self.finish_with_separable_class_names(file_bytes).0
+    }
+
+    /// Finish the profile and return source-signature classes only when an
+    /// ABox-projection route could use them. Ordinary and rejected ABox inputs
+    /// therefore allocate no extra signature vector. The orchestrator still
+    /// needs an exact consistency verdict before the disjoint-union candidate
+    /// may project anything.
+    pub(crate) fn finish_with_separable_class_names(
+        mut self,
+        file_bytes: u64,
+    ) -> (OntologyProfile, Vec<&'a str>) {
         // Compute borrowed-set certificates before moving the raw axiom-type
         // map and entity sets into their owned statistics representation.
         let card_number_role_separable = self.card_number_role_separable();
@@ -984,16 +1009,31 @@ impl<'a> SourceProfileBuilder<'a> {
             self.nominal_from_concept,
             identity_consistent,
         );
-        OntologyProfile {
-            schema_version: 2,
-            positive_abox_tbox_separable,
-            positive_el_abox_materializable,
-            inverse_cardinality_role_separable,
-            card_number_role_separable,
-            expressivity: self.expr,
-            source: self.stats,
-            clauses: ClauseStatistics::default(),
-        }
+        let any_concept_nominal =
+            self.nominal_from_concept || !self.conditional_nominal_roles.is_empty();
+        let disjoint_union_abox_candidate =
+            disjoint_union_abox_candidate(&self.stats, &self.expr, any_concept_nominal);
+        let mut separable_class_names =
+            if positive_abox_tbox_separable || disjoint_union_abox_candidate {
+                self.classes.iter().copied().collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+        separable_class_names.sort_unstable();
+        (
+            OntologyProfile {
+                schema_version: 2,
+                positive_abox_tbox_separable,
+                positive_el_abox_materializable,
+                disjoint_union_abox_candidate,
+                inverse_cardinality_role_separable,
+                card_number_role_separable,
+                expressivity: self.expr,
+                source: self.stats,
+                clauses: ClauseStatistics::default(),
+            },
+            separable_class_names,
+        )
     }
 
     /// Decide the ground equality/inequality fragment exactly.
@@ -1701,6 +1741,28 @@ impl<'a> SourceProfileBuilder<'a> {
     }
 }
 
+/// Admit a source whose ABox may be projected after, and only after, an exact
+/// consistency decision for the full ontology. Nominal-free DL TBoxes without
+/// the universal role are closed under disjoint unions. Individual names can
+/// all be interpreted in the certified full-model component, so the ABox
+/// cannot turn a TBox countermodel into a new named-class subsumption.
+///
+/// Keys can compare data values across components; imports and rules escape the
+/// self-contained local TBox contract. They therefore fail closed here.
+fn disjoint_union_abox_candidate(
+    source: &SourceStatistics,
+    expr: &ExpressivityProfile,
+    nominal_from_concept: bool,
+) -> bool {
+    source.abox_axioms > 0
+        && !nominal_from_concept
+        && !expr.universal_role
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.axiom_types.get("HasKey").copied().unwrap_or(0) == 0
+}
+
 /// Prove that an ABox may be omitted while classifying named TBox concepts.
 ///
 /// The accepted source fragment has only positive assertions and a TBox/RBox
@@ -2188,6 +2250,32 @@ mod tests {
                 .bottom_role_occurrences,
             1
         );
+    }
+
+    #[test]
+    fn disjoint_union_abox_gate_excludes_component_connectors() {
+        let admitted = source(
+            r#"Ontology(
+              DisjointClasses(<A> <B>)
+              InverseObjectProperties(<r> <s>)
+              ClassAssertion(<A> <a>)
+              SameIndividual(<a> <aa>)
+              DifferentIndividuals(<aa> <b>)
+            )"#,
+        );
+        assert!(admitted.disjoint_union_abox_candidate);
+        assert!(!admitted.positive_abox_tbox_separable);
+
+        for rejected in [
+            "Ontology(EquivalentClasses(<A> ObjectOneOf(<a>)) ClassAssertion(<A> <a>))",
+            "Ontology(ObjectPropertyDomain(<r> ObjectHasValue(<s> <a>)) ClassAssertion(<A> <a>))",
+            "Ontology(SubClassOf(<A> ObjectAllValuesFrom(owl:topObjectProperty <B>)) ClassAssertion(<A> <a>))",
+            "Ontology(HasKey(<A> (<p>)) ClassAssertion(<A> <a>))",
+            "Ontology(Import(<http://e/import>) ClassAssertion(<A> <a>))",
+            "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))) ClassAssertion(<A> <a>))",
+        ] {
+            assert!(!source(rejected).disjoint_union_abox_candidate, "{rejected}");
+        }
     }
 
     #[test]

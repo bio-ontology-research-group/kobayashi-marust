@@ -248,8 +248,10 @@ fn mandatory_lean_rejection_prevents_publication() {
     assert!(document["public_subsumptions"].is_array());
     assert!(document["unsatisfiable"].is_array());
     assert!(document["inconsistent"].is_boolean());
-    assert!(document["inconsistency_witness"].is_null()
-        || document["inconsistency_witness"].is_object());
+    assert!(
+        document["inconsistency_witness"].is_null()
+            || document["inconsistency_witness"].is_object()
+    );
     let derivation_document = &document["derivation"];
     assert_eq!(derivation_document["version"], 2);
     let production_bound = &derivation_document["production_bound"];
@@ -271,9 +273,7 @@ fn mandatory_lean_rejection_prevents_publication() {
         assert!(context["query_concept"].is_null() || context["query_concept"].is_number());
         assert!(context["core"].is_array());
     }
-    let history = live_state["insertion_history"]
-        .as_array()
-        .unwrap();
+    let history = live_state["insertion_history"].as_array().unwrap();
     assert!(!history.is_empty());
     let mut saw_core = false;
     let mut saw_ontology_fact = false;
@@ -296,11 +296,10 @@ fn mandatory_lean_rejection_prevents_publication() {
             saw_hyper = true;
             let evidence = &event["rule_evidence"];
             assert_eq!(evidence["kind"], "hyper");
-            assert!(evidence["ontology_index"].as_u64().unwrap()
-                < live_state["source_ontology"]
-                    .as_array()
-                    .unwrap()
-                    .len() as u64);
+            assert!(
+                evidence["ontology_index"].as_u64().unwrap()
+                    < live_state["source_ontology"].as_array().unwrap().len() as u64
+            );
             let premises = evidence["context_clause_ids"].as_array().unwrap();
             let matched = evidence["matched_predicates"].as_array().unwrap();
             assert_eq!(premises.len(), matched.len());
@@ -486,9 +485,11 @@ fn source_exact_lean_checker_accepts_real_cb_publication() {
     let bundle = snapshot_path("source-exact-live-bundle");
     let exact = snapshot_path("source-exact-matrix");
     let x = serde_json::json!({"var": {"index": 0}});
-    let concept = |id| serde_json::json!({"predicate": {"predicate": {"concept": {
-        "concept": id, "term": x
-    }}}});
+    let concept = |id| {
+        serde_json::json!({"predicate": {"predicate": {"concept": {
+            "concept": id, "term": x
+        }}}})
+    };
     std::fs::write(
         &source,
         serde_json::to_vec(&serde_json::json!({
@@ -529,8 +530,14 @@ fn source_exact_lean_checker_accepts_real_cb_publication() {
     assert!(!output.stdout.is_empty());
     let candidate: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&exact).unwrap()).unwrap();
-    assert_eq!(candidate["source"]["source_clauses"][0]["gci"]["body"], serde_json::json!([0]));
-    assert_eq!(candidate["taxonomy"]["published"], serde_json::json!([true, true, false, true]));
+    assert_eq!(
+        candidate["source"]["source_clauses"][0]["gci"]["body"],
+        serde_json::json!([0])
+    );
+    assert_eq!(
+        candidate["taxonomy"]["published"],
+        serde_json::json!([true, true, false, true])
+    );
     std::fs::remove_file(source).unwrap();
     std::fs::remove_file(bundle).unwrap();
     std::fs::remove_file(exact).unwrap();

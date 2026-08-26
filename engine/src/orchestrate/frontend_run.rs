@@ -64,10 +64,10 @@ fn giant_source_uses_certified_rbox(path: &Path) -> std::io::Result<bool> {
         file.seek(SeekFrom::End(-(TAIL as i64)))?;
         let mut tail = Vec::with_capacity(TAIL as usize);
         file.read_to_end(&mut tail)?;
-        if TOKENS.iter().any(|token| {
-            tail.windows(token.len())
-                .any(|window| window == *token)
-        }) {
+        if TOKENS
+            .iter()
+            .any(|token| tail.windows(token.len()).any(|window| window == *token))
+        {
             return Ok(true);
         }
         file.seek(SeekFrom::Start(0))?;

@@ -475,6 +475,40 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     ofn_to_clauses_requested(text, requested)
 }
 
+/// Cheap performance-only screen for the optimistic ABox parse. Every source
+/// node is still fed to the complete profile builder, and a failed profile
+/// reparses the full ontology. These exclusions merely avoid a second parse on
+/// source shapes that the final certificate necessarily rejects.
+fn likely_separable_positive_abox(text: &str) -> bool {
+    const REJECT: &[&str] = &[
+        "owl:Nothing",
+        "owl#Nothing",
+        "owl:topObjectProperty",
+        "owl#topObjectProperty",
+        "DisjointClasses(",
+        "DisjointUnion(",
+        "ObjectComplementOf(",
+        "ObjectMinCardinality(",
+        "ObjectMaxCardinality(",
+        "ObjectExactCardinality(",
+        "DataMinCardinality(",
+        "DataMaxCardinality(",
+        "DataExactCardinality(",
+        "DataPropertyRange(",
+        "FunctionalDataProperty(",
+        "ObjectOneOf(",
+        "ObjectHasValue(",
+        "DataHasValue(",
+        "HasKey(",
+        "DLSafeRule(",
+        "Import(",
+    ];
+    (text.contains("ClassAssertion(")
+        || text.contains("ObjectPropertyAssertion(")
+        || text.contains("DataPropertyAssertion("))
+        && !REJECT.iter().any(|token| text.contains(token))
+}
+
 /// Route-explicit frontend core. Production selects `requested` from KM_ROUTE;
 /// tests use the wrapper below so they can exercise automatic routing without
 /// relying on a pre-existing KM_ROUTE value.
@@ -499,7 +533,11 @@ fn ofn_to_clauses_requested(
     let mut declared_raw: Vec<&str> = Vec::new();
     let mut data_ranges = data_range::DataRanges::default();
     let mut data_abox = data_abox::DataAbox::default();
-    let mut ontology = parse::parse_axioms_observed(&mut reg, text, |node| {
+    let speculative_abox_omission = requested == crate::routing::Route::Auto
+        && std::env::var_os("KM_NO_FAST_SEPARABLE_ABOX_PARSE").is_none()
+        && text.len() >= (32 << 20)
+        && likely_separable_positive_abox(text);
+    let mut ontology = parse::parse_axioms_observed_filtered(&mut reg, text, |node| {
         profile_builder.observe(node);
         rule_certificate_scan.observe(node);
         top_role_scan.observe(node);
@@ -509,6 +547,7 @@ fn ofn_to_clauses_requested(
         if let Some(name) = parse::declared_class_node(node) {
             declared_raw.push(name);
         }
+        !speculative_abox_omission || !parse::is_abox_axiom_node(node)
     })?;
     // `R ⊑ owl:topObjectProperty` is a tautology. When it is the ontology's only
     // mention of the builtin, removing it keeps every entailment and every CB
@@ -525,11 +564,18 @@ fn ofn_to_clauses_requested(
             eprintln!("KM_DEBUG_TOP_ROLE elided {removed} vacuous top-role inclusion(s)");
         }
     }
-    let ontology = ontology;
+    let mut ontology = ontology;
     // Source features are now complete and their borrowed distinct-entity sets
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
-    let mut profile = profile_builder.finish(text.len() as u64);
+    let (mut profile, source_class_raw) =
+        profile_builder.finish_with_separable_class_names(text.len() as u64);
+    if speculative_abox_omission && !profile.positive_abox_tbox_separable {
+        // The source observer could not prove that dropping the ABox preserves
+        // consistency and every named TBox consequence. Rebuild the complete
+        // syntax representation before any normalization or routing decision.
+        ontology = parse::parse_axioms(&mut reg, text)?;
+    }
     // A certified rule/ABox clash makes the full ontology inconsistent before
     // worker selection. In that case unsupported source rules cannot restore
     // consistency, so it is safe to admit every independently certified
@@ -561,11 +607,47 @@ fn ofn_to_clauses_requested(
     // Named bundles control clausification as well as the later worker. This
     // call occurs before normalisation and before any reasoner thread starts.
     route.apply_environment();
+    // The source-profile certificate proves that this positive ABox is
+    // consistent and cannot alter any public TBox subsumption. Remove the
+    // certified-irrelevant ABox before normalization so its AST storage no
+    // longer overlaps the often much larger TBox clause set. The theorem is
+    // route-independent: automatic classification and an explicitly requested
+    // ELC leaf may both use it. The profile and IRI registry were completed
+    // before this point and remain authoritative.
+    let disjoint_union_consistent = automatic
+        && profile.disjoint_union_abox_candidate
+        && std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some();
+    // The bounded consistency probe needs the complete typed ABox, but not the
+    // duplicate nominal clauses used by the CB fallback. Build the TBox-only
+    // clause view on its first pass while retaining `nominal_abox`. If the
+    // exact probe declines, the orchestrator recursively rebuilds the ordinary
+    // v1 view with `KM_DISJOINT_UNION_ABOX_DECLINED` set.
+    let disjoint_union_precheck = automatic
+        && profile.disjoint_union_abox_candidate
+        && profile.source.abox_axioms >= 8
+        && std::env::var_os("KM_ABOX_DISJOINT_UNION_CHECK").is_some()
+        && std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_none()
+        && std::env::var_os("KM_DISJOINT_UNION_ABOX_DECLINED").is_none();
+    let omit_separable_abox = (automatic || route == crate::routing::Route::Elc)
+        && profile.source.abox_axioms > 0
+        && std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION").is_none()
+        && (profile.positive_abox_tbox_separable || disjoint_union_consistent);
+    if omit_separable_abox {
+        ontology.retain_axioms(|axiom| !axiom.is_abox());
+        data_abox = data_abox::DataAbox::default();
+        // The retained payload no longer contains a typed ABox for the
+        // positive-EL materialization consumer. Consistency is supplied either
+        // by `positive_abox_tbox_separable` or by the exact full-ontology
+        // verdict carried in `KM_DISJOINT_UNION_ABOX_CONSISTENT`; the original
+        // source counts and signature remain authoritative.
+        profile.positive_el_abox_materializable = false;
+    }
     // ELC computes bottom propagation as part of its own complete fixpoint.
     // Building the general SROIQ bottom certificate is therefore redundant on
     // an ELC-only route and can be quadratic on giant flat taxonomies with
     // many paths to owl:Nothing. Other routes retain the prepass unchanged.
-    let mut bottom_prepass = if route_needs_bottom_prepass(route)
+    let mut bottom_prepass = if !omit_separable_abox
+        && route_needs_bottom_prepass(route)
         && std::env::var_os("KM_NO_BOTTOM_PREPASS").is_none()
     {
         Some(bottom_prepass::BottomPrepass::from_ontology(&ontology))
@@ -583,14 +665,26 @@ fn ofn_to_clauses_requested(
     }
     t.lap("parse+axioms");
     let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
-    let mut nominal_abox = collect_nominal_abox(&ontology, &abox, &hooks, &profile.source);
+    let mut nominal_abox = if omit_separable_abox {
+        crate::json_io::NominalAboxMeta::default()
+    } else {
+        collect_nominal_abox(&ontology, &abox, &hooks, &profile.source)
+    };
     // Project the named-class ABox-consistency data before the AST is dropped
     // (cheap: `None` unless the ontology has named-class disjointness). The
     // clash check is finished after the RBox domain/range records are built.
-    let abox_data = abox_consistency::collect(&ontology);
-    let nominal_enumeration_inconsistent =
-        abox_consistency::nominal_enumeration_inconsistent(&ontology);
-    let (asserted_direct, asserted_roles) = abox_consistency::asserted_profile(&ontology);
+    let (abox_data, nominal_enumeration_inconsistent, asserted_direct, asserted_roles) =
+        if omit_separable_abox {
+            (None, false, BTreeSet::new(), HashSet::new())
+        } else {
+            let (asserted_direct, asserted_roles) = abox_consistency::asserted_profile(&ontology);
+            (
+                abox_consistency::collect(&ontology),
+                abox_consistency::nominal_enumeration_inconsistent(&ontology),
+                asserted_direct,
+                asserted_roles,
+            )
+        };
     if std::env::var_os("KM_DEBUG_RULES").is_some() {
         eprintln!(
             "KM_DEBUG_RULES: parsed {} DL-safe SWRL rule(s)",
@@ -620,9 +714,10 @@ fn ofn_to_clauses_requested(
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
     // clause set (docs/NOMINALS-CB.md Phase 0); those are not EL, so fence the
     // ontology off the elc path up front.
-    let nominals_mode = std::env::var_os("KM_NOMINALS").is_some();
+    let nominals_mode = std::env::var_os("KM_NOMINALS").is_some() && !disjoint_union_precheck;
     let has_individuals = !abox.is_empty() || !hooks.nominal_to_individual.is_empty();
-    let (mut tbox, chain_info) = preprocess::augment_with_chains(tbox, &abox, &hooks);
+    let augment_abox: &[DLClause] = if disjoint_union_precheck { &[] } else { &abox };
+    let (mut tbox, chain_info) = preprocess::augment_with_chains(tbox, augment_abox, &hooks);
     // Inverse-role bridge clauses (swapped-orientation role heads) are not EL;
     // elc's screen rejects them, but route past it up front. The rbox-record
     // check below misses bare `ObjectInverseOf` in concepts (no rbox record),
@@ -754,6 +849,18 @@ fn ofn_to_clauses_requested(
             declared.push(s);
         }
     }
+    if omit_separable_abox || disjoint_union_precheck {
+        // A class mentioned only in the omitted ABox remains part of the
+        // ontology's query signature. Give it an empty starting context so
+        // completion applies global TBox consequences to it. Sorting the raw
+        // names above makes fresh internal-name allocation deterministic.
+        declared.extend(source_class_raw.into_iter().filter_map(|name| {
+            let short = reg.short(name);
+            (short != "owl:Thing" && short != "owl:Nothing").then_some(short)
+        }));
+        declared.sort_unstable();
+        declared.dedup();
+    }
     // Resolve complex role constraints only after declarations have claimed
     // their established internal names. The prepass then materializes proven
     // bottom classes as ordinary constraints; no calculus rule changes.
@@ -850,10 +957,19 @@ fn ofn_to_clauses_requested(
     // absorption off), so applying the final CB bundle here preserves exactly
     // the clauses just constructed while configuring the parent orchestrator's
     // one selected worker.
-    if automatic
-        && route == crate::routing::Route::Elc
-        && (!el_rbox_safe || !crate::elcomplete::is_pure_el_shape(&jclauses))
-    {
+    let pure_el_shape = automatic
+        && (omit_separable_abox || route == crate::routing::Route::Elc)
+        && crate::elcomplete::is_pure_el_shape(&jclauses);
+    // The source router may have rejected ELC solely because it observed rich
+    // expressions inside an ABox that the separation certificate has now
+    // removed. Admit the retained TBox only after the normalized clause and
+    // RBox screens prove the exact ELC contract. A non-EL retained TBox keeps
+    // its originally selected complete route.
+    if automatic && omit_separable_abox && el_rbox_safe && pure_el_shape {
+        route = crate::routing::Route::Elc;
+        route.apply_environment();
+    }
+    if automatic && route == crate::routing::Route::Elc && (!el_rbox_safe || !pure_el_shape) {
         route = crate::routing::Route::CbPlain16;
         route.apply_environment();
     }
@@ -882,7 +998,25 @@ fn ofn_to_clauses_requested(
     let named = iri_entries
         .iter()
         .map(|(internal, _)| internal.clone())
-        .collect();
+        .collect::<Vec<_>>();
+    // The disjoint-union theorem preserves the requested public taxonomy
+    // concepts, not native-ABox singleton proxies or assertion markers. The
+    // IRI registry normally keeps those generated symbols private; make that
+    // source-to-theorem boundary executable and fail closed if a future
+    // normalizer ever exposes one as a named query concept.
+    if profile.disjoint_union_abox_candidate {
+        let private_abox_concepts = nominal_abox
+            .individuals
+            .iter()
+            .flat_map(|individual| individual.proxies.iter())
+            .collect::<HashSet<_>>();
+        if named
+            .iter()
+            .any(|concept| private_abox_concepts.contains(concept))
+        {
+            profile.disjoint_union_abox_candidate = false;
+        }
+    }
     // The iterator is already in key order. `BTreeMap` can bulk-extend its
     // right edge instead of performing a second independent ordering pass.
     let iri_map = iri_entries.into_iter().collect();
@@ -922,6 +1056,227 @@ fn route_needs_bottom_prepass(route: crate::routing::Route) -> bool {
         route,
         crate::routing::Route::Elc | crate::routing::Route::ElcCert
     )
+}
+
+#[cfg(test)]
+mod separable_abox_elision_tests {
+    use super::{likely_separable_positive_abox, with_ofn_to_clauses_requested_route};
+    use crate::routing::Route;
+
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn optimistic_parse_screen_admits_only_likely_positive_abox_sources() {
+        assert!(likely_separable_positive_abox(
+            "Ontology(SubClassOf(<A> <B>) ClassAssertion(<A> <a>))"
+        ));
+        for unsafe_source in [
+            "Ontology(SubClassOf(<A> owl:Nothing) ClassAssertion(<A> <a>))",
+            "Ontology(DisjointClasses(<A> <B>) ClassAssertion(<A> <a>))",
+            "Ontology(ObjectMaxCardinality(1 <r>) ClassAssertion(<A> <a>))",
+            "Ontology(DataPropertyRange(<p> xsd:integer) DataPropertyAssertion(<p> <a> 1))",
+            "Ontology(ObjectOneOf(<a>) ClassAssertion(<A> <a>))",
+            "Ontology(HasKey(<A> (<r>)) ClassAssertion(<A> <a>))",
+        ] {
+            assert!(!likely_separable_positive_abox(unsafe_source));
+        }
+    }
+
+    #[test]
+    fn certified_positive_abox_is_removed_before_clausification() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(SubClassOf(<A> <B>) \
+             ClassAssertion(ObjectIntersectionOf(<A> <C>) <a>) \
+             ObjectPropertyAssertion(<r> <a> <b>))",
+            Route::Elc,
+            |result| result,
+        )
+        .expect("positive source");
+        assert_eq!(result.route, Route::Elc.as_str());
+        assert!(result.profile.positive_abox_tbox_separable);
+        assert!(!result.profile.positive_el_abox_materializable);
+        assert_eq!(result.profile.source.abox_axioms, 2);
+        assert!(result.nominal_abox.individuals.is_empty());
+        assert!(result.nominal_abox.role_assertions.is_empty());
+        assert_eq!(
+            result.clauses.len(),
+            2,
+            "A subclass B plus the ABox-only C query seed remain"
+        );
+    }
+
+    #[test]
+    fn bottom_constrained_abox_is_not_elided() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(SubClassOf(<A> owl:Nothing) ClassAssertion(<A> <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("EL ABox source");
+        assert!(!result.profile.positive_abox_tbox_separable);
+        assert!(result.profile.positive_el_abox_materializable);
+        assert_eq!(result.nominal_abox.individuals.len(), 1);
+    }
+
+    #[test]
+    fn exact_disjoint_union_consistency_verdict_authorizes_elision() {
+        let _environment_lock = lock_environment();
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_DISJOINT_UNION_ABOX_CONSISTENT", "1");
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(DisjointClasses(<A> <B>) ClassAssertion(<C> <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("disjoint-union source");
+        assert!(!result.profile.positive_abox_tbox_separable);
+        assert!(result.profile.disjoint_union_abox_candidate);
+        assert!(result.nominal_abox.individuals.is_empty());
+        assert_eq!(result.profile.source.abox_axioms, 1);
+        assert!(
+            result.declared.iter().any(|class| class == "C"),
+            "an ABox-only query class must survive projection"
+        );
+    }
+
+    #[test]
+    fn disjoint_union_public_signature_excludes_native_abox_private_concepts() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(DisjointClasses(<A> <B>) ClassAssertion(<C> <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("disjoint-union source");
+        let private = result
+            .nominal_abox
+            .individuals
+            .iter()
+            .flat_map(|individual| individual.proxies.iter())
+            .collect::<std::collections::HashSet<_>>();
+        let overlap = result
+            .named
+            .iter()
+            .filter(|name| private.contains(*name))
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(
+            result.profile.disjoint_union_abox_candidate,
+            "private/public overlap: {overlap:?}"
+        );
+        assert!(overlap.is_empty());
+    }
+
+    #[test]
+    fn disjoint_union_precheck_retains_typed_abox_but_emits_tbox_clauses() {
+        let _environment_lock = lock_environment();
+        use crate::json_io::{JAtom, JTerm};
+
+        fn term_has_individual(term: &JTerm) -> bool {
+            match term {
+                JTerm::Ind { .. } => true,
+                JTerm::Fun { arg, .. } => term_has_individual(arg),
+                JTerm::Var { .. } | JTerm::Aux { .. } => false,
+            }
+        }
+        fn atom_has_individual(atom: &JAtom) -> bool {
+            match atom {
+                JAtom::Concept { term, .. } => term_has_individual(term),
+                JAtom::Role { source, target, .. } => {
+                    term_has_individual(source) || term_has_individual(target)
+                }
+                JAtom::Eq { left, right } => {
+                    term_has_individual(left) || term_has_individual(right)
+                }
+            }
+        }
+
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ABOX_DISJOINT_UNION_CHECK", "1");
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(DisjointClasses(<A> <B>) \
+             ClassAssertion(<C> <a>) ClassAssertion(<D> <a>) \
+             ClassAssertion(<E> <a>) ClassAssertion(<F> <a>) \
+             ClassAssertion(<G> <a>) ClassAssertion(<H> <a>) \
+             ClassAssertion(<I> <a>) ClassAssertion(<J> <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("disjoint-union precheck source");
+        assert!(result.profile.disjoint_union_abox_candidate);
+        assert_eq!(result.nominal_abox.individuals.len(), 1);
+        assert!(result.el_rbox_safe);
+        assert!(
+            result.declared.iter().any(|class| class == "C"),
+            "an ABox-only query class must be seeded in the precheck TBox view"
+        );
+        assert!(result
+            .clauses
+            .iter()
+            .flat_map(|clause| clause.body.iter().chain(&clause.head))
+            .all(|atom| !atom_has_individual(atom)));
+    }
+
+    #[test]
+    fn subthreshold_disjoint_union_source_keeps_the_v1_nominal_view() {
+        let _environment_lock = lock_environment();
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ABOX_DISJOINT_UNION_CHECK", "1");
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(DisjointClasses(<A> <B>) ClassAssertion(<C> <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("subthreshold nominal source");
+        assert_eq!(result.profile.source.abox_axioms, 1);
+        assert!(result.profile.disjoint_union_abox_candidate);
+        assert_ne!(result.route, Route::Elc.as_str());
+        assert!(result.nominal_abox.complete);
+        assert_eq!(result.nominal_abox.individuals.len(), 1);
+    }
+
+    #[test]
+    fn automatic_route_omits_a_separable_abox_before_worker_selection() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(SubClassOf(<A> <B>) ClassAssertion(<A> <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("positive source");
+        assert!(result.profile.positive_abox_tbox_separable);
+        assert!(!result.profile.positive_el_abox_materializable);
+        assert_eq!(result.route, Route::Elc.as_str());
+        assert!(result.nominal_abox.individuals.is_empty());
+        assert_eq!(result.clauses.len(), 1, "only A subclass B remains");
+    }
+
+    #[test]
+    fn omitted_abox_only_class_keeps_a_context_for_global_tbox_axioms() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(SubClassOf(owl:Thing <D>) ClassAssertion(<C> <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("positive source");
+        assert!(result.profile.positive_abox_tbox_separable);
+        assert_eq!(result.route, Route::Elc.as_str());
+        assert!(result.nominal_abox.individuals.is_empty());
+        assert_eq!(
+            result.clauses.len(),
+            2,
+            "global axiom plus tautological C query seed"
+        );
+    }
 }
 
 #[cfg(test)]

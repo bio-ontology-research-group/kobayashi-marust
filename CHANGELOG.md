@@ -2,6 +2,42 @@
 
 ## [unreleased]
 
+## [1.1.0] - 2026-08-26
+
+### Faster automatic classification with certified publication
+
+- Add a source-profiled flat-NF1 completion route and profitable mixed
+  intersection, union, and finite-nominal routing. The automatic selector uses
+  these routes only on source shapes and size ranges validated by full-corpus
+  sweeps; other ontologies retain their established production routes.
+- Reduce work in ELC, frontend profiling, clause handling, orchestration, and
+  selected Konclude-compatible completion paths. These changes preserve the
+  accepted taxonomy rather than weakening or approximating unsupported OWL
+  features.
+- Extend Lean certification for flat NF1, mixed ELC taxonomy publication,
+  taxonomy-edge elision, positive empty sources, conservative mirror proxies,
+  and disjoint-union ABox projection. Strengthen the HT release gate so every
+  checker-backed Rust test excluded from ordinary unit testing runs under its
+  required Lean checker environment.
+- Keep CI manually dispatched and bound Cargo build concurrency to two jobs.
+  Add a repository-local workspace preflight so release builds and proof gates
+  fail before consuming the workstation's disk or memory reserve.
+
+### ORE 2015 release evidence
+
+- The automatic `km classify` route completes 591 of 592 ontologies under a
+  240-second, 20-GiB process-tree contract. ORE1194 remains a fail-closed parse
+  error. All 592 statuses and signatures are identical to the v1.0 preservation
+  and independently adjudicated recovery ledgers.
+- Final binary `fd9d7f1a1f4365a3262aeb37be8095631489257ea1e030e400a647d382b6a88a`
+  measured 1.399664 seconds mean and 0.1303 seconds median wall time, with
+  225.696 MiB mean and 27.02 MiB median peak process-tree RSS over correct
+  completions on Intel Xeon Gold 6248 nodes.
+- The fail-closed aggregate gate reports all four metrics strictly below each
+  retained correct-completion arm for ELK 0.6.0, HermiT
+  1.4.6.519-SNAPSHOT, Konclude v0.7.0-1138 (`0002e8063540`), and Sequoia
+  0.6.1-alpha (`c5248ec7be30`).
+
 ## [1.0.0] - 2026-08-24
 
 ### Complete source-bound CB and automatic-routing certification

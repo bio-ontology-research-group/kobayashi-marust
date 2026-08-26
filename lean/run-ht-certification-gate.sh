@@ -269,32 +269,43 @@ done
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-source-cert-check"
     export KM_HT_TEST_LEAN_JOINT_NATIVE_ABOX_CLASSIFICATION_CHECKER="$bin_root/ht-joint-native-abox-classification-cert-check"
 
-    cargo test --release equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle -- --nocapture
-    cargo test --release regular_decision_envelope_carries_finite_unsat_and_lean_checks_it -- --nocapture
-    cargo test --release equality_free_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
-    cargo test --release ordinary_unsat_production_run_rejects_a_sat_terminal -- --nocapture
-    cargo test --release equality_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
-    cargo test --release equality_production_blocking_checks_rejection_provenance -- --nocapture
-    cargo test --release native_abox_production_blocking_checks_joint_rejection_provenance -- --nocapture
-    cargo test --release equality_and_cardinality_folds_copy_incoming_blocker_edges -- --nocapture
-    cargo test --release equality_free_refutation_pairwise_blocks_a_satisfiable_cycle -- --nocapture
-    cargo test --release cardinality_doubling_histories_reject_stale_single_and_multi_root_rounds -- --nocapture
-    cargo test --release cardinality_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
-    cargo test --release cardinality_taxonomy_run_matrix_binds_every_query_coordinate -- --nocapture
-    cargo test --release ordinary_taxonomy_run_matrix_binds_every_query_coordinate -- --nocapture
-    cargo test --release source_bound_ordinary_taxonomy_rejects_an_unrelated_valid_target -- --nocapture
-    cargo test --release native_abox_global_decision_uses_joint_sat_wire -- --nocapture
-    cargo test --release rooted_ordinary_run_rejects_a_terminal_from_another_abox -- --nocapture
+    cargo test --release --lib equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle -- --nocapture
+    cargo test --release --lib cardinality_decision_blocks_and_checks_a_cyclic_minimum -- --nocapture
+    cargo test --release --lib cardinality_frontier_distinguishes_minimum_siblings_and_lean_checks_it -- --nocapture
+    cargo test --release --lib certified_unsat_refutation_deepens_past_the_historical_node_cap -- --nocapture
+    cargo test --release --lib regular_decision_envelope_carries_finite_unsat_and_lean_checks_it -- --nocapture
+    cargo test --release --lib regular_decision_prefers_a_checked_finite_sat_model -- --nocapture
+    cargo test --release --lib equality_free_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
+    cargo test --release --lib global_decision_wraps_regular_evidence_for_the_main_lean_checker -- --nocapture
+    cargo test --release --lib lean_preprocessing_wire_certifies_trigger_and_contrapositives -- --nocapture
+    cargo test --release --lib lean_taxonomy_wire_covers_every_concept_and_ordered_pair -- --nocapture
+    cargo test --release --lib lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head -- --nocapture
+    cargo test --release --lib ordinary_unsat_production_run_rejects_a_sat_terminal -- --nocapture
+    cargo test --release --lib equality_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
+    cargo test --release --lib equality_production_blocking_checks_rejection_provenance -- --nocapture
+    cargo test --release --lib native_abox_production_blocking_checks_joint_rejection_provenance -- --nocapture
+    cargo test --release --lib equality_and_cardinality_folds_copy_incoming_blocker_edges -- --nocapture
+    cargo test --release --lib equality_free_refutation_pairwise_blocks_a_satisfiable_cycle -- --nocapture
+    cargo test --release --lib cardinality_doubling_histories_reject_stale_single_and_multi_root_rounds -- --nocapture
+    cargo test --release --lib cardinality_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
+    cargo test --release --lib cardinality_taxonomy_run_matrix_binds_every_query_coordinate -- --nocapture
+    cargo test --release --lib ordinary_taxonomy_run_matrix_binds_every_query_coordinate -- --nocapture
+    cargo test --release --lib source_bound_ordinary_taxonomy_rejects_an_unrelated_valid_target -- --nocapture
+    cargo test --release --lib native_abox_global_decision_uses_joint_sat_wire -- --nocapture
+    cargo test --release --lib rooted_ordinary_run_rejects_a_terminal_from_another_abox -- --nocapture
     KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-native-abox-taxonomy-cert-check" \
       KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-native-abox-taxonomy-cert-check" \
-      cargo test --release native_abox_taxonomy_cells_use_one_joint_checked_state -- --nocapture
+      cargo test --release --lib native_abox_taxonomy_cells_use_one_joint_checked_state -- --nocapture
+    cargo test --release --lib native_abox_taxonomy_matrix_is_complete_and_tamper_evident -- --nocapture
     KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-decision-check" \
       KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-decision-check" \
-      cargo test --release native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident -- --nocapture
-    cargo test --release native_abox_cardinality_global_decision_uses_joint_wire -- --nocapture
-    cargo test --release every_cardinality_taxonomy_projection_passes_the_common_lean_checker -- --nocapture
-    cargo test --release source_matrix_passes_real_lean_checker -- --nocapture
-    cargo test --release certified_input_coverage_matches_the_lean_truth_table -- --nocapture
-    cargo test --release regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture
+      cargo test --release --lib native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident -- --nocapture
+    cargo test --release --lib native_abox_cardinality_global_decision_uses_joint_wire -- --nocapture
+    cargo test --release --lib every_cardinality_taxonomy_projection_passes_the_common_lean_checker -- --nocapture
+    cargo test --release --lib source_matrix_passes_real_lean_checker -- --nocapture
+    cargo test --release --lib joint_native_abox_classification_carries_one_source_and_abox -- --nocapture
+    cargo test --release --lib joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes -- --nocapture
+    cargo test --release --lib certified_input_coverage_matches_the_lean_truth_table -- --nocapture
+    cargo test --release --lib regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture
     cargo test --release --test ht_taxonomy_certificate -- --nocapture
 )

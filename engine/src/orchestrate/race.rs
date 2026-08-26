@@ -81,7 +81,10 @@ fn spawn_tableau(
         // from_slice on a read buffer, not from_reader — the clause file is
         // multi-MB on large onts and the reader path is markedly slower.
         let buf = std::fs::read(clauses_path).ok()?;
-        let v: JInput = serde_json::from_slice(&buf).ok()?;
+        let mut v: JInput = serde_json::from_slice(&buf).ok()?;
+        if std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some() {
+            v.nominal_abox = crate::json_io::NominalAboxMeta::default();
+        }
         (
             v.clauses,
             v.rbox,
@@ -618,6 +621,14 @@ fn specialist_route_allows(
 /// flags merely because the ontology happens to satisfy their feature gate.
 fn general_only_route(requested: Option<&str>) -> bool {
     requested == Some("general")
+}
+
+fn should_install_native_abox(
+    certified_tbox_only: bool,
+    general_only: bool,
+    global_native_abox: bool,
+) -> bool {
+    !certified_tbox_only && (!general_only || global_native_abox)
 }
 
 /// Gate for `KM_HT_BRIDGE_ONLY`: the worker must produce NO answer when the
@@ -1508,7 +1519,10 @@ fn spawn_ht(
         // from_slice on a read buffer, not from_reader — the clause file is
         // multi-MB on large onts and the reader path is markedly slower.
         let buf = std::fs::read(clauses_path).ok()?;
-        let v: JInput = serde_json::from_slice(&buf).ok()?;
+        let mut v: JInput = serde_json::from_slice(&buf).ok()?;
+        if std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some() {
+            v.nominal_abox = crate::json_io::NominalAboxMeta::default();
+        }
         (
             v.clauses,
             v.rbox,
@@ -1561,7 +1575,8 @@ fn spawn_ht(
     let card_proxy_abox = std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_some()
         && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let mut proxy_abox_certificate = None;
-    let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some();
+    let global_native_abox = std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
+    let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some() || global_native_abox;
     if card_proxy_abox {
         let mut native = tin.clone();
         cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);
@@ -1580,12 +1595,22 @@ fn spawn_ht(
             tin.queries.dedup();
             proxy_abox_certificate = Some(certificate);
         }
-    } else if !certified_tbox_only && !general_only {
-        if let Some(certificate) = atomic_component_abox_certificate(&tin, &nominal_abox) {
-            proxy_abox_certificate = Some(certificate);
+    } else if should_install_native_abox(certified_tbox_only, general_only, global_native_abox) {
+        let atomic_certificate = if global_native_abox {
+            None
         } else {
-            cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, allow_same);
+            atomic_component_abox_certificate(&tin, &nominal_abox)
+        };
+        if let Some(certificate) = atomic_certificate {
+            proxy_abox_certificate = Some(certificate);
+        } else if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, allow_same) {
+            return None;
         }
+    }
+    if std::env::var_os("KM_HT_REQUIRE_MASKED_DISJOINT_UNION_SHAPE").is_some()
+        && !cb_to_ht::masked_disjoint_union_clause_shape(&tin)
+    {
+        return None;
     }
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
@@ -1656,8 +1681,8 @@ fn spawn_ht(
     // nominal-predecessor premise missing from the fast HT while inverse axioms
     // themselves remain exact. Uncertified inverse+cardinality inputs stay out;
     // datatype inputs always stay out (no concrete-domain oracle in the Ht).
-    let card_candidate = !general_only
-        && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
+    let card_candidate =
+        !general_only && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let qo_candidate = !general_only
         && cfg.qo_router
         && !card_candidate
@@ -2071,6 +2096,55 @@ pub fn run_ht_only(
     Ok(tableau_to_out(parsed))
 }
 
+/// Bounded variant used by fail-open preprocessing probes. A timeout,
+/// structural refusal, or worker defer returns `Ok(None)` after reaping the
+/// exact child PID; no partial output can become a classification.
+pub fn run_ht_only_bounded(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    budget: Duration,
+) -> Result<Option<EngineOut>, OrchestrateError> {
+    let Some((mut child, out_path, _, _, _, _, proxy_abox_certificate)) =
+        spawn_ht(cfg, clauses_path, named)
+    else {
+        return Ok(None);
+    };
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if started.elapsed() >= budget {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    if !status.success() {
+        return Ok(None);
+    }
+    let output = File::open(out_path.path())?;
+    let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
+        OrchestrateError::Worker {
+            bin: "tableau/ht".into(),
+            code: 0,
+            stderr: format!("successful worker emitted no valid taxonomy: {error}"),
+        }
+    })?;
+    if proxy_abox_certificate
+        .as_ref()
+        .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &parsed))
+    {
+        return Ok(None);
+    }
+    if let Some(certificate) = &proxy_abox_certificate {
+        proxy_abox_filter_output(certificate, &mut parsed);
+    }
+    Ok(Some(tableau_to_out(parsed)))
+}
+
 /// Run the historical label-caching tableau as an isolated mechanism. Its
 /// existing structural gate remains authoritative, but CB is never started if
 /// the gate declines or the worker fails.
@@ -2119,7 +2193,7 @@ fn ht_reserved_threads(cfg: &Config) -> Option<usize> {
 /// A typed-nominal bridge has the same contention pattern below that generic
 /// threshold: ORE 10621 has 41,647 active classes, but its exact nominal-aware
 /// CB fallback with fifteen threads pushes the shared race to 16.8 GiB and both
-/// arms miss the standard limit. Give that fallback one thread only when the
+/// arms miss the standard limit. Give that fallback one thread whenever the
 /// typed channel is complete and the worker is bridge-exclusive. A bridge
 /// defer still leaves the exact CB computation running; no answer is accepted
 /// without one of the unchanged reasoner certificates.
@@ -3156,6 +3230,10 @@ mod tests {
         for route in [None, Some("certified"), Some("shoq"), Some("card")] {
             assert!(!general_only_route(route));
         }
+        assert!(!should_install_native_abox(false, true, false));
+        assert!(should_install_native_abox(false, true, true));
+        assert!(should_install_native_abox(false, false, false));
+        assert!(!should_install_native_abox(true, false, true));
     }
 
     #[test]
@@ -3282,7 +3360,7 @@ mod tests {
             n: 2,
             role: 0,
             filler: 1,
-        exact: false,
+            exact: false,
         });
         tin
     }
@@ -3798,6 +3876,11 @@ mod tests {
         // 15-thread 16.8-GiB contention that makes both arms time out.
         assert_eq!(
             limit_synchronous_bridge_competitor(Some(15), Some(41_647), true),
+            Some(1)
+        );
+        // Complete typed-nominal payloads remain conservative at every size.
+        assert_eq!(
+            limit_synchronous_bridge_competitor(Some(15), Some(1_507), true),
             Some(1)
         );
         // Neither class count nor a generic bridge is enough below 50k. This

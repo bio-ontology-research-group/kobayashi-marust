@@ -238,7 +238,13 @@ fn build_rule_clause(
     // can bind the variables.  Stable role-first ordering is logically inert
     // (a rule body is a conjunction) and lets the usually sparse ABox edges bind
     // both endpoints before the class and O-guard membership checks.
-    body.sort_by_key(|atom| if matches!(atom, HAtom::Role { .. }) { 0 } else { 1 });
+    body.sort_by_key(|atom| {
+        if matches!(atom, HAtom::Role { .. }) {
+            0
+        } else {
+            1
+        }
+    });
     Some((HtClause { body, head }, inds))
 }
 
@@ -267,6 +273,153 @@ pub enum HAtom {
 pub struct HtClause {
     pub body: Vec<HAtom>,
     pub head: Vec<HAtom>,
+}
+
+/// Executable side of the masked-disjoint-union clause theorem. Every
+/// variable mentioned by a clause must lie in one connected component of the
+/// undirected body role/equality graph, and the retained TBox may not mention
+/// a native-ABox singleton proxy. A true body in a disjoint union then fixes
+/// every clause variable to the same summand; concept, role, existential, and
+/// equality atoms can all be evaluated in that component.
+pub(crate) fn masked_disjoint_union_clause_shape(input: &TInput) -> bool {
+    let private: std::collections::HashSet<usize> = input
+        .native_abox
+        .individuals
+        .iter()
+        .flat_map(|individual| individual.proxies.iter().copied())
+        .collect();
+
+    fn variables(atom: &HAtom) -> [Option<usize>; 2] {
+        match atom {
+            HAtom::Concept { t, .. } | HAtom::Exist { t, .. } => [Some(*t), None],
+            HAtom::Role { s, t, .. } | HAtom::Eq { s, t } => [Some(*s), Some(*t)],
+        }
+    }
+
+    input.clauses.iter().all(|clause| {
+        if clause.body.iter().chain(&clause.head).any(|atom| {
+            matches!(atom,
+                HAtom::Concept { c, .. } | HAtom::Exist { c, .. }
+                    if private.contains(c))
+        }) {
+            return false;
+        }
+        let all_variables: std::collections::HashSet<usize> = clause
+            .body
+            .iter()
+            .chain(&clause.head)
+            .flat_map(variables)
+            .flatten()
+            .collect();
+        // The theorem-facing contract carries an explicit root. Empty clauses
+        // are left to the retained exact route instead of relying on a vacuous
+        // source encoding at this boundary.
+        let Some(&root) = all_variables.iter().next() else {
+            return false;
+        };
+        let mut adjacency: std::collections::HashMap<usize, Vec<usize>> =
+            std::collections::HashMap::new();
+        for atom in &clause.body {
+            let (left, right) = match atom {
+                HAtom::Role { s, t, .. } | HAtom::Eq { s, t } => (*s, *t),
+                HAtom::Concept { .. } | HAtom::Exist { .. } => continue,
+            };
+            adjacency.entry(left).or_default().push(right);
+            adjacency.entry(right).or_default().push(left);
+        }
+        let mut reached = std::collections::HashSet::from([root]);
+        let mut pending = vec![root];
+        while let Some(current) = pending.pop() {
+            if let Some(neighbours) = adjacency.get(&current) {
+                for &neighbour in neighbours {
+                    if reached.insert(neighbour) {
+                        pending.push(neighbour);
+                    }
+                }
+            }
+        }
+        all_variables.is_subset(&reached)
+    })
+}
+
+#[cfg(test)]
+mod masked_disjoint_union_shape_tests {
+    use super::{
+        masked_disjoint_union_clause_shape, HAtom, HtClause, NativeIndividualJson, TInput,
+    };
+
+    #[test]
+    fn accepts_connected_role_chain_clause() {
+        let mut input = TInput::default();
+        input.clauses.push(HtClause {
+            body: vec![
+                HAtom::Role { r: 0, s: 0, t: 1 },
+                HAtom::Role { r: 1, s: 1, t: 2 },
+            ],
+            head: vec![HAtom::Role { r: 2, s: 0, t: 2 }],
+        });
+        assert!(masked_disjoint_union_clause_shape(&input));
+    }
+
+    #[test]
+    fn rejects_a_disconnected_head_variable() {
+        let mut input = TInput::default();
+        input.clauses.push(HtClause {
+            body: vec![HAtom::Concept {
+                neg: false,
+                c: 0,
+                t: 0,
+            }],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: 1,
+                t: 1,
+            }],
+        });
+        assert!(!masked_disjoint_union_clause_shape(&input));
+    }
+
+    #[test]
+    fn body_equality_connects_components() {
+        let mut input = TInput::default();
+        input.clauses.push(HtClause {
+            body: vec![HAtom::Eq { s: 0, t: 1 }],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: 0,
+                t: 1,
+            }],
+        });
+        assert!(masked_disjoint_union_clause_shape(&input));
+    }
+
+    #[test]
+    fn rejects_a_private_proxy_in_the_tbox() {
+        let mut input = TInput::default();
+        input.native_abox.individuals.push(NativeIndividualJson {
+            proxies: vec![7],
+            assertions: vec![],
+        });
+        input.clauses.push(HtClause {
+            body: vec![],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: 7,
+                t: 0,
+            }],
+        });
+        assert!(!masked_disjoint_union_clause_shape(&input));
+    }
+
+    #[test]
+    fn rejects_a_variable_free_clause() {
+        let mut input = TInput::default();
+        input.clauses.push(HtClause {
+            body: vec![],
+            head: vec![],
+        });
+        assert!(!masked_disjoint_union_clause_shape(&input));
+    }
 }
 
 /// Source-side atoms for the Lean-checked direct DL-clause projection.  This
@@ -388,10 +541,7 @@ pub struct CardinalityExactPairJson {
     pub minimum: usize,
 }
 
-fn expected_minimum_role_clause(
-    definition: &crate::json_io::CardMeta,
-    index: u32,
-) -> JClause {
+fn expected_minimum_role_clause(definition: &crate::json_io::CardMeta, index: u32) -> JClause {
     let x = JTerm::Var { name: "x".into() };
     let target = JTerm::Fun {
         function: format!("f_{}_{}", definition.marker, index),
@@ -410,10 +560,7 @@ fn expected_minimum_role_clause(
     }
 }
 
-fn expected_minimum_filler_clause(
-    definition: &crate::json_io::CardMeta,
-    index: u32,
-) -> JClause {
+fn expected_minimum_filler_clause(definition: &crate::json_io::CardMeta, index: u32) -> JClause {
     let x = JTerm::Var { name: "x".into() };
     JClause {
         body: vec![JAtom::Concept {
@@ -661,6 +808,14 @@ pub(crate) fn install_nominal_abox_with_same(
         || !meta.role_assertions.is_empty()
         || !meta.negative_role_assertions.is_empty()
         || !tin.nominals.is_empty();
+    // An absent ABox needs no coverage certificate. Older payloads and serde's
+    // default represent that identity case as `complete=false` with every ABox
+    // collection empty. Rejecting it suppresses an otherwise faithful
+    // HT/bridge racer and diverts large TBoxes to a slower, higher-memory
+    // CB-only execution even though there is nothing to install.
+    if !has_nominal_input {
+        return true;
+    }
 
     // Resolve against scratch vectors.  Nothing semantic is installed until
     // every name, index, and coverage invariant has passed.
@@ -1798,10 +1953,7 @@ fn eq_fun_pair(a: &JAtom) -> Option<(String, String)> {
 /// Every symbol, variable, function index, role, filler, atom order, and pair
 /// order is checked against the corresponding `CardMeta`. Similar clauses are
 /// retained, including the `≥n` recognition clause and excluded middle.
-fn card_drop(
-    c: &JClause,
-    cardinalities: &[crate::json_io::CardMeta],
-) -> bool {
+fn card_drop(c: &JClause, cardinalities: &[crate::json_io::CardMeta]) -> bool {
     cardinalities.iter().any(|definition| {
         if definition.min {
             exact_minimum_expansion_clause(c, definition)
@@ -1829,11 +1981,12 @@ fn minimum_function_index(term: &JTerm, marker: &str, bound: u32) -> Option<u32>
     (index < bound).then_some(index)
 }
 
-fn exact_minimum_expansion_clause(
-    clause: &JClause,
-    definition: &crate::json_io::CardMeta,
-) -> bool {
-    if clause.body.first().is_none_or(|atom| !marker_x(atom, &definition.marker)) {
+fn exact_minimum_expansion_clause(clause: &JClause, definition: &crate::json_io::CardMeta) -> bool {
+    if clause
+        .body
+        .first()
+        .is_none_or(|atom| !marker_x(atom, &definition.marker))
+    {
         return false;
     }
     // Q(x) -> R(x, f_i(x)) and Q(x) -> C(f_i(x)).
@@ -1885,9 +2038,7 @@ fn exact_maximum_pigeonhole_clause(
     else {
         return false;
     };
-    if clause.body.len() != expected_body_len
-        || !marker_x(&clause.body[0], &definition.marker)
-    {
+    if clause.body.len() != expected_body_len || !marker_x(&clause.body[0], &definition.marker) {
         return false;
     }
     for index in 0..witness_count {
@@ -2320,9 +2471,15 @@ fn bundle_projection_source(clauses: &[JClause]) -> Option<BundleProjectionSourc
     let mut functions = Vec::new();
     let mut records: HashMap<String, ExjRec> = HashMap::new();
     let mut source_concepts = Vec::new();
+    let mut source_concept_seen: HashSet<String> = HashSet::new();
 
     let mut note_concept = |concept: &str| {
-        if !source_concepts.iter().any(|candidate| candidate == concept) {
+        // Preserve the checker-facing first-seen order without the quadratic
+        // linear search that made conversion dominate large production TBoxes
+        // (ORE4604 has more than 80k distinct concepts and hundreds of
+        // thousands of occurrences). This changes only evidence construction:
+        // the emitted list is byte-for-byte the same stable deduplication.
+        if source_concept_seen.insert(concept.to_string()) {
             source_concepts.push(concept.to_string());
         }
     };
@@ -2572,17 +2729,7 @@ mod direct_projection_tests {
             }],
         }];
         let named = std::collections::HashSet::from(["A".to_string(), "B".to_string()]);
-        let converted = convert(
-            &clauses,
-            None,
-            &named,
-            &[],
-            &[],
-            &[],
-            false,
-            &[],
-            false,
-        );
+        let converted = convert(&clauses, None, &named, &[], &[], &[], false, &[], false);
         assert_eq!(converted.dropped, 0);
         assert_eq!(converted.clauses.len(), 1);
         assert_eq!(converted.direct_projection_source.unwrap().len(), 1);
@@ -2645,6 +2792,7 @@ mod direct_projection_tests {
         let source = converted
             .bundle_projection_source
             .expect("multi-filler bundle evidence");
+        assert_eq!(source.source_concepts, ["A", "C", "D"]);
         assert_eq!(source.functions, ["f"]);
         assert_eq!(source.bundles.len(), 1);
         assert_eq!(source.bundles[0].definer, "def_exfil_f");
@@ -2711,12 +2859,28 @@ pub fn convert(
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();
-    let mut direct_projection_source = clauses
-        .iter()
-        .map(direct_projection_clause)
-        .collect::<Option<Vec<_>>>();
-    let mixed_projection_source = mixed_projection_source(clauses);
-    let mut bundle_projection_source = bundle_projection_source(clauses);
+    // Source-projection documents are runtime proof payloads, not reasoning
+    // input. Building them duplicates the complete source clause set and, on
+    // large production TBoxes, materially raises both conversion time and peak
+    // RSS. Keep them in unit tests (which exercise the producer) and whenever a
+    // proof-carrying HT publication was explicitly requested. Ordinary
+    // classification retains exactly the same executable TInput without this
+    // dead metadata.
+    let projection_evidence = cfg!(test) || crate::tableau::ht_lean_certification_requested();
+    let mut direct_projection_source = projection_evidence
+        .then(|| {
+            clauses
+                .iter()
+                .map(direct_projection_clause)
+                .collect::<Option<Vec<_>>>()
+        })
+        .flatten();
+    let mixed_projection_source = projection_evidence
+        .then(|| mixed_projection_source(clauses))
+        .flatten();
+    let mut bundle_projection_source = projection_evidence
+        .then(|| bundle_projection_source(clauses))
+        .flatten();
     // KM_HT_RULES: ground ABox facts intercepted in pass 1 (so they are not
     // dropped as un-clausifiable ground clauses), seeded as nominal nodes below.
     let mut abox_facts: Vec<AboxFact> = Vec::new();
@@ -2796,7 +2960,7 @@ pub fn convert(
         && (!has_inverse || inverse_cardinality_role_separable);
     let mut min_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut max_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
-    if card_active {
+    if card_active && projection_evidence {
         for cm in cardinalities {
             if cm.min {
                 min_markers.insert(cm.marker.clone());
@@ -2836,7 +3000,8 @@ pub fn convert(
                 let Some(left) = cardinalities.iter().find(|card| card.marker == markers[0]) else {
                     continue;
                 };
-                let Some(right) = cardinalities.iter().find(|card| card.marker == markers[1]) else {
+                let Some(right) = cardinalities.iter().find(|card| card.marker == markers[1])
+                else {
                     continue;
                 };
                 let complementary = left.min != right.min
@@ -3168,6 +3333,8 @@ pub fn convert(
     // every inclusion path and final domain premise independently of Rust's
     // closure computation.
     if let Some(source) = bundle_projection_source.as_mut() {
+        let mut source_concept_seen: HashSet<String> =
+            source.source_concepts.iter().cloned().collect();
         for (sub, sup) in &subrole_pairs {
             source.direct.push(DirectProjectionClause {
                 variable_names: vec!["x".to_string(), "y".to_string()],
@@ -3185,11 +3352,7 @@ pub fn convert(
         }
         for (role, concepts) in domains.iter() {
             for concept in concepts {
-                if !source
-                    .source_concepts
-                    .iter()
-                    .any(|candidate| candidate == concept)
-                {
+                if source_concept_seen.insert(concept.clone()) {
                     source.source_concepts.push(concept.clone());
                 }
                 source.direct.push(DirectProjectionClause {
@@ -4122,6 +4285,28 @@ mod native_abox_install_tests {
     use super::*;
     use crate::frontend::syntax::Concept;
     use crate::json_io::{NominalAboxMeta, NominalIndividualMeta, NominalRoleAssertionMeta};
+
+    #[test]
+    fn absent_typed_abox_is_an_identity_without_a_coverage_flag() {
+        let mut tin = TInput {
+            concepts: vec!["A".into()],
+            clauses: vec![HtClause {
+                body: Vec::new(),
+                head: vec![HAtom::Concept {
+                    neg: false,
+                    c: 0,
+                    t: 0,
+                }],
+            }],
+            ..TInput::default()
+        };
+        let before = tin.clone();
+        assert!(install_nominal_abox(&mut tin, &NominalAboxMeta::default()));
+        assert_eq!(tin.concepts, before.concepts);
+        assert_eq!(tin.clauses, before.clauses);
+        assert_eq!(tin.native_abox, before.native_abox);
+        assert!(tin.fenced.is_empty());
+    }
 
     fn individual(name: &str, proxy: &str, marker: Option<&str>) -> NominalIndividualMeta {
         NominalIndividualMeta {
@@ -5622,7 +5807,10 @@ mod rule_clause_tests {
         let (cl, _) = build(&rule).expect("role-bearing rule");
         assert!(matches!(cl.body.first(), Some(HAtom::Role { .. })));
         assert_eq!(
-            cl.body.iter().filter(|a| matches!(a, HAtom::Role { .. })).count(),
+            cl.body
+                .iter()
+                .filter(|a| matches!(a, HAtom::Role { .. }))
+                .count(),
             1
         );
     }

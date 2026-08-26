@@ -1,0 +1,89 @@
+{
+  "both_target_wins": 375,
+  "external_comparable": 589,
+  "peak_excess_sum_mib": 96632.65,
+  "peak_sum_mib": 252875.99,
+  "peak_target_wins": 463,
+  "routes": {
+    "cb_plain16": {
+      "count": 2,
+      "peak_mib": 8865.17,
+      "wall_s": 19.771900000000002
+    },
+    "certified_card_nominals": {
+      "count": 1,
+      "peak_mib": 119.56,
+      "wall_s": 0.7824
+    },
+    "certified_card_proxy_abox": {
+      "count": 1,
+      "peak_mib": 2500.23,
+      "wall_s": 32.5448
+    },
+    "certified_el_production": {
+      "count": 5,
+      "peak_mib": 16891.129999999997,
+      "wall_s": 195.127
+    },
+    "certified_nominals": {
+      "count": 9,
+      "peak_mib": 1978.4099999999999,
+      "wall_s": 40.674699999999994
+    },
+    "elc": {
+      "count": 277,
+      "peak_mib": 78733.51000000007,
+      "wall_s": 863.7179
+    },
+    "ht_bridge": {
+      "count": 1,
+      "peak_mib": 8218.21,
+      "wall_s": 38.1223
+    },
+    "ht_general": {
+      "count": 1,
+      "peak_mib": 43.99,
+      "wall_s": 0.1601
+    },
+    "ht_rules": {
+      "count": 3,
+      "peak_mib": 59.69,
+      "wall_s": 0.3595
+    },
+    "mirror_private": {
+      "count": 1,
+      "peak_mib": 5705.43,
+      "wall_s": 66.4735
+    },
+    "nominal_ni_abox": {
+      "count": 7,
+      "peak_mib": 2765.19,
+      "wall_s": 4.8735
+    },
+    "nominal_ni_tbox": {
+      "count": 1,
+      "peak_mib": 21.71,
+      "wall_s": 1.0834
+    },
+    "nominals": {
+      "count": 49,
+      "peak_mib": 34527.58,
+      "wall_s": 130.56300000000002
+    },
+    "production_all": {
+      "count": 228,
+      "peak_mib": 91641.38999999997,
+      "wall_s": 516.7192999999999
+    },
+    "production_all1": {
+      "count": 5,
+      "peak_mib": 804.7900000000001,
+      "wall_s": 2.8344000000000005
+    }
+  },
+  "rows": 592,
+  "successful": 591,
+  "wall_excess_sum_s": 1094.0733,
+  "wall_sum_s": 1913.8077,
+  "wall_target_wins": 387
+}

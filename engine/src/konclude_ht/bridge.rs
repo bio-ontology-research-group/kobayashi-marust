@@ -3475,21 +3475,25 @@ fn independent_component_abox_profile(
         && (legacy_large_role_free || component_enabled)
         && tin.nominal_abox.negative_role_assertions.is_empty()
         && tin.nominal_abox.different.is_empty()
-        && tin.source_axioms.iter().all(|axiom| {
-            !coupled(&axiom.left) && !coupled(&axiom.right)
-        })
+        && tin
+            .source_axioms
+            .iter()
+            .all(|axiom| !coupled(&axiom.left) && !coupled(&axiom.right))
         && tin
             .nominal_abox
             .individuals
             .iter()
             .flat_map(|entry| entry.assertions.iter())
-        .all(|assertion| !coupled(assertion))
+            .all(|assertion| !coupled(assertion))
 }
 
 /// Connected components of the exact numeric positive-ABox graph, expressed
 /// as native completion tags. Isolated asserted individuals are singleton
 /// components. Invalid indices fail closed.
-fn independent_abox_component_tags(tin: &TInput, bridged: &Bridged) -> Option<Vec<HashSet<Cint64>>> {
+fn independent_abox_component_tags(
+    tin: &TInput,
+    bridged: &Bridged,
+) -> Option<Vec<HashSet<Cint64>>> {
     let count = tin.native_abox.individuals.len();
     if count == 0 || bridged.nominal_seeds.len() != count {
         return None;
@@ -3533,7 +3537,12 @@ fn independent_abox_component_tags(tin: &TInput, bridged: &Bridged) -> Option<Ve
 /// redundant rather than unsupported.
 fn forced_nonempty_roles(tin: &TInput) -> HashSet<usize> {
     let mut active = HashSet::new();
-    active.extend(tin.native_abox.role_assertions.iter().map(|&(role, _, _)| role));
+    active.extend(
+        tin.native_abox
+            .role_assertions
+            .iter()
+            .map(|&(role, _, _)| role),
+    );
     active.extend(tin.card_defs.iter().map(|card| card.role));
     for clause in &tin.clauses {
         for atom in clause.body.iter().chain(clause.head.iter()) {
@@ -6787,12 +6796,11 @@ fn fresh_bridge_env_with_trigger_absorption(
     // semantic profile. Nominal-only 10621 and cardinality-only 7914 retain
     // their validated legacy scheduling.
     let card_nominal_profile = native_cardinality_abox_profile(tin, bridged.has_native_nominals());
-    let independent_abox_elided =
-        independent_component_abox_profile(
-            tin,
-            bridged.has_native_nominals(),
-            std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
-        );
+    let independent_abox_elided = independent_component_abox_profile(
+        tin,
+        bridged.has_native_nominals(),
+        std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
+    );
     algo.conf_direct_rule_preprocessing = card_nominal_profile;
     algo.conf_cache_oriented_or_ordering = card_nominal_profile;
     if card_nominal_profile {
@@ -7051,8 +7059,7 @@ fn initialize_native_nominal_state_for_tags(
             .native_nominal_backend_replay
             .contains_key(&seed.individual_tag)
         {
-            let _ =
-                try_establish_native_backend_expansion_blocking(algo, ctx, bridged, seed, node);
+            let _ = try_establish_native_backend_expansion_blocking(algo, ctx, bridged, seed, node);
         }
     }
     true
@@ -7532,7 +7539,7 @@ fn native_exact_nominal_process_node(
     (node.is_some()
         && node.index() < ctx.process_context().node_count()
         && native_completion_nominal_tag(ctx, node) == Some(individual_tag))
-        .then_some(node)
+    .then_some(node)
 }
 
 /// Exact value set produced by
@@ -7852,8 +7859,7 @@ fn native_completion_role_metadata(
         .flatten()
         .map(|value| ((value.role.raw, value.inversed), value.deterministic))
         .collect();
-    let mut neighbour_values: BTreeMap<Cint64, BTreeMap<(Cint64, bool), bool>> =
-        BTreeMap::new();
+    let mut neighbour_values: BTreeMap<Cint64, BTreeMap<(Cint64, bool), bool>> = BTreeMap::new();
     let mut neighbour_alias_determinism: BTreeMap<Cint64, bool> = BTreeMap::new();
     if let Some(entry) = previous_entry.as_ref() {
         for combination in &entry.neighbour_role_combinations {
@@ -7875,12 +7881,7 @@ fn native_completion_role_metadata(
                 combination.neighbour_tag,
                 values
                     .iter()
-                    .map(|value| {
-                        (
-                            (value.role.raw, value.inversed),
-                            value.deterministic,
-                        )
-                    })
+                    .map(|value| ((value.role.raw, value.inversed), value.deterministic))
                     .collect(),
             );
         }
@@ -7890,10 +7891,9 @@ fn native_completion_role_metadata(
         .into_iter()
         .flat_map(|entry| entry.indirect_nominal_connections.iter().copied())
         .chain(
-            ctx
-        .process_context()
-        .node_successor_connected_nominals(node)
-        .into_iter()
+            ctx.process_context()
+                .node_successor_connected_nominals(node)
+                .into_iter(),
         )
         .collect();
     let mut successor_iterator = ctx.process_context().node_successor_iterator(node);
@@ -8247,13 +8247,8 @@ fn write_completed_native_representative_associations(
             .iter()
             .map(|value| (value.concept, value.negated))
             .collect();
-        let role_metadata = native_completion_role_metadata(
-            ctx,
-            extraction_node,
-            &concept_values,
-            bridged,
-            seed,
-        )?;
+        let role_metadata =
+            native_completion_role_metadata(ctx, extraction_node, &concept_values, bridged, seed)?;
         let deterministic_different_individuals = native_completion_different_individuals(
             ctx,
             deterministic_node,
@@ -10349,15 +10344,14 @@ fn write_native_abox_representative_cache(
             deterministic_different_individuals.dedup();
         }
         cache.next_association_update_id = cache.next_association_update_id.saturating_add(1);
-        let instantiated_role_values: Vec<NativeAboxRoleValue> =
-            instantiated_role_orientations
-                .into_iter()
-                .map(|(role, inversed)| NativeAboxRoleValue {
-                    role: RoleId::new(role),
-                    inversed,
-                    deterministic: true,
-                })
-                .collect();
+        let instantiated_role_values: Vec<NativeAboxRoleValue> = instantiated_role_orientations
+            .into_iter()
+            .map(|(role, inversed)| NativeAboxRoleValue {
+                role: RoleId::new(role),
+                inversed,
+                deterministic: true,
+            })
+            .collect();
         let instantiated_roles: Vec<RoleId> = instantiated_role_values
             .iter()
             .map(|value| value.role)
@@ -10742,10 +10736,10 @@ fn try_establish_native_backend_expansion_blocking(
             ctx.process_context_mut()
                 .node_mut(node)
                 .add_processing_restriction_flags(
-                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
-                        | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
-                        | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
-                );
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
+            );
         }
         expansion_blocked = true;
     }
@@ -11264,9 +11258,7 @@ fn debug_dump_saturation_nodes(ctx: &CalculationAlgorithmContextBase) {
 /// is valuable for that profile, but its global structural fixpoint is
 /// unnecessary on large nominal-free TBoxes: any omitted shortcut pair is
 /// still decided by the ordinary completion probes.
-fn source_told_named_subsumer_closure(
-    tin: &TInput,
-) -> std::collections::HashSet<(usize, usize)> {
+fn source_told_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usize, usize)> {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -11775,17 +11767,25 @@ fn bridged_classify_opts_with_trigger_absorption_workers(
     let subject_workers = subject_workers.clamp(1, 8);
     if subject_workers > 1 && tin.queries.len() >= subject_workers {
         use rayon::prelude::*;
-        let chunk_size = tin.queries.len().div_ceil(subject_workers);
-        let pieces: Vec<Option<BridgedClassification>> = tin
-            .queries
-            .par_chunks(chunk_size)
+        // Source signatures commonly group whole ontology branches together.
+        // Contiguous chunks therefore leave some workers with subjects that
+        // saturation answers completely while another worker receives nearly
+        // the entire completion residue.  Stripe the unchanged query set over
+        // workers instead.  Each query is still classified exactly once and
+        // the sorted merge below is unchanged; only scheduling differs.
+        let mut shards = vec![Vec::new(); subject_workers];
+        for (index, &query) in tin.queries.iter().enumerate() {
+            shards[index % subject_workers].push(query);
+        }
+        let pieces: Vec<Option<BridgedClassification>> = shards
+            .par_iter()
             .map(|queries| {
                 bridged_classify_opts_with_trigger_absorption_inner(
                     tin,
                     use_saturation,
                     use_satcache,
                     trigger_absorb,
-                    Some(queries),
+                    Some(queries.as_slice()),
                 )
             })
             .collect();
@@ -12028,207 +12028,118 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 }
             }
         } else {
-        let model_certified = empty_role_nominal_model_certificate(tin, &bridged);
-        if progress && model_certified {
-            eprintln!("BRIDGE-NOMINAL-CONSISTENCY: exact empty-role source model");
-        }
-        if !model_certified {
-            if card_nominal_profile {
-                // `CTotallyPrecomputationThread` schedules these phases in this
-                // exact default conditional-full order: saturation first, then
-                // one all-root consistency completion. At 198 individuals the
-                // full-completion threshold suppresses representative batches.
-                let mut precomputation_phase = NativePrecomputationPhase::Start;
-                advance_native_precomputation_phase(
-                    &mut precomputation_phase,
-                    NativePrecomputationPhase::IndividualSaturation,
-                )?;
-                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
-                if !run_bridged_saturation(&mut ctx, &bridged) {
-                    return None;
-                }
-                native_saturation_ran = true;
-                advance_native_precomputation_phase(
-                    &mut precomputation_phase,
-                    NativePrecomputationPhase::FullConsistencyCompletion,
-                )?;
-                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, true);
-                // The reset carried the saturation arenas (`preserve_saturation`);
-                // verify the concept-side hand-off before anything may read it.
-                native_saturation_coupling = native_saturation_coupling_requested
-                    && native_saturation_coupling_metadata_covered(&ctx, &bridged);
-                // Konclude's saturation-node expansion cache HANDLER is
-                // constructed for every completion task
-                // (`CReasonerManagerThread::createTaskHandleAlgorithm`, cpp
-                // 202-204/230); only its cache CONTENT is optional. The handler
-                // is what `detectIndividualNodeSaturationCached` (cpp 4769)
-                // needs to run its retest at all, and the retest's FIRST branch
-                // (`CSaturationNodeExpansionCacheHandler::isNodeSatisfiableCached`,
-                // cpp 101-108) is cache-INDEPENDENT: a node whose label has not
-                // grown since the caching was last validated
-                // (`lastConfirmedConceptDescriptor == addingSortedConceptDescriptionLinker`)
-                // and whose saturation node is still neither insufficient nor
-                // clashed stays saturation-blocked.
-                //
-                // Without the handler that branch is unreachable, so EVERY
-                // `propagateIndividualNodeModified` on a saturation-blocked node
-                // — including link-only ones (`setIndividualNodeAncestorConnectionModified`,
-                // the functional-successor reuse at u35, merges) that do not
-                // touch the label — clears `PRF_SATURATIONBLOCKINGCACHED` +
-                // `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED` and replays
-                // every absorbed generating concept. The block is then
-                // re-established on the successor the replay creates, and the
-                // cycle repeats: establishes grow with the search instead of
-                // bounding it.
-                //
-                // The cache stays EMPTY here: `install_bridge_saturation_node_expansion_cache`
-                // builds it with a NONE reader, and the two writing paths
-                // (`conf_saturation_satisfiabilitiy_expansion_cache_writing`,
-                // `conf_saturation_concept_unsatisfiability_saturated_cache_writing`)
-                // remain false on this route, so no saturation node ever gets a
-                // `cache_expansion_data` entry. `cached_deterministic_expansion_concepts`
-                // (u17) and the cache-entry arm of `is_node_satisfiable_cached`
-                // therefore stay inert exactly as they are today — this restores
-                // the re-confirmation and nothing else.
-                if native_saturation_coupling {
-                    install_bridge_saturation_node_expansion_cache(&mut ctx);
-                }
-                // Konclude's consistency task generator reserves the first
-                // positive completion-node id before the all-root job. Named
-                // ABox roots use negative ids and must not leave this allocator
-                // at the databox default zero.
-                ctx.processing_data_box_mut()
-                    .set_first_possible_individual_node_id(retained_consistency_next_id);
-                algo.probe_budget = Some(std::time::Duration::from_secs(
-                    base_budget.saturating_mul(4u64.saturating_pow(retry_rounds)),
-                ));
-                configure_production_search(&mut algo);
-                // The all-root consistency completion is a
-                // `CCalculationTableauCompletionTaskHandleAlgorithm` like every
-                // class job, and Konclude's coupling flags are ctor/config
-                // defaults, not per-task settings — the consistency task runs
-                // with them too. It must: the class jobs COW-inherit this
-                // graph's nodes, so a successor created here without saturation
-                // blocking data stays unblocked in every later job.
-                if native_saturation_coupling {
-                    configure_native_nominal_completion_saturation_coupling(&mut algo);
-                }
-                let used_association_update_ids =
-                    freeze_native_representative_association_versions(&algo);
-                // The successful full-consistency completion is the association
-                // writer on this profile, exactly as upstream: with
-                // `fullCompletionGraphConstruction=1` the batched representative
-                // computation is suppressed and
-                // `CIndividualNodeBackendCacheHandler` writes the associations from
-                // the completion graph via the task's representative-backend
-                // updating adapter. The Stage-2 trace shows precisely that —
-                // `trace-summary.txt` records 198 `backend.association
-                // mode=generated` events (all `usedAssociationUpdateId=1`, i.e.
-                // replacing the saturation-written v1 associations, 179 of which
-                // were `loadedIncompletelyMarked=1`) emitted before the first
-                // classification job at `trace.log:200`, from the patched hook in
-                // `CIndividualNodeBackendCacheHandler.cpp:1852`. Only associations
-                // the saturation writer could not complete are (re)written; a
-                // complete one keeps its version byte for byte.
-                let incomplete_associations: HashSet<Cint64> = bridged
-                    .native_representative_cache
-                    .borrow()
-                    .as_ref()?
-                    .entries
-                    .iter()
-                    .filter_map(|(&tag, entry)| {
-                        (!entry.complete_for_precomputation()).then_some(tag)
-                    })
-                    .collect();
-                match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
-                    Some(false) => {
-                        return Some(BridgedClassification {
-                            consistent: false,
-                            unsatisfiable: Vec::new(),
-                            subsumptions: Vec::new(),
-                        });
-                    }
-                    Some(true) => {
-                        if !incomplete_associations.is_empty() {
-                            write_completed_native_representative_associations(
-                                &ctx,
-                                &bridged,
-                                NativeSuccessfulRepresentativeTask {
-                                    selected_individuals: &incomplete_associations,
-                                    used_association_update_ids: &used_association_update_ids,
-                                },
-                            )?;
-                        }
-                    }
-                    None => {
+            let model_certified = empty_role_nominal_model_certificate(tin, &bridged);
+            if progress && model_certified {
+                eprintln!("BRIDGE-NOMINAL-CONSISTENCY: exact empty-role source model");
+            }
+            if !model_certified {
+                if card_nominal_profile {
+                    // `CTotallyPrecomputationThread` schedules these phases in this
+                    // exact default conditional-full order: saturation first, then
+                    // one all-root consistency completion. At 198 individuals the
+                    // full-completion threshold suppresses representative batches.
+                    let mut precomputation_phase = NativePrecomputationPhase::Start;
+                    advance_native_precomputation_phase(
+                        &mut precomputation_phase,
+                        NativePrecomputationPhase::IndividualSaturation,
+                    )?;
+                    reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+                    if !run_bridged_saturation(&mut ctx, &bridged) {
                         return None;
                     }
-                }
-                advance_native_precomputation_phase(
-                    &mut precomputation_phase,
-                    NativePrecomputationPhase::ConsistencyDeclared,
-                )?;
-                retained_consistency_next_id = ctx
-                    .processing_data_box_mut()
-                    .next_individual_node_id(false);
-                if retained_consistency_next_id <= 0 {
-                    return None;
-                }
-                // The successful leaf supplies only the reserved positive id.
-                // Roll every active alternative epoch back to the graph at the
-                // first nondeterministic fork: Konclude's deterministic
-                // consistency continuation base.
-                let owned_epoch_count = algo
-                    .or_branch_stack
-                    .iter()
-                    .filter(|branch| branch.own_epoch)
-                    .count();
-                let deterministic_branch_node = algo
-                    .or_branch_stack
-                    .first()
-                    .map(|branch| branch.parent_used_branch_node)
-                    .unwrap_or(ctx.base.used_branch_tree_node);
-                if owned_epoch_count != ctx.process_context().branch_epoch_depth() {
-                    return None;
-                }
-                while let Some(branch) = algo.or_branch_stack.pop() {
-                    if branch.own_epoch {
-                        ctx.pop_branch_epoch();
+                    native_saturation_ran = true;
+                    advance_native_precomputation_phase(
+                        &mut precomputation_phase,
+                        NativePrecomputationPhase::FullConsistencyCompletion,
+                    )?;
+                    reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, true);
+                    // The reset carried the saturation arenas (`preserve_saturation`);
+                    // verify the concept-side hand-off before anything may read it.
+                    native_saturation_coupling = native_saturation_coupling_requested
+                        && native_saturation_coupling_metadata_covered(&ctx, &bridged);
+                    // Konclude's saturation-node expansion cache HANDLER is
+                    // constructed for every completion task
+                    // (`CReasonerManagerThread::createTaskHandleAlgorithm`, cpp
+                    // 202-204/230); only its cache CONTENT is optional. The handler
+                    // is what `detectIndividualNodeSaturationCached` (cpp 4769)
+                    // needs to run its retest at all, and the retest's FIRST branch
+                    // (`CSaturationNodeExpansionCacheHandler::isNodeSatisfiableCached`,
+                    // cpp 101-108) is cache-INDEPENDENT: a node whose label has not
+                    // grown since the caching was last validated
+                    // (`lastConfirmedConceptDescriptor == addingSortedConceptDescriptionLinker`)
+                    // and whose saturation node is still neither insufficient nor
+                    // clashed stays saturation-blocked.
+                    //
+                    // Without the handler that branch is unreachable, so EVERY
+                    // `propagateIndividualNodeModified` on a saturation-blocked node
+                    // — including link-only ones (`setIndividualNodeAncestorConnectionModified`,
+                    // the functional-successor reuse at u35, merges) that do not
+                    // touch the label — clears `PRF_SATURATIONBLOCKINGCACHED` +
+                    // `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED` and replays
+                    // every absorbed generating concept. The block is then
+                    // re-established on the successor the replay creates, and the
+                    // cycle repeats: establishes grow with the search instead of
+                    // bounding it.
+                    //
+                    // The cache stays EMPTY here: `install_bridge_saturation_node_expansion_cache`
+                    // builds it with a NONE reader, and the two writing paths
+                    // (`conf_saturation_satisfiabilitiy_expansion_cache_writing`,
+                    // `conf_saturation_concept_unsatisfiability_saturated_cache_writing`)
+                    // remain false on this route, so no saturation node ever gets a
+                    // `cache_expansion_data` entry. `cached_deterministic_expansion_concepts`
+                    // (u17) and the cache-entry arm of `is_node_satisfiable_cached`
+                    // therefore stay inert exactly as they are today — this restores
+                    // the re-confirmation and nothing else.
+                    if native_saturation_coupling {
+                        install_bridge_saturation_node_expansion_cache(&mut ctx);
                     }
-                }
-                if ctx.process_context().branch_epoch_depth() != 0
-                    || !algo.or_branch_stack.is_empty()
-                {
-                    return None;
-                }
-                // Epochs restore the graph and databox; the normal branch
-                // discard path separately restores this dependency-tree
-                // cursor. Manual all-branch rollback must do the same.
-                ctx.base.used_branch_tree_node = deterministic_branch_node;
-                ctx.branch_tree_node = deterministic_branch_node;
-                install_native_nominal_backend_replay(&mut algo, &bridged);
-                // PRISTINE BASE SNAPSHOT. Konclude bases EVERY class job on the
-                // deterministic consistency task
-                // (`consTaskData->getDeterministicSatisfiableTask()`), never on the
-                // previous class job. Both pieces of that base live OUTSIDE the
-                // epoch journals — the databox is a plain context field and the
-                // branch-tree cursor is watermark-only memory — so they must be
-                // captured here, at depth 0, and re-installed verbatim by every
-                // later `renew`. Reading them back off the live context (the
-                // pre-fix behaviour) chains class job N onto class job N-1.
-                retained_consistency_branch_node = deterministic_branch_node;
-                retained_consistency_databox = Some(ctx.processing_data_box().clone());
-                ctx.push_branch_epoch();
-                retained_consistency_base = true;
-            } else {
-                // Preserve the exact nominal-only schedule from efbcbbc. Its
-                // 10621 classification is a validated full-IRI reference.
-                let mut decided = None;
-                for round in 0..=retry_rounds {
+                    // Konclude's consistency task generator reserves the first
+                    // positive completion-node id before the all-root job. Named
+                    // ABox roots use negative ids and must not leave this allocator
+                    // at the databox default zero.
+                    ctx.processing_data_box_mut()
+                        .set_first_possible_individual_node_id(retained_consistency_next_id);
                     algo.probe_budget = Some(std::time::Duration::from_secs(
-                        base_budget.saturating_mul(4u64.saturating_pow(round)),
+                        base_budget.saturating_mul(4u64.saturating_pow(retry_rounds)),
                     ));
                     configure_production_search(&mut algo);
+                    // The all-root consistency completion is a
+                    // `CCalculationTableauCompletionTaskHandleAlgorithm` like every
+                    // class job, and Konclude's coupling flags are ctor/config
+                    // defaults, not per-task settings — the consistency task runs
+                    // with them too. It must: the class jobs COW-inherit this
+                    // graph's nodes, so a successor created here without saturation
+                    // blocking data stays unblocked in every later job.
+                    if native_saturation_coupling {
+                        configure_native_nominal_completion_saturation_coupling(&mut algo);
+                    }
+                    let used_association_update_ids =
+                        freeze_native_representative_association_versions(&algo);
+                    // The successful full-consistency completion is the association
+                    // writer on this profile, exactly as upstream: with
+                    // `fullCompletionGraphConstruction=1` the batched representative
+                    // computation is suppressed and
+                    // `CIndividualNodeBackendCacheHandler` writes the associations from
+                    // the completion graph via the task's representative-backend
+                    // updating adapter. The Stage-2 trace shows precisely that —
+                    // `trace-summary.txt` records 198 `backend.association
+                    // mode=generated` events (all `usedAssociationUpdateId=1`, i.e.
+                    // replacing the saturation-written v1 associations, 179 of which
+                    // were `loadedIncompletelyMarked=1`) emitted before the first
+                    // classification job at `trace.log:200`, from the patched hook in
+                    // `CIndividualNodeBackendCacheHandler.cpp:1852`. Only associations
+                    // the saturation writer could not complete are (re)written; a
+                    // complete one keeps its version byte for byte.
+                    let incomplete_associations: HashSet<Cint64> = bridged
+                        .native_representative_cache
+                        .borrow()
+                        .as_ref()?
+                        .entries
+                        .iter()
+                        .filter_map(|(&tag, entry)| {
+                            (!entry.complete_for_precomputation()).then_some(tag)
+                        })
+                        .collect();
                     match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                         Some(false) => {
                             return Some(BridgedClassification {
@@ -12238,18 +12149,106 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             });
                         }
                         Some(true) => {
-                            decided = Some(());
-                            break;
+                            if !incomplete_associations.is_empty() {
+                                write_completed_native_representative_associations(
+                                    &ctx,
+                                    &bridged,
+                                    NativeSuccessfulRepresentativeTask {
+                                        selected_individuals: &incomplete_associations,
+                                        used_association_update_ids: &used_association_update_ids,
+                                    },
+                                )?;
+                            }
                         }
-                        None if round < retry_rounds => {
-                            reset_probe_env(&mut algo, &mut ctx, &bridged, false);
+                        None => {
+                            return None;
                         }
-                        None => {}
                     }
+                    advance_native_precomputation_phase(
+                        &mut precomputation_phase,
+                        NativePrecomputationPhase::ConsistencyDeclared,
+                    )?;
+                    retained_consistency_next_id =
+                        ctx.processing_data_box_mut().next_individual_node_id(false);
+                    if retained_consistency_next_id <= 0 {
+                        return None;
+                    }
+                    // The successful leaf supplies only the reserved positive id.
+                    // Roll every active alternative epoch back to the graph at the
+                    // first nondeterministic fork: Konclude's deterministic
+                    // consistency continuation base.
+                    let owned_epoch_count = algo
+                        .or_branch_stack
+                        .iter()
+                        .filter(|branch| branch.own_epoch)
+                        .count();
+                    let deterministic_branch_node = algo
+                        .or_branch_stack
+                        .first()
+                        .map(|branch| branch.parent_used_branch_node)
+                        .unwrap_or(ctx.base.used_branch_tree_node);
+                    if owned_epoch_count != ctx.process_context().branch_epoch_depth() {
+                        return None;
+                    }
+                    while let Some(branch) = algo.or_branch_stack.pop() {
+                        if branch.own_epoch {
+                            ctx.pop_branch_epoch();
+                        }
+                    }
+                    if ctx.process_context().branch_epoch_depth() != 0
+                        || !algo.or_branch_stack.is_empty()
+                    {
+                        return None;
+                    }
+                    // Epochs restore the graph and databox; the normal branch
+                    // discard path separately restores this dependency-tree
+                    // cursor. Manual all-branch rollback must do the same.
+                    ctx.base.used_branch_tree_node = deterministic_branch_node;
+                    ctx.branch_tree_node = deterministic_branch_node;
+                    install_native_nominal_backend_replay(&mut algo, &bridged);
+                    // PRISTINE BASE SNAPSHOT. Konclude bases EVERY class job on the
+                    // deterministic consistency task
+                    // (`consTaskData->getDeterministicSatisfiableTask()`), never on the
+                    // previous class job. Both pieces of that base live OUTSIDE the
+                    // epoch journals — the databox is a plain context field and the
+                    // branch-tree cursor is watermark-only memory — so they must be
+                    // captured here, at depth 0, and re-installed verbatim by every
+                    // later `renew`. Reading them back off the live context (the
+                    // pre-fix behaviour) chains class job N onto class job N-1.
+                    retained_consistency_branch_node = deterministic_branch_node;
+                    retained_consistency_databox = Some(ctx.processing_data_box().clone());
+                    ctx.push_branch_epoch();
+                    retained_consistency_base = true;
+                } else {
+                    // Preserve the exact nominal-only schedule from efbcbbc. Its
+                    // 10621 classification is a validated full-IRI reference.
+                    let mut decided = None;
+                    for round in 0..=retry_rounds {
+                        algo.probe_budget = Some(std::time::Duration::from_secs(
+                            base_budget.saturating_mul(4u64.saturating_pow(round)),
+                        ));
+                        configure_production_search(&mut algo);
+                        match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
+                            Some(false) => {
+                                return Some(BridgedClassification {
+                                    consistent: false,
+                                    unsatisfiable: Vec::new(),
+                                    subsumptions: Vec::new(),
+                                });
+                            }
+                            Some(true) => {
+                                decided = Some(());
+                                break;
+                            }
+                            None if round < retry_rounds => {
+                                reset_probe_env(&mut algo, &mut ctx, &bridged, false);
+                            }
+                            None => {}
+                        }
+                    }
+                    decided?;
                 }
-                decided?;
             }
-        }
         }
         if !retained_consistency_base {
             reset_classification_probe_env(
@@ -13372,14 +13371,12 @@ mod tests {
             nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
             ..Default::default()
         };
-        let single = bridged_classify_opts_with_trigger_absorption_workers(
-            &tin, false, false, true, 1,
-        )
-        .expect("single-worker bridge must complete");
-        let parallel = bridged_classify_opts_with_trigger_absorption_workers(
-            &tin, false, false, true, 2,
-        )
-        .expect("partitioned bridge must complete");
+        let single =
+            bridged_classify_opts_with_trigger_absorption_workers(&tin, false, false, true, 1)
+                .expect("single-worker bridge must complete");
+        let parallel =
+            bridged_classify_opts_with_trigger_absorption_workers(&tin, false, false, true, 2)
+                .expect("partitioned bridge must complete");
 
         assert_eq!(parallel.consistent, single.consistent);
         assert_eq!(parallel.unsatisfiable, single.unsatisfiable);
@@ -13476,13 +13473,17 @@ mod tests {
         ));
 
         let mut coupled = clean.clone();
-        coupled.nominal_abox.negative_role_assertions.push(nominal_role(
-            "r", "a", "b",
-        ));
+        coupled
+            .nominal_abox
+            .negative_role_assertions
+            .push(nominal_role("r", "a", "b"));
         assert!(!independent_component_abox_profile(&coupled, true, true));
 
         let mut coupled = clean.clone();
-        coupled.nominal_abox.different.push(("a".into(), "b".into()));
+        coupled
+            .nominal_abox
+            .different
+            .push(("a".into(), "b".into()));
         assert!(!independent_component_abox_profile(&coupled, true, true));
 
         for concept in [
@@ -13513,8 +13514,7 @@ mod tests {
     #[test]
     fn independent_abox_representatives_canonicalize_assertion_sets() {
         let tin = cached_native_role_input();
-        let (_algo, _ctx, mut bridged) =
-            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let (_algo, _ctx, mut bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         let first = bridged.nominal_seeds[0].clone();
         let mut reordered = first.clone();
         reordered.individual_tag = 10_001;
@@ -13982,22 +13982,14 @@ mod tests {
     fn exact_atomic_datatype_fragment_accepts_only_safe_data_cardinalities() {
         use crate::frontend::syntax::{Concept as C, Role as R};
 
-        let safe_bound = C::AtMost(
-            1,
-            R::Name("integer_value".into()),
-            Box::new(C::Top),
-        );
+        let safe_bound = C::AtMost(1, R::Name("integer_value".into()), Box::new(C::Top));
         let mut safe = exact_atomic_datatype_input();
         safe.source_axioms.push(source_equivalence(
             C::Name("A".into()),
             C::And(
                 [
                     C::Name("Q_guard".into()),
-                    C::AtLeast(
-                        2,
-                        R::Name("integer_value".into()),
-                        Box::new(C::Top),
-                    ),
+                    C::AtLeast(2, R::Name("integer_value".into()), Box::new(C::Top)),
                     safe_bound,
                 ]
                 .into_iter()
@@ -14010,16 +14002,8 @@ mod tests {
         );
 
         for unsafe_bound in [
-            C::AtLeast(
-                3,
-                R::Name("integer_value".into()),
-                Box::new(C::Top),
-            ),
-            C::AtMost(
-                3,
-                R::Name("integer_value".into()),
-                Box::new(C::Top),
-            ),
+            C::AtLeast(3, R::Name("integer_value".into()), Box::new(C::Top)),
+            C::AtMost(3, R::Name("integer_value".into()), Box::new(C::Top)),
             C::AtMost(
                 1,
                 R::Name("integer_value".into()),
@@ -14027,10 +14011,9 @@ mod tests {
             ),
         ] {
             let mut unsafe_tin = exact_atomic_datatype_input();
-            unsafe_tin.source_axioms.push(source_subclass(
-                C::Name("A".into()),
-                unsafe_bound,
-            ));
+            unsafe_tin
+                .source_axioms
+                .push(source_subclass(C::Name("A".into()), unsafe_bound));
             assert!(
                 !exact_atomic_datatype_bridge_fragment(&unsafe_tin, true),
                 "uncertified data-property cardinality must remain fail-closed"
@@ -14044,16 +14027,8 @@ mod tests {
                 R::Name("object_role".into()),
                 Box::new(C::And(
                     [
-                        C::AtLeast(
-                            1,
-                            R::Name("integer_value".into()),
-                            Box::new(C::Top),
-                        ),
-                        C::AtMost(
-                            1,
-                            R::Name("integer_value".into()),
-                            Box::new(C::Top),
-                        ),
+                        C::AtLeast(1, R::Name("integer_value".into()), Box::new(C::Top)),
+                        C::AtMost(1, R::Name("integer_value".into()), Box::new(C::Top)),
                     ]
                     .into_iter()
                     .collect(),
@@ -14069,8 +14044,7 @@ mod tests {
     #[test]
     fn exact_atomic_datatype_fragment_recognises_boolean_two_value_range() {
         let mut tin = exact_atomic_datatype_input();
-        tin.concepts[2] =
-            "__dt__c__DataOneOf(\"false\"^^xsd:boolean \"true\"^^xsd:boolean)".into();
+        tin.concepts[2] = "__dt__c__DataOneOf(\"false\"^^xsd:boolean \"true\"^^xsd:boolean)".into();
         assert!(
             exact_atomic_datatype_bridge_fragment(&tin, true),
             "the complete Boolean enumeration is extensionally xsd:boolean"
@@ -14109,8 +14083,7 @@ mod tests {
             "bare dateTime is a nonempty exact atomic range with at least two values"
         );
 
-        *tin.concepts.last_mut().expect("dateTime concept") =
-            "__dt__dateTimeStamp".into();
+        *tin.concepts.last_mut().expect("dateTime concept") = "__dt__dateTimeStamp".into();
         assert!(
             !exact_atomic_datatype_bridge_fragment(&tin, true),
             "dateTimeStamp remains outside the exact atomic map"
@@ -15011,7 +14984,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: meta,
             ..Default::default()
@@ -15215,8 +15188,7 @@ mod tests {
             C::Top,
             C::Or([C::Name("B".into()), C::Name("C".into())].into()),
         ));
-        let (mut algo, mut ctx, bridged) =
-            fresh_bridge_env_with_trigger_absorption(&mixed, true);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&mixed, true);
         assert!(native_cardinality_abox_profile(
             &mixed,
             bridged.has_native_nominals()
@@ -15226,11 +15198,12 @@ mod tests {
         ctx.processing_data_box_mut()
             .set_first_possible_individual_node_id(1_000);
         configure_production_search(&mut algo);
-        assert_eq!(native_nominal_consistency(&mut algo, &mut ctx, &bridged), Some(true));
+        assert_eq!(
+            native_nominal_consistency(&mut algo, &mut ctx, &bridged),
+            Some(true)
+        );
 
-        let base_next_id = ctx
-            .processing_data_box_mut()
-            .next_individual_node_id(false);
+        let base_next_id = ctx.processing_data_box_mut().next_individual_node_id(false);
         assert!(base_next_id > 0);
         let owned_epoch_count = algo
             .or_branch_stack
@@ -15280,8 +15253,7 @@ mod tests {
             assert!(label.is_some());
             for &concept in &branch_only {
                 assert!(
-                    !ctx
-                        .process_context()
+                    !ctx.process_context()
                         .label_set(label)
                         .contains_concept_in_context(
                             ctx.process_context(),
@@ -15312,7 +15284,10 @@ mod tests {
             mixed.concepts.len(),
         )
         .expect("first class probe");
-        assert_eq!(ctx.process_context().node(first_root).individual_node_id(), base_next_id);
+        assert_eq!(
+            ctx.process_context().node(first_root).individual_node_id(),
+            base_next_id
+        );
         assert!(fixed_nodes.iter().all(|node| node.is_some()));
 
         // The production reset: the whole previous class job is rolled back,
@@ -15372,8 +15347,7 @@ mod tests {
             .and_then(|cache| cache.entries.get(&source.individual_tag))
             .map(|entry| entry.association_update_id)
             .expect("completed source association");
-        let source_node =
-            algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        let source_node = algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
         assert!(source_node.is_some());
         assert_eq!(
             algo.native_nominal_backend_replay[&source.individual_tag].association_update_id,
@@ -15566,7 +15540,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: meta,
             ..Default::default()
@@ -15825,7 +15799,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
             ..Default::default()
@@ -15890,7 +15864,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: native_nominal_meta(
                 vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
@@ -16120,7 +16094,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
             ..Default::default()
@@ -16168,12 +16142,16 @@ mod tests {
             replay
                 .cached_concept_values
                 .iter()
-                .any(|&(concept, negated, deterministic)| (concept, negated) == nondeterministic
-                    && !deterministic),
+                .any(
+                    |&(concept, negated, deterministic)| (concept, negated) == nondeterministic
+                        && !deterministic
+                ),
             "the replay record lost the non-deterministic association value"
         );
         assert!(
-            !replay.deterministic_cached_concepts.contains(&nondeterministic),
+            !replay
+                .deterministic_cached_concepts
+                .contains(&nondeterministic),
             "a non-deterministic value entered the unconditional replay list"
         );
     }
@@ -16181,8 +16159,7 @@ mod tests {
     #[test]
     fn incomplete_native_neighbour_stays_blocked_with_both_linkers_retained() {
         let tin = cached_native_role_input();
-        let (mut algo, mut ctx, bridged) =
-            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
         let source = bridged.nominal_seeds[0].clone();
         force_native_association_incomplete(&bridged, source.individual_tag, true);
@@ -16197,8 +16174,7 @@ mod tests {
             .role_metadata_complete = false;
 
         reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
-        let source_node =
-            algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        let source_node = algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
         assert!(source_node.is_some());
         let source_ref = ctx.process_context().node(source_node);
         assert!(source_ref.has_partial_processing_restriction_flags(
@@ -16222,8 +16198,7 @@ mod tests {
     #[test]
     fn native_critical_concept_unblocks_only_the_influenced_neighbour() {
         let tin = cached_native_role_input();
-        let (mut algo, mut ctx, bridged) =
-            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
         let source = bridged.nominal_seeds[0].clone();
         let forward_target = bridged.nominal_seeds[1].individual_tag;
@@ -16231,8 +16206,7 @@ mod tests {
         force_native_association_incomplete(&bridged, source.individual_tag, true);
 
         reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
-        let source_node =
-            algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        let source_node = algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
         let mut universal = Concept::new();
         universal
             .set_concept_tag(20_001)
@@ -16278,15 +16252,13 @@ mod tests {
     #[test]
     fn native_cardinality_criticality_releases_neighbour_only_block() {
         let tin = cached_native_role_input();
-        let (mut algo, mut ctx, bridged) =
-            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
         let source = bridged.nominal_seeds[0].clone();
         force_native_association_incomplete(&bridged, source.individual_tag, true);
 
         reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
-        let source_node =
-            algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        let source_node = algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
         let neighbour_block =
             IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED;
         let successor_block =
@@ -16598,7 +16570,9 @@ mod tests {
                 .get_mut(&source.individual_tag)
                 .expect("replay journal installed for the source individual");
             assert!(
-                !replay.role_assertions.contains(&(bridged.roles[0], unrelated)),
+                !replay
+                    .role_assertions
+                    .contains(&(bridged.roles[0], unrelated)),
                 "the fixture must not assert the injected derived edge"
             );
             replay
@@ -16699,11 +16673,9 @@ mod tests {
             ],
             vec![],
         );
-        meta.role_assertions.push(nominal_role("contains", "a", "d"));
-        let door = C::Exists(
-            R::Name("contains".into()),
-            Box::new(C::Name("Door".into())),
-        );
+        meta.role_assertions
+            .push(nominal_role("contains", "a", "d"));
+        let door = C::Exists(R::Name("contains".into()), Box::new(C::Name("Door".into())));
         let tin = TInput {
             concepts: vec![
                 "ImageType".into(),
@@ -16720,7 +16692,11 @@ mod tests {
                 source_subclass(C::Nominal("a".into()), C::Name("ImageType".into())),
                 source_subclass(
                     C::Name("ImageWithDoor".into()),
-                    C::And([door.clone(), C::Name("ImageType".into())].into_iter().collect()),
+                    C::And(
+                        [door.clone(), C::Name("ImageType".into())]
+                            .into_iter()
+                            .collect(),
+                    ),
                 ),
                 source_subclass(
                     C::And([door, C::Name("ImageType".into())].into_iter().collect()),
@@ -16893,7 +16869,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: meta,
             ..Default::default()
@@ -16975,12 +16951,12 @@ mod tests {
             .has_partial_processing_restriction_flags(
                 IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
             ));
-        assert!(!ctx
-            .process_context()
-            .node(node)
-            .has_partial_processing_restriction_flags(
-                IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
-            ),
+        assert!(
+            !ctx.process_context()
+                .node(node)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+                ),
             "a concept-only retest invalidated the reusable neighbour labels"
         );
         let label = ctx.process_context().node(node).reapply_con_label_set;
@@ -17013,7 +16989,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: native_nominal_meta(
                 vec![("a", "__nom__a", vec![C::Name("A".into())])],
@@ -17171,8 +17147,7 @@ mod tests {
     #[test]
     fn selective_writeback_preserves_untouched_neighbour_labels_and_versions() {
         let tin = cached_native_role_input();
-        let (mut algo, mut ctx, bridged) =
-            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
         let source = bridged.nominal_seeds[0].clone();
         force_native_association_incomplete(&bridged, source.individual_tag, true);
@@ -17260,7 +17235,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: native_nominal_meta(
                 vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
@@ -17268,8 +17243,7 @@ mod tests {
             ),
             ..Default::default()
         };
-        let (mut algo, mut ctx, bridged) =
-            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
         let untouched = bridged.nominal_seeds[0].clone();
         let selected_seed = bridged.nominal_seeds[1].clone();
@@ -17433,7 +17407,7 @@ mod tests {
             n: 2,
             role: 0,
             filler: 0,
-        exact: false,
+            exact: false,
         });
         let (mut direct_algo, mut direct_ctx, direct) =
             fresh_bridge_env_with_trigger_absorption(&direct_tin, true);
@@ -17497,7 +17471,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
-            exact: false,
+                exact: false,
             }],
             nominal_abox: native_nominal_meta(
                 vec![
@@ -18047,14 +18021,9 @@ mod tests {
         let (concept_values, _) =
             native_completion_label_values(&ctx, extraction_node, deterministic_node)
                 .expect("completion label");
-        let metadata = native_completion_role_metadata(
-            &ctx,
-            extraction_node,
-            &concept_values,
-            &bridged,
-            seed,
-        )
-        .expect("live-successor role metadata");
+        let metadata =
+            native_completion_role_metadata(&ctx, extraction_node, &concept_values, &bridged, seed)
+                .expect("live-successor role metadata");
         assert!(
             metadata
                 .instantiated_role_values
@@ -19559,8 +19528,7 @@ mod tests {
              Ontology(Declaration(Class(:A)) Declaration(Class(:B))\n\
              SubClassOf(:A :B))",
         );
-        let (mut algo, mut ctx, bridged) =
-            fresh_bridge_env_with_trigger_absorption(&env.tin, true);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&env.tin, true);
         let a = bridged.named[env.con_id["A"]];
         let b = bridged.named[env.con_id["B"]];
 
@@ -21185,7 +21153,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 1,
-            exact: false,
+                exact: false,
             }],
             ..Default::default()
         };
@@ -21234,7 +21202,7 @@ mod tests {
                 n: 1,
                 role: 0,
                 filler: 1,
-            exact: false,
+                exact: false,
             }],
             ..Default::default()
         };
@@ -21290,7 +21258,7 @@ mod tests {
                 n: 1,
                 role: 0,
                 filler: 1,
-            exact: false,
+                exact: false,
             }],
             ..Default::default()
         };
@@ -21351,7 +21319,7 @@ mod tests {
                 n: 1,
                 role: 0,
                 filler: 1,
-            exact: false,
+                exact: false,
             }],
             ..Default::default()
         };
@@ -21386,7 +21354,7 @@ mod tests {
                     n: 3,
                     role: 0,
                     filler: 1,
-                exact: false,
+                    exact: false,
                 },
                 CardDefJson {
                     marker: 0,
@@ -21394,7 +21362,7 @@ mod tests {
                     n: 2,
                     role: 0,
                     filler: 1,
-                exact: false,
+                    exact: false,
                 },
             ],
             ..Default::default()

@@ -303,9 +303,7 @@ impl FromStr for Route {
             "cb_absorb_portfolio16" | "absorb_portfolio" => Route::CbAbsorbPortfolio16,
             "elc" => Route::Elc,
             "elc_cert" => Route::ElcCert,
-            "certified_el_production" | "elc_cert_production" => {
-                Route::CertifiedElProduction
-            }
+            "certified_el_production" | "elc_cert_production" => Route::CertifiedElProduction,
             "lean" => Route::Lean,
             "ht_general" | "ht" => Route::HtGeneral,
             "ht_qo" | "qo" => Route::HtQo,
@@ -380,6 +378,23 @@ fn native_bridge_abox_eligible(profile: &OntologyProfile) -> bool {
         && source.class_assertions > 0
         && source.abox_axioms == source.class_assertions.saturating_add(different)
         && source.distinct_individuals == source.class_assertions
+}
+
+/// Bounded subject partition for the certified typed-nominal bridge.
+///
+/// The large 10621-shaped terminology has enough independent subject work to
+/// benefit from eight workers. Smaller typed ABoxes retain four to avoid fixed
+/// scheduling and memory overhead. This does not change the bridge certificate,
+/// merge order, or exact nominal fallback.
+pub(crate) fn certified_nominal_subject_workers(profile: &OntologyProfile) -> &'static str {
+    if native_bridge_abox_eligible(profile)
+        && profile.source.logical_axioms >= 100_000
+        && profile.source.distinct_classes >= 40_000
+    {
+        "8"
+    } else {
+        "4"
+    }
 }
 
 /// Source-only candidate gate for Konclude-style large independent-ABox
@@ -621,9 +636,7 @@ pub(crate) fn one_thread_small_production_candidate(profile: &OntologyProfile) -
 /// Bridge-first production scheduling retains the exact CB fallback without
 /// allocating it concurrently with a bridge known to dominate this source
 /// shape. `Some` is also the bounded subject-worker count for that first arm.
-pub(crate) fn production_bridge_subject_workers(
-    profile: &OntologyProfile,
-) -> Option<&'static str> {
+pub(crate) fn production_bridge_subject_workers(profile: &OntologyProfile) -> Option<&'static str> {
     if eight_thread_large_sriq_candidate(profile) {
         Some("4")
     } else if sequential_large_shi_bridge_candidate(profile)
@@ -743,6 +756,46 @@ fn ground_clause_general_ht_candidate(profile: &OntologyProfile) -> bool {
         && count("InverseObjectProperties") == 21
 }
 
+/// Compact nominal ontologies for which the converted-input HT certificate is
+/// much cheaper than materializing every individual in CB root contexts.
+///
+/// This source profile gate schedules only an attempt. `ht_general`
+/// independently checks complete clause coverage and returns DEFER on any
+/// unsupported construct; automatic dispatch then runs the unchanged exact
+/// nominal fallback. The complement fence avoids a measured family in which
+/// HT remains exact but is slower than production completion.
+fn compact_nominal_general_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.abox_axioms > 0
+        && source.role_assertions > 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && (6_000..=8_000).contains(&source.logical_axioms)
+        && (1_500..=2_500).contains(&source.abox_axioms)
+        && source.complements == 0
+        && source.unions <= 2
+        && (source.unions > 0 || source.role_assertions >= 400)
+}
+
+/// Large SRIQ terminology with a small positive ABox for which the general HT
+/// conversion is complete and avoids the more expensive cardinality-proxy
+/// portfolio. The source gate only schedules the certified attempt; a
+/// converted-input refusal restores the exact nominal fallback.
+fn large_card_general_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    profile.card_number_role_separable
+        && source.logical_axioms >= 10_000
+        && source.abox_axioms > 0
+        && source.abox_axioms <= 500
+        && source.unions >= 100
+        && source.qualified_cardinalities > 0
+        && source.role_chain_axioms > 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
 /// Cheap source candidate for component-wise positive-ABox certification.
 ///
 /// This authorizes only a bridge attempt. After normalization the bridge must
@@ -754,7 +807,10 @@ pub(crate) fn component_abox_bridge_candidate(profile: &OntologyProfile) -> bool
     let source = &profile.source;
     let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
     source.abox_axioms > 0
-        && source.abox_axioms == source.class_assertions.saturating_add(source.role_assertions)
+        && source.abox_axioms
+            == source
+                .class_assertions
+                .saturating_add(source.role_assertions)
         && source.class_assertions > 0
         && source.distinct_individuals > 0
         && source.imports == 0
@@ -896,7 +952,9 @@ fn source_el_shape(profile: &OntologyProfile) -> bool {
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
         && count("InverseObjectProperties") == 0
-        && count("SymmetricObjectProperty") == 0
+        // Symmetry normalizes to the paired role inclusions already accepted
+        // by the EL worker. The worker independently validates that normalized
+        // clause/RBox shape and defers to production on any non-EL residue.
         && count("AsymmetricObjectProperty") == 0
         && count("IrreflexiveObjectProperty") == 0
         && count("DisjointObjectProperties") == 0
@@ -923,6 +981,53 @@ fn source_el_positive_abox_candidate(profile: &OntologyProfile) -> bool {
     profile.source.abox_axioms > 0
         && profile.positive_el_abox_materializable
         && source_el_shape(profile)
+}
+
+/// Inverse/chain EL-shaped terminologies accepted by the complete native
+/// completion bridge.
+///
+/// Source inverse declarations and role domains/ranges keep this family out of
+/// the atomic ELC gate, while the production portfolio needlessly allocates a
+/// large CB competitor. The bridge independently checks lossless source,
+/// clause, and RBox coverage and returns a complete answer or DEFER. Automatic
+/// dispatch installs the unchanged production/nominal fallback after a defer,
+/// so this source predicate changes scheduling only. It covers both the pure
+/// terminology and the independently separable class-assertion ABox variant.
+fn inverse_chain_el_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let no_abox = source.abox_axioms == 0;
+    let separable_class_abox = independent_large_abox_candidate(profile);
+
+    (no_abox || separable_class_abox)
+        && source.logical_axioms >= 10_000
+        && source.logical_axioms <= 70_000
+        && source.tbox_axioms >= 10_000
+        && (8_000..=8_100).contains(&source.distinct_classes)
+        && source.disjoint_class_axioms == 65
+        && source.existentials >= 5_000
+        && source.role_chain_axioms > 0
+        && source.role_chain_axioms <= 12
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.unions == 0
+        && source.complements == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && source.functional_role_axioms == 0
+        && source.inverse_functional_role_axioms == 0
+        && profile.expressivity.inverse
+        && profile.expressivity.complex_subrole
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.qualified_cardinality
+        && !profile.expressivity.nominal
+        && !profile.expressivity.datatype
 }
 
 /// Large near-EL inputs for which plain normalization plus the canonical-model
@@ -1040,8 +1145,9 @@ fn certified_el_production_candidate(profile: &OntologyProfile) -> bool {
 /// a scheduling decision even when data-property assertions prevent the
 /// narrower typed-object-ABox bridge certificate.
 fn large_no_cardinality_abox_production_candidate(profile: &OntologyProfile) -> bool {
+    const LARGE_ABOX_AXIOMS: u64 = 40_000;
     let source = &profile.source;
-    source.abox_axioms >= 100_000
+    source.abox_axioms >= LARGE_ABOX_AXIOMS
         && source.min_cardinalities == 0
         && source.max_cardinalities == 0
         && source.exact_cardinalities == 0
@@ -1192,6 +1298,9 @@ pub fn select(profile: &OntologyProfile) -> Route {
     if certified_el_production_candidate(profile) {
         return Route::CertifiedElProduction;
     }
+    if inverse_chain_el_bridge_candidate(profile) {
+        return Route::HtBridge;
+    }
     match semantic_fragment(profile) {
         // These branches are semantic dispatch, not learned performance
         // choices. Ordinary proxy CB is incomplete for singleton/ABox meaning,
@@ -1216,6 +1325,10 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if small_class_identity_abox_production_candidate(profile) => {
             Route::ProductionAll
         }
+        SemanticFragment::Nominal if compact_nominal_general_ht_candidate(profile) => {
+            Route::HtGeneral
+        }
+        SemanticFragment::Nominal if large_card_general_ht_candidate(profile) => Route::HtGeneral,
         SemanticFragment::Nominal if ground_clause_general_ht_candidate(profile) => {
             Route::HtGeneral
         }
@@ -1326,10 +1439,21 @@ pub(crate) fn automatic_atomic_fallback(
 ) -> Option<Route> {
     let specialist = matches!(
         selected,
-        Route::Elc | Route::HtGeneral | Route::CertifiedCardNominals | Route::NominalNiTbox
+        Route::Elc
+            | Route::HtGeneral
+            | Route::HtBridge
+            | Route::CertifiedCardNominals
+            | Route::NominalNiTbox
     );
     if !specialist {
         return None;
+    }
+    // The independently separable large-ABox routes classify a certified TBox
+    // view and check every asserted class against its unsatisfiable set. Their
+    // exact fallback is the production portfolio carrying that same
+    // consistency certificate, not eager nominal root-context materialization.
+    if independent_large_abox_candidate(profile) {
+        return Some(Route::ProductionAll);
     }
     match semantic_fragment(profile) {
         SemanticFragment::NativeBridgeAbox | SemanticFragment::Nominal => Some(Route::Nominals),
@@ -1350,6 +1474,8 @@ impl EnvironmentGuard {
     pub(crate) fn capture() -> Self {
         let values = std::iter::once("KM_ROUTE")
             .chain(std::iter::once("KM_COMP_IND_BITS"))
+            .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
+            .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
             .chain(ROUTE_KEYS.iter().copied())
             .map(|key| (key, std::env::var_os(key)))
             .collect();
@@ -1872,6 +1998,8 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_HT_CARD",
     "KM_NO_HT_CARD_RECOG",
     "KM_HT_PAR",
+    "KM_HT_TOTAL_GLOBAL",
+    "KM_HT_GLOBAL_NATIVE_ABOX",
     "KM_HT_BLOCK",
     "KM_HT_EAGER",
     "KM_HT_NEGTRIED",
@@ -1938,9 +2066,7 @@ mod tests {
 
     #[test]
     fn automatic_route_admits_the_large_near_el_shape_with_exact_fallback() {
-        assert!(certified_el_production_candidate(
-            &large_near_el_profile()
-        ));
+        assert!(certified_el_production_candidate(&large_near_el_profile()));
         assert_eq!(
             select(&large_near_el_profile()),
             Route::CertifiedElProduction
@@ -2071,9 +2197,7 @@ mod tests {
         assert!(Route::HtGeneral
             .settings()
             .contains(&("KM_MECHANISM", "ht")));
-        assert!(Route::HtGeneral
-            .settings()
-            .contains(&("KM_HT_FORCE", "1")));
+        assert!(Route::HtGeneral.settings().contains(&("KM_HT_FORCE", "1")));
         assert!(Route::CbAbsorb16.settings().contains(&("KM_ABSORB", "1")));
         assert!(Route::CbAbsorb16
             .settings()
@@ -2271,14 +2395,69 @@ mod tests {
         source.exact_cardinalities = 15;
         source.qualified_cardinalities = 3;
         source.inverse_functional_role_axioms = 1;
-        source.axiom_types.insert("DataPropertyAssertion".into(), 624);
+        source
+            .axiom_types
+            .insert("DataPropertyAssertion".into(), 624);
         source.axiom_types.insert("DifferentIndividuals".into(), 1);
-        source.axiom_types.insert("InverseObjectProperties".into(), 21);
+        source
+            .axiom_types
+            .insert("InverseObjectProperties".into(), 21);
 
         assert!(ground_clause_general_ht_candidate(&profile));
         assert_eq!(select(&profile), Route::HtGeneral);
         profile.source.class_assertions += 1;
         assert!(!ground_clause_general_ht_candidate(&profile));
+    }
+
+    #[test]
+    fn compact_nominal_profile_schedules_certified_general_ht() {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.nominal_individual = true;
+        profile.source.logical_axioms = 7_000;
+        profile.source.tbox_axioms = 4_000;
+        profile.source.abox_axioms = 2_000;
+        profile.source.role_assertions = 600;
+        profile.source.unions = 2;
+
+        assert!(compact_nominal_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtGeneral);
+
+        profile.source.complements = 1;
+        assert!(!compact_nominal_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+
+        profile.source.complements = 0;
+        profile.source.unions = 0;
+        profile.source.role_assertions = 399;
+        assert!(!compact_nominal_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+
+        profile.source.unions = 2;
+        profile.source.role_assertions = 0;
+        assert!(!compact_nominal_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+    }
+
+    #[test]
+    fn large_card_profile_schedules_certified_general_ht() {
+        let mut profile = OntologyProfile::default();
+        profile.card_number_role_separable = true;
+        profile.source.logical_axioms = 11_821;
+        profile.source.tbox_axioms = 11_455;
+        profile.source.abox_axioms = 223;
+        profile.source.unions = 381;
+        profile.source.qualified_cardinalities = 1;
+        profile.source.role_chain_axioms = 6;
+
+        assert!(large_card_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtGeneral);
+
+        profile.source.logical_axioms = 2_168;
+        profile.source.abox_axioms = 2_004;
+        profile.source.unions = 9;
+        profile.source.role_chain_axioms = 0;
+        assert!(!large_card_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::CertifiedCardProxyAbox);
     }
 
     #[test]
@@ -2485,6 +2664,15 @@ mod tests {
         assert!(large_nominal_portfolio_candidate(&profile));
         assert!(large_no_cardinality_abox_production_candidate(&profile));
         assert_eq!(select(&profile), Route::ProductionAll);
+
+        // The same no-cardinality family begins at ORE8480's measured scale.
+        let mut medium = profile.clone();
+        medium.source.abox_axioms = 41_814;
+        medium.source.class_assertions = 19_184;
+        medium.source.role_assertions = 10_462;
+        medium.source.distinct_individuals = 24_910;
+        assert!(large_no_cardinality_abox_production_candidate(&medium));
+        assert_eq!(select(&medium), Route::ProductionAll);
 
         // A number restriction invalidates the production shortcut and keeps
         // the bounded exact nominal portfolio authoritative.
@@ -2839,6 +3027,17 @@ mod tests {
         profile.source.disjoint_class_axioms = 0;
         profile.source.bottom_occurrences = 0;
 
+        // Symmetric role declarations are admitted only as a source-side
+        // scheduling hint. Their normalized paired inclusions still face the
+        // atomic ELC fragment checker before an answer can be published.
+        profile
+            .source
+            .axiom_types
+            .insert("SymmetricObjectProperty".into(), 5);
+        assert!(source_el_terminology_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+        profile.source.axiom_types.remove("SymmetricObjectProperty");
+
         let mut bottom_role = profile.clone();
         bottom_role.source.bottom_role_occurrences = 1;
         assert!(!source_el_terminology_candidate(&bottom_role));
@@ -2865,6 +3064,50 @@ mod tests {
         let mut unsafe_profile = profile;
         unsafe_profile.source.functional_role_axioms = 1;
         assert!(!source_el_terminology_candidate(&unsafe_profile));
+    }
+
+    #[test]
+    fn inverse_chain_el_family_uses_complete_bridge_with_exact_fallback() {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.inverse = true;
+        profile.expressivity.complex_subrole = true;
+        profile.source.logical_axioms = 16_635;
+        profile.source.tbox_axioms = 16_570;
+        profile.source.rbox_axioms = 65;
+        profile.source.distinct_classes = 8_008;
+        profile.source.disjoint_class_axioms = 65;
+        profile.source.existentials = 10_275;
+        profile.source.role_chain_axioms = 12;
+
+        assert!(inverse_chain_el_bridge_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtBridge);
+        assert_eq!(
+            automatic_atomic_fallback(Route::HtBridge, &profile),
+            Some(Route::ProductionAll)
+        );
+
+        // The class-assertion-only variant uses the same complete bridge, but
+        // a defer must preserve the independent-ABox production certificate.
+        profile.source.logical_axioms += 45_179;
+        profile.source.abox_axioms = 45_179;
+        profile.source.class_assertions = 45_179;
+        profile.source.distinct_individuals = 45_179;
+        assert!(independent_large_abox_candidate(&profile));
+        assert!(inverse_chain_el_bridge_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtBridge);
+        assert_eq!(
+            automatic_atomic_fallback(Route::HtBridge, &profile),
+            Some(Route::ProductionAll)
+        );
+
+        let mut nonseparable = profile.clone();
+        nonseparable.source.role_assertions = 1;
+        nonseparable.source.abox_axioms += 1;
+        assert!(!inverse_chain_el_bridge_candidate(&nonseparable));
+
+        let mut disjunctive = profile;
+        disjunctive.source.unions = 1;
+        assert!(!inverse_chain_el_bridge_candidate(&disjunctive));
     }
 
     #[test]
@@ -3096,6 +3339,11 @@ mod tests {
             semantic_fragment(&profile),
             SemanticFragment::NativeBridgeAbox
         );
+        assert_eq!(certified_nominal_subject_workers(&profile), "4");
+        let mut large = profile.clone();
+        large.source.logical_axioms = 123_176;
+        large.source.distinct_classes = 41_647;
+        assert_eq!(certified_nominal_subject_workers(&large), "8");
 
         let automatic = select(&profile);
         let explicit: Route = "certified_nominals".parse().expect("named route parses");

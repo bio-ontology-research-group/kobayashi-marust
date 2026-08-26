@@ -4407,9 +4407,8 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
             }
         }
 
-        let concept_reference_linking_data_hash = std::sync::Arc::new(
-            ont_item.get_concept_reference_linking_data_hash().clone(),
-        );
+        let concept_reference_linking_data_hash =
+            std::sync::Arc::new(ont_item.get_concept_reference_linking_data_hash().clone());
         SynchronousKPSetClassState {
             ontology_item: ont_item,
             item_ids,
