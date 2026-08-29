@@ -4,21 +4,25 @@ use std::process::{Command, Stdio};
 const BEFORE: &str = r#"Prefix(:=<http://example.org/>)
 Ontology(
  Declaration(Class(:A)) Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(Class(:Q)) Declaration(Class(:U)) Declaration(Class(:V)) Declaration(Class(:T))
  Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
  EquivalentClasses(:A ObjectOneOf(:a))
  ClassAssertion(:A :b)
  SameIndividual(:a :b)
  SubClassOf(:X :Y) SubClassOf(:Y :Z) SubClassOf(:Z :X)
+ SubClassOf(:Q ObjectUnionOf(:U :V)) SubClassOf(:U :T) SubClassOf(:V :T)
 )"#;
 
 const AFTER: &str = r#"Prefix(:=<http://example.org/>)
 Ontology(
  Declaration(Class(:A)) Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(Class(:Q)) Declaration(Class(:U)) Declaration(Class(:V)) Declaration(Class(:T))
  Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
  EquivalentClasses(:A ObjectOneOf(:a))
  ClassAssertion(:A :b)
  SameIndividual(:a :b)
  SubClassOf(:X :Y) SubClassOf(:Y :Z) SubClassOf(:Z :X)
+ SubClassOf(:Q ObjectUnionOf(:U :V)) SubClassOf(:U :T) SubClassOf(:V :T)
  SubClassOf(:X ObjectUnionOf(:Y :Z))
 )"#;
 
@@ -33,7 +37,7 @@ fn nominal_cb_addition_retains_state_and_equals_fresh_classify() {
         .expect("spawn km incremental-source");
     {
         let stdin = child.stdin.as_mut().expect("incremental stdin");
-        for (op, source) in [("init", BEFORE), ("replace", AFTER)] {
+        for (op, source) in [("init", BEFORE), ("replace", AFTER), ("replace", BEFORE)] {
             serde_json::to_writer(
                 &mut *stdin,
                 &serde_json::json!({"op": op, "functional_syntax": source}),
@@ -53,12 +57,16 @@ fn nominal_cb_addition_retains_state_and_equals_fresh_classify() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(rows.len(), 2, "rows={rows:#?}");
+    assert_eq!(rows.len(), 3, "rows={rows:#?}");
     assert_eq!(rows[0]["route"], "nominals");
     assert_eq!(rows[0]["retained_backend"], true);
     assert_eq!(rows[1]["receipt"]["strategy"], "cb_delta");
     assert_eq!(rows[1]["receipt"]["meaningful_incremental_update"], true);
     assert!(rows[1]["receipt"]["retained_states"].as_u64().unwrap() > 0);
+
+    assert_eq!(rows[2]["receipt"]["strategy"], "cb_delta");
+    assert_eq!(rows[2]["receipt"]["meaningful_incremental_update"], true);
+    assert!(rows[2]["receipt"]["retained_states"].as_u64().unwrap() > 0);
 
     let path = std::env::temp_dir().join(format!(
         "km-source-incremental-nominal-{}.ofn",
@@ -78,4 +86,23 @@ fn nominal_cb_addition_retains_state_and_equals_fresh_classify() {
     );
     let fresh_result: serde_json::Value = serde_json::from_slice(&fresh.stdout).unwrap();
     assert_eq!(rows[1]["result"], fresh_result);
+
+    let path = std::env::temp_dir().join(format!(
+        "km-source-incremental-nominal-before-{}.ofn",
+        std::process::id()
+    ));
+    std::fs::write(&path, BEFORE).unwrap();
+    let fresh = Command::new(env!("CARGO_BIN_EXE_km"))
+        .arg("classify")
+        .arg(&path)
+        .output()
+        .expect("run fresh KM classify after removal");
+    let _ = std::fs::remove_file(path);
+    assert!(
+        fresh.status.success(),
+        "fresh removal stderr: {}",
+        String::from_utf8_lossy(&fresh.stderr)
+    );
+    let fresh_result: serde_json::Value = serde_json::from_slice(&fresh.stdout).unwrap();
+    assert_eq!(rows[2]["result"], fresh_result);
 }

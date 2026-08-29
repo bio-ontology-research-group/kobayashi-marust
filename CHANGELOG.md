@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+### Incremental reasoning and explanations
+
+- Add retained EL, CB, ordinary HT, quasi-order HT, cardinality HT, bridge,
+  positive-ABox, and DL-safe-rule adapters behind a complete source-level
+  transactional session used by OWLAPI. Receipts expose the selected route,
+  migrations, retained and invalidated state, and honest exact-rebuild
+  boundaries.
+- Retain CB context fixpoints for ordering-stable additions. For removals and
+  replacements, rebuild only dependency components reached through changed
+  concepts, roles, functions, individuals, or auxiliary constants, and retain
+  exact taxonomy rows in disconnected components. Symbol-free, globally
+  connected, and inconsistent cases fail closed to full classification.
+- Keep exact singleton/ABox clauses on retained nominal CB sessions when the
+  frontend certifies complete nominal metadata and no unrepresented typed side
+  state remains.
+- Add source-axiom, subset-minimal explanations through the native CLI and OWL
+  Explanation API, including bounded enumeration, cancellation, imports,
+  duplicate and annotated axioms, cardinality clashes, rules, native ABoxes,
+  and automatic route migration during minimisation.
+
 ## [1.1.0] - 2026-08-26
 
 ### Faster automatic classification with certified publication

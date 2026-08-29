@@ -23,9 +23,12 @@ as `km elc` and `km engine`. It chooses a backend for every committed snapshot:
   `"backend":"ht"` on a JSONL `init`. This direct HT arm admits only clause
   state carried completely by `JClause`. It caches global, class
   satisfiability, and pair-countermodel probes.
-- A global/top EL change and a CB transaction containing a removal use an exact
-  rebuild. They may route from CB back to EL when the remaining clause set is
-  pure EL++.
+- CB removals and replacements rebuild only dependency components reached from
+  changed concepts, roles, functions, individuals, or auxiliary constants.
+  Taxonomy rows in disconnected components remain live. A change spanning the
+  whole dependency graph, a symbol-free clause, or an inconsistent prior or
+  affected component uses an exact rebuild. A removal may also migrate from CB
+  back to EL when the remaining clause set is pure EL++.
 - HT removals and replacements use dependency-directed probe invalidation.
   Monotonic verdicts and probes in disconnected signature components remain
   reusable; every other probe runs fresh before commit.
@@ -57,8 +60,10 @@ Some insertions deliberately cross a proof boundary and report
   additional nominal.
 - `KM_SPLIT`, `KM_ROOT_ORDERED`, or `KM_QUERIES` selects a one-shot route whose
   state is not represented by one reusable default context graph.
-- The transaction removes or replaces a clause on the CB route. CB does not yet retain the
-  derivation dependencies needed to retract all and only its consequences.
+- A CB removal or replacement reaches every component, or cannot establish a
+  symbol dependency boundary. KM does not retract individual context clauses
+  inside an affected component; it classifies that component afresh and splices
+  it with retained disconnected rows.
 
 These cases remain supported exactly. They construct and validate a fresh
 candidate and expose that choice in the receipt instead of claiming reuse.
@@ -114,8 +119,9 @@ cardinality, or rule side channel remains. Under `KM_NOMINALS=1`, the frontend
 has emitted the ground ABox and singleton-defining clauses consumed by the
 batch CB worker, so the retained engine resumes the same clause fixpoint.
 Unsupported nominal metadata fails this gate closed. Ordering-stable additions
-report `cb_delta`; CB removals still cross the dependency-retraction boundary
-described below and rebuild exactly.
+report `cb_delta`. Removals and replacements retain disconnected taxonomy
+components and rebuild only the affected component; changes without such a
+component boundary rebuild exactly.
 
 The automatic positive-EL ABox route also has a typed adapter. It translates
 named individuals into the same fresh EL root concepts used by batch
@@ -309,15 +315,17 @@ therefore measure retained-state use without inferring it from latency.
 
 EL++ additions reuse the completion closure, while component-local removals
 retain completed labels and edges outside the changed dependency component.
-Ordering-stable
-CB additions reuse the completed context graph and report retained answer and
-context-edge counts. Explicit HT sessions retain probe evidence across all
-three transaction kinds, and stable-layout additions can replay completed
-graphs. The CB and HT implementations currently deep-clone retained state to
-provide failure atomicity; this trades memory and copy time for a simple,
-auditable commit boundary. Dependency-aware copy-on-write remains future work.
-CB removals and mixed CB replacements still have batch cost. EL changes with a
-global premise, or whose dependency component spans the complete ontology,
+Ordering-stable CB additions reuse the completed context graph and report
+retained answer and context-edge counts. Component-local CB removals and mixed
+replacements retain disconnected taxonomy rows while rebuilding the affected
+component. The resulting CB snapshot remains exact, but no longer owns a full
+retained context graph, so a later insertion may rebuild unless another
+component-local retraction applies. Explicit HT sessions retain probe evidence
+across all three transaction kinds, and stable-layout additions can replay
+completed graphs. The CB insertion and HT implementations currently deep-clone
+retained state to provide failure atomicity; this trades memory and copy time
+for a simple, auditable commit boundary. Dependency-aware copy-on-write remains
+future work. Changes whose dependency component spans the complete ontology
 deliberately report an exact rebuild.
 
 A targeted single-thread IBEX microbenchmark gives a scale check for the EL

@@ -219,6 +219,56 @@ fn cb_additions_removals_and_rejections_match_every_fresh_fixpoint() {
 }
 
 #[test]
+fn cb_removal_and_replacement_retain_disconnected_component_fixpoints() {
+    let _env = ENV_LOCK.lock().unwrap();
+    std::env::set_var("KM_THREADS", "1");
+    std::env::remove_var("KM_ELC_CERT");
+    std::env::remove_var("KM_MSG_CAP");
+    std::env::remove_var("KM_NOM_BUDGET");
+    std::env::remove_var("KM_NOMINALS");
+
+    let mut snapshot = vec![
+        clause(
+            vec![concept("A", var("x"))],
+            vec![concept("B", var("x")), concept("C", var("x"))],
+        ),
+        clause(vec![concept("B", var("x"))], vec![concept("D", var("x"))]),
+        clause(vec![concept("C", var("x"))], vec![concept("D", var("x"))]),
+        clause(
+            vec![concept("X", var("x"))],
+            vec![concept("Y", var("x")), concept("Z", var("x"))],
+        ),
+        clause(vec![concept("Y", var("x"))], vec![concept("W", var("x"))]),
+        clause(vec![concept("Z", var("x"))], vec![concept("W", var("x"))]),
+    ];
+    let mut session = IncrementalClassifier::new(snapshot.clone()).expect("two-component CB");
+    assert_eq!(session.backend(), IncrementalBackend::Cb);
+    assert_eq!(session.is_subsumed_by("A", "D"), Some(true));
+    assert_eq!(session.is_subsumed_by("X", "W"), Some(true));
+
+    let removal = session.remove_clauses(&[2]).expect("component CB removal");
+    snapshot.remove(1);
+    assert_eq!(removal.strategy, ChangeStrategy::CbDelta);
+    assert!(removal.reused_fixpoint);
+    assert!(removal.reused_subsumptions > 0);
+    assert_eq!(session.is_subsumed_by("A", "D"), Some(false));
+    assert_eq!(session.is_subsumed_by("X", "W"), Some(true));
+    assert_fresh_cb(&session, &snapshot, false);
+
+    let replacement = clause(vec![concept("C", var("x"))], vec![concept("E", var("x"))]);
+    let update = session
+        .apply_change(&[3], vec![replacement.clone()])
+        .expect("component CB replacement");
+    snapshot.remove(1);
+    snapshot.push(replacement);
+    assert_eq!(update.strategy, ChangeStrategy::CbDelta);
+    assert!(update.reused_fixpoint);
+    assert!(update.reused_subsumptions > 0);
+    assert_eq!(session.is_subsumed_by("X", "W"), Some(true));
+    assert_fresh_cb(&session, &snapshot, false);
+}
+
+#[test]
 fn roles_chains_and_cardinality_equalities_match_fresh_batches() {
     let _env = ENV_LOCK.lock().unwrap();
     std::env::set_var("KM_THREADS", "1");

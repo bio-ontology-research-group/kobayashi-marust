@@ -7,24 +7,24 @@
 //! monotone additions fork and resume the completed context graph, replaying
 //! retained premises against the new ontology indexes. An explicitly selected
 //! direct-clause hypertableau backend reuses monotone SAT/UNSAT verdicts,
-//! dependency-independent probes, and stable-layout completion graphs. CB/EL
-//! removals rebuild because those stores do not retain deletion dependencies;
-//! HT removals and replacements recheck affected probes and retain only
-//! monotonic or dependency-independent evidence. No operation exposes a stale
-//! or partial classification.
+//! dependency-independent probes, and stable-layout completion graphs. EL and
+//! CB removals retain disconnected dependency components and classify affected
+//! components afresh; HT removals and replacements recheck affected probes and
+//! retain only monotonic or dependency-independent evidence. No operation
+//! exposes a stale or partial classification.
 //!
 //! [`run_jsonl_session`] supplies the `km incremental` transport. It consumes
 //! the same normalised [`JClause`] values as `km elc` and `km engine`. Every
 //! accepted clause receives a stable, non-reused session id for later removal.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, Write};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::incremental_ht::{HtChangeKind, IncrementalHtClassifier};
-use crate::json_io::{JAtom, JClause};
+use crate::json_io::{JAtom, JClause, JTerm};
 use crate::reasoner::{Reasoner, RetainedCbBoundary, RetainedCbReasoner};
 
 pub use crate::elcomplete::{IncrementalElClassifier, IncrementalError, IncrementalUpdate};
@@ -263,9 +263,9 @@ impl BackendState {
 /// hypertableau fragment.
 ///
 /// Pure-EL additions reuse the existing completion state. Ordering-stable CB
-/// additions fork and resume the existing context graph. An EL-to-CB
-/// transition, every EL/CB removal, and CB insertions outside the retained-state
-/// proof boundary construct a fresh candidate reasoner. The HT backend reuses
+/// additions fork and resume the existing context graph. EL/CB removals retain
+/// disconnected components, while an EL-to-CB transition and changes outside
+/// that dependency boundary construct a fresh candidate reasoner. The HT backend reuses
 /// only monotonic or dependency-independent probes; every uncertain probe runs
 /// fresh. Every path commits only after a complete result is available, and its
 /// strategy is visible in [`IncrementalChange::strategy`].
@@ -458,9 +458,10 @@ impl IncrementalClassifier {
         })
     }
 
-    /// Atomically remove clauses by stable id. EL/CB removals rebuild exactly;
-    /// explicit HT sessions retain safe SAT and independent-probe evidence and
-    /// freshly recheck everything else. Removed ids are never reused.
+    /// Atomically remove clauses by stable id. EL/CB removals retain independent
+    /// components and freshly classify affected ones; explicit HT sessions
+    /// retain safe SAT and independent-probe evidence and freshly recheck
+    /// everything else. Removed ids are never reused.
     pub fn remove_clauses(
         &mut self,
         requested: &[ClauseId],
@@ -565,6 +566,46 @@ impl IncrementalClassifier {
                 new_subsumptions: stats.new_subsumptions,
                 new_edges: stats.new_edges,
             });
+        }
+
+        if let BackendState::Cb(state) = &self.backend {
+            let mut changed: Vec<JClause> = self
+                .clauses
+                .iter()
+                .filter(|stored| seen.contains(&stored.id))
+                .map(|stored| stored.clause.clone())
+                .collect();
+            changed.extend(additions.iter().cloned());
+            if let Some((result, reused_subsumptions, rebuilt_subsumptions)) =
+                rebuild_changed_cb_components(
+                    state.result_ref(),
+                    &self.clause_snapshot(),
+                    &candidate,
+                    &changed,
+                )?
+            {
+                self.clauses.retain(|stored| !seen.contains(&stored.id));
+                self.commit_additions(added_ids.clone(), additions);
+                self.backend = BackendState::Cb(CbBackendState::Snapshot(result));
+                self.concepts = concept_signature(&candidate);
+                self.revision += 1;
+                return Ok(IncrementalChange {
+                    revision: self.revision,
+                    added_clauses: added_ids.len(),
+                    removed_clauses: seen.len(),
+                    total_clauses: self.clauses.len(),
+                    added_clause_ids: added_ids,
+                    removed_clause_ids: seen.into_iter().collect(),
+                    backend_before,
+                    backend_after: IncrementalBackend::Cb,
+                    strategy: ChangeStrategy::CbDelta,
+                    reused_fixpoint: true,
+                    reused_subsumptions,
+                    reused_edges: 0,
+                    new_subsumptions: rebuilt_subsumptions,
+                    new_edges: 0,
+                });
+            }
         }
 
         let next_backend = build_backend(&candidate, self.requested_backend)?;
@@ -707,6 +748,167 @@ impl IncrementalClassifier {
             .iter()
             .map(|stored| stored.clause.clone())
             .collect()
+    }
+}
+
+/// Reclassify only CB dependency components touched by a removal/replacement.
+/// A syntactic component split is a semantic split for DL clauses because no
+/// rule can communicate between components without sharing a concept, role,
+/// function, individual, or auxiliary constant. Builtin top/bottom names stay
+/// in the graph, making the partition deliberately conservative. We decline
+/// when the old ontology was inconsistent (its exploding taxonomy has no
+/// component-local rows), when a changed clause has no dependency symbol, or
+/// when no old taxonomy row can actually be retained.
+fn rebuild_changed_cb_components(
+    old_result: &IncrementalResult,
+    old: &[JClause],
+    candidate: &[JClause],
+    changed: &[JClause],
+) -> Result<Option<(IncrementalResult, usize, usize)>, IncrementalReasoningError> {
+    if old_result.inconsistent || changed.is_empty() {
+        return Ok(None);
+    }
+    let seeds: BTreeSet<String> = changed
+        .iter()
+        .flat_map(incremental_clause_symbols)
+        .collect();
+    if seeds.is_empty() {
+        return Ok(None);
+    }
+
+    let mut affected_symbols = seeds.clone();
+    for clauses in [old, candidate] {
+        let graph = incremental_dependency_graph(clauses);
+        let mut queue: VecDeque<String> = seeds.iter().cloned().collect();
+        let mut seen = HashSet::new();
+        while let Some(symbol) = queue.pop_front() {
+            if !seen.insert(symbol.clone()) {
+                continue;
+            }
+            affected_symbols.insert(symbol.clone());
+            if let Some(neighbours) = graph.get(&symbol) {
+                queue.extend(neighbours.iter().cloned());
+            }
+        }
+    }
+
+    let affected_concepts: BTreeSet<String> = affected_symbols
+        .iter()
+        .filter_map(|symbol| symbol.strip_prefix("c\0").map(str::to_owned))
+        .collect();
+    let mut retained = BTreeMap::new();
+    for (subject, supers) in &old_result.subsumptions {
+        if !affected_concepts.contains(subject)
+            && supers.iter().all(|sup| !affected_concepts.contains(sup))
+        {
+            retained.insert(subject.clone(), supers.clone());
+        }
+    }
+    let reused_subsumptions = retained.values().map(Vec::len).sum();
+    if reused_subsumptions == 0 {
+        return Ok(None);
+    }
+
+    let affected_clauses: Vec<JClause> = candidate
+        .iter()
+        .filter(|clause| {
+            let symbols = incremental_clause_symbols(clause);
+            symbols.is_empty()
+                || symbols
+                    .iter()
+                    .any(|symbol| affected_symbols.contains(symbol))
+        })
+        .cloned()
+        .collect();
+    if affected_clauses
+        .iter()
+        .any(|clause| incremental_clause_symbols(clause).is_empty())
+    {
+        return Ok(None);
+    }
+    let rebuilt = classify_cb_fresh(&affected_clauses)?;
+    if rebuilt.inconsistent {
+        // Inconsistency makes every query entailed globally. Preserve the
+        // batch worker's exact published shape through the full fallback
+        // instead of splicing component-local rows into an exploding theory.
+        return Ok(None);
+    }
+    let rebuilt_subsumptions = rebuilt.pair_count();
+    for (subject, supers) in rebuilt.subsumptions {
+        retained.insert(subject, supers);
+    }
+    Ok(Some((
+        IncrementalResult {
+            subsumptions: retained,
+            inconsistent: rebuilt.inconsistent,
+            dropped: 0,
+            unresolved: Vec::new(),
+        },
+        reused_subsumptions,
+        rebuilt_subsumptions,
+    )))
+}
+
+fn incremental_dependency_graph(clauses: &[JClause]) -> HashMap<String, BTreeSet<String>> {
+    let mut graph: HashMap<String, BTreeSet<String>> = HashMap::new();
+    for clause in clauses {
+        let symbols = incremental_clause_symbols(clause);
+        for symbol in &symbols {
+            graph.entry(symbol.clone()).or_default();
+        }
+        if let Some(first) = symbols.first() {
+            for symbol in symbols.iter().skip(1) {
+                graph
+                    .entry(first.clone())
+                    .or_default()
+                    .insert(symbol.clone());
+                graph
+                    .entry(symbol.clone())
+                    .or_default()
+                    .insert(first.clone());
+            }
+        }
+    }
+    graph
+}
+
+fn incremental_clause_symbols(clause: &JClause) -> Vec<String> {
+    let mut symbols = Vec::new();
+    for atom in clause.body.iter().chain(&clause.head) {
+        match atom {
+            JAtom::Concept { concept, term } => {
+                symbols.push(format!("c\0{concept}"));
+                incremental_term_symbols(term, &mut symbols);
+            }
+            JAtom::Role {
+                role,
+                source,
+                target,
+            } => {
+                symbols.push(format!("r\0{role}"));
+                incremental_term_symbols(source, &mut symbols);
+                incremental_term_symbols(target, &mut symbols);
+            }
+            JAtom::Eq { left, right } => {
+                incremental_term_symbols(left, &mut symbols);
+                incremental_term_symbols(right, &mut symbols);
+            }
+        }
+    }
+    let mut seen = HashSet::new();
+    symbols.retain(|symbol| seen.insert(symbol.clone()));
+    symbols
+}
+
+fn incremental_term_symbols(term: &JTerm, symbols: &mut Vec<String>) {
+    match term {
+        JTerm::Var { .. } => {}
+        JTerm::Ind { name } => symbols.push(format!("i\0{name}")),
+        JTerm::Aux { root, label } => symbols.push(format!("a\0{root}\0{label:?}")),
+        JTerm::Fun { function, arg } => {
+            symbols.push(format!("f\0{function}"));
+            incremental_term_symbols(arg, symbols);
+        }
     }
 }
 
