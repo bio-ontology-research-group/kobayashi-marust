@@ -133,9 +133,22 @@ come from this one exact fixpoint, and accepted reuse reports `el_delta`.
 Identity contradictions and changes outside the positive-EL source certificate
 fail closed to exact automatic classification.
 
-The remaining typed routes take a visible `exact_rebuild` safety fallback. The
-receipt sets `meaningful_incremental_update=false` for that fallback. This is
-transitional: v1.3 is not complete until each automatic typed route has a
+The ordinary HT, quasi-order, bridge, and first-class cardinality routes retain
+typed probe state rather than projecting their inputs down to clauses. The
+cardinality adapter carries first-class minimum/maximum definitions, RBox
+metadata, and complete native individuals through every transaction. It admits
+inverse roles only after the same normalized number-role separation certificate
+as batch classification, and repeats the complete-ABox, role-automata,
+datatype, dropped-clause, and route-fence gates before committing. Changes to
+typed side state invalidate the dependent probes; disconnected class probes
+remain reusable. Unsupported negative-role ABox state and a failed certificate
+take the visible exact-classification fallback instead of publishing a partial
+HT answer.
+
+Typed automatic families whose dedicated adapter declines take a visible
+`exact_rebuild` safety fallback. The receipt sets
+`meaningful_incremental_update=false` for that fallback. This remains
+transitional: v1.3 is not complete until every automatic typed route has a
 retained-state adapter and demonstrates a meaningful update.
 
 The rules adapter fails closed to an exact rebuild when terminology, names,

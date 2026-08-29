@@ -512,6 +512,14 @@ impl IncrementalHtClassifier {
         Self::from_compiled(clauses, compiled)
     }
 
+    pub(crate) fn new_card_typed(
+        clauses: &[JClause],
+        input: TInput,
+    ) -> Result<Self, IncrementalReasoningError> {
+        let compiled = compile_card_typed_ht(input)?;
+        Self::from_compiled(clauses, compiled)
+    }
+
     pub(crate) fn new_typed(
         clauses: &[JClause],
         input: TInput,
@@ -571,6 +579,17 @@ impl IncrementalHtClassifier {
         input: TInput,
     ) -> Result<(Self, HtDeltaStats), IncrementalReasoningError> {
         let compiled = compile_typed_ht(input)?;
+        self.updated_compiled(candidate, changed_clauses, kind, compiled)
+    }
+
+    pub(crate) fn updated_card_typed(
+        &self,
+        candidate: &[JClause],
+        changed_clauses: &[JClause],
+        kind: HtChangeKind,
+        input: TInput,
+    ) -> Result<(Self, HtDeltaStats), IncrementalReasoningError> {
+        let compiled = compile_card_typed_ht(input)?;
         self.updated_compiled(candidate, changed_clauses, kind, compiled)
     }
 
@@ -1173,6 +1192,27 @@ fn compile_direct_ht(clauses: &[JClause]) -> Result<CompiledHt, IncrementalReaso
 /// `TInput` through the same source projection used by the batch route.
 fn compile_typed_ht(input: TInput) -> Result<CompiledHt, IncrementalReasoningError> {
     compile_typed_ht_mode(input, false)
+}
+
+/// Compile input admitted by the first-class-cardinality route. Clause-retained
+/// RBox fences are metadata about an absent side-channel encoding; their exact
+/// clauses remain in `input.clauses`. All other fences still fail closed.
+fn compile_card_typed_ht(mut input: TInput) -> Result<CompiledHt, IncrementalReasoningError> {
+    if input.card_defs.is_empty() {
+        return unsupported("cardinality incremental HT requires first-class number definitions");
+    }
+    if input.inverse && !input.inverse_cardinality_role_separable {
+        return unsupported("inverse cardinality roles lack the normalized separation certificate");
+    }
+    if input
+        .fenced
+        .iter()
+        .any(|fence| !cb_to_ht::is_clause_retained_fence(&fence.reason))
+    {
+        return unsupported("cardinality incremental HT has an unsupported route fence");
+    }
+    input.fenced.clear();
+    compile_typed_ht_mode(input, true)
 }
 
 fn compile_typed_ht_mode(

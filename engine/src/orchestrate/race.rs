@@ -573,6 +573,53 @@ pub(crate) fn prepare_incremental_ht(
     ht_routable(&tin).then_some(tin)
 }
 
+/// Build the typed input used by the production first-class-cardinality arm.
+///
+/// This is deliberately separate from [`prepare_incremental_ht`]: inverse
+/// roles and native individuals are admissible here only after the same
+/// normalized number-role and ABox certificates used by the batch worker have
+/// succeeded.  The retained classifier repeats its input-level checks before
+/// constructing any probe state.
+pub(crate) fn prepare_incremental_card(
+    frontend: &crate::frontend::FrontendResult,
+) -> Option<cb_to_ht::TInput> {
+    if !frontend.rules.is_empty() {
+        return None;
+    }
+    let view = native_nominal_bridge_clauses(
+        &frontend.clauses,
+        &frontend.nominal_abox,
+        &frontend.definers,
+        std::env::var_os("KM_NOMINALS").is_some(),
+        false,
+    );
+    let named = frontend.named.iter().cloned().collect();
+    let mut tin = cb_to_ht::convert(
+        &view,
+        Some(frontend.rbox.as_slice()),
+        &named,
+        &frontend.cardinalities,
+        &frontend.definers,
+        &frontend.source_axioms,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        &[],
+        false,
+    );
+    let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
+        || std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
+    if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &frontend.nominal_abox, allow_same) {
+        return None;
+    }
+    let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
+    card_candidate_from(
+        &tin,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        card_recog,
+        has_datatype(&frontend.clauses),
+    )
+    .then_some(tin)
+}
+
 /// Exact typed source for the production quasi-order certify-or-defer arm.
 /// The retained adapter invokes the same QO implementation and treats `None`
 /// as a transactional defer. Specialist cardinality and nominal publication

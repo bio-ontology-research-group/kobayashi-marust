@@ -61,6 +61,7 @@ enum SourceBackend {
     TypedHt {
         classifier: IncrementalHtClassifier,
         clauses: Vec<JClause>,
+        card: bool,
     },
     QuasiOrder {
         classifier: IncrementalQoClassifier,
@@ -118,6 +119,27 @@ impl SourceIncrementalClassifier {
             }
         }
         if let Some(input) = with_route_environment(&route, || {
+            crate::orchestrate::race::prepare_incremental_card(&frontend)
+        })? {
+            if let Ok(classifier) =
+                IncrementalHtClassifier::new_card_typed(&frontend.clauses, input)
+            {
+                let classification = map_incremental_result(&frontend, classifier.result());
+                return Ok(Self {
+                    revision: 0,
+                    route,
+                    frontend,
+                    classification,
+                    backend: SourceBackend::TypedHt {
+                        classifier,
+                        clauses: Vec::new(),
+                        card: true,
+                    },
+                }
+                .with_live_clauses());
+            }
+        }
+        if let Some(input) = with_route_environment(&route, || {
             crate::orchestrate::race::prepare_incremental_bridge(&frontend)
         })? {
             if let Ok(classifier) = IncrementalBridgeClassifier::new_typed(&frontend.clauses, input)
@@ -149,6 +171,7 @@ impl SourceIncrementalClassifier {
                     backend: SourceBackend::TypedHt {
                         classifier,
                         clauses: Vec::new(),
+                        card: false,
                     },
                 }
                 .with_live_clauses());
@@ -306,13 +329,19 @@ impl SourceIncrementalClassifier {
             }
         }
 
+        let typed_ht_card = matches!(&self.backend, SourceBackend::TypedHt { card: true, .. });
         let typed_ht_input = with_route_environment(&route_after, || {
-            crate::orchestrate::race::prepare_incremental_ht(&candidate)
+            if typed_ht_card {
+                crate::orchestrate::race::prepare_incremental_card(&candidate)
+            } else {
+                crate::orchestrate::race::prepare_incremental_ht(&candidate)
+            }
         })?;
         if let (
             SourceBackend::TypedHt {
                 classifier,
                 clauses,
+                card,
             },
             Some(input),
         ) = (&self.backend, typed_ht_input)
@@ -330,9 +359,12 @@ impl SourceIncrementalClassifier {
                 (false, true) => HtChangeKind::Removal,
                 _ => HtChangeKind::Replacement,
             };
-            if let Ok((next, stats)) =
+            let update = if *card {
+                classifier.updated_card_typed(&candidate.clauses, &changed, kind, input)
+            } else {
                 classifier.updated_typed(&candidate.clauses, &changed, kind, input)
-            {
+            };
+            if let Ok((next, stats)) = update {
                 let classification = map_incremental_result(&candidate, next.result());
                 self.revision += 1;
                 self.route = route_after.clone();
@@ -341,6 +373,7 @@ impl SourceIncrementalClassifier {
                 self.backend = SourceBackend::TypedHt {
                     classifier: next,
                     clauses: self.frontend.clauses.clone(),
+                    card: *card,
                 };
                 let meaningful = stats.reused_probes > 0 || stats.resumed_models > 0;
                 return Ok(SourceIncrementalReceipt {
@@ -547,6 +580,50 @@ impl SourceIncrementalClassifier {
         }
 
         if let Some(input) = with_route_environment(&route_after, || {
+            crate::orchestrate::race::prepare_incremental_card(&candidate)
+        })? {
+            if let Ok(classifier) =
+                IncrementalHtClassifier::new_card_typed(&candidate.clauses, input)
+            {
+                let classification = map_incremental_result(&candidate, classifier.result());
+                let (removed, added) =
+                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                let (removed_rules, added_rules) =
+                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                let rebuilt_states = candidate
+                    .clauses
+                    .len()
+                    .saturating_add(candidate.rules.len());
+                self.revision += 1;
+                self.route = route_after.clone();
+                self.frontend = candidate;
+                self.classification = classification;
+                self.backend = SourceBackend::TypedHt {
+                    classifier,
+                    clauses: self.frontend.clauses.clone(),
+                    card: true,
+                };
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != route_after,
+                    route_before,
+                    route_after,
+                    strategy: ChangeStrategy::ExactRebuild,
+                    reused_fixpoint: false,
+                    reused_subsumptions: 0,
+                    reused_edges: 0,
+                    retained_states: 0,
+                    invalidated_states: rebuilt_states,
+                    added_normalized_clauses: added,
+                    removed_normalized_clauses: removed,
+                    added_rules,
+                    removed_rules,
+                    meaningful_incremental_update: false,
+                });
+            }
+        }
+
+        if let Some(input) = with_route_environment(&route_after, || {
             crate::orchestrate::race::prepare_incremental_bridge(&candidate)
         })? {
             if let Ok(classifier) =
@@ -609,6 +686,7 @@ impl SourceIncrementalClassifier {
                 self.backend = SourceBackend::TypedHt {
                     classifier,
                     clauses: self.frontend.clauses.clone(),
+                    card: false,
                 };
                 return Ok(SourceIncrementalReceipt {
                     revision: self.revision,
@@ -1275,6 +1353,63 @@ Ontology(
             )
             .unwrap();
         assert!(stats.reused_probes > 0 || stats.resumed_models > 0);
+    }
+
+    #[test]
+    fn automatic_card_nominal_route_reuses_typed_probes_and_matches_fresh() {
+        let _environment = lock_environment();
+        let before = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:Shape)) Declaration(Class(:Point)) Declaration(Class(:Other))
+ Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(ObjectProperty(:hasPoint)) Declaration(ObjectProperty(:front))
+ Declaration(ObjectProperty(:back)) Declaration(NamedIndividual(:a))
+ Declaration(NamedIndividual(:b))
+ InverseObjectProperties(:front :back)
+ ObjectPropertyRange(:back :Other)
+ SubClassOf(:Shape ObjectSomeValuesFrom(:front :Other))
+ SubClassOf(:Shape ObjectExactCardinality(1 :hasPoint :Point))
+ ClassAssertion(:Shape :a)
+ ObjectPropertyAssertion(:hasPoint :a :b)
+ DifferentIndividuals(:a :b)
+ SubClassOf(:X :Y)
+)"#;
+        let after = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:Shape)) Declaration(Class(:Point)) Declaration(Class(:Other))
+ Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(ObjectProperty(:hasPoint)) Declaration(ObjectProperty(:front))
+ Declaration(ObjectProperty(:back)) Declaration(NamedIndividual(:a))
+ Declaration(NamedIndividual(:b))
+ InverseObjectProperties(:front :back)
+ ObjectPropertyRange(:back :Other)
+ SubClassOf(:Shape ObjectSomeValuesFrom(:front :Other))
+ SubClassOf(:Shape ObjectExactCardinality(1 :hasPoint :Point))
+ ClassAssertion(:Shape :a)
+ ObjectPropertyAssertion(:hasPoint :a :b)
+ DifferentIndividuals(:a :b)
+ SubClassOf(:X :Y)
+ SubClassOf(:Y :Z)
+)"#;
+
+        let mut session = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.route(), "certified_card_nominals");
+        assert!(session.retained_backend());
+
+        let receipt = session.replace_source(after).unwrap();
+        assert_eq!(receipt.strategy, ChangeStrategy::HtDelta);
+        assert!(receipt.meaningful_incremental_update);
+        assert!(receipt.retained_states > 0);
+        let fresh = SourceIncrementalClassifier::new(after).unwrap();
+        assert_eq!(fresh.route(), "certified_card_nominals");
+        assert_eq!(session.classification(), fresh.classification());
+
+        let removal = session.replace_source(before).unwrap();
+        assert_eq!(removal.strategy, ChangeStrategy::HtDelta);
+        assert!(removal.meaningful_incremental_update);
+        assert!(removal.retained_states > 0);
+        let restored = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.classification(), restored.classification());
     }
 
     #[test]

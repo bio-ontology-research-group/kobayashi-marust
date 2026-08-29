@@ -9,6 +9,12 @@
   transactional session used by OWLAPI. Receipts expose the selected route,
   migrations, retained and invalidated state, and honest exact-rebuild
   boundaries.
+- Route automatic first-class cardinality plus native-nominal sessions through
+  the same normalized number-role separation, complete-ABox, role-automata,
+  datatype, dropped-clause, and fence certificates as batch classification.
+  The retained HT keeps cardinality definitions, role metadata, and native
+  individuals, reuses disconnected probes, and fails closed when any typed
+  certificate no longer holds.
 - Retain CB context fixpoints for ordering-stable additions. For removals and
   replacements, rebuild only dependency components reached through changed
   concepts, roles, functions, individuals, or auxiliary constants, and retain
