@@ -15,6 +15,10 @@
   The retained HT keeps cardinality definitions, role metadata, and native
   individuals, reuses disconnected probes, and fails closed when any typed
   certificate no longer holds.
+- Retain first-class cardinality probes for the automatic proxy-ABox route.
+  Every incremental candidate passes the existing concrete positive-role ABox
+  closure and taxonomy-preservation certificate before commit; certificate-only
+  queries are filtered through the same batch publication path.
 - Retain CB context fixpoints for ordering-stable additions. For removals and
   replacements, rebuild only dependency components reached through changed
   concepts, roles, functions, individuals, or auxiliary constants, and retain

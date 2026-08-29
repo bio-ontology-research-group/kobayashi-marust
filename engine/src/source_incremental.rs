@@ -63,6 +63,10 @@ enum SourceBackend {
         clauses: Vec<JClause>,
         card: bool,
     },
+    ProxyCard {
+        classifier: IncrementalHtClassifier,
+        clauses: Vec<JClause>,
+    },
     QuasiOrder {
         classifier: IncrementalQoClassifier,
         clauses: Vec<JClause>,
@@ -116,6 +120,31 @@ impl SourceIncrementalClassifier {
                     classification,
                     backend: SourceBackend::PositiveAbox(classifier),
                 });
+            }
+        }
+        if let Some((input, certificate)) = with_route_environment(&route, || {
+            crate::orchestrate::race::prepare_incremental_card_proxy(&frontend)
+        })? {
+            if let Ok(classifier) =
+                IncrementalHtClassifier::new_card_typed(&frontend.clauses, input)
+            {
+                if let Some(result) = crate::orchestrate::race::certify_incremental_proxy_abox(
+                    &certificate,
+                    classifier.result(),
+                ) {
+                    let classification = map_incremental_result(&frontend, result);
+                    return Ok(Self {
+                        revision: 0,
+                        route,
+                        frontend,
+                        classification,
+                        backend: SourceBackend::ProxyCard {
+                            classifier,
+                            clauses: Vec::new(),
+                        },
+                    }
+                    .with_live_clauses());
+                }
             }
         }
         if let Some(input) = with_route_environment(&route, || {
@@ -217,6 +246,9 @@ impl SourceIncrementalClassifier {
             *clauses = self.frontend.clauses.clone();
         }
         if let SourceBackend::TypedHt { clauses, .. } = &mut self.backend {
+            *clauses = self.frontend.clauses.clone();
+        }
+        if let SourceBackend::ProxyCard { clauses, .. } = &mut self.backend {
             *clauses = self.frontend.clauses.clone();
         }
         if let SourceBackend::Bridge { clauses, .. } = &mut self.backend {
@@ -326,6 +358,75 @@ impl SourceIncrementalClassifier {
                         meaningful_incremental_update: meaningful,
                     });
                 }
+            }
+        }
+
+        if let SourceBackend::ProxyCard {
+            classifier,
+            clauses,
+            ..
+        } = &self.backend
+        {
+            let old_ids: Vec<ClauseId> = (0..clauses.len() as ClauseId).collect();
+            let (removed_ids, additions) = clause_delta(clauses, &old_ids, &candidate.clauses);
+            let mut changed: Vec<JClause> = removed_ids
+                .iter()
+                .filter_map(|id| clauses.get(*id as usize).cloned())
+                .collect();
+            changed.extend(additions.iter().cloned());
+            let kind = match (removed_ids.is_empty(), additions.is_empty()) {
+                (true, false) => HtChangeKind::Addition,
+                (false, true) => HtChangeKind::Removal,
+                _ => HtChangeKind::Replacement,
+            };
+            let update = with_route_environment(&route_after, || {
+                crate::orchestrate::race::prepare_incremental_card_proxy(&candidate).and_then(
+                    |(input, certificate)| {
+                        classifier
+                            .updated_card_typed(&candidate.clauses, &changed, kind, input)
+                            .ok()
+                            .and_then(|(next, stats)| {
+                                crate::orchestrate::race::certify_incremental_proxy_abox(
+                                    &certificate,
+                                    next.result(),
+                                )
+                                .map(|result| (next, stats, result))
+                            })
+                    },
+                )
+            })?;
+            if let Some((next, stats, result)) = update {
+                let classification = map_incremental_result(&candidate, result);
+                self.revision += 1;
+                self.route = route_after.clone();
+                self.frontend = candidate;
+                self.classification = classification;
+                self.backend = SourceBackend::ProxyCard {
+                    classifier: next,
+                    clauses: self.frontend.clauses.clone(),
+                };
+                let meaningful = stats.reused_probes > 0 || stats.resumed_models > 0;
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != route_after,
+                    route_before,
+                    route_after,
+                    strategy: if meaningful {
+                        ChangeStrategy::HtDelta
+                    } else {
+                        ChangeStrategy::ExactRebuild
+                    },
+                    reused_fixpoint: meaningful,
+                    reused_subsumptions: stats.reused_subsumptions,
+                    reused_edges: stats.reused_edges,
+                    retained_states: stats.reused_probes.saturating_add(stats.resumed_models),
+                    invalidated_states: stats.rebuilt_probes,
+                    added_normalized_clauses: additions.len(),
+                    removed_normalized_clauses: removed_ids.len(),
+                    added_rules: 0,
+                    removed_rules: 0,
+                    meaningful_incremental_update: meaningful,
+                });
             }
         }
 
@@ -579,6 +680,54 @@ impl SourceIncrementalClassifier {
             }
         }
 
+        if let Some((input, certificate)) = with_route_environment(&route_after, || {
+            crate::orchestrate::race::prepare_incremental_card_proxy(&candidate)
+        })? {
+            if let Ok(classifier) =
+                IncrementalHtClassifier::new_card_typed(&candidate.clauses, input)
+            {
+                if let Some(result) = crate::orchestrate::race::certify_incremental_proxy_abox(
+                    &certificate,
+                    classifier.result(),
+                ) {
+                    let classification = map_incremental_result(&candidate, result);
+                    let (removed, added) =
+                        clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                    let (removed_rules, added_rules) =
+                        sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                    let rebuilt_states = candidate
+                        .clauses
+                        .len()
+                        .saturating_add(candidate.rules.len());
+                    self.revision += 1;
+                    self.route = route_after.clone();
+                    self.frontend = candidate;
+                    self.classification = classification;
+                    self.backend = SourceBackend::ProxyCard {
+                        classifier,
+                        clauses: self.frontend.clauses.clone(),
+                    };
+                    return Ok(SourceIncrementalReceipt {
+                        revision: self.revision,
+                        route_migrated: route_before != route_after,
+                        route_before,
+                        route_after,
+                        strategy: ChangeStrategy::ExactRebuild,
+                        reused_fixpoint: false,
+                        reused_subsumptions: 0,
+                        reused_edges: 0,
+                        retained_states: 0,
+                        invalidated_states: rebuilt_states,
+                        added_normalized_clauses: added,
+                        removed_normalized_clauses: removed,
+                        added_rules,
+                        removed_rules,
+                        meaningful_incremental_update: false,
+                    });
+                }
+            }
+        }
+
         if let Some(input) = with_route_environment(&route_after, || {
             crate::orchestrate::race::prepare_incremental_card(&candidate)
         })? {
@@ -771,6 +920,7 @@ impl SourceIncrementalClassifier {
                 | SourceBackend::PositiveAbox(_)
                 | SourceBackend::Bridge { .. }
                 | SourceBackend::TypedHt { .. }
+                | SourceBackend::ProxyCard { .. }
                 | SourceBackend::QuasiOrder { .. }
                 | SourceBackend::Rules(_)
         )
@@ -1402,6 +1552,59 @@ Ontology(
         assert!(receipt.retained_states > 0);
         let fresh = SourceIncrementalClassifier::new(after).unwrap();
         assert_eq!(fresh.route(), "certified_card_nominals");
+        assert_eq!(session.classification(), fresh.classification());
+
+        let removal = session.replace_source(before).unwrap();
+        assert_eq!(removal.strategy, ChangeStrategy::HtDelta);
+        assert!(removal.meaningful_incremental_update);
+        assert!(removal.retained_states > 0);
+        let restored = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.classification(), restored.classification());
+    }
+
+    #[test]
+    fn automatic_proxy_card_abox_route_reuses_certified_tbox_probes() {
+        let _environment = lock_environment();
+        let before = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:X))
+ Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(ObjectProperty(:i)) Declaration(ObjectProperty(:j))
+ Declaration(ObjectProperty(:e)) Declaration(ObjectProperty(:k))
+ Declaration(ObjectProperty(:p)) Declaration(NamedIndividual(:a))
+ Declaration(NamedIndividual(:b))
+ InverseObjectProperties(:i :j)
+ SubObjectPropertyOf(ObjectPropertyChain(:e :e) :k)
+ ObjectPropertyAssertion(:e :a :b)
+ ClassAssertion(:A :a) ClassAssertion(:A :b)
+ SubClassOf(:A ObjectMinCardinality(2 :p :C))
+ SubClassOf(:X :Y)
+)"#;
+        let after = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:X))
+ Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(ObjectProperty(:i)) Declaration(ObjectProperty(:j))
+ Declaration(ObjectProperty(:e)) Declaration(ObjectProperty(:k))
+ Declaration(ObjectProperty(:p)) Declaration(NamedIndividual(:a))
+ Declaration(NamedIndividual(:b))
+ InverseObjectProperties(:i :j)
+ SubObjectPropertyOf(ObjectPropertyChain(:e :e) :k)
+ ObjectPropertyAssertion(:e :a :b)
+ ClassAssertion(:A :a) ClassAssertion(:A :b)
+ SubClassOf(:A ObjectMinCardinality(2 :p :C))
+ SubClassOf(:X :Y) SubClassOf(:Y :Z)
+)"#;
+
+        let mut session = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.route(), "certified_card_proxy_abox");
+        assert!(session.retained_backend());
+
+        let addition = session.replace_source(after).unwrap();
+        assert_eq!(addition.strategy, ChangeStrategy::HtDelta);
+        assert!(addition.meaningful_incremental_update);
+        assert!(addition.retained_states > 0);
+        let fresh = SourceIncrementalClassifier::new(after).unwrap();
         assert_eq!(session.classification(), fresh.classification());
 
         let removal = session.replace_source(before).unwrap();

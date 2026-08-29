@@ -1268,7 +1268,7 @@ fn native_nominal_ht_view<'a>(
 }
 
 #[derive(Clone, Debug)]
-struct ProxyAboxCertificate {
+pub(crate) struct ProxyAboxCertificate {
     concepts: Vec<String>,
     assertion_ids: Vec<usize>,
     role_assertions: Vec<(usize, usize, usize)>,
@@ -1626,6 +1626,110 @@ fn proxy_abox_filter_output(certificate: &ProxyAboxCertificate, output: &mut TOu
     output
         .unsatisfiable
         .retain(|concept| certificate.public_queries.contains(concept));
+}
+
+/// Apply the production proxy-ABox publication certificate to a retained HT
+/// result.  This deliberately round-trips through the same `TOutput` shape as
+/// the batch worker, so the concrete-ABox closure and public-query filtering
+/// have one implementation.
+pub(crate) fn certify_incremental_proxy_abox(
+    certificate: &ProxyAboxCertificate,
+    result: crate::incremental::IncrementalResult,
+) -> Option<crate::incremental::IncrementalResult> {
+    let mut output = TOutput {
+        consistent: !result.inconsistent,
+        subsumptions: Vec::new(),
+        unsatisfiable: Vec::new(),
+    };
+    for (subject, supers) in result.subsumptions {
+        for superclass in supers {
+            if superclass == "owl:Nothing"
+                || superclass == "http://www.w3.org/2002/07/owl#Nothing"
+                || superclass == "⊥"
+            {
+                output.unsatisfiable.push(subject.clone());
+            } else if subject != superclass {
+                output.subsumptions.push([subject.clone(), superclass]);
+            }
+        }
+    }
+    output.unsatisfiable.sort();
+    output.unsatisfiable.dedup();
+    output.subsumptions.sort();
+    output.subsumptions.dedup();
+    if !proxy_abox_certificate_accepts(certificate, &output) {
+        return None;
+    }
+    proxy_abox_filter_output(certificate, &mut output);
+    let mut subsumptions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for [subject, superclass] in output.subsumptions {
+        subsumptions.entry(subject).or_default().push(superclass);
+    }
+    for subject in output.unsatisfiable {
+        subsumptions
+            .entry(subject)
+            .or_default()
+            .push("owl:Nothing".into());
+    }
+    Some(crate::incremental::IncrementalResult {
+        subsumptions,
+        inconsistent: false,
+        dropped: 0,
+        unresolved: Vec::new(),
+    })
+}
+
+/// Build the exact TBox-plus-certificate state used by
+/// `certified_card_proxy_abox`. A native-ABox shape that is directly
+/// materializable belongs to [`prepare_incremental_card`] instead; this
+/// adapter owns only the production proxy branch.
+pub(crate) fn prepare_incremental_card_proxy(
+    frontend: &crate::frontend::FrontendResult,
+) -> Option<(cb_to_ht::TInput, ProxyAboxCertificate)> {
+    if !frontend.rules.is_empty() || std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_none() {
+        return None;
+    }
+    let view = native_nominal_bridge_clauses(
+        &frontend.clauses,
+        &frontend.nominal_abox,
+        &frontend.definers,
+        std::env::var_os("KM_NOMINALS").is_some(),
+        false,
+    );
+    let named = frontend.named.iter().cloned().collect();
+    let mut tin = cb_to_ht::convert(
+        &view,
+        Some(frontend.rbox.as_slice()),
+        &named,
+        &frontend.cardinalities,
+        &frontend.definers,
+        &frontend.source_axioms,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        &[],
+        false,
+    );
+    let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
+    if !card_candidate_from(
+        &tin,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        card_recog,
+        has_datatype(&frontend.clauses),
+    ) {
+        return None;
+    }
+    let mut native = tin.clone();
+    if !cb_to_ht::install_nominal_abox_with_same(&mut native, &frontend.nominal_abox, false) {
+        return None;
+    }
+    if native_abox_role_automata_separable(&native) {
+        return None;
+    }
+    let certificate = positive_role_proxy_abox_certificate(&native)?;
+    tin.queries
+        .extend(certificate.extra_queries.iter().copied());
+    tin.queries.sort_unstable();
+    tin.queries.dedup();
+    Some((tin, certificate))
 }
 
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.

@@ -145,6 +145,14 @@ remain reusable. Unsupported negative-role ABox state and a failed certificate
 take the visible exact-classification fallback instead of publishing a partial
 HT answer.
 
+The proxy-card ABox route retains the same cardinality TBox probes while
+recomputing its small concrete-ABox certificate for each source revision. The
+certificate closes asserted positive role edges under admitted Horn role rules
+and chains, checks that every resulting public type already follows from the
+exact TBox taxonomy, rejects unsatisfiable asserted classes, and removes its
+internal extra queries before publication. A rejected certificate leaves the
+previous revision live and proceeds through exact automatic classification.
+
 Typed automatic families whose dedicated adapter declines take a visible
 `exact_rebuild` safety fallback. The receipt sets
 `meaningful_incremental_update=false` for that fallback. This remains
