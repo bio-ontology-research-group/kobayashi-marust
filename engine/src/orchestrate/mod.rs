@@ -238,7 +238,7 @@ pub struct EngineOut {
 }
 
 /// The final classification, serialised exactly like `owl_classify`'s output.
-#[derive(serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Classification {
     pub consistent: bool,
     pub subsumptions: Vec<[String; 2]>,

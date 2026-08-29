@@ -97,11 +97,24 @@ classification atomically. Its JSONL operations are:
 
 For ELC and clause-complete CB routes without typed ABox, cardinality, or rule
 state, the source session retains `IncrementalClassifier` and reports an
-`el_delta` or `cb_delta` when that adapter accepts the change. All typed routes
-currently take a visible `exact_rebuild` safety fallback. The receipt sets
-`meaningful_incremental_update=false` for that fallback. This is transitional:
-v1.3 is not complete until each automatic typed route has a retained-state
-adapter and demonstrates a meaningful update.
+`el_delta` or `cb_delta` when that adapter accepts the change. The `ht_rules`
+route has a typed adapter: while the TBox, public signature, and routing side
+channels remain fixed, it retains the completed TBox taxonomy and updates only
+the DL-safe-rule/ABox consistency problem. Monotonic consistency verdicts are
+reused directly; other rule/ABox changes rerun the smaller typed consistency
+probe without rebuilding the taxonomy. Its receipt reports normalized-clause
+and rule deltas and uses `ht_delta`.
+
+The remaining typed routes take a visible `exact_rebuild` safety fallback. The
+receipt sets `meaningful_incremental_update=false` for that fallback. This is
+transitional: v1.3 is not complete until each automatic typed route has a
+retained-state adapter and demonstrates a meaningful update.
+
+The rules adapter fails closed to an exact rebuild when terminology, names,
+IRI ownership, RBox state, cardinality descriptors, definers, or normalized
+source TBox axioms change. A session initialized in an inconsistent state has
+no published taxonomy to retain, so a later consistency-restoring removal also
+rebuilds unless the session previously retained a consistent taxonomy.
 
 The Protégé reasoner keeps one `incremental-source` subprocess for its OWLAPI
 lifetime. `BUFFERING` changes remain invisible until `flush()`;

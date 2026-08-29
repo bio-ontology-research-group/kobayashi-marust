@@ -34,11 +34,14 @@ public class ExplanationGeneratorTest {
     @BeforeClass
     public static void locateKm() {
         if (System.getProperty("km.bin") == null) {
-            File cached = new File(
-                    "/home/leechuck/km-frontend/kobayashi-marust/engine/target/release/km");
-            File local = new File("../engine/target/release/km");
-            System.setProperty("km.bin",
-                    (cached.isFile() ? cached : local).getAbsolutePath());
+            File release = new File("../.work/target/release/km");
+            File debug = new File("../.work/target/debug/km");
+            File local = release.isFile() ? release : debug;
+            if (!local.isFile()) {
+                throw new IllegalStateException(
+                        "build km under the checkout-local .work/target or pass -Dkm.bin");
+            }
+            System.setProperty("km.bin", local.getAbsolutePath());
         }
     }
 

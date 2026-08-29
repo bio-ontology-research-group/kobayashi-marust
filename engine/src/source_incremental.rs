@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 
 use crate::frontend::FrontendResult;
 use crate::incremental::{ChangeStrategy, ClauseId, IncrementalChange, IncrementalClassifier};
+use crate::incremental_rules::IncrementalRulesClassifier;
 use crate::json_io::JClause;
 use crate::orchestrate::{Classification, Config};
 
@@ -31,6 +32,8 @@ pub struct SourceIncrementalReceipt {
     pub reused_edges: usize,
     pub added_normalized_clauses: usize,
     pub removed_normalized_clauses: usize,
+    pub added_rules: usize,
+    pub removed_rules: usize,
     /// `false` identifies an honest batch safety fallback, never hidden reuse.
     pub meaningful_incremental_update: bool,
 }
@@ -41,6 +44,7 @@ enum SourceBackend {
         clauses: Vec<JClause>,
         ids: Vec<ClauseId>,
     },
+    Rules(IncrementalRulesClassifier),
     ExactBatch,
 }
 
@@ -77,12 +81,20 @@ impl SourceIncrementalClassifier {
             }
         }
         let classification = classify_source_exact(source)?;
+        let backend = if route == "ht_rules" {
+            SourceBackend::Rules(IncrementalRulesClassifier::new(
+                &frontend,
+                classification.clone(),
+            ))
+        } else {
+            SourceBackend::ExactBatch
+        };
         Ok(Self {
             revision: 0,
             route,
             frontend,
             classification,
-            backend: SourceBackend::ExactBatch,
+            backend,
         })
     }
 
@@ -99,6 +111,43 @@ impl SourceIncrementalClassifier {
         let route_before = self.route.clone();
         let route_after = candidate.route.clone();
 
+        if let SourceBackend::Rules(classifier) = &self.backend {
+            if let Some(update) = classifier.updated(&candidate)? {
+                let (removed, added) =
+                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                let (removed_rules, added_rules) =
+                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                let reused_subsumptions = update.reused_subsumptions;
+                let reused_fixpoint = update.probe_reused;
+                let retained_taxonomy = update.retained_taxonomy;
+                let classification = update.classification;
+                self.revision += 1;
+                self.route = route_after.clone();
+                self.frontend = candidate;
+                self.classification = classification.clone();
+                self.backend = SourceBackend::Rules(IncrementalRulesClassifier::with_taxonomy(
+                    &self.frontend,
+                    classification,
+                    retained_taxonomy,
+                ));
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != route_after,
+                    route_before,
+                    route_after,
+                    strategy: ChangeStrategy::HtDelta,
+                    reused_fixpoint,
+                    reused_subsumptions,
+                    reused_edges: 0,
+                    added_normalized_clauses: added,
+                    removed_normalized_clauses: removed,
+                    added_rules,
+                    removed_rules,
+                    meaningful_incremental_update: true,
+                });
+            }
+        }
+
         if clause_state_is_complete(&candidate) {
             if let SourceBackend::Incremental {
                 classifier,
@@ -111,7 +160,8 @@ impl SourceIncrementalClassifier {
                     classifier.apply_change(&remove_ids, additions)
                 })? {
                     Ok(change) => {
-                        let classification = map_incremental_result(&candidate, classifier.result());
+                        let classification =
+                            map_incremental_result(&candidate, classifier.result());
                         *clauses = candidate.clauses.clone();
                         *ids = classifier.clause_ids();
                         self.revision += 1;
@@ -138,7 +188,10 @@ impl SourceIncrementalClassifier {
             })? {
                 let classification = map_incremental_result(&candidate, classifier.result());
                 let ids = classifier.clause_ids();
-                let added = candidate.clauses.len();
+                let (removed, added) =
+                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                let (removed_rules, added_rules) =
+                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
                 self.revision += 1;
                 self.route = route_after.clone();
                 self.frontend = candidate;
@@ -158,7 +211,9 @@ impl SourceIncrementalClassifier {
                     reused_subsumptions: 0,
                     reused_edges: 0,
                     added_normalized_clauses: added,
-                    removed_normalized_clauses: 0,
+                    removed_normalized_clauses: removed,
+                    added_rules,
+                    removed_rules,
                     meaningful_incremental_update: false,
                 });
             }
@@ -167,11 +222,20 @@ impl SourceIncrementalClassifier {
         let classification = classify_source_exact(source)?;
         let removed = self.frontend.clauses.len();
         let added = candidate.clauses.len();
+        let removed_rules = self.frontend.rules.len();
+        let added_rules = candidate.rules.len();
         self.revision += 1;
         self.route = route_after.clone();
         self.frontend = candidate;
         self.classification = classification;
-        self.backend = SourceBackend::ExactBatch;
+        self.backend = if route_after == "ht_rules" {
+            SourceBackend::Rules(IncrementalRulesClassifier::new(
+                &self.frontend,
+                self.classification.clone(),
+            ))
+        } else {
+            SourceBackend::ExactBatch
+        };
         Ok(SourceIncrementalReceipt {
             revision: self.revision,
             route_migrated: route_before != route_after,
@@ -183,6 +247,8 @@ impl SourceIncrementalClassifier {
             reused_edges: 0,
             added_normalized_clauses: added,
             removed_normalized_clauses: removed,
+            added_rules,
+            removed_rules,
             meaningful_incremental_update: false,
         })
     }
@@ -200,7 +266,10 @@ impl SourceIncrementalClassifier {
     }
 
     pub fn retained_backend(&self) -> bool {
-        matches!(self.backend, SourceBackend::Incremental { .. })
+        matches!(
+            self.backend,
+            SourceBackend::Incremental { .. } | SourceBackend::Rules(_)
+        )
     }
 }
 
@@ -225,6 +294,8 @@ fn receipt_from_change(
         reused_edges: change.reused_edges,
         added_normalized_clauses: change.added_clauses,
         removed_normalized_clauses: change.removed_clauses,
+        added_rules: 0,
+        removed_rules: 0,
         meaningful_incremental_update: meaningful,
     }
 }
@@ -265,10 +336,7 @@ fn classify_source_exact(source: &str) -> Result<Classification, String> {
     crate::orchestrate::classify(&cfg, path.path()).map_err(|error| error.to_string())
 }
 
-fn with_route_environment<T>(
-    route: &str,
-    operation: impl FnOnce() -> T,
-) -> Result<T, String> {
+fn with_route_environment<T>(route: &str, operation: impl FnOnce() -> T) -> Result<T, String> {
     let _guard = crate::routing::EnvironmentGuard::capture();
     let route = route
         .parse::<crate::routing::Route>()
@@ -307,12 +375,39 @@ fn clause_delta(
     (removals, additions)
 }
 
+fn clause_change_counts(old: &[JClause], new: &[JClause]) -> (usize, usize) {
+    let ids: Vec<ClauseId> = (0..old.len() as ClauseId).collect();
+    let (removed, added) = clause_delta(old, &ids, new);
+    (removed.len(), added.len())
+}
+
+fn sequence_change_counts<T: PartialEq>(old: &[T], new: &[T]) -> (usize, usize) {
+    let mut used = vec![false; old.len()];
+    let mut additions = 0;
+    for candidate in new {
+        if let Some(index) = old
+            .iter()
+            .enumerate()
+            .find_map(|(index, item)| (!used[index] && item == candidate).then_some(index))
+        {
+            used[index] = true;
+        } else {
+            additions += 1;
+        }
+    }
+    (used.iter().filter(|used| !**used).count(), additions)
+}
+
 fn map_incremental_result(
     frontend: &FrontendResult,
     result: crate::incremental::IncrementalResult,
 ) -> Classification {
     let named: BTreeSet<&str> = frontend.named.iter().map(String::as_str).collect();
-    let asserted: BTreeSet<&str> = frontend.asserted_classes.iter().map(String::as_str).collect();
+    let asserted: BTreeSet<&str> = frontend
+        .asserted_classes
+        .iter()
+        .map(String::as_str)
+        .collect();
     let is_internal = |name: &str| {
         !named.contains(name)
             && (name.starts_with("Q_")
@@ -360,9 +455,7 @@ fn map_incremental_result(
 }
 
 fn is_bottom(name: &str) -> bool {
-    name == "owl:Nothing"
-        || name == "http://www.w3.org/2002/07/owl#Nothing"
-        || name == "\u{22a5}"
+    name == "owl:Nothing" || name == "http://www.w3.org/2002/07/owl#Nothing" || name == "\u{22a5}"
 }
 
 #[derive(Deserialize)]
@@ -492,14 +585,18 @@ mod tests {
         assert_eq!(receipt.strategy, ChangeStrategy::ElDelta);
         assert!(receipt.meaningful_incremental_update);
         assert!(session.classification().subsumptions.iter().any(|pair| {
-            pair == &["http://example.org/A".to_string(), "http://example.org/C".to_string()]
+            pair == &[
+                "http://example.org/A".to_string(),
+                "http://example.org/C".to_string(),
+            ]
         }));
     }
 
     #[test]
     fn jsonl_session_publishes_a_transaction_receipt() {
         let before = "Prefix(:=<http://example.org/>)\nOntology(\nSubClassOf(:A :B)\n)";
-        let after = "Prefix(:=<http://example.org/>)\nOntology(\nSubClassOf(:A :B)\nSubClassOf(:B :C)\n)";
+        let after =
+            "Prefix(:=<http://example.org/>)\nOntology(\nSubClassOf(:A :B)\nSubClassOf(:B :C)\n)";
         let commands = format!(
             "{}\n{}\n",
             serde_json::json!({"op": "init", "functional_syntax": before}),
@@ -556,7 +653,10 @@ mod tests {
         assert_eq!(receipt.strategy, ChangeStrategy::CbDelta);
         assert!(receipt.meaningful_incremental_update);
         assert!(session.classification().subsumptions.iter().any(|pair| {
-            pair == &["http://example.org/A".to_string(), "http://example.org/E".to_string()]
+            pair == &[
+                "http://example.org/A".to_string(),
+                "http://example.org/E".to_string(),
+            ]
         }));
     }
 }

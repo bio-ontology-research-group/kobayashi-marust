@@ -81,7 +81,7 @@ pub struct JClause {
 /// the restriction; `min` distinguishes `≥n` (true) from `≤n` (false). Emitted
 /// only under the frontend `KM_HT_CARD` flag, so the default clause/meta output
 /// is byte-identical (empty list, skipped on serialize).
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct CardMeta {
     pub marker: String,
     pub min: bool,
@@ -146,7 +146,7 @@ pub enum DefinerKind {
 /// named individual). Emitted by the frontend ONLY under `KM_HT_RULES`, and
 /// skipped on serialize when empty, so the default clause/meta output is
 /// byte-identical.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(tag = "kind")]
 pub enum JRuleTerm {
     #[serde(rename = "var")]
@@ -155,7 +155,7 @@ pub enum JRuleTerm {
     Ind { name: String },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(tag = "kind")]
 pub enum JRuleAtom {
     #[serde(rename = "class")]
@@ -172,7 +172,7 @@ pub enum JRuleAtom {
     Diff { left: JRuleTerm, right: JRuleTerm },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct JRule {
     pub body: Vec<JRuleAtom>,
     pub head: Vec<JRuleAtom>,

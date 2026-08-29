@@ -55,6 +55,8 @@ public final class Classifier {
         public int reused_edges;
         public int added_normalized_clauses;
         public int removed_normalized_clauses;
+        public int added_rules;
+        public int removed_rules;
         public boolean meaningful_incremental_update;
     }
 
