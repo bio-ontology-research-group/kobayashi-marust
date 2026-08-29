@@ -6,6 +6,8 @@ import org.semanticweb.owl.explanation.api.Explanation;
 import org.semanticweb.owl.explanation.api.ExplanationException;
 import org.semanticweb.owl.explanation.api.ExplanationGenerator;
 import org.semanticweb.owl.explanation.api.ExplanationGeneratorFactory;
+import org.semanticweb.owl.explanation.api.ExplanationGeneratorInterruptedException;
+import org.semanticweb.owl.explanation.api.ExplanationProgressMonitor;
 import org.semanticweb.owl.explanation.api.UnsupportedEntailmentException;
 import org.semanticweb.owlapi.apibinding.OWLManager;
 import org.semanticweb.owlapi.model.AxiomType;
@@ -18,8 +20,14 @@ import org.semanticweb.owlapi.model.OWLOntologyManager;
 import org.semanticweb.owlapi.model.OWLObjectProperty;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -331,6 +339,74 @@ public class ExplanationGeneratorTest {
             fail("native source bound should fail closed");
         } catch (ExplanationException expected) {
             assertTrue(expected.getMessage().contains("declined or failed"));
+        }
+    }
+
+    @Test
+    public void cancellationTerminatesTheRunningNativeExplanationProcess() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "CancelA");
+        OWLClass b = cls(dataFactory, "CancelB");
+        manager.addAxiom(ontology, dataFactory.getOWLSubClassOfAxiom(a, b));
+
+        Path marker = Files.createTempFile("km-explain-started-", ".marker");
+        Files.delete(marker);
+        Path worker = Files.createTempFile("km-explain-worker-", ".sh");
+        String script = "#!/bin/sh\n"
+                + "printf started > '" + marker.toString().replace("'", "'\\''") + "'\n"
+                + "exec sleep 60\n";
+        Files.write(worker, script.getBytes(StandardCharsets.UTF_8));
+        assertTrue(worker.toFile().setExecutable(true));
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        ExplanationProgressMonitor<OWLAxiom> monitor =
+                new ExplanationProgressMonitor<OWLAxiom>() {
+                    @Override
+                    public void foundExplanation(
+                            ExplanationGenerator<OWLAxiom> generator,
+                            Explanation<OWLAxiom> explanation,
+                            Set<Explanation<OWLAxiom>> explanations) {
+                        // The fake worker never returns an explanation.
+                    }
+
+                    @Override
+                    public boolean isCancelled() {
+                        return cancelled.get();
+                    }
+                };
+        KMExplanationConfiguration configuration = new KMExplanationConfiguration(
+                worker.toString(), 60, 128, 128, 1024 * 1024, 4);
+        ExplanationGenerator<OWLAxiom> generator = new KMExplanationGeneratorFactory(configuration)
+                .createExplanationGenerator(ontology, monitor);
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        Thread request = new Thread(() -> {
+            try {
+                generator.getExplanations(dataFactory.getOWLSubClassOfAxiom(a, b), 1);
+                outcome.set(new AssertionError("cancelled explanation unexpectedly completed"));
+            } catch (Throwable error) {
+                outcome.set(error);
+            }
+        }, "km-native-explanation-cancellation-test");
+
+        try {
+            request.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!Files.exists(marker) && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertTrue("fake native explanation worker did not start", Files.exists(marker));
+            cancelled.set(true);
+            request.join(TimeUnit.SECONDS.toMillis(5));
+            assertFalse("native explanation request survived cancellation", request.isAlive());
+            assertTrue(outcome.get() instanceof ExplanationGeneratorInterruptedException);
+        } finally {
+            cancelled.set(true);
+            request.interrupt();
+            request.join(TimeUnit.SECONDS.toMillis(1));
+            Files.deleteIfExists(worker);
+            Files.deleteIfExists(marker);
         }
     }
 }
