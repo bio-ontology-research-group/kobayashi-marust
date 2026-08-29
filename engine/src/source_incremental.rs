@@ -1909,6 +1909,44 @@ Ontology(
     }
 
     #[test]
+    fn every_automatic_clause_route_alias_uses_its_complete_retained_core() {
+        let _environment = lock_environment();
+        let source = r#"Ontology(
+ Declaration(Class(<http://example.org/A>))
+ Declaration(Class(<http://example.org/B>))
+ SubClassOf(<http://example.org/A> <http://example.org/B>)
+)"#;
+        let mut frontend = normalize_automatic(source).unwrap();
+
+        // These are all route names emitted by the automatic router over the
+        // v1.2 ORE corpus whose complete semantics is the normalized clause
+        // set.  ELC portfolio names share the retained EL completion adapter;
+        // production portfolio names share the retained CB adapter.  The
+        // adapter is selected by the clauses, so aliases must never fall back
+        // to an ExactBatch session merely because their policy name differs.
+        for route in [
+            "elc",
+            "elc_cert",
+            "certified_el_production",
+            "production_all",
+            "production_all8",
+            "production_all1",
+            "cb_plain16",
+            "cb_absorb16",
+            "cb_trigger16",
+            "cb_absorb_portfolio16",
+            "seq_on",
+            "seq_off",
+        ] {
+            frontend.route = route.to_string();
+            assert!(
+                super::clause_state_is_complete(&frontend),
+                "automatic clause route {route} lost its retained adapter"
+            );
+        }
+    }
+
+    #[test]
     fn positive_el_abox_updates_reuse_typed_completion_state() {
         let _environment = lock_environment();
         let terminology = (0..1_000)

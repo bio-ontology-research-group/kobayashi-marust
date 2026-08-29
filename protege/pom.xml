@@ -133,6 +133,13 @@
               org.protege.editor.core.*,
               org.protege.editor.owl.*,
               org.semanticweb.owlapi.*,
+              <!-- Protégé 5.6.6 exports Guava 18 and SLF4J 1.7.  Bnd would
+                   otherwise infer ranges from Maven's newer transitive test
+                   dependencies, producing a bundle that compiles but cannot
+                   resolve in the stock application.  KM only consumes the
+                   long-stable collection/logging API exposed by OWLAPI. -->
+              com.google.common.collect;version="[18,34)",
+              org.slf4j;version="[1.7,3)",
               org.osgi.framework,
               *
             </Import-Package>
