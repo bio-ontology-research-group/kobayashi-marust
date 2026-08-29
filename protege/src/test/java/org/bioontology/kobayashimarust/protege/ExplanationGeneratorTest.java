@@ -237,6 +237,32 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void explainsAQualifiedCardinalityPigeonholeClash() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "CardinalityA");
+        OWLClass b = cls(dataFactory, "CardinalityB");
+        org.semanticweb.owlapi.model.OWLObjectProperty r =
+                dataFactory.getOWLObjectProperty(IRI.create(NS + "cardinalityR"));
+        OWLAxiom minimum = dataFactory.getOWLSubClassOfAxiom(
+                a, dataFactory.getOWLObjectMinCardinality(2, r, b));
+        OWLAxiom maximum = dataFactory.getOWLSubClassOfAxiom(
+                a, dataFactory.getOWLObjectMaxCardinality(1, r, b));
+        manager.addAxiom(ontology, minimum);
+        manager.addAxiom(ontology, maximum);
+
+        OWLAxiom entailment = dataFactory.getOWLSubClassOfAxiom(
+                a, dataFactory.getOWLNothing());
+        Set<Explanation<OWLAxiom>> explanations = new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(ontology)
+                .getExplanations(entailment, 1);
+
+        assertEquals(1, explanations.size());
+        assertEquals(Set.of(minimum, maximum), explanations.iterator().next().getAxioms());
+    }
+
+    @Test
     public void explainsAnInverseRoleCbEntailment() throws Exception {
         OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
         OWLDataFactory dataFactory = manager.getOWLDataFactory();

@@ -167,3 +167,38 @@ fn ht_rules_route_explains_inconsistency_through_the_automatic_gate() {
     assert_eq!(report["justifications"][0]["verified"], true);
     assert_eq!(report["justifications"][0]["subsetMinimal"], true);
 }
+
+#[test]
+fn cardinality_route_explains_a_pigeonhole_clash_through_the_automatic_gate() {
+    let ontology = temporary_ontology(
+        "cardinality-pigeonhole",
+        r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B))
+ Declaration(ObjectProperty(:r))
+ SubClassOf(:A ObjectMinCardinality(2 :r :B))
+ SubClassOf(:A ObjectMaxCardinality(1 :r :B))
+)"#,
+    );
+    let output = run_explain(&[
+        "--max-axioms",
+        "8",
+        "--max-checks",
+        "32",
+        ontology.to_str().unwrap(),
+        "subclass",
+        "http://example.org/A",
+        "http://www.w3.org/2002/07/owl#Nothing",
+    ]);
+    let _ = std::fs::remove_file(&ontology);
+    assert!(
+        output.status.success(),
+        "KM cardinality explanation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["status"], "entailed");
+    assert_eq!(report["justifications"][0]["axiomCount"], 2);
+    assert_eq!(report["justifications"][0]["verified"], true);
+    assert_eq!(report["justifications"][0]["subsetMinimal"], true);
+}
