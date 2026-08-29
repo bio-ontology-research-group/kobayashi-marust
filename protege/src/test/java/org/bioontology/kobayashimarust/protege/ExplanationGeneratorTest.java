@@ -79,6 +79,32 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void generatorRemainsBoundToItsCreationRevision() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "RevisionA");
+        OWLClass b = cls(dataFactory, "RevisionB");
+        OWLClass c = cls(dataFactory, "RevisionC");
+        OWLAxiom first = dataFactory.getOWLSubClassOfAxiom(a, b);
+        OWLAxiom second = dataFactory.getOWLSubClassOfAxiom(b, c);
+        manager.addAxiom(ontology, first);
+        manager.addAxiom(ontology, second);
+        OWLAxiom entailment = dataFactory.getOWLSubClassOfAxiom(a, c);
+
+        ExplanationGenerator<OWLAxiom> committed = new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(ontology);
+        manager.removeAxiom(ontology, second);
+
+        Set<Explanation<OWLAxiom>> prior = committed.getExplanations(entailment, 1);
+        assertEquals(1, prior.size());
+        assertTrue(prior.iterator().next().getAxioms().contains(second));
+        assertTrue(new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(ontology)
+                .getExplanations(entailment, 1).isEmpty());
+    }
+
+    @Test
     public void factoryIsDiscoverableThroughTheStandardJavaServiceLoader() {
         boolean found = false;
         for (ExplanationGeneratorFactory<?> factory

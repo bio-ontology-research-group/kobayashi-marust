@@ -36,6 +36,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private final Map<OWLClass, Set<OWLClass>> subs = new HashMap<>();
     private final Set<OWLClass> unsatisfiable = new HashSet<>();
     private volatile Classifier.Session incrementalSession;
+    private OWLOntology committedOntology;
 
     protected KMReasoner(OWLOntology rootOntology, OWLReasonerConfiguration config,
                          BufferingMode bufferingMode) {
@@ -50,20 +51,28 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     private synchronized void classify() {
         OWLOntology ont = getRootOntology();
+        final OWLOntology candidate;
+        final String candidateSource;
+        try {
+            candidate = FlattenedOntology.snapshot(ont);
+            candidateSource = FlattenedOntology.functionalSyntaxOfSnapshot(candidate);
+        } catch (Exception error) {
+            throw new ReasonerInternalException(error);
+        }
 
         // Complete IRI -> named class. Local fragments are not unique.
         Map<String, OWLClass> byIri = new HashMap<>();
-        Set<OWLClass> classes = new HashSet<>(ont.getClassesInSignature(Imports.INCLUDED));
+        Set<OWLClass> classes = new HashSet<>(candidate.getClassesInSignature(Imports.INCLUDED));
         classes.add(owlThing); classes.add(owlNothing);
         for (OWLClass c : classes) byIri.put(c.getIRI().toString(), c);
 
         Classifier.Result res;
         try {
             if (incrementalSession == null) {
-                incrementalSession = new Classifier.Session(ont);
+                incrementalSession = new Classifier.Session(candidateSource);
                 res = incrementalSession.result();
             } else {
-                res = incrementalSession.replace(ont);
+                res = incrementalSession.replace(candidateSource);
             }
         } catch (Exception e) {
             // A protocol failure may have terminated the native process. Drop
@@ -81,6 +90,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         group.clear(); rep.clear(); supers.clear(); subs.clear(); unsatisfiable.clear();
         consistent = res.consistent;
         dropped = res.dropped;
+        committedOntology = candidate;
 
         // direct (non-closed) named subsumptions
         List<OWLClass[]> pairs = new ArrayList<>();
@@ -244,6 +254,18 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     /** Last native transaction receipt; null for the initial revision. */
     public synchronized Classifier.IncrementalReceipt getLastIncrementalReceipt() {
         return incrementalSession == null ? null : incrementalSession.receipt();
+    }
+
+    /** A detached copy of the source snapshot backing the current answers. */
+    public synchronized OWLOntology getCommittedOntologySnapshot() {
+        if (committedOntology == null) {
+            throw new ReasonerInternalException("KM has no committed ontology revision");
+        }
+        try {
+            return FlattenedOntology.snapshot(committedOntology);
+        } catch (Exception error) {
+            throw new ReasonerInternalException(error);
+        }
     }
 
     // ---- precompute / metadata -----------------------------------------

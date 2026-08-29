@@ -161,11 +161,13 @@ public class ReasonerTest {
         OWLAxiom addition = df.getOWLSubClassOfAxiom(b, c);
         manager.addAxiom(ontology, addition);
         assertTrue(reasoner.getPendingAxiomAdditions().contains(addition));
+        assertFalse(reasoner.getCommittedOntologySnapshot().containsAxiom(addition));
         assertFalse("buffered change must not leak before flush",
                 superContains(reasoner, a, c));
 
         reasoner.flush();
         assertTrue(superContains(reasoner, a, c));
+        assertTrue(reasoner.getCommittedOntologySnapshot().containsAxiom(addition));
         assertTrue(reasoner.getPendingChanges().isEmpty());
         Classifier.IncrementalReceipt receipt = reasoner.getLastIncrementalReceipt();
         assertNotNull(receipt);

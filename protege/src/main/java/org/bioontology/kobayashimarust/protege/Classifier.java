@@ -77,6 +77,10 @@ public final class Classifier {
         private volatile boolean closed;
 
         public Session(OWLOntology ontology) throws Exception {
+            this(FlattenedOntology.functionalSyntax(ontology));
+        }
+
+        public Session(String functionalSyntax) throws Exception {
             this.kmBin = cfg("km.bin", "KM_BIN", "km");
             this.timeoutSeconds = parseTimeout();
             this.log = Files.createTempFile("kmarust-incremental-", ".log");
@@ -93,7 +97,7 @@ public final class Classifier {
                 return thread;
             });
             try {
-                Response response = command("init", FlattenedOntology.functionalSyntax(ontology));
+                Response response = command("init", functionalSyntax);
                 this.result = response.result;
                 this.receipt = response.receipt;
             } catch (Exception error) {
@@ -103,8 +107,11 @@ public final class Classifier {
         }
 
         public synchronized Result replace(OWLOntology ontology) throws Exception {
-            Response response = command(
-                    "replace", FlattenedOntology.functionalSyntax(ontology));
+            return replace(FlattenedOntology.functionalSyntax(ontology));
+        }
+
+        public synchronized Result replace(String functionalSyntax) throws Exception {
+            Response response = command("replace", functionalSyntax);
             this.result = response.result;
             this.receipt = response.receipt;
             return result;

@@ -169,6 +169,13 @@ Set<Explanation<OWLAxiom>> firstTwo =
     generator.getExplanations(entailment, 2);
 ```
 
+The factory snapshots the complete imports closure when it creates a
+generator. Later changes to the caller's mutable ontology do not alter an
+in-flight enumeration. In Protégé, the native service obtains the snapshot
+committed by the current `KMReasoner`: buffered pending changes stay invisible
+until `flush()`, and a failed incremental transaction leaves explanations bound
+to the preceding successful revision.
+
 The unbounded API overload, `getExplanations(entailment)`, must satisfy the
 OWL Explanation API's all-explanations contract. KM searches only up to the
 configured safety cap and throws if enumeration is still incomplete. Use the

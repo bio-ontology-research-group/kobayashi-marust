@@ -49,7 +49,14 @@ public final class KMExplanationGenerator implements ExplanationGenerator<OWLAxi
             OWLOntology ontology,
             ExplanationProgressMonitor<OWLAxiom> progressMonitor,
             KMExplanationConfiguration configuration) {
-        this.ontology = ontology;
+        try {
+            // Bind enumeration to one source revision even if the caller later
+            // mutates the live OWLAPI ontology.
+            this.ontology = FlattenedOntology.snapshot(ontology);
+        } catch (Exception error) {
+            throw new ExplanationException(
+                    "Could not snapshot the ontology for KM explanations", error);
+        }
         this.progressMonitor = progressMonitor;
         this.configuration = configuration;
     }

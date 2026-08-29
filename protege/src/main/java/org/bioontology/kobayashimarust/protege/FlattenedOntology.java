@@ -19,9 +19,8 @@ final class FlattenedOntology {
     }
 
     static void save(OWLOntology ontology, Path destination) throws Exception {
-        validateImports(ontology);
-        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
-        OWLOntology flattened = manager.createOntology(ontology.getAxioms(Imports.INCLUDED));
+        OWLOntology flattened = snapshot(ontology);
+        OWLOntologyManager manager = flattened.getOWLOntologyManager();
         manager.saveOntology(
                 flattened,
                 new FunctionalSyntaxDocumentFormat(),
@@ -29,12 +28,21 @@ final class FlattenedOntology {
     }
 
     static String functionalSyntax(OWLOntology ontology) throws Exception {
-        validateImports(ontology);
-        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
-        OWLOntology flattened = manager.createOntology(ontology.getAxioms(Imports.INCLUDED));
+        OWLOntology flattened = snapshot(ontology);
+        return functionalSyntaxOfSnapshot(flattened);
+    }
+
+    static String functionalSyntaxOfSnapshot(OWLOntology flattened) throws Exception {
+        OWLOntologyManager manager = flattened.getOWLOntologyManager();
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         manager.saveOntology(flattened, new FunctionalSyntaxDocumentFormat(), output);
         return new String(output.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    static OWLOntology snapshot(OWLOntology ontology) throws Exception {
+        validateImports(ontology);
+        return OWLManager.createOWLOntologyManager()
+                .createOntology(ontology.getAxioms(Imports.INCLUDED));
     }
 
     private static void validateImports(OWLOntology ontology) {
