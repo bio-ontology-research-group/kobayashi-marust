@@ -71,8 +71,13 @@ extraction instead of being interpreted as non-entailment.
 
 ## Multiple justifications and bounds
 
-KM first checks the full source, greedily minimises one entailing subset, and
-reclassifies that exact final subset before publishing it. A deterministic
+KM first checks the full source and minimises one entailing subset. Sources of
+up to 32 axioms use deterministic one-axiom deletion. Larger sources use
+monotone delta debugging: entailing chunks are removed first and partition
+granularity increases to singleton deletions only around the surviving
+support. This preserves subset minimality while avoiding one complete
+classification per source axiom when a large ontology has a sparse support.
+KM reclassifies the exact final subset before publishing it. A deterministic
 hitting-set tree then excludes each axiom of a found support to search for
 alternatives. Every returned support has both `verified: true` and
 `subsetMinimal: true`.

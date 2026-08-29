@@ -436,6 +436,79 @@ where
     oracle(active).map(Some)
 }
 
+/// Minimise one known-entailing candidate under a monotone entailment oracle.
+///
+/// Small supports keep the simple deterministic one-axiom deletion order.
+/// For a large source, delta debugging first removes entailing chunks and
+/// increases the partition granularity only when no whole chunk is removable.
+/// Reaching singleton chunks proves one-deletion minimality; monotonicity then
+/// makes that subset-minimal.  Sparse justifications in large ontologies need
+/// logarithmically many successful chunk removals instead of one complete
+/// classification per source axiom.
+fn minimise<F>(
+    candidate: &[bool],
+    checks: &mut usize,
+    max_checks: usize,
+    oracle: &mut F,
+) -> Result<Option<Vec<bool>>, ExplainError>
+where
+    F: FnMut(&[bool]) -> Result<bool, ExplainError>,
+{
+    let mut active = candidate.to_vec();
+    let active_count = active.iter().filter(|present| **present).count();
+    if active_count <= 32 {
+        for index in 0..active.len() {
+            if !active[index] {
+                continue;
+            }
+            active[index] = false;
+            let Some(entailed) = checked(&active, checks, max_checks, oracle)? else {
+                return Ok(None);
+            };
+            if !entailed {
+                active[index] = true;
+            }
+        }
+        return Ok(Some(active));
+    }
+
+    let mut granularity = 2usize;
+    loop {
+        let indices: Vec<usize> = active
+            .iter()
+            .enumerate()
+            .filter_map(|(index, present)| present.then_some(index))
+            .collect();
+        if indices.is_empty() {
+            return Ok(Some(active));
+        }
+        let chunk_size = indices.len().div_ceil(granularity);
+        let mut removed_chunk = false;
+        for chunk in indices.chunks(chunk_size) {
+            let mut trial = active.clone();
+            for index in chunk {
+                trial[*index] = false;
+            }
+            let Some(entailed) = checked(&trial, checks, max_checks, oracle)? else {
+                return Ok(None);
+            };
+            if entailed {
+                active = trial;
+                granularity = granularity.saturating_sub(1).max(2);
+                removed_chunk = true;
+                break;
+            }
+        }
+        if removed_chunk {
+            continue;
+        }
+        if granularity >= indices.len() {
+            return Ok(Some(active));
+        }
+        granularity = (granularity * 2).min(indices.len());
+    }
+}
+
 /// Enumerate subset-minimal supports with a deterministic hitting-set tree.
 ///
 /// Each entailing branch is minimized by greedy deletion. Greedy deletion is
@@ -492,20 +565,10 @@ where
             }
         }
 
-        let mut active = candidate.clone();
-        for index in 0..axiom_count {
-            if !active[index] {
-                continue;
-            }
-            active[index] = false;
-            let Some(entailed) = checked(&active, &mut checks, max_checks, &mut oracle)? else {
-                check_limit_reached = true;
-                break 'search;
-            };
-            if !entailed {
-                active[index] = true;
-            }
-        }
+        let Some(active) = minimise(&candidate, &mut checks, max_checks, &mut oracle)? else {
+            check_limit_reached = true;
+            break 'search;
+        };
 
         // Deliberately bypass any cached branch verdict. This exact final set
         // must be reclassified before it is exposed as a justification.
@@ -737,6 +800,22 @@ Ontology(<http://example.org/o>
             .contains(&vec![false, false, true, true, false]));
         assert!(result.justification_limit_reached);
         assert!(!result.enumeration_complete);
+    }
+
+    #[test]
+    fn sparse_large_support_is_minimised_without_a_linear_oracle_budget() {
+        let result = enumerate(4_096, 96, 1, |active| {
+            Ok(active[17] && active[4_000])
+        })
+        .unwrap();
+        assert!(result.entailed);
+        assert_eq!(result.justifications.len(), 1);
+        let support = &result.justifications[0];
+        assert_eq!(support.iter().filter(|present| **present).count(), 2);
+        assert!(support[17]);
+        assert!(support[4_000]);
+        assert!(result.checks < 80, "checks={}", result.checks);
+        assert!(!result.check_limit_reached);
     }
 
     #[test]
