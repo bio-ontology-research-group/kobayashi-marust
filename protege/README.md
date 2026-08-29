@@ -190,3 +190,29 @@ assert EL, CB, and HT mechanism provenance and rejection of a forced route.
 The Maven `verify` phase also unpacks the OSGi JAR and fails unless the native
 explanation service, result panel, `plugin.xml`, Java service metadata, and
 pinned embedded dependencies are present.
+
+### Test the packaged plugin in a real Protégé installation
+
+Maven's dependency classpath does not reproduce OSGi package resolution. Run
+the installation smoke test against an unpacked stock Protégé 5.6.6
+distribution before releasing:
+
+```sh
+protege/run-installation-smoke.sh \
+  /absolute/path/to/Protege-5.6.6 \
+  "$PWD/protege/target/kobayashi-marust-protege-0.3.0.jar" \
+  "$PWD/.work/target/release/km"
+```
+
+The script installs the packaged plugin and a separate one-shot consumer
+bundle into that distribution. Through Protégé's Felix container, the consumer
+requires the KM bundle to be active, classifies a small ontology, applies a
+non-buffering OWLAPI addition through the retained native session, and obtains
+the exact source-axiom justification through the bundle's OWL Explanation API.
+The consumer bundle is test-only and is never included in the released plugin.
+
+The smoke launcher uses Java headless mode so it can run in CI. Protégé's own
+Swing application activator consequently reports `HeadlessException`; the
+test does not treat that expected GUI-only error as a plugin failure. It does
+fail on any KM resolution/start error, native reasoning failure, incorrect
+incremental answer, or incorrect explanation.

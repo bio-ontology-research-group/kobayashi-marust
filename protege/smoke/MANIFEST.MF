@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: KM Protégé installation smoke consumer
+Bundle-SymbolicName: org.bioontology.kobayashi-marust.installation-smoke
+Bundle-Version: 1.0.0
+Bundle-Activator: org.bioontology.kobayashimarust.smoke.ProtegeInstallationSmoke
+Bundle-RequiredExecutionEnvironment: JavaSE-11
+Import-Package: org.bioontology.kobayashimarust.protege;version="[0.3,2)",org.osgi.framework;version="[1.8,2)",org.semanticweb.owl.explanation.api;version="[2,3)",org.semanticweb.owlapi.apibinding;version="[4.5,5)",org.semanticweb.owlapi.model;version="[4.5,5)",org.semanticweb.owlapi.reasoner;version="[4.5,5)"
