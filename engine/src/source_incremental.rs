@@ -8,7 +8,7 @@
 //! routes take an explicit exact-rebuild fallback until their typed retained
 //! adapters are connected to this same protocol.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::io::{BufRead, Write};
 
 use serde::{Deserialize, Serialize};
@@ -280,14 +280,17 @@ fn clause_delta(
     new: &[JClause],
 ) -> (Vec<ClauseId>, Vec<JClause>) {
     debug_assert_eq!(old.len(), ids.len());
+    // Match duplicate occurrences by their stable old order. A linear scan for
+    // every candidate clause made a no-op transaction quadratic on large OWL
+    // sources, which defeats an incremental API before saturation begins.
+    let mut available: HashMap<&JClause, VecDeque<usize>> = HashMap::new();
+    for (index, clause) in old.iter().enumerate() {
+        available.entry(clause).or_default().push_back(index);
+    }
     let mut used = vec![false; old.len()];
     let mut additions = Vec::new();
     for clause in new {
-        if let Some(index) = old
-            .iter()
-            .enumerate()
-            .find_map(|(index, prior)| (!used[index] && prior == clause).then_some(index))
-        {
+        if let Some(index) = available.get_mut(clause).and_then(VecDeque::pop_front) {
             used[index] = true;
         } else {
             additions.push(clause.clone());

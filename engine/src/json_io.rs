@@ -37,7 +37,7 @@ const ELC_BINARY_MAGIC: &[u8; 8] = b"KMELC\0\x01\0";
 const ELC_OUTPUT_BINARY_MAGIC: &[u8; 8] = b"KMELCO\x01\0";
 const MAX_BINARY_ITEMS: usize = 100_000_000;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "kind")]
 pub enum JTerm {
     #[serde(rename = "var")]
@@ -53,7 +53,7 @@ pub enum JTerm {
     Fun { function: String, arg: Box<JTerm> },
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "kind")]
 pub enum JAtom {
     #[serde(rename = "concept")]
@@ -68,7 +68,7 @@ pub enum JAtom {
     Eq { left: JTerm, right: JTerm },
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct JClause {
     pub body: Vec<JAtom>,
     pub head: Vec<JAtom>,
