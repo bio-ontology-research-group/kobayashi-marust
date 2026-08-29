@@ -165,6 +165,18 @@ impl CompiledHt {
             && self.chains == next.chains
             && self.transitive == next.transitive
     }
+
+    /// State installed outside the HT clause vector.  Clause dependency
+    /// analysis cannot see changes to any of these fields, so they must not
+    /// inherit probe verdicts under an asserted source-level change kind.
+    fn installed_side_state_eq(&self, next: &Self) -> bool {
+        self.number == next.number
+            && self.nominals == next.nominals
+            && self.native_abox == next.native_abox
+            && self.card_defs == next.card_defs
+            && self.chains == next.chains
+            && self.transitive == next.transitive
+    }
 }
 
 pub(crate) struct IncrementalHtClassifier {
@@ -253,14 +265,27 @@ impl IncrementalHtClassifier {
         compiled: CompiledHt,
     ) -> Result<(Self, HtDeltaStats), IncrementalReasoningError> {
         let layout = self.layout.wrapping_add(1);
-        let resume_compatible =
-            kind == HtChangeKind::Addition && self.compiled.stable_prefix_of(&compiled);
-        let affected = affected_concepts(
+        let side_state_changed = !self.compiled.installed_side_state_eq(&compiled);
+        let effective_kind = if side_state_changed {
+            // A source axiom addition or removal can expand into both additions
+            // and removals in the separately installed typed state.  Until the
+            // typed dependency graph records that direction exactly, rebuild
+            // every probe rather than applying a monotone verdict shortcut.
+            HtChangeKind::Replacement
+        } else {
+            kind
+        };
+        let resume_compatible = effective_kind == HtChangeKind::Addition
+            && self.compiled.stable_prefix_of(&compiled);
+        let mut affected = affected_concepts(
             &self.source_clauses,
             candidate,
             changed_clauses,
             &compiled.query_names(),
         );
+        if side_state_changed {
+            affected.extend(compiled.query_names());
+        }
         let mut stats = HtDeltaStats::default();
         let mut ht = compiled.instantiate()?;
 
@@ -271,7 +296,7 @@ impl IncrementalHtClassifier {
             &compiled,
             self.layout,
             layout,
-            kind,
+            effective_kind,
             true,
             resume_compatible,
             true,
@@ -320,7 +345,7 @@ impl IncrementalHtClassifier {
                 &next.compiled,
                 self.layout,
                 layout,
-                kind,
+                effective_kind,
                 is_affected,
                 resume_compatible,
                 true,
@@ -361,7 +386,7 @@ impl IncrementalHtClassifier {
                     &next.compiled,
                     self.layout,
                     layout,
-                    kind,
+                    effective_kind,
                     is_affected,
                     resume_compatible,
                     false,
@@ -1138,6 +1163,22 @@ mod typed_tests {
             .updated_typed(&after, &[added], HtChangeKind::Addition, native_input(true))
             .unwrap();
         assert!(stats.reused_probes > 0);
+    }
+
+    #[test]
+    fn typed_side_state_change_rebuilds_clause_independent_probes() {
+        let clauses = vec![source_clause("A", "B")];
+        let classifier =
+            IncrementalHtClassifier::new_typed(&clauses, native_input(false)).unwrap();
+        let mut changed = native_input(false);
+        changed.native_abox.individuals[0].assertions = vec![1];
+
+        let (_, stats) = classifier
+            .updated_typed(&clauses, &[], HtChangeKind::Addition, changed)
+            .unwrap();
+
+        assert_eq!(stats.reused_probes, 0);
+        assert!(stats.rebuilt_probes >= 3);
     }
 
     #[test]
