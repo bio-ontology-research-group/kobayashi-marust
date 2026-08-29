@@ -36,6 +36,16 @@
   classification. Changed dependency components still use bridge subject
   probes, unaffected rows remain exact, and any specialist defer takes the
   visible exact-classification fallback.
+- Keep a certified Wine-family `nominal_ni_tbox` session for semantically
+  redundant named-class edits. Insertions must already occur in the published
+  exact taxonomy, removals must remain entailed after the candidate update,
+  and the worker still rechecks its complete no-nominal-introduction
+  certificate. All other edits use the exact automatic fallback. A nearby
+  Wine TBox profile is also fenced out of the broader typed-ABox specialist,
+  which could report a false inconsistency outside its validated shapes. On
+  ORE 10702 plus one already entailed subclass axiom, insertion retained 653
+  model/probe states, removal retained 806, both used `ht_delta`, and all three
+  taxonomies had the same canonical SHA-256.
 - Preserve the classifier's stable clause order after source-level insertions.
   Frontend normalization may place a new generated clause before existing
   clauses; the session now keeps its clause mirror in stable-id order, so a

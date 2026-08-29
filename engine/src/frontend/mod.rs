@@ -777,6 +777,7 @@ fn ofn_to_clauses_requested(
         && route == crate::routing::Route::Nominals
         && nominal_abox.complete
         && crate::routing::nominal_ni_abox_candidate(&profile)
+        && !crate::routing::nominal_ni_tbox_near_family(&profile)
     {
         route = crate::routing::Route::NominalNiAbox;
         route.apply_environment();

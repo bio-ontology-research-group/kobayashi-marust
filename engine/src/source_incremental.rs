@@ -21,7 +21,7 @@ use crate::incremental_ht::{
 };
 use crate::incremental_positive_abox::IncrementalPositiveAboxClassifier;
 use crate::incremental_rules::IncrementalRulesClassifier;
-use crate::json_io::JClause;
+use crate::json_io::{JAtom, JClause, JTerm};
 use crate::orchestrate::{Classification, Config};
 
 #[derive(Clone, Debug, Serialize)]
@@ -311,9 +311,34 @@ impl SourceIncrementalClassifier {
 
     /// Atomically replace the complete flattened source ontology.
     pub fn replace_source(&mut self, source: &str) -> Result<SourceIncrementalReceipt, String> {
-        let candidate = normalize_automatic(source)?;
+        let mut candidate = normalize_automatic(source)?;
         let route_before = self.route.clone();
-        let route_after = candidate.route.clone();
+        let mut route_after = candidate.route.clone();
+
+        // The Wine-shaped NI batch route has an exact source-profile fence, so
+        // a source edit first appears as a route migration. Tentatively rebuild
+        // its route-specific typed input when the complete
+        // no-nominal-introduction gate still holds; the delta block below only
+        // commits this candidate when the edit is also semantically redundant.
+        // Fresh sessions continue to use the ordinary automatic route.
+        let continuing_nominal_ni = matches!(
+            &self.backend,
+            SourceBackend::TypedHt {
+                nominal_ni: true,
+                ..
+            }
+        ) && route_before == "nominal_ni_tbox"
+            && route_after != route_before;
+        if continuing_nominal_ni {
+            let specialist_candidate = normalize_selected(source, &route_before)?;
+            if with_route_environment(&route_before, || {
+                crate::orchestrate::race::prepare_incremental_nominal_ni(&specialist_candidate)
+                    .is_some()
+            })? {
+                candidate = specialist_candidate;
+                route_after.clone_from(&route_before);
+            }
+        }
 
         if let SourceBackend::PositiveAbox(classifier) = &mut self.backend {
             if let Some(update) = classifier.update(&candidate)? {
@@ -512,54 +537,75 @@ impl SourceIncrementalClassifier {
                 .iter()
                 .filter_map(|id| clauses.get(*id as usize).cloned())
                 .collect();
-            let mut changed = removed_clauses;
+            let mut changed = removed_clauses.clone();
             changed.extend(additions.iter().cloned());
             let kind = match (removed_ids.is_empty(), additions.is_empty()) {
                 (true, false) => HtChangeKind::Addition,
                 (false, true) => HtChangeKind::Removal,
                 _ => HtChangeKind::Replacement,
             };
-            let update = if *card {
-                classifier.updated_card_typed(&candidate.clauses, &changed, kind, input)
-            } else if *nominal_ni {
-                classifier.updated_nominal_ni_typed(&candidate.clauses, &changed, kind, input)
-            } else {
-                classifier.updated_typed(&candidate.clauses, &changed, kind, input)
-            };
-            if let Ok((next, stats)) = update {
+            // The 10702 TBox specialist omits its fixed, validated ABox from
+            // each model probe. Retaining it across a profile migration is
+            // therefore sound only for named-class axioms proved redundant:
+            // additions must already follow from the old taxonomy, and every
+            // removal must still follow from the candidate taxonomy. Other
+            // edits take the full exact automatic fallback below.
+            let guarded_nominal_ni_tbox = *nominal_ni && route_before == "nominal_ni_tbox";
+            let nominal_ni_delta_safe = !guarded_nominal_ni_tbox
+                || (additions.iter().all(|clause| {
+                    published_subclass_entailment(&self.frontend, &self.classification, clause)
+                }) && removed_clauses
+                    .iter()
+                    .all(|clause| published_subclass_pair(clause).is_some()));
+            let update = nominal_ni_delta_safe.then(|| {
+                if *card {
+                    classifier.updated_card_typed(&candidate.clauses, &changed, kind, input)
+                } else if *nominal_ni {
+                    classifier.updated_nominal_ni_typed(&candidate.clauses, &changed, kind, input)
+                } else {
+                    classifier.updated_typed(&candidate.clauses, &changed, kind, input)
+                }
+            });
+            if let Some(Ok((next, stats))) = update {
                 let classification = map_incremental_result(&candidate, next.result());
-                self.revision += 1;
-                self.route = route_after.clone();
-                self.frontend = candidate;
-                self.classification = classification;
-                self.backend = SourceBackend::TypedHt {
-                    classifier: next,
-                    clauses: self.frontend.clauses.clone(),
-                    card: *card,
-                    nominal_ni: *nominal_ni,
-                };
-                let meaningful = stats.reused_probes > 0 || stats.resumed_models > 0;
-                return Ok(SourceIncrementalReceipt {
-                    revision: self.revision,
-                    route_migrated: route_before != route_after,
-                    route_before,
-                    route_after,
-                    strategy: if meaningful {
-                        ChangeStrategy::HtDelta
-                    } else {
-                        ChangeStrategy::ExactRebuild
-                    },
-                    reused_fixpoint: meaningful,
-                    reused_subsumptions: stats.reused_subsumptions,
-                    reused_edges: stats.reused_edges,
-                    retained_states: stats.reused_probes.saturating_add(stats.resumed_models),
-                    invalidated_states: stats.rebuilt_probes,
-                    added_normalized_clauses: additions.len(),
-                    removed_normalized_clauses: removed_ids.len(),
-                    added_rules: 0,
-                    removed_rules: 0,
-                    meaningful_incremental_update: meaningful,
-                });
+                let nominal_ni_result_safe = !guarded_nominal_ni_tbox
+                    || removed_clauses.iter().all(|clause| {
+                        published_subclass_entailment(&candidate, &classification, clause)
+                    });
+                if nominal_ni_result_safe {
+                    self.revision += 1;
+                    self.route = route_after.clone();
+                    self.frontend = candidate;
+                    self.classification = classification;
+                    self.backend = SourceBackend::TypedHt {
+                        classifier: next,
+                        clauses: self.frontend.clauses.clone(),
+                        card: *card,
+                        nominal_ni: *nominal_ni,
+                    };
+                    let meaningful = stats.reused_probes > 0 || stats.resumed_models > 0;
+                    return Ok(SourceIncrementalReceipt {
+                        revision: self.revision,
+                        route_migrated: route_before != route_after,
+                        route_before,
+                        route_after,
+                        strategy: if meaningful {
+                            ChangeStrategy::HtDelta
+                        } else {
+                            ChangeStrategy::ExactRebuild
+                        },
+                        reused_fixpoint: meaningful,
+                        reused_subsumptions: stats.reused_subsumptions,
+                        reused_edges: stats.reused_edges,
+                        retained_states: stats.reused_probes.saturating_add(stats.resumed_models),
+                        invalidated_states: stats.rebuilt_probes,
+                        added_normalized_clauses: additions.len(),
+                        removed_normalized_clauses: removed_ids.len(),
+                        added_rules: 0,
+                        removed_rules: 0,
+                        meaningful_incremental_update: meaningful,
+                    });
+                }
             }
         }
 
@@ -1138,6 +1184,62 @@ fn normalize_automatic(source: &str) -> Result<FrontendResult, String> {
     let _guard = crate::routing::EnvironmentGuard::capture();
     std::env::set_var("KM_ROUTE", "auto");
     crate::frontend::ofn_to_clauses(source).map_err(|error| error.0)
+}
+
+fn normalize_selected(source: &str, route: &str) -> Result<FrontendResult, String> {
+    let _guard = crate::routing::EnvironmentGuard::capture();
+    let selected = route
+        .parse::<crate::routing::Route>()
+        .map_err(|error| format!("invalid selected incremental route {route:?}: {error}"))?;
+    selected.apply_environment();
+    std::env::set_var("KM_ROUTE", route);
+    crate::frontend::ofn_to_clauses(source).map_err(|error| error.0)
+}
+
+fn published_subclass_pair(clause: &JClause) -> Option<(&str, &str)> {
+    match (clause.body.as_slice(), clause.head.as_slice()) {
+        (
+            [JAtom::Concept {
+                concept: subject,
+                term: JTerm::Var { name: body_var },
+            }],
+            [JAtom::Concept {
+                concept: object,
+                term: JTerm::Var { name: head_var },
+            }],
+        ) if body_var == head_var => Some((subject, object)),
+        _ => None,
+    }
+}
+
+/// Whether a normalized named-class inclusion is already present in the
+/// published exact taxonomy. This is a semantic redundancy check, not merely
+/// a duplicate-clause check; it also covers inclusions from an unsatisfiable
+/// class. Internal definers are deliberately rejected.
+fn published_subclass_entailment(
+    frontend: &FrontendResult,
+    classification: &Classification,
+    clause: &JClause,
+) -> bool {
+    let Some((subject, object)) = published_subclass_pair(clause) else {
+        return false;
+    };
+    if !frontend.declared.iter().any(|name| name == subject)
+        || !frontend.declared.iter().any(|name| name == object)
+    {
+        return false;
+    }
+    let public = |name: &str| {
+        frontend
+            .iri_map
+            .get(name)
+            .map_or_else(|| name.to_string(), Clone::clone)
+    };
+    let subject = public(subject);
+    let object = public(object);
+    subject == object
+        || classification.unsatisfiable.contains(&subject)
+        || classification.subsumptions.contains(&[subject, object])
 }
 
 fn classify_source_exact(source: &str) -> Result<Classification, String> {

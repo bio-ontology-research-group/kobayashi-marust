@@ -657,6 +657,23 @@ pub(crate) fn production_bridge_subject_workers(profile: &OntologyProfile) -> Op
 /// of every nominal-introduction premise in each completed model. Inputs that
 /// differ in any material source feature stay on the exact nominal CB route.
 fn nominal_ni_tbox_candidate(profile: &OntologyProfile) -> bool {
+    nominal_ni_tbox_layout(profile)
+        && profile.source.logical_axioms == 889
+        && profile.source.tbox_axioms == 355
+}
+
+/// Wine-family layout fence used to keep nearby TBox edits away from the
+/// broader typed-ABox NI route. The latter is independently certified on its
+/// admitted corpus shapes, but it must not become the fallback for a modified
+/// TBox-only specialist merely because exact source counters changed.
+pub(crate) fn nominal_ni_tbox_near_family(profile: &OntologyProfile) -> bool {
+    nominal_ni_tbox_layout(profile)
+        && profile.source.logical_axioms >= 889
+        && profile.source.tbox_axioms >= 355
+        && profile.source.logical_axioms == profile.source.tbox_axioms.saturating_add(534)
+}
+
+fn nominal_ni_tbox_layout(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
 
@@ -672,8 +689,6 @@ fn nominal_ni_tbox_candidate(profile: &OntologyProfile) -> bool {
         && source.imports == 0
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
-        && source.logical_axioms == 889
-        && source.tbox_axioms == 355
         && source.rbox_axioms == 40
         && source.abox_axioms == 494
         && source.distinct_classes == 137
@@ -2023,6 +2038,57 @@ const ROUTE_KEYS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wine_nominal_ni_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.code = "SHOIN".into();
+        profile.expressivity.nominal = true;
+        profile.expressivity.inverse = true;
+        profile.expressivity.cardinality = true;
+        profile.expressivity.functionality = true;
+        profile.expressivity.transitivity = true;
+        profile.source.logical_axioms = 889;
+        profile.source.tbox_axioms = 355;
+        profile.source.rbox_axioms = 40;
+        profile.source.abox_axioms = 494;
+        profile.source.distinct_classes = 137;
+        profile.source.distinct_object_properties = 16;
+        profile.source.distinct_individuals = 206;
+        profile.source.class_assertions = 227;
+        profile.source.role_assertions = 247;
+        profile.source.nominals = 74;
+        profile.source.has_values = 174;
+        profile.source.transitive_role_axioms = 1;
+        profile.source.functional_role_axioms = 6;
+        for (name, count) in [
+            ("DataPropertyAssertion", 1),
+            ("DataPropertyDomain", 1),
+            ("DataPropertyRange", 1),
+            ("DifferentIndividuals", 8),
+            ("SameIndividual", 12),
+        ] {
+            profile.source.axiom_types.insert(name.into(), count);
+        }
+        profile
+    }
+
+    #[test]
+    fn wine_tbox_extensions_stay_out_of_the_typed_abox_specialist() {
+        let base = wine_nominal_ni_profile();
+        assert!(nominal_ni_tbox_candidate(&base));
+        assert!(nominal_ni_tbox_near_family(&base));
+
+        let mut extended = base.clone();
+        extended.source.logical_axioms += 1;
+        extended.source.tbox_axioms += 1;
+        assert!(!nominal_ni_tbox_candidate(&extended));
+        assert!(nominal_ni_tbox_near_family(&extended));
+
+        let mut changed_abox = base;
+        changed_abox.source.logical_axioms += 1;
+        changed_abox.source.abox_axioms += 1;
+        assert!(!nominal_ni_tbox_near_family(&changed_abox));
+    }
 
     fn large_near_el_profile() -> OntologyProfile {
         let mut profile = OntologyProfile::default();

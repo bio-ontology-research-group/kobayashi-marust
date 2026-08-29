@@ -153,6 +153,15 @@ through the same complete-answer-or-defer bridge; rows outside that component
 remain the exact seeded rows. A bridge defer or typed-state mismatch abandons
 the candidate and runs exact automatic classification before commit.
 
+The Wine-family `nominal_ni_tbox` session retains semantically redundant
+named-class edits while holding its ABox, RBox, public signature, and SHOIQ
+feature premises fixed. An inserted inclusion must already occur in the old
+exact taxonomy; a removed inclusion must remain entailed by the candidate
+taxonomy. Each candidate is normalized under the specialist route and must
+also pass the complete no-nominal-introduction gate before any model is reused.
+Other edits take the exact automatic fallback. Nearby Wine TBox profiles stay
+on that exact fallback rather than entering the broader typed-ABox specialist.
+
 The automatic compact-nominal `ht_general` leaf is an exact exception to the
 ordinary typed-ABox path because its batch worker deliberately consumes the
 legacy clause-only view. The source adapter retains that same completed HT
