@@ -356,6 +356,41 @@ impl SourceIncrementalClassifier {
             }
         }
 
+        if let Some(input) = with_route_environment(&route_after, || {
+            crate::orchestrate::race::prepare_incremental_ht(&candidate)
+        })? {
+            if let Ok(classifier) = IncrementalHtClassifier::new_typed(&candidate.clauses, input) {
+                let classification = map_incremental_result(&candidate, classifier.result());
+                let (removed, added) =
+                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                let (removed_rules, added_rules) =
+                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                self.revision += 1;
+                self.route = route_after.clone();
+                self.frontend = candidate;
+                self.classification = classification;
+                self.backend = SourceBackend::TypedHt {
+                    classifier,
+                    clauses: self.frontend.clauses.clone(),
+                };
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != route_after,
+                    route_before,
+                    route_after,
+                    strategy: ChangeStrategy::ExactRebuild,
+                    reused_fixpoint: false,
+                    reused_subsumptions: 0,
+                    reused_edges: 0,
+                    added_normalized_clauses: added,
+                    removed_normalized_clauses: removed,
+                    added_rules,
+                    removed_rules,
+                    meaningful_incremental_update: false,
+                });
+            }
+        }
+
         let classification = classify_source_exact(source)?;
         let removed = self.frontend.clauses.len();
         let added = candidate.clauses.len();
