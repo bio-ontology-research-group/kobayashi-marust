@@ -11,6 +11,7 @@ import org.semanticweb.owlapi.reasoner.impl.OWLDataPropertyNode;
 import org.semanticweb.owlapi.reasoner.impl.OWLObjectPropertyNodeSet;
 import org.semanticweb.owlapi.reasoner.impl.OWLDataPropertyNodeSet;
 import org.semanticweb.owlapi.util.Version;
+import org.semanticweb.owl.explanation.api.ExplanationGenerator;
 
 import java.util.*;
 
@@ -266,6 +267,15 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         } catch (Exception error) {
             throw new ReasonerInternalException(error);
         }
+    }
+
+    /**
+     * Create an OWL Explanation API generator bound to this reasoner's current
+     * committed revision. Pending buffered changes remain invisible until
+     * {@link #flush()} succeeds.
+     */
+    public synchronized ExplanationGenerator<OWLAxiom> createExplanationGenerator() {
+        return new KMExplanationGeneratorFactory().createExplanationGenerator(this);
     }
 
     // ---- precompute / metadata -----------------------------------------

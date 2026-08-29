@@ -179,10 +179,18 @@ Set<Explanation<OWLAxiom>> firstTwo =
 
 The factory snapshots the complete imports closure when it creates a
 generator. Later changes to the caller's mutable ontology do not alter an
-in-flight enumeration. In Protégé, the native service obtains the snapshot
-committed by the current `KMReasoner`: buffered pending changes stay invisible
-until `flush()`, and a failed incremental transaction leaves explanations bound
-to the preceding successful revision.
+in-flight enumeration. When a `KMReasoner` is available, bind the generator to
+its committed revision rather than passing the mutable root ontology:
+
+```java
+ExplanationGenerator<OWLAxiom> committed = reasoner.createExplanationGenerator();
+// Equivalent: factory.createExplanationGenerator(reasoner)
+```
+
+Buffered pending changes then stay invisible until `flush()`, and a failed
+incremental transaction leaves explanations bound to the preceding successful
+revision. The factory also provides the corresponding reasoner-plus-progress-
+monitor overload for Protégé workbench integration.
 
 The unbounded API overload, `getExplanations(entailment)`, must satisfy the
 OWL Explanation API's all-explanations contract. KM searches only up to the

@@ -35,6 +35,29 @@ public final class KMExplanationGeneratorFactory
                 ontology, new NullExplanationProgressMonitor<OWLAxiom>());
     }
 
+    /**
+     * Create a generator over the exact ontology revision currently published
+     * by a KM reasoner. In buffering mode this intentionally excludes pending
+     * OWLAPI changes until {@link KMReasoner#flush()} commits them.
+     */
+    public ExplanationGenerator<OWLAxiom> createExplanationGenerator(KMReasoner reasoner) {
+        if (reasoner == null) {
+            throw new NullPointerException("reasoner");
+        }
+        return createExplanationGenerator(reasoner.getCommittedOntologySnapshot());
+    }
+
+    /** Create a committed-revision generator with a caller progress monitor. */
+    public ExplanationGenerator<OWLAxiom> createExplanationGenerator(
+            KMReasoner reasoner,
+            ExplanationProgressMonitor<OWLAxiom> progressMonitor) {
+        if (reasoner == null) {
+            throw new NullPointerException("reasoner");
+        }
+        return createExplanationGenerator(
+                reasoner.getCommittedOntologySnapshot(), progressMonitor);
+    }
+
     @Override
     public ExplanationGenerator<OWLAxiom> createExplanationGenerator(
             OWLOntology ontology,

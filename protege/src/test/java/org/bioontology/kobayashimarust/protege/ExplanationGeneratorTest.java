@@ -229,6 +229,34 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void reasonerFactoryUsesOnlyTheCommittedBufferedRevision() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "CommittedA");
+        OWLClass b = cls(dataFactory, "CommittedB");
+        OWLClass c = cls(dataFactory, "CommittedC");
+        OWLAxiom first = dataFactory.getOWLSubClassOfAxiom(a, b);
+        OWLAxiom pending = dataFactory.getOWLSubClassOfAxiom(b, c);
+        OWLAxiom entailment = dataFactory.getOWLSubClassOfAxiom(a, c);
+        manager.addAxiom(ontology, first);
+
+        KMReasoner reasoner = (KMReasoner) new KMReasonerFactory().createReasoner(ontology);
+        manager.addAxiom(ontology, pending);
+        assertTrue(reasoner.getPendingAxiomAdditions().contains(pending));
+        assertTrue(reasoner.createExplanationGenerator()
+                .getExplanations(entailment, 1)
+                .isEmpty());
+
+        reasoner.flush();
+        Set<Explanation<OWLAxiom>> explanations = reasoner.createExplanationGenerator()
+                .getExplanations(entailment, 1);
+        assertEquals(1, explanations.size());
+        assertEquals(Set.of(first, pending), explanations.iterator().next().getAxioms());
+        reasoner.dispose();
+    }
+
+    @Test
     public void factoryIsDiscoverableThroughTheStandardJavaServiceLoader() {
         boolean found = false;
         for (ExplanationGeneratorFactory<?> factory
