@@ -57,10 +57,12 @@ the production gate may use:
 - a validated complete-answer-or-defer HT mechanism admitted by the gate.
 
 The regression suite explicitly exercises EL completion, CB inverse-role
-reasoning, and the validated DL-safe-rules HT consistency mechanism. A source
-deletion may change the profile and therefore the selected implementation.
-That is safe because minimisation asks the same monotonic OWL entailment of
-each source subset and each subset re-enters the production gate.
+reasoning, ordinary HT over a 6,001-axiom sparse-support source, qualified
+cardinality pigeonhole reasoning, the certified native nominal/ABox route, and
+the validated DL-safe-rules HT consistency mechanism. A source deletion may
+change the profile and therefore the selected implementation. That is safe
+because minimisation asks the same monotonic OWL entailment of each source
+subset and each subset re-enters the production gate.
 
 The rules HT stage can certify complete-source consistency even when its
 subsequent taxonomy-only fall-through reports dropped clauses. That internal

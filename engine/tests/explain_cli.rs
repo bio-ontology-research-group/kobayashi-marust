@@ -169,6 +169,60 @@ fn ht_rules_route_explains_inconsistency_through_the_automatic_gate() {
 }
 
 #[test]
+fn ordinary_ht_route_explains_a_sparse_support_in_a_large_source() {
+    let mut source = String::from(
+        r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:N)) Declaration(Class(:X)) Declaration(Class(:Y))
+ Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a))
+"#,
+    );
+    // Match the source-profile fence used by the automatic compact-nominal
+    // ht_general route. The queried axiom is intentionally sparse among 6,001
+    // logical source occurrences so this also exercises chunk minimisation.
+    for _ in 0..3_997 {
+        source.push_str(" SubClassOf(:A :B)\n");
+    }
+    source.push_str(" EquivalentClasses(:N ObjectOneOf(:a))\n");
+    source.push_str(" SubClassOf(:A ObjectUnionOf(:B :C))\n");
+    source.push_str(" SubClassOf(:A ObjectUnionOf(:B :C))\n");
+    for _ in 0..1_400 {
+        source.push_str(" ClassAssertion(:A :a)\n");
+    }
+    for _ in 0..600 {
+        source.push_str(" ObjectPropertyAssertion(:r :a :a)\n");
+    }
+    source.push_str(" SubClassOf(:X :Y)\n)\n");
+    let ontology = temporary_ontology("ordinary-ht-sparse", &source);
+
+    let output = run_explain(&[
+        "--max-axioms",
+        "7000",
+        "--max-checks",
+        "128",
+        ontology.to_str().unwrap(),
+        "subclass",
+        "http://example.org/X",
+        "http://example.org/Y",
+    ]);
+    let _ = std::fs::remove_file(&ontology);
+    assert!(
+        output.status.success(),
+        "KM ordinary-HT explanation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("route=ht_general"), "stderr: {stderr}");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["status"], "entailed");
+    assert_eq!(report["justifications"][0]["axiomCount"], 1);
+    assert_eq!(report["justifications"][0]["verified"], true);
+    assert_eq!(report["justifications"][0]["subsetMinimal"], true);
+    assert!(report["classificationChecks"].as_u64().unwrap() < 128);
+}
+
+#[test]
 fn cardinality_route_explains_a_pigeonhole_clash_through_the_automatic_gate() {
     let ontology = temporary_ontology(
         "cardinality-pigeonhole",
