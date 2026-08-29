@@ -319,6 +319,58 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void explainsSparseSupportThroughTheOrdinaryHtAutomaticRoute() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "OrdinaryHtA");
+        OWLClass b = cls(dataFactory, "OrdinaryHtB");
+        OWLClass c = cls(dataFactory, "OrdinaryHtC");
+        OWLClass nominal = cls(dataFactory, "OrdinaryHtNominal");
+        OWLClass x = cls(dataFactory, "OrdinaryHtX");
+        OWLClass y = cls(dataFactory, "OrdinaryHtY");
+        org.semanticweb.owlapi.model.OWLObjectProperty role =
+                dataFactory.getOWLObjectProperty(IRI.create(NS + "ordinaryHtRole"));
+        org.semanticweb.owlapi.model.OWLNamedIndividual root =
+                dataFactory.getOWLNamedIndividual(IRI.create(NS + "ordinaryHtRoot"));
+
+        for (int index = 0; index < 3_997; index++) {
+            manager.addAxiom(ontology, dataFactory.getOWLSubClassOfAxiom(
+                    cls(dataFactory, "OrdinaryHtSeed" + index), b));
+        }
+        manager.addAxiom(ontology, dataFactory.getOWLEquivalentClassesAxiom(
+                nominal, dataFactory.getOWLObjectOneOf(root)));
+        manager.addAxiom(ontology, dataFactory.getOWLSubClassOfAxiom(
+                a, dataFactory.getOWLObjectUnionOf(b, c)));
+        manager.addAxiom(ontology, dataFactory.getOWLSubClassOfAxiom(
+                cls(dataFactory, "OrdinaryHtUnionNoise"),
+                dataFactory.getOWLObjectUnionOf(b, c)));
+        for (int index = 0; index < 1_400; index++) {
+            manager.addAxiom(ontology, dataFactory.getOWLClassAssertionAxiom(
+                    a, dataFactory.getOWLNamedIndividual(
+                            IRI.create(NS + "ordinaryHtClassIndividual" + index))));
+        }
+        for (int index = 0; index < 600; index++) {
+            manager.addAxiom(ontology, dataFactory.getOWLObjectPropertyAssertionAxiom(
+                    role,
+                    root,
+                    dataFactory.getOWLNamedIndividual(
+                            IRI.create(NS + "ordinaryHtRoleIndividual" + index))));
+        }
+        OWLAxiom entailment = dataFactory.getOWLSubClassOfAxiom(x, y);
+        manager.addAxiom(ontology, entailment);
+
+        KMExplanationConfiguration configuration = new KMExplanationConfiguration(
+                System.getProperty("km.bin"), 120, 13_000, 192, 8L * 1024L * 1024L, 1);
+        Set<Explanation<OWLAxiom>> explanations = new KMExplanationGeneratorFactory(configuration)
+                .createExplanationGenerator(ontology)
+                .getExplanations(entailment, 1);
+
+        assertEquals(1, explanations.size());
+        assertEquals(Set.of(entailment), explanations.iterator().next().getAxioms());
+    }
+
+    @Test
     public void explainsNativeAboxSingletonIdentityInconsistency() throws Exception {
         OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
         OWLDataFactory dataFactory = manager.getOWLDataFactory();
