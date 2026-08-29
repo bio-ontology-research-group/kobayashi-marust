@@ -67,7 +67,7 @@ pub struct IncrementalResult {
 }
 
 impl IncrementalResult {
-    fn from_el(result: crate::elcomplete::ElResult) -> Self {
+    pub(crate) fn from_el(result: crate::elcomplete::ElResult) -> Self {
         IncrementalResult {
             subsumptions: result.subsumptions,
             inconsistent: result.inconsistent,

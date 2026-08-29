@@ -15,6 +15,7 @@ pub mod engine;
 pub mod frontend;
 pub mod incremental;
 mod incremental_ht;
+mod incremental_positive_abox;
 mod incremental_rules;
 pub mod json_io;
 pub mod konclude_ht;

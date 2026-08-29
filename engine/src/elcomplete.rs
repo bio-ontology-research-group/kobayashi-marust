@@ -5078,6 +5078,17 @@ pub struct PositiveAboxResult {
     pub classification: Option<ElResult>,
 }
 
+/// Exact typed-ABox translation consumed by both batch and incremental EL
+/// materialization. `Inconsistent` records an identity contradiction that is
+/// complete before completion starts.
+pub enum PositiveAboxPreparation {
+    Clauses {
+        clauses: Vec<JClause>,
+        roots: std::collections::HashSet<String>,
+    },
+    Inconsistent,
+}
+
 /// Materialise a positive ground ABox and retain the exact EL taxonomy produced
 /// by that same completion. Every injected rule is rooted at a fresh ABox-node
 /// concept, and generated role edges connect only those fresh roots and their
@@ -5085,10 +5096,10 @@ pub struct PositiveAboxResult {
 /// subject is an original named class. Consequently the returned named-class
 /// taxonomy is the ordinary TBox taxonomy as well as the consistency
 /// certificate.
-pub fn positive_abox_classify(
+pub fn prepare_positive_abox(
     mut clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
-) -> Option<PositiveAboxResult> {
+) -> Option<PositiveAboxPreparation> {
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
     // This helper rewrites the retained ABox into fresh completion concepts.
     // The source-bound ELC publication theorem currently covers the resulting
@@ -5163,10 +5174,7 @@ pub fn positive_abox_classify(
         let l = find(&mut parent, ids[left.as_str()]);
         let r = find(&mut parent, ids[right.as_str()]);
         if l == r {
-            return Some(PositiveAboxResult {
-                consistent: false,
-                classification: None,
-            });
+            return Some(PositiveAboxPreparation::Inconsistent);
         }
     }
 
@@ -5229,6 +5237,21 @@ pub fn positive_abox_classify(
     let roots: std::collections::HashSet<String> = (0..parent.len())
         .map(|i| node(find(&mut parent, i)))
         .collect();
+    Some(PositiveAboxPreparation::Clauses { clauses, roots })
+}
+
+pub fn positive_abox_classify(
+    clauses: Vec<JClause>,
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<PositiveAboxResult> {
+    let prepared = prepare_positive_abox(clauses, meta)?;
+    let PositiveAboxPreparation::Clauses { clauses, roots } = prepared else {
+        return Some(PositiveAboxResult {
+            consistent: false,
+            classification: None,
+        });
+    };
+    let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
     let result = match classify(clauses) {
         Some(result) => result,
         None => {

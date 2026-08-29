@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 
 use crate::frontend::FrontendResult;
 use crate::incremental::{ChangeStrategy, ClauseId, IncrementalChange, IncrementalClassifier};
+use crate::incremental_positive_abox::IncrementalPositiveAboxClassifier;
 use crate::incremental_rules::IncrementalRulesClassifier;
 use crate::json_io::JClause;
 use crate::orchestrate::{Classification, Config};
@@ -44,6 +45,7 @@ enum SourceBackend {
         clauses: Vec<JClause>,
         ids: Vec<ClauseId>,
     },
+    PositiveAbox(IncrementalPositiveAboxClassifier),
     Rules(IncrementalRulesClassifier),
     ExactBatch,
 }
@@ -80,6 +82,21 @@ impl SourceIncrementalClassifier {
                 .with_live_clauses());
             }
         }
+        if route == "elc" && !frontend.abox_inconsistent {
+            if let Some((classifier, result, consistent)) =
+                IncrementalPositiveAboxClassifier::new(&frontend)
+            {
+                let mut classification = map_el_result(&frontend, result);
+                classification.consistent = consistent;
+                return Ok(Self {
+                    revision: 0,
+                    route,
+                    frontend,
+                    classification,
+                    backend: SourceBackend::PositiveAbox(classifier),
+                });
+            }
+        }
         let classification = classify_source_exact(source)?;
         let backend = if route == "ht_rules" {
             SourceBackend::Rules(IncrementalRulesClassifier::new(
@@ -110,6 +127,41 @@ impl SourceIncrementalClassifier {
         let candidate = normalize_automatic(source)?;
         let route_before = self.route.clone();
         let route_after = candidate.route.clone();
+
+        if let SourceBackend::PositiveAbox(classifier) = &mut self.backend {
+            if let Some(update) = classifier.update(&candidate)? {
+                let (removed, added) =
+                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                let (removed_rules, added_rules) =
+                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                let meaningful = update.stats.reused_fixpoint;
+                let mut classification = map_el_result(&candidate, update.result);
+                classification.consistent = update.consistent;
+                self.revision += 1;
+                self.route = route_after.clone();
+                self.frontend = candidate;
+                self.classification = classification;
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != route_after,
+                    route_before,
+                    route_after,
+                    strategy: if meaningful {
+                        ChangeStrategy::ElDelta
+                    } else {
+                        ChangeStrategy::ExactRebuild
+                    },
+                    reused_fixpoint: update.stats.reused_fixpoint,
+                    reused_subsumptions: update.stats.reused_subsumptions,
+                    reused_edges: update.stats.reused_edges,
+                    added_normalized_clauses: added,
+                    removed_normalized_clauses: removed,
+                    added_rules,
+                    removed_rules,
+                    meaningful_incremental_update: meaningful,
+                });
+            }
+        }
 
         if let SourceBackend::Rules(classifier) = &self.backend {
             if let Some(update) = classifier.updated(&candidate)? {
@@ -228,7 +280,11 @@ impl SourceIncrementalClassifier {
         self.route = route_after.clone();
         self.frontend = candidate;
         self.classification = classification;
-        self.backend = if route_after == "ht_rules" {
+        self.backend = if route_after == "elc" && !self.frontend.abox_inconsistent {
+            IncrementalPositiveAboxClassifier::new(&self.frontend)
+                .map(|(classifier, _, _)| SourceBackend::PositiveAbox(classifier))
+                .unwrap_or(SourceBackend::ExactBatch)
+        } else if route_after == "ht_rules" {
             SourceBackend::Rules(IncrementalRulesClassifier::new(
                 &self.frontend,
                 self.classification.clone(),
@@ -268,7 +324,9 @@ impl SourceIncrementalClassifier {
     pub fn retained_backend(&self) -> bool {
         matches!(
             self.backend,
-            SourceBackend::Incremental { .. } | SourceBackend::Rules(_)
+            SourceBackend::Incremental { .. }
+                | SourceBackend::PositiveAbox(_)
+                | SourceBackend::Rules(_)
         )
     }
 }
@@ -452,6 +510,13 @@ fn map_incremental_result(
         },
         dropped: result.dropped,
     }
+}
+
+fn map_el_result(frontend: &FrontendResult, result: crate::elcomplete::ElResult) -> Classification {
+    map_incremental_result(
+        frontend,
+        crate::incremental::IncrementalResult::from_el(result),
+    )
 }
 
 fn is_bottom(name: &str) -> bool {
@@ -671,6 +736,52 @@ Ontology(
         let frontend = super::normalize_automatic(source).unwrap();
         assert!(frontend.profile.source.abox_axioms > 0);
         assert!(!super::clause_state_is_complete(&frontend));
+    }
+
+    #[test]
+    fn positive_el_abox_updates_reuse_typed_completion_state() {
+        let _environment = lock_environment();
+        let terminology = (0..1_000)
+            .map(|index| {
+                format!("SubClassOf(<Seed{index}> ObjectSomeValuesFrom(<r> <Leaf{index}>))")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let consistent = format!(
+            r#"Ontology(
+ Declaration(Class(<A>)) Declaration(Class(<B>)) Declaration(Class(<C>))
+ Declaration(Class(<X>)) Declaration(Class(<Y>))
+ Declaration(NamedIndividual(<a>))
+ SubClassOf(<A> <B>) DisjointClasses(<B> <C>) SubClassOf(<X> <Y>)
+ {terminology}
+ ClassAssertion(<A> <a>)
+)"#
+        );
+        let inconsistent = format!(
+            r#"Ontology(
+ Declaration(Class(<A>)) Declaration(Class(<B>)) Declaration(Class(<C>))
+ Declaration(Class(<X>)) Declaration(Class(<Y>))
+ Declaration(NamedIndividual(<a>))
+ SubClassOf(<A> <B>) DisjointClasses(<B> <C>) SubClassOf(<X> <Y>)
+ {terminology}
+ ClassAssertion(<A> <a>) ClassAssertion(<C> <a>)
+)"#
+        );
+        let mut session = SourceIncrementalClassifier::new(&consistent).unwrap();
+        assert_eq!(session.route(), "elc");
+        assert!(session.retained_backend());
+        assert!(session.classification().consistent);
+        let initial = session.classification().clone();
+
+        let addition = session.replace_source(&inconsistent).unwrap();
+        assert_eq!(addition.strategy, ChangeStrategy::ElDelta);
+        assert!(addition.meaningful_incremental_update);
+        assert!(!session.classification().consistent);
+
+        let removal = session.replace_source(&consistent).unwrap();
+        assert_eq!(removal.strategy, ChangeStrategy::ElDelta);
+        assert!(removal.meaningful_incremental_update);
+        assert_eq!(session.classification(), &initial);
     }
 
     #[test]

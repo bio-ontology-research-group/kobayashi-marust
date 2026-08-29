@@ -108,6 +108,16 @@ reused directly; other rule/ABox changes rerun the smaller typed consistency
 probe without rebuilding the taxonomy. Its receipt reports normalized-clause
 and rule deltas and uses `ht_delta`.
 
+The automatic positive-EL ABox route also has a typed adapter. It translates
+named individuals into the same fresh EL root concepts used by batch
+classification and retains that complete materialization. Additions replay the
+existing completion graph. Removals and replacements preserve dependency
+components disconnected from the changed translated clauses and re-complete
+the affected region. The public TBox taxonomy and the ABox consistency verdict
+come from this one exact fixpoint, and accepted reuse reports `el_delta`.
+Identity contradictions and changes outside the positive-EL source certificate
+fail closed to exact automatic classification.
+
 The remaining typed routes take a visible `exact_rebuild` safety fallback. The
 receipt sets `meaningful_incremental_update=false` for that fallback. This is
 transitional: v1.3 is not complete until each automatic typed route has a
