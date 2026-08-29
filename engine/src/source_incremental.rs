@@ -542,6 +542,14 @@ mod tests {
     use crate::incremental::ChangeStrategy;
     use crate::json_io::{JAtom, JClause, JTerm};
 
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn fact(name: &str) -> JClause {
         JClause {
             body: Vec::new(),
@@ -567,6 +575,7 @@ mod tests {
 
     #[test]
     fn complete_source_el_addition_reuses_the_fixpoint() {
+        let _environment = lock_environment();
         let before = r#"Ontology(
  Declaration(Class(<http://example.org/A>))
  Declaration(Class(<http://example.org/B>))
@@ -593,7 +602,40 @@ mod tests {
     }
 
     #[test]
+    fn complete_source_el_removal_retains_an_independent_component() {
+        let _environment = lock_environment();
+        let before = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:X)) Declaration(Class(:Y))
+ SubClassOf(:A :B) SubClassOf(:B :C) SubClassOf(:X :Y)
+)"#;
+        let after = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:X)) Declaration(Class(:Y))
+ SubClassOf(:A :B) SubClassOf(:X :Y)
+)"#;
+        let mut session = SourceIncrementalClassifier::new(before).unwrap();
+        let receipt = session.replace_source(after).unwrap();
+        assert_eq!(receipt.strategy, ChangeStrategy::ElDelta);
+        assert!(receipt.meaningful_incremental_update);
+        assert!(receipt.reused_subsumptions > 0);
+        assert!(!session.classification().subsumptions.iter().any(|pair| {
+            pair == &[
+                "http://example.org/A".to_string(),
+                "http://example.org/C".to_string(),
+            ]
+        }));
+        assert!(session.classification().subsumptions.iter().any(|pair| {
+            (pair[0] == "http://example.org/X" || pair[0] == ":X")
+                && (pair[1] == "http://example.org/Y" || pair[1] == ":Y")
+        }));
+    }
+
+    #[test]
     fn jsonl_session_publishes_a_transaction_receipt() {
+        let _environment = lock_environment();
         let before = "Prefix(:=<http://example.org/>)\nOntology(\nSubClassOf(:A :B)\n)";
         let after =
             "Prefix(:=<http://example.org/>)\nOntology(\nSubClassOf(:A :B)\nSubClassOf(:B :C)\n)";
@@ -620,6 +662,7 @@ mod tests {
 
     #[test]
     fn typed_abox_state_never_enters_the_clause_only_adapter() {
+        let _environment = lock_environment();
         let source = r#"Ontology(
  Declaration(Class(<http://example.org/A>))
  Declaration(NamedIndividual(<http://example.org/i>))
@@ -632,6 +675,7 @@ mod tests {
 
     #[test]
     fn automatic_production_portfolio_reuses_its_complete_cb_state() {
+        let _environment = lock_environment();
         let before = r#"Ontology(
  SubClassOf(<http://example.org/A>
    ObjectUnionOf(<http://example.org/B> <http://example.org/C>))

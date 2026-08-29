@@ -5308,7 +5308,7 @@ impl std::fmt::Display for IncrementalError {
 
 impl std::error::Error for IncrementalError {}
 
-/// Statistics for one accepted addition transaction.
+/// Statistics for one accepted EL transaction.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct IncrementalUpdate {
     /// Monotonically increasing transaction revision. The initial snapshot is
@@ -5329,7 +5329,7 @@ pub struct IncrementalUpdate {
     pub new_edges: usize,
 }
 
-/// Addition-only incremental EL++ classification.
+/// Incremental EL++ classification.
 ///
 /// The classifier keeps the completed relation and role graph across updates.
 /// An update is a transaction containing normalised [`JClause`] values. KM
@@ -5342,9 +5342,11 @@ pub struct IncrementalUpdate {
 /// completes that transaction afresh.
 ///
 /// Updates are atomic: an unsupported transaction returns an error without
-/// changing the clauses, revision, or completed state. Retraction is not
-/// exposed. Callers that need removal must build a new classifier from the new
-/// ontology snapshot.
+/// changing the clauses, revision, or completed state. Removals and
+/// replacements use a conservative symbol-dependency
+/// graph: unaffected completion components are copied at fixpoint, while the
+/// changed component is initialized and saturated against the candidate rule
+/// indexes. Global top-premise changes complete afresh.
 pub struct IncrementalElClassifier {
     clauses: Vec<JClause>,
     interner: Interner,
@@ -5352,6 +5354,101 @@ pub struct IncrementalElClassifier {
     normal_forms: HashSet<NormalFormKey>,
     state: State,
     revision: u64,
+}
+
+fn el_term_symbols(term: &JTerm, symbols: &mut Vec<String>) {
+    match term {
+        JTerm::Var { .. } => {}
+        JTerm::Ind { name } => symbols.push(format!("I:{name}")),
+        JTerm::Aux { root, label } => {
+            symbols.push(format!("I:{root}"));
+            symbols.extend(label.iter().map(|(name, _)| format!("C:{name}")));
+        }
+        JTerm::Fun { function, arg } => {
+            symbols.push(format!("F:{function}"));
+            el_term_symbols(arg, symbols);
+        }
+    }
+}
+
+fn el_clause_symbols(clause: &JClause) -> Vec<String> {
+    let mut symbols = Vec::new();
+    for atom in clause.body.iter().chain(&clause.head) {
+        match atom {
+            JAtom::Concept { concept, term } => {
+                symbols.push(format!("C:{concept}"));
+                el_term_symbols(term, &mut symbols);
+            }
+            JAtom::Role {
+                role,
+                source,
+                target,
+            } => {
+                symbols.push(format!("R:{role}"));
+                el_term_symbols(source, &mut symbols);
+                el_term_symbols(target, &mut symbols);
+            }
+            JAtom::Eq { left, right } => {
+                el_term_symbols(left, &mut symbols);
+                el_term_symbols(right, &mut symbols);
+            }
+        }
+    }
+    symbols.sort_unstable();
+    symbols.dedup();
+    symbols
+}
+
+fn is_top_name(name: &str) -> bool {
+    name == "owl:Thing" || name == "http://www.w3.org/2002/07/owl#Thing" || name == "\u{22a4}"
+}
+
+fn changed_clause_is_global(clause: &JClause) -> bool {
+    clause.body.is_empty()
+        || clause
+            .body
+            .iter()
+            .any(|atom| matches!(atom, JAtom::Concept { concept, .. } if is_top_name(concept)))
+}
+
+/// Symbols in the dependency component touched by a replacement. `None`
+/// means the change has a global premise and therefore admits no component
+/// reuse. Edges from both snapshots make removal and replacement conservative.
+fn affected_el_symbols(
+    old: &[JClause],
+    new: &[JClause],
+    changed: &[JClause],
+) -> Option<HashSet<String>> {
+    if changed.iter().any(changed_clause_is_global) {
+        return None;
+    }
+    let mut graph: HashMap<String, HashSet<String>> = HashMap::default();
+    for clause in old.iter().chain(new) {
+        let symbols = el_clause_symbols(clause);
+        for symbol in &symbols {
+            let neighbours = graph.entry(symbol.clone()).or_default();
+            neighbours.extend(symbols.iter().filter(|other| *other != symbol).cloned());
+        }
+    }
+    let mut affected = HashSet::default();
+    let mut queue = VecDeque::new();
+    for clause in changed {
+        for symbol in el_clause_symbols(clause) {
+            if affected.insert(symbol.clone()) {
+                queue.push_back(symbol);
+            }
+        }
+    }
+    while let Some(symbol) = queue.pop_front() {
+        if let Some(neighbours) = graph.get(&symbol) {
+            for neighbour in neighbours {
+                if affected.insert(neighbour.clone()) {
+                    queue.push_back(neighbour.clone());
+                }
+            }
+        }
+    }
+    Some(affected)
 }
 
 impl IncrementalElClassifier {
@@ -5514,6 +5611,144 @@ impl IncrementalElClassifier {
             new_subsumptions: final_subsumptions.saturating_sub(reused_subsumptions),
             new_edges: final_edges.saturating_sub(reused_edges),
         })
+    }
+
+    /// Replace the complete clause snapshot while retaining every completion
+    /// component disconnected from the changed clauses. This is the deletion
+    /// counterpart of [`Self::add_clauses`]. A changed global/top premise, or
+    /// one dependency component spanning the whole ontology, takes the exact
+    /// fresh path and reports no reuse.
+    pub fn replace_clauses(
+        &self,
+        candidate: Vec<JClause>,
+        changed_clauses: &[JClause],
+    ) -> Result<(Self, IncrementalUpdate), IncrementalError> {
+        let mut next_interner = self.interner.clone();
+        let (next_nfs, residual, _) =
+            to_nf(&candidate, &mut next_interner).ok_or(IncrementalError::UnsupportedNormalForm)?;
+        if !residual.is_empty() {
+            return Err(IncrementalError::NonElResidual {
+                clauses: residual.len(),
+            });
+        }
+
+        let old_subsumptions = fact_count(&self.state.sub_super);
+        let old_edges = fact_count(&self.state.edges);
+        let affected = affected_el_symbols(&self.clauses, &candidate, changed_clauses);
+        let all_affected = affected.is_none();
+        let affected = affected.unwrap_or_default();
+        let next_concept_ids = next_nfs.concept_names.clone();
+        let next_role_ids = next_nfs.role_names.clone();
+
+        if all_affected {
+            let total_clauses = candidate.len();
+            let mut next = Self::new(candidate)?;
+            next.revision = self.revision + 1;
+            let new_subsumptions = fact_count(&next.state.sub_super);
+            let new_edges = fact_count(&next.state.edges);
+            return Ok((
+                next,
+                IncrementalUpdate {
+                    revision: self.revision + 1,
+                    added_clauses: 0,
+                    total_clauses,
+                    reused_fixpoint: false,
+                    reused_subsumptions: 0,
+                    reused_edges: 0,
+                    new_subsumptions,
+                    new_edges,
+                },
+            ));
+        }
+
+        let next_len = next_interner.len();
+        let name_affected =
+            |tag: char, id: u32| affected.contains(&format!("{tag}:{}", next_interner.name(id)));
+        let mut state = State {
+            sub_super: vec![HashSet::default(); next_len],
+            edges: vec![HashSet::default(); next_len],
+            in_by_role: HashMap::default(),
+            in_roles: vec![Vec::new(); next_len],
+            prop: HashMap::default(),
+            worklist: VecDeque::new(),
+            sub_journal: None,
+            edge_epoch: 0,
+        };
+
+        // Copy only closed components whose rules and symbols are unchanged.
+        // Builtin top remains in every retained label; bottom is copied only
+        // as a consequence of an unaffected component.
+        for &concept in &next_concept_ids {
+            if name_affected('C', concept) || concept as usize >= self.state.sub_super.len() {
+                continue;
+            }
+            for &sup in &self.state.sub_super[concept as usize] {
+                if sup == TOP
+                    || sup == BOTTOM
+                    || (next_concept_ids.contains(&sup) && !name_affected('C', sup))
+                {
+                    state.sub_super[concept as usize].insert(sup);
+                }
+            }
+            for &(role, target) in &self.state.edges[concept as usize] {
+                if next_role_ids.contains(&role)
+                    && next_concept_ids.contains(&target)
+                    && !name_affected('R', role)
+                    && !name_affected('C', target)
+                {
+                    state.edges[concept as usize].insert((role, target));
+                    state
+                        .in_by_role
+                        .entry((target, role))
+                        .or_default()
+                        .push(concept);
+                    if !state.in_roles[target as usize].contains(&role) {
+                        state.in_roles[target as usize].push(role);
+                    }
+                }
+            }
+        }
+        let reused_subsumptions = fact_count(&state.sub_super);
+        let reused_edges = fact_count(&state.edges);
+
+        // Initialize only affected/new concept rows. Unaffected rows are
+        // already at their old fixpoint and have no path to a changed rule.
+        for &concept in &next_concept_ids {
+            if name_affected('C', concept) || state.sub_super[concept as usize].is_empty() {
+                if concept != BOTTOM {
+                    state.add_sub(concept, concept);
+                    state.add_sub(concept, TOP);
+                }
+            }
+        }
+        let idx = build_idx(&next_nfs, next_len);
+        seed_reflexive_edges(&next_nfs, &idx, &mut state);
+        run(&idx, &mut state, &mut Prof::default());
+
+        let final_subsumptions = fact_count(&state.sub_super);
+        let final_edges = fact_count(&state.edges);
+        let next = IncrementalElClassifier {
+            clauses: candidate,
+            interner: next_interner,
+            concept_ids: next_concept_ids,
+            normal_forms: normal_form_keys(&next_nfs),
+            state,
+            revision: self.revision + 1,
+        };
+        let total_clauses = next.clauses.len();
+        Ok((
+            next,
+            IncrementalUpdate {
+                revision: self.revision + 1,
+                added_clauses: 0,
+                total_clauses,
+                reused_fixpoint: reused_subsumptions != 0 || reused_edges != 0,
+                reused_subsumptions: reused_subsumptions.min(old_subsumptions),
+                reused_edges: reused_edges.min(old_edges),
+                new_subsumptions: final_subsumptions.saturating_sub(reused_subsumptions),
+                new_edges: final_edges.saturating_sub(reused_edges),
+            },
+        ))
     }
 
     /// Materialise the current classification without consuming the session.

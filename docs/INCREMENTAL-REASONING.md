@@ -13,6 +13,8 @@ as `km elc` and `km engine`. It chooses a backend for every committed snapshot:
 
 - A pure EL++ snapshot uses the incremental EL completion store. Addition-only
   transactions retain its completed subsumption relation and role graph.
+  Removals and replacements retain every dependency component disconnected
+  from the changed clauses and re-complete only affected components.
 - Every snapshot outside pure EL++ uses the CB engine. Ordering-stable monotone
   additions retain its completed context graph and resume saturation. This
   includes disjunction, roles, equality and supported cardinality forms, plus
@@ -21,8 +23,9 @@ as `km elc` and `km engine`. It chooses a backend for every committed snapshot:
   `"backend":"ht"` on a JSONL `init`. This direct HT arm admits only clause
   state carried completely by `JClause`. It caches global, class
   satisfiability, and pair-countermodel probes.
-- EL and CB transactions containing a removal use an exact rebuild. They may
-  route from CB back to EL when the remaining clause set is pure EL++.
+- A global/top EL change and a CB transaction containing a removal use an exact
+  rebuild. They may route from CB back to EL when the remaining clause set is
+  pure EL++.
 - HT removals and replacements use dependency-directed probe invalidation.
   Monotonic verdicts and probes in disconnected signature components remain
   reusable; every other probe runs fresh before commit.
@@ -54,7 +57,7 @@ Some insertions deliberately cross a proof boundary and report
   additional nominal.
 - `KM_SPLIT`, `KM_ROOT_ORDERED`, or `KM_QUERIES` selects a one-shot route whose
   state is not represented by one reusable default context graph.
-- The transaction removes or replaces a clause. CB does not yet retain the
+- The transaction removes or replaces a clause on the CB route. CB does not yet retain the
   derivation dependencies needed to retract all and only its consequences.
 
 These cases remain supported exactly. They construct and validate a fresh
@@ -246,8 +249,10 @@ let ht_change = ht_reasoner.apply_change(&obsolete_ids, replacement_clauses)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`IncrementalElClassifier` remains available as the lower-level,
-addition-only EL++ API. Its existing method and error contracts are unchanged.
+`IncrementalElClassifier` remains available as the lower-level EL++ API.
+`add_clauses` performs monotone replay, while `replace_clauses` accepts a
+complete candidate plus the changed clauses and performs dependency-component
+retraction. Its error contract remains fail-closed.
 `classify_ht_fresh` is the direct HT differential oracle.
 
 ## JSONL session
@@ -283,14 +288,18 @@ therefore measure retained-state use without inferring it from latency.
 
 ## Current performance boundary
 
-Addition-only EL++ transactions reuse the completion closure. Ordering-stable
+EL++ additions reuse the completion closure, while component-local removals
+retain completed labels and edges outside the changed dependency component.
+Ordering-stable
 CB additions reuse the completed context graph and report retained answer and
 context-edge counts. Explicit HT sessions retain probe evidence across all
 three transaction kinds, and stable-layout additions can replay completed
 graphs. The CB and HT implementations currently deep-clone retained state to
 provide failure atomicity; this trades memory and copy time for a simple,
 auditable commit boundary. Dependency-aware copy-on-write remains future work.
-EL/CB removals and mixed replacements still have batch CB or batch EL cost.
+CB removals and mixed CB replacements still have batch cost. EL changes with a
+global premise, or whose dependency component spans the complete ontology,
+deliberately report an exact rebuild.
 
 A targeted single-thread IBEX microbenchmark gives a scale check for the EL
 path, not an ORE or corpus claim. The initial snapshot contained 10,000

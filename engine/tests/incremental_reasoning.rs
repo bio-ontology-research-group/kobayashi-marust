@@ -85,6 +85,40 @@ fn addition_reuses_fixpoint_and_matches_fresh_completion() {
 }
 
 #[test]
+fn removal_rebuilds_only_the_affected_el_component() {
+    let a_to_b = clauses(&format!(
+        "[{}]",
+        clause(&[concept("A", "x")], &[concept("B", "x")])
+    ))
+    .remove(0);
+    let b_to_c = clauses(&format!(
+        "[{}]",
+        clause(&[concept("B", "x")], &[concept("C", "x")])
+    ))
+    .remove(0);
+    let x_to_y = clauses(&format!(
+        "[{}]",
+        clause(&[concept("X", "x")], &[concept("Y", "x")])
+    ))
+    .remove(0);
+    let initial = vec![a_to_b.clone(), b_to_c.clone(), x_to_y.clone()];
+    let candidate = vec![a_to_b, x_to_y];
+    let incremental = IncrementalElClassifier::new(initial).expect("pure EL++");
+    let (retracted, update) = incremental
+        .replace_clauses(candidate.clone(), &[b_to_c])
+        .expect("component-local EL removal");
+
+    assert!(update.reused_fixpoint);
+    assert!(update.reused_subsumptions > 0);
+    assert_eq!(retracted.is_subsumed_by("A", "C"), Some(false));
+    assert_eq!(retracted.is_subsumed_by("X", "Y"), Some(true));
+    assert_eq!(
+        retracted.result(),
+        normalise(elcomplete::classify(candidate).expect("fresh EL++ completion"))
+    );
+}
+
+#[test]
 fn role_hierarchy_addition_replays_existing_edges() {
     // Initial: A ⊑ ∃R.B and ∃S.B ⊑ D. Adding R ⊑ S must lift the
     // already-materialised R edge and fire the existing NF4 rule.

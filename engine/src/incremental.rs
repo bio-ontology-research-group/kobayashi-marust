@@ -490,6 +490,42 @@ impl IncrementalClassifier {
             .map(|stored| stored.clause.clone())
             .collect();
         candidate.extend(additions.iter().cloned());
+        if let BackendState::El(state) = &self.backend {
+            let mut changed: Vec<JClause> = self
+                .clauses
+                .iter()
+                .filter(|stored| seen.contains(&stored.id))
+                .map(|stored| stored.clause.clone())
+                .collect();
+            changed.extend(additions.iter().cloned());
+            if let Ok((next, update)) = state.replace_clauses(candidate.clone(), &changed) {
+                self.clauses.retain(|stored| !seen.contains(&stored.id));
+                self.commit_additions(added_ids.clone(), additions);
+                self.backend = BackendState::El(next);
+                self.concepts = concept_signature(&candidate);
+                self.revision += 1;
+                return Ok(IncrementalChange {
+                    revision: self.revision,
+                    added_clauses: added_ids.len(),
+                    removed_clauses: seen.len(),
+                    total_clauses: self.clauses.len(),
+                    added_clause_ids: added_ids,
+                    removed_clause_ids: seen.into_iter().collect(),
+                    backend_before,
+                    backend_after: IncrementalBackend::El,
+                    strategy: if update.reused_fixpoint {
+                        ChangeStrategy::ElDelta
+                    } else {
+                        ChangeStrategy::ExactRebuild
+                    },
+                    reused_fixpoint: update.reused_fixpoint,
+                    reused_subsumptions: update.reused_subsumptions,
+                    reused_edges: update.reused_edges,
+                    new_subsumptions: update.new_subsumptions,
+                    new_edges: update.new_edges,
+                });
+            }
+        }
         if let BackendState::Ht(state) = &self.backend {
             let mut changed: Vec<JClause> = self
                 .clauses
