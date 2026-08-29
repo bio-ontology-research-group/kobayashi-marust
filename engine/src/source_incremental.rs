@@ -554,9 +554,15 @@ impl SourceIncrementalClassifier {
             if let Some(input) = with_route_environment(&route_after, || {
                 crate::orchestrate::race::prepare_incremental_bridge(&candidate)
             })? {
-                if let Ok((next, stats)) = with_route_environment(&route_after, || {
+                let update = with_route_environment(&route_after, || {
                     classifier.updated_typed(&candidate.clauses, &changed, kind, input)
-                })? {
+                })?;
+                if let Err(error) = &update {
+                    if std::env::var_os("KM_TIMING").is_some() {
+                        eprintln!("bridge incremental delta declined: {error}");
+                    }
+                }
+                if let Ok((next, stats)) = update {
                     let meaningful = stats.reused_queries > 0;
                     let classification = map_incremental_result(&candidate, next.result());
                     *classifier = next;

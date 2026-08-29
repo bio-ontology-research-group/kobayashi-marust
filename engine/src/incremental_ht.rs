@@ -383,8 +383,24 @@ impl IncrementalBridgeClassifier {
         let side_changed = self.side_fingerprint != side_fingerprint || old_queries != queries;
         let mut affected =
             affected_concepts(&self.source_clauses, candidate, changed_clauses, &queries);
-        if side_changed || self.result.inconsistent || kind == HtChangeKind::Replacement {
+        // A concept-only replacement has the same dependency boundary as an
+        // addition plus a removal: `affected_concepts` walks both snapshots
+        // from every removed and inserted symbol.  Rebuilding every query here
+        // discarded otherwise independent bridge rows whenever the frontend
+        // represented one source edit as a normalized-clause replacement.
+        // Typed side changes, inconsistency, role-bearing changes, and global
+        // clauses still invalidate all queries through the guards above and
+        // inside `affected_concepts`.
+        if side_changed || self.result.inconsistent {
             affected.extend(queries.iter().cloned());
+        }
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!(
+                "bridge incremental delta kind={kind:?} side_changed={side_changed} inconsistent={} queries={} affected={}",
+                self.result.inconsistent,
+                queries.len(),
+                affected.len()
+            );
         }
         let mut rebuilt_ids: Vec<usize> = affected
             .iter()
@@ -2036,6 +2052,32 @@ mod typed_tests {
             IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
         assert_eq!(restored.result(), fresh_before.result());
         assert!(removal_stats.reused_queries >= 2);
+    }
+
+    #[test]
+    fn bridge_concept_replacement_reuses_a_disconnected_subject_component() {
+        let before = vec![source_clause("A", "B"), source_clause("X", "Y")];
+        let classifier =
+            IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
+        let removed = source_clause("A", "B");
+        let added = source_clause("B", "C");
+        let after = vec![added.clone(), source_clause("X", "Y")];
+        let mut input = bridge_input(false);
+        input.clauses = vec![concept_clause(1, 2), concept_clause(3, 4)];
+
+        let (next, stats) = classifier
+            .updated_typed(
+                &after,
+                &[removed, added],
+                HtChangeKind::Replacement,
+                input.clone(),
+            )
+            .unwrap();
+        let fresh = IncrementalBridgeClassifier::new_typed(&after, input).unwrap();
+
+        assert_eq!(next.result(), fresh.result());
+        assert!(stats.reused_queries >= 2);
+        assert!(stats.rebuilt_queries >= 3);
     }
 
     #[test]
