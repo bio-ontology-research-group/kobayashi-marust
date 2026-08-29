@@ -35,6 +35,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private final Map<OWLClass, Set<OWLClass>> supers = new HashMap<>();
     private final Map<OWLClass, Set<OWLClass>> subs = new HashMap<>();
     private final Set<OWLClass> unsatisfiable = new HashSet<>();
+    private volatile Classifier.Session incrementalSession;
 
     protected KMReasoner(OWLOntology rootOntology, OWLReasonerConfiguration config,
                          BufferingMode bufferingMode) {
@@ -47,8 +48,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     // ---- classification -------------------------------------------------
 
-    private void classify() {
-        group.clear(); rep.clear(); supers.clear(); subs.clear(); unsatisfiable.clear();
+    private synchronized void classify() {
         OWLOntology ont = getRootOntology();
 
         // Complete IRI -> named class. Local fragments are not unique.
@@ -59,10 +59,26 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
         Classifier.Result res;
         try {
-            res = Classifier.classify(ont);
+            if (incrementalSession == null) {
+                incrementalSession = new Classifier.Session(ont);
+                res = incrementalSession.result();
+            } else {
+                res = incrementalSession.replace(ont);
+            }
         } catch (Exception e) {
+            // A protocol failure may have terminated the native process. Drop
+            // the handle so a later OWLAPI flush can start a clean session;
+            // the last committed Java hierarchy remains untouched.
+            if (incrementalSession != null) {
+                incrementalSession.close();
+                incrementalSession = null;
+            }
             throw new ReasonerInternalException(e);
         }
+        // Commit the Java-side hierarchy only after the native transaction has
+        // succeeded. A declined update therefore leaves the preceding answers
+        // intact, matching the native session's atomic revision contract.
+        group.clear(); rep.clear(); supers.clear(); subs.clear(); unsatisfiable.clear();
         consistent = res.consistent;
         dropped = res.dropped;
 
@@ -156,15 +172,15 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     // ---- class hierarchy queries ---------------------------------------
 
-    @Override public Node<OWLClass> getTopClassNode() { return nodeOf(owlThing); }
-    @Override public Node<OWLClass> getBottomClassNode() { return nodeOf(owlNothing); }
+    @Override public synchronized Node<OWLClass> getTopClassNode() { return nodeOf(owlThing); }
+    @Override public synchronized Node<OWLClass> getBottomClassNode() { return nodeOf(owlNothing); }
 
-    @Override public Node<OWLClass> getEquivalentClasses(OWLClassExpression ce) {
+    @Override public synchronized Node<OWLClass> getEquivalentClasses(OWLClassExpression ce) {
         OWLClass r = repOf(ce);
         return r != null ? nodeOf(r) : new OWLClassNode();
     }
 
-    @Override public NodeSet<OWLClass> getSuperClasses(OWLClassExpression ce, boolean direct) {
+    @Override public synchronized NodeSet<OWLClass> getSuperClasses(OWLClassExpression ce, boolean direct) {
         OWLClass r = repOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
         if (r == null) return ns;
@@ -173,7 +189,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return ns;
     }
 
-    @Override public NodeSet<OWLClass> getSubClasses(OWLClassExpression ce, boolean direct) {
+    @Override public synchronized NodeSet<OWLClass> getSubClasses(OWLClassExpression ce, boolean direct) {
         OWLClass r = repOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
         if (r == null) return ns;
@@ -210,11 +226,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return out;
     }
 
-    @Override public Node<OWLClass> getUnsatisfiableClasses() { return nodeOf(owlNothing); }
+    @Override public synchronized Node<OWLClass> getUnsatisfiableClasses() { return nodeOf(owlNothing); }
 
-    @Override public boolean isConsistent() { return consistent; }
+    @Override public synchronized boolean isConsistent() { return consistent; }
 
-    @Override public boolean isSatisfiable(OWLClassExpression ce) {
+    @Override public synchronized boolean isSatisfiable(OWLClassExpression ce) {
         if (!consistent) return false;
         OWLClass r = repOf(ce);
         if (ce.isOWLNothing()) return false;
@@ -223,7 +239,12 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     /** convenience for tests: dropped-clause count from the last classification. */
-    public int getDroppedClauseCount() { return dropped; }
+    public synchronized int getDroppedClauseCount() { return dropped; }
+
+    /** Last native transaction receipt; null for the initial revision. */
+    public synchronized Classifier.IncrementalReceipt getLastIncrementalReceipt() {
+        return incrementalSession == null ? null : incrementalSession.receipt();
+    }
 
     // ---- precompute / metadata -----------------------------------------
 
@@ -240,11 +261,25 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         classify(); // re-run on flush()
     }
 
-    @Override public void interrupt() { /* subprocess timeout is configurable */ }
+    @Override public void interrupt() {
+        Classifier.Session session = incrementalSession;
+        if (session != null) {
+            session.interrupt();
+            if (incrementalSession == session) incrementalSession = null;
+        }
+    }
+
+    @Override public synchronized void dispose() {
+        if (incrementalSession != null) {
+            incrementalSession.close();
+            incrementalSession = null;
+        }
+        super.dispose();
+    }
 
     // ---- entailment ----------------------------------------------------
 
-    @Override public boolean isEntailed(OWLAxiom axiom) {
+    @Override public synchronized boolean isEntailed(OWLAxiom axiom) {
         if (axiom instanceof OWLSubClassOfAxiom) {
             OWLSubClassOfAxiom s = (OWLSubClassOfAxiom) axiom;
             OWLClass a = s.getSubClass().isAnonymous() ? null : s.getSubClass().asOWLClass();
@@ -258,7 +293,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return false;
     }
 
-    @Override public boolean isEntailed(Set<? extends OWLAxiom> axioms) {
+    @Override public synchronized boolean isEntailed(Set<? extends OWLAxiom> axioms) {
         for (OWLAxiom a : axioms) if (!isEntailed(a)) return false;
         return true;
     }

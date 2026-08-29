@@ -21,4 +21,5 @@ pub mod orchestrate;
 pub mod reasoner;
 pub mod role_automaton;
 pub mod routing;
+pub mod source_incremental;
 pub mod tableau;

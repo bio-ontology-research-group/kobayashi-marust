@@ -1,19 +1,29 @@
 package org.bioontology.kobayashimarust.protege;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import org.semanticweb.owlapi.model.OWLOntology;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Bridge to the Kobayashi-MaRust engine: serialise the ontology to OWL
- * functional syntax, run the {@code --lines} classifier, and parse the result.
+ * functional syntax, maintain a native incremental session, and parse results.
  *
- * <p>Invokes the pure-Rust {@code km classify --lines} multi-call binary.
+ * <p>The persistent path invokes {@code km incremental-source}; the static
+ * one-shot compatibility method invokes {@code km classify --lines}.
  *
  * <p>Configuration (system property, else environment variable, else default):
  * <ul>
@@ -33,6 +43,190 @@ public final class Classifier {
         public final List<String> unsatisfiable = new ArrayList<>();
     }
 
+    /** Receipt for the last native source-level transaction. */
+    public static final class IncrementalReceipt {
+        public long revision;
+        public String route_before;
+        public String route_after;
+        public boolean route_migrated;
+        public String strategy;
+        public boolean reused_fixpoint;
+        public int reused_subsumptions;
+        public int reused_edges;
+        public int added_normalized_clauses;
+        public int removed_normalized_clauses;
+        public boolean meaningful_incremental_update;
+    }
+
+    /**
+     * Persistent native source session used by an OWLReasoner instance.
+     * Commands are serialized because OWLAPI reasoner lifecycle methods may be
+     * called from different UI threads while KM owns one transactional state.
+     */
+    public static final class Session implements AutoCloseable {
+        private final String kmBin;
+        private final long timeoutSeconds;
+        private final Path log;
+        private final Process process;
+        private final BufferedWriter input;
+        private final BufferedReader output;
+        private final ExecutorService reads;
+        private final Gson gson = new Gson();
+        private Result result;
+        private IncrementalReceipt receipt;
+        private volatile boolean closed;
+
+        public Session(OWLOntology ontology) throws Exception {
+            this.kmBin = cfg("km.bin", "KM_BIN", "km");
+            this.timeoutSeconds = parseTimeout();
+            this.log = Files.createTempFile("kmarust-incremental-", ".log");
+            ProcessBuilder builder = new ProcessBuilder(kmBin, "incremental-source");
+            builder.redirectError(log.toFile());
+            this.process = builder.start();
+            this.input = new BufferedWriter(new OutputStreamWriter(
+                    process.getOutputStream(), StandardCharsets.UTF_8));
+            this.output = new BufferedReader(new InputStreamReader(
+                    process.getInputStream(), StandardCharsets.UTF_8));
+            this.reads = Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "km-incremental-response");
+                thread.setDaemon(true);
+                return thread;
+            });
+            try {
+                Response response = command("init", FlattenedOntology.functionalSyntax(ontology));
+                this.result = response.result;
+                this.receipt = response.receipt;
+            } catch (Exception error) {
+                close();
+                throw error;
+            }
+        }
+
+        public synchronized Result replace(OWLOntology ontology) throws Exception {
+            Response response = command(
+                    "replace", FlattenedOntology.functionalSyntax(ontology));
+            this.result = response.result;
+            this.receipt = response.receipt;
+            return result;
+        }
+
+        public synchronized Result result() {
+            return result;
+        }
+
+        public synchronized IncrementalReceipt receipt() {
+            return receipt;
+        }
+
+        private Response command(String op, String source) throws Exception {
+            if (closed || !process.isAlive()) {
+                throw failure("KM incremental process is not running");
+            }
+            JsonObject command = new JsonObject();
+            command.addProperty("op", op);
+            command.addProperty("functional_syntax", source);
+            input.write(gson.toJson(command));
+            input.newLine();
+            input.flush();
+
+            Future<String> pending = reads.submit(output::readLine);
+            final String line;
+            try {
+                line = pending.get(timeoutSeconds, TimeUnit.SECONDS);
+            } catch (InterruptedException error) {
+                pending.cancel(true);
+                process.destroyForcibly();
+                Thread.currentThread().interrupt();
+                throw failure("KM incremental request was interrupted", error);
+            } catch (Exception error) {
+                pending.cancel(true);
+                process.destroyForcibly();
+                throw failure("KM incremental request timed out after "
+                        + timeoutSeconds + " seconds", error);
+            }
+            if (line == null) {
+                throw failure("KM incremental process closed its output");
+            }
+            WireResponse wire;
+            try {
+                wire = gson.fromJson(line, WireResponse.class);
+            } catch (RuntimeException error) {
+                throw failure("KM returned invalid incremental JSON: " + line, error);
+            }
+            if (wire == null || !"ok".equals(wire.status) || wire.result == null) {
+                throw failure("KM incremental " + op + " failed: "
+                        + (wire == null ? line : wire.error));
+            }
+            return new Response(toResult(wire.result), wire.receipt);
+        }
+
+        private RuntimeException failure(String message) {
+            return failure(message, null);
+        }
+
+        private RuntimeException failure(String message, Throwable cause) {
+            String diagnostics = "";
+            try {
+                diagnostics = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+            } catch (Exception ignored) {
+                // The primary protocol error remains authoritative.
+            }
+            String complete = diagnostics.isEmpty() ? message : message + "\n" + diagnostics;
+            return cause == null ? new RuntimeException(complete)
+                    : new RuntimeException(complete, cause);
+        }
+
+        /** Cancel an active native request without waiting for the session lock. */
+        public void interrupt() {
+            closed = true;
+            process.destroyForcibly();
+            reads.shutdownNow();
+            try { input.close(); } catch (Exception ignored) { }
+            try { output.close(); } catch (Exception ignored) { }
+            try { Files.deleteIfExists(log); } catch (Exception ignored) { }
+        }
+
+        @Override
+        public synchronized void close() {
+            if (closed) return;
+            closed = true;
+            try { input.close(); } catch (Exception ignored) { }
+            if (process.isAlive()) process.destroy();
+            try {
+                if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly();
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                process.destroyForcibly();
+            }
+            reads.shutdownNow();
+            try { Files.deleteIfExists(log); } catch (Exception ignored) { }
+        }
+    }
+
+    private static final class Response {
+        final Result result;
+        final IncrementalReceipt receipt;
+
+        Response(Result result, IncrementalReceipt receipt) {
+            this.result = result;
+            this.receipt = receipt;
+        }
+    }
+
+    private static final class WireResponse {
+        String status;
+        String error;
+        WireResult result;
+        IncrementalReceipt receipt;
+    }
+
+    private static final class WireResult {
+        boolean consistent;
+        int dropped;
+        List<String[]> subsumptions;
+        List<String> unsatisfiable;
+    }
+
     private Classifier() {}
 
     private static String cfg(String prop, String env, String def) {
@@ -41,20 +235,38 @@ public final class Classifier {
         return (v == null || v.isEmpty()) ? def : v;
     }
 
-    public static Result classify(OWLOntology ontology) throws Exception {
-        String kmBin = cfg("km.bin", "KM_BIN", "km");
-        long timeout;
+    private static long parseTimeout() {
+        final long timeout;
         try {
             timeout = Long.parseLong(cfg(
                     "km.timeout.seconds", "KM_TIMEOUT_SECONDS", "600"));
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException error) {
             throw new IllegalArgumentException(
-                    "km.timeout.seconds must be an integer number of seconds", e);
+                    "km.timeout.seconds must be an integer number of seconds", error);
         }
         if (timeout <= 0) {
             throw new IllegalArgumentException(
                     "km.timeout.seconds must be greater than zero");
         }
+        return timeout;
+    }
+
+    private static Result toResult(WireResult wire) {
+        Result result = new Result();
+        result.consistent = wire.consistent;
+        result.dropped = wire.dropped;
+        if (wire.subsumptions != null) result.subsumptions.addAll(wire.subsumptions);
+        if (wire.unsatisfiable != null) result.unsatisfiable.addAll(wire.unsatisfiable);
+        if (result.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete classification: "
+                    + result.dropped + " clause(s) were dropped");
+        }
+        return result;
+    }
+
+    public static Result classify(OWLOntology ontology) throws Exception {
+        String kmBin = cfg("km.bin", "KM_BIN", "km");
+        long timeout = parseTimeout();
 
         // Flatten the complete imports closure. KM intentionally rejects
         // unresolved owl:imports declarations rather than classifying a

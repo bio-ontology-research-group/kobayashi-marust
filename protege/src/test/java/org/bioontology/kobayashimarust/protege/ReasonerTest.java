@@ -5,6 +5,7 @@ import org.junit.Test;
 import org.semanticweb.owlapi.apibinding.OWLManager;
 import org.semanticweb.owlapi.model.*;
 import org.semanticweb.owlapi.reasoner.OWLReasoner;
+import org.semanticweb.owlapi.reasoner.BufferingMode;
 
 import java.io.File;
 import java.util.Set;
@@ -141,5 +142,55 @@ public class ReasonerTest {
         assertTrue(superContains(r, left, target));
         assertFalse(superContains(r, right, target));
         r.dispose();
+    }
+
+    @Test
+    public void bufferingFlushUsesNativeIncrementalSession() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory df = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(df, "IncrementalA");
+        OWLClass b = cls(df, "IncrementalB");
+        OWLClass c = cls(df, "IncrementalC");
+        manager.addAxiom(ontology, df.getOWLSubClassOfAxiom(a, b));
+
+        KMReasoner reasoner = (KMReasoner) new KMReasonerFactory().createReasoner(ontology);
+        assertEquals(BufferingMode.BUFFERING, reasoner.getBufferingMode());
+        assertFalse(superContains(reasoner, a, c));
+
+        OWLAxiom addition = df.getOWLSubClassOfAxiom(b, c);
+        manager.addAxiom(ontology, addition);
+        assertTrue(reasoner.getPendingAxiomAdditions().contains(addition));
+        assertFalse("buffered change must not leak before flush",
+                superContains(reasoner, a, c));
+
+        reasoner.flush();
+        assertTrue(superContains(reasoner, a, c));
+        assertTrue(reasoner.getPendingChanges().isEmpty());
+        Classifier.IncrementalReceipt receipt = reasoner.getLastIncrementalReceipt();
+        assertNotNull(receipt);
+        assertEquals("el_delta", receipt.strategy);
+        assertTrue(receipt.meaningful_incremental_update);
+        reasoner.dispose();
+    }
+
+    @Test
+    public void nonBufferingReasonerCommitsOntologyChangesImmediately() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory df = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(df, "ImmediateA");
+        OWLClass b = cls(df, "ImmediateB");
+        OWLClass c = cls(df, "ImmediateC");
+        manager.addAxiom(ontology, df.getOWLSubClassOfAxiom(a, b));
+
+        KMReasoner reasoner = (KMReasoner) new KMReasonerFactory()
+                .createNonBufferingReasoner(ontology);
+        assertEquals(BufferingMode.NON_BUFFERING, reasoner.getBufferingMode());
+        manager.addAxiom(ontology, df.getOWLSubClassOfAxiom(b, c));
+        assertTrue(superContains(reasoner, a, c));
+        assertTrue(reasoner.getPendingChanges().isEmpty());
+        assertNotNull(reasoner.getLastIncrementalReceipt());
+        reasoner.dispose();
     }
 }

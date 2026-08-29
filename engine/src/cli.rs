@@ -428,6 +428,18 @@ pub fn run_incremental() {
     }
 }
 
+/// Source-level incremental OWL Functional Syntax session used by OWLAPI.
+pub fn run_source_incremental() {
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let reader = std::io::BufReader::new(stdin.lock());
+    let writer = std::io::BufWriter::new(stdout.lock());
+    if let Err(error) = crate::source_incremental::run_jsonl_session(reader, writer) {
+        eprintln!("source incremental session I/O error: {error}");
+        exit(1);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // engine — the consequence-based disjunctive context saturation reasoner
 // ---------------------------------------------------------------------------

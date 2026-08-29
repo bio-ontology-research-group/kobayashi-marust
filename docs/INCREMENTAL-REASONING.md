@@ -77,11 +77,39 @@ incremental snapshots. The general API rejects them as `UnsupportedClauses` or
 Every accepted result consequently has `dropped == 0` and an empty
 `unresolved` list.
 
-This contract covers direct normalised-clause inputs. It does not accept
-orchestration side channels such as `rbox`, `cardinalities`, rules, definers,
-or source-axiom metadata. The JSONL command parser rejects unknown fields so
-that side data cannot be ignored silently. Normalise the complete source
-ontology with stable generated names before opening a session.
+This contract covers the lower-level direct normalised-clause API. The
+source-level transport described next owns the complete ontology and never
+silently omits an orchestration side channel.
+
+## Complete-source session and OWLAPI lifecycle
+
+`km incremental-source` accepts one complete flattened OWL Functional Syntax
+document per transaction. It reruns the full frontend and automatic router,
+computes a duplicate-preserving normalized-clause delta, and commits the new
+classification atomically. Its JSONL operations are:
+
+```json
+{"op":"init","functional_syntax":"Ontology(...)"}
+{"op":"replace","functional_syntax":"Ontology(...)"}
+{"op":"classify"}
+{"op":"stats"}
+```
+
+For ELC and clause-complete CB routes without typed ABox, cardinality, or rule
+state, the source session retains `IncrementalClassifier` and reports an
+`el_delta` or `cb_delta` when that adapter accepts the change. All typed routes
+currently take a visible `exact_rebuild` safety fallback. The receipt sets
+`meaningful_incremental_update=false` for that fallback. This is transitional:
+v1.3 is not complete until each automatic typed route has a retained-state
+adapter and demonstrates a meaningful update.
+
+The Protégé reasoner keeps one `incremental-source` subprocess for its OWLAPI
+lifetime. `BUFFERING` changes remain invisible until `flush()`;
+`NON_BUFFERING` changes commit when OWLAPI delivers them. A native failure
+leaves the preceding Java hierarchy intact, and `interrupt()` forcibly stops
+the active native request. The Java bridge serializes the complete imports
+closure in memory, so each native transaction sees one source snapshot rather
+than a sequence of independently normalized axioms.
 
 ## Clause identity and transactions
 

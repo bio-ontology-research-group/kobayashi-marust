@@ -29,6 +29,7 @@ fn main() {
         Some("engine") => cli::run_engine(),
         Some("tableau") => cli::run_tableau(),
         Some("incremental") => cli::run_incremental(),
+        Some("incremental-source") => cli::run_source_incremental(),
         // Single-pass Konclude-compatible expressivity and structural stats.
         // The same profile is carried by the normal classify frontend meta, so
         // offline training and production routing cannot drift.
@@ -50,6 +51,7 @@ fn main() {
             eprintln!("       km profile [--format FORMAT] <ontology> ...");
             eprintln!("       km routes");
             eprintln!("       km incremental   (JSONL exact EL++/CB/direct-HT session)");
+            eprintln!("       km incremental-source   (JSONL complete OWL source session)");
             eprintln!("       km ofn|elc|engine|tableau   (worker subcommands)");
             exit(2);
         }
