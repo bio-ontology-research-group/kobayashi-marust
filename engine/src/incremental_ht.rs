@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use crate::incremental::{IncrementalReasoningError, IncrementalResult};
 use crate::json_io::{JAtom, JClause, JTerm};
-use crate::orchestrate::cb_to_ht::{self, HAtom, HtClause};
+use crate::orchestrate::cb_to_ht::{self, CardDefJson, HAtom, HtClause, NativeAboxJson, TInput};
 use crate::tableau::hypertableau::{Ht, HtModelSnapshot};
 use crate::tableau::{Atom, CLit, Clause, C, R};
 
@@ -63,6 +63,11 @@ struct CompiledHt {
     clauses: Vec<HtClause>,
     queries: Vec<C>,
     number: bool,
+    nominals: Vec<C>,
+    native_abox: NativeAboxJson,
+    card_defs: Vec<CardDefJson>,
+    chains: Vec<(R, R, R)>,
+    transitive: Vec<R>,
 }
 
 impl CompiledHt {
@@ -84,6 +89,47 @@ impl CompiledHt {
         }
         let mut ht = Ht::new(clauses);
         ht.set_number(self.number);
+        ht.set_nominals(self.nominals.clone());
+        if self.native_abox.complete {
+            let individuals = self
+                .native_abox
+                .individuals
+                .iter()
+                .map(|individual| {
+                    Ok((
+                        compact_concepts(&individual.proxies)?,
+                        compact_concepts(&individual.assertions)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, IncrementalReasoningError>>()?;
+            let roles = self
+                .native_abox
+                .role_assertions
+                .iter()
+                .map(|&(role, source, target)| Ok((compact_role(role)?, source, target)))
+                .collect::<Result<Vec<_>, IncrementalReasoningError>>()?;
+            ht.set_native_abox(individuals, self.native_abox.different.clone(), roles);
+        }
+        if !self.chains.is_empty() || !self.transitive.is_empty() {
+            ht.set_chains(self.chains.clone(), self.transitive.clone());
+        }
+        if !self.card_defs.is_empty() {
+            let definitions = self
+                .card_defs
+                .iter()
+                .map(|definition| {
+                    Ok((
+                        compact_concept(definition.marker)?,
+                        definition.min,
+                        definition.n,
+                        compact_role(definition.role)?,
+                        compact_concept(definition.filler)?,
+                        definition.exact,
+                    ))
+                })
+                .collect::<Result<Vec<_>, IncrementalReasoningError>>()?;
+            ht.set_card_defs_raw(&definitions);
+        }
         // These two paths change only worklist maintenance. They are already
         // differentially checked by the HT suite and make repeated probes viable.
         ht.set_fast_tableau();
@@ -112,6 +158,12 @@ impl CompiledHt {
         next.concepts.starts_with(&self.concepts)
             && next.roles.starts_with(&self.roles)
             && next.clauses.starts_with(&self.clauses)
+            && self.number == next.number
+            && self.nominals == next.nominals
+            && self.native_abox == next.native_abox
+            && self.card_defs == next.card_defs
+            && self.chains == next.chains
+            && self.transitive == next.transitive
     }
 }
 
@@ -128,6 +180,21 @@ pub(crate) struct IncrementalHtClassifier {
 impl IncrementalHtClassifier {
     pub(crate) fn new(clauses: &[JClause]) -> Result<Self, IncrementalReasoningError> {
         let compiled = compile_direct_ht(clauses)?;
+        Self::from_compiled(clauses, compiled)
+    }
+
+    pub(crate) fn new_typed(
+        clauses: &[JClause],
+        input: TInput,
+    ) -> Result<Self, IncrementalReasoningError> {
+        let compiled = compile_typed_ht(input)?;
+        Self::from_compiled(clauses, compiled)
+    }
+
+    fn from_compiled(
+        clauses: &[JClause],
+        compiled: CompiledHt,
+    ) -> Result<Self, IncrementalReasoningError> {
         let layout = 0;
         let mut ht = compiled.instantiate()?;
         let global = fresh_probe(&mut ht, &[], &compiled, layout, true)?;
@@ -164,6 +231,27 @@ impl IncrementalHtClassifier {
         kind: HtChangeKind,
     ) -> Result<(Self, HtDeltaStats), IncrementalReasoningError> {
         let compiled = compile_direct_ht(candidate)?;
+        self.updated_compiled(candidate, changed_clauses, kind, compiled)
+    }
+
+    pub(crate) fn updated_typed(
+        &self,
+        candidate: &[JClause],
+        changed_clauses: &[JClause],
+        kind: HtChangeKind,
+        input: TInput,
+    ) -> Result<(Self, HtDeltaStats), IncrementalReasoningError> {
+        let compiled = compile_typed_ht(input)?;
+        self.updated_compiled(candidate, changed_clauses, kind, compiled)
+    }
+
+    fn updated_compiled(
+        &self,
+        candidate: &[JClause],
+        changed_clauses: &[JClause],
+        kind: HtChangeKind,
+        compiled: CompiledHt,
+    ) -> Result<(Self, HtDeltaStats), IncrementalReasoningError> {
         let layout = self.layout.wrapping_add(1);
         let resume_compatible =
             kind == HtChangeKind::Addition && self.compiled.stable_prefix_of(&compiled);
@@ -651,6 +739,122 @@ fn compile_direct_ht(clauses: &[JClause]) -> Result<CompiledHt, IncrementalReaso
         clauses: tin.clauses,
         queries: tin.queries.into_iter().map(|id| id as C).collect(),
         number: tin.number,
+        nominals: Vec::new(),
+        native_abox: NativeAboxJson::default(),
+        card_defs: Vec::new(),
+        chains: Vec::new(),
+        transitive: Vec::new(),
+    })
+}
+
+/// Compile an already route-validated production HT input without discarding
+/// typed side state. The caller remains responsible for constructing this
+/// `TInput` through the same source projection used by the batch route.
+fn compile_typed_ht(input: TInput) -> Result<CompiledHt, IncrementalReasoningError> {
+    if input.dropped != 0 {
+        return unsupported(format!(
+            "typed HT conversion dropped {} normalized clause(s)",
+            input.dropped
+        ));
+    }
+    if !input.fenced.is_empty() {
+        let reasons = input
+            .fenced
+            .iter()
+            .map(|fence| fence.reason.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return unsupported(format!(
+            "typed HT conversion raised route fence(s): {reasons}"
+        ));
+    }
+    // The ordinary retained Ht probes do not implement the QO/SHIQ publication
+    // guards. Those automatic variants need their own checked-state adapter.
+    if input.inverse {
+        return unsupported("typed incremental HT does not yet admit inverse-role publication");
+    }
+    if !input.native_abox.negative_role_assertions.is_empty() {
+        return unsupported("typed incremental HT has no negative native-ABox role state");
+    }
+    if !input.native_abox.is_empty() && !input.native_abox.complete {
+        return unsupported("typed incremental HT requires a complete native ABox");
+    }
+    if input.concepts.len() > C::MAX as usize || input.roles.len() > R::MAX as usize {
+        return unsupported("typed HT compact concept/role id space overflow");
+    }
+
+    let queries = compact_concepts(&input.queries)?;
+    let nominals = compact_concepts(&input.nominals)?;
+    let chains = input
+        .chains
+        .iter()
+        .map(|&(first, second, head)| {
+            Ok((
+                compact_role(first as usize)?,
+                compact_role(second as usize)?,
+                compact_role(head as usize)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, IncrementalReasoningError>>()?;
+    let transitive = input
+        .transitive
+        .iter()
+        .map(|&role| compact_role(role as usize))
+        .collect::<Result<Vec<_>, IncrementalReasoningError>>()?;
+
+    // Validate every typed id before a probe can mutate an Ht graph.
+    for individual in &input.native_abox.individuals {
+        let _ = compact_concepts(&individual.proxies)?;
+        let _ = compact_concepts(&individual.assertions)?;
+    }
+    for &(role, source, target) in &input.native_abox.role_assertions {
+        let _ = compact_role(role)?;
+        if source >= input.native_abox.individuals.len()
+            || target >= input.native_abox.individuals.len()
+        {
+            return unsupported("typed HT native-ABox individual id overflow");
+        }
+    }
+    for &(left, right) in &input.native_abox.different {
+        if left >= input.native_abox.individuals.len()
+            || right >= input.native_abox.individuals.len()
+        {
+            return unsupported("typed HT native-ABox inequality id overflow");
+        }
+    }
+    for definition in &input.card_defs {
+        let _ = compact_concept(definition.marker)?;
+        let _ = compact_role(definition.role)?;
+        let _ = compact_concept(definition.filler)?;
+    }
+
+    Ok(CompiledHt {
+        concepts: input.concepts,
+        roles: input.roles,
+        clauses: input.clauses,
+        queries,
+        number: input.number,
+        nominals,
+        native_abox: input.native_abox,
+        card_defs: input.card_defs,
+        chains,
+        transitive,
+    })
+}
+
+fn compact_concepts(ids: &[usize]) -> Result<Vec<C>, IncrementalReasoningError> {
+    ids.iter().map(|&id| compact_concept(id)).collect()
+}
+
+fn compact_concept(id: usize) -> Result<C, IncrementalReasoningError> {
+    C::try_from(id).map_err(|_| IncrementalReasoningError::HtDeferred {
+        detail: "HT concept id overflow".into(),
+    })
+}
+
+fn compact_role(id: usize) -> Result<R, IncrementalReasoningError> {
+    R::try_from(id).map_err(|_| IncrementalReasoningError::HtDeferred {
+        detail: "HT role id overflow".into(),
     })
 }
 
@@ -848,5 +1052,106 @@ fn term_symbols(term: &JTerm, symbols: &mut Vec<Symbol>) {
     if let JTerm::Fun { function, arg } = term {
         symbols.push(Symbol::Function(function.clone()));
         term_symbols(arg, symbols);
+    }
+}
+
+#[cfg(test)]
+mod typed_tests {
+    use super::*;
+    use crate::orchestrate::cb_to_ht::{NativeIndividualJson, TInput};
+
+    fn concept_clause(body: usize, head: usize) -> HtClause {
+        HtClause {
+            body: vec![HAtom::Concept {
+                neg: false,
+                c: body,
+                t: 0,
+            }],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: head,
+                t: 0,
+            }],
+        }
+    }
+
+    fn source_clause(body: &str, head: &str) -> JClause {
+        let term = JTerm::Var { name: "x".into() };
+        JClause {
+            body: vec![JAtom::Concept {
+                concept: body.into(),
+                term: term.clone(),
+            }],
+            head: vec![JAtom::Concept {
+                concept: head.into(),
+                term,
+            }],
+        }
+    }
+
+    fn native_input(extra: bool) -> TInput {
+        let mut input = TInput {
+            concepts: vec!["A".into(), "B".into(), "__nom__a".into()],
+            roles: vec![],
+            clauses: vec![concept_clause(0, 1)],
+            queries: vec![0, 1],
+            nominals: vec![2],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![NativeIndividualJson {
+                    proxies: vec![2],
+                    assertions: vec![0],
+                }],
+                ..NativeAboxJson::default()
+            },
+            ..TInput::default()
+        };
+        if extra {
+            input.concepts.extend(["X".into(), "Y".into()]);
+            input.clauses.push(concept_clause(3, 4));
+            input.queries.extend([3, 4]);
+        }
+        input
+    }
+
+    #[test]
+    fn typed_native_abox_is_installed_and_classified() {
+        let classifier =
+            IncrementalHtClassifier::new_typed(&[source_clause("A", "B")], native_input(false))
+                .unwrap();
+        let result = classifier.result();
+        assert!(!result.inconsistent);
+        assert!(result
+            .subsumptions
+            .get("A")
+            .is_some_and(|supers| supers.iter().any(|name| name == "B")));
+    }
+
+    #[test]
+    fn typed_disconnected_addition_reuses_existing_probes() {
+        let before = vec![source_clause("A", "B")];
+        let classifier = IncrementalHtClassifier::new_typed(&before, native_input(false)).unwrap();
+        let added = source_clause("X", "Y");
+        let mut after = before;
+        after.push(added.clone());
+        let (_, stats) = classifier
+            .updated_typed(&after, &[added], HtChangeKind::Addition, native_input(true))
+            .unwrap();
+        assert!(stats.reused_probes > 0);
+    }
+
+    #[test]
+    fn incomplete_or_negative_native_abox_fails_closed() {
+        let clauses = [source_clause("A", "B")];
+        let mut incomplete = native_input(false);
+        incomplete.native_abox.complete = false;
+        assert!(IncrementalHtClassifier::new_typed(&clauses, incomplete).is_err());
+
+        let mut negative = native_input(false);
+        negative
+            .native_abox
+            .negative_role_assertions
+            .push((0, 0, 0));
+        assert!(IncrementalHtClassifier::new_typed(&clauses, negative).is_err());
     }
 }

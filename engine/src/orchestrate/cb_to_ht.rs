@@ -521,7 +521,7 @@ pub struct Fenced {
 /// concept/role ids. `min` ⇒ `≥n role.filler`, else `≤n role.filler`. The HT
 /// worker (`run_json`) installs these via `set_card_defs_raw`; the clausal
 /// `⋁ Eq` pigeonhole for each marker is dropped from `clauses`.
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct CardDefJson {
     pub marker: usize,
     pub min: bool,
