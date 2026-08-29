@@ -302,17 +302,27 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- entailment ----------------------------------------------------
 
     @Override public synchronized boolean isEntailed(OWLAxiom axiom) {
-        if (axiom instanceof OWLSubClassOfAxiom) {
-            OWLSubClassOfAxiom s = (OWLSubClassOfAxiom) axiom;
-            OWLClass a = s.getSubClass().isAnonymous() ? null : s.getSubClass().asOWLClass();
-            OWLClassExpression sup = s.getSuperClass();
-            if (a != null && sup instanceof OWLClass) {
-                if (sup.isOWLThing()) return true;
-                return supers.getOrDefault(find(a), Collections.emptySet())
-                        .contains(find((OWLClass) sup));
-            }
+        if (!(axiom instanceof OWLSubClassOfAxiom)) {
+            throw new UnsupportedEntailmentTypeException(axiom);
         }
-        return false;
+        OWLSubClassOfAxiom subClassOf = (OWLSubClassOfAxiom) axiom;
+        if (subClassOf.getSubClass().isAnonymous()
+                || subClassOf.getSuperClass().isAnonymous()) {
+            throw new UnsupportedEntailmentTypeException(axiom);
+        }
+        OWLClass sub = subClassOf.getSubClass().asOWLClass();
+        OWLClass sup = subClassOf.getSuperClass().asOWLClass();
+        // Classical OWL semantics: inconsistency entails every supported
+        // query; bottom and an unsatisfiable named class entail every class.
+        if (!consistent || sub.isOWLNothing() || sup.isOWLThing() || sub.equals(sup)) {
+            return true;
+        }
+        OWLClass subRep = rep.containsKey(sub) ? find(sub) : null;
+        if (subRep != null && subRep.equals(find(owlNothing))) return true;
+        OWLClass supRep = rep.containsKey(sup) ? find(sup) : null;
+        if (subRep == null || supRep == null) return false;
+        return subRep.equals(supRep)
+                || supers.getOrDefault(subRep, Collections.emptySet()).contains(supRep);
     }
 
     @Override public synchronized boolean isEntailed(Set<? extends OWLAxiom> axioms) {

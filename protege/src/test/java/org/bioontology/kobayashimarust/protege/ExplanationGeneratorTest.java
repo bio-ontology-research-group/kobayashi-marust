@@ -82,6 +82,21 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void tautologyHasOneVerifiedEmptySourceJustification() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "TautologyA");
+        OWLAxiom entailment = dataFactory.getOWLSubClassOfAxiom(a, a);
+
+        Set<Explanation<OWLAxiom>> explanations = new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(ontology)
+                .getExplanations(entailment);
+        assertEquals(1, explanations.size());
+        assertTrue(explanations.iterator().next().getAxioms().isEmpty());
+    }
+
+    @Test
     public void generatorRemainsBoundToItsCreationRevision() throws Exception {
         OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
         OWLDataFactory dataFactory = manager.getOWLDataFactory();

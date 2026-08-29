@@ -16,6 +16,14 @@ of these queries:
 - named-class unsatisfiability `A SubClassOf owl:Nothing`; or
 - ontology inconsistency.
 
+The named-class OWLAPI entailment surface also applies the standard OWL
+boundary cases: reflexive subclass queries, `owl:Nothing SubClassOf A`, and
+`A SubClassOf owl:Thing` are tautologies; an unsatisfiable named subclass
+entails every named superclass; and an inconsistent ontology entails every
+supported named-class query. A tautology has one verified empty source-axiom
+justification. `KMReasoner` and the explanation generator use the same
+semantics for these cases.
+
 Use complete IRIs. Prefix declarations in the source are resolved by exact
 IRI expansion, never by local-name matching.
 

@@ -6,6 +6,7 @@ import org.semanticweb.owlapi.apibinding.OWLManager;
 import org.semanticweb.owlapi.model.*;
 import org.semanticweb.owlapi.reasoner.OWLReasoner;
 import org.semanticweb.owlapi.reasoner.BufferingMode;
+import org.semanticweb.owlapi.reasoner.UnsupportedEntailmentTypeException;
 
 import java.io.File;
 import java.util.Set;
@@ -50,6 +51,44 @@ public class ReasonerTest {
 
     private static boolean superContains(OWLReasoner r, OWLClass sub, OWLClass sup) {
         return r.getSuperClasses(sub, false).containsEntity(sup);
+    }
+
+    @Test
+    public void entailmentSurfaceHonoursOwlTautologiesUnsatisfiabilityAndInconsistency()
+            throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "EntailA");
+        OWLClass b = cls(dataFactory, "EntailB");
+        manager.addAxiom(ontology, dataFactory.getOWLSubClassOfAxiom(
+                a, dataFactory.getOWLNothing()));
+        OWLReasoner reasoner = new KMReasonerFactory().createReasoner(ontology);
+        assertTrue(reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(a, b)));
+        assertTrue(reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(a, a)));
+        assertTrue(reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(
+                dataFactory.getOWLNothing(), b)));
+        assertTrue(reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(
+                b, dataFactory.getOWLThing())));
+        try {
+            reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(
+                    dataFactory.getOWLObjectIntersectionOf(a, b), b));
+            fail("anonymous subclass query should fail explicitly");
+        } catch (UnsupportedEntailmentTypeException expected) {
+            assertEquals(expected.getAxiom(), dataFactory.getOWLSubClassOfAxiom(
+                    dataFactory.getOWLObjectIntersectionOf(a, b), b));
+        }
+        reasoner.dispose();
+
+        OWLOntology inconsistent = manager.createOntology();
+        manager.addAxiom(inconsistent, dataFactory.getOWLSubClassOfAxiom(
+                dataFactory.getOWLThing(), dataFactory.getOWLNothing()));
+        OWLReasoner inconsistentReasoner =
+                new KMReasonerFactory().createReasoner(inconsistent);
+        assertFalse(inconsistentReasoner.isConsistent());
+        assertTrue(inconsistentReasoner.isEntailed(
+                dataFactory.getOWLSubClassOfAxiom(a, b)));
+        inconsistentReasoner.dispose();
     }
 
     /** Disjunctive subsumption: A ⊑ ∃-free B⊔C, B⊑D, C⊑D  ⊢  A ⊑ D. */
