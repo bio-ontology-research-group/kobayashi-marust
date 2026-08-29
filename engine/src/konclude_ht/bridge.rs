@@ -11737,6 +11737,36 @@ pub fn bridged_classify_opts(
     )
 }
 
+/// Classify only the requested named subjects through the same production
+/// complete-answer-or-defer bridge used by [`bridged_classify`].  The complete
+/// typed ontology, including native ABox state, is still installed and its
+/// global consistency task still runs.  Only taxonomy subject probes are
+/// restricted.  This is the incremental adapter seam: unaffected subject rows
+/// may be retained while changed dependency components are recomputed without
+/// substituting the legacy HT algorithm for the Konclude-derived bridge.
+pub fn bridged_classify_queries(tin: &TInput, subjects: &[usize]) -> Option<BridgedClassification> {
+    if !bridge_input_guard(tin)
+        || subjects
+            .iter()
+            .any(|subject| *subject >= tin.concepts.len())
+    {
+        return None;
+    }
+    let trigger_absorb = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
+    let use_saturation = std::env::var_os("KM_HT_NO_SATURATION").is_none()
+        && (std::env::var_os("KM_HT_SATURATION").is_some() || trigger_absorb);
+    let use_satcache = use_saturation
+        && std::env::var_os("KM_HT_NO_SATCACHE").is_none()
+        && (std::env::var_os("KM_HT_SATCACHE").is_some() || trigger_absorb);
+    bridged_classify_opts_with_trigger_absorption_inner(
+        tin,
+        use_saturation,
+        use_satcache,
+        trigger_absorb,
+        Some(subjects),
+    )
+}
+
 fn bridged_classify_opts_with_trigger_absorption(
     tin: &TInput,
     use_saturation: bool,
@@ -18696,6 +18726,47 @@ mod tests {
             ctx: None,
             unsupported: 0,
         }
+    }
+
+    #[test]
+    fn production_subject_subset_matches_full_taxonomy_projection() {
+        let env = bridge_ofn(
+            "Prefix(:=<http://example.org/>)\n\
+             Ontology(\n\
+               Declaration(Class(:A)) Declaration(Class(:B))\n\
+               Declaration(Class(:C)) Declaration(Class(:X))\n\
+               Declaration(Class(:Y))\n\
+               SubClassOf(:A :B) SubClassOf(:B :C)\n\
+               SubClassOf(:X :Y)\n\
+             )",
+        );
+        let subject = env
+            .tin
+            .concepts
+            .iter()
+            .position(|name| name.ends_with("A"))
+            .expect("A is represented");
+        let full = bridged_classify(&env.tin).expect("full bridge classification");
+        let partial =
+            bridged_classify_queries(&env.tin, &[subject]).expect("subject bridge classification");
+
+        assert_eq!(partial.consistent, full.consistent);
+        assert_eq!(
+            partial.unsatisfiable,
+            full.unsatisfiable
+                .into_iter()
+                .filter(|candidate| *candidate == subject)
+                .collect::<Vec<_>>()
+        );
+        let mut expected = full
+            .subsumptions
+            .into_iter()
+            .filter(|(sub, _)| *sub == subject)
+            .collect::<Vec<_>>();
+        let mut actual = partial.subsumptions;
+        expected.sort_unstable();
+        actual.sort_unstable();
+        assert_eq!(actual, expected);
     }
 
     #[test]
