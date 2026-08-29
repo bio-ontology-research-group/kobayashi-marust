@@ -44,6 +44,11 @@
   Explanation API, including bounded enumeration, cancellation, imports,
   duplicate and annotated axioms, cardinality clashes, rules, native ABoxes,
   and automatic route migration during minimisation.
+- Make OWLAPI incremental and explanation cancellation, timeout, and disposal
+  terminate the complete native process tree. Protégé now waits for
+  route-worker descendants to exit instead of reporting cancellation while an
+  orphaned reasoner still consumes memory; the integration test launches and
+  verifies a real child process.
 
 ## [1.1.0] - 2026-08-26
 

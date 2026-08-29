@@ -228,6 +228,9 @@ the selected entailment, lets the user bound the number of justifications,
 runs outside Swing's event thread, and offers cancellation. It labels every
 displayed support as verified and subset-minimal and distinguishes a complete
 enumeration from a bounded prefix for which more supports may exist.
+Cancellation and timeout stop and reap both the `km explain` supervisor and
+all native route workers it started, so closing a request cannot leave an
+orphaned reasoner consuming memory in the background.
 
 The upstream
 [OWL Explanation library](https://github.com/matthewhorridge/owlexplanation)

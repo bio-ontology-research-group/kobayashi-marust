@@ -487,10 +487,16 @@ public class ExplanationGeneratorTest {
 
         Path marker = Files.createTempFile("km-explain-started-", ".marker");
         Files.delete(marker);
+        Path childPid = Files.createTempFile("km-explain-child-", ".pid");
+        Files.delete(childPid);
         Path worker = Files.createTempFile("km-explain-worker-", ".sh");
         String script = "#!/bin/sh\n"
                 + "printf started > '" + marker.toString().replace("'", "'\\''") + "'\n"
-                + "exec sleep 60\n";
+                + "sleep 60 &\n"
+                + "child=$!\n"
+                + "printf '%s' \"$child\" > '"
+                + childPid.toString().replace("'", "'\\''") + "'\n"
+                + "wait \"$child\"\n";
         Files.write(worker, script.getBytes(StandardCharsets.UTF_8));
         assertTrue(worker.toFile().setExecutable(true));
 
@@ -527,20 +533,29 @@ public class ExplanationGeneratorTest {
         try {
             request.start();
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            while (!Files.exists(marker) && System.nanoTime() < deadline) {
+            while ((!Files.exists(marker) || !Files.exists(childPid))
+                    && System.nanoTime() < deadline) {
                 Thread.sleep(10);
             }
             assertTrue("fake native explanation worker did not start", Files.exists(marker));
+            assertTrue("fake native child did not start", Files.exists(childPid));
+            long nativeChild = Long.parseLong(new String(
+                    Files.readAllBytes(childPid), StandardCharsets.UTF_8));
+            assertTrue("fake native child was not alive",
+                    ProcessHandle.of(nativeChild).map(ProcessHandle::isAlive).orElse(false));
             cancelled.set(true);
             request.join(TimeUnit.SECONDS.toMillis(5));
             assertFalse("native explanation request survived cancellation", request.isAlive());
             assertTrue(outcome.get() instanceof ExplanationGeneratorInterruptedException);
+            assertFalse("native explanation child survived cancellation",
+                    ProcessHandle.of(nativeChild).map(ProcessHandle::isAlive).orElse(false));
         } finally {
             cancelled.set(true);
             request.interrupt();
             request.join(TimeUnit.SECONDS.toMillis(1));
             Files.deleteIfExists(worker);
             Files.deleteIfExists(marker);
+            Files.deleteIfExists(childPid);
         }
     }
 }

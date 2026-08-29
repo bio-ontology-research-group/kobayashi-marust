@@ -146,12 +146,12 @@ public final class Classifier {
                 line = pending.get(timeoutSeconds, TimeUnit.SECONDS);
             } catch (InterruptedException error) {
                 pending.cancel(true);
-                process.destroyForcibly();
+                NativeProcessTree.terminateAndWait(process);
                 Thread.currentThread().interrupt();
                 throw failure("KM incremental request was interrupted", error);
             } catch (Exception error) {
                 pending.cancel(true);
-                process.destroyForcibly();
+                NativeProcessTree.terminateAndWait(process);
                 throw failure("KM incremental request timed out after "
                         + timeoutSeconds + " seconds", error);
             }
@@ -190,7 +190,7 @@ public final class Classifier {
         /** Cancel an active native request without waiting for the session lock. */
         public void interrupt() {
             closed = true;
-            process.destroyForcibly();
+            NativeProcessTree.terminateAndWait(process);
             reads.shutdownNow();
             try { input.close(); } catch (Exception ignored) { }
             try { output.close(); } catch (Exception ignored) { }
@@ -202,13 +202,7 @@ public final class Classifier {
             if (closed) return;
             closed = true;
             try { input.close(); } catch (Exception ignored) { }
-            if (process.isAlive()) process.destroy();
-            try {
-                if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly();
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                process.destroyForcibly();
-            }
+            NativeProcessTree.terminateAndWait(process);
             reads.shutdownNow();
             try { Files.deleteIfExists(log); } catch (Exception ignored) { }
         }
@@ -295,7 +289,7 @@ public final class Classifier {
             Process proc = pb.start();
 
             if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
-                proc.destroyForcibly();
+                NativeProcessTree.terminateAndWait(proc);
                 throw new RuntimeException(
                         "Kobayashi-MaRust classification timed out after "
                         + timeout + " seconds");

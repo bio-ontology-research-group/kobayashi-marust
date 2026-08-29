@@ -162,6 +162,9 @@ KM runs outside the Protégé JVM, so its native memory is separate from the Jav
 heap. Errors, timeouts, and any result that reports dropped clauses are
 reported as reasoner failures in Protégé rather than displayed as a partial
 classification.
+Incremental-session and explanation cancellation, timeout, and disposal stop
+the complete native process tree and wait for route workers to exit. They do
+not leave an orphaned worker consuming memory after the OWLAPI call returns.
 
 ## Test coverage
 

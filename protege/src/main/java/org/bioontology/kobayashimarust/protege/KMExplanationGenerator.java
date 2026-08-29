@@ -173,7 +173,7 @@ public final class KMExplanationGenerator implements ExplanationGenerator<OWLAxi
             throw error;
         } catch (InterruptedException error) {
             if (process != null) {
-                terminateAndWait(process);
+                NativeProcessTree.terminateAndWait(process);
             }
             Thread.currentThread().interrupt();
             throw new ExplanationGeneratorInterruptedException();
@@ -191,29 +191,15 @@ public final class KMExplanationGenerator implements ExplanationGenerator<OWLAxi
                 + TimeUnit.SECONDS.toNanos(configuration.getTimeoutSeconds());
         while (!process.waitFor(100, TimeUnit.MILLISECONDS)) {
             if (progressMonitor.isCancelled()) {
-                terminateAndWait(process);
+                NativeProcessTree.terminateAndWait(process);
                 throw new ExplanationGeneratorInterruptedException();
             }
             if (System.nanoTime() >= deadline) {
-                terminateAndWait(process);
+                NativeProcessTree.terminateAndWait(process);
                 throw new ExplanationException(
                         "KM explanation timed out after "
                                 + configuration.getTimeoutSeconds() + " seconds");
             }
-        }
-    }
-
-    /** Stop and reap a native request before its temporary files are removed. */
-    private static void terminateAndWait(Process process) {
-        process.destroy();
-        try {
-            if (!process.waitFor(500, TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly();
-                process.waitFor(5, TimeUnit.SECONDS);
-            }
-        } catch (InterruptedException error) {
-            process.destroyForcibly();
-            Thread.currentThread().interrupt();
         }
     }
 
