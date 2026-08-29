@@ -16,7 +16,9 @@ use serde_json::{json, Value};
 
 use crate::frontend::FrontendResult;
 use crate::incremental::{ChangeStrategy, ClauseId, IncrementalChange, IncrementalClassifier};
-use crate::incremental_ht::{HtChangeKind, IncrementalHtClassifier, IncrementalQoClassifier};
+use crate::incremental_ht::{
+    HtChangeKind, IncrementalBridgeClassifier, IncrementalHtClassifier, IncrementalQoClassifier,
+};
 use crate::incremental_positive_abox::IncrementalPositiveAboxClassifier;
 use crate::incremental_rules::IncrementalRulesClassifier;
 use crate::json_io::JClause;
@@ -52,6 +54,10 @@ enum SourceBackend {
         ids: Vec<ClauseId>,
     },
     PositiveAbox(IncrementalPositiveAboxClassifier),
+    Bridge {
+        classifier: IncrementalBridgeClassifier,
+        clauses: Vec<JClause>,
+    },
     TypedHt {
         classifier: IncrementalHtClassifier,
         clauses: Vec<JClause>,
@@ -109,6 +115,25 @@ impl SourceIncrementalClassifier {
                     classification,
                     backend: SourceBackend::PositiveAbox(classifier),
                 });
+            }
+        }
+        if let Some(input) = with_route_environment(&route, || {
+            crate::orchestrate::race::prepare_incremental_bridge(&frontend)
+        })? {
+            if let Ok(classifier) = IncrementalBridgeClassifier::new_typed(&frontend.clauses, input)
+            {
+                let classification = map_incremental_result(&frontend, classifier.result());
+                return Ok(Self {
+                    revision: 0,
+                    route,
+                    frontend,
+                    classification,
+                    backend: SourceBackend::Bridge {
+                        classifier,
+                        clauses: Vec::new(),
+                    },
+                }
+                .with_live_clauses());
             }
         }
         if let Some(input) = with_route_environment(&route, || {
@@ -171,6 +196,9 @@ impl SourceIncrementalClassifier {
         if let SourceBackend::TypedHt { clauses, .. } = &mut self.backend {
             *clauses = self.frontend.clauses.clone();
         }
+        if let SourceBackend::Bridge { clauses, .. } = &mut self.backend {
+            *clauses = self.frontend.clauses.clone();
+        }
         if let SourceBackend::QuasiOrder { clauses, .. } = &mut self.backend {
             *clauses = self.frontend.clauses.clone();
         }
@@ -223,6 +251,58 @@ impl SourceIncrementalClassifier {
                     removed_rules,
                     meaningful_incremental_update: meaningful,
                 });
+            }
+        }
+
+        if let SourceBackend::Bridge {
+            classifier,
+            clauses,
+        } = &mut self.backend
+        {
+            let old_ids: Vec<ClauseId> = (0..clauses.len() as ClauseId).collect();
+            let (removed_ids, additions) = clause_delta(clauses, &old_ids, &candidate.clauses);
+            let mut changed: Vec<JClause> = removed_ids
+                .iter()
+                .filter_map(|id| clauses.get(*id as usize).cloned())
+                .collect();
+            changed.extend(additions.iter().cloned());
+            let kind = match (removed_ids.is_empty(), additions.is_empty()) {
+                (true, false) => HtChangeKind::Addition,
+                (false, true) => HtChangeKind::Removal,
+                _ => HtChangeKind::Replacement,
+            };
+            if let Some(input) = with_route_environment(&route_after, || {
+                crate::orchestrate::race::prepare_incremental_bridge(&candidate)
+            })? {
+                if let Ok((next, stats)) = with_route_environment(&route_after, || {
+                    classifier.updated_typed(&candidate.clauses, &changed, kind, input)
+                })? {
+                    let meaningful = stats.reused_queries > 0;
+                    let classification = map_incremental_result(&candidate, next.result());
+                    *classifier = next;
+                    *clauses = candidate.clauses.clone();
+                    self.revision += 1;
+                    self.route = route_after.clone();
+                    self.frontend = candidate;
+                    self.classification = classification;
+                    return Ok(SourceIncrementalReceipt {
+                        revision: self.revision,
+                        route_migrated: route_before != route_after,
+                        route_before,
+                        route_after,
+                        strategy: ChangeStrategy::HtDelta,
+                        reused_fixpoint: meaningful,
+                        reused_subsumptions: stats.reused_subsumptions,
+                        reused_edges: 0,
+                        retained_states: stats.reused_queries,
+                        invalidated_states: stats.rebuilt_queries,
+                        added_normalized_clauses: additions.len(),
+                        removed_normalized_clauses: removed_ids.len(),
+                        added_rules: 0,
+                        removed_rules: 0,
+                        meaningful_incremental_update: meaningful,
+                    });
+                }
             }
         }
 
@@ -467,6 +547,49 @@ impl SourceIncrementalClassifier {
         }
 
         if let Some(input) = with_route_environment(&route_after, || {
+            crate::orchestrate::race::prepare_incremental_bridge(&candidate)
+        })? {
+            if let Ok(classifier) =
+                IncrementalBridgeClassifier::new_typed(&candidate.clauses, input)
+            {
+                let classification = map_incremental_result(&candidate, classifier.result());
+                let (removed, added) =
+                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                let (removed_rules, added_rules) =
+                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                let rebuilt_states = candidate
+                    .clauses
+                    .len()
+                    .saturating_add(candidate.rules.len());
+                self.revision += 1;
+                self.route = route_after.clone();
+                self.frontend = candidate;
+                self.classification = classification;
+                self.backend = SourceBackend::Bridge {
+                    classifier,
+                    clauses: self.frontend.clauses.clone(),
+                };
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != route_after,
+                    route_before,
+                    route_after,
+                    strategy: ChangeStrategy::ExactRebuild,
+                    reused_fixpoint: false,
+                    reused_subsumptions: 0,
+                    reused_edges: 0,
+                    retained_states: 0,
+                    invalidated_states: rebuilt_states,
+                    added_normalized_clauses: added,
+                    removed_normalized_clauses: removed,
+                    added_rules,
+                    removed_rules,
+                    meaningful_incremental_update: false,
+                });
+            }
+        }
+
+        if let Some(input) = with_route_environment(&route_after, || {
             crate::orchestrate::race::prepare_incremental_ht(&candidate)
         })? {
             if let Ok(classifier) = IncrementalHtClassifier::new_typed(&candidate.clauses, input) {
@@ -568,6 +691,7 @@ impl SourceIncrementalClassifier {
             self.backend,
             SourceBackend::Incremental { .. }
                 | SourceBackend::PositiveAbox(_)
+                | SourceBackend::Bridge { .. }
                 | SourceBackend::TypedHt { .. }
                 | SourceBackend::QuasiOrder { .. }
                 | SourceBackend::Rules(_)

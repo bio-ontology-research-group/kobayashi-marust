@@ -604,6 +604,39 @@ pub(crate) fn prepare_incremental_qo(
     .then_some(tin)
 }
 
+/// Build the exact typed input for a retained Konclude-derived bridge session.
+/// The bridge itself repeats its stronger complete-answer-or-defer checks when
+/// the adapter is initialized and after every transaction.
+pub(crate) fn prepare_incremental_bridge(
+    frontend: &crate::frontend::FrontendResult,
+) -> Option<cb_to_ht::TInput> {
+    if !frontend.rules.is_empty() {
+        return None;
+    }
+    let named = frontend.named.iter().cloned().collect();
+    let tin = cb_to_ht::convert(
+        &frontend.clauses,
+        Some(frontend.rbox.as_slice()),
+        &named,
+        &frontend.cardinalities,
+        &frontend.definers,
+        &frontend.source_axioms,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        &[],
+        false,
+    );
+    let trigger_bridge = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
+    let source_tbox = trigger_bridge
+        && !tin.source_axioms.is_empty()
+        && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
+    bridge_candidate_from(
+        &tin,
+        std::env::var_os("KM_HT_BRIDGE").is_some() || trigger_bridge,
+        source_tbox,
+    )
+    .then_some(tin)
+}
+
 /// Fences that belong to the legacy fast tableau rather than the Konclude
 /// completion bridge. The bridge has native inverse-role and cardinality
 /// processing, so their combination is not a coverage loss there. Complex

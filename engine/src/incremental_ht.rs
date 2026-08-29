@@ -46,6 +46,13 @@ pub(crate) struct QoDeltaStats {
     pub reused_subsumptions: usize,
 }
 
+#[derive(Clone, Debug, Default)]
+pub(crate) struct BridgeDeltaStats {
+    pub reused_queries: usize,
+    pub rebuilt_queries: usize,
+    pub reused_subsumptions: usize,
+}
+
 #[derive(Clone)]
 struct ProbeRecord {
     /// `true` means the probe seed is satisfiable.
@@ -298,6 +305,194 @@ impl IncrementalQoClassifier {
             },
             stats,
         ))
+    }
+}
+
+/// Retained taxonomy rows for the production Konclude-derived bridge.
+/// Rebuilt rows always go through the bridge's complete-answer-or-defer path;
+/// this adapter never substitutes the legacy HT classifier.
+pub(crate) struct IncrementalBridgeClassifier {
+    source_clauses: Vec<JClause>,
+    input: TInput,
+    side_fingerprint: Vec<u8>,
+    result: IncrementalResult,
+}
+
+impl IncrementalBridgeClassifier {
+    pub(crate) fn new_typed(
+        clauses: &[JClause],
+        input: TInput,
+    ) -> Result<Self, IncrementalReasoningError> {
+        let side_fingerprint = bridge_side_fingerprint(&input)?;
+        let classification =
+            crate::konclude_ht::bridge::bridged_classify(&input).ok_or_else(|| {
+                IncrementalReasoningError::HtDeferred {
+                    detail: "bridge incremental initialization deferred".into(),
+                }
+            })?;
+        let result = bridge_result(&input, classification, None);
+        Ok(Self {
+            source_clauses: clauses.to_vec(),
+            input,
+            side_fingerprint,
+            result,
+        })
+    }
+
+    pub(crate) fn result(&self) -> IncrementalResult {
+        self.result.clone()
+    }
+
+    pub(crate) fn updated_typed(
+        &self,
+        candidate: &[JClause],
+        changed_clauses: &[JClause],
+        kind: HtChangeKind,
+        input: TInput,
+    ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
+        let side_fingerprint = bridge_side_fingerprint(&input)?;
+        let queries = bridge_query_names(&input);
+        let old_queries = bridge_query_names(&self.input);
+        let side_changed = self.side_fingerprint != side_fingerprint || old_queries != queries;
+        let mut affected =
+            affected_concepts(&self.source_clauses, candidate, changed_clauses, &queries);
+        if side_changed || self.result.inconsistent || kind == HtChangeKind::Replacement {
+            affected.extend(queries.iter().cloned());
+        }
+        let mut rebuilt_ids: Vec<usize> = affected
+            .iter()
+            .filter_map(|name| {
+                input
+                    .concepts
+                    .iter()
+                    .position(|candidate| candidate == name)
+            })
+            .collect();
+        rebuilt_ids.sort_unstable();
+        rebuilt_ids.dedup();
+
+        let classification =
+            crate::konclude_ht::bridge::bridged_classify_queries(&input, &rebuilt_ids).ok_or_else(
+                || IncrementalReasoningError::HtDeferred {
+                    detail: "bridge incremental subject reclassification deferred".into(),
+                },
+            )?;
+        let rebuilt = bridge_result(&input, classification, Some(&rebuilt_ids));
+        let result = if rebuilt.inconsistent {
+            result_from_inconsistent_queries(&queries)
+        } else {
+            let mut merged = self.result.clone();
+            merged.inconsistent = false;
+            merged
+                .subsumptions
+                .retain(|subject, _| !affected.contains(subject));
+            for (subject, supers) in rebuilt.subsumptions {
+                merged.subsumptions.insert(subject, supers);
+            }
+            for query in &queries {
+                merged.subsumptions.entry(query.clone()).or_default();
+            }
+            merged
+                .subsumptions
+                .retain(|subject, _| queries.contains(subject));
+            merged.dropped = 0;
+            merged.unresolved.clear();
+            merged
+        };
+        let stats = BridgeDeltaStats {
+            reused_queries: queries.len().saturating_sub(affected.len()),
+            rebuilt_queries: affected.len(),
+            reused_subsumptions: retained_pair_count(&self.result, &result),
+        };
+        Ok((
+            Self {
+                source_clauses: candidate.to_vec(),
+                input,
+                side_fingerprint,
+                result,
+            },
+            stats,
+        ))
+    }
+}
+
+fn bridge_query_names(input: &TInput) -> Vec<String> {
+    input
+        .queries
+        .iter()
+        .filter_map(|query| input.concepts.get(*query).cloned())
+        .collect()
+}
+
+fn bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoningError> {
+    let mut side =
+        serde_json::to_value(input).map_err(|error| IncrementalReasoningError::HtDeferred {
+            detail: format!("cannot fingerprint typed bridge state: {error}"),
+        })?;
+    if let Some(object) = side.as_object_mut() {
+        for derived_clause_state in [
+            "clauses",
+            "queries",
+            "source_axioms",
+            "definers",
+            "direct_projection_source",
+            "mixed_projection_source",
+            "bundle_projection_source",
+        ] {
+            object.remove(derived_clause_state);
+        }
+    }
+    serde_json::to_vec(&side).map_err(|error| IncrementalReasoningError::HtDeferred {
+        detail: format!("cannot encode typed bridge fingerprint: {error}"),
+    })
+}
+
+fn bridge_result(
+    input: &TInput,
+    classification: crate::konclude_ht::bridge::BridgedClassification,
+    subjects: Option<&[usize]>,
+) -> IncrementalResult {
+    let query_ids: Vec<usize> = subjects
+        .map(Vec::from)
+        .unwrap_or_else(|| input.queries.clone());
+    let query_names: Vec<String> = query_ids
+        .iter()
+        .filter_map(|id| input.concepts.get(*id).cloned())
+        .collect();
+    if !classification.consistent {
+        return result_from_inconsistent_queries(&query_names);
+    }
+    let mut relation: BTreeMap<String, BTreeSet<String>> = query_names
+        .iter()
+        .cloned()
+        .map(|name| (name, BTreeSet::new()))
+        .collect();
+    for subject in classification.unsatisfiable {
+        if let Some(name) = input.concepts.get(subject) {
+            relation
+                .entry(name.clone())
+                .or_default()
+                .insert("owl:Nothing".into());
+        }
+    }
+    for (subject, object) in classification.subsumptions {
+        if let (Some(subject), Some(object)) =
+            (input.concepts.get(subject), input.concepts.get(object))
+        {
+            relation
+                .entry(subject.clone())
+                .or_default()
+                .insert(object.clone());
+        }
+    }
+    IncrementalResult {
+        subsumptions: relation
+            .into_iter()
+            .map(|(subject, objects)| (subject, objects.into_iter().collect()))
+            .collect(),
+        inconsistent: false,
+        dropped: 0,
+        unresolved: Vec::new(),
     }
 }
 
@@ -1413,6 +1608,19 @@ mod typed_tests {
         input
     }
 
+    fn bridge_input(extra: bool) -> TInput {
+        let mut input = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into(), "X".into(), "Y".into()],
+            clauses: vec![concept_clause(0, 1), concept_clause(3, 4)],
+            queries: vec![0, 1, 2, 3, 4],
+            ..TInput::default()
+        };
+        if extra {
+            input.clauses.push(concept_clause(1, 2));
+        }
+        input
+    }
+
     #[test]
     fn typed_native_abox_is_installed_and_classified() {
         let classifier =
@@ -1534,6 +1742,46 @@ mod typed_tests {
             .subsumptions
             .get("X")
             .is_some_and(|supers| supers.iter().any(|name| name == "Y")));
+    }
+
+    #[test]
+    fn bridge_disconnected_changes_reuse_unaffected_subject_rows() {
+        let before = vec![source_clause("A", "B"), source_clause("X", "Y")];
+        let classifier =
+            IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
+        let added = source_clause("B", "C");
+        let mut after = before.clone();
+        after.push(added.clone());
+        let (next, addition_stats) = classifier
+            .updated_typed(
+                &after,
+                &[added.clone()],
+                HtChangeKind::Addition,
+                bridge_input(true),
+            )
+            .unwrap();
+        let fresh = IncrementalBridgeClassifier::new_typed(&after, bridge_input(true)).unwrap();
+        assert_eq!(next.result(), fresh.result());
+        assert!(addition_stats.reused_queries >= 2);
+        assert!(addition_stats.rebuilt_queries >= 3);
+        assert!(next
+            .result()
+            .subsumptions
+            .get("A")
+            .is_some_and(|supers| supers.iter().any(|name| name == "C")));
+
+        let (restored, removal_stats) = next
+            .updated_typed(
+                &before,
+                &[added],
+                HtChangeKind::Removal,
+                bridge_input(false),
+            )
+            .unwrap();
+        let fresh_before =
+            IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
+        assert_eq!(restored.result(), fresh_before.result());
+        assert!(removal_stats.reused_queries >= 2);
     }
 
     #[test]
