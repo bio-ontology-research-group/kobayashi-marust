@@ -2074,10 +2074,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             &mut dep_con_des,
                             &mut dep_track_point,
                         );
-                    debug_assert!(
-                        found && dep_track_point.is_some(),
-                        "expandCachedConcepts: missing dependency"
-                    );
+                    // A cached suffix can outlive one of its dependency
+                    // descriptors when a query-local calculation starts from
+                    // a shorter label prefix. This is a cache miss, not an
+                    // invariant failure: decline this cached expansion and let
+                    // ordinary processing derive the concept if applicable.
+                    // Release builds have always taken this fail-safe branch;
+                    // keep debug builds behaviorally identical.
                     if !found || dep_track_point.is_none() {
                         dependencies_present = false;
                         break;

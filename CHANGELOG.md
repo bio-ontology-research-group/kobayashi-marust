@@ -64,6 +64,10 @@
   the unsupported change and adding a valid axiom starts a clean native
   session and publishes the recovered classification without claiming retained
   delta work.
+- Treat an absent signature-expansion-cache dependency as the cache miss that
+  the completion handler already represents. Debug builds now take the same
+  ordinary-derivation fallback as release builds instead of aborting automatic
+  bridge initialization on a recoverable stale suffix.
 
 ## [1.1.0] - 2026-08-26
 
