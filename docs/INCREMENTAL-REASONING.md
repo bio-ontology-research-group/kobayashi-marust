@@ -153,6 +153,17 @@ exact TBox taxonomy, rejects unsatisfiable asserted classes, and removes its
 internal extra queries before publication. A rejected certificate leaves the
 previous revision live and proceeds through exact automatic classification.
 
+The nominal/number-restriction ABox route retains its typed HT probes and
+completed satisfiable models. Every revision reconstructs the same nominal
+bridges, cardinality definitions, RBox, native individual assertions, and
+supported inverse-functional equality clause used by batch classification.
+Negative object-property assertions become guarded clash clauses instead of
+being dropped from the incremental transport. A retained SAT model is accepted
+only after replay reaches a complete clash-free model and the no-blocking
+nominal-introduction certificate still finds no number-role edge to a
+non-successor. If either preparation or this post-replay check declines, KM
+runs the exact automatic fallback and does not claim a meaningful update.
+
 Typed automatic families whose dedicated adapter declines take a visible
 `exact_rebuild` safety fallback. The receipt sets
 `meaningful_incremental_update=false` for that fallback. This remains

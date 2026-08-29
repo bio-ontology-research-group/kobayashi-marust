@@ -520,6 +520,14 @@ impl IncrementalHtClassifier {
         Self::from_compiled(clauses, compiled)
     }
 
+    pub(crate) fn new_nominal_ni_typed(
+        clauses: &[JClause],
+        input: TInput,
+    ) -> Result<Self, IncrementalReasoningError> {
+        let compiled = compile_nominal_ni_typed_ht(input)?;
+        Self::from_compiled(clauses, compiled)
+    }
+
     pub(crate) fn new_typed(
         clauses: &[JClause],
         input: TInput,
@@ -590,6 +598,17 @@ impl IncrementalHtClassifier {
         input: TInput,
     ) -> Result<(Self, HtDeltaStats), IncrementalReasoningError> {
         let compiled = compile_card_typed_ht(input)?;
+        self.updated_compiled(candidate, changed_clauses, kind, compiled)
+    }
+
+    pub(crate) fn updated_nominal_ni_typed(
+        &self,
+        candidate: &[JClause],
+        changed_clauses: &[JClause],
+        kind: HtChangeKind,
+        input: TInput,
+    ) -> Result<(Self, HtDeltaStats), IncrementalReasoningError> {
+        let compiled = compile_nominal_ni_typed_ht(input)?;
         self.updated_compiled(candidate, changed_clauses, kind, compiled)
     }
 
@@ -1213,6 +1232,115 @@ fn compile_card_typed_ht(mut input: TInput) -> Result<CompiledHt, IncrementalRea
     }
     input.fenced.clear();
     compile_typed_ht_mode(input, true)
+}
+
+fn compile_nominal_ni_typed_ht(mut input: TInput) -> Result<CompiledHt, IncrementalReasoningError> {
+    if input.nominals.is_empty() || !input.number {
+        return unsupported("nominal-NI incremental HT requires nominal and number state");
+    }
+    if input.fenced.iter().any(|fence| {
+        !matches!(
+            fence.reason.as_str(),
+            "inverse+number(SHIQ)" | "nominal+inverse(SHOI/SHOIQ)"
+        ) && !(fence.reason == "inverse-functional"
+            && incremental_inverse_functional_clause_retained(&input, &fence.detail))
+    }) {
+        return unsupported("nominal-NI incremental HT has an unsupported route fence");
+    }
+
+    // The batch consumer reconstructs a guarded clash clause for every
+    // negative native role assertion not already present in the converted
+    // TBox. Carry the same semantics into retained probes before clearing the
+    // transport-only negative assertion list.
+    for &(role, source, target) in &input.native_abox.negative_role_assertions {
+        let source_proxy = input
+            .native_abox
+            .individuals
+            .get(source)
+            .and_then(|individual| individual.proxies.first())
+            .copied()
+            .ok_or_else(|| IncrementalReasoningError::HtDeferred {
+                detail: "nominal-NI negative role source has no proxy".into(),
+            })?;
+        let target_proxy = input
+            .native_abox
+            .individuals
+            .get(target)
+            .and_then(|individual| individual.proxies.first())
+            .copied()
+            .ok_or_else(|| IncrementalReasoningError::HtDeferred {
+                detail: "nominal-NI negative role target has no proxy".into(),
+            })?;
+        if role >= input.roles.len()
+            || source_proxy >= input.concepts.len()
+            || target_proxy >= input.concepts.len()
+        {
+            return unsupported("nominal-NI negative role assertion id overflow");
+        }
+        let clash = HtClause {
+            body: vec![
+                HAtom::Concept {
+                    neg: false,
+                    c: source_proxy,
+                    t: 0,
+                },
+                HAtom::Role {
+                    r: role,
+                    s: 0,
+                    t: 1,
+                },
+                HAtom::Concept {
+                    neg: false,
+                    c: target_proxy,
+                    t: 1,
+                },
+            ],
+            head: Vec::new(),
+        };
+        if !input.clauses.contains(&clash) {
+            input.clauses.push(clash);
+        }
+    }
+    input.native_abox.negative_role_assertions.clear();
+    input.fenced.clear();
+    compile_typed_ht_mode(input, true)
+}
+
+fn incremental_inverse_functional_clause_retained(input: &TInput, role_name: &str) -> bool {
+    let Some(role) = input.roles.iter().position(|name| name == role_name) else {
+        return false;
+    };
+    input.clauses.iter().any(|clause| {
+        clause.head.iter().any(|head| {
+            let HAtom::Eq { s: left, t: right } = head else {
+                return false;
+            };
+            clause.body.iter().any(|first| {
+                let HAtom::Role {
+                    r: first_role,
+                    s: first_source,
+                    t: first_target,
+                } = first
+                else {
+                    return false;
+                };
+                *first_role == role
+                    && clause.body.iter().any(|second| {
+                        matches!(
+                            second,
+                            HAtom::Role {
+                                r: second_role,
+                                s: second_source,
+                                t: second_target,
+                            } if *second_role == role
+                                && first_source == left
+                                && second_source == right
+                                && first_target == second_target
+                        )
+                    })
+            })
+        })
+    })
 }
 
 fn compile_typed_ht_mode(

@@ -62,6 +62,7 @@ enum SourceBackend {
         classifier: IncrementalHtClassifier,
         clauses: Vec<JClause>,
         card: bool,
+        nominal_ni: bool,
     },
     ProxyCard {
         classifier: IncrementalHtClassifier,
@@ -163,6 +164,29 @@ impl SourceIncrementalClassifier {
                         classifier,
                         clauses: Vec::new(),
                         card: true,
+                        nominal_ni: false,
+                    },
+                }
+                .with_live_clauses());
+            }
+        }
+        if let Some(input) = with_route_environment(&route, || {
+            crate::orchestrate::race::prepare_incremental_nominal_ni(&frontend)
+        })? {
+            if let Ok(classifier) =
+                IncrementalHtClassifier::new_nominal_ni_typed(&frontend.clauses, input)
+            {
+                let classification = map_incremental_result(&frontend, classifier.result());
+                return Ok(Self {
+                    revision: 0,
+                    route,
+                    frontend,
+                    classification,
+                    backend: SourceBackend::TypedHt {
+                        classifier,
+                        clauses: Vec::new(),
+                        card: false,
+                        nominal_ni: true,
                     },
                 }
                 .with_live_clauses());
@@ -201,6 +225,7 @@ impl SourceIncrementalClassifier {
                         classifier,
                         clauses: Vec::new(),
                         card: false,
+                        nominal_ni: false,
                     },
                 }
                 .with_live_clauses());
@@ -431,9 +456,18 @@ impl SourceIncrementalClassifier {
         }
 
         let typed_ht_card = matches!(&self.backend, SourceBackend::TypedHt { card: true, .. });
+        let typed_ht_nominal_ni = matches!(
+            &self.backend,
+            SourceBackend::TypedHt {
+                nominal_ni: true,
+                ..
+            }
+        );
         let typed_ht_input = with_route_environment(&route_after, || {
             if typed_ht_card {
                 crate::orchestrate::race::prepare_incremental_card(&candidate)
+            } else if typed_ht_nominal_ni {
+                crate::orchestrate::race::prepare_incremental_nominal_ni(&candidate)
             } else {
                 crate::orchestrate::race::prepare_incremental_ht(&candidate)
             }
@@ -443,6 +477,7 @@ impl SourceIncrementalClassifier {
                 classifier,
                 clauses,
                 card,
+                nominal_ni,
             },
             Some(input),
         ) = (&self.backend, typed_ht_input)
@@ -462,6 +497,8 @@ impl SourceIncrementalClassifier {
             };
             let update = if *card {
                 classifier.updated_card_typed(&candidate.clauses, &changed, kind, input)
+            } else if *nominal_ni {
+                classifier.updated_nominal_ni_typed(&candidate.clauses, &changed, kind, input)
             } else {
                 classifier.updated_typed(&candidate.clauses, &changed, kind, input)
             };
@@ -475,6 +512,7 @@ impl SourceIncrementalClassifier {
                     classifier: next,
                     clauses: self.frontend.clauses.clone(),
                     card: *card,
+                    nominal_ni: *nominal_ni,
                 };
                 let meaningful = stats.reused_probes > 0 || stats.resumed_models > 0;
                 return Ok(SourceIncrementalReceipt {
@@ -751,6 +789,52 @@ impl SourceIncrementalClassifier {
                     classifier,
                     clauses: self.frontend.clauses.clone(),
                     card: true,
+                    nominal_ni: false,
+                };
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != route_after,
+                    route_before,
+                    route_after,
+                    strategy: ChangeStrategy::ExactRebuild,
+                    reused_fixpoint: false,
+                    reused_subsumptions: 0,
+                    reused_edges: 0,
+                    retained_states: 0,
+                    invalidated_states: rebuilt_states,
+                    added_normalized_clauses: added,
+                    removed_normalized_clauses: removed,
+                    added_rules,
+                    removed_rules,
+                    meaningful_incremental_update: false,
+                });
+            }
+        }
+
+        if let Some(input) = with_route_environment(&route_after, || {
+            crate::orchestrate::race::prepare_incremental_nominal_ni(&candidate)
+        })? {
+            if let Ok(classifier) =
+                IncrementalHtClassifier::new_nominal_ni_typed(&candidate.clauses, input)
+            {
+                let classification = map_incremental_result(&candidate, classifier.result());
+                let (removed, added) =
+                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                let (removed_rules, added_rules) =
+                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                let rebuilt_states = candidate
+                    .clauses
+                    .len()
+                    .saturating_add(candidate.rules.len());
+                self.revision += 1;
+                self.route = route_after.clone();
+                self.frontend = candidate;
+                self.classification = classification;
+                self.backend = SourceBackend::TypedHt {
+                    classifier,
+                    clauses: self.frontend.clauses.clone(),
+                    card: false,
+                    nominal_ni: true,
                 };
                 return Ok(SourceIncrementalReceipt {
                     revision: self.revision,
@@ -836,6 +920,7 @@ impl SourceIncrementalClassifier {
                     classifier,
                     clauses: self.frontend.clauses.clone(),
                     card: false,
+                    nominal_ni: false,
                 };
                 return Ok(SourceIncrementalReceipt {
                     revision: self.revision,
@@ -1598,6 +1683,57 @@ Ontology(
 
         let mut session = SourceIncrementalClassifier::new(before).unwrap();
         assert_eq!(session.route(), "certified_card_proxy_abox");
+        assert!(session.retained_backend());
+
+        let addition = session.replace_source(after).unwrap();
+        assert_eq!(addition.strategy, ChangeStrategy::HtDelta);
+        assert!(addition.meaningful_incremental_update);
+        assert!(addition.retained_states > 0);
+        let fresh = SourceIncrementalClassifier::new(after).unwrap();
+        assert_eq!(session.classification(), fresh.classification());
+
+        let removal = session.replace_source(before).unwrap();
+        assert_eq!(removal.strategy, ChangeStrategy::HtDelta);
+        assert!(removal.meaningful_incremental_update);
+        assert!(removal.retained_states > 0);
+        let restored = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.classification(), restored.classification());
+    }
+
+    #[test]
+    fn automatic_nominal_ni_abox_route_rechecks_and_reuses_models() {
+        let _environment = lock_environment();
+        let before = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:ri))
+ Declaration(ObjectProperty(:p)) Declaration(NamedIndividual(:a))
+ Declaration(NamedIndividual(:b))
+ InverseObjectProperties(:r :ri)
+ FunctionalObjectProperty(:p)
+ EquivalentClasses(:A ObjectOneOf(:a))
+ ClassAssertion(:A :b) SameIndividual(:a :b)
+ SubClassOf(:B ObjectMaxCardinality(1 :p :C))
+ SubClassOf(:X :Y)
+)"#;
+        let after = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:ri))
+ Declaration(ObjectProperty(:p)) Declaration(NamedIndividual(:a))
+ Declaration(NamedIndividual(:b))
+ InverseObjectProperties(:r :ri)
+ FunctionalObjectProperty(:p)
+ EquivalentClasses(:A ObjectOneOf(:a))
+ ClassAssertion(:A :b) SameIndividual(:a :b)
+ SubClassOf(:B ObjectMaxCardinality(1 :p :C))
+ SubClassOf(:X :Y) SubClassOf(:Y :Z)
+)"#;
+
+        let mut session = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.route(), "nominal_ni_abox");
         assert!(session.retained_backend());
 
         let addition = session.replace_source(after).unwrap();

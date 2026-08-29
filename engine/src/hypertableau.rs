@@ -20363,9 +20363,14 @@ impl Ht {
         self.restart_limit = u64::MAX;
 
         match self.dfs(0) {
-            Out::Sat if !self.ext.unsupported => Some(HtModelSnapshot {
-                ext: self.ext.clone(),
-            }),
+            Out::Sat
+                if !self.ext.unsupported
+                    && (!self.cert_no_blocking || !self.nominal_number_non_successor()) =>
+            {
+                Some(HtModelSnapshot {
+                    ext: self.ext.clone(),
+                })
+            }
             Out::Conflict(_) | Out::Restart | Out::Sat => None,
         }
     }
@@ -24382,6 +24387,26 @@ mod tests {
         let child = t.ext.new_node(Some(other_root));
         t.ext.add_edge(R0, root, child, &dep_empty());
         assert!(t.nominal_number_non_successor());
+    }
+
+    #[test]
+    fn resumed_model_rechecks_ni_certificate_before_accepting_witness() {
+        let mut t = ht(Vec::new());
+        t.cert_no_blocking = true;
+        t.cert_number_roles.insert(R0);
+
+        // Model a completed snapshot whose number-role neighbour was produced
+        // below a different root.  This is exactly the shape for which the
+        // no-blocking route must defer to the complete fallback instead of
+        // accepting the retained model as a SAT certificate.
+        let root = t.ext.new_root();
+        let other_root = t.ext.new_root();
+        let child = t.ext.new_node(Some(other_root));
+        t.ext.add_edge(R0, root, child, &dep_empty());
+        let snapshot = HtModelSnapshot { ext: t.ext.clone() };
+
+        assert!(t.nominal_number_non_successor());
+        assert!(t.resume_satisfiable_model(&snapshot).is_none());
     }
 
     #[test]

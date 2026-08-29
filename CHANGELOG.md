@@ -19,6 +19,13 @@
   Every incremental candidate passes the existing concrete positive-role ABox
   closure and taxonomy-preservation certificate before commit; certificate-only
   queries are filtered through the same batch publication path.
+- Retain typed HT models for the automatic nominal/number-restriction ABox
+  route. The adapter carries the complete native ABox, cardinality definitions,
+  inverse-role metadata, and supported inverse-functional equality clause into
+  each revision, reconstructs negative-role assertions as guarded clashes, and
+  repeats the batch no-blocking certificate before publication. Resumed models
+  now repeat the nominal-introduction risk check before they can serve as SAT
+  witnesses.
 - Retain CB context fixpoints for ordering-stable additions. For removals and
   replacements, rebuild only dependency components reached through changed
   concepts, roles, functions, individuals, or auxiliary constants, and retain

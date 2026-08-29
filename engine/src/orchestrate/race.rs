@@ -620,6 +620,50 @@ pub(crate) fn prepare_incremental_card(
     .then_some(tin)
 }
 
+/// Build the typed input used by the complete-answer-or-defer SHOIQ
+/// no-nominal-introduction specialist. The candidate predicate is shared with
+/// the batch worker; retained models are additionally rechecked after every
+/// resume by the HT core.
+pub(crate) fn prepare_incremental_nominal_ni(
+    frontend: &crate::frontend::FrontendResult,
+) -> Option<cb_to_ht::TInput> {
+    if !frontend.rules.is_empty() || std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_none() {
+        return None;
+    }
+    let certified_tbox_only = std::env::var_os("KM_HT_CERT_TBOX_ONLY").is_some();
+    let view = native_nominal_bridge_clauses(
+        &frontend.clauses,
+        &frontend.nominal_abox,
+        &frontend.definers,
+        true,
+        false,
+    );
+    let named = frontend.named.iter().cloned().collect();
+    let mut tin = cb_to_ht::convert(
+        &view,
+        (!certified_tbox_only).then_some(frontend.rbox.as_slice()),
+        &named,
+        &frontend.cardinalities,
+        &frontend.definers,
+        &frontend.source_axioms,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        &[],
+        false,
+    );
+    if !certified_tbox_only
+        && !cb_to_ht::install_nominal_abox_with_same(&mut tin, &frontend.nominal_abox, true)
+    {
+        return None;
+    }
+    no_blocking_shoiq_candidate_from(
+        &tin,
+        certified_tbox_only,
+        &frontend.clauses,
+        std::env::var_os("KM_NO_HT_SHOQ").is_none(),
+    )
+    .then_some(tin)
+}
+
 /// Exact typed source for the production quasi-order certify-or-defer arm.
 /// The retained adapter invokes the same QO implementation and treats `None`
 /// as a transactional defer. Specialist cardinality and nominal publication
@@ -1030,6 +1074,28 @@ fn inverse_functional_clause_retained(tin: &cb_to_ht::TInput, role_name: &str) -
             })
         })
     })
+}
+
+fn no_blocking_shoiq_candidate_from(
+    tin: &cb_to_ht::TInput,
+    certified_tbox_only: bool,
+    clauses: &[JClause],
+    ht_shoq: bool,
+) -> bool {
+    ht_shoq
+        && tin.dropped == 0
+        && !tin.nominals.is_empty()
+        && (tin.native_abox.complete || certified_tbox_only)
+        && (tin.inverse || has_inverse_bridge(clauses))
+        && tin.number
+        && !has_datatype(clauses)
+        && tin.fenced.iter().all(|fence| {
+            matches!(
+                fence.reason.as_str(),
+                "inverse+number(SHIQ)" | "nominal+inverse(SHOI/SHOIQ)"
+            ) || (fence.reason == "inverse-functional"
+                && inverse_functional_clause_retained(tin, &fence.detail))
+        })
 }
 
 /// True only for a ground/singleton clause represented independently by the
@@ -1955,21 +2021,8 @@ fn spawn_ht(
     // premise. The automatic TBox-only use is separately restricted by the
     // source-layout gate in routing.rs; ordinary nominal inputs retain CB.
     let no_blocking_shoiq_candidate = !general_only
-        && cfg.ht_shoq
         && !card_candidate
-        && tin.dropped == 0
-        && !tin.nominals.is_empty()
-        && (tin.native_abox.complete || certified_tbox_only)
-        && (tin.inverse || has_inverse_bridge(&cl))
-        && tin.number
-        && !has_datatype(&cl)
-        && tin.fenced.iter().all(|fence| {
-            matches!(
-                fence.reason.as_str(),
-                "inverse+number(SHIQ)" | "nominal+inverse(SHOI/SHOIQ)"
-            ) || (fence.reason == "inverse-functional"
-                && inverse_functional_clause_retained(&tin, &fence.detail))
-        });
+        && no_blocking_shoiq_candidate_from(&tin, certified_tbox_only, &cl, cfg.ht_shoq);
     if std::env::var_os("KM_HT_CERT_TRACE").is_some() {
         eprintln!(
             "KM_HT_CERT_TRACE no_blocking={} card={} dropped={} nominals={} native={} tbox_only={} inverse={} inv_bridge={} datatype={} fences={:?}",
