@@ -547,6 +547,32 @@ fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
     true
 }
 
+/// Build the exact typed input used by the ordinary production HT fragment for
+/// a retained source-level session.  This deliberately exposes only the
+/// fragment for which [`ht_routable`] itself is the complete publication gate;
+/// nominal, inverse, rules, and specialist-certificate routes must use their
+/// dedicated adapters rather than silently bypassing those certificates.
+pub(crate) fn prepare_incremental_ht(
+    frontend: &crate::frontend::FrontendResult,
+) -> Option<cb_to_ht::TInput> {
+    if !frontend.rules.is_empty() {
+        return None;
+    }
+    let named = frontend.named.iter().cloned().collect();
+    let tin = cb_to_ht::convert(
+        &frontend.clauses,
+        Some(frontend.rbox.as_slice()),
+        &named,
+        &frontend.cardinalities,
+        &frontend.definers,
+        &frontend.source_axioms,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        &[],
+        false,
+    );
+    ht_routable(&tin).then_some(tin)
+}
+
 /// Fences that belong to the legacy fast tableau rather than the Konclude
 /// completion bridge. The bridge has native inverse-role and cardinality
 /// processing, so their combination is not a coverage loss there. Complex

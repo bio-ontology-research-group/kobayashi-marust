@@ -275,8 +275,8 @@ impl IncrementalHtClassifier {
         } else {
             kind
         };
-        let resume_compatible = effective_kind == HtChangeKind::Addition
-            && self.compiled.stable_prefix_of(&compiled);
+        let resume_compatible =
+            effective_kind == HtChangeKind::Addition && self.compiled.stable_prefix_of(&compiled);
         let mut affected = affected_concepts(
             &self.source_clauses,
             candidate,
@@ -1168,8 +1168,7 @@ mod typed_tests {
     #[test]
     fn typed_side_state_change_rebuilds_clause_independent_probes() {
         let clauses = vec![source_clause("A", "B")];
-        let classifier =
-            IncrementalHtClassifier::new_typed(&clauses, native_input(false)).unwrap();
+        let classifier = IncrementalHtClassifier::new_typed(&clauses, native_input(false)).unwrap();
         let mut changed = native_input(false);
         changed.native_abox.individuals[0].assertions = vec![1];
 
