@@ -8,7 +8,7 @@
 //! routes take an explicit exact-rebuild fallback until their typed retained
 //! adapters are connected to this same protocol.
 
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::io::{BufRead, Write};
 
 use serde::{Deserialize, Serialize};
@@ -192,23 +192,26 @@ impl SourceIncrementalClassifier {
                 .with_live_clauses());
             }
         }
-        if let Some(input) = with_route_environment(&route, || {
-            crate::orchestrate::race::prepare_incremental_bridge(&frontend)
-        })? {
-            if let Ok(classifier) = IncrementalBridgeClassifier::new_typed(&frontend.clauses, input)
-            {
-                let classification = map_incremental_result(&frontend, classifier.result());
-                return Ok(Self {
-                    revision: 0,
-                    route,
-                    frontend,
-                    classification,
-                    backend: SourceBackend::Bridge {
-                        classifier,
-                        clauses: Vec::new(),
-                    },
+        if route != "ht_bridge" {
+            if let Some(input) = with_route_environment(&route, || {
+                crate::orchestrate::race::prepare_incremental_bridge(&frontend)
+            })? {
+                if let Ok(classifier) =
+                    IncrementalBridgeClassifier::new_typed(&frontend.clauses, input)
+                {
+                    let classification = map_incremental_result(&frontend, classifier.result());
+                    return Ok(Self {
+                        revision: 0,
+                        route,
+                        frontend,
+                        classification,
+                        backend: SourceBackend::Bridge {
+                            classifier,
+                            clauses: Vec::new(),
+                        },
+                    }
+                    .with_live_clauses());
                 }
-                .with_live_clauses());
             }
         }
         if let Some(input) = with_route_environment(&route, || {
@@ -249,7 +252,28 @@ impl SourceIncrementalClassifier {
             .with_live_clauses());
         }
         let classification = classify_source_exact(source)?;
-        let backend = if route == "ht_rules" {
+        let seeded_bridge = if route == "ht_bridge" {
+            with_route_environment(&route, || {
+                crate::orchestrate::race::prepare_incremental_bridge(&frontend).and_then(|input| {
+                    bridge_seed_result(&frontend, &input, &classification).and_then(|result| {
+                        IncrementalBridgeClassifier::from_exact_result(
+                            &frontend.clauses,
+                            input,
+                            result,
+                        )
+                        .ok()
+                    })
+                })
+            })?
+        } else {
+            None
+        };
+        let backend = if let Some(classifier) = seeded_bridge {
+            SourceBackend::Bridge {
+                classifier,
+                clauses: frontend.clauses.clone(),
+            }
+        } else if route == "ht_rules" {
             SourceBackend::Rules(IncrementalRulesClassifier::new(
                 &frontend,
                 classification.clone(),
@@ -873,46 +897,48 @@ impl SourceIncrementalClassifier {
             }
         }
 
-        if let Some(input) = with_route_environment(&route_after, || {
-            crate::orchestrate::race::prepare_incremental_bridge(&candidate)
-        })? {
-            if let Ok(classifier) =
-                IncrementalBridgeClassifier::new_typed(&candidate.clauses, input)
-            {
-                let classification = map_incremental_result(&candidate, classifier.result());
-                let (removed, added) =
-                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
-                let (removed_rules, added_rules) =
-                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
-                let rebuilt_states = candidate
-                    .clauses
-                    .len()
-                    .saturating_add(candidate.rules.len());
-                self.revision += 1;
-                self.route = route_after.clone();
-                self.frontend = candidate;
-                self.classification = classification;
-                self.backend = SourceBackend::Bridge {
-                    classifier,
-                    clauses: self.frontend.clauses.clone(),
-                };
-                return Ok(SourceIncrementalReceipt {
-                    revision: self.revision,
-                    route_migrated: route_before != route_after,
-                    route_before,
-                    route_after,
-                    strategy: ChangeStrategy::ExactRebuild,
-                    reused_fixpoint: false,
-                    reused_subsumptions: 0,
-                    reused_edges: 0,
-                    retained_states: 0,
-                    invalidated_states: rebuilt_states,
-                    added_normalized_clauses: added,
-                    removed_normalized_clauses: removed,
-                    added_rules,
-                    removed_rules,
-                    meaningful_incremental_update: false,
-                });
+        if route_after != "ht_bridge" {
+            if let Some(input) = with_route_environment(&route_after, || {
+                crate::orchestrate::race::prepare_incremental_bridge(&candidate)
+            })? {
+                if let Ok(classifier) =
+                    IncrementalBridgeClassifier::new_typed(&candidate.clauses, input)
+                {
+                    let classification = map_incremental_result(&candidate, classifier.result());
+                    let (removed, added) =
+                        clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                    let (removed_rules, added_rules) =
+                        sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                    let rebuilt_states = candidate
+                        .clauses
+                        .len()
+                        .saturating_add(candidate.rules.len());
+                    self.revision += 1;
+                    self.route = route_after.clone();
+                    self.frontend = candidate;
+                    self.classification = classification;
+                    self.backend = SourceBackend::Bridge {
+                        classifier,
+                        clauses: self.frontend.clauses.clone(),
+                    };
+                    return Ok(SourceIncrementalReceipt {
+                        revision: self.revision,
+                        route_migrated: route_before != route_after,
+                        route_before,
+                        route_after,
+                        strategy: ChangeStrategy::ExactRebuild,
+                        reused_fixpoint: false,
+                        reused_subsumptions: 0,
+                        reused_edges: 0,
+                        retained_states: 0,
+                        invalidated_states: rebuilt_states,
+                        added_normalized_clauses: added,
+                        removed_normalized_clauses: removed,
+                        added_rules,
+                        removed_rules,
+                        meaningful_incremental_update: false,
+                    });
+                }
             }
         }
 
@@ -964,11 +990,32 @@ impl SourceIncrementalClassifier {
         let added = candidate.clauses.len();
         let removed_rules = self.frontend.rules.len();
         let added_rules = candidate.rules.len();
+        let seeded_bridge = if route_after == "ht_bridge" {
+            with_route_environment(&route_after, || {
+                crate::orchestrate::race::prepare_incremental_bridge(&candidate).and_then(|input| {
+                    bridge_seed_result(&candidate, &input, &classification).and_then(|result| {
+                        IncrementalBridgeClassifier::from_exact_result(
+                            &candidate.clauses,
+                            input,
+                            result,
+                        )
+                        .ok()
+                    })
+                })
+            })?
+        } else {
+            None
+        };
         self.revision += 1;
         self.route = route_after.clone();
         self.frontend = candidate;
         self.classification = classification;
-        self.backend = if route_after == "elc" && !self.frontend.abox_inconsistent {
+        self.backend = if let Some(classifier) = seeded_bridge {
+            SourceBackend::Bridge {
+                classifier,
+                clauses: self.frontend.clauses.clone(),
+            }
+        } else if route_after == "elc" && !self.frontend.abox_inconsistent {
             IncrementalPositiveAboxClassifier::new(&self.frontend)
                 .map(|(classifier, _, _)| SourceBackend::PositiveAbox(classifier))
                 .unwrap_or(SourceBackend::ExactBatch)
@@ -1227,6 +1274,65 @@ fn map_el_result(frontend: &FrontendResult, result: crate::elcomplete::ElResult)
     )
 }
 
+/// Reconstruct the bridge's internal query-row representation from an exact
+/// automatic classification. The public result is authoritative; generated
+/// concepts are deliberately left as empty, unpublished rows until a later
+/// affected-subject bridge probe rebuilds them.
+fn bridge_seed_result(
+    frontend: &FrontendResult,
+    input: &crate::orchestrate::cb_to_ht::TInput,
+    classification: &Classification,
+) -> Option<crate::incremental::IncrementalResult> {
+    if classification.dropped != 0 {
+        return None;
+    }
+    let public_to_local: HashMap<&str, &str> = frontend
+        .iri_map
+        .iter()
+        .map(|(local, public)| (public.as_str(), local.as_str()))
+        .collect();
+    let query_names: BTreeSet<String> = input
+        .queries
+        .iter()
+        .filter_map(|query| input.concepts.get(*query).cloned())
+        .collect();
+    let mut rows: BTreeMap<String, BTreeSet<String>> = query_names
+        .iter()
+        .cloned()
+        .map(|query| (query, BTreeSet::new()))
+        .collect();
+    let local = |name: &str| {
+        public_to_local
+            .get(name)
+            .copied()
+            .unwrap_or(name)
+            .to_string()
+    };
+    for [subject, superclass] in &classification.subsumptions {
+        let subject = local(subject);
+        if query_names.contains(&subject) {
+            rows.entry(subject).or_default().insert(local(superclass));
+        }
+    }
+    for subject in &classification.unsatisfiable {
+        let subject = local(subject);
+        if query_names.contains(&subject) {
+            rows.entry(subject)
+                .or_default()
+                .insert("owl:Nothing".into());
+        }
+    }
+    Some(crate::incremental::IncrementalResult {
+        subsumptions: rows
+            .into_iter()
+            .map(|(subject, supers)| (subject, supers.into_iter().collect()))
+            .collect(),
+        inconsistent: !classification.consistent,
+        dropped: 0,
+        unresolved: Vec::new(),
+    })
+}
+
 fn is_bottom(name: &str) -> bool {
     name == "owl:Nothing" || name == "http://www.w3.org/2002/07/owl#Nothing" || name == "\u{22a5}"
 }
@@ -1311,9 +1417,14 @@ fn error_response(op: &str, error: impl Into<String>) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{clause_delta, run_jsonl_session, SourceIncrementalClassifier};
+    use super::{
+        bridge_seed_result, clause_delta, map_incremental_result, normalize_automatic,
+        run_jsonl_session, SourceIncrementalClassifier,
+    };
     use crate::incremental::ChangeStrategy;
     use crate::json_io::{JAtom, JClause, JTerm};
+    use crate::orchestrate::cb_to_ht::TInput;
+    use crate::orchestrate::Classification;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -1375,6 +1486,52 @@ Ontology(
         );
         assert_eq!(removed, vec![8]);
         assert_eq!(added.len(), 1);
+    }
+
+    #[test]
+    fn exact_public_bridge_seed_round_trips_through_frontend_names() {
+        let _environment = lock_environment();
+        let frontend = normalize_automatic(
+            r#"Prefix(:=<http://example.org/bridge-seed#>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B))
+ SubClassOf(:A :B)
+)"#,
+        )
+        .unwrap();
+        let find_named = |suffix: &str| {
+            frontend
+                .named
+                .iter()
+                .find(|name| name.ends_with(suffix))
+                .cloned()
+                .unwrap()
+        };
+        let local_a = find_named("A");
+        let local_b = find_named("B");
+        let public_a = frontend
+            .iri_map
+            .get(&local_a)
+            .cloned()
+            .unwrap_or_else(|| local_a.clone());
+        let public_b = frontend
+            .iri_map
+            .get(&local_b)
+            .cloned()
+            .unwrap_or_else(|| local_b.clone());
+        let input = TInput {
+            concepts: vec![local_a, local_b, "Q_internal".into()],
+            queries: vec![0, 1, 2],
+            ..TInput::default()
+        };
+        let exact = Classification {
+            consistent: true,
+            subsumptions: vec![[public_a, public_b]],
+            unsatisfiable: Vec::new(),
+            dropped: 0,
+        };
+        let seeded = bridge_seed_result(&frontend, &input, &exact).unwrap();
+        assert_eq!(map_incremental_result(&frontend, seeded), exact);
     }
 
     #[test]

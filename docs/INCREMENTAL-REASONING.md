@@ -145,6 +145,14 @@ remain reusable. Unsupported negative-role ABox state and a failed certificate
 take the visible exact-classification fallback instead of publishing a partial
 HT answer.
 
+The automatic `ht_bridge` route seeds its retained public query rows from the
+exact classification already published by the automatic supervisor. It does
+not repeat the route's full bridge taxonomy solely to open a session. A later
+change computes its affected concept component and sends only those subjects
+through the same complete-answer-or-defer bridge; rows outside that component
+remain the exact seeded rows. A bridge defer or typed-state mismatch abandons
+the candidate and runs exact automatic classification before commit.
+
 The automatic compact-nominal `ht_general` leaf is an exact exception to the
 ordinary typed-ABox path because its batch worker deliberately consumes the
 legacy clause-only view. The source adapter retains that same completed HT

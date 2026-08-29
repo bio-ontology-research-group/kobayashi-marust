@@ -339,6 +339,33 @@ impl IncrementalBridgeClassifier {
         })
     }
 
+    /// Install an exact result already produced by the automatic supervisor.
+    ///
+    /// The isolated automatic bridge route can spend most of its budget on a
+    /// full taxonomy. Repeating that same classification merely to open an
+    /// incremental session defeats the retained-state contract. The caller
+    /// supplies the supervisor's exact public-query projection; every changed
+    /// subject still goes through `bridged_classify_queries`, and an honest
+    /// bridge defer remains an exact-rebuild fallback.
+    pub(crate) fn from_exact_result(
+        clauses: &[JClause],
+        input: TInput,
+        result: IncrementalResult,
+    ) -> Result<Self, IncrementalReasoningError> {
+        if result.dropped != 0 || !result.unresolved.is_empty() {
+            return Err(IncrementalReasoningError::HtDeferred {
+                detail: "cannot seed bridge session from an incomplete result".into(),
+            });
+        }
+        let side_fingerprint = bridge_side_fingerprint(&input)?;
+        Ok(Self {
+            source_clauses: clauses.to_vec(),
+            input,
+            side_fingerprint,
+            result,
+        })
+    }
+
     pub(crate) fn result(&self) -> IncrementalResult {
         self.result.clone()
     }
@@ -1950,6 +1977,30 @@ mod typed_tests {
             IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
         assert_eq!(restored.result(), fresh_before.result());
         assert!(removal_stats.reused_queries >= 2);
+    }
+
+    #[test]
+    fn exact_bridge_seed_preserves_rows_and_supports_subject_delta() {
+        let before = vec![source_clause("A", "B"), source_clause("X", "Y")];
+        let exact = IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
+        let seeded = IncrementalBridgeClassifier::from_exact_result(
+            &before,
+            bridge_input(false),
+            exact.result(),
+        )
+        .unwrap();
+        assert_eq!(seeded.result(), exact.result());
+
+        let added = source_clause("B", "C");
+        let mut after = before;
+        after.push(added.clone());
+        let (next, stats) = seeded
+            .updated_typed(&after, &[added], HtChangeKind::Addition, bridge_input(true))
+            .unwrap();
+        let fresh = IncrementalBridgeClassifier::new_typed(&after, bridge_input(true)).unwrap();
+        assert_eq!(next.result(), fresh.result());
+        assert!(stats.reused_queries >= 2);
+        assert!(stats.rebuilt_queries >= 3);
     }
 
     #[test]

@@ -31,6 +31,11 @@
   requires lossless conversion with no inverse-role, native-ABox,
   side-cardinality, or route-fence state, and verifies meaningful insertion and
   removal against fresh automatic classification.
+- Seed automatic `ht_bridge` sessions from the exact public taxonomy already
+  produced by the supervisor instead of repeating a full bridge
+  classification. Changed dependency components still use bridge subject
+  probes, unaffected rows remain exact, and any specialist defer takes the
+  visible exact-classification fallback.
 - Preserve the classifier's stable clause order after source-level insertions.
   Frontend normalization may place a new generated clause before existing
   clauses; the session now keeps its clause mirror in stable-id order, so a
