@@ -1572,9 +1572,20 @@ fn affected_concepts(
     if changed.iter().any(clause_is_global) {
         return all_queries.iter().cloned().collect();
     }
-    let seeds: BTreeSet<String> = changed
+    let changed_symbols: Vec<Symbol> = changed.iter().flat_map(clause_symbols).collect();
+    // A role-bearing normalized change can alter every restriction using that
+    // role (and its RBox closure), so retain the deliberately global fallback.
+    // For concept-only changes, role names are operators rather than taxonomy
+    // vertices: treating a shared role as an undirected connector merges every
+    // unrelated filler component in ontologies such as a mirror projection.
+    if changed_symbols
         .iter()
-        .flat_map(clause_symbols)
+        .any(|symbol| matches!(symbol, Symbol::Role(_)))
+    {
+        return all_queries.iter().cloned().collect();
+    }
+    let seeds: BTreeSet<String> = changed_symbols
+        .into_iter()
         .map(|symbol| symbol.key())
         .collect();
     if seeds.is_empty() {
@@ -1623,6 +1634,7 @@ fn dependency_graph(clauses: &[JClause]) -> HashMap<String, BTreeSet<String>> {
     for clause in clauses {
         let symbols: Vec<String> = clause_symbols(clause)
             .into_iter()
+            .filter(|symbol| !matches!(symbol, Symbol::Role(_)))
             .map(|symbol| symbol.key())
             .collect();
         for symbol in &symbols {
@@ -1711,6 +1723,53 @@ mod typed_tests {
                 term,
             }],
         }
+    }
+
+    fn restriction_clause(role: &str, filler: &str, proxy: &str) -> JClause {
+        JClause {
+            body: vec![
+                JAtom::Role {
+                    role: role.into(),
+                    source: JTerm::Var { name: "x".into() },
+                    target: JTerm::Var { name: "y".into() },
+                },
+                JAtom::Concept {
+                    concept: filler.into(),
+                    term: JTerm::Var { name: "y".into() },
+                },
+            ],
+            head: vec![JAtom::Concept {
+                concept: proxy.into(),
+                term: JTerm::Var { name: "x".into() },
+            }],
+        }
+    }
+
+    #[test]
+    fn concept_delta_does_not_join_fillers_through_a_shared_role() {
+        let restrictions = vec![
+            restriction_clause("r", "F", "PF"),
+            restriction_clause("r", "G", "PG"),
+        ];
+        let changed = source_clause("F", "Z");
+        let mut candidate = restrictions.clone();
+        candidate.push(changed.clone());
+        let queries = ["F", "PF", "G", "PG", "Z"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let affected = affected_concepts(&restrictions, &candidate, &[changed], &queries);
+        assert!(affected.contains("F"));
+        assert!(affected.contains("PF"));
+        assert!(affected.contains("Z"));
+        assert!(!affected.contains("G"));
+        assert!(!affected.contains("PG"));
+
+        let role_change = restriction_clause("r", "F", "PF");
+        assert_eq!(
+            affected_concepts(&restrictions, &candidate, &[role_change], &queries),
+            queries.into_iter().collect()
+        );
     }
 
     fn native_input(extra: bool) -> TInput {

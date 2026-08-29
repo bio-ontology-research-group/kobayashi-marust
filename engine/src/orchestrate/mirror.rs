@@ -1522,6 +1522,57 @@ fn reconstruct(
     })
 }
 
+/// Certified mirror projection retained by the source-level incremental API.
+///
+/// The batch route writes the same projection to a temporary file and
+/// classifies it through `ht_bridge`. Keeping the source text and fragment
+/// together lets an incremental session update that ordinary projection while
+/// reusing this module's unchanged reconstruction checks.
+pub(crate) struct IncrementalProjection {
+    fragment: Fragment,
+    slice_source: String,
+}
+
+impl IncrementalProjection {
+    pub(crate) fn slice_source(&self) -> &str {
+        &self.slice_source
+    }
+
+    pub(crate) fn reconstruct(
+        &self,
+        slice_classification: &Classification,
+    ) -> Option<Classification> {
+        let slice = index(slice_classification);
+        reconstruct(&self.fragment, &slice, &slice).ok()
+    }
+}
+
+/// Prepare the exact single-projection mirror decomposition without running a
+/// reasoner. `None` has the same fail-closed meaning as [`try_classify`].
+pub(crate) fn prepare_incremental(
+    text: &str,
+) -> Result<Option<IncrementalProjection>, OrchestrateError> {
+    let complement_candidates = text
+        .match_indices("ObjectComplementOf(")
+        .take(MIRROR_PREFILTER_MIN_COMPLEMENTS)
+        .count();
+    if !mirror_parse_worthwhile(text.len(), complement_candidates) {
+        return Ok(None);
+    }
+    let fragment = match detect(text) {
+        Ok(Some(fragment)) => fragment,
+        Ok(None) | Err(_) => return Ok(None),
+    };
+    let base_path = TempPath::new(".mirror-incremental-base.ofn");
+    let slice_path = TempPath::new(".mirror-incremental-slice.ofn");
+    write_projections(text, &fragment, base_path.path(), slice_path.path())?;
+    let slice_source = std::fs::read_to_string(slice_path.path())?;
+    Ok(Some(IncrementalProjection {
+        fragment,
+        slice_source,
+    }))
+}
+
 // ---------------------------------------------------------------------------
 // the route
 // ---------------------------------------------------------------------------

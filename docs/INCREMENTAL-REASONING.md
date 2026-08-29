@@ -162,6 +162,16 @@ also pass the complete no-nominal-introduction gate before any model is reused.
 Other edits take the exact automatic fallback. Nearby Wine TBox profiles stay
 on that exact fallback rather than entering the broader typed-ABox specialist.
 
+The `mirror_private` route retains the ordinary positive slice classified by
+its exact `ht_bridge` worker. Every source replacement reruns mirror-fragment
+detection, rebuilds the projection text, updates affected bridge subjects, and
+then applies the unchanged conservative-extension reconstruction checks. A
+projection refusal or reconstruction mismatch abandons the retained candidate.
+For concept-only deltas, dependency components connect concept and Skolem
+symbols but do not use a shared role name as an undirected taxonomy vertex.
+Any changed normalized clause containing a role atom remains a global
+invalidation, covering restriction and RBox changes conservatively.
+
 The automatic compact-nominal `ht_general` leaf is an exact exception to the
 ordinary typed-ABox path because its batch worker deliberately consumes the
 legacy clause-only view. The source adapter retains that same completed HT

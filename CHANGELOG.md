@@ -46,6 +46,15 @@
   ORE 10702 plus one already entailed subclass axiom, insertion retained 653
   model/probe states, removal retained 806, both used `ht_delta`, and all three
   taxonomies had the same canonical SHA-256.
+- Retain the certified `mirror_private` positive slice through its exact
+  `ht_bridge` worker and rerun the existing reconstruction checks after each
+  delta. Concept-only dependency traversal no longer merges unrelated fillers
+  merely because their clauses use the same role; any changed clause containing
+  a role atom still invalidates every query. On ORE 4669, adding and removing
+  `GO_0000005 ⊆ GO_0000008` each retained 72,981 of 72,989 projection
+  queries and invalidated 8. The added result matched an independent fresh
+  mirror classification at SHA-256 `6f821693...`; removal restored
+  `3c6f5166...` exactly.
 - Preserve the classifier's stable clause order after source-level insertions.
   Frontend normalization may place a new generated clause before existing
   clauses; the session now keeps its clause mirror in stable-id order, so a

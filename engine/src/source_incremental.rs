@@ -17,7 +17,8 @@ use serde_json::{json, Value};
 use crate::frontend::FrontendResult;
 use crate::incremental::{ChangeStrategy, ClauseId, IncrementalChange, IncrementalClassifier};
 use crate::incremental_ht::{
-    HtChangeKind, IncrementalBridgeClassifier, IncrementalHtClassifier, IncrementalQoClassifier,
+    BridgeDeltaStats, HtChangeKind, IncrementalBridgeClassifier, IncrementalHtClassifier,
+    IncrementalQoClassifier,
 };
 use crate::incremental_positive_abox::IncrementalPositiveAboxClassifier;
 use crate::incremental_rules::IncrementalRulesClassifier;
@@ -73,7 +74,112 @@ enum SourceBackend {
         clauses: Vec<JClause>,
     },
     Rules(IncrementalRulesClassifier),
+    Mirror(IncrementalMirrorClassifier),
     ExactBatch,
+}
+
+struct IncrementalMirrorClassifier {
+    slice_frontend: FrontendResult,
+    bridge: IncrementalBridgeClassifier,
+}
+
+impl IncrementalMirrorClassifier {
+    fn new(source: &str) -> Result<Option<(Self, Classification)>, String> {
+        let Some(projection) = crate::orchestrate::mirror::prepare_incremental(source)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let Ok(slice_frontend) = normalize_selected(projection.slice_source(), "ht_bridge") else {
+            return Ok(None);
+        };
+        let Ok(slice_classification) =
+            classify_source_selected(projection.slice_source(), "ht_bridge")
+        else {
+            return Ok(None);
+        };
+        let Some(input) = with_route_environment("ht_bridge", || {
+            crate::orchestrate::race::prepare_incremental_bridge(&slice_frontend)
+        })?
+        else {
+            return Ok(None);
+        };
+        let Some(seed) = bridge_seed_result(&slice_frontend, &input, &slice_classification) else {
+            return Ok(None);
+        };
+        let Ok(bridge) =
+            IncrementalBridgeClassifier::from_exact_result(&slice_frontend.clauses, input, seed)
+        else {
+            return Ok(None);
+        };
+        let Some(classification) = projection.reconstruct(&slice_classification) else {
+            return Ok(None);
+        };
+        Ok(Some((
+            Self {
+                slice_frontend,
+                bridge,
+            },
+            classification,
+        )))
+    }
+
+    fn updated(
+        &self,
+        source: &str,
+    ) -> Result<Option<(Self, Classification, BridgeDeltaStats, usize, usize)>, String> {
+        let Some(projection) = crate::orchestrate::mirror::prepare_incremental(source)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let Ok(slice_frontend) = normalize_selected(projection.slice_source(), "ht_bridge") else {
+            return Ok(None);
+        };
+        let old_ids: Vec<ClauseId> = (0..self.slice_frontend.clauses.len() as ClauseId).collect();
+        let (removed_ids, additions) = clause_delta(
+            &self.slice_frontend.clauses,
+            &old_ids,
+            &slice_frontend.clauses,
+        );
+        let mut changed: Vec<JClause> = removed_ids
+            .iter()
+            .filter_map(|id| self.slice_frontend.clauses.get(*id as usize).cloned())
+            .collect();
+        changed.extend(additions.iter().cloned());
+        let kind = match (removed_ids.is_empty(), additions.is_empty()) {
+            (true, false) => HtChangeKind::Addition,
+            (false, true) => HtChangeKind::Removal,
+            _ => HtChangeKind::Replacement,
+        };
+        let Some(input) = with_route_environment("ht_bridge", || {
+            crate::orchestrate::race::prepare_incremental_bridge(&slice_frontend)
+        })?
+        else {
+            return Ok(None);
+        };
+        let Ok((bridge, stats)) = with_route_environment("ht_bridge", || {
+            self.bridge
+                .updated_typed(&slice_frontend.clauses, &changed, kind, input)
+        })?
+        else {
+            return Ok(None);
+        };
+        let slice_classification = map_incremental_result(&slice_frontend, bridge.result());
+        let Some(classification) = projection.reconstruct(&slice_classification) else {
+            return Ok(None);
+        };
+        Ok(Some((
+            Self {
+                slice_frontend,
+                bridge,
+            },
+            classification,
+            stats,
+            additions.len(),
+            removed_ids.len(),
+        )))
+    }
 }
 
 pub struct SourceIncrementalClassifier {
@@ -88,6 +194,15 @@ impl SourceIncrementalClassifier {
     pub fn new(source: &str) -> Result<Self, String> {
         let frontend = normalize_automatic(source)?;
         let route = frontend.route.clone();
+        if let Some((classifier, classification)) = IncrementalMirrorClassifier::new(source)? {
+            return Ok(Self {
+                revision: 0,
+                route: "mirror_private".into(),
+                frontend,
+                classification,
+                backend: SourceBackend::Mirror(classifier),
+            });
+        }
         if clause_state_is_complete(&frontend) {
             if let Ok(classifier) = with_route_environment(&route, || {
                 IncrementalClassifier::new(frontend.clauses.clone())
@@ -337,6 +452,42 @@ impl SourceIncrementalClassifier {
             })? {
                 candidate = specialist_candidate;
                 route_after.clone_from(&route_before);
+            }
+        }
+
+        if let SourceBackend::Mirror(classifier) = &self.backend {
+            if let Some((next, classification, stats, _, _)) = classifier.updated(source)? {
+                let (removed, added) =
+                    clause_change_counts(&self.frontend.clauses, &candidate.clauses);
+                let (removed_rules, added_rules) =
+                    sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                let meaningful = stats.reused_queries > 0;
+                self.revision += 1;
+                self.route = "mirror_private".into();
+                self.frontend = candidate;
+                self.classification = classification;
+                self.backend = SourceBackend::Mirror(next);
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != "mirror_private",
+                    route_before,
+                    route_after: "mirror_private".into(),
+                    strategy: if meaningful {
+                        ChangeStrategy::HtDelta
+                    } else {
+                        ChangeStrategy::ExactRebuild
+                    },
+                    reused_fixpoint: meaningful,
+                    reused_subsumptions: stats.reused_subsumptions,
+                    reused_edges: 0,
+                    retained_states: stats.reused_queries,
+                    invalidated_states: stats.rebuilt_queries,
+                    added_normalized_clauses: added,
+                    removed_normalized_clauses: removed,
+                    added_rules,
+                    removed_rules,
+                    meaningful_incremental_update: meaningful,
+                });
             }
         }
 
@@ -1117,6 +1268,7 @@ impl SourceIncrementalClassifier {
                 | SourceBackend::TypedHt { .. }
                 | SourceBackend::ProxyCard { .. }
                 | SourceBackend::QuasiOrder { .. }
+                | SourceBackend::Mirror(_)
                 | SourceBackend::Rules(_)
         )
     }
@@ -1247,6 +1399,19 @@ fn classify_source_exact(source: &str) -> Result<Classification, String> {
     std::fs::write(path.path(), source).map_err(|error| error.to_string())?;
     let _guard = crate::routing::EnvironmentGuard::capture();
     std::env::set_var("KM_ROUTE", "auto");
+    let cfg = Config::from_env();
+    crate::orchestrate::classify(&cfg, path.path()).map_err(|error| error.to_string())
+}
+
+fn classify_source_selected(source: &str, route: &str) -> Result<Classification, String> {
+    let path = crate::orchestrate::tmpfile::TempPath::new(".ofn");
+    std::fs::write(path.path(), source).map_err(|error| error.to_string())?;
+    let _guard = crate::routing::EnvironmentGuard::capture();
+    let selected = route
+        .parse::<crate::routing::Route>()
+        .map_err(|error| format!("invalid selected incremental route {route:?}: {error}"))?;
+    selected.apply_environment();
+    std::env::set_var("KM_ROUTE", route);
     let cfg = Config::from_env();
     crate::orchestrate::classify(&cfg, path.path()).map_err(|error| error.to_string())
 }

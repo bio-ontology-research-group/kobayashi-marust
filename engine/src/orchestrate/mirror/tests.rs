@@ -711,6 +711,22 @@ fn the_projection_declaration_universe_is_base_plus_proxies() {
 }
 
 #[test]
+fn incremental_projection_reuses_the_certified_slice_shape() {
+    let text = fixture();
+    let projection = prepare_incremental(&text)
+        .unwrap()
+        .expect("mirror projection");
+    assert!(!projection.slice_source().contains("ObjectComplementOf"));
+    assert_eq!(
+        projection
+            .slice_source()
+            .match_indices(PROXY_IRI_PREFIX)
+            .count(),
+        projection.fragment.mirrors().len() * 2 + projection.fragment.selected_count()
+    );
+}
+
+#[test]
 fn large_source_prefilter_requires_a_mirror_scale_complement_family() {
     assert!(mirror_parse_worthwhile(1024, 0));
     assert!(!mirror_parse_worthwhile(
