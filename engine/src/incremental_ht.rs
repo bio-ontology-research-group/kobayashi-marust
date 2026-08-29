@@ -1373,6 +1373,46 @@ mod typed_tests {
         input
     }
 
+    fn cardinality_input(extra: bool) -> TInput {
+        let mut input = TInput {
+            concepts: vec![
+                "A".into(),
+                "B".into(),
+                "Min2".into(),
+                "Max1".into(),
+                "X".into(),
+                "Y".into(),
+            ],
+            roles: vec!["r".into()],
+            clauses: vec![concept_clause(0, 2), concept_clause(0, 3)],
+            queries: vec![0, 1, 4, 5],
+            number: true,
+            card_defs: vec![
+                CardDefJson {
+                    marker: 2,
+                    min: true,
+                    n: 2,
+                    role: 0,
+                    filler: 1,
+                    exact: true,
+                },
+                CardDefJson {
+                    marker: 3,
+                    min: false,
+                    n: 1,
+                    role: 0,
+                    filler: 1,
+                    exact: true,
+                },
+            ],
+            ..TInput::default()
+        };
+        if extra {
+            input.clauses.push(concept_clause(4, 5));
+        }
+        input
+    }
+
     #[test]
     fn typed_native_abox_is_installed_and_classified() {
         let classifier =
@@ -1412,6 +1452,53 @@ mod typed_tests {
 
         assert_eq!(stats.reused_probes, 0);
         assert!(stats.rebuilt_probes >= 3);
+    }
+
+    #[test]
+    fn typed_cardinality_state_reasons_and_reuses_disconnected_probes() {
+        let before = vec![source_clause("A", "Min2"), source_clause("A", "Max1")];
+        let classifier =
+            IncrementalHtClassifier::new_typed(&before, cardinality_input(false)).unwrap();
+        assert!(classifier
+            .result()
+            .subsumptions
+            .get("A")
+            .is_some_and(|supers| supers.iter().any(|name| name == "owl:Nothing")));
+
+        let added = source_clause("X", "Y");
+        let mut after = before;
+        after.push(added.clone());
+        let (next, stats) = classifier
+            .updated_typed(
+                &after,
+                &[added],
+                HtChangeKind::Addition,
+                cardinality_input(true),
+            )
+            .unwrap();
+        let fresh = IncrementalHtClassifier::new_typed(&after, cardinality_input(true)).unwrap();
+        assert_eq!(next.result(), fresh.result());
+        assert!(stats.reused_probes > 0);
+        assert!(next
+            .result()
+            .subsumptions
+            .get("X")
+            .is_some_and(|supers| supers.iter().any(|name| name == "Y")));
+
+        let base = vec![source_clause("A", "Min2"), source_clause("A", "Max1")];
+        let removed = source_clause("X", "Y");
+        let (restored, removal_stats) = next
+            .updated_typed(
+                &base,
+                &[removed],
+                HtChangeKind::Removal,
+                cardinality_input(false),
+            )
+            .unwrap();
+        let fresh_base =
+            IncrementalHtClassifier::new_typed(&base, cardinality_input(false)).unwrap();
+        assert_eq!(restored.result(), fresh_base.result());
+        assert!(removal_stats.reused_probes > 0);
     }
 
     #[test]
