@@ -137,6 +137,29 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void duplicateLocalAndImportedAxiomIsOneSourceSupport() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        IRI importedIri = IRI.create(NS + "duplicate-import");
+        OWLOntology imported = manager.createOntology(importedIri);
+        OWLClass a = cls(dataFactory, "DuplicateA");
+        OWLClass b = cls(dataFactory, "DuplicateB");
+        OWLAxiom shared = dataFactory.getOWLSubClassOfAxiom(a, b);
+        manager.addAxiom(imported, shared);
+
+        OWLOntology root = manager.createOntology(IRI.create(NS + "duplicate-root"));
+        manager.applyChange(new org.semanticweb.owlapi.model.AddImport(
+                root, dataFactory.getOWLImportsDeclaration(importedIri)));
+        manager.addAxiom(root, shared);
+
+        Set<Explanation<OWLAxiom>> explanations = new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(root)
+                .getExplanations(shared);
+        assertEquals(1, explanations.size());
+        assertEquals(Set.of(shared), explanations.iterator().next().getAxioms());
+    }
+
+    @Test
     public void tautologyHasOneVerifiedEmptySourceJustification() throws Exception {
         OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
         OWLDataFactory dataFactory = manager.getOWLDataFactory();
