@@ -190,6 +190,14 @@ The initial clauses receive ids `1..N` in input order. Each accepted addition
 receives a monotonically increasing id, and an id is never reused after its
 clause is removed. Failed transactions allocate nothing.
 
+The source session keeps its parallel clause mirror in this same stable-id
+order. A later frontend pass may emit equivalent retained clauses in a
+different position and place fresh definers before old ABox clauses. Delta
+matching identifies semantic additions and removals, but committed additions
+remain appended beside their new ids. This invariant is required for a later
+transaction to remove the intended clause rather than whichever frontend-order
+clause happens to occupy the same vector position.
+
 `add_clauses` adds one transaction, `remove_clauses` removes ids, and
 `apply_change` combines both in one revision. A combined change first builds
 and validates the complete candidate snapshot, then commits its deletion and

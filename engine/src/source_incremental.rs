@@ -649,14 +649,31 @@ impl SourceIncrementalClassifier {
             } = &mut self.backend
             {
                 let (remove_ids, additions) = clause_delta(clauses, ids, &candidate.clauses);
+                let additions_in_classifier_order = additions.clone();
                 match with_route_environment(&route_after, || {
                     classifier.apply_change(&remove_ids, additions)
                 })? {
                     Ok(change) => {
                         let classification =
                             map_incremental_result(&candidate, classifier.result());
-                        *clauses = candidate.clauses.clone();
+                        // IncrementalClassifier preserves retained clause order
+                        // and appends every new stable id. Frontend order can
+                        // insert newly normalized clauses in the middle. Keep
+                        // this parallel vector in classifier/id order or a
+                        // later removal will associate an id with the wrong
+                        // clause and retract unrelated axioms.
+                        let removed: BTreeSet<ClauseId> = remove_ids.iter().copied().collect();
+                        let mut ordered: Vec<JClause> = clauses
+                            .iter()
+                            .zip(ids.iter())
+                            .filter_map(|(clause, id)| {
+                                (!removed.contains(id)).then(|| clause.clone())
+                            })
+                            .collect();
+                        ordered.extend(additions_in_classifier_order);
+                        *clauses = ordered;
                         *ids = classifier.clause_ids();
+                        debug_assert_eq!(clauses.len(), ids.len());
                         self.revision += 1;
                         self.route = route_after.clone();
                         self.frontend = candidate;
@@ -1745,6 +1762,54 @@ Ontology(
 
         let removal = session.replace_source(before).unwrap();
         assert_eq!(removal.strategy, ChangeStrategy::HtDelta);
+        assert!(removal.meaningful_incremental_update);
+        assert!(removal.retained_states > 0);
+        let restored = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.classification(), restored.classification());
+    }
+
+    #[test]
+    fn certified_nominal_route_preserves_singleton_taxonomy_during_cb_delta() {
+        let _environment = lock_environment();
+        let before = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:N))
+ Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(ObjectProperty(:r))
+ Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+ ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b)
+ EquivalentClasses(:N ObjectOneOf(:a))
+ SubClassOf(:X :Y) SubClassOf(:Y :Z) SubClassOf(:Z :X)
+)"#;
+        let after = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:N))
+ Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(ObjectProperty(:r))
+ Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+ ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b)
+ EquivalentClasses(:N ObjectOneOf(:a))
+ SubClassOf(:X :Y) SubClassOf(:Y :Z) SubClassOf(:Z :X)
+ SubClassOf(:X ObjectUnionOf(:Y :Z))
+)"#;
+
+        let mut session = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.route(), "certified_nominals");
+        assert!(session.retained_backend());
+        assert!(session
+            .classification()
+            .subsumptions
+            .contains(&[":N".into(), ":A".into()]));
+
+        let addition = session.replace_source(after).unwrap();
+        assert_eq!(addition.strategy, ChangeStrategy::CbDelta);
+        assert!(addition.meaningful_incremental_update);
+        assert!(addition.retained_states > 0);
+        let fresh = SourceIncrementalClassifier::new(after).unwrap();
+        assert_eq!(session.classification(), fresh.classification());
+
+        let removal = session.replace_source(before).unwrap();
+        assert_eq!(removal.strategy, ChangeStrategy::CbDelta);
         assert!(removal.meaningful_incremental_update);
         assert!(removal.retained_states > 0);
         let restored = SourceIncrementalClassifier::new(before).unwrap();

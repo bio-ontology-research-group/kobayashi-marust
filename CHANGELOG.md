@@ -26,6 +26,12 @@
   repeats the batch no-blocking certificate before publication. Resumed models
   now repeat the nominal-introduction risk check before they can serve as SAT
   witnesses.
+- Preserve the classifier's stable clause order after source-level insertions.
+  Frontend normalization may place a new generated clause before existing
+  clauses; the session now keeps its clause mirror in stable-id order, so a
+  later removal cannot retract an unrelated ABox assertion. This restores
+  singleton-derived taxonomy across add/remove cycles on the automatic
+  `certified_nominals` route.
 - Retain CB context fixpoints for ordering-stable additions. For removals and
   replacements, rebuild only dependency components reached through changed
   concepts, roles, functions, individuals, or auxiliary constants, and retain
