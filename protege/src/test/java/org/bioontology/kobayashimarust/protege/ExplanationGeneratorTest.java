@@ -90,6 +90,34 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void routeMigrationDuringMinimisationKeepsTheExactSourceSupport() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "MigrationA");
+        OWLClass b = cls(dataFactory, "MigrationB");
+        OWLClass c = cls(dataFactory, "MigrationC");
+        OWLClass noise = cls(dataFactory, "MigrationNoise");
+        OWLClass left = cls(dataFactory, "MigrationLeft");
+        OWLClass right = cls(dataFactory, "MigrationRight");
+        OWLAxiom first = dataFactory.getOWLSubClassOfAxiom(a, b);
+        OWLAxiom second = dataFactory.getOWLSubClassOfAxiom(b, c);
+        OWLAxiom disjunctiveNoise = dataFactory.getOWLSubClassOfAxiom(
+                noise, dataFactory.getOWLObjectUnionOf(left, right));
+        manager.addAxiom(ontology, first);
+        manager.addAxiom(ontology, second);
+        manager.addAxiom(ontology, disjunctiveNoise);
+
+        OWLAxiom entailment = dataFactory.getOWLSubClassOfAxiom(a, c);
+        Set<Explanation<OWLAxiom>> explanations = new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(ontology)
+                .getExplanations(entailment, 1);
+
+        assertEquals(1, explanations.size());
+        assertEquals(Set.of(first, second), explanations.iterator().next().getAxioms());
+    }
+
+    @Test
     public void nonEntailedQueryHasACompleteEmptyExplanationSet() throws Exception {
         OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
         OWLDataFactory dataFactory = manager.getOWLDataFactory();

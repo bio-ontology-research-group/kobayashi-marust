@@ -283,3 +283,52 @@ Ontology(
     assert_eq!(report["justifications"][0]["verified"], true);
     assert_eq!(report["justifications"][0]["subsetMinimal"], true);
 }
+
+#[test]
+fn explanation_minimisation_survives_automatic_route_migration() {
+    let ontology = temporary_ontology(
+        "route-migration",
+        r#"Prefix(:=<http://example.org/>)
+Ontology(
+ SubClassOf(:A :B)
+ SubClassOf(:B :C)
+ SubClassOf(:Noise ObjectUnionOf(:Left :Right))
+)"#,
+    );
+    let output = run_explain(&[
+        "--route",
+        "auto",
+        "--max-axioms",
+        "8",
+        "--max-checks",
+        "32",
+        ontology.to_str().unwrap(),
+        "subclass",
+        "http://example.org/A",
+        "http://example.org/C",
+    ]);
+    let _ = std::fs::remove_file(&ontology);
+    assert!(
+        output.status.success(),
+        "KM route-migrating explanation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("route=production_all") && stderr.contains("route=elc"),
+        "explanation search did not exercise both automatic routes: {stderr}"
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["status"], "entailed");
+    assert_eq!(report["justifications"][0]["axiomCount"], 2);
+    assert_eq!(report["justifications"][0]["verified"], true);
+    assert_eq!(report["justifications"][0]["subsetMinimal"], true);
+    assert!(!report["justifications"][0]["axioms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|axiom| axiom["functionalSyntax"]
+            .as_str()
+            .unwrap()
+            .contains("Noise")));
+}
