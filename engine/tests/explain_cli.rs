@@ -202,3 +202,84 @@ Ontology(
     assert_eq!(report["justifications"][0]["verified"], true);
     assert_eq!(report["justifications"][0]["subsetMinimal"], true);
 }
+
+#[test]
+fn certified_nominal_route_explains_native_abox_identity_inconsistency() {
+    let ontology = temporary_ontology(
+        "native-abox-identity",
+        r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:D))
+ Declaration(DataProperty(:p))
+ Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+ EquivalentClasses(:A ObjectOneOf(:a))
+ ClassAssertion(:A :b)
+ ClassAssertion(:C :a)
+ DifferentIndividuals(:a :b)
+ SubClassOf(:D DataSomeValuesFrom(:p xsd:string))
+)"#,
+    );
+    let output = run_explain(&[
+        "--max-axioms",
+        "12",
+        "--max-checks",
+        "32",
+        ontology.to_str().unwrap(),
+        "inconsistent",
+    ]);
+    let _ = std::fs::remove_file(&ontology);
+    assert!(
+        output.status.success(),
+        "KM native-ABox explanation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("route=certified_nominals"),
+        "native-ABox explanation did not exercise certified_nominals: {stderr}"
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["status"], "entailed");
+    assert_eq!(report["justifications"][0]["axiomCount"], 3);
+    assert_eq!(report["justifications"][0]["verified"], true);
+    assert_eq!(report["justifications"][0]["subsetMinimal"], true);
+}
+
+#[test]
+fn automatic_nominal_route_explains_minimal_singleton_identity_inconsistency() {
+    let ontology = temporary_ontology(
+        "minimal-singleton-identity",
+        r#"Prefix(:=<http://example.org/>)
+Ontology(
+ EquivalentClasses(:A ObjectOneOf(:a))
+ ClassAssertion(:A :b)
+ DifferentIndividuals(:a :b)
+)"#,
+    );
+    let output = run_explain(&[
+        "--route",
+        "auto",
+        "--max-axioms",
+        "8",
+        "--max-checks",
+        "16",
+        ontology.to_str().unwrap(),
+        "inconsistent",
+    ]);
+    let _ = std::fs::remove_file(&ontology);
+    assert!(
+        output.status.success(),
+        "KM minimal nominal explanation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("route=certified_nominals"),
+        "automatic route did not select an exact nominal route: {stderr}"
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["status"], "entailed");
+    assert_eq!(report["justifications"][0]["axiomCount"], 3);
+    assert_eq!(report["justifications"][0]["verified"], true);
+    assert_eq!(report["justifications"][0]["subsetMinimal"], true);
+}

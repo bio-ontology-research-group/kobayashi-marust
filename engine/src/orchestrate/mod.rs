@@ -551,6 +551,17 @@ fn use_atomic_inproc_elc(
     structured || flat_small
 }
 
+/// ELC sees normalized TBox clauses, not arbitrary singleton/ABox identity
+/// metadata.  An ABox may authorize ELC publication only after one of the
+/// frontend's positive-ABox separation certificates has proved that this view
+/// is complete.  In particular, `A ≡ {a}, A(b), a != b` must reach the exact
+/// nominal route rather than publishing the satisfiable TBox projection.
+fn elc_source_publication_safe(profile: &crate::frontend::profile::OntologyProfile) -> bool {
+    profile.source.abox_axioms == 0
+        || profile.positive_el_abox_materializable
+        || profile.positive_abox_tbox_separable
+}
+
 #[inline]
 fn use_elc_portfolio(elc: bool, elc_portfolio: bool, is_giant: bool, tab_race: bool) -> bool {
     elc && elc_portfolio && !is_giant && !tab_race
@@ -1054,7 +1065,9 @@ fn classify_with_evidence_mode(
     let retain_cached_for_el = std::env::var_os("KM_NO_INPROC_ELC").is_none()
         && match &cfg.mechanism {
             Mechanism::Elc => use_atomic_inproc_elc(selected_route, &meta.profile),
-            Mechanism::Portfolio => cfg.elc && meta.el_rbox_safe,
+            Mechanism::Portfolio => {
+                cfg.elc && meta.el_rbox_safe && elc_source_publication_safe(&meta.profile)
+            }
             Mechanism::Cb | Mechanism::Ht | Mechanism::Tableau | Mechanism::Unknown(_) => false,
         };
     if !retain_cached_for_el {
@@ -1264,8 +1277,12 @@ fn classify_with_evidence_mode(
             // Suppress that outer EL race when tableau racing is requested; the
             // normal bare-EL fast path still gets first refusal, and a non-EL input
             // reaches the documented absorbed-CB-vs-tableau procedure below.
-            let portfolio_on =
-                use_elc_portfolio(cfg.elc, cfg.elc_portfolio, is_giant, cfg.tab_race);
+            let portfolio_on = use_elc_portfolio(
+                cfg.elc && elc_source_publication_safe(&meta.profile),
+                cfg.elc_portfolio,
+                is_giant,
+                cfg.tab_race,
+            );
             let mut out: Option<EngineOut> = None;
             let (elc_prog, elc_pre) = cfg.elc_cmd();
 
@@ -1279,7 +1296,12 @@ fn classify_with_evidence_mode(
             let small = std::fs::metadata(ont)
                 .map(|m| m.len() < INPROC_ELC_MAX)
                 .unwrap_or(false);
-            if cfg.elc && inproc_ok && small && meta.el_rbox_safe {
+            if cfg.elc
+                && inproc_ok
+                && small
+                && meta.el_rbox_safe
+                && elc_source_publication_safe(&meta.profile)
+            {
                 out = try_inproc_elc(cfg, clauses_path.path(), cached_input.take())?;
                 if timing && out.is_some() {
                     eprintln!(
@@ -1289,7 +1311,12 @@ fn classify_with_evidence_mode(
                 }
             }
 
-            if cfg.elc && out.is_none() && meta.el_rbox_safe && !portfolio_on {
+            if cfg.elc
+                && out.is_none()
+                && meta.el_rbox_safe
+                && !portfolio_on
+                && elc_source_publication_safe(&meta.profile)
+            {
                 // bare elc: it decides EL-membership itself (exit 3 ⇒ not EL).
                 let res = engine_run::run_engine(
                     &elc_prog,

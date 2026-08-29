@@ -1139,11 +1139,10 @@ fn certified_el_production_candidate(profile: &OntologyProfile) -> bool {
     positive_abox || large_extended_tbox || small_identity_abox
 }
 
-/// Large ABoxes without number restrictions are better served by the complete
-/// production portfolio than by eagerly materializing every nominal in the CB
-/// root context. The portfolio retains the exact nominal fallback, so this is
-/// a scheduling decision even when data-property assertions prevent the
-/// narrower typed-object-ABox bridge certificate.
+/// Large ABoxes without number restrictions try the certified native bridge
+/// before eagerly materializing every nominal in the CB root context. The
+/// certified-nominals bundle retains the exact singleton-aware fallback even
+/// when data-property assertions prevent a narrower bridge certificate.
 fn large_no_cardinality_abox_production_candidate(profile: &OntologyProfile) -> bool {
     const LARGE_ABOX_AXIOMS: u64 = 40_000;
     let source = &profile.source;
@@ -1160,8 +1159,8 @@ fn large_no_cardinality_abox_production_candidate(profile: &OntologyProfile) -> 
 
 /// Small ABoxes made only of class assertions and explicit identity constraints
 /// avoid the native bridge's long defer path on cardinality-rich terminologies.
-/// The complete production portfolio retains the same exact nominal-aware CB
-/// fallback, so this predicate changes scheduling only.
+/// They must use the exact nominal calculus: the ordinary production bundle
+/// does not enable singleton-aware CB processing.
 fn small_class_identity_abox_production_candidate(profile: &OntologyProfile) -> bool {
     const SMALL_ABOX_LIMIT: u64 = 100;
 
@@ -1189,10 +1188,9 @@ fn small_class_identity_abox_production_candidate(profile: &OntologyProfile) -> 
         && !profile.expressivity.universal_role
 }
 
-/// Very large terminologies with a tiny class/identity-only ABox should let the
-/// complete production portfolio race its exact procedures instead of entering
-/// the nominal root-context engine directly. This is a scheduling gate only:
-/// `production_all` retains the same exact nominal-aware fallback.
+/// Very large terminologies with a tiny class/identity-only ABox try the typed
+/// bridge before entering the nominal root-context engine. The
+/// `certified_nominals` bundle retains that exact singleton-aware fallback.
 fn large_tbox_small_identity_abox_production_candidate(profile: &OntologyProfile) -> bool {
     const LARGE_TBOX_LIMIT: u64 = 100_000;
     const SMALL_ABOX_LIMIT: u64 = 100;
@@ -1320,10 +1318,10 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal
             if large_tbox_small_identity_abox_production_candidate(profile) =>
         {
-            Route::ProductionAll
+            Route::CertifiedNominals
         }
         SemanticFragment::Nominal if small_class_identity_abox_production_candidate(profile) => {
-            Route::ProductionAll
+            Route::Nominals
         }
         SemanticFragment::Nominal if compact_nominal_general_ht_candidate(profile) => {
             Route::HtGeneral
@@ -1344,30 +1342,28 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if profile.card_number_role_separable => {
             Route::CertifiedCardProxyAbox
         }
-        // Prefer the complete production portfolio for very large ABoxes when
+        // Prefer the certified nominal portfolio for very large ABoxes when
         // no number restriction can couple their individuals.  This test must
         // precede the broad large-nominal portfolio: both routes retain the
         // exact nominal-aware CB fallback, but eagerly materializing this
         // shape can consume the whole process-tree budget before that fallback
         // gets useful work done.
         SemanticFragment::Nominal if large_no_cardinality_abox_production_candidate(profile) => {
-            Route::ProductionAll
+            Route::CertifiedNominals
         }
         SemanticFragment::Nominal if large_nominal_portfolio_candidate(profile) => {
             Route::CertifiedNominals
         }
-        // Typed object-ABoxes without number restrictions do not need the
-        // cardinality-oriented bridge portfolio.  The complete production
-        // portfolio retains the exact nominal fallback and gives its plain CB
-        // competitors a chance to close these SOI inputs before root-context
-        // materialization consumes the process-tree memory budget.
+        // Typed object-ABoxes without number restrictions still require a
+        // singleton-aware fallback if the bridge defers. CertifiedNominals
+        // provides that exact fallback without admitting ordinary proxy CB.
         SemanticFragment::Nominal
             if typed_object_abox_bridge_candidate(profile)
                 && !profile.expressivity.cardinality
                 && !profile.expressivity.qualified_cardinality
                 && !profile.expressivity.datatype =>
         {
-            Route::ProductionAll
+            Route::CertifiedNominals
         }
         // Try the exact typed object-ABox bridge before materializing every
         // nominal into CB root contexts.  The bridge is complete-answer-or-
@@ -2663,7 +2659,7 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(large_nominal_portfolio_candidate(&profile));
         assert!(large_no_cardinality_abox_production_candidate(&profile));
-        assert_eq!(select(&profile), Route::ProductionAll);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
 
         // The same no-cardinality family begins at ORE8480's measured scale.
         let mut medium = profile.clone();
@@ -2672,7 +2668,7 @@ mod tests {
         medium.source.role_assertions = 10_462;
         medium.source.distinct_individuals = 24_910;
         assert!(large_no_cardinality_abox_production_candidate(&medium));
-        assert_eq!(select(&medium), Route::ProductionAll);
+        assert_eq!(select(&medium), Route::CertifiedNominals);
 
         // A number restriction invalidates the production shortcut and keeps
         // the bounded exact nominal portfolio authoritative.
@@ -2906,7 +2902,7 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(typed_object_abox_bridge_candidate(&profile));
         assert!(!profile.expressivity.cardinality);
-        assert_eq!(select(&profile), Route::ProductionAll);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
     }
 
     #[test]
@@ -3151,7 +3147,7 @@ mod tests {
     }
 
     #[test]
-    fn large_data_assertion_abox_without_cardinality_uses_production() {
+    fn large_data_assertion_abox_without_cardinality_keeps_nominal_fallback() {
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 607_933;
         profile.source.class_assertions = 382_511;
@@ -3167,7 +3163,7 @@ mod tests {
 
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(large_no_cardinality_abox_production_candidate(&profile));
-        assert_eq!(select(&profile), Route::ProductionAll);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
 
         profile.source.min_cardinalities = 1;
         profile.expressivity.cardinality = true;
@@ -3175,7 +3171,7 @@ mod tests {
     }
 
     #[test]
-    fn small_class_identity_abox_uses_production_portfolio() {
+    fn small_class_identity_abox_uses_exact_nominal_route() {
         let mut profile = source_profile(
             r#"Ontology(
                 ClassAssertion(<A> <a>)
@@ -3187,7 +3183,7 @@ mod tests {
         );
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(small_class_identity_abox_production_candidate(&profile));
-        assert_eq!(select(&profile), Route::ProductionAll);
+        assert_eq!(select(&profile), Route::Nominals);
 
         profile
             .source
@@ -3205,7 +3201,7 @@ mod tests {
     }
 
     #[test]
-    fn large_tbox_small_identity_abox_uses_production_portfolio() {
+    fn large_tbox_small_identity_abox_uses_certified_nominal_portfolio() {
         let mut profile = source_profile(
             r#"Ontology(
                 ClassAssertion(<A> <a>)
@@ -3225,7 +3221,7 @@ mod tests {
         assert!(large_tbox_small_identity_abox_production_candidate(
             &profile
         ));
-        assert_eq!(select(&profile), Route::ProductionAll);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
 
         profile.source.tbox_axioms -= 1;
         assert!(!large_tbox_small_identity_abox_production_candidate(

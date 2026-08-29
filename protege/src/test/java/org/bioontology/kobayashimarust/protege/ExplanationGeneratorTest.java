@@ -263,6 +263,35 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void explainsNativeAboxSingletonIdentityInconsistency() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass aClass = cls(dataFactory, "NativeAboxClass");
+        org.semanticweb.owlapi.model.OWLNamedIndividual a =
+                dataFactory.getOWLNamedIndividual(IRI.create(NS + "nativeA"));
+        org.semanticweb.owlapi.model.OWLNamedIndividual b =
+                dataFactory.getOWLNamedIndividual(IRI.create(NS + "nativeB"));
+        OWLAxiom singleton = dataFactory.getOWLEquivalentClassesAxiom(
+                aClass, dataFactory.getOWLObjectOneOf(a));
+        OWLAxiom assertion = dataFactory.getOWLClassAssertionAxiom(aClass, b);
+        OWLAxiom inequality = dataFactory.getOWLDifferentIndividualsAxiom(a, b);
+        manager.addAxiom(ontology, singleton);
+        manager.addAxiom(ontology, assertion);
+        manager.addAxiom(ontology, inequality);
+
+        OWLAxiom inconsistency = dataFactory.getOWLSubClassOfAxiom(
+                dataFactory.getOWLThing(), dataFactory.getOWLNothing());
+        Set<Explanation<OWLAxiom>> explanations = new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(ontology)
+                .getExplanations(inconsistency, 1);
+
+        assertEquals(1, explanations.size());
+        assertEquals(Set.of(singleton, assertion, inequality),
+                explanations.iterator().next().getAxioms());
+    }
+
+    @Test
     public void explainsAnInverseRoleCbEntailment() throws Exception {
         OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
         OWLDataFactory dataFactory = manager.getOWLDataFactory();
