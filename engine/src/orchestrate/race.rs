@@ -570,7 +570,22 @@ pub(crate) fn prepare_incremental_ht(
         &[],
         false,
     );
-    ht_routable(&tin).then_some(tin)
+    // `ht_general` deliberately consumes the legacy clause-only view. Its
+    // compact-nominal automatic leaf keeps singleton and ground ABox meaning
+    // in those clauses and does not install the typed ABox a second time. The
+    // ordinary `ht_routable` predicate rejects every nominal, so without this
+    // route-specific gate the source session silently degraded every such
+    // revision to ExactBatch. Retained HT can carry those nominal ids, but we
+    // still require complete conversion and reject every other forced-route
+    // escape hatch that is not represented by its typed state.
+    let general_clause_only = frontend.route == "ht_general"
+        && std::env::var("KM_HT_ONLY").ok().as_deref() == Some("general")
+        && tin.dropped == 0
+        && tin.fenced.is_empty()
+        && !tin.inverse
+        && tin.native_abox.is_empty()
+        && tin.card_defs.is_empty();
+    (ht_routable(&tin) || general_clause_only).then_some(tin)
 }
 
 /// Build the typed input used by the production first-class-cardinality arm.

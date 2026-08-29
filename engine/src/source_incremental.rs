@@ -1333,6 +1333,37 @@ mod tests {
         }
     }
 
+    fn compact_general_ht_source(extended: bool) -> String {
+        let mut source = String::from(
+            r#"Prefix(:=<http://example.org/general-incremental#>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:N))
+ Declaration(Class(:X)) Declaration(Class(:Y))
+ Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a))
+"#,
+        );
+        // The automatic compact-nominal leaf is intentionally profile-gated
+        // at corpus scale. Duplicate source occurrences keep this regression
+        // cheap in symbols and probes while exercising that real gate.
+        for _ in 0..3_997 {
+            source.push_str(" SubClassOf(:A :B)\n");
+        }
+        source.push_str(" EquivalentClasses(:N ObjectOneOf(:a))\n");
+        source.push_str(" SubClassOf(:A ObjectUnionOf(:B :C))\n");
+        source.push_str(" SubClassOf(:A ObjectUnionOf(:B :C))\n");
+        for _ in 0..1_400 {
+            source.push_str(" ClassAssertion(:A :a)\n");
+        }
+        for _ in 0..600 {
+            source.push_str(" ObjectPropertyAssertion(:r :a :a)\n");
+        }
+        if extended {
+            source.push_str(" SubClassOf(:X :Y)\n");
+        }
+        source.push_str(")\n");
+        source
+    }
+
     #[test]
     fn multiset_delta_preserves_duplicate_clause_identity() {
         let a = fact("A");
@@ -1605,6 +1636,30 @@ Ontology(
             )
             .unwrap();
         assert!(stats.reused_probes > 0 || stats.resumed_models > 0);
+    }
+
+    #[test]
+    fn automatic_general_ht_route_retains_clause_only_nominal_probes() {
+        let _environment = lock_environment();
+        let before = compact_general_ht_source(false);
+        let after = compact_general_ht_source(true);
+        let mut session = SourceIncrementalClassifier::new(&before).unwrap();
+        assert_eq!(session.route(), "ht_general");
+        assert!(session.retained_backend());
+
+        let addition = session.replace_source(&after).unwrap();
+        assert_eq!(addition.strategy, ChangeStrategy::HtDelta);
+        assert!(addition.meaningful_incremental_update);
+        assert!(addition.retained_states > 0);
+        let fresh = SourceIncrementalClassifier::new(&after).unwrap();
+        assert_eq!(session.classification(), fresh.classification());
+
+        let removal = session.replace_source(&before).unwrap();
+        assert_eq!(removal.strategy, ChangeStrategy::HtDelta);
+        assert!(removal.meaningful_incremental_update);
+        assert!(removal.retained_states > 0);
+        let restored = SourceIncrementalClassifier::new(&before).unwrap();
+        assert_eq!(session.classification(), restored.classification());
     }
 
     #[test]

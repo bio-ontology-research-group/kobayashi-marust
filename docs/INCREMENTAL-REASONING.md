@@ -145,6 +145,16 @@ remain reusable. Unsupported negative-role ABox state and a failed certificate
 take the visible exact-classification fallback instead of publishing a partial
 HT answer.
 
+The automatic compact-nominal `ht_general` leaf is an exact exception to the
+ordinary typed-ABox path because its batch worker deliberately consumes the
+legacy clause-only view. The source adapter retains that same completed HT
+probe state only when conversion drops and fences nothing and the input has no
+inverse-role, native-ABox, or side-cardinality state. Singleton and ground ABox
+meaning remains in the clauses in this family. Insertions and removals
+invalidate only dependent probes, and regression tests compare both resulting
+taxonomies with fresh automatic classification. Any input outside this exact
+boundary takes the visible exact-classification fallback.
+
 The proxy-card ABox route retains the same cardinality TBox probes while
 recomputing its small concrete-ABox certificate for each source revision. The
 certificate closes asserted positive role edges under admitted Horn role rules

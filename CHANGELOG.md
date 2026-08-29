@@ -26,6 +26,11 @@
   repeats the batch no-blocking certificate before publication. Resumed models
   now repeat the nominal-introduction risk check before they can serve as SAT
   witnesses.
+- Retain clause-only HT probe state for the automatic compact-nominal
+  `ht_general` leaf. The adapter matches the batch worker's legacy input view,
+  requires lossless conversion with no inverse-role, native-ABox,
+  side-cardinality, or route-fence state, and verifies meaningful insertion and
+  removal against fresh automatic classification.
 - Preserve the classifier's stable clause order after source-level insertions.
   Frontend normalization may place a new generated clause before existing
   clauses; the session now keeps its clause mirror in stable-id order, so a
