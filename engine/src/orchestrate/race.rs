@@ -573,6 +573,37 @@ pub(crate) fn prepare_incremental_ht(
     ht_routable(&tin).then_some(tin)
 }
 
+/// Exact typed source for the production quasi-order certify-or-defer arm.
+/// The retained adapter invokes the same QO implementation and treats `None`
+/// as a transactional defer. Specialist cardinality and nominal publication
+/// remain outside this gate because they require additional certificates.
+pub(crate) fn prepare_incremental_qo(
+    frontend: &crate::frontend::FrontendResult,
+) -> Option<cb_to_ht::TInput> {
+    if !frontend.rules.is_empty() {
+        return None;
+    }
+    let named = frontend.named.iter().cloned().collect();
+    let tin = cb_to_ht::convert(
+        &frontend.clauses,
+        Some(frontend.rbox.as_slice()),
+        &named,
+        &frontend.cardinalities,
+        &frontend.definers,
+        &frontend.source_axioms,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        &[],
+        false,
+    );
+    (tin.dropped == 0
+        && tin.fenced.is_empty()
+        && tin.nominals.is_empty()
+        && tin.native_abox.is_empty()
+        && tin.card_defs.is_empty()
+        && has_inverse_bridge(&frontend.clauses))
+    .then_some(tin)
+}
+
 /// Fences that belong to the legacy fast tableau rather than the Konclude
 /// completion bridge. The bridge has native inverse-role and cardinality
 /// processing, so their combination is not a coverage loss there. Complex

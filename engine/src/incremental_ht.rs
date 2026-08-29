@@ -39,6 +39,13 @@ pub(crate) struct HtDeltaStats {
     pub new_subsumptions: usize,
 }
 
+#[derive(Clone, Debug, Default)]
+pub(crate) struct QoDeltaStats {
+    pub reused_queries: usize,
+    pub rebuilt_queries: usize,
+    pub reused_subsumptions: usize,
+}
+
 #[derive(Clone)]
 struct ProbeRecord {
     /// `true` means the probe seed is satisfiable.
@@ -68,6 +75,7 @@ struct CompiledHt {
     card_defs: Vec<CardDefJson>,
     chains: Vec<(R, R, R)>,
     transitive: Vec<R>,
+    inverse: bool,
 }
 
 impl CompiledHt {
@@ -164,6 +172,7 @@ impl CompiledHt {
             && self.card_defs == next.card_defs
             && self.chains == next.chains
             && self.transitive == next.transitive
+            && self.inverse == next.inverse
     }
 
     /// State installed outside the HT clause vector.  Clause dependency
@@ -176,6 +185,119 @@ impl CompiledHt {
             && self.card_defs == next.card_defs
             && self.chains == next.chains
             && self.transitive == next.transitive
+            && self.inverse == next.inverse
+    }
+}
+
+/// Retained taxonomy state for the production QO certify-or-defer mechanism.
+/// QO itself owns each rebuilt component; this adapter only reuses rows whose
+/// source-signature component is disconnected from the transaction delta.
+pub(crate) struct IncrementalQoClassifier {
+    source_clauses: Vec<JClause>,
+    compiled: CompiledHt,
+    result: IncrementalResult,
+}
+
+impl IncrementalQoClassifier {
+    pub(crate) fn new_typed(
+        clauses: &[JClause],
+        input: TInput,
+    ) -> Result<Self, IncrementalReasoningError> {
+        let compiled = compile_typed_ht_mode(input, true)?;
+        let result = classify_qo_queries(&compiled, &compiled.queries)?;
+        Ok(Self {
+            source_clauses: clauses.to_vec(),
+            compiled,
+            result,
+        })
+    }
+
+    pub(crate) fn result(&self) -> IncrementalResult {
+        self.result.clone()
+    }
+
+    pub(crate) fn updated_typed(
+        &self,
+        candidate: &[JClause],
+        changed_clauses: &[JClause],
+        kind: HtChangeKind,
+        input: TInput,
+    ) -> Result<(Self, QoDeltaStats), IncrementalReasoningError> {
+        let compiled = compile_typed_ht_mode(input, true)?;
+        let queries = compiled.query_names();
+        let side_state_changed = !self.compiled.installed_side_state_eq(&compiled);
+        let mut affected =
+            affected_concepts(&self.source_clauses, candidate, changed_clauses, &queries);
+        if side_state_changed || self.result.inconsistent || kind == HtChangeKind::Replacement {
+            affected.extend(queries.iter().cloned());
+        }
+
+        let mut rebuilt_ids: Vec<C> = affected
+            .iter()
+            .filter_map(|name| compiled.id_of(name))
+            .collect();
+        // QO reports global inconsistency as every queried class being UNSAT.
+        // Keep one previously satisfiable anchor in a partial run so that an
+        // all-UNSAT affected component cannot masquerade as global inconsistency.
+        if affected.len() < queries.len() && !self.result.inconsistent {
+            if let Some(anchor) = queries.iter().find(|name| {
+                !affected.contains(*name)
+                    && !self
+                        .result
+                        .subsumptions
+                        .get(*name)
+                        .is_some_and(|supers| supers.iter().any(|s| s == "owl:Nothing"))
+            }) {
+                if let Some(id) = compiled.id_of(anchor) {
+                    rebuilt_ids.push(id);
+                }
+            }
+        }
+        rebuilt_ids.sort_unstable();
+        rebuilt_ids.dedup();
+
+        let rebuilt = classify_qo_queries(&compiled, &rebuilt_ids)?;
+        let mut result = if rebuilt.inconsistent {
+            // A newly inconsistent ontology entails the complete taxonomy.
+            result_from_inconsistent_queries(&queries)
+        } else {
+            let mut merged = self.result.clone();
+            merged.inconsistent = false;
+            merged
+                .subsumptions
+                .retain(|subject, _| !affected.contains(subject));
+            for (subject, supers) in rebuilt.subsumptions {
+                if affected.contains(&subject) {
+                    merged.subsumptions.insert(subject, supers);
+                }
+            }
+            for query in &queries {
+                merged.subsumptions.entry(query.clone()).or_default();
+            }
+            merged
+                .subsumptions
+                .retain(|subject, _| queries.contains(subject));
+            merged
+        };
+        // A removal from a globally inconsistent state was rebuilt above over
+        // every query, so this also reconstructs its complete consistent taxonomy.
+        result.dropped = 0;
+        result.unresolved.clear();
+
+        let reused_subsumptions = retained_pair_count(&self.result, &result);
+        let stats = QoDeltaStats {
+            reused_queries: queries.len().saturating_sub(affected.len()),
+            rebuilt_queries: affected.len(),
+            reused_subsumptions,
+        };
+        Ok((
+            Self {
+                source_clauses: candidate.to_vec(),
+                compiled,
+                result,
+            },
+            stats,
+        ))
     }
 }
 
@@ -614,6 +736,84 @@ fn result_from_probes(
     }
 }
 
+fn classify_qo_queries(
+    compiled: &CompiledHt,
+    queries: &[C],
+) -> Result<IncrementalResult, IncrementalReasoningError> {
+    let mut ht = compiled.instantiate()?;
+    let Some((consistent, unsatisfiable, subsumptions)) = ht.quasi_order_classify(queries) else {
+        return Err(IncrementalReasoningError::HtDeferred {
+            detail: "QO incremental component reached its complete-answer-or-defer boundary".into(),
+        });
+    };
+    let query_names: Vec<String> = queries
+        .iter()
+        .filter_map(|&id| compiled.name_of(id).map(str::to_string))
+        .collect();
+    if !consistent {
+        return Ok(result_from_inconsistent_queries(&query_names));
+    }
+    let mut relation: BTreeMap<String, BTreeSet<String>> = query_names
+        .iter()
+        .cloned()
+        .map(|name| (name, BTreeSet::new()))
+        .collect();
+    for id in unsatisfiable {
+        if let Some(name) = compiled.name_of(id) {
+            relation
+                .entry(name.to_string())
+                .or_default()
+                .insert("owl:Nothing".into());
+        }
+    }
+    for (subject, object) in subsumptions {
+        if let (Some(subject), Some(object)) = (compiled.name_of(subject), compiled.name_of(object))
+        {
+            relation
+                .entry(subject.to_string())
+                .or_default()
+                .insert(object.to_string());
+        }
+    }
+    transitive_close(&mut relation);
+    Ok(IncrementalResult {
+        subsumptions: relation
+            .into_iter()
+            .map(|(subject, objects)| (subject, objects.into_iter().collect()))
+            .collect(),
+        inconsistent: false,
+        dropped: 0,
+        unresolved: Vec::new(),
+    })
+}
+
+fn result_from_inconsistent_queries(queries: &[String]) -> IncrementalResult {
+    IncrementalResult {
+        subsumptions: queries
+            .iter()
+            .cloned()
+            .map(|query| (query, vec!["owl:Nothing".into()]))
+            .collect(),
+        inconsistent: true,
+        dropped: 0,
+        unresolved: Vec::new(),
+    }
+}
+
+fn retained_pair_count(old: &IncrementalResult, new: &IncrementalResult) -> usize {
+    old.subsumptions
+        .iter()
+        .map(|(subject, old_supers)| {
+            new.subsumptions.get(subject).map_or(0, |new_supers| {
+                old_supers
+                    .iter()
+                    .filter(|object| new_supers.contains(object))
+                    .count()
+            })
+        })
+        .sum()
+}
+
 fn transitive_close(relation: &mut BTreeMap<String, BTreeSet<String>>) {
     loop {
         let snapshot = relation.clone();
@@ -769,6 +969,7 @@ fn compile_direct_ht(clauses: &[JClause]) -> Result<CompiledHt, IncrementalReaso
         card_defs: Vec::new(),
         chains: Vec::new(),
         transitive: Vec::new(),
+        inverse: false,
     })
 }
 
@@ -776,6 +977,13 @@ fn compile_direct_ht(clauses: &[JClause]) -> Result<CompiledHt, IncrementalReaso
 /// typed side state. The caller remains responsible for constructing this
 /// `TInput` through the same source projection used by the batch route.
 fn compile_typed_ht(input: TInput) -> Result<CompiledHt, IncrementalReasoningError> {
+    compile_typed_ht_mode(input, false)
+}
+
+fn compile_typed_ht_mode(
+    input: TInput,
+    allow_inverse: bool,
+) -> Result<CompiledHt, IncrementalReasoningError> {
     if input.dropped != 0 {
         return unsupported(format!(
             "typed HT conversion dropped {} normalized clause(s)",
@@ -795,7 +1003,7 @@ fn compile_typed_ht(input: TInput) -> Result<CompiledHt, IncrementalReasoningErr
     }
     // The ordinary retained Ht probes do not implement the QO/SHIQ publication
     // guards. Those automatic variants need their own checked-state adapter.
-    if input.inverse {
+    if input.inverse && !allow_inverse {
         return unsupported("typed incremental HT does not yet admit inverse-role publication");
     }
     if !input.native_abox.negative_role_assertions.is_empty() {
@@ -864,6 +1072,7 @@ fn compile_typed_ht(input: TInput) -> Result<CompiledHt, IncrementalReasoningErr
         card_defs: input.card_defs,
         chains,
         transitive,
+        inverse: input.inverse,
     })
 }
 
@@ -1139,6 +1348,31 @@ mod typed_tests {
         input
     }
 
+    fn qo_input(extra: bool) -> TInput {
+        let mut input = TInput {
+            concepts: vec!["A".into(), "B".into(), "X".into(), "Y".into()],
+            roles: vec!["r".into(), "s".into()],
+            clauses: vec![
+                concept_clause(0, 1),
+                HtClause {
+                    body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+                    head: vec![HAtom::Role { r: 1, s: 1, t: 0 }],
+                },
+                HtClause {
+                    body: vec![HAtom::Role { r: 1, s: 0, t: 1 }],
+                    head: vec![HAtom::Role { r: 0, s: 1, t: 0 }],
+                },
+            ],
+            queries: vec![0, 1, 2, 3],
+            inverse: true,
+            ..TInput::default()
+        };
+        if extra {
+            input.clauses.push(concept_clause(2, 3));
+        }
+        input
+    }
+
     #[test]
     fn typed_native_abox_is_installed_and_classified() {
         let classifier =
@@ -1178,6 +1412,41 @@ mod typed_tests {
 
         assert_eq!(stats.reused_probes, 0);
         assert!(stats.rebuilt_probes >= 3);
+    }
+
+    #[test]
+    fn qo_disconnected_addition_reuses_unaffected_taxonomy_queries() {
+        let before = vec![source_clause("A", "B")];
+        let classifier = IncrementalQoClassifier::new_typed(&before, qo_input(false)).unwrap();
+        let added = source_clause("X", "Y");
+        let mut after = before;
+        after.push(added.clone());
+        let (next, stats) = classifier
+            .updated_typed(&after, &[added], HtChangeKind::Addition, qo_input(true))
+            .unwrap();
+        let fresh_after = IncrementalQoClassifier::new_typed(&after, qo_input(true)).unwrap();
+        assert_eq!(next.result(), fresh_after.result());
+        assert!(stats.reused_queries >= 2);
+        assert!(stats.rebuilt_queries >= 2);
+        assert!(next
+            .result()
+            .subsumptions
+            .get("X")
+            .is_some_and(|supers| supers.iter().any(|name| name == "Y")));
+
+        let removed = source_clause("X", "Y");
+        let base = vec![source_clause("A", "B")];
+        let (restored, removal_stats) = next
+            .updated_typed(&base, &[removed], HtChangeKind::Removal, qo_input(false))
+            .unwrap();
+        let fresh_base = IncrementalQoClassifier::new_typed(&base, qo_input(false)).unwrap();
+        assert_eq!(restored.result(), fresh_base.result());
+        assert!(removal_stats.reused_queries >= 2);
+        assert!(!restored
+            .result()
+            .subsumptions
+            .get("X")
+            .is_some_and(|supers| supers.iter().any(|name| name == "Y")));
     }
 
     #[test]

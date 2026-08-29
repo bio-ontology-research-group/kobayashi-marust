@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 
 use crate::frontend::FrontendResult;
 use crate::incremental::{ChangeStrategy, ClauseId, IncrementalChange, IncrementalClassifier};
-use crate::incremental_ht::{HtChangeKind, IncrementalHtClassifier};
+use crate::incremental_ht::{HtChangeKind, IncrementalHtClassifier, IncrementalQoClassifier};
 use crate::incremental_positive_abox::IncrementalPositiveAboxClassifier;
 use crate::incremental_rules::IncrementalRulesClassifier;
 use crate::json_io::JClause;
@@ -49,6 +49,10 @@ enum SourceBackend {
     PositiveAbox(IncrementalPositiveAboxClassifier),
     TypedHt {
         classifier: IncrementalHtClassifier,
+        clauses: Vec<JClause>,
+    },
+    QuasiOrder {
+        classifier: IncrementalQoClassifier,
         clauses: Vec<JClause>,
     },
     Rules(IncrementalRulesClassifier),
@@ -120,6 +124,23 @@ impl SourceIncrementalClassifier {
                 .with_live_clauses());
             }
         }
+        if let Some(classifier) = with_route_environment(&route, || {
+            crate::orchestrate::race::prepare_incremental_qo(&frontend)
+                .and_then(|input| IncrementalQoClassifier::new_typed(&frontend.clauses, input).ok())
+        })? {
+            let classification = map_incremental_result(&frontend, classifier.result());
+            return Ok(Self {
+                revision: 0,
+                route,
+                frontend,
+                classification,
+                backend: SourceBackend::QuasiOrder {
+                    classifier,
+                    clauses: Vec::new(),
+                },
+            }
+            .with_live_clauses());
+        }
         let classification = classify_source_exact(source)?;
         let backend = if route == "ht_rules" {
             SourceBackend::Rules(IncrementalRulesClassifier::new(
@@ -143,6 +164,9 @@ impl SourceIncrementalClassifier {
             *clauses = self.frontend.clauses.clone();
         }
         if let SourceBackend::TypedHt { clauses, .. } = &mut self.backend {
+            *clauses = self.frontend.clauses.clone();
+        }
+        if let SourceBackend::QuasiOrder { clauses, .. } = &mut self.backend {
             *clauses = self.frontend.clauses.clone();
         }
         self
@@ -239,6 +263,64 @@ impl SourceIncrementalClassifier {
                     reused_fixpoint: meaningful,
                     reused_subsumptions: stats.reused_subsumptions,
                     reused_edges: stats.reused_edges,
+                    added_normalized_clauses: additions.len(),
+                    removed_normalized_clauses: removed_ids.len(),
+                    added_rules: 0,
+                    removed_rules: 0,
+                    meaningful_incremental_update: meaningful,
+                });
+            }
+        }
+
+        if let SourceBackend::QuasiOrder {
+            classifier,
+            clauses,
+        } = &self.backend
+        {
+            let old_ids: Vec<ClauseId> = (0..clauses.len() as ClauseId).collect();
+            let (removed_ids, additions) = clause_delta(clauses, &old_ids, &candidate.clauses);
+            let removed_clauses: Vec<JClause> = removed_ids
+                .iter()
+                .filter_map(|id| clauses.get(*id as usize).cloned())
+                .collect();
+            let mut changed = removed_clauses;
+            changed.extend(additions.iter().cloned());
+            let kind = match (removed_ids.is_empty(), additions.is_empty()) {
+                (true, false) => HtChangeKind::Addition,
+                (false, true) => HtChangeKind::Removal,
+                _ => HtChangeKind::Replacement,
+            };
+            let update = with_route_environment(&route_after, || {
+                crate::orchestrate::race::prepare_incremental_qo(&candidate).and_then(|input| {
+                    classifier
+                        .updated_typed(&candidate.clauses, &changed, kind, input)
+                        .ok()
+                })
+            })?;
+            if let Some((next, stats)) = update {
+                let classification = map_incremental_result(&candidate, next.result());
+                self.revision += 1;
+                self.route = route_after.clone();
+                self.frontend = candidate;
+                self.classification = classification;
+                self.backend = SourceBackend::QuasiOrder {
+                    classifier: next,
+                    clauses: self.frontend.clauses.clone(),
+                };
+                let meaningful = stats.reused_queries > 0;
+                return Ok(SourceIncrementalReceipt {
+                    revision: self.revision,
+                    route_migrated: route_before != route_after,
+                    route_before,
+                    route_after,
+                    strategy: if meaningful {
+                        ChangeStrategy::HtDelta
+                    } else {
+                        ChangeStrategy::ExactRebuild
+                    },
+                    reused_fixpoint: meaningful,
+                    reused_subsumptions: stats.reused_subsumptions,
+                    reused_edges: 0,
                     added_normalized_clauses: additions.len(),
                     removed_normalized_clauses: removed_ids.len(),
                     added_rules: 0,
@@ -447,6 +529,7 @@ impl SourceIncrementalClassifier {
             SourceBackend::Incremental { .. }
                 | SourceBackend::PositiveAbox(_)
                 | SourceBackend::TypedHt { .. }
+                | SourceBackend::QuasiOrder { .. }
                 | SourceBackend::Rules(_)
         )
     }
@@ -978,5 +1061,55 @@ Ontology(
             )
             .unwrap();
         assert!(stats.reused_probes > 0 || stats.resumed_models > 0);
+    }
+
+    #[test]
+    fn quasi_order_source_preparation_reuses_disconnected_queries() {
+        let _environment = lock_environment();
+        let before = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:X)) Declaration(Class(:Y))
+ Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))
+ InverseObjectProperties(:r :s)
+ ObjectPropertyRange(:s :B)
+ SubClassOf(:A ObjectSomeValuesFrom(:r :C))
+)"#;
+        let after = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:X)) Declaration(Class(:Y))
+ Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))
+ InverseObjectProperties(:r :s)
+ ObjectPropertyRange(:s :B)
+ SubClassOf(:A ObjectSomeValuesFrom(:r :C))
+ SubClassOf(:X :Y)
+)"#;
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        crate::routing::Route::HtQo.apply_environment();
+        let old = crate::frontend::ofn_to_clauses(before).unwrap();
+        let new = crate::frontend::ofn_to_clauses(after).unwrap();
+        let old_input = crate::orchestrate::race::prepare_incremental_qo(&old).unwrap();
+        let new_input = crate::orchestrate::race::prepare_incremental_qo(&new).unwrap();
+        let classifier =
+            crate::incremental_ht::IncrementalQoClassifier::new_typed(&old.clauses, old_input)
+                .unwrap();
+        let old_ids: Vec<crate::incremental::ClauseId> =
+            (0..old.clauses.len() as crate::incremental::ClauseId).collect();
+        let (_, additions) = clause_delta(&old.clauses, &old_ids, &new.clauses);
+        let (next, stats) = classifier
+            .updated_typed(
+                &new.clauses,
+                &additions,
+                crate::incremental_ht::HtChangeKind::Addition,
+                new_input,
+            )
+            .unwrap();
+        assert!(stats.reused_queries > 0);
+        assert!(next
+            .result()
+            .subsumptions
+            .get("X")
+            .is_some_and(|supers| supers.iter().any(|name| name == "Y")));
     }
 }
