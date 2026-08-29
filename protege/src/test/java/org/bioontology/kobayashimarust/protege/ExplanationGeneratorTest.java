@@ -82,6 +82,53 @@ public class ExplanationGeneratorTest {
     }
 
     @Test
+    public void nonEntailedQueryHasACompleteEmptyExplanationSet() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(dataFactory, "AbsentA");
+        OWLClass b = cls(dataFactory, "AbsentB");
+        manager.addAxiom(ontology, dataFactory.getOWLDeclarationAxiom(a));
+        manager.addAxiom(ontology, dataFactory.getOWLDeclarationAxiom(b));
+
+        Set<Explanation<OWLAxiom>> explanations = new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(ontology)
+                .getExplanations(dataFactory.getOWLSubClassOfAxiom(a, b));
+        assertTrue(explanations.isEmpty());
+    }
+
+    @Test
+    public void importedAndAnnotatedSourceAxiomsRemainInTheJustification() throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory dataFactory = manager.getOWLDataFactory();
+        IRI importedIri = IRI.create(NS + "explanation-import");
+        OWLOntology imported = manager.createOntology(importedIri);
+        OWLClass a = cls(dataFactory, "ImportA");
+        OWLClass b = cls(dataFactory, "ImportB");
+        OWLClass c = cls(dataFactory, "ImportC");
+        OWLAxiom annotated = dataFactory.getOWLSubClassOfAxiom(a, b).getAnnotatedAxiom(
+                Set.of(dataFactory.getOWLAnnotation(
+                        dataFactory.getRDFSLabel(), dataFactory.getOWLLiteral("source"))));
+        manager.addAxiom(imported, annotated);
+
+        OWLOntology root = manager.createOntology(IRI.create(NS + "explanation-root"));
+        manager.applyChange(new org.semanticweb.owlapi.model.AddImport(
+                root, dataFactory.getOWLImportsDeclaration(importedIri)));
+        OWLAxiom local = dataFactory.getOWLSubClassOfAxiom(b, c);
+        manager.addAxiom(root, local);
+
+        OWLAxiom entailment = dataFactory.getOWLSubClassOfAxiom(a, c);
+        Set<Explanation<OWLAxiom>> explanations = new KMExplanationGeneratorFactory()
+                .createExplanationGenerator(root)
+                .getExplanations(entailment);
+        assertEquals(1, explanations.size());
+        Set<OWLAxiom> support = explanations.iterator().next().getAxioms();
+        assertEquals(2, support.size());
+        assertTrue(support.contains(annotated));
+        assertTrue(support.contains(local));
+    }
+
+    @Test
     public void tautologyHasOneVerifiedEmptySourceJustification() throws Exception {
         OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
         OWLDataFactory dataFactory = manager.getOWLDataFactory();
