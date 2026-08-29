@@ -237,6 +237,9 @@ fn clause_state_is_complete(frontend: &FrontendResult) -> bool {
     let clause_route = route == "elc"
         || route == "elc_cert"
         || route == "certified_el_production"
+        || route == "production_all"
+        || route == "production_all8"
+        || route == "production_all1"
         || route.starts_with("cb_")
         || route == "seq_on"
         || route == "seq_off";
@@ -528,5 +531,32 @@ mod tests {
         let frontend = super::normalize_automatic(source).unwrap();
         assert!(frontend.profile.source.abox_axioms > 0);
         assert!(!super::clause_state_is_complete(&frontend));
+    }
+
+    #[test]
+    fn automatic_production_portfolio_reuses_its_complete_cb_state() {
+        let before = r#"Ontology(
+ SubClassOf(<http://example.org/A>
+   ObjectUnionOf(<http://example.org/B> <http://example.org/C>))
+ SubClassOf(<http://example.org/B> <http://example.org/D>)
+ SubClassOf(<http://example.org/C> <http://example.org/D>)
+)"#;
+        let after = r#"Ontology(
+ SubClassOf(<http://example.org/A>
+   ObjectUnionOf(<http://example.org/B> <http://example.org/C>))
+ SubClassOf(<http://example.org/B> <http://example.org/D>)
+ SubClassOf(<http://example.org/C> <http://example.org/D>)
+ SubClassOf(<http://example.org/B> <http://example.org/E>)
+ SubClassOf(<http://example.org/C> <http://example.org/E>)
+)"#;
+        let mut session = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.route(), "production_all");
+        assert!(session.retained_backend());
+        let receipt = session.replace_source(after).unwrap();
+        assert_eq!(receipt.strategy, ChangeStrategy::CbDelta);
+        assert!(receipt.meaningful_incremental_update);
+        assert!(session.classification().subsumptions.iter().any(|pair| {
+            pair == &["http://example.org/A".to_string(), "http://example.org/E".to_string()]
+        }));
     }
 }
