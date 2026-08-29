@@ -32,6 +32,11 @@ pub struct SourceIncrementalReceipt {
     pub reused_fixpoint: bool,
     pub reused_subsumptions: usize,
     pub reused_edges: usize,
+    /// Adapter-specific retained work units: completion facts/edges, HT
+    /// probes, QO query components, or retained rule-taxonomy facts.
+    pub retained_states: usize,
+    /// Adapter-specific states invalidated or rebuilt by this transaction.
+    pub invalidated_states: usize,
     pub added_normalized_clauses: usize,
     pub removed_normalized_clauses: usize,
     pub added_rules: usize,
@@ -204,6 +209,14 @@ impl SourceIncrementalClassifier {
                     reused_fixpoint: update.stats.reused_fixpoint,
                     reused_subsumptions: update.stats.reused_subsumptions,
                     reused_edges: update.stats.reused_edges,
+                    retained_states: update
+                        .stats
+                        .reused_subsumptions
+                        .saturating_add(update.stats.reused_edges),
+                    invalidated_states: update
+                        .stats
+                        .new_subsumptions
+                        .saturating_add(update.stats.new_edges),
                     added_normalized_clauses: added,
                     removed_normalized_clauses: removed,
                     added_rules,
@@ -263,6 +276,8 @@ impl SourceIncrementalClassifier {
                     reused_fixpoint: meaningful,
                     reused_subsumptions: stats.reused_subsumptions,
                     reused_edges: stats.reused_edges,
+                    retained_states: stats.reused_probes.saturating_add(stats.resumed_models),
+                    invalidated_states: stats.rebuilt_probes,
                     added_normalized_clauses: additions.len(),
                     removed_normalized_clauses: removed_ids.len(),
                     added_rules: 0,
@@ -321,6 +336,8 @@ impl SourceIncrementalClassifier {
                     reused_fixpoint: meaningful,
                     reused_subsumptions: stats.reused_subsumptions,
                     reused_edges: 0,
+                    retained_states: stats.reused_queries,
+                    invalidated_states: stats.rebuilt_queries,
                     added_normalized_clauses: additions.len(),
                     removed_normalized_clauses: removed_ids.len(),
                     added_rules: 0,
@@ -358,6 +375,11 @@ impl SourceIncrementalClassifier {
                     reused_fixpoint,
                     reused_subsumptions,
                     reused_edges: 0,
+                    retained_states: reused_subsumptions + usize::from(reused_fixpoint),
+                    invalidated_states: added
+                        .saturating_add(removed)
+                        .saturating_add(added_rules)
+                        .saturating_add(removed_rules),
                     added_normalized_clauses: added,
                     removed_normalized_clauses: removed,
                     added_rules,
@@ -411,6 +433,10 @@ impl SourceIncrementalClassifier {
                     clause_change_counts(&self.frontend.clauses, &candidate.clauses);
                 let (removed_rules, added_rules) =
                     sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                let rebuilt_states = candidate
+                    .clauses
+                    .len()
+                    .saturating_add(candidate.rules.len());
                 self.revision += 1;
                 self.route = route_after.clone();
                 self.frontend = candidate;
@@ -429,6 +455,8 @@ impl SourceIncrementalClassifier {
                     reused_fixpoint: false,
                     reused_subsumptions: 0,
                     reused_edges: 0,
+                    retained_states: 0,
+                    invalidated_states: rebuilt_states,
                     added_normalized_clauses: added,
                     removed_normalized_clauses: removed,
                     added_rules,
@@ -447,6 +475,10 @@ impl SourceIncrementalClassifier {
                     clause_change_counts(&self.frontend.clauses, &candidate.clauses);
                 let (removed_rules, added_rules) =
                     sequence_change_counts(&self.frontend.rules, &candidate.rules);
+                let rebuilt_states = candidate
+                    .clauses
+                    .len()
+                    .saturating_add(candidate.rules.len());
                 self.revision += 1;
                 self.route = route_after.clone();
                 self.frontend = candidate;
@@ -464,6 +496,8 @@ impl SourceIncrementalClassifier {
                     reused_fixpoint: false,
                     reused_subsumptions: 0,
                     reused_edges: 0,
+                    retained_states: 0,
+                    invalidated_states: rebuilt_states,
                     added_normalized_clauses: added,
                     removed_normalized_clauses: removed,
                     added_rules,
@@ -503,6 +537,12 @@ impl SourceIncrementalClassifier {
             reused_fixpoint: false,
             reused_subsumptions: 0,
             reused_edges: 0,
+            retained_states: 0,
+            invalidated_states: self
+                .frontend
+                .clauses
+                .len()
+                .saturating_add(self.frontend.rules.len()),
             added_normalized_clauses: added,
             removed_normalized_clauses: removed,
             added_rules,
@@ -554,6 +594,10 @@ fn receipt_from_change(
         reused_fixpoint: change.reused_fixpoint,
         reused_subsumptions: change.reused_subsumptions,
         reused_edges: change.reused_edges,
+        retained_states: change
+            .reused_subsumptions
+            .saturating_add(change.reused_edges),
+        invalidated_states: change.new_subsumptions.saturating_add(change.new_edges),
         added_normalized_clauses: change.added_clauses,
         removed_normalized_clauses: change.removed_clauses,
         added_rules: 0,
@@ -924,6 +968,13 @@ Ontology(
         assert_eq!(responses.len(), 2);
         assert_eq!(responses[1]["status"], "ok");
         assert_eq!(responses[1]["receipt"]["revision"], 1);
+        assert!(responses[1]["receipt"]["retained_states"].as_u64().unwrap() > 0);
+        assert!(
+            responses[1]["receipt"]["invalidated_states"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
         assert_eq!(
             responses[1]["receipt"]["meaningful_incremental_update"],
             true

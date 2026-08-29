@@ -53,6 +53,8 @@ public final class Classifier {
         public boolean reused_fixpoint;
         public int reused_subsumptions;
         public int reused_edges;
+        public int retained_states;
+        public int invalidated_states;
         public int added_normalized_clauses;
         public int removed_normalized_clauses;
         public int added_rules;

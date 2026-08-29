@@ -215,6 +215,10 @@ public class ReasonerTest {
         assertNotNull(receipt);
         assertEquals("el_delta", receipt.strategy);
         assertTrue(receipt.meaningful_incremental_update);
+        assertTrue("incremental route must report retained native state",
+                receipt.retained_states > 0);
+        assertTrue("incremental route must report invalidated or newly derived state",
+                receipt.invalidated_states > 0);
         reasoner.dispose();
     }
 
