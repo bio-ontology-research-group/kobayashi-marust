@@ -9,6 +9,7 @@ import org.semanticweb.owlapi.reasoner.BufferingMode;
 import org.semanticweb.owlapi.reasoner.UnsupportedEntailmentTypeException;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.Set;
 
 import static org.junit.Assert.*;
@@ -239,6 +240,54 @@ public class ReasonerTest {
         assertTrue(superContains(reasoner, a, c));
         assertTrue(reasoner.getPendingChanges().isEmpty());
         assertNotNull(reasoner.getLastIncrementalReceipt());
+        reasoner.dispose();
+    }
+
+    @Test
+    public void failedBufferedTransactionRetainsAnswersAndLaterFlushRecovers()
+            throws Exception {
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLDataFactory df = manager.getOWLDataFactory();
+        OWLOntology ontology = manager.createOntology();
+        OWLClass a = cls(df, "RollbackA");
+        OWLClass b = cls(df, "RollbackB");
+        OWLClass c = cls(df, "RollbackC");
+        OWLAxiom initial = df.getOWLSubClassOfAxiom(a, b);
+        manager.addAxiom(ontology, initial);
+
+        KMReasoner reasoner = (KMReasoner) new KMReasonerFactory()
+                .createReasoner(ontology);
+        assertTrue(superContains(reasoner, a, b));
+        OWLOntology committedBefore = reasoner.getCommittedOntologySnapshot();
+
+        SWRLVariable variable = df.getSWRLVariable(IRI.create(NS + "rollbackVariable"));
+        SWRLBuiltInAtom unsupported = df.getSWRLBuiltInAtom(
+                IRI.create("http://example.org/unsupportedBuiltin"),
+                Collections.singletonList(variable));
+        SWRLClassAtom head = df.getSWRLClassAtom(b, variable);
+        SWRLRule rule = df.getSWRLRule(
+                Collections.singleton(unsupported), Collections.singleton(head));
+        manager.addAxiom(ontology, rule);
+        try {
+            reasoner.flush();
+            fail("unsupported incremental source should fail atomically");
+        } catch (org.semanticweb.owlapi.reasoner.ReasonerInternalException expected) {
+            assertNotNull(expected.getCause());
+        }
+        assertTrue("last committed hierarchy must remain queryable",
+                superContains(reasoner, a, b));
+        assertEquals(committedBefore.getAxioms(),
+                reasoner.getCommittedOntologySnapshot().getAxioms());
+
+        manager.removeAxiom(ontology, rule);
+        OWLAxiom valid = df.getOWLSubClassOfAxiom(b, c);
+        manager.addAxiom(ontology, valid);
+        reasoner.flush();
+        assertTrue("a clean session must recover after the failed transaction",
+                superContains(reasoner, a, c));
+        assertTrue(reasoner.getCommittedOntologySnapshot().containsAxiom(valid));
+        assertNull("a restarted native session must not claim retained delta work",
+                reasoner.getLastIncrementalReceipt());
         reasoner.dispose();
     }
 }

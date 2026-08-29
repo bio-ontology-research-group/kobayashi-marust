@@ -165,6 +165,10 @@ classification.
 Incremental-session and explanation cancellation, timeout, and disposal stop
 the complete native process tree and wait for route workers to exit. They do
 not leave an orphaned worker consuming memory after the OWLAPI call returns.
+A declined buffered transaction leaves the last committed hierarchy queryable.
+After the caller removes or corrects the unsupported change, the next
+`flush()` starts a clean native session and commits the complete current
+imports closure.
 
 ## Test coverage
 

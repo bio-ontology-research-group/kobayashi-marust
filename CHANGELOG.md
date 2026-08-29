@@ -54,6 +54,11 @@
   route-worker descendants to exit instead of reporting cancellation while an
   orphaned reasoner still consumes memory; the integration test launches and
   verifies a real child process.
+- Verify OWLAPI failure atomicity with an unsupported SWRL built-in. A failed
+  buffered `flush()` preserves the committed ontology and hierarchy; removing
+  the unsupported change and adding a valid axiom starts a clean native
+  session and publishes the recovered classification without claiming retained
+  delta work.
 
 ## [1.1.0] - 2026-08-26
 
