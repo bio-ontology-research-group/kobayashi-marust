@@ -744,12 +744,17 @@ fn clause_state_is_complete(frontend: &FrontendResult) -> bool {
         || route.starts_with("cb_")
         || route == "seq_on"
         || route == "seq_off";
-    clause_route
+    let exact_nominal_clause_route = matches!(route, "nominals" | "certified_nominals")
+        && frontend.nominal_abox.complete
+        && frontend.nominal_abox.unsupported.is_empty();
+    (clause_route || exact_nominal_clause_route)
         && frontend.rbox.is_empty()
         && frontend.cardinalities.is_empty()
         && frontend.rules.is_empty()
-        && frontend.nominal_abox.is_empty()
-        && frontend.profile.source.abox_axioms == 0
+        && ((clause_route
+            && frontend.nominal_abox.is_empty()
+            && frontend.profile.source.abox_axioms == 0)
+            || exact_nominal_clause_route)
 }
 
 fn normalize_automatic(source: &str) -> Result<FrontendResult, String> {
@@ -1193,6 +1198,40 @@ Ontology(
                 "http://example.org/E".to_string(),
             ]
         }));
+    }
+
+    #[test]
+    fn exact_nominal_clause_route_reuses_cb_state_and_matches_fresh() {
+        let _environment = lock_environment();
+        let before = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+ EquivalentClasses(:A ObjectOneOf(:a))
+ ClassAssertion(:A :b)
+ SameIndividual(:a :b)
+ SubClassOf(:X :Y) SubClassOf(:Y :Z) SubClassOf(:Z :X)
+)"#;
+        let after = r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))
+ Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+ EquivalentClasses(:A ObjectOneOf(:a))
+ ClassAssertion(:A :b)
+ SameIndividual(:a :b)
+ SubClassOf(:X :Y) SubClassOf(:Y :Z) SubClassOf(:Z :X)
+ SubClassOf(:X ObjectUnionOf(:Y :Z))
+)"#;
+        let mut session = SourceIncrementalClassifier::new(before).unwrap();
+        assert_eq!(session.route(), "nominals");
+        assert!(session.retained_backend());
+
+        let receipt = session.replace_source(after).unwrap();
+        assert_eq!(receipt.strategy, ChangeStrategy::CbDelta);
+        assert!(receipt.meaningful_incremental_update);
+        assert!(receipt.retained_states > 0);
+        let fresh = SourceIncrementalClassifier::new(after).unwrap();
+        assert_eq!(session.classification(), fresh.classification());
     }
 
     #[test]

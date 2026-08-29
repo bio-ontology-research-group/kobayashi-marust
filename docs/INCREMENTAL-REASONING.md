@@ -108,6 +108,15 @@ reused directly; other rule/ABox changes rerun the smaller typed consistency
 probe without rebuilding the taxonomy. Its receipt reports normalized-clause
 and rule deltas and uses `ht_delta`.
 
+The exact `nominals` and `certified_nominals` CB fallbacks also retain this
+state when the frontend proves the nominal payload complete and no RBox,
+cardinality, or rule side channel remains. Under `KM_NOMINALS=1`, the frontend
+has emitted the ground ABox and singleton-defining clauses consumed by the
+batch CB worker, so the retained engine resumes the same clause fixpoint.
+Unsupported nominal metadata fails this gate closed. Ordering-stable additions
+report `cb_delta`; CB removals still cross the dependency-retraction boundary
+described below and rebuild exactly.
+
 The automatic positive-EL ABox route also has a typed adapter. It translates
 named individuals into the same fresh EL root concepts used by batch
 classification and retains that complete materialization. Additions replay the
