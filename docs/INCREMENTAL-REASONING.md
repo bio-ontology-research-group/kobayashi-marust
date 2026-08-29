@@ -184,6 +184,13 @@ the active native request. The Java bridge serializes the complete imports
 closure in memory, so each native transaction sees one source snapshot rather
 than a sequence of independently normalized axioms.
 
+Route migration is one atomic transaction. The source-session regression
+exercises `elc -> ht_rules -> elc`: each route transition reports
+`exact_rebuild`, installs the new retained adapter, and the following
+route-preserving update performs a meaningful delta. A malformed replacement
+between rule insertion and retraction returns an error without advancing the
+revision or changing the selected route or published classification.
+
 ## Clause identity and transactions
 
 The initial clauses receive ids `1..N` in input order. Each accepted addition

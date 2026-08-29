@@ -32,6 +32,11 @@
   later removal cannot retract an unrelated ABox assertion. This restores
   singleton-derived taxonomy across add/remove cycles on the automatic
   `certified_nominals` route.
+- Verify atomic source-session migration across `elc`, `ht_rules`, and back to
+  `elc`. The real-binary regression covers an exact route transition,
+  meaningful rule insertion and retraction, a malformed replacement that must
+  preserve the prior revision byte-for-byte, restoration after the declined
+  transaction, and a subsequent meaningful EL delta equal to a fresh session.
 - Retain CB context fixpoints for ordering-stable additions. For removals and
   replacements, rebuild only dependency components reached through changed
   concepts, roles, functions, individuals, or auxiliary constants, and retain
