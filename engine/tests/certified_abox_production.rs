@@ -18,6 +18,7 @@ fn classify(source: &str) -> (serde_json::Value, String) {
         }
     }
     command.env("KM_ABOX_PRODUCTION_TRACE", "1");
+    command.env("KM_NOMINAL_HT_PROBE_TRACE", "1");
     let output = command.output().expect("run automatic classification");
     let _ = std::fs::remove_file(path);
     assert!(
@@ -30,6 +31,28 @@ fn classify(source: &str) -> (serde_json::Value, String) {
         serde_json::from_slice(&output.stdout).expect("classification JSON"),
         String::from_utf8(output.stderr).expect("UTF-8 stderr"),
     )
+}
+
+#[test]
+fn expressive_class_identity_abox_uses_complete_general_ht_probe() {
+    let (result, stderr) = classify(
+        r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B))
+ Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))
+ Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+ SubClassOf(:A ObjectMinCardinality(2 :r :B))
+ InverseObjectProperties(:r :s)
+ ClassAssertion(:A :a)
+ ClassAssertion(:B :b)
+ DifferentIndividuals(:a :b)
+)"#,
+    );
+    assert_eq!(result["consistent"], true);
+    assert!(
+        stderr.contains("KM_NOMINAL_HT_PROBE result=accepted"),
+        "automatic route did not publish through the complete general HT probe: {stderr}"
+    );
 }
 
 #[test]

@@ -509,6 +509,23 @@ pub(crate) fn certified_nominal_production_probe_candidate(profile: &OntologyPro
             && !profile.expressivity.datatype)
 }
 
+/// Nominal source families for which the isolated general hypertableau is a
+/// cheaper exact first attempt than root-context nominal materialization.
+///
+/// This predicate never authorizes publication by itself. The converted-input
+/// HT worker must consume every normalized clause and return a complete answer;
+/// any structural refusal restores the ordinary exact nominal route. The two
+/// families are class/identity-only ABoxes over expressive qualified-number
+/// TBoxes and very large number-free ABoxes carrying otherwise unconstrained
+/// data assertions. Both make nominal CB expensive, while the complete general
+/// conversion retains their ground semantics directly.
+pub(crate) fn certified_nominal_general_ht_probe_candidate(profile: &OntologyProfile) -> bool {
+    let count = |name: &str| profile.source.axiom_types.get(name).copied().unwrap_or(0);
+    small_class_identity_abox_production_candidate(profile)
+        || (large_no_cardinality_abox_production_candidate(profile)
+            && (count("DataPropertyAssertion") > 0 || count("NegativeDataPropertyAssertion") > 0))
+}
+
 /// Large typed-ABox bridge jobs for which concurrent exact CB materialization
 /// dominates process-tree memory.  The bridge remains complete-answer-or-defer;
 /// this source predicate changes only whether the unchanged CB fallback starts
@@ -3243,6 +3260,10 @@ mod tests {
         profile.source.distinct_data_properties = 1;
         profile.source.nominals = 19;
         profile.source.datatype_constructors = 0;
+        profile
+            .source
+            .axiom_types
+            .insert("DataPropertyAssertion".to_string(), 996);
         profile.expressivity.nominal = true;
         profile.expressivity.nominal_individual = true;
         profile.expressivity.datatype = false;
@@ -3251,11 +3272,13 @@ mod tests {
         assert!(large_no_cardinality_abox_production_candidate(&profile));
         assert_eq!(select(&profile), Route::CertifiedNominals);
         assert!(certified_nominal_production_probe_candidate(&profile));
+        assert!(certified_nominal_general_ht_probe_candidate(&profile));
 
         profile.source.min_cardinalities = 1;
         profile.expressivity.cardinality = true;
         assert!(!large_no_cardinality_abox_production_candidate(&profile));
         assert!(!certified_nominal_production_probe_candidate(&profile));
+        assert!(!certified_nominal_general_ht_probe_candidate(&profile));
     }
 
     #[test]
@@ -3273,6 +3296,7 @@ mod tests {
         assert!(small_class_identity_abox_production_candidate(&profile));
         assert_eq!(select(&profile), Route::Nominals);
         assert!(certified_nominal_production_probe_candidate(&profile));
+        assert!(certified_nominal_general_ht_probe_candidate(&profile));
 
         profile
             .source

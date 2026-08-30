@@ -921,6 +921,47 @@ fn classify_with_evidence_mode(
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
 
+    // Some exact nominal families are accepted by the complete clause-level
+    // hypertableau but make eager root-context nominal materialization consume
+    // the whole process budget. The source profile schedules only an attempt:
+    // `ht_general` independently requires lossless converted-input coverage.
+    // A refusal or worker failure restores this call's environment and leaves
+    // the unchanged nominal route authoritative below.
+    if automatic_requested
+        && matches!(
+            selected_route,
+            crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
+        )
+        && crate::routing::certified_nominal_general_ht_probe_candidate(&meta.profile)
+    {
+        let ht_attempt = {
+            let _probe_environment = crate::routing::EnvironmentGuard::capture();
+            crate::routing::Route::HtGeneral.apply_environment();
+            std::env::set_var("KM_ROUTE", crate::routing::Route::HtGeneral.as_str());
+            let ht_cfg = Config::from_env();
+            classify_with_evidence_mode(&ht_cfg, ont, retain_grouped_output)
+        };
+        match ht_attempt {
+            Ok(evidence) => {
+                if std::env::var_os("KM_NOMINAL_HT_PROBE_TRACE").is_some() {
+                    eprintln!("KM_NOMINAL_HT_PROBE result=accepted");
+                }
+                return Ok(evidence);
+            }
+            Err(error) => {
+                if std::env::var_os("KM_NOMINAL_HT_PROBE_TRACE").is_some() {
+                    eprintln!("KM_NOMINAL_HT_PROBE result=declined error={error}");
+                }
+                if timing {
+                    eprintln!(
+                        "KM_TIMING nominal general HT probe declined @ {:.2}s: {error}",
+                        t_start.elapsed().as_secs_f64()
+                    );
+                }
+            }
+        }
+    }
+
     // Several nominal source families formerly used the absorbed production
     // TBox schedule directly. That schedule is fast, but its CB fallback does
     // not encode the ABox and is therefore authoritative only after a separate
