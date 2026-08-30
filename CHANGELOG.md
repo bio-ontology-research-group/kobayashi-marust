@@ -4,6 +4,14 @@
 
 ### Incremental reasoning and explanations
 
+- Extend the Lean release boundary to incremental revisions and source-axiom
+  explanations. Every revision publication is tied to the exact post-update
+  source through accepted ELC, HT, or CB evidence. Explanation entailment and
+  each deletion verdict use the same checked taxonomy-cell contract; global
+  inconsistency explanations use exact SAT/UNSAT publications. Lean derives
+  one-deletion and full subset minimality by semantic monotonicity. The routing
+  release gate builds these capstones and rejects `sorryAx`.
+
 - Add retained EL, CB, ordinary HT, quasi-order HT, cardinality HT, bridge,
   positive-ABox, and DL-safe-rule adapters behind a complete source-level
   transactional session used by OWLAPI. Receipts expose the selected route,

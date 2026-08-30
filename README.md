@@ -166,6 +166,11 @@ The certified production boundary consists of four layers:
   identity, the requested named-class signature, and evidence dispatch to the
   ELC, HT, or CB checker. Profile choices can affect performance and coverage,
   but cannot make an unchecked answer sound.
+- Incremental publication checks bind every revision to its exact post-update
+  source and complete taxonomy. Explanation checks derive entailment from the
+  same accepted source-bound cells, use exact global SAT/UNSAT publications
+  for inconsistency, and prove subset minimality from checked one-axiom
+  deletion failures plus OWL entailment monotonicity.
 
 Every public capstone is audited for `sorryAx`. Their axiom reports contain
 only Lean's standard `propext`, `Classical.choice`, and `Quot.sound` axioms.
@@ -181,6 +186,14 @@ execution that bypasses the mandatory checker.
 
 Version 1.0.0 records the integrated ELC, HT, CB, and automatic-routing
 certification milestone.
+
+Every full KM release, including v1.3.0 and later releases, must pass all Lean
+certification gates from the exact source commit that is tagged. A corpus
+benchmark, Rust test suite, or interface test cannot replace this requirement.
+If a release adds a new answer-publication path, that path must be included in
+the Lean certification boundary and its no-`sorryAx` audit before the release is
+tagged. For v1.3.0 this includes incremental publications and source-axiom
+explanations.
 
 ## Repository layout
 

@@ -8,7 +8,8 @@ bin_path="$lean_root/.lake/build/bin/km-automatic-routing-check"
 target_root="$repo_root/.work/target"
 artifact_root="$repo_root/.work/artifacts"
 surface_log="$artifact_root/routing-certification-surface.log"
-lean_threads=${KM_CERT_LEAN_THREADS:-4}
+lean_threads=${KM_CERT_LEAN_THREADS:-1}
+lean_cpuset=${KM_CERT_LEAN_CPUSET:-0-3}
 
 mkdir -p "$artifact_root"
 
@@ -27,7 +28,7 @@ trap cleanup_checker EXIT
 
 (
     cd "$lean_root"
-    LEAN_NUM_THREADS="$lean_threads" lake build \
+    LEAN_NUM_THREADS="$lean_threads" taskset -c "$lean_cpuset" lake build \
         ContextCalculus.CertifiedRouting \
         ContextCalculus.KMAutomaticRouting \
         ContextCalculus.KMAutomaticSupervisor \
@@ -35,6 +36,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMCommonRoutingSource \
         ContextCalculus.KMConcreteWorkerAdapters \
         ContextCalculus.KMConcreteAutomaticSupervisor \
+        ContextCalculus.KMIncrementalExplanationCertification \
         ContextCalculus.ELCheckerTermEmbedding \
         ContextCalculus.ELNormalCheckerTermEmbedding \
         ContextCalculus.ELCommonSourceWire \
@@ -119,6 +121,19 @@ for theorem in \
     ConcreteSupervisor.certified \
     ConcreteSupervisor.sound_and_complete \
     ConcreteSupervisor.profile_independent_sound \
+    IncrementalRevisionPublication.exact \
+    CheckedCell.answer_iff_entails \
+    CheckedCell.entailed \
+    CheckedCell.notEntailed \
+    entails_mono \
+    CertifiedExplanation.entails \
+    CertifiedExplanation.oneDeletionMinimal \
+    CertifiedExplanation.subsetMinimal \
+    CheckedGlobal.inconsistent \
+    CheckedGlobal.satisfiable \
+    satisfiable_of_included \
+    CertifiedInconsistencyExplanation.inconsistent \
+    CertifiedInconsistencyExplanation.subsetMinimal \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
     WireDirectTaxonomyPublication.check_sound \
@@ -180,6 +195,14 @@ fi
         routing::tests::automatic_atomic_declines_retain_source_appropriate_fallbacks
     CARGO_TARGET_DIR="$target_root" cargo test --release --test elc_certificate \
         automatic_el_decline_retries_exactly_but_forced_el_remains_atomic
+    CARGO_TARGET_DIR="$target_root" cargo test --release \
+        source_incremental::tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_reasoning
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_cb_reasoning
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_ht_reasoning
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test source_incremental_nominals
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test source_incremental_rules
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test explain_cli
 )
 
 echo "routing certification gate passed"
