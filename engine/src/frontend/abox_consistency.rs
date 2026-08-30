@@ -41,15 +41,17 @@ fn nominal_set(concept: &Concept) -> Option<HashSet<String>> {
 /// Detect an exact finite-nominal equality clash.
 ///
 /// If one named class is equivalent to a singleton `{a}` and, through named
-/// class equivalence, also equivalent to an enumeration containing `b`, then
-/// OWL set equality entails `a = b`. An asserted `DifferentIndividuals(a,b)`
-/// makes the ontology inconsistent. Explicit `SameIndividual` closure is
-/// applied first. This is deliberately one-sided: non-singleton versus
-/// non-singleton set equality is left to the complete nominal reasoner.
+/// class equivalence, either contains an asserted member `b` or is equivalent
+/// to an enumeration containing `b`, then OWL set equality entails `a = b`.
+/// An asserted `DifferentIndividuals(a,b)` makes the ontology inconsistent.
+/// Explicit `SameIndividual` closure is applied first. This is deliberately
+/// one-sided: non-singleton versus non-singleton set equality is left to the
+/// complete nominal reasoner.
 pub fn nominal_enumeration_inconsistent(ont: &Ontology) -> bool {
     let mut class_parent: HashMap<String, String> = HashMap::new();
     let mut individual_parent: HashMap<String, String> = HashMap::new();
     let mut raw_enumerations: Vec<(String, HashSet<String>)> = Vec::new();
+    let mut raw_memberships: Vec<(String, String)> = Vec::new();
     let mut different = Vec::new();
 
     for axiom in ont.tbox() {
@@ -71,6 +73,9 @@ pub fn nominal_enumeration_inconsistent(ont: &Ontology) -> bool {
         match axiom {
             Axiom::SameIndividual(a, b) => uf_union(&mut individual_parent, a, b),
             Axiom::DifferentIndividuals(a, b) => different.push((a.clone(), b.clone())),
+            Axiom::ConceptAssertion(Concept::Name(class), individual) => {
+                raw_memberships.push((class.clone(), individual.clone()));
+            }
             _ => {}
         }
     }
@@ -87,6 +92,12 @@ pub fn nominal_enumeration_inconsistent(ont: &Ontology) -> bool {
             .collect();
         enumerations.entry(class).or_default().push(representatives);
     }
+    let mut memberships: HashMap<String, HashSet<String>> = HashMap::new();
+    for (class, individual) in raw_memberships {
+        let class = uf_find(&mut class_parent, &class);
+        let individual = uf_find(&mut individual_parent, &individual);
+        memberships.entry(class).or_default().insert(individual);
+    }
     let different: HashSet<(String, String)> = different
         .into_iter()
         .map(|(a, b)| {
@@ -100,11 +111,13 @@ pub fn nominal_enumeration_inconsistent(ont: &Ontology) -> bool {
         })
         .collect();
 
-    enumerations.values().any(|sets| {
+    enumerations.iter().any(|(class, sets)| {
         sets.iter().filter(|set| set.len() == 1).any(|singleton| {
             let only = singleton.iter().next().expect("singleton has one member");
-            sets.iter().any(|set| {
-                set.iter().any(|member| {
+            sets.iter()
+                .flat_map(|set| set.iter())
+                .chain(memberships.get(class).into_iter().flatten())
+                .any(|member| {
                     let pair = if only <= member {
                         (only.clone(), member.clone())
                     } else {
@@ -112,7 +125,6 @@ pub fn nominal_enumeration_inconsistent(ont: &Ontology) -> bool {
                     };
                     different.contains(&pair)
                 })
-            })
         })
     })
 }
@@ -488,6 +500,16 @@ mod tests {
                         .collect(),
                 ),
             ),
+            Axiom::DifferentIndividuals("a".into(), "b".into()),
+        ]);
+        assert!(nominal_enumeration_inconsistent(&ontology));
+    }
+
+    #[test]
+    fn asserted_singleton_member_clashes_with_different() {
+        let ontology = ont(vec![
+            Axiom::EquivalentClasses(Concept::Name("C".into()), Concept::Nominal("a".into())),
+            Axiom::ConceptAssertion(Concept::Name("C".into()), "b".into()),
             Axiom::DifferentIndividuals("a".into(), "b".into()),
         ]);
         assert!(nominal_enumeration_inconsistent(&ontology));

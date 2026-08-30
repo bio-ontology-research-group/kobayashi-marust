@@ -328,8 +328,8 @@ Ontology(
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("route=certified_nominals"),
-        "automatic route did not select an exact nominal route: {stderr}"
+        stderr.contains("route=ht_general"),
+        "automatic explanation did not exercise the singleton-aware routing path: {stderr}"
     );
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["status"], "entailed");

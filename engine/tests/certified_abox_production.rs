@@ -61,11 +61,12 @@ fn certified_abox_completion_restores_absorbed_tbox_schedule() {
         r#"Prefix(:=<http://example.org/>)
 Ontology(
  Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:D)) Declaration(Class(:E))
  Declaration(ObjectProperty(:r))
  Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
  SubClassOf(:A :B)
  SubClassOf(ObjectIntersectionOf(:B :C) owl:Nothing)
- SubClassOf(ObjectOneOf(:a) ObjectOneOf(:a))
+ SubClassOf(:D ObjectComplementOf(:E))
  ClassAssertion(:A :a)
  ObjectPropertyAssertion(:r :a :b)
  DifferentIndividuals(:a :b)
@@ -89,10 +90,11 @@ fn certified_abox_completion_detects_joint_class_clash() {
         r#"Prefix(:=<http://example.org/>)
 Ontology(
  Declaration(Class(:A)) Declaration(Class(:B))
+ Declaration(Class(:D)) Declaration(Class(:E))
  Declaration(ObjectProperty(:r))
  Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
  SubClassOf(ObjectIntersectionOf(:A :B) owl:Nothing)
- SubClassOf(ObjectOneOf(:a) ObjectOneOf(:a))
+ SubClassOf(:D ObjectComplementOf(:E))
  ClassAssertion(:A :a) ClassAssertion(:B :a)
  ObjectPropertyAssertion(:r :a :b)
  DifferentIndividuals(:a :b)
@@ -111,10 +113,8 @@ Ontology(
  Declaration(ObjectProperty(:r))
  Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
  SubClassOf(:A :B)
- ObjectPropertyRange(:r :B)
- SubClassOf(ObjectOneOf(:a) ObjectOneOf(:a))
  ClassAssertion(:A :a)
- ObjectPropertyAssertion(:r :a :b)
+ NegativeObjectPropertyAssertion(:r :a :b)
  DifferentIndividuals(:a :b)
 )"#,
     );
@@ -127,5 +127,28 @@ Ontology(
     assert!(
         stderr.contains("KM_ABOX_PRODUCTION result=declined"),
         "unsupported normalized input did not decline before nominal fallback: {stderr}"
+    );
+}
+
+#[test]
+fn singleton_identity_clash_never_reaches_tbox_only_production() {
+    let (result, stderr) = classify(
+        r#"Prefix(:=<http://example.org/>)
+Ontology(
+ Declaration(Class(:A))
+ Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+ EquivalentClasses(:A ObjectOneOf(:a))
+ ClassAssertion(:A :b)
+ DifferentIndividuals(:a :b)
+)"#,
+    );
+    assert_eq!(result["consistent"], false);
+    assert!(
+        stderr.contains("KM_NOMINAL_HT_PROBE result=accepted"),
+        "singleton identity semantics did not use the complete HT probe: {stderr}"
+    );
+    assert!(
+        !stderr.contains("KM_ABOX_PRODUCTION result=accepted"),
+        "TBox-only production was allowed to publish a singleton clash: {stderr}"
     );
 }

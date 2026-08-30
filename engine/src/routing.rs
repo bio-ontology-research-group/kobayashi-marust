@@ -498,15 +498,19 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
 /// positive-ABox completion has independently certified consistency. A false
 /// positive here costs one failed probe only: the normalized checker declines
 /// before any TBox-only answer can be published, and classification resumes on
-/// the exact nominal route.
+/// the exact nominal route. Source singleton/value concepts are excluded even
+/// if their normalized projection looks EL: the positive-ABox checker rewrites
+/// asserted individuals, but it does not certify `A ≡ {a}` identity semantics.
 pub(crate) fn certified_nominal_production_probe_candidate(profile: &OntologyProfile) -> bool {
-    large_tbox_small_identity_abox_production_candidate(profile)
-        || small_class_identity_abox_production_candidate(profile)
-        || large_no_cardinality_abox_production_candidate(profile)
-        || (typed_object_abox_bridge_candidate(profile)
-            && !profile.expressivity.cardinality
-            && !profile.expressivity.qualified_cardinality
-            && !profile.expressivity.datatype)
+    profile.source.nominals == 0
+        && profile.source.has_values == 0
+        && (large_tbox_small_identity_abox_production_candidate(profile)
+            || small_class_identity_abox_production_candidate(profile)
+            || large_no_cardinality_abox_production_candidate(profile)
+            || (typed_object_abox_bridge_candidate(profile)
+                && !profile.expressivity.cardinality
+                && !profile.expressivity.qualified_cardinality
+                && !profile.expressivity.datatype))
 }
 
 /// Nominal source families for which the isolated general hypertableau is a
@@ -524,6 +528,8 @@ pub(crate) fn certified_nominal_general_ht_probe_candidate(profile: &OntologyPro
     small_class_identity_abox_production_candidate(profile)
         || (large_no_cardinality_abox_production_candidate(profile)
             && (count("DataPropertyAssertion") > 0 || count("NegativeDataPropertyAssertion") > 0))
+        || (typed_object_abox_bridge_candidate(profile)
+            && (profile.source.nominals > 0 || profile.source.has_values > 0))
 }
 
 /// Large typed-ABox bridge jobs for which concurrent exact CB materialization
@@ -3005,7 +3011,8 @@ mod tests {
         assert!(typed_object_abox_bridge_candidate(&profile));
         assert!(!profile.expressivity.cardinality);
         assert_eq!(select(&profile), Route::CertifiedNominals);
-        assert!(certified_nominal_production_probe_candidate(&profile));
+        assert!(!certified_nominal_production_probe_candidate(&profile));
+        assert!(certified_nominal_general_ht_probe_candidate(&profile));
     }
 
     #[test]
@@ -3271,7 +3278,7 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(large_no_cardinality_abox_production_candidate(&profile));
         assert_eq!(select(&profile), Route::CertifiedNominals);
-        assert!(certified_nominal_production_probe_candidate(&profile));
+        assert!(!certified_nominal_production_probe_candidate(&profile));
         assert!(certified_nominal_general_ht_probe_candidate(&profile));
 
         profile.source.min_cardinalities = 1;
