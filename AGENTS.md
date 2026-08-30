@@ -210,6 +210,13 @@ CB engine.
 
 ## Soundness & Lean re-certification
 
+- **Every full release, including v1.3.0 and all later full releases, requires
+  Lean certification from the exact tagged source.** Run every production
+  certification gate and reject any `sorryAx` before tagging. Benchmarks,
+  Rust tests, Java tests, and prior-release certificates do not replace this
+  gate. A newly added publication path must first be added to the Lean boundary
+  and its axiom audit.
+
 - **Re-certify in Lean ONLY for changes to the CB-calculus logic** (rule
   derivations, ordering, redundancy, what gets derived). Saturation is monotone
   and confluent, so schedule/enumeration-order changes (batching, join order,
