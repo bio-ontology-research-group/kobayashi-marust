@@ -329,9 +329,19 @@ impl SourceIncrementalClassifier {
                 }
             }
         }
-        if let Some(input) = with_route_environment(&route, || {
-            crate::orchestrate::race::prepare_incremental_ht(&frontend)
-        })? {
+        // The isolated automatic bridge is exact-supervisor-or-defer.  The
+        // ordinary typed HT adapter is not a semantic substitute for it and
+        // produced extra taxonomy rows on ORE 9944 when allowed to intercept
+        // session initialization.  `ht_bridge` is seeded only after the exact
+        // automatic classification below.
+        let generic_ht_input = if generic_ht_adapter_allowed(&route) {
+            with_route_environment(&route, || {
+                crate::orchestrate::race::prepare_incremental_ht(&frontend)
+            })?
+        } else {
+            None
+        };
+        if let Some(input) = generic_ht_input {
             if let Ok(classifier) = IncrementalHtClassifier::new_typed(&frontend.clauses, input) {
                 let classification = map_incremental_result(&frontend, classifier.result());
                 return Ok(Self {
@@ -349,10 +359,16 @@ impl SourceIncrementalClassifier {
                 .with_live_clauses());
             }
         }
-        if let Some(classifier) = with_route_environment(&route, || {
-            crate::orchestrate::race::prepare_incremental_qo(&frontend)
-                .and_then(|input| IncrementalQoClassifier::new_typed(&frontend.clauses, input).ok())
-        })? {
+        let quasi_order_classifier = if generic_ht_adapter_allowed(&route) {
+            with_route_environment(&route, || {
+                crate::orchestrate::race::prepare_incremental_qo(&frontend).and_then(|input| {
+                    IncrementalQoClassifier::new_typed(&frontend.clauses, input).ok()
+                })
+            })?
+        } else {
+            None
+        };
+        if let Some(classifier) = quasi_order_classifier {
             let classification = map_incremental_result(&frontend, classifier.result());
             return Ok(Self {
                 revision: 0,
@@ -576,7 +592,11 @@ impl SourceIncrementalClassifier {
                         route_migrated: route_before != route_after,
                         route_before,
                         route_after,
-                        strategy: ChangeStrategy::HtDelta,
+                        strategy: if meaningful {
+                            ChangeStrategy::HtDelta
+                        } else {
+                            ChangeStrategy::ExactRebuild
+                        },
                         reused_fixpoint: meaningful,
                         reused_subsumptions: stats.reused_subsumptions,
                         reused_edges: 0,
@@ -1145,9 +1165,18 @@ impl SourceIncrementalClassifier {
             }
         }
 
-        if let Some(input) = with_route_environment(&route_after, || {
-            crate::orchestrate::race::prepare_incremental_ht(&candidate)
-        })? {
+        // Keep the same exact boundary after a retained bridge decline.  A
+        // bridge update may fall through to the automatic classifier, but it
+        // must never migrate silently to ordinary typed HT under the same
+        // public route name.
+        let generic_ht_input = if generic_ht_adapter_allowed(&route_after) {
+            with_route_environment(&route_after, || {
+                crate::orchestrate::race::prepare_incremental_ht(&candidate)
+            })?
+        } else {
+            None
+        };
+        if let Some(input) = generic_ht_input {
             if let Ok(classifier) = IncrementalHtClassifier::new_typed(&candidate.clauses, input) {
                 let classification = map_incremental_result(&candidate, classifier.result());
                 let (removed, added) =
@@ -1336,6 +1365,10 @@ fn clause_state_is_complete(frontend: &FrontendResult) -> bool {
             && frontend.nominal_abox.is_empty()
             && frontend.profile.source.abox_axioms == 0)
             || exact_nominal_clause_route)
+}
+
+fn generic_ht_adapter_allowed(route: &str) -> bool {
+    route != "ht_bridge"
 }
 
 fn normalize_automatic(source: &str) -> Result<FrontendResult, String> {
@@ -1912,6 +1945,14 @@ Ontology(
         let frontend = super::normalize_automatic(source).unwrap();
         assert!(frontend.profile.source.abox_axioms > 0);
         assert!(!super::clause_state_is_complete(&frontend));
+    }
+
+    #[test]
+    fn exact_bridge_route_cannot_enter_an_ordinary_ht_or_qo_adapter() {
+        assert!(!super::generic_ht_adapter_allowed("ht_bridge"));
+        for route in ["ht_general", "ht_qo", "certified_card_nominals"] {
+            assert!(super::generic_ht_adapter_allowed(route), "{route}");
+        }
     }
 
     #[test]
