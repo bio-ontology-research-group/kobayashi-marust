@@ -1,0 +1,42 @@
+{
+  "source_commit": "5c981fd",
+  "build_job": 51003931,
+  "acceptance_job": 51003988,
+  "binary_sha256": "586ee9db68ecf50fb54be44b877c64220dea66de271cf52c33ce84abf02f651c",
+  "incremental": [
+    {
+      "ontology": 9944,
+      "route": "ht_bridge",
+      "retained_backend": true,
+      "strategy": "exact_rebuild",
+      "fresh_equal": true,
+      "restored_equal": true,
+      "result_sha256": "acd277fc6a45dd0d50e3c13d1b72da1108606494969ef6698fc720e3c6f0b7e0"
+    },
+    {
+      "ontology": 11311,
+      "route": "ht_bridge",
+      "retained_backend": true,
+      "strategy": "exact_rebuild",
+      "fresh_equal": true,
+      "restored_equal": true,
+      "result_sha256": "6e67a93e258b7c2a0f09ac0b745add49d2b28365905c0cd1544425918036a1ba"
+    }
+  ],
+  "explanation": {
+    "ontology": 9944,
+    "route": "ht_bridge",
+    "classification_checks": 25,
+    "axiom_count": 1,
+    "verified": true,
+    "subset_minimal": true,
+    "enumeration_complete": false,
+    "justification_limit_reached": true
+  },
+  "semantic_regression": {
+    "discovery_job": 51003818,
+    "extra_pairs_before_fix": 9,
+    "missing_pairs_before_fix": 0,
+    "fixed_by": "5c981fd"
+  }
+}

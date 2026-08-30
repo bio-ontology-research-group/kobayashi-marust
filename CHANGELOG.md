@@ -36,6 +36,13 @@
   classification. Changed dependency components still use bridge subject
   probes, unaffected rows remain exact, and any specialist defer takes the
   visible exact-classification fallback.
+- Keep automatic `ht_bridge` sessions on that exact bridge core. Ordinary
+  typed HT and quasi-order adapters can no longer intercept bridge
+  initialization or fallback under the same route name; the previous
+  interception produced nine extra subsumptions on ORE 9944. IBEX job
+  51003988 proves fresh-result equality and exact restoration on both bridge
+  profiles. Concept-only bridge replacements now retain disconnected query
+  components, while the connected ORE edits honestly report an exact rebuild.
 - Keep a certified Wine-family `nominal_ni_tbox` session for semantically
   redundant named-class edits. Insertions must already occur in the published
   exact taxonomy, removals must remain entailed after the candidate update,
