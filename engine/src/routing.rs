@@ -491,6 +491,24 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
         && !profile.expressivity.universal_role
 }
 
+/// Automatic nominal routes that replaced the historical TBox-only production
+/// schedule because its CB fallback did not carry singleton/ABox semantics.
+///
+/// The orchestrator may still use that fast TBox schedule after the normalized
+/// positive-ABox completion has independently certified consistency. A false
+/// positive here costs one failed probe only: the normalized checker declines
+/// before any TBox-only answer can be published, and classification resumes on
+/// the exact nominal route.
+pub(crate) fn certified_nominal_production_probe_candidate(profile: &OntologyProfile) -> bool {
+    large_tbox_small_identity_abox_production_candidate(profile)
+        || small_class_identity_abox_production_candidate(profile)
+        || large_no_cardinality_abox_production_candidate(profile)
+        || (typed_object_abox_bridge_candidate(profile)
+            && !profile.expressivity.cardinality
+            && !profile.expressivity.qualified_cardinality
+            && !profile.expressivity.datatype)
+}
+
 /// Large typed-ABox bridge jobs for which concurrent exact CB materialization
 /// dominates process-tree memory.  The bridge remains complete-answer-or-defer;
 /// this source predicate changes only whether the unchanged CB fallback starts
@@ -1485,6 +1503,7 @@ impl EnvironmentGuard {
     pub(crate) fn capture() -> Self {
         let values = std::iter::once("KM_ROUTE")
             .chain(std::iter::once("KM_COMP_IND_BITS"))
+            .chain(std::iter::once("KM_EL_ABOX_CHECK"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
             .chain(ROUTE_KEYS.iter().copied())
@@ -2969,6 +2988,7 @@ mod tests {
         assert!(typed_object_abox_bridge_candidate(&profile));
         assert!(!profile.expressivity.cardinality);
         assert_eq!(select(&profile), Route::CertifiedNominals);
+        assert!(certified_nominal_production_probe_candidate(&profile));
     }
 
     #[test]
@@ -3230,10 +3250,12 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(large_no_cardinality_abox_production_candidate(&profile));
         assert_eq!(select(&profile), Route::CertifiedNominals);
+        assert!(certified_nominal_production_probe_candidate(&profile));
 
         profile.source.min_cardinalities = 1;
         profile.expressivity.cardinality = true;
         assert!(!large_no_cardinality_abox_production_candidate(&profile));
+        assert!(!certified_nominal_production_probe_candidate(&profile));
     }
 
     #[test]
@@ -3250,6 +3272,7 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(small_class_identity_abox_production_candidate(&profile));
         assert_eq!(select(&profile), Route::Nominals);
+        assert!(certified_nominal_production_probe_candidate(&profile));
 
         profile
             .source

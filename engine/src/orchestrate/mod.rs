@@ -921,6 +921,52 @@ fn classify_with_evidence_mode(
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
 
+    // Several nominal source families formerly used the absorbed production
+    // TBox schedule directly. That schedule is fast, but its CB fallback does
+    // not encode the ABox and is therefore authoritative only after a separate
+    // complete consistency check. Try the normalized positive-ABox completion
+    // first. It rewrites equality representatives to fresh completion roots,
+    // materializes every typed class/role assertion, and declines before a
+    // TBox-only answer exists if the normalized clauses are outside its exact
+    // fragment. A successful recursive run publishes the production taxonomy;
+    // any decline or worker failure restores this call's environment and keeps
+    // the unchanged exact nominal route below.
+    if automatic_requested
+        && matches!(
+            selected_route,
+            crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
+        )
+        && crate::routing::certified_nominal_production_probe_candidate(&meta.profile)
+    {
+        let production_attempt = {
+            let _probe_environment = crate::routing::EnvironmentGuard::capture();
+            crate::routing::Route::ProductionAll.apply_environment();
+            std::env::set_var("KM_ROUTE", crate::routing::Route::ProductionAll.as_str());
+            std::env::set_var("KM_EL_ABOX_CHECK", "1");
+            let production_cfg = Config::from_env();
+            classify_with_evidence_mode(&production_cfg, ont, retain_grouped_output)
+        };
+        match production_attempt {
+            Ok(evidence) => {
+                if std::env::var_os("KM_ABOX_PRODUCTION_TRACE").is_some() {
+                    eprintln!("KM_ABOX_PRODUCTION result=accepted");
+                }
+                return Ok(evidence);
+            }
+            Err(error) => {
+                if std::env::var_os("KM_ABOX_PRODUCTION_TRACE").is_some() {
+                    eprintln!("KM_ABOX_PRODUCTION result=declined error={error}");
+                }
+                if timing {
+                    eprintln!(
+                        "KM_TIMING certified ABox production probe declined @ {:.2}s: {error}",
+                        t_start.elapsed().as_secs_f64()
+                    );
+                }
+            }
+        }
+    }
+
     // Opt-in development gate for the disjoint-union ABox projection. The
     // source profile proves only closure of the TBox fragment under disjoint
     // unions; it does not assume consistency. Obtain that verdict from the
