@@ -526,10 +526,28 @@ pub(crate) fn certified_nominal_production_probe_candidate(profile: &OntologyPro
 pub(crate) fn certified_nominal_general_ht_probe_candidate(profile: &OntologyProfile) -> bool {
     let count = |name: &str| profile.source.axiom_types.get(name).copied().unwrap_or(0);
     small_class_identity_abox_production_candidate(profile)
+        || large_identity_nominal_abox_general_ht_candidate(profile)
         || (large_no_cardinality_abox_production_candidate(profile)
             && (count("DataPropertyAssertion") > 0 || count("NegativeDataPropertyAssertion") > 0))
         || (typed_object_abox_bridge_candidate(profile)
             && (profile.source.nominals > 0 || profile.source.has_values > 0))
+}
+
+/// Identity-heavy benchmark ABoxes whose complete direct-clause HT projection
+/// is substantially smaller than nominal root-context materialization. This is
+/// only a probe predicate: `ht_general` must consume every normalized clause
+/// and produce a complete answer, otherwise the exact nominal route remains
+/// authoritative.
+fn large_identity_nominal_abox_general_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    large_no_cardinality_abox_production_candidate(profile)
+        && source.nominals > 0
+        && source.has_values == 0
+        && source.distinct_individuals >= 20_000
+        && count("SameIndividual") >= 10_000
+        && count("DataPropertyAssertion") == 0
+        && count("NegativeDataPropertyAssertion") == 0
 }
 
 /// Large typed-ABox bridge jobs for which concurrent exact CB materialization
@@ -3285,6 +3303,42 @@ mod tests {
         profile.expressivity.cardinality = true;
         assert!(!large_no_cardinality_abox_production_candidate(&profile));
         assert!(!certified_nominal_production_probe_candidate(&profile));
+        assert!(!certified_nominal_general_ht_probe_candidate(&profile));
+    }
+
+    #[test]
+    fn large_identity_nominal_abox_gets_complete_general_ht_probe() {
+        let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 256_427;
+        profile.source.class_assertions = 111_561;
+        profile.source.role_assertions = 78_441;
+        profile.source.distinct_individuals = 129_647;
+        profile.source.nominals = 18;
+        profile
+            .source
+            .axiom_types
+            .insert("SameIndividual".to_string(), 66_423);
+        profile.expressivity.nominal = true;
+        profile.expressivity.nominal_individual = true;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
+        assert!(large_identity_nominal_abox_general_ht_candidate(&profile));
+        assert!(certified_nominal_general_ht_probe_candidate(&profile));
+
+        profile
+            .source
+            .axiom_types
+            .insert("SameIndividual".to_string(), 9_999);
+        assert!(!large_identity_nominal_abox_general_ht_candidate(&profile));
+        assert!(!certified_nominal_general_ht_probe_candidate(&profile));
+
+        profile
+            .source
+            .axiom_types
+            .insert("SameIndividual".to_string(), 66_423);
+        profile.source.nominals = 0;
+        assert!(!large_identity_nominal_abox_general_ht_candidate(&profile));
         assert!(!certified_nominal_general_ht_probe_candidate(&profile));
     }
 

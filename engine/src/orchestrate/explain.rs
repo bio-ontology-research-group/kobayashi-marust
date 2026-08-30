@@ -804,10 +804,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn sparse_large_support_is_minimised_without_a_linear_oracle_budget() {
-        let result = enumerate(4_096, 96, 1, |active| {
-            Ok(active[17] && active[4_000])
-        })
-        .unwrap();
+        let result = enumerate(4_096, 96, 1, |active| Ok(active[17] && active[4_000])).unwrap();
         assert!(result.entailed);
         assert_eq!(result.justifications.len(), 1);
         let support = &result.justifications[0];
