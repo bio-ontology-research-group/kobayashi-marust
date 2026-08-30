@@ -1,0 +1,41 @@
+{
+  "binary_sha256": "4d04cc8491597f67c9c0f4c57a5fe6422d46144643fbe74efbb8d64646ebfb91",
+  "metrics": {
+    "correct_completions": 591,
+    "mean_peak_mb": 226.30734348561762,
+    "mean_wall_s": 1.4645751269035532,
+    "median_peak_mb": 26.98,
+    "median_wall_s": 0.1559
+  },
+  "owner_job": "50996021",
+  "records": {
+    "checkpoints": 592,
+    "profiles": 592,
+    "results": 592
+  },
+  "release": "v1.2.0",
+  "routes": {
+    "certified_card_nominals": 1,
+    "certified_el_production": 5,
+    "certified_nominals": 9,
+    "elc": 288,
+    "ht_bridge": 2,
+    "ht_general": 22,
+    "ht_rules": 3,
+    "nominal_ni_tbox": 1,
+    "nominals": 36,
+    "production_all": 220,
+    "production_all1": 5
+  },
+  "schema": 1,
+  "status": {
+    "error": 1,
+    "ok": 591
+  },
+  "verdict": {
+    "consistency_mismatch": 2,
+    "error": 1,
+    "match": 588,
+    "nogold": 1
+  }
+}
