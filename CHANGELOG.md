@@ -108,6 +108,33 @@
   ordinary-derivation fallback as release builds instead of aborting automatic
   bridge initialization on a recoverable stale suffix.
 
+### Certification and release evidence
+
+- Pass the ELC, hypertableau, consequence-based, and automatic-routing Lean
+  certification gates from the v1.3.0 source. The routing capstone includes
+  exact incremental revision publication and source-axiom explanation
+  entailment and subset minimality. The public theorem audit rejects `sorryAx`
+  and reports only `propext`, `Classical.choice`, and `Quot.sound`.
+- Pass all 31 OWLAPI lifecycle and explanation tests and the packaged Protégé
+  5.6.6 OSGi installation smoke, including native classification, a retained
+  non-buffering update, and a source-axiom explanation in one session.
+- Record a fresh 592-ontology ORE 2015 automatic-route sweep from engine commit
+  `5c64a02`. Binary
+  `cb9eabac9f5e4f351947b69f5f61df85cdf450da7f4f398b17cf34b79620aa7d`
+  completes 591 ontologies: 588 retained-gold signature matches, two
+  independently adjudicated consistency mismatches, one ontology without
+  retained gold, and the established fail-closed ORE1194 parse error. Every
+  semantic result field is identical to v1.2.0.
+- Measure 1.494590 seconds mean and 0.1376 seconds median wall time, with
+  221.573 MiB mean and 27.19 MiB median peak process-tree RSS over the 591
+  correct completions. The exact aggregate and 27 intentional execution-route
+  trace changes are recorded under
+  `results/benchmarks/2026-08-30-v1.3.0-release/`.
+- Separate execution-route provenance from release-blocking semantic fields in
+  the corpus auditor. Status, verdict, consistency, signature, taxonomy counts,
+  and mismatch counts still fail the release; a changed exact route is reported
+  without being mislabelled as a semantic regression.
+
 ## [1.2.0] - 2026-08-30
 
 ### Certification and release evidence

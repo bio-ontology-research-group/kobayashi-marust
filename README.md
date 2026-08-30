@@ -22,8 +22,11 @@ without access to the expected answer.
 - KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle.
 - Conversion, routing, and certification paths fail closed when they cannot
   justify a complete result.
-- A Protégé 5.6 plugin, ontology profiling, bounded explanations, and
-  incremental reasoning interfaces are included.
+- Source-level transactional incremental reasoning retains meaningful state
+  across every production mechanism, with documented exact-rebuild safety
+  boundaries and atomic route migration.
+- The native CLI and OWLAPI/Protégé integration return verified, subset-minimal
+  source-axiom explanations for every advertised entailment kind.
 - Lean provides sorry-free soundness and completeness certification for the
   production ELC, hypertableau, and CB publication boundaries and for their
   automatic routing composition. Accepted routed taxonomies are bound to the
@@ -80,7 +83,7 @@ memory are computed over correct completions.
 
 | Reasoner | Tested version / commit | Correct completions | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
 |---|---|---:|---:|---:|---:|---:|
-| KM | v1.2.0; binary `4d04cc84…46ebfb91` | 591/592 | 1.4646 | 0.1559 | 226.31 | 26.98 |
+| KM | v1.3.0; engine `5c64a02`; binary `cb9eabac…9620aa7d` | 591/592 | 1.4946 | 0.1376 | 221.57 | 27.19 |
 | ELK | 0.6.0 | 531/592 | 1.5208 | 0.7520 | 493.33 | 234.30 |
 | Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 3.2765 | 0.2814 | 559.90 | 76.87 |
 | Sequoia | 0.6.1-alpha; `c5248ec7be30` | 339/592 | 7.3704 | 2.5371 | 2207.35 | 536.15 |
@@ -96,8 +99,11 @@ The benchmark corpus, limits, canonical signatures, adjudications, special
 cases, and route history are documented in
 [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md),
 [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md), and
-[`results/benchmarks/`](results/benchmarks/). The table records the exact
-tested artifacts; it is not automatically attributed to later source releases.
+[`results/benchmarks/`](results/benchmarks/). The v1.3.0 aggregate, route
+provenance, binary hash, jobs, and gate evidence are recorded in
+[`2026-08-30-v1.3.0-release`](results/benchmarks/2026-08-30-v1.3.0-release/README.md).
+The table records the exact tested artifacts; it is not automatically
+attributed to later source releases.
 
 ## Protégé plugin
 

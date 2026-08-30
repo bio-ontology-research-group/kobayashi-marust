@@ -26,8 +26,8 @@ SEMANTIC_FIELDS = (
     "extra",
     "missing_unsat",
     "extra_unsat",
-    "selected_route_trace",
 )
+TRACE_FIELDS = ("selected_route_trace",)
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,6 +62,7 @@ def audit() -> dict:
     rows: list[dict] = []
     profiles: list[dict] = []
     semantic_differences: list[dict] = []
+    execution_trace_differences: list[dict] = []
     for index, ontology in enumerate(ontologies):
         result_file = result_path(root, ontology)
         checkpoint_file = root / "results" / f"{ontology}.checkpoint.json"
@@ -97,6 +98,15 @@ def audit() -> dict:
             }
             if difference:
                 semantic_differences.append({"ontology": ontology, "fields": difference})
+            trace_difference = {
+                field: {"baseline": baseline.get(field), "candidate": row.get(field)}
+                for field in TRACE_FIELDS
+                if baseline.get(field) != row.get(field)
+            }
+            if trace_difference:
+                execution_trace_differences.append(
+                    {"ontology": ontology, "fields": trace_difference}
+                )
         rows.append(row)
         profiles.append(profile)
 
@@ -127,6 +137,7 @@ def audit() -> dict:
             "median_peak_mb": statistics.median(row["peak_mb"] for row in ok),
         },
         "semantic_differences_from_baseline": semantic_differences,
+        "execution_trace_differences_from_baseline": execution_trace_differences,
     }
 
 

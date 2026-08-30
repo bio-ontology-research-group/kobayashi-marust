@@ -1,0 +1,304 @@
+{
+  "binary_sha256": "cb9eabac9f5e4f351947b69f5f61df85cdf450da7f4f398b17cf34b79620aa7d",
+  "execution_routes": {
+    "cb_plain16": 1,
+    "certified_card_nominals": 1,
+    "certified_el_production": 1,
+    "certified_nominals": 15,
+    "elc": 250,
+    "flat_nf1": 64,
+    "ht_bridge": 2,
+    "ht_general": 37,
+    "ht_rules": 3,
+    "mirror_private": 1,
+    "nominal_ni_abox": 2,
+    "nominal_ni_tbox": 1,
+    "nominals": 34,
+    "production_all": 175,
+    "production_all1": 5
+  },
+  "execution_trace_differences_from_baseline": [
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_1340.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_1481.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_1902.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_2313.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_2453.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_2485.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_3905.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_4572.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "certified_nominals",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_5107.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "certified_nominals",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_5184.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_5292.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_5572.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_6226.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "certified_nominals",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_6999.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_7775.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_8480.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_9002.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "certified_nominals",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_9635.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_9654.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "certified_nominals",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_10621.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_10908.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_11523.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_13503.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_14450.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "certified_nominals"
+        }
+      },
+      "ontology": "ore_ont_14848.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "certified_nominals",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_15672.owl"
+    },
+    {
+      "fields": {
+        "selected_route_trace": {
+          "baseline": "production_all",
+          "candidate": "ht_general"
+        }
+      },
+      "ontology": "ore_ont_15846.owl"
+    }
+  ],
+  "metrics": {
+    "correct_completions": 591,
+    "mean_peak_mb": 221.57272419627733,
+    "mean_wall_s": 1.4945895093062624,
+    "median_peak_mb": 27.19,
+    "median_wall_s": 0.1376
+  },
+  "owner_job": "51012720+51013597",
+  "records": {
+    "checkpoints": 592,
+    "profiles": 592,
+    "results": 592
+  },
+  "release": "v1.3.0",
+  "routes": {
+    "certified_card_nominals": 1,
+    "certified_el_production": 5,
+    "certified_nominals": 32,
+    "elc": 288,
+    "ht_bridge": 2,
+    "ht_general": 22,
+    "ht_rules": 3,
+    "nominal_ni_tbox": 1,
+    "nominals": 37,
+    "production_all": 196,
+    "production_all1": 5
+  },
+  "schema": 1,
+  "semantic_differences_from_baseline": [],
+  "status": {
+    "error": 1,
+    "ok": 591
+  },
+  "verdict": {
+    "consistency_mismatch": 2,
+    "error": 1,
+    "match": 588,
+    "nogold": 1
+  }
+}
