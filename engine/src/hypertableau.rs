@@ -25369,6 +25369,10 @@ mod tests {
         ];
         let recs = mk_recs(&cls);
         let mut qs = QoSat::new(&recs);
+        // Production removes role-chain axioms from the QoSat clause stream and
+        // installs only the validated typed side data. Exercise that same path
+        // here instead of depending on generic Horn-clause scheduling.
+        qs.install_edge_compose(&[(R0, R0, R0)]);
         let g = qs.saturate_global(&[A]);
         assert!(!g.unsupported, "saturation must converge in-fragment");
         let na = qs.concept_node[&CLit::pos(A)];
