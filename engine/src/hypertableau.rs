@@ -6831,51 +6831,14 @@ impl<'a> QoSat<'a> {
                 }
             }
         }
-        // KM_QO_EDGE_COMPOSE: production chain indexes are populated by
-        // `install_edge_compose` from the side-data supplied by `set_chains`.
-        // Direct clause callers can still contain a normalized binary Horn role
-        // chain. Index that exact existing rule here as well. This is only a
-        // deterministic specialization of the generic multi-role matcher: every
-        // composed edge is already the clause head under the same two body-edge
-        // substitution. The frontend normally filters these raw chain clauses,
-        // so the production side-data path remains authoritative.
+        // KM_QO_EDGE_COMPOSE: chain edge-composition indexes are populated by
+        // `install_edge_compose` (called from the Ht classify path with the
+        // side-data chains from `set_chains`).  The raw chain axioms are filtered
+        // from the clause stream by the frontend, so detection from `clauses`
+        // here would find nothing — the chain info MUST come through the side
+        // channel.  See `install_edge_compose`.
         let mut chain_fwd: HashMap<R, Vec<(R, R)>> = HashMap::new();
         let mut chain_bwd: HashMap<R, Vec<(R, R)>> = HashMap::new();
-        for (clause, body, _) in clauses {
-            if body.len() != 2 || clause.head.len() != 1 {
-                continue;
-            }
-            let first = match body[0] {
-                Atom::Role { r, s, t } => Some((r, s, t)),
-                _ => None,
-            };
-            let second = match body[1] {
-                Atom::Role { r, s, t } => Some((r, s, t)),
-                _ => None,
-            };
-            let head = match clause.head[0] {
-                Atom::Role { r, s, t } => Some((r, s, t)),
-                _ => None,
-            };
-            let (Some(a), Some(b), Some(h)) = (first, second, head) else {
-                continue;
-            };
-            let mut index = |left: (R, Var, Var), right: (R, Var, Var)| {
-                if left.2 != right.1 || h.1 != left.1 || h.2 != right.2 {
-                    return;
-                }
-                let forward = chain_fwd.entry(left.0).or_default();
-                if !forward.contains(&(right.0, h.0)) {
-                    forward.push((right.0, h.0));
-                }
-                let backward = chain_bwd.entry(right.0).or_default();
-                if !backward.contains(&(left.0, h.0)) {
-                    backward.push((left.0, h.0));
-                }
-            };
-            index(a, b);
-            index(b, a);
-        }
         QoSat {
             clauses,
             label: Vec::new(),

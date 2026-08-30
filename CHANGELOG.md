@@ -4,10 +4,6 @@
 
 ### Incremental reasoning and explanations
 
-- Index direct binary Horn role-chain clauses for deterministic QoSat edge
-  composition. This specializes the existing multi-role rule without changing
-  its fixpoint and prevents direct clause inputs from depending on generic join
-  scheduling.
 - Add retained EL, CB, ordinary HT, quasi-order HT, cardinality HT, bridge,
   positive-ABox, and DL-safe-rule adapters behind a complete source-level
   transactional session used by OWLAPI. Receipts expose the selected route,
