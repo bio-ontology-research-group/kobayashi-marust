@@ -226,7 +226,7 @@ variable:
 
 ## Protégé GUI
 
-The KM 0.3.0 OSGi bundle contains both the OWLAPI adapter and a native service
+The KM 1.3.0 OSGi bundle contains both the OWLAPI adapter and a native service
 for Protégé 5.6's core `org.protege.editor.owl.explanation` extension point.
 On an inferred named `SubClassOf` row, click Protégé's purple **Explain
 inference** (`?`) button. If Protégé offers several explanation services,

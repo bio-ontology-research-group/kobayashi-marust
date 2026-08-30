@@ -1,6 +1,6 @@
 # Changelog
 
-## [unreleased]
+## [1.3.0] - 2026-08-30
 
 ### Incremental reasoning and explanations
 

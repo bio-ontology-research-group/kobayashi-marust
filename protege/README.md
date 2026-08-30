@@ -7,7 +7,7 @@ consistency.
 
 The plugin is a TBox classifier. Property hierarchy, property assertion, and
 individual realization queries are not currently exposed through the OWL API.
-The 0.3.0 bundle also contains an OWL Explanation API 2.0.1
+The 1.3.0 bundle also contains an OWL Explanation API 2.0.1
 `ExplanationGenerator` and `ExplanationGeneratorFactory`. It returns verified,
 source-axiom justifications for named-class entailments through KM's native
 schema-2 protocol. See
@@ -49,7 +49,7 @@ mvn package
 The OSGi plugin bundle is:
 
 ```text
-protege/target/kobayashi-marust-protege-0.3.0.jar
+protege/target/kobayashi-marust-protege-1.3.0.jar
 ```
 
 Set `KM_BIN` while testing if `km` is not on `PATH`:
@@ -62,7 +62,7 @@ KM_BIN=/absolute/path/to/km mvn test
 
 1. Download and unpack Protégé Desktop 5.6.x from the
    [Protégé website](https://protege.stanford.edu/software/).
-2. Copy `kobayashi-marust-protege-0.3.0.jar` into the `plugins` directory
+2. Copy `kobayashi-marust-protege-1.3.0.jar` into the `plugins` directory
    inside the Protégé installation.
 3. Put the `km` executable on the process `PATH`, or configure its absolute
    path as described below.
@@ -200,7 +200,7 @@ distribution before releasing:
 ```sh
 protege/run-installation-smoke.sh \
   /absolute/path/to/Protege-5.6.6 \
-  "$PWD/protege/target/kobayashi-marust-protege-0.3.0.jar" \
+  "$PWD/protege/target/kobayashi-marust-protege-1.3.0.jar" \
   "$PWD/.work/target/release/km"
 ```
 
