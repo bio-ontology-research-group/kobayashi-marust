@@ -80,7 +80,7 @@ memory are computed over correct completions.
 
 | Reasoner | Tested version / commit | Correct completions | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
 |---|---|---:|---:|---:|---:|---:|
-| KM | v1.1.0; binary `fd9d7f1a…b6a88a` | 591/592 | 1.3997 | 0.1303 | 225.70 | 27.02 |
+| KM | v1.2.0; binary `4d04cc84…46ebfb91` | 591/592 | 1.4646 | 0.1559 | 226.31 | 26.98 |
 | ELK | 0.6.0 | 531/592 | 1.5208 | 0.7520 | 493.33 | 234.30 |
 | Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 3.2765 | 0.2814 | 559.90 | 76.87 |
 | Sequoia | 0.6.1-alpha; `c5248ec7be30` | 339/592 | 7.3704 | 2.5371 | 2207.35 | 536.15 |

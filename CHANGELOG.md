@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [1.2.0] - 2026-08-30
+
+### Certification and release evidence
+
+- Complete the ELC, hypertableau, consequence-based, and automatic-routing
+  certification gates from source. The release gates reject `sorryAx` and the
+  Rust suite passes 2,217 library tests plus every integration target and the
+  packaged-engine smoke test.
+- Record a fresh exact-artifact ORE 2015 sweep on Intel Xeon Gold 6248 nodes.
+  The automatic `km classify` route completes 591 of 592 ontologies under the
+  release contract; ORE1194 remains the established fail-closed parse error.
+  The semantic gate reports 588 gold matches, two independently adjudicated
+  consistency mismatches in the retained gold, and one ontology without gold.
+- Final benchmark binary
+  `4d04cc8491597f67c9c0f4c57a5fe6422d46144643fbe74efbb8d64646ebfb91`
+  measured 1.464575 seconds mean and 0.1559 seconds median wall time, with
+  226.307 MiB mean and 26.98 MiB median peak process-tree RSS over 591 correct
+  completions. All four aggregate metrics remain strictly below every retained
+  external reasoner arm.
+
 ## [1.1.0] - 2026-08-26
 
 ### Faster automatic classification with certified publication
