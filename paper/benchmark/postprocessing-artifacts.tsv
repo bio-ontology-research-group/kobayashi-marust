@@ -1,0 +1,13 @@
+id	sha256	job_id	status_or_role
+legacy-full-iri-fingerprint	d784cec2420bc1abdea81f3e640b237e009ea75d958ee6d48fec6d082052b95f	51028377	Original generic SCC and transitive-closure oracle
+km-sparse-fingerprint	337411472cc53677ee8e73b54335ac404c66e6043d74d3329d1688bdb3f550b6	51030723	Matched legacy taxonomy and relation digests on all 96 accepted current KM outputs
+km-sparse-differential-array	a842c9fc82a3f9fdb802a3a32db7af1073af02c44a2b1274bffc0b81900d05e8	51030723	96 exact matches; 93 inapplicable skips; zero errors
+ncbitaxon-sparse-job	70885e156e110bc2e5a7681b164fb71c03e51e96e04c5ef7aa767359457f773e	51031093	55,757,044 subsumptions; 2.36 GiB peak; terminal fingerprint receipt
+km-fingerprint-recovery	9dab442b92619a4612481162a6af744b1a4cc2b808a02be096b9eaf7cdadf548	51031362	Source/output-bound atomic recovery transaction
+ncbitaxon-recovery-job	7f2a5bb7454b806eed3549daaf2878af29017b57838ca38b731d015a021e6268	51031362	Recovered record passed fixed strict validator; reasoner metrics unchanged
+native-sparse-fingerprint-v2	287c240260deac31d047c63893c7565cbd0a27b50c5e454bc4b82dc77fea6bb7	51032472	Format-selecting JSON and OWL/XML sparse SCC/closure implementation; JSON algorithm identifier remains recovery-compatible
+konclude-sparse-differential-array	7812966d8f10a611cb398eeb89565b2af582d8bec89a02b0e8696e18074fed1a	51032472	160 exact matches; 29 inapplicable skips; zero mismatches and zero parser errors
+konclude-sparse-differential-logs	1a44cea3cd5183b7293b887ba71e20e409d624ae0d39af5e8fc317519d39460b	51032472	Compressed complete array logs archived under generated/validation-logs
+konclude-ncbitaxon-sparse-job	a2b0f1fe9cc246dd8ccd9d64aaa5d0989b96b5ca802be81e3a79f435da27c169	51032807	55,757,044 subsumptions; 1.80 GiB peak; complete declarations; terminal fingerprint receipt
+konclude-fingerprint-recovery	fa3fbdf1d978a81db0e8d28d40deb3150e3b2c9014b6c9c42a4e37c5bf56b6e7	51032926	Source/runtime/output-bound atomic Konclude recovery transaction
+konclude-ncbitaxon-recovery-job	40c6ff59bd298cd5fc31b69882dccc2f5238adb0993554621f89b36dd47e8062	51032926	Recovered record passed fixed strict validator; prestate archived; reasoner metrics unchanged

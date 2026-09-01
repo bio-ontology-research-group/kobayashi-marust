@@ -1,0 +1,20 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/fideo.ofn
+M	source_sha256	8828f430302aa23f70faadecd1d43317e8a4b2aabf6dbf7e6a8c87f8d2319a09
+M	axioms	12634
+M	logical_axioms	4546
+M	classes	3543
+M	object_properties	12
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	302
+V	OWL2EL	UseOfIllegalClassExpression	302
+P	OWL2QL	false	2004
+V	OWL2QL	UseOfNonSubClassExpression	1702
+V	OWL2QL	UseOfNonSuperClassExpression	302
+P	OWL2RL	false	2587
+V	OWL2RL	UseOfNonEquivalentClassExpression	1702
+V	OWL2RL	UseOfNonSuperClassExpression	885
+Z	complete

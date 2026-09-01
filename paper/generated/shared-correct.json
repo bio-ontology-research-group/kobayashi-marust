@@ -1,0 +1,74 @@
+{
+  "comparisons": {
+    "elk": {
+      "external": {
+        "mean_peak_mib": 493.3271563088512,
+        "mean_wall_s": 1.5207743879472693,
+        "median_peak_mib": 234.3,
+        "median_wall_s": 0.752,
+        "n": 531
+      },
+      "km": {
+        "mean_peak_mib": 131.5468361581921,
+        "mean_wall_s": 0.9721350282485877,
+        "median_peak_mib": 21.49,
+        "median_wall_s": 0.1296,
+        "n": 531
+      },
+      "shared_correct_ontologies": 531
+    },
+    "hermit": {
+      "external": {
+        "mean_peak_mib": 1331.7202513464993,
+        "mean_wall_s": 13.117216337522441,
+        "median_peak_mib": 714.22,
+        "median_wall_s": 1.8782,
+        "n": 557
+      },
+      "km": {
+        "mean_peak_mib": 112.71770197486535,
+        "mean_wall_s": 0.8043070017953322,
+        "median_peak_mib": 25.1,
+        "median_wall_s": 0.1297,
+        "n": 557
+      },
+      "shared_correct_ontologies": 557
+    },
+    "konclude": {
+      "external": {
+        "mean_peak_mib": 559.899199318569,
+        "mean_wall_s": 3.2764586030664393,
+        "median_peak_mib": 76.87,
+        "median_wall_s": 0.2814,
+        "n": 587
+      },
+      "km": {
+        "mean_peak_mib": 213.3784838160136,
+        "mean_wall_s": 1.3989502555366269,
+        "median_peak_mib": 27.2,
+        "median_wall_s": 0.1352,
+        "n": 587
+      },
+      "shared_correct_ontologies": 587
+    },
+    "sequoia_strict": {
+      "external": {
+        "mean_peak_mib": 2207.3510029498525,
+        "mean_wall_s": 7.370391150442479,
+        "median_peak_mib": 536.15,
+        "median_wall_s": 2.5371,
+        "n": 339
+      },
+      "km": {
+        "mean_peak_mib": 112.4188790560472,
+        "mean_wall_s": 0.8654165191740413,
+        "median_peak_mib": 20.86,
+        "median_wall_s": 0.131,
+        "n": 339
+      },
+      "shared_correct_ontologies": 339
+    }
+  },
+  "external_panel": ".work/worktrees/v1.3/results/benchmarks/2026-07-22-reproduced-route-performance/full-panel-results.scoring-v2.tsv.gz",
+  "km_binary_sha256": "cb9eabac9f5e4f351947b69f5f61df85cdf450da7f4f398b17cf34b79620aa7d"
+}

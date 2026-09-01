@@ -1,0 +1,17 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/xlmod.ofn
+M	source_sha256	f3601b62f6a774d5662291ee4b4a661ac0122a235796bf9af3439a2f427c9ae4
+M	axioms	10407
+M	logical_axioms	3010
+M	classes	1106
+M	object_properties	17
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	true	0
+P	OWL2QL	false	1
+V	OWL2QL	UseOfIllegalAxiom	1
+P	OWL2RL	false	1850
+V	OWL2RL	UseOfNonSuperClassExpression	1850
+Z	complete

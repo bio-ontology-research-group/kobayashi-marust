@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ovae.owl
+M	source_sha256	25d1bf39ba7eade77d08ab59558d54b8de58c519a725dae290f98d3d97e20cd4
+M	closure_size	1
+M	merged_axioms	24046
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	2534e963b371dea7ca27c724abd9153a580155c414fffdd5df58d2e240d678d9
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ovae.owl>) VersionIRI(<null>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ovae.owl	24046
+Z	complete

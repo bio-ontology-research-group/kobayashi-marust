@@ -1,0 +1,66 @@
+{
+  "common": 9636,
+  "left": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/jfact/obib.taxonomy.tsv",
+  "left_label": "jfact",
+  "left_only": 0,
+  "left_only_sample": [],
+  "left_sha256": "4ae033069a83adf3ecb2be65dbfc03c52a066f6c9a281b76085b79035d3f7885",
+  "left_total": 9636,
+  "relation": "left_strict_subset",
+  "right": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/hermit/obib.taxonomy.tsv",
+  "right_label": "hermit",
+  "right_only": 12,
+  "right_only_sample": [
+    [
+      "http://purl.obolibrary.org/obo/OBIB_0000042",
+      "http://purl.obolibrary.org/obo/BFO_0000031"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBIB_0000042",
+      "http://purl.obolibrary.org/obo/IAO_0000027"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBIB_0000042",
+      "http://purl.obolibrary.org/obo/IAO_0000030"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBIB_0000678",
+      "http://purl.obolibrary.org/obo/BFO_0000031"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBIB_0000678",
+      "http://purl.obolibrary.org/obo/IAO_0000027"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBIB_0000678",
+      "http://purl.obolibrary.org/obo/IAO_0000030"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0000679",
+      "http://purl.obolibrary.org/obo/BFO_0000031"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0000679",
+      "http://purl.obolibrary.org/obo/IAO_0000027"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0000679",
+      "http://purl.obolibrary.org/obo/IAO_0000030"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0200170",
+      "http://purl.obolibrary.org/obo/BFO_0000015"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0200170",
+      "http://purl.obolibrary.org/obo/OBI_0000011"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0200170",
+      "http://purl.obolibrary.org/obo/OBI_0200000"
+    ]
+  ],
+  "right_sha256": "f05b151b3073980a1afbc15cae4e32d32a0042b057d8368eb6fbbf36246a1696",
+  "right_total": 9648,
+  "schema": 1
+}

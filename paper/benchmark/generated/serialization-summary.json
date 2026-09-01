@@ -1,0 +1,16 @@
+{
+  "alpha_renamed_ontologies": 21,
+  "alpha_renamed_rule_axioms": 230,
+  "annotation_axiom_delta_counts": {
+    "0": 189
+  },
+  "contract": "konclude-compatible-serialization-v2",
+  "converter_sha256": "aa938444d680c783cff9a50a35ddd9ec19510755cdd25aacaf7b7f08df16e1ed",
+  "ontologies": 189,
+  "schema": 1,
+  "serialization_counts": {
+    "functional": 9,
+    "owlxml": 180
+  },
+  "source_output_ledger_sha256": "dc5b4268ab6baa926d3517696bfb5524006679ee85eee7fe5b4a21edd2d4ee1b"
+}

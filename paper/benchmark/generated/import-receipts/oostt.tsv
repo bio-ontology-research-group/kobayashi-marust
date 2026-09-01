@@ -1,0 +1,13 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/oostt.owl
+M	source_sha256	9fef8e023ef87bcf245fab4c98c64e4642d39c5a3e206eca0cd19681034662ca
+M	closure_size	4
+M	merged_axioms	9678
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	8c5b0e4c5454ffbbc4cbd63097d5af3d1c4983bd28d76fa148c8cfcdf328bd92
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/iao.owl>) VersionIRI(<http://purl.obolibrary.org/obo/iao/2026-03-30/iao.owl>))	http://purl.obolibrary.org/obo/iao.owl	3916
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/iao/d-acts.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/iao/d-acts/dev/d-acts.owl	395
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/iao/pno.owl>) VersionIRI(<http://purl.obolibrary.org/obo/iao/pno/release/2021-06-11/pno.owl>))	http://purl.obolibrary.org/obo/iao/pno.owl	252
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/oostt.owl>) VersionIRI(<http://purl.obolibrary.org/obo/oostt/release/2025-08-28/oostt.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/oostt.owl	5285
+Z	complete

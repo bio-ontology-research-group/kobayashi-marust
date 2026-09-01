@@ -1,0 +1,23 @@
+{
+  "current_manuscript_sha256": "e564e7d9d8474eef968af48dc4729e51ea0a0b3c57207711d8084eb5a7255b8a",
+  "disposition_counts": {
+    "accepted": 53,
+    "deferred": 1,
+    "rejected": 0
+  },
+  "findings": 54,
+  "report_sha256": {
+    "1": "546634646dd17fdb6eb56f32644a2ed78280258df38c211a3b9070c39817eef8",
+    "2": "d8e25c00d2b3916cce75ef9150a93d7d25d73312c96111e20382161f1e94b954",
+    "3": "4cd082afe309a64c18a07a34e91d7655e4155ac8ed7517e6e93cf24b76ed0bda",
+    "4": "d112cd69de899620c8335066d14a34de99ebdc7aef6b34175ccdc709c284363b",
+    "5": "c8059b3f902fa8760394ccc3ad37b8ec741ee0d5d04eab6383863dae71eda015",
+    "6": "75959dfcd048ce533d8007e74afe420c3daceba486de4d8c5e3e10c4d73d5b5a",
+    "7": "84c3bb5434e2070dfa50e9746a9863b5228d70443fc1c625684e222eed21a059"
+  },
+  "reviewed_manuscript_sha256": "ac04a4bb7a96cf11c9de044aecd084d3d035540d6d4e10039c46ffabe015a15c",
+  "reviews": 7,
+  "schema": 1,
+  "status": "pass",
+  "undisposed_findings": 0
+}

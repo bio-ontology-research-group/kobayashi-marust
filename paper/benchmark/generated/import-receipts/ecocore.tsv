@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ecocore.owl
+M	source_sha256	2f63de578a30a00f71690ded9bf2e72862ea81fc8f00b6ec78a2d378385f2945
+M	closure_size	1
+M	merged_axioms	69938
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	3
+M	merged_sha256	bca3f3fad3fe960e446432a5d47d0d0e10d739e07c87804841c33e24a4a544da
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ecocore.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ecocore/releases/2026-08-17/ecocore.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ecocore.owl	69935
+Z	complete

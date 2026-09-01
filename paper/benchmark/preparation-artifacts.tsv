@@ -1,0 +1,3 @@
+id	version_or_commit	source_sha256	runtime_sha256	role
+owlapi-preparation-runtime	OWLAPI 5.1.9 via HermiT 1.4.5.519 shaded runtime	4a35242396bc08b92de5b478eca31566be80268dd901337afff3e87e39d98bb3	59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c	Import closure, normalization, parsing, and round-trip validation
+verified-xml-converter	konclude-compatible-serialization-v2 / javac --release 11	b206c2948809fbec927b7bf85020e88b5e1e04ccca94554a8d34e954c2671f47	aa938444d680c783cff9a50a35ddd9ec19510755cdd25aacaf7b7f08df16e1ed	Source-bound verified OWL/XML, with unchanged Functional Syntax fallback, for Konclude

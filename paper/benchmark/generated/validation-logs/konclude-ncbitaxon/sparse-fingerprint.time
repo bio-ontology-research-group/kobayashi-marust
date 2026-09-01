@@ -1,0 +1,23 @@
+	Command being timed: "env PYTHONPATH=/ibex/scratch/hohndor/km/paper-benchmark-20260830/runner-tools /usr/bin/python3 /ibex/scratch/hohndor/km/paper-benchmark-20260830/runner-tools/fingerprint_km_json_sparse.py.next --input /ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/konclude/ncbitaxon.taxonomy.owlxml --format owlxml --source-ontology /ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/ncbitaxon.ofn --output-prefix /ibex/scratch/hohndor/km/paper-benchmark-20260830/diagnostics/konclude-sparse-fingerprint/ncbitaxon"
+	User time (seconds): 94.12
+	System time (seconds): 2.25
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:37.20
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1889952
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 1356562
+	Voluntary context switches: 180
+	Involuntary context switches: 358
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 92384
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

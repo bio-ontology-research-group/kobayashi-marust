@@ -1,0 +1,13 @@
+M	module_logical_axioms	707
+M	module_axioms	2305
+M	entailed	true
+M	explanation_axioms	8
+A	DisjointClasses(<http://www.biomodels.net/kisao/KISAO#KISAO_0000000> <http://www.biomodels.net/kisao/KISAO#KISAO_0000097> <http://www.biomodels.net/kisao/KISAO#KISAO_0000201>)
+A	EquivalentClasses(<http://www.biomodels.net/kisao/KISAO#KISAO_0000435> ObjectIntersectionOf(<http://www.biomodels.net/kisao/KISAO#KISAO_0000302> ObjectSomeValuesFrom(<http://www.biomodels.net/kisao/KISAO#KISAO_0000360> ObjectIntersectionOf(<http://www.biomodels.net/kisao/KISAO#KISAO_0000064> DataHasValue(<http://www.biomodels.net/kisao/KISAO#KISAO_0000275> "4"^^xsd:integer))) ObjectSomeValuesFrom(<http://www.biomodels.net/kisao/KISAO#KISAO_0000360> ObjectIntersectionOf(<http://www.biomodels.net/kisao/KISAO#KISAO_0000064> DataHasValue(<http://www.biomodels.net/kisao/KISAO#KISAO_0000275> "5"^^xsd:integer)))) )
+A	ObjectPropertyDomain(<http://www.biomodels.net/kisao/KISAO#KISAO_0000245> <http://www.biomodels.net/kisao/KISAO#KISAO_0000000>)
+A	ObjectPropertyRange(<http://www.biomodels.net/kisao/KISAO#KISAO_0000245> <http://www.biomodels.net/kisao/KISAO#KISAO_0000097>)
+A	SubClassOf(<http://www.biomodels.net/kisao/KISAO#KISAO_0000064> ObjectSomeValuesFrom(<http://www.biomodels.net/kisao/KISAO#KISAO_0000361> <http://www.biomodels.net/kisao/KISAO#KISAO_0000261>))
+A	SubClassOf(<http://www.biomodels.net/kisao/KISAO#KISAO_0000086> <http://www.biomodels.net/kisao/KISAO#KISAO_0000435>)
+A	SubClassOf(<http://www.biomodels.net/kisao/KISAO#KISAO_0000106> ObjectSomeValuesFrom(<http://www.biomodels.net/kisao/KISAO#KISAO_0000245> <http://www.biomodels.net/kisao/KISAO#KISAO_0000104>))
+A	SubClassOf(<http://www.biomodels.net/kisao/KISAO#KISAO_0000261> ObjectSomeValuesFrom(<http://www.biomodels.net/kisao/KISAO#KISAO_0000245> <http://www.biomodels.net/kisao/KISAO#KISAO_0000106>))
+Z	complete

@@ -1,0 +1,35 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/proco.ofn
+M	source_sha256	ef97499e12e5f8640995b5cd032020098e1de56d98f51063b99a77157c991978
+M	axioms	10803
+M	logical_axioms	1505
+M	classes	922
+M	object_properties	58
+M	data_properties	4
+M	individuals	17
+P	OWL2	true	0
+P	OWL2DL	false	7
+V	OWL2DL	IllegalPunning	5
+V	OWL2DL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2EL	false	41
+V	OWL2EL	IllegalPunning	5
+V	OWL2EL	UseOfIllegalAxiom	14
+V	OWL2EL	UseOfIllegalClassExpression	14
+V	OWL2EL	UseOfIllegalDataRange	1
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	2
+V	OWL2EL	UseOfObjectPropertyInverse	3
+V	OWL2EL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2QL	false	73
+V	OWL2QL	IllegalPunning	5
+V	OWL2QL	UseOfIllegalAxiom	10
+V	OWL2QL	UseOfIllegalDataRange	1
+V	OWL2QL	UseOfNonSubClassExpression	22
+V	OWL2QL	UseOfNonSuperClassExpression	33
+V	OWL2QL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2RL	false	319
+V	OWL2RL	IllegalPunning	5
+V	OWL2RL	UseOfIllegalDataRange	1
+V	OWL2RL	UseOfNonEquivalentClassExpression	22
+V	OWL2RL	UseOfNonSuperClassExpression	289
+V	OWL2RL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+Z	complete

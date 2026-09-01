@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "snapshot_date": "2026-08-30",
+  "manifest_rows": 190,
+  "profiled_eligible_ontologies": 189,
+  "source_unavailable": 1,
+  "in_profile": {
+    "OWL2": 188,
+    "OWL2DL": 160,
+    "OWL2EL": 44,
+    "OWL2QL": 20,
+    "OWL2RL": 15
+  },
+  "profile_receipt_files": 190,
+  "profile_receipt_sha256_list_digest": "8311e51b3b39c4b652ffadf35dce396d1b44d6cc39d1141e31f4ea2ef310003e",
+  "profile_receipt_sha256_list_algorithm": "SHA-256 of lexicographically path-sorted lines produced by sha256sum over generated/profiles/*.tsv",
+  "profile_ontology_source_sha256": "1e054106e196f5e2b9b406e3c4445d3c794d13fbd504e8218d41650cef35f184",
+  "profile_ontology_class_sha256": "7dd6256d7fc9f0111baa52f5d6d3a097e01949eecd82f6fbc6492ce9b6974824"
+}

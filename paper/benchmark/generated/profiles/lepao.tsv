@@ -1,0 +1,22 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/lepao.ofn
+M	source_sha256	974408b1c1af9faae18cc01e3492cb6c55bab675ce05ab83ae76e34dff48002c
+M	axioms	5726
+M	logical_axioms	2483
+M	classes	822
+M	object_properties	58
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	38
+V	OWL2EL	UseOfIllegalAxiom	18
+V	OWL2EL	UseOfIllegalClassExpression	20
+P	OWL2QL	false	345
+V	OWL2QL	UseOfIllegalAxiom	42
+V	OWL2QL	UseOfNonSubClassExpression	8
+V	OWL2QL	UseOfNonSuperClassExpression	295
+P	OWL2RL	false	1552
+V	OWL2RL	UseOfNonEquivalentClassExpression	8
+V	OWL2RL	UseOfNonSuperClassExpression	1544
+Z	complete

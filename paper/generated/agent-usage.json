@@ -1,0 +1,44 @@
+{
+  "platforms": [
+    {
+      "cache_creation_input_tokens": 185343,
+      "cached_input_tokens": 704101,
+      "failed_calls": 25,
+      "input_tokens": 41,
+      "model_calls": 21,
+      "models": {
+        "claude-fable-5": 10,
+        "claude-opus-4-8": 7,
+        "claude-opus-5": 4
+      },
+      "output_tokens": 16643,
+      "platform": "Claude Code",
+      "reasoning_output_tokens": "not_recorded",
+      "sessions": 37,
+      "sessions_with_model_calls": 9,
+      "tool_calls": 32
+    },
+    {
+      "cache_creation_input_tokens": "not_recorded",
+      "cached_input_tokens": "not_identifiable_from_forked_rollouts",
+      "deduplication": "no aggregate published: retained forks cannot be proved disjoint",
+      "failed_calls": "not_uniformly_recorded",
+      "first_timestamp_utc": "2026-07-11T13:31:19.599000+00:00",
+      "input_tokens": "not_identifiable_from_forked_rollouts",
+      "last_timestamp_utc": "2026-08-30T01:04:40.161000+00:00",
+      "model_calls": "not_identifiable_from_forked_rollouts",
+      "models": {
+        "gpt-5.6-sol": 2046
+      },
+      "output_tokens": "not_identifiable_from_forked_rollouts",
+      "platform": "Codex",
+      "reasoning_output_tokens": "not_identifiable_from_forked_rollouts",
+      "sessions": 13,
+      "sessions_with_model_calls": "not_derivable_from_forked_rollouts",
+      "tool_calls": "not_identifiable_from_forked_rollouts"
+    }
+  ],
+  "privacy": "no prompt, response, command, or tool-result text exported",
+  "schema": 1,
+  "scope": "retained KM-specific local agent logs; incomplete before the recorded windows"
+}

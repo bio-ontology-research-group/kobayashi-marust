@@ -1,0 +1,15 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/apo.ofn
+M	source_sha256	5b32788202d10a7a089dc728bd80654f7f6b084d5a47651d787f8ddc1c13073a
+M	axioms	4738
+M	logical_axioms	306
+M	classes	619
+M	object_properties	0
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	true	0
+P	OWL2QL	true	0
+P	OWL2RL	true	0
+Z	complete

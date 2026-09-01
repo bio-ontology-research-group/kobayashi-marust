@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/agro.owl
+M	source_sha256	d861a6fbf09e01fffcf4312dee29f20a15a1a4a65b2a7012e50c02f65a495b55
+M	closure_size	1
+M	merged_axioms	29683
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	48a1f57c1931ccc984bb78ca41111d3e6eab7f4ff7870df61669fa52b3973ab5
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/agro-edit.owl>) VersionIRI(<http://purl.obolibrary.org/obo/agro/releases/2022-11-02/agro.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/agro.owl	29683
+Z	complete

@@ -1,0 +1,37 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/cido.ofn
+M	source_sha256	235786b6338fd11550913d811c0b715c38abb8bc30b1db5afa1749d5c7320ed0
+M	axioms	411208
+M	logical_axioms	83596
+M	classes	31924
+M	object_properties	381
+M	data_properties	25
+M	individuals	461
+P	OWL2	true	0
+P	OWL2DL	false	9669
+V	OWL2DL	IllegalPunning	9668
+V	OWL2DL	UseOfReservedVocabularyForObjectPropertyIRI	1
+P	OWL2EL	false	9784
+V	OWL2EL	IllegalPunning	9668
+V	OWL2EL	UseOfDataOneOfWithMultipleLiterals	2
+V	OWL2EL	UseOfIllegalAxiom	37
+V	OWL2EL	UseOfIllegalClassExpression	63
+V	OWL2EL	UseOfIllegalDataRange	8
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	2
+V	OWL2EL	UseOfObjectPropertyInverse	3
+V	OWL2EL	UseOfReservedVocabularyForObjectPropertyIRI	1
+P	OWL2QL	false	10689
+V	OWL2QL	IllegalPunning	9668
+V	OWL2QL	UseOfIllegalAxiom	31
+V	OWL2QL	UseOfIllegalDataRange	10
+V	OWL2QL	UseOfNonSubClassExpression	605
+V	OWL2QL	UseOfNonSuperClassExpression	374
+V	OWL2QL	UseOfReservedVocabularyForObjectPropertyIRI	1
+P	OWL2RL	false	51962
+V	OWL2RL	IllegalPunning	9668
+V	OWL2RL	UseOfIllegalAxiom	1
+V	OWL2RL	UseOfIllegalDataRange	2
+V	OWL2RL	UseOfNonEquivalentClassExpression	603
+V	OWL2RL	UseOfNonSuperClassExpression	41687
+V	OWL2RL	UseOfReservedVocabularyForObjectPropertyIRI	1
+Z	complete

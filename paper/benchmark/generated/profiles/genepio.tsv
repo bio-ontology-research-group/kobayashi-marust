@@ -1,0 +1,25 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/genepio.ofn
+M	source_sha256	e1496d7e886020d90a984a0c8822bf66354b702ba649740b13de1fec455e97e0
+M	axioms	74316
+M	logical_axioms	12538
+M	classes	9160
+M	object_properties	55
+M	data_properties	4
+M	individuals	961
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	137
+V	OWL2EL	UseOfIllegalAxiom	18
+V	OWL2EL	UseOfIllegalClassExpression	87
+V	OWL2EL	UseOfIllegalDataRange	32
+P	OWL2QL	false	181
+V	OWL2QL	UseOfIllegalAxiom	17
+V	OWL2QL	UseOfIllegalDataRange	32
+V	OWL2QL	UseOfNonSubClassExpression	24
+V	OWL2QL	UseOfNonSuperClassExpression	108
+P	OWL2RL	false	401
+V	OWL2RL	UseOfIllegalDataRange	22
+V	OWL2RL	UseOfNonEquivalentClassExpression	21
+V	OWL2RL	UseOfNonSuperClassExpression	358
+Z	complete

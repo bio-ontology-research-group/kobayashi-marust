@@ -1,0 +1,75 @@
+{
+  "array_job_id": "51028377",
+  "complete": true,
+  "counts": [
+    {
+      "cause": "cb_incomplete_fixpoint",
+      "count": 2,
+      "profile": "OWL 2 DL, non-EL"
+    },
+    {
+      "cause": "memout",
+      "count": 3,
+      "profile": "OWL 2 DL, non-EL"
+    },
+    {
+      "cause": "ok",
+      "count": 44,
+      "profile": "OWL 2 DL, non-EL"
+    },
+    {
+      "cause": "route_no_retry_internal_cap",
+      "count": 10,
+      "profile": "OWL 2 DL, non-EL"
+    },
+    {
+      "cause": "timeout",
+      "count": 14,
+      "profile": "OWL 2 DL, non-EL"
+    },
+    {
+      "cause": "unsupported_complex_rule_atom",
+      "count": 23,
+      "profile": "OWL 2 DL, non-EL"
+    },
+    {
+      "cause": "unsupported_inverse_role_position",
+      "count": 20,
+      "profile": "OWL 2 DL, non-EL"
+    },
+    {
+      "cause": "ok",
+      "count": 44,
+      "profile": "OWL 2 EL"
+    },
+    {
+      "cause": "ok",
+      "count": 9,
+      "profile": "outside OWL 2 DL"
+    },
+    {
+      "cause": "route_no_retry_internal_cap",
+      "count": 2,
+      "profile": "outside OWL 2 DL"
+    },
+    {
+      "cause": "timeout",
+      "count": 3,
+      "profile": "outside OWL 2 DL"
+    },
+    {
+      "cause": "unsupported_complex_rule_atom",
+      "count": 3,
+      "profile": "outside OWL 2 DL"
+    },
+    {
+      "cause": "unsupported_inverse_role_position",
+      "count": 12,
+      "profile": "outside OWL 2 DL"
+    }
+  ],
+  "expected_records": 189,
+  "missing_records": [],
+  "schema": 1,
+  "terminal_records": 189
+}

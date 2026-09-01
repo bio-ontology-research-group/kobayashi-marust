@@ -1,0 +1,17 @@
+{
+  "common": 96,
+  "left": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/jfact/psdo.taxonomy.tsv",
+  "left_label": "jfact",
+  "left_only": 0,
+  "left_only_sample": [],
+  "left_sha256": "8b92662932bcdcb554b283573a070f08e577f851c370364c111a17ab6b1af91e",
+  "left_total": 96,
+  "relation": "equal",
+  "right": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/hermit/psdo.taxonomy.tsv",
+  "right_label": "hermit",
+  "right_only": 0,
+  "right_only_sample": [],
+  "right_sha256": "fd77f75d0b8975c2b5a056ab3e2c2773296192df64d9887528a5cfa6b95e7c12",
+  "right_total": 96,
+  "schema": 1
+}

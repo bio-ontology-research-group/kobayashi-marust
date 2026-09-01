@@ -1,0 +1,21 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/gsso.ofn
+M	source_sha256	f24955442776574c8b62bf75c5bb7c1f94993cd200cd24047c08647e1201abf0
+M	axioms	137339
+M	logical_axioms	18277
+M	classes	13192
+M	object_properties	0
+M	data_properties	0
+M	individuals	3004
+P	OWL2	true	0
+P	OWL2DL	false	2
+V	OWL2DL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2EL	false	8
+V	OWL2EL	UseOfAnonymousIndividual	6
+V	OWL2EL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2QL	false	8
+V	OWL2QL	UseOfAnonymousIndividual	6
+V	OWL2QL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2RL	false	2
+V	OWL2RL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+Z	complete

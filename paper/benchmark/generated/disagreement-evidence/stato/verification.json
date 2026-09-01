@@ -1,0 +1,11 @@
+{
+  "hermit_bottom_entailed": false,
+  "jfact_unsatisfiable": 1,
+  "module_axioms": 2072,
+  "module_logical_axioms": 443,
+  "module_sha256": "2e6e66e653c377c416ddf611051c424eba88474698616cebb23c82c66d1d464f",
+  "openllet_unsatisfiable": 0,
+  "schema": 1,
+  "source_sha256": "bf310eeeeade2d8f9042acf00a9f187678f2203ed9a3d9790ac3ac9abd719aad",
+  "status": "jfact-only-bottom-reproduced"
+}

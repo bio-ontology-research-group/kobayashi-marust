@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cob.owl
+M	source_sha256	bd4603fefcbfc9b700f37723a7caa5eb0e9b78be950e2680c9898732eb53651e
+M	closure_size	1
+M	merged_axioms	400
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	cb18dcfd5558e5fb9216278bdf9f4bcc3b9961f4c0a90c900f1986f22a9d9245
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cob.owl>) VersionIRI(<http://purl.obolibrary.org/obo/cob/releases/2025-12-15/cob.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cob.owl	400
+Z	complete

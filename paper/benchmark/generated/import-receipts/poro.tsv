@@ -1,0 +1,16 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/poro.owl
+M	source_sha256	52f310ae8d1f693cc5c1186e7d8f050c818fc3ff52968ef5d7e1ff67f3a05c36
+M	closure_size	7
+M	merged_axioms	5653
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	dc5b1602294985cd4070c846bc8f16f12c5cd7fc7c545bac3be8f81472fb4be6
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/poro.owl>) VersionIRI(<http://purl.obolibrary.org/obo/poro/releases/2016-10-06/poro.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/poro.owl	3932
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/poro/imports/chebi_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/poro/imports/chebi_import.owl	1096
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/poro/imports/cl_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/poro/imports/cl_import.owl	630
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/poro/imports/go_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/poro/imports/go_import.owl	295
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/poro/imports/pato_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/poro/imports/pato_import.owl	33
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/poro/imports/ro_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/poro/imports/ro_import.owl	262
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/poro/imports/uberon_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/poro/imports/uberon_import.owl	0
+Z	complete

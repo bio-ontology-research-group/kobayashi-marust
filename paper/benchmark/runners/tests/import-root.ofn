@@ -1,0 +1,7 @@
+Prefix(:=<http://example.org/km-import-test#>)
+Ontology(<http://example.org/km-import-test/root>
+ Import(<imported.ofn>)
+ Declaration(Class(:A))
+ Declaration(Class(:B))
+ SubClassOf(:A :B)
+)

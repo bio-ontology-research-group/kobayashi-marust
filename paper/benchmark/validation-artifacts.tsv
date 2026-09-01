@@ -1,0 +1,4 @@
+id	sha256	job_id	status_or_role
+fixed-result-validator	5ae4d5d6ae897677bb515ef7715c13557c97f6dfbf926fae70c0af41268aa6ac	51033128	Native runtime-input digests remain mandatory; Java records intentionally rely on their canonical source, runtime, runner, and command bindings
+java-revalidation-array	9b63d5f09131746446bbee52510dfebe57cb95376e25a9c86470782b6efca009	51033128	Read-only fixed-validator array over complete HermiT and JFact panels
+hermit-jfact-revalidation-logs	47df5f1bdf4bf1a13499dae5f7a8a092160682844dfff645b16238efe3806f2a	51033128	378 of 378 source/runtime/result-bound validations passed; zero errors

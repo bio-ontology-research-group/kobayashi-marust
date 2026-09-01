@@ -1,0 +1,15 @@
+M	schema	1
+M	conversion	konclude-compatible-serialization-v2
+M	converter_sha256	aa938444d680c783cff9a50a35ddd9ec19510755cdd25aacaf7b7f08df16e1ed
+M	serialization	owlxml
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/scdo.ofn
+M	source_sha256	1f2428a750c67ed21bdca6c66e761dccc5b3307acbcbb645884b2466caaf37e6
+M	output_sha256	15af1527869b1c15554fcab0c4d705a34cf3c45d03d2f0c8d9bbe16cf1013689
+M	axioms	24990
+M	logical_axioms	6242
+M	signature_entities	2228
+M	roundtrip_logical_axioms_equal	true
+M	roundtrip_alpha_renamed_rules	0
+M	roundtrip_annotation_axiom_delta	0
+M	roundtrip_signature_equal	true
+Z	complete

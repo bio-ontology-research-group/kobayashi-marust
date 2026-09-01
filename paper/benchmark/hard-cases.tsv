@@ -1,0 +1,7 @@
+id	display_name	source	requested_release	licence_status	acquisition_status	notes
+snomedct	SNOMED CT International Edition	SNOMED International licensed distribution	current release frozen at acquisition	restricted	not_acquired	Require licensed OWL/RF2 artifact; do not redistribute
+galen	GALEN	BioPortal latest public submission	current at snapshot	verify_submission	not_acquired	Record exact BioPortal submission and licence
+fma	Foundational Model of Anatomy	http://purl.obolibrary.org/obo/fma.owl	v5.1.0 resolved 2026-08-30	CC BY 3.0	acquired_verified	208047132 bytes; source SHA-256 beb3dc47979ad5434ef70fd02af4307f147f2023f7d8c2c57103b995191194c3; import closure 1 document and 791163 axioms; merged SHA-256 aff1dfb7cdcd153ce6fb2f0e4899e29f60a7eec04940a48acbef7e9bd3fb4bb6; independently profiled OWL 2 DL but not EL/QL/RL; OBO registry marks entry inactive
+ncit	NCI Thesaurus OBO Edition	http://purl.obolibrary.org/obo/ncit.owl	v2026-03-19	CC BY 4.0	acquired_verified	SHA-256 1f89a02063ff807183dcdc8eac43ef88f65d5eb525cc88709ee8c57fa5f9e780; 811620064 bytes
+uberon	Uber-anatomy ontology	http://purl.obolibrary.org/obo/uberon.owl	v2026-06-23	CC BY 3.0	acquired_verified	SHA-256 938f51e7c3fc9fcbe5a2863eb346da8033737e568af5836958891c4c6bfb1192; 95887167 bytes
+chebi	Chemical Entities of Biological Interest	http://purl.obolibrary.org/obo/chebi.owl	resolved 2026-08-30	CC BY 4.0	acquired_verified	SHA-256 4557df5b668394b371e6e75158ec9f7728424852ffdaa2e6a6975cfc31e461ba; 865772908 bytes

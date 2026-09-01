@@ -1,0 +1,21 @@
+% Generated from FMA aggregate SHA-256 00611195a8f7a378a1b9f9b6c746105e5e1714ffc73e3597f0733e6fa4d70ea9
+\begin{table*}[t]
+\centering
+\small
+\caption{FMA hard-case classification under 600 seconds and 32~GiB. ELK and Whelk executions are outside their complete profiles.}
+\label{tab:fma-results}
+\begin{tabular}{llrrrl}
+\toprule
+Reasoner & Status & Wall s & Peak MiB & Subsumptions & Interpretation \\
+\midrule
+KM & memout & 62.796 & 32433.8 & -- & no result \\
+Konclude & ok & 24.334 & 5625.9 & 371358 & complete-profile result \\
+HermiT & timeout & 600.043 & 8873.5 & -- & no result \\
+JFact & error & 21.221 & 3352.2 & -- & no result \\
+Openllet & timeout & 600.026 & 4155.1 & -- & no result \\
+MORe & timeout & 600.030 & 13558.5 & -- & no result \\
+ELK & ok & 34.992 & 16453.8 & 1234414 & outside complete profile \\
+Whelk & ok & 296.629 & 16129.7 & 372537 & outside complete profile \\
+\bottomrule
+\end{tabular}
+\end{table*}

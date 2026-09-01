@@ -1,0 +1,16 @@
+2ece54e5ab39bafe61fe6cdc4d18fccf39d320cc	2026-06-01T20:52:50+03:00	Robert Hoehndorf	metabolic-pfp: ProteInfer (non-lab) third base for zero-shot WMC; composition is base-agnostic in mechanism, base-dependent in magnitude (out-of-domain ProteInfer weakest, principled)
+5128bd2f8f6cda1a5b29184d396cad92eac94b5a	2026-06-01T19:42:36+03:00	Robert Hoehndorf	metabolic-pfp: base-independence check (DeepGOCNN base) for zero-shot WMC; mechanism transfers, magnitude tracks base quality
+a47bed73abaee7a99837ca802d4ae2a384eb0473	2026-06-01T19:06:20+03:00	Robert Hoehndorf	metabolic-pfp: zero-shot EL++ WMC beats DeepGOZero embedding (bp 0.86 vs 0.80, cc 0.87 vs 0.83), nears supervised ceiling, training-free
+99bb4a59425e45d9e8efcda56e53d14ee7d93e73	2026-06-01T18:07:59+03:00	Robert Hoehndorf	metabolic-pfp: zero-shot reachability analysis (3/16 curated terms via nf1+nf2; rest need full EL++ role closure = moose)
+51f4eb7b7ea87d9e78ec2d392d715e64e9ba5527	2026-06-01T18:03:08+03:00	Robert Hoehndorf	metabolic-pfp: GO within-vocab WMC result (neutral) + sharpened thesis (WMC helps iff structure is external to supervision)
+1650ba8f789dc0a921b78052a00724f2dad291cd	2026-05-31T21:36:07+03:00	Robert Hoehndorf	sroiq: fix OWL loading for py-horned-owl 1.4; vendor ontologies + NeSy reference results
+3434cfcacb238765f04dfdff741468e14c60e75d	2026-05-31T18:33:37+03:00	Robert Hoehndorf	paper: fix undefined \tnote (kinship table footnote) so build is clean under halt-on-error
+1ef918083eed938839a0cc726546c23fbeae6a82	2026-05-31T18:26:20+03:00	Robert Hoehndorf	metabolic-pfp: GO-hierarchy WMC benchmark design (DeepGOZero data, true-path vs maxprop, moose EL++ tie-in)
+926f519c64dbcfb1430bfeb34d22b2f58c81dce3	2026-05-31T16:57:46+03:00	Robert Hoehndorf	metabolic-pfp: CLEAN strength is memorization (de-memorized eval)
+af771ae0fa17c84c7060e67199326ed14224faa0	2026-05-31T16:52:40+03:00	Robert Hoehndorf	cafa_bench: --eval-exclude for de-memorized (held-out) scoring
+ff05d5edbe528c90ac4930601777dc4c1e62320f	2026-05-31T14:47:16+03:00	Robert Hoehndorf	metabolic-pfp: complete CLEAN finding at scale (genome + transfer, vectorized)
+d5ab67cbf0e41b649cad065c73cd16faf6971009	2026-05-31T14:42:08+03:00	Robert Hoehndorf	cafa_bench: fix Naive baseline column alignment in transfer mode
+2de48b7979a5e1763964fbec8bb453fc8f3a01c7	2026-05-31T14:31:32+03:00	Robert Hoehndorf	metabolic-pfp: vectorize producibility WMC (GPR + soft fixpoint) — GPU-ready
+90bcfc39dde14c1ce2218028dd17812e55a5b140	2026-05-31T13:04:28+03:00	Robert Hoehndorf	metabolic-pfp: CLEAN finding — transfer/genome status (joint WMC too slow at scale)
+3f0e4f89e2b6d0b35c8fdd920737e7baa8dc846c	2026-05-31T12:41:36+03:00	Robert Hoehndorf	Reorganize into distinct projects: moose is the EL++ reasoner only
+8e4f264c59116f7e57bc9e6a507f508b7403cec5	2026-05-31T09:49:37+03:00	Robert Hoehndorf	Initial nesy-workbench snapshot

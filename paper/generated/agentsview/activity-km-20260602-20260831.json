@@ -1,0 +1,4093 @@
+{
+  "schema_version": 6,
+  "report_id": "v1.eyJ2IjoxLCJzY2hlbWEiOjYsImRpZ2VzdCI6ImIwMzIzNTFjOGQxZmRmYTUzMTgyNGUyODIzNzkyNGZjZmVlMjE0ZmExNjNlNDI2MjMyYTQxNWU0NjdjOGRkM2UiLCJxdWVyeSI6eyJ0eiI6IlVUQyIsInN0YXJ0IjoiMjAyNi0wNi0wMlQwMDowMDowMFoiLCJlbmQiOiIyMDI2LTA4LTMxVDAwOjAwOjAwWiIsImVmZmVjdGl2ZSI6IjIwMjYtMDgtMzBUMTM6MTE6MTEuODgwODQ2NzY1WiIsInBhcnRpYWwiOnRydWUsImJ1Y2tldF91bml0IjoiZGF5IiwiYnVja2V0X3NlY29uZHMiOjg2NDAwLCJnYXBfY2FwX3NlY29uZHMiOjMwMH0sImZpbHRlciI6eyJwcm9qZWN0Ijoia29iYXlhc2hpX21hcnVzdCIsInRpbWV6b25lIjoiVVRDIn0sInByb2JlIjp7InNlc3Npb25fY291bnQiOjEzNCwibWF4X3Nlc3Npb25fbW9kaWZpZWQiOiIyMDI2LTA4LTMwVDEzOjEwOjA3LjE0OFoiLCJtYXhfZGF0YV92ZXJzaW9uIjo4OCwibWF4X21lc3NhZ2VfaWQiOjE0MDIzNywibWF4X3VzYWdlX2lkIjowLCJtYXhfcHJpY2luZ191cGRhdGVkIjoibGl0ZWxsbS1kZjQxN2U3MzZmYjkrc3VwcGxlbWVudGFsLTIiLCJwcm9qZWN0X2lkZW50aXR5X2dlbmVyYXRpb24iOjQyMX19.GnRs92W4BvS4Wcq5ouDCTXqZoKUGva7EqBgOUxUVDnc",
+  "pricing": {
+    "source": "fetched",
+    "table_version": "2026-08-30T12:47:03Z",
+    "latest_row_updated_at": "2026-08-30T12:47:03.674Z",
+    "custom_override_count": 0,
+    "effective_row_count": 2867,
+    "digest": "sha256:0f00431bb621d7412fe6429afb3eea5c87f7fd5cd68dd46d288fd340233b97cc",
+    "cost_source": "computed",
+    "fallback": {
+      "used": true,
+      "models": [
+        "claude-fable-5",
+        "claude-opus-4-8",
+        "claude-opus-5"
+      ]
+    },
+    "models": {
+      "claude-fable-5": {
+        "cost_source": "computed",
+        "resolutions": [
+          {
+            "priced_model": "claude-fable-5",
+            "matched_pattern": "claude-fable-5",
+            "input_cost_per_mtok": {
+              "microdollars": 10000000
+            },
+            "output_cost_per_mtok": {
+              "microdollars": 50000000
+            },
+            "cache_write_cost_per_mtok": {
+              "microdollars": 12500000
+            },
+            "cache_read_cost_per_mtok": {
+              "microdollars": 1000000
+            },
+            "cost_source": "computed",
+            "bands": null,
+            "application": {
+              "base_request_count": 10,
+              "aggregate_row_count": 0,
+              "bands": null
+            }
+          }
+        ]
+      },
+      "claude-opus-4-8": {
+        "cost_source": "computed",
+        "resolutions": [
+          {
+            "priced_model": "claude-opus-4-8",
+            "matched_pattern": "claude-opus-4-8",
+            "input_cost_per_mtok": {
+              "microdollars": 5000000
+            },
+            "output_cost_per_mtok": {
+              "microdollars": 25000000
+            },
+            "cache_write_cost_per_mtok": {
+              "microdollars": 6250000
+            },
+            "cache_read_cost_per_mtok": {
+              "microdollars": 500000
+            },
+            "cost_source": "computed",
+            "bands": null,
+            "application": {
+              "base_request_count": 1383,
+              "aggregate_row_count": 0,
+              "bands": null
+            }
+          }
+        ]
+      },
+      "claude-opus-5": {
+        "cost_source": "computed",
+        "resolutions": [
+          {
+            "priced_model": "claude-opus-5",
+            "matched_pattern": "claude-opus-5",
+            "input_cost_per_mtok": {
+              "microdollars": 5000000
+            },
+            "output_cost_per_mtok": {
+              "microdollars": 25000000
+            },
+            "cache_write_cost_per_mtok": {
+              "microdollars": 6250000
+            },
+            "cache_read_cost_per_mtok": {
+              "microdollars": 500000
+            },
+            "cost_source": "computed",
+            "bands": null,
+            "application": {
+              "base_request_count": 456,
+              "aggregate_row_count": 0,
+              "bands": null
+            }
+          }
+        ]
+      },
+      "gpt-5.6-sol": {
+        "cost_source": "computed",
+        "resolutions": [
+          {
+            "priced_model": "gpt-5.6-sol",
+            "matched_pattern": "gpt-5.6-sol",
+            "input_cost_per_mtok": {
+              "microdollars": 4000000
+            },
+            "output_cost_per_mtok": {
+              "microdollars": 20000000
+            },
+            "cache_write_cost_per_mtok": {
+              "microdollars": 5000000
+            },
+            "cache_read_cost_per_mtok": {
+              "microdollars": 400000
+            },
+            "cost_source": "computed",
+            "bands": [
+              {
+                "above_input_tokens": 272000,
+                "input_cost_per_mtok": {
+                  "microdollars": 8000000
+                },
+                "output_cost_per_mtok": {
+                  "microdollars": 30000000
+                },
+                "cache_write_cost_per_mtok": {
+                  "microdollars": 10000000
+                },
+                "cache_read_cost_per_mtok": {
+                  "microdollars": 800000
+                }
+              }
+            ],
+            "application": {
+              "base_request_count": 123626,
+              "aggregate_row_count": 0,
+              "bands": [
+                {
+                  "above_input_tokens": 272000,
+                  "request_count": 383
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "projects": {
+    "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d": {
+      "display_label": "kobayashi_marust",
+      "resolution": "resolved",
+      "identity": {
+        "key": "p1:sha256:6abc117c10406a6ab3ffa796ab1b9cbe7d3560ad2222886c1a3f6b4c8362ad28",
+        "kind": "git_remote",
+        "normalized_remote": "github.com/bio-ontology-research-group/kobayashi-marust",
+        "repository_key": "repo1:sha256:ae47c850eab8a2cec06cc3554fffa79c83d2281ae3214e221da7f342fe141d5e"
+      }
+    }
+  },
+  "timezone": "UTC",
+  "range_start": "2026-06-02T00:00:00Z",
+  "range_end": "2026-08-31T00:00:00Z",
+  "bucket_unit": "day",
+  "bucket_seconds": 86400,
+  "bucket_count": 90,
+  "partial": true,
+  "as_of": "2026-08-30T13:11:11Z",
+  "effective_end": "2026-08-30T13:11:11Z",
+  "elapsed_bucket_count": 90,
+  "buckets": [
+    {
+      "start": "2026-06-02T00:00:00Z",
+      "end": "2026-06-03T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-03T00:00:00Z",
+      "end": "2026-06-04T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-04T00:00:00Z",
+      "end": "2026-06-05T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-05T00:00:00Z",
+      "end": "2026-06-06T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-06T00:00:00Z",
+      "end": "2026-06-07T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-07T00:00:00Z",
+      "end": "2026-06-08T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-08T00:00:00Z",
+      "end": "2026-06-09T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-09T00:00:00Z",
+      "end": "2026-06-10T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-10T00:00:00Z",
+      "end": "2026-06-11T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-11T00:00:00Z",
+      "end": "2026-06-12T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-12T00:00:00Z",
+      "end": "2026-06-13T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-13T00:00:00Z",
+      "end": "2026-06-14T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-14T00:00:00Z",
+      "end": "2026-06-15T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-15T00:00:00Z",
+      "end": "2026-06-16T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-16T00:00:00Z",
+      "end": "2026-06-17T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-17T00:00:00Z",
+      "end": "2026-06-18T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-18T00:00:00Z",
+      "end": "2026-06-19T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-19T00:00:00Z",
+      "end": "2026-06-20T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-20T00:00:00Z",
+      "end": "2026-06-21T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-21T00:00:00Z",
+      "end": "2026-06-22T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-22T00:00:00Z",
+      "end": "2026-06-23T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-23T00:00:00Z",
+      "end": "2026-06-24T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-24T00:00:00Z",
+      "end": "2026-06-25T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-25T00:00:00Z",
+      "end": "2026-06-26T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-26T00:00:00Z",
+      "end": "2026-06-27T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-27T00:00:00Z",
+      "end": "2026-06-28T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-28T00:00:00Z",
+      "end": "2026-06-29T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-29T00:00:00Z",
+      "end": "2026-06-30T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-06-30T00:00:00Z",
+      "end": "2026-07-01T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-01T00:00:00Z",
+      "end": "2026-07-02T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-02T00:00:00Z",
+      "end": "2026-07-03T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-03T00:00:00Z",
+      "end": "2026-07-04T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-04T00:00:00Z",
+      "end": "2026-07-05T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-05T00:00:00Z",
+      "end": "2026-07-06T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-06T00:00:00Z",
+      "end": "2026-07-07T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-07T00:00:00Z",
+      "end": "2026-07-08T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-08T00:00:00Z",
+      "end": "2026-07-09T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-09T00:00:00Z",
+      "end": "2026-07-10T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-10T00:00:00Z",
+      "end": "2026-07-11T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-11T00:00:00Z",
+      "end": "2026-07-12T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 344.79813333333317,
+      "output_tokens": 257113,
+      "cost": {
+        "microdollars": 133395870
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-07-12T00:00:00Z",
+      "end": "2026-07-13T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 314.45568333333296,
+      "output_tokens": 214526,
+      "cost": {
+        "microdollars": 87682606
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-07-13T00:00:00Z",
+      "end": "2026-07-14T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 696.1935999999992,
+      "output_tokens": 531225,
+      "cost": {
+        "microdollars": 168966089
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-07-14T00:00:00Z",
+      "end": "2026-07-15T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 853.5158166666671,
+      "output_tokens": 778027,
+      "cost": {
+        "microdollars": 205480288
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-07-15T00:00:00Z",
+      "end": "2026-07-16T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 1082.5387333333354,
+      "output_tokens": 1049163,
+      "cost": {
+        "microdollars": 247742091
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-07-16T00:00:00Z",
+      "end": "2026-07-17T00:00:00Z",
+      "max_agents": 5,
+      "agent_minutes": 815.9284999999979,
+      "output_tokens": 805358,
+      "cost": {
+        "microdollars": 203005535
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 5
+    },
+    {
+      "start": "2026-07-17T00:00:00Z",
+      "end": "2026-07-18T00:00:00Z",
+      "max_agents": 17,
+      "agent_minutes": 919.0287166666693,
+      "output_tokens": 1490754,
+      "cost": {
+        "microdollars": 218041817
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 17
+    },
+    {
+      "start": "2026-07-18T00:00:00Z",
+      "end": "2026-07-19T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-19T00:00:00Z",
+      "end": "2026-07-20T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-20T00:00:00Z",
+      "end": "2026-07-21T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-21T00:00:00Z",
+      "end": "2026-07-22T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-22T00:00:00Z",
+      "end": "2026-07-23T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-23T00:00:00Z",
+      "end": "2026-07-24T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-24T00:00:00Z",
+      "end": "2026-07-25T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-25T00:00:00Z",
+      "end": "2026-07-26T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-26T00:00:00Z",
+      "end": "2026-07-27T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-27T00:00:00Z",
+      "end": "2026-07-28T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-28T00:00:00Z",
+      "end": "2026-07-29T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-29T00:00:00Z",
+      "end": "2026-07-30T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-07-30T00:00:00Z",
+      "end": "2026-07-31T00:00:00Z",
+      "max_agents": 3,
+      "agent_minutes": 1015.8317000000014,
+      "output_tokens": 1032932,
+      "cost": {
+        "microdollars": 315008420
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 3
+    },
+    {
+      "start": "2026-07-31T00:00:00Z",
+      "end": "2026-08-01T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 1440.0000000000045,
+      "output_tokens": 1179120,
+      "cost": {
+        "microdollars": 399065539
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-08-01T00:00:00Z",
+      "end": "2026-08-02T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 1437.8895833333393,
+      "output_tokens": 1129552,
+      "cost": {
+        "microdollars": 444753721
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-02T00:00:00Z",
+      "end": "2026-08-03T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 1439.9999999999995,
+      "output_tokens": 934292,
+      "cost": {
+        "microdollars": 402387723
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-08-03T00:00:00Z",
+      "end": "2026-08-04T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 1440.0000000000039,
+      "output_tokens": 719976,
+      "cost": {
+        "microdollars": 374872885
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-08-04T00:00:00Z",
+      "end": "2026-08-05T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 1440.0000000000045,
+      "output_tokens": 947299,
+      "cost": {
+        "microdollars": 411540979
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-08-05T00:00:00Z",
+      "end": "2026-08-06T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 1332.4911999999974,
+      "output_tokens": 884206,
+      "cost": {
+        "microdollars": 428342518
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-08-06T00:00:00Z",
+      "end": "2026-08-07T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-07T00:00:00Z",
+      "end": "2026-08-08T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-08T00:00:00Z",
+      "end": "2026-08-09T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-09T00:00:00Z",
+      "end": "2026-08-10T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-10T00:00:00Z",
+      "end": "2026-08-11T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-11T00:00:00Z",
+      "end": "2026-08-12T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-12T00:00:00Z",
+      "end": "2026-08-13T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-13T00:00:00Z",
+      "end": "2026-08-14T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 1028.355216666666,
+      "output_tokens": 708111,
+      "cost": {
+        "microdollars": 296334725
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-14T00:00:00Z",
+      "end": "2026-08-15T00:00:00Z",
+      "max_agents": 4,
+      "agent_minutes": 1544.9203166666666,
+      "output_tokens": 1250177,
+      "cost": {
+        "microdollars": 460604855
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 4
+    },
+    {
+      "start": "2026-08-15T00:00:00Z",
+      "end": "2026-08-16T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 1316.3739333333338,
+      "output_tokens": 966318,
+      "cost": {
+        "microdollars": 378780816
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-08-16T00:00:00Z",
+      "end": "2026-08-17T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-17T00:00:00Z",
+      "end": "2026-08-18T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 671.6882500000002,
+      "output_tokens": 661877,
+      "cost": {
+        "microdollars": 212264197
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-08-18T00:00:00Z",
+      "end": "2026-08-19T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-19T00:00:00Z",
+      "end": "2026-08-20T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 755.0948666666662,
+      "output_tokens": 639077,
+      "cost": {
+        "microdollars": 158947225
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-20T00:00:00Z",
+      "end": "2026-08-21T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 1453.5136499999967,
+      "output_tokens": 1311845,
+      "cost": {
+        "microdollars": 343408978
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-21T00:00:00Z",
+      "end": "2026-08-22T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 1476.964316666665,
+      "output_tokens": 1482654,
+      "cost": {
+        "microdollars": 361079223
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-22T00:00:00Z",
+      "end": "2026-08-23T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 1453.1535500000005,
+      "output_tokens": 1437226,
+      "cost": {
+        "microdollars": 390895737
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-23T00:00:00Z",
+      "end": "2026-08-24T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 1440.008033333333,
+      "output_tokens": 1718524,
+      "cost": {
+        "microdollars": 385664016
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-24T00:00:00Z",
+      "end": "2026-08-25T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 901.2937166666635,
+      "output_tokens": 1005402,
+      "cost": {
+        "microdollars": 259930293
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-25T00:00:00Z",
+      "end": "2026-08-26T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 1019.9168166666655,
+      "output_tokens": 1303011,
+      "cost": {
+        "microdollars": 323495840
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-26T00:00:00Z",
+      "end": "2026-08-27T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 1439.773266666668,
+      "output_tokens": 1308193,
+      "cost": {
+        "microdollars": 378748353
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    },
+    {
+      "start": "2026-08-27T00:00:00Z",
+      "end": "2026-08-28T00:00:00Z",
+      "max_agents": 1,
+      "agent_minutes": 1083.6945166666667,
+      "output_tokens": 952407,
+      "cost": {
+        "microdollars": 280730443
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 1
+    },
+    {
+      "start": "2026-08-28T00:00:00Z",
+      "end": "2026-08-29T00:00:00Z",
+      "max_agents": 0,
+      "agent_minutes": 0,
+      "output_tokens": 0,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 0
+    },
+    {
+      "start": "2026-08-29T00:00:00Z",
+      "end": "2026-08-30T00:00:00Z",
+      "max_agents": 3,
+      "agent_minutes": 1564.6444499999986,
+      "output_tokens": 1203245,
+      "cost": {
+        "microdollars": 358076148
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 3
+    },
+    {
+      "start": "2026-08-30T00:00:00Z",
+      "end": "2026-08-31T00:00:00Z",
+      "max_agents": 2,
+      "agent_minutes": 809.0413333333328,
+      "output_tokens": 1008862,
+      "cost": {
+        "microdollars": 237266388
+      },
+      "automated_at_peak": 0,
+      "interactive_at_peak": 2
+    }
+  ],
+  "peak": {
+    "agents": 17,
+    "at": "2026-07-17T02:19:58Z"
+  },
+  "totals": {
+    "active_minutes": 30926.515566666665,
+    "idle_minutes": 98024.68244744609,
+    "agent_minutes": 32531.107899999555,
+    "sessions": 134,
+    "untimed_sessions": 5,
+    "distinct_projects": 1,
+    "distinct_models": 5,
+    "output_tokens": 28910472,
+    "cost": {
+      "microdollars": 8866513318
+    },
+    "automated_agent_minutes": 0.00031666666666666665,
+    "interactive_agent_minutes": 32531.107583332887,
+    "automated_cost": {
+      "microdollars": 0
+    },
+    "interactive_cost": {
+      "microdollars": 8866513318
+    },
+    "automated_sessions": 1,
+    "interactive_sessions": 133
+  },
+  "by_project": [
+    {
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "key": "kobayashi_marust",
+      "agent_minutes": 32531.107899999508,
+      "cost": {
+        "microdollars": 8866513318
+      },
+      "automated_agent_minutes": 0.00031666666666666665,
+      "interactive_agent_minutes": 32531.10758333284,
+      "automated_cost": {
+        "microdollars": 0
+      },
+      "interactive_cost": {
+        "microdollars": 8866513318
+      }
+    }
+  ],
+  "by_model": [
+    {
+      "key": "gpt-5.6-sol",
+      "agent_minutes": 31702.325283332844,
+      "cost": {
+        "microdollars": 8670612704
+      },
+      "automated_agent_minutes": 0,
+      "interactive_agent_minutes": 31702.325283332844,
+      "automated_cost": {
+        "microdollars": 0
+      },
+      "interactive_cost": {
+        "microdollars": 8670612704
+      }
+    },
+    {
+      "key": "claude-opus-4-8",
+      "agent_minutes": 609.1734833333333,
+      "cost": {
+        "microdollars": 129684823
+      },
+      "automated_agent_minutes": 0,
+      "interactive_agent_minutes": 609.1734833333333,
+      "automated_cost": {
+        "microdollars": 0
+      },
+      "interactive_cost": {
+        "microdollars": 129684823
+      }
+    },
+    {
+      "key": "claude-opus-5",
+      "agent_minutes": 205.16599999999997,
+      "cost": {
+        "microdollars": 64223713
+      },
+      "automated_agent_minutes": 0,
+      "interactive_agent_minutes": 205.16599999999997,
+      "automated_cost": {
+        "microdollars": 0
+      },
+      "interactive_cost": {
+        "microdollars": 64223713
+      }
+    },
+    {
+      "key": "\u003csynthetic\u003e",
+      "agent_minutes": 11.139999999999995,
+      "cost": {
+        "microdollars": 0
+      },
+      "automated_agent_minutes": 0.00031666666666666665,
+      "interactive_agent_minutes": 11.139683333333329,
+      "automated_cost": {
+        "microdollars": 0
+      },
+      "interactive_cost": {
+        "microdollars": 0
+      }
+    },
+    {
+      "key": "claude-fable-5",
+      "agent_minutes": 3.3031333333333333,
+      "cost": {
+        "microdollars": 1992078
+      },
+      "automated_agent_minutes": 0,
+      "interactive_agent_minutes": 3.3031333333333333,
+      "automated_cost": {
+        "microdollars": 0
+      },
+      "interactive_cost": {
+        "microdollars": 1992078
+      }
+    }
+  ],
+  "by_agent": [
+    {
+      "key": "codex",
+      "agent_minutes": 31702.325283332844,
+      "cost": {
+        "microdollars": 8670612704
+      },
+      "automated_agent_minutes": 0,
+      "interactive_agent_minutes": 31702.325283332844,
+      "automated_cost": {
+        "microdollars": 0
+      },
+      "interactive_cost": {
+        "microdollars": 8670612704
+      }
+    },
+    {
+      "key": "claude",
+      "agent_minutes": 828.7826166666666,
+      "cost": {
+        "microdollars": 195900614
+      },
+      "automated_agent_minutes": 0.00031666666666666665,
+      "interactive_agent_minutes": 828.7823,
+      "automated_cost": {
+        "microdollars": 0
+      },
+      "interactive_cost": {
+        "microdollars": 195900614
+      }
+    }
+  ],
+  "by_session": [
+    {
+      "session_id": "codex:019f6ac0-e9db-71e2-8f59-fff255ded687",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 27255.676549999516,
+      "cost": {
+        "microdollars": 7652731199
+      },
+      "output_tokens": 23719145,
+      "first_active": "2026-07-16T11:48:11Z",
+      "last_active": "2026-08-30T13:09:49Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:019f515d-dd8a-7290-ae37-e2aa29b89d41",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 3672.5415999999923,
+      "cost": {
+        "microdollars": 934533005
+      },
+      "output_tokens": 3239144,
+      "first_active": "2026-07-11T13:31:14Z",
+      "last_active": "2026-07-16T12:37:53Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a04e84-b702-78a2-b91a-658e98fdde88",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 469.3638166666663,
+      "cost": {
+        "microdollars": 15566689
+      },
+      "output_tokens": 30727,
+      "first_active": "2026-08-29T17:15:18Z",
+      "last_active": "2026-08-30T01:04:40Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "2e0558ae-5cd7-4982-bf1d-f653f3acac4e",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-5",
+      "models": [
+        "claude-opus-5"
+      ],
+      "agent_minutes": 146.20108333333332,
+      "cost": {
+        "microdollars": 39963893
+      },
+      "output_tokens": 158766,
+      "first_active": "2026-07-30T13:30:35Z",
+      "last_active": "2026-07-30T16:34:10Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a04e03-4402-75c1-970e-8297a9a7e3ce",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 60.99655,
+      "cost": {
+        "microdollars": 10272632
+      },
+      "output_tokens": 14451,
+      "first_active": "2026-08-29T14:53:55Z",
+      "last_active": "2026-08-29T15:54:55Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "7dc85df9-cf5d-43b2-a940-ea1a9aa8f415",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-5",
+      "models": [
+        "claude-opus-5"
+      ],
+      "agent_minutes": 49.371199999999995,
+      "cost": {
+        "microdollars": 21560966
+      },
+      "output_tokens": 136648,
+      "first_active": "2026-07-30T14:10:41Z",
+      "last_active": "2026-07-30T15:00:04Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a04e53-e8e2-7740-bdab-a72373cacf18",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 46.78040000000001,
+      "cost": {
+        "microdollars": 10603298
+      },
+      "output_tokens": 25391,
+      "first_active": "2026-08-29T16:21:59Z",
+      "last_active": "2026-08-29T17:14:52Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "78db0350-24f3-4fd4-8198-76a22d43f43b",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "\u003csynthetic\u003e",
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 44.321066666666646,
+      "cost": {
+        "microdollars": 16890086
+      },
+      "output_tokens": 146004,
+      "first_active": "2026-07-17T02:16:35Z",
+      "last_active": "2026-07-17T03:00:54Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "c0e72548-9b92-4b5d-b94b-959b9d6895b7",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 43.79046666666666,
+      "cost": {
+        "microdollars": 7076852
+      },
+      "output_tokens": 73988,
+      "first_active": "2026-07-17T01:18:59Z",
+      "last_active": "2026-07-17T02:09:25Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "d70137d9-9868-4f93-9999-35761b31946c",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 43.32291666666666,
+      "cost": {
+        "microdollars": 3617958
+      },
+      "output_tokens": 50039,
+      "first_active": "2026-07-17T01:18:59Z",
+      "last_active": "2026-07-17T02:20:15Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "d64826db-a37e-415a-84e5-1a374d5906b1",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "\u003csynthetic\u003e",
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 41.38620000000002,
+      "cost": {
+        "microdollars": 7431698
+      },
+      "output_tokens": 78585,
+      "first_active": "2026-07-17T02:16:43Z",
+      "last_active": "2026-07-17T02:59:23Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "1734aa11-4f64-4218-a1b1-1e4bbfce7c26",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "\u003csynthetic\u003e",
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 41.14000000000001,
+      "cost": {
+        "microdollars": 8881054
+      },
+      "output_tokens": 87742,
+      "first_active": "2026-07-17T02:16:40Z",
+      "last_active": "2026-07-17T02:59:26Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a02041-5e50-71c0-aa8a-f1f1b60e9895",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 40.811749999999996,
+      "cost": {
+        "microdollars": 7834744
+      },
+      "output_tokens": 44531,
+      "first_active": "2026-08-20T17:39:18Z",
+      "last_active": "2026-08-21T19:52:25Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "3a162bf9-699b-4c67-80c3-bd2768ef15ef",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "\u003csynthetic\u003e",
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 40.6481,
+      "cost": {
+        "microdollars": 7332269
+      },
+      "output_tokens": 66916,
+      "first_active": "2026-07-17T02:16:43Z",
+      "last_active": "2026-07-17T03:03:39Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "c7bf6886-66f1-4dc0-b2d9-c84e71a9447b",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 39.32030000000002,
+      "cost": {
+        "microdollars": 9813459
+      },
+      "output_tokens": 108409,
+      "first_active": "2026-07-17T02:16:41Z",
+      "last_active": "2026-07-17T02:59:20Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "65171787-7329-4754-a71a-5e95e1b04dcd",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "\u003csynthetic\u003e",
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 37.852233333333345,
+      "cost": {
+        "microdollars": 4496608
+      },
+      "output_tokens": 42292,
+      "first_active": "2026-07-17T02:16:32Z",
+      "last_active": "2026-07-17T03:00:18Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "912f204e-5ba6-4aa7-97c6-56e66131eece",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 35.950566666666674,
+      "cost": {
+        "microdollars": 10125332
+      },
+      "output_tokens": 95964,
+      "first_active": "2026-07-17T02:16:23Z",
+      "last_active": "2026-07-17T02:52:20Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "fd514e01-a0a7-415a-9ad3-836b49427d21",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 30.95146666666667,
+      "cost": {
+        "microdollars": 6057401
+      },
+      "output_tokens": 53209,
+      "first_active": "2026-07-17T01:19:01Z",
+      "last_active": "2026-07-17T01:55:20Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a10c31aa6992c7b89",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "\u003csynthetic\u003e",
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 30.629849999999998,
+      "cost": {
+        "microdollars": 3224120
+      },
+      "output_tokens": 27510,
+      "first_active": "2026-07-17T02:22:01Z",
+      "last_active": "2026-07-17T02:58:46Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "81a2a0e6-3d52-4f44-bc04-29c7e271a660",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 27.41618333333334,
+      "cost": {
+        "microdollars": 7775586
+      },
+      "output_tokens": 62156,
+      "first_active": "2026-07-17T02:16:42Z",
+      "last_active": "2026-07-17T02:44:07Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "8d3fc4a9-8e78-4730-bf5c-8987ab6a73f3",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 26.67461666666667,
+      "cost": {
+        "microdollars": 5811438
+      },
+      "output_tokens": 70712,
+      "first_active": "2026-07-17T02:16:43Z",
+      "last_active": "2026-07-17T02:43:23Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "84e942c2-50c7-45d5-be77-29870c6f21bd",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 25.91596666666667,
+      "cost": {
+        "microdollars": 1928111
+      },
+      "output_tokens": 24193,
+      "first_active": "2026-07-17T01:18:59Z",
+      "last_active": "2026-07-17T01:57:28Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-ab98ebf6d83702094",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 25.87606666666667,
+      "cost": {
+        "microdollars": 8001672
+      },
+      "output_tokens": 66252,
+      "first_active": "2026-07-16T23:39:35Z",
+      "last_active": "2026-07-17T00:05:27Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "84790689-a38c-48a9-958e-17838f4d0408",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 25.363816666666665,
+      "cost": {
+        "microdollars": 6922296
+      },
+      "output_tokens": 60809,
+      "first_active": "2026-07-17T02:16:45Z",
+      "last_active": "2026-07-17T02:42:07Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a04e3c-0a75-7f92-b069-eccb3611a70f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 25.175683333333335,
+      "cost": {
+        "microdollars": 4267819
+      },
+      "output_tokens": 10745,
+      "first_active": "2026-08-29T15:55:55Z",
+      "last_active": "2026-08-29T16:21:06Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a00137-207a-7402-8029-3280c515ee78",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 21.05063333333333,
+      "cost": {
+        "microdollars": 4474009
+      },
+      "output_tokens": 28358,
+      "first_active": "2026-08-14T16:59:51Z",
+      "last_active": "2026-08-14T18:57:36Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a00062-0904-7d92-85bd-9d60cbccbf8f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 20.423216666666665,
+      "cost": {
+        "microdollars": 4027907
+      },
+      "output_tokens": 31711,
+      "first_active": "2026-08-14T13:07:08Z",
+      "last_active": "2026-08-14T13:27:33Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a00136-d5ea-75f3-9076-955c57e29fc8",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 18.152449999999998,
+      "cost": {
+        "microdollars": 6421954
+      },
+      "output_tokens": 24118,
+      "first_active": "2026-08-14T16:59:33Z",
+      "last_active": "2026-08-14T17:17:42Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a00137-6ad5-7f91-9676-ca8f62eea52f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 17.66695000000001,
+      "cost": {
+        "microdollars": 4677741
+      },
+      "output_tokens": 21087,
+      "first_active": "2026-08-14T17:00:11Z",
+      "last_active": "2026-08-14T17:17:51Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "ffd82b25-6629-4b56-b38b-50d2ddb1fcaf",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 14.219866666666666,
+      "cost": {
+        "microdollars": 3662654
+      },
+      "output_tokens": 50064,
+      "first_active": "2026-07-17T01:19:01Z",
+      "last_active": "2026-07-17T01:33:15Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a026d4-c7fe-7321-a4c2-09a07a11b9db",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 13.022116666666669,
+      "cost": {
+        "microdollars": 2833757
+      },
+      "output_tokens": 18394,
+      "first_active": "2026-08-22T00:18:03Z",
+      "last_active": "2026-08-22T03:55:33Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a0005b-e4ad-7de1-9bc2-13aac8c20bdc",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 11.599499999999999,
+      "cost": {
+        "microdollars": 4444144
+      },
+      "output_tokens": 20780,
+      "first_active": "2026-08-14T13:00:23Z",
+      "last_active": "2026-08-14T13:11:59Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a02626-909c-7b30-9c26-d7b838df4d9d",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 11.033333333333333,
+      "cost": {
+        "microdollars": 2379963
+      },
+      "output_tokens": 12194,
+      "first_active": "2026-08-21T21:07:44Z",
+      "last_active": "2026-08-22T00:01:00Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a97917c0205d03f80",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 9.302533333333333,
+      "cost": {
+        "microdollars": 1768065
+      },
+      "output_tokens": 29396,
+      "first_active": "2026-07-17T02:26:50Z",
+      "last_active": "2026-07-17T02:36:08Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a00029-5fb6-76e1-9a09-26a871686b21",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 9.272700000000002,
+      "cost": {
+        "microdollars": 2321863
+      },
+      "output_tokens": 20599,
+      "first_active": "2026-08-14T12:05:12Z",
+      "last_active": "2026-08-14T12:14:28Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "282229d3-4159-4921-bb96-3a184d3eab08",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-5",
+      "models": [
+        "claude-opus-5"
+      ],
+      "agent_minutes": 9.092649999999999,
+      "cost": {
+        "microdollars": 2331361
+      },
+      "output_tokens": 15599,
+      "first_active": "2026-07-30T13:26:23Z",
+      "last_active": "2026-07-30T13:35:50Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a0005b-9ca9-7393-937d-05db386af913",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 6.7393166666666655,
+      "cost": {
+        "microdollars": 2551706
+      },
+      "output_tokens": 14144,
+      "first_active": "2026-08-14T13:00:05Z",
+      "last_active": "2026-08-14T13:06:50Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a9eac5d8c38bd0c82",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 6.178966666666668,
+      "cost": {
+        "microdollars": 1624186
+      },
+      "output_tokens": 21237,
+      "first_active": "2026-07-17T02:26:01Z",
+      "last_active": "2026-07-17T02:32:12Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a6067d600e39c3cd8",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 5.181766666666666,
+      "cost": {
+        "microdollars": 1060462
+      },
+      "output_tokens": 13161,
+      "first_active": "2026-07-17T02:18:22Z",
+      "last_active": "2026-07-17T02:23:33Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a92a8b173fb9fbc81",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 4.950566666666666,
+      "cost": {
+        "microdollars": 1045104
+      },
+      "output_tokens": 11355,
+      "first_active": "2026-07-17T02:21:55Z",
+      "last_active": "2026-07-17T02:26:52Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a64fe954ef2c64690",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 3.758966666666667,
+      "cost": {
+        "microdollars": 1089166
+      },
+      "output_tokens": 12966,
+      "first_active": "2026-07-17T02:18:11Z",
+      "last_active": "2026-07-17T02:21:57Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a52faf68450c65089",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 3.755866666666667,
+      "cost": {
+        "microdollars": 790065
+      },
+      "output_tokens": 11290,
+      "first_active": "2026-07-17T02:18:03Z",
+      "last_active": "2026-07-17T02:21:48Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-ace280d27da8d60b0",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 3.3947666666666665,
+      "cost": {
+        "microdollars": 742580
+      },
+      "output_tokens": 10304,
+      "first_active": "2026-07-17T02:18:09Z",
+      "last_active": "2026-07-17T02:21:32Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "a8c0bd22-76d5-4cb6-8b5e-1a46ddb9d41f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-fable-5",
+      "models": [
+        "claude-fable-5"
+      ],
+      "agent_minutes": 2.947433333333333,
+      "cost": {
+        "microdollars": 1691383
+      },
+      "output_tokens": 10662,
+      "first_active": "2026-08-01T19:55:00Z",
+      "last_active": "2026-08-01T19:57:57Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-aba31df5110ba49bf",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 2.7685166666666663,
+      "cost": {
+        "microdollars": 593432
+      },
+      "output_tokens": 9888,
+      "first_active": "2026-07-17T02:27:00Z",
+      "last_active": "2026-07-17T02:29:46Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a6a089606069a33b4",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 2.7240666666666664,
+      "cost": {
+        "microdollars": 667818
+      },
+      "output_tokens": 8433,
+      "first_active": "2026-07-17T01:19:46Z",
+      "last_active": "2026-07-17T01:22:30Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "agent-a50b688acc5bc11e1",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 2.2777833333333333,
+      "cost": {
+        "microdollars": 653581
+      },
+      "output_tokens": 9686,
+      "first_active": "2026-07-17T01:19:41Z",
+      "last_active": "2026-07-17T01:21:57Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "codex:01a025ee-9f7a-7ac0-acd9-706f8f3a0b6a",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "codex",
+      "primary_model": "gpt-5.6-sol",
+      "models": [
+        "gpt-5.6-sol"
+      ],
+      "agent_minutes": 2.018716666666667,
+      "cost": {
+        "microdollars": 670274
+      },
+      "output_tokens": 4560,
+      "first_active": "2026-08-21T20:06:38Z",
+      "last_active": "2026-08-21T20:08:39Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "b077a8fd-4512-4454-a060-e59e3fafb66c",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-fable-5",
+      "models": [
+        "claude-fable-5"
+      ],
+      "agent_minutes": 0.3557,
+      "cost": {
+        "microdollars": 300695
+      },
+      "output_tokens": 1614,
+      "first_active": "2026-08-01T12:55:33Z",
+      "last_active": "2026-08-01T12:55:54Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "3035dc14-6f24-4512-9973-778fac823f66",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-5",
+      "models": [
+        "claude-opus-5"
+      ],
+      "agent_minutes": 0.29918333333333336,
+      "cost": {
+        "microdollars": 255409
+      },
+      "output_tokens": 1217,
+      "first_active": "2026-08-01T09:35:21Z",
+      "last_active": "2026-08-01T09:35:39Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "f39c088e-44a1-4d31-8cba-93b5e9504dff",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 0.24830000000000002,
+      "cost": {
+        "microdollars": 38576
+      },
+      "output_tokens": 177,
+      "first_active": "2026-07-17T02:19:58Z",
+      "last_active": "2026-07-17T02:20:13Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "de4b9d2f-530f-46fe-a8be-90735ffd122a",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 0.24188333333333334,
+      "cost": {
+        "microdollars": 140677
+      },
+      "output_tokens": 821,
+      "first_active": "2026-07-16T22:42:21Z",
+      "last_active": "2026-07-16T22:42:36Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "0dc81936-17f8-43f7-8d8f-366b1a2684e0",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 0.21776666666666666,
+      "cost": {
+        "microdollars": 137879
+      },
+      "output_tokens": 803,
+      "first_active": "2026-07-16T22:42:25Z",
+      "last_active": "2026-07-16T22:42:38Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "73042291-a99e-4564-8ed4-025e84851609",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-5",
+      "models": [
+        "claude-opus-5"
+      ],
+      "agent_minutes": 0.20188333333333333,
+      "cost": {
+        "microdollars": 112084
+      },
+      "output_tokens": 748,
+      "first_active": "2026-08-01T13:54:22Z",
+      "last_active": "2026-08-01T13:54:34Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "49d14801-ea80-4798-a300-a04ee6ab59d0",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 0.1315,
+      "cost": {
+        "microdollars": 101153
+      },
+      "output_tokens": 386,
+      "first_active": "2026-07-16T22:42:23Z",
+      "last_active": "2026-07-16T22:42:31Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "607f3376-1391-4042-8db4-0faf379e76b9",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 0.12318333333333334,
+      "cost": {
+        "microdollars": 100847
+      },
+      "output_tokens": 388,
+      "first_active": "2026-07-16T22:42:22Z",
+      "last_active": "2026-07-16T22:42:30Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "90491e21-4efb-4f14-b358-7a2944f7d175",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "claude-opus-4-8",
+      "models": [
+        "claude-opus-4-8"
+      ],
+      "agent_minutes": 0.04533333333333334,
+      "cost": {
+        "microdollars": 82638
+      },
+      "output_tokens": 4,
+      "first_active": "2026-07-17T02:18:30Z",
+      "last_active": "2026-07-17T02:18:33Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "196400f7-d210-44f3-a750-2b29570c2279",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.01505,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-07-17T03:27:11Z",
+      "last_active": "2026-07-17T03:27:12Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "38782f30-b7fd-48a9-aa29-382c458b4583",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.013383333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-07-17T03:23:16Z",
+      "last_active": "2026-07-17T03:23:17Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "c3eb6d7c-ee3e-40ff-9608-07818e49ac10",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.011983333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T16:01:28Z",
+      "last_active": "2026-08-29T16:01:28Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "23f6b6d5-9f46-435a-a116-767dfda7ab51",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.01165,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T14:47:26Z",
+      "last_active": "2026-08-29T14:47:27Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "a69de7ef-568e-4a6a-a1db-167e557c6f1a",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.011366666666666667,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T16:01:49Z",
+      "last_active": "2026-08-29T16:01:50Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "8aaadceb-5793-4324-bfcd-c3f17e54b4e9",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.011083333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T14:47:25Z",
+      "last_active": "2026-08-29T14:47:26Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "e7b7667c-5918-4ba2-aa0b-7f95bc397786",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.011033333333333332,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T14:47:27Z",
+      "last_active": "2026-08-29T14:47:27Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "651fe0d3-45d4-484e-abe2-be11fabe9074",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.010716666666666666,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T17:58:35Z",
+      "last_active": "2026-08-29T17:58:35Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "03d9cfb9-0ce1-475b-8396-edbb7eabddc5",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.01045,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T16:01:05Z",
+      "last_active": "2026-08-29T16:01:05Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "6891373d-c15f-438d-84ff-bb2ed26d9df9",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.008533333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-24T12:02:49Z",
+      "last_active": "2026-08-24T12:02:49Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "c2d10671-5196-4118-8a2b-c5c268f252e1",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.008533333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T15:08:25Z",
+      "last_active": "2026-08-20T15:08:26Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "a51072b1-5eb9-4be9-9d26-e674873ef6bd",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.008033333333333333,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-23T19:28:55Z",
+      "last_active": "2026-08-23T19:28:56Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "5719b486-56ad-4033-b99a-e00611f52454",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.007933333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T09:27:49Z",
+      "last_active": "2026-08-29T09:27:49Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "bf68a797-0527-46b8-a765-92f8015f65df",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.007633333333333333,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-26T07:49:01Z",
+      "last_active": "2026-08-26T07:49:02Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "09068343-656f-42a5-92b1-f7d04fbfa93b",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0076,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T22:21:16Z",
+      "last_active": "2026-08-20T22:21:16Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "214ac513-ef47-4525-a4b9-e45939a74c0c",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0075,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-19T17:42:30Z",
+      "last_active": "2026-08-19T17:42:30Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "b0351847-cfea-4198-8b81-e4f5dbdfca49",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0071333333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-22T05:25:49Z",
+      "last_active": "2026-08-22T05:25:49Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "af07e308-3429-4b6d-a6a2-607375ee94df",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.006716666666666667,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-21T02:30:26Z",
+      "last_active": "2026-08-21T02:30:26Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "932a0e57-4641-41a0-8866-be86ad6d2e7f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.006216666666666666,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-21T03:23:59Z",
+      "last_active": "2026-08-21T03:23:59Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "0be0f431-38a6-4023-98b4-3b42011fc392",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0049833333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T16:43:37Z",
+      "last_active": "2026-08-20T16:43:37Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "162e18eb-6e11-4e29-8565-5d9d9aa2216a",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00345,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-19T16:13:26Z",
+      "last_active": "2026-08-19T16:13:26Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "91a08a1a-1024-4e64-a37d-7b116fc46115",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0027333333333333333,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-19T22:40:57Z",
+      "last_active": "2026-08-19T22:40:57Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "b12bcbc3-4319-470a-9aca-bc419d3bdad3",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00245,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T07:36:22Z",
+      "last_active": "2026-08-14T07:36:22Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "bd0e6e6f-f2ab-403a-b6b7-e42d4e327794",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00245,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T11:01:12Z",
+      "last_active": "2026-08-14T11:01:12Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "5852d169-5817-478e-b8e5-049ad20a13ec",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0023333333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-13T23:55:17Z",
+      "last_active": "2026-08-13T23:55:17Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "8cfe5bf5-baaf-47f7-bc9a-f9a70ac4c2be",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00225,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T11:01:12Z",
+      "last_active": "2026-08-14T11:01:13Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "240b4182-4ea8-4276-a03d-4c1fd4a6af1d",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00205,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-13T19:39:28Z",
+      "last_active": "2026-08-13T19:39:28Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "6822ff2c-71b8-4ddd-aab7-6161549b5e22",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0018833333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-13T19:39:27Z",
+      "last_active": "2026-08-13T19:39:27Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "ffc65690-6907-4e89-a067-b6e332b6ced7",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0018833333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-13T19:39:27Z",
+      "last_active": "2026-08-13T19:39:27Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "3cfc2232-1bce-4d3c-a42e-730b4f8e022f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0018666666666666666,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T07:36:21Z",
+      "last_active": "2026-08-14T07:36:21Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "945c677f-5bab-4858-b50a-9b25b45cde4b",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0018,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T11:01:13Z",
+      "last_active": "2026-08-14T11:01:13Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "c297f7af-4e65-45b8-8d2b-3f037023c5b5",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0018,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T17:35:01Z",
+      "last_active": "2026-08-14T17:35:01Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "935e3331-596e-4a42-afde-0a7d233845e1",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00145,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T07:36:21Z",
+      "last_active": "2026-08-14T07:36:21Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "7b45cae4-651d-4597-b5cf-680b3bb1a564",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0008333333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T02:09:10Z",
+      "last_active": "2026-08-20T02:09:10Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "2f834cc0-8563-43f7-852b-92783149b75f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0006333333333333333,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-24T13:32:33Z",
+      "last_active": "2026-08-24T13:32:33Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "d8e745e6-bd18-4b22-8269-f970ec639c72",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005833333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-25T13:48:34Z",
+      "last_active": "2026-08-25T13:48:34Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "b9b89a64-1ce5-4aff-8b18-bd10956ae6b5",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005666666666666667,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T08:38:23Z",
+      "last_active": "2026-08-20T08:38:23Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "dbbb1f61-b39b-46f3-959e-dc6ea15de50f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005666666666666667,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T11:17:42Z",
+      "last_active": "2026-08-20T11:17:42Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "e8aab6ac-1c2b-41ee-b359-c3be3ac0682b",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005666666666666667,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-26T06:09:30Z",
+      "last_active": "2026-08-26T06:09:30Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "41930091-03d3-44bc-95f9-38c2101c2e91",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005333333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-25T11:44:39Z",
+      "last_active": "2026-08-25T11:44:40Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "4fccd8a0-3525-4f37-b9b3-5d84aeb0a1b4",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005333333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-29T16:45:43Z",
+      "last_active": "2026-08-29T16:45:43Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "930a00c6-64b5-4dd3-8809-4ae22a0df80f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005333333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-25T11:44:40Z",
+      "last_active": "2026-08-25T11:44:40Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "f3c1d848-8de3-4a1d-92eb-35b587956f0a",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005333333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T15:42:06Z",
+      "last_active": "2026-08-20T15:42:06Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "655e2827-af71-4730-9a6e-635d9711093d",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0005,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T01:07:26Z",
+      "last_active": "2026-08-20T01:07:26Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "6f73cab6-bcb1-414a-a033-272902b4ff7f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00048333333333333334,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-26T06:09:30Z",
+      "last_active": "2026-08-26T06:09:30Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "31668866-4a13-446d-91eb-beea69dc37c6",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00046666666666666666,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-26T06:18:02Z",
+      "last_active": "2026-08-26T06:18:02Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "7c427674-e367-4412-aa21-90bd53681912",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00045,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-19T12:01:52Z",
+      "last_active": "2026-08-19T12:01:52Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "8955fefe-ee16-417b-a2b9-95634238d034",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00045,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T00:03:42Z",
+      "last_active": "2026-08-20T00:03:42Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "2bacd6b7-40d0-48ce-849b-3c34c43c8359",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0004333333333333333,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-25T11:44:39Z",
+      "last_active": "2026-08-25T11:44:39Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "c5de98f3-f7a2-40e7-83e4-e1f09b5bf68b",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0004166666666666667,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T10:29:04Z",
+      "last_active": "2026-08-20T10:29:04Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "f0169b91-639f-44d7-b526-ab4ece0255f1",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0004,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-26T06:09:30Z",
+      "last_active": "2026-08-26T06:09:30Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "157cc233-ae04-4876-ba66-4bdc861a7231",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00036666666666666667,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-19T20:13:37Z",
+      "last_active": "2026-08-19T20:13:37Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "e5e4de0e-a9d2-47be-90ef-058c2134b587",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00036666666666666667,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-25T09:27:04Z",
+      "last_active": "2026-08-25T09:27:04Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "4b2b9393-c1d8-4551-9e08-f29fa86f810d",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00035,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-21T04:37:24Z",
+      "last_active": "2026-08-21T04:37:24Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "d742714d-a45b-4d7d-9b1d-f6358dd35f89",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00035,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-21T20:43:36Z",
+      "last_active": "2026-08-21T20:43:36Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "deed54c7-e8ee-4849-8de6-163112608217",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00035,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T06:26:10Z",
+      "last_active": "2026-08-14T06:26:10Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "1c9b7afd-8e85-4f8c-bae9-86d77490f940",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0003333333333333333,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T21:24:29Z",
+      "last_active": "2026-08-20T21:24:29Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "32aa691d-6ec9-455f-b87b-94cae8734e03",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0003333333333333333,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-21T16:45:18Z",
+      "last_active": "2026-08-21T16:45:18Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "e2cfeea6-3c20-4e52-918f-af9ee3427808",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0003333333333333333,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T12:08:49Z",
+      "last_active": "2026-08-20T12:08:49Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "1529cf17-db3a-4f4e-a064-c5e154ac172f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00031666666666666665,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T05:18:33Z",
+      "last_active": "2026-08-20T05:18:33Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "7b4681e0-52a3-4bc4-9369-7c5d9f953ba7",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00031666666666666665,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-19T13:21:46Z",
+      "last_active": "2026-08-19T13:21:46Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "96392e29-2705-43fa-b25a-a1ee872f8ffd",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00031666666666666665,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-26T08:31:05Z",
+      "last_active": "2026-08-26T08:31:05Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "f4daed69-9872-473f-88b7-d6c2e928899f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00031666666666666665,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-22T00:28:14Z",
+      "last_active": "2026-08-22T00:28:14Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "f901bafe-3274-4dcb-8ec9-88e9e4daae0a",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00031666666666666665,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-20T23:03:49Z",
+      "last_active": "2026-08-20T23:03:49Z",
+      "timing_quality": "timed",
+      "is_automated": true
+    },
+    {
+      "session_id": "8072affe-96b7-4b9b-adde-6f92f941e709",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.0003,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-13T12:23:20Z",
+      "last_active": "2026-08-13T12:23:20Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "3f195737-5fe9-4e75-96cd-f519b16df772",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00028333333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-13T12:23:20Z",
+      "last_active": "2026-08-13T12:23:20Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "407cca86-0086-43cd-9f41-432cbd7026bb",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00028333333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-13T12:23:20Z",
+      "last_active": "2026-08-13T12:23:20Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "53702409-bd17-4009-b56f-28d255404a5c",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00028333333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T15:13:05Z",
+      "last_active": "2026-08-14T15:13:05Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "6e7ab37f-5ef3-4031-9b0c-8891772ac056",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00028333333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T01:32:11Z",
+      "last_active": "2026-08-14T01:32:11Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "7893acbe-6592-4e88-abf8-06285182115a",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00028333333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T08:18:34Z",
+      "last_active": "2026-08-14T08:18:34Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "803d0417-d729-4a1f-8e9e-7254cb06e746",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00028333333333333335,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-14T02:17:03Z",
+      "last_active": "2026-08-14T02:17:03Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "4ab1e437-b46f-48a5-8a0e-f362255a9b35",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "\u003csynthetic\u003e",
+      "models": [
+        "\u003csynthetic\u003e"
+      ],
+      "agent_minutes": 0.00025,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": "2026-08-19T21:13:15Z",
+      "last_active": "2026-08-19T21:13:15Z",
+      "timing_quality": "timed",
+      "is_automated": false
+    },
+    {
+      "session_id": "2c5ea75f-0149-4727-8999-934dfaff776f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "",
+      "models": null,
+      "agent_minutes": null,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": null,
+      "last_active": null,
+      "timing_quality": "untimed",
+      "is_automated": false
+    },
+    {
+      "session_id": "2ce3719f-3844-4d49-89fb-d823cc902b7f",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "",
+      "models": null,
+      "agent_minutes": null,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": null,
+      "last_active": null,
+      "timing_quality": "untimed",
+      "is_automated": false
+    },
+    {
+      "session_id": "48358cab-47c2-43f7-89c4-b89441166f72",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "",
+      "models": null,
+      "agent_minutes": null,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": null,
+      "last_active": null,
+      "timing_quality": "untimed",
+      "is_automated": false
+    },
+    {
+      "session_id": "c08675a1-d2f1-4590-984b-db7a80bcac87",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "",
+      "models": null,
+      "agent_minutes": null,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": null,
+      "last_active": null,
+      "timing_quality": "untimed",
+      "is_automated": false
+    },
+    {
+      "session_id": "eaf03d36-e1e8-4b0c-80ef-e831009199fe",
+      "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+      "title": "kobayashi_marust",
+      "project": "kobayashi_marust",
+      "agent": "claude",
+      "primary_model": "",
+      "models": null,
+      "agent_minutes": null,
+      "cost": {
+        "microdollars": 0
+      },
+      "output_tokens": 0,
+      "first_active": null,
+      "last_active": null,
+      "timing_quality": "untimed",
+      "is_automated": false
+    }
+  ],
+  "sessions_total": 134
+}

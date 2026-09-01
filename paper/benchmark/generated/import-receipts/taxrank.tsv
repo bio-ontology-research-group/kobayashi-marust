@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/taxrank.owl
+M	source_sha256	ac134041984f1157d617f10f67e1c384c18a6a9385d396aa60732df34c193b3e
+M	closure_size	1
+M	merged_axioms	601
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	da20613058ae690aff94a14401eda4cc4b4902f6a0d4cf48c933cb4dbcec9510
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/taxrank.owl>) VersionIRI(<http://purl.obolibrary.org/obo/taxrank/releases/2025-09-24/taxrank.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/taxrank.owl	601
+Z	complete

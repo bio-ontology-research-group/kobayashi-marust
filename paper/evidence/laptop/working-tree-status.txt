@@ -1,0 +1,311 @@
+ M README.md
+ M docs/SROIQ-PLAN.md
+ M moose/.gitmodules
+ M moose/README.md
+ M moose/experiments/_common.py
+ M moose/experiments/aggregate_pizza_table.py
+ M moose/experiments/aggregate_results_table.py
+ M moose/experiments/results/mnist1_bears_original_seed0.json
+ M moose/experiments/results/mnist1_bears_original_seed1.json
+ M moose/experiments/results/mnist1_nesydm_seed0.json
+ M moose/experiments/results/mnist1_nesydm_seed1.json
+ D moose/experiments/results/mnist1_wmc_seed0.json
+ M moose/experiments/results/mnist1_wmc_seed1.json
+ M moose/experiments/run_mnist2_relational.py
+ M moose/experiments/run_mnist3_rolechain.py
+ M moose/moose/elpp/completion.py
+ M moose/moose/sroiq/README.md
+ M moose/moose/sroiq/normalisation.py
+ M moose/paper-modular/main.aux
+ M moose/paper-modular/main.log
+ M moose/paper-modular/main.out
+ M moose/paper-modular/main.pdf
+ M moose/paper-modular/main.tex
+ M moose/paper-modular/refs.bib
+ M moose/paper/figures/overview-v2.pdf
+ M moose/paper/figures/overview-v2.tex
+ M moose/paper/moose.bib
+ M moose/paper/rebuttal-iswc2026.md
+ M moose/paper/sections/results_appendix.tex
+ M moose/paper/sections/results_main.tex
+ D moose/proofs/lean-elk-sdd/.gitignore
+ D moose/proofs/lean-elk-sdd/ELKSDD.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ALC.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ALCComplexity.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ALCHOIQContext.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ALCHOQ.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ALCHOQCanonical.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ALCHOQCanonicalAudit.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ALCHOQCompleteness.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ALCHOQSkolem.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Audit.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Compilation.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/CompilationWMC.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Completeness.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/CompletenessExamples.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Complexity.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/DISPONTE.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/DISPONTERat.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/EL.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ELKBoundary.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ELpp.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/MOOSE.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/MathlibSmoke.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Merging.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/MiniEL.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/ModularBEARSMultilinear.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Normalize.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/OWL2EL.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/RSIA.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/RangeNorm.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/RangeNormConservativity.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SCC.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SCCNomLHS.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SCCWMCUniform.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SCCWorld.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SDD.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQ.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQAudit.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQCanonical.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQCompilationWMC.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQCompleteness.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQCompletenessSkeleton.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQComplexity.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQContextBridge.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQPythonParity.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQSkolem.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SROIQSkolemCanonical.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SatComplexity.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/SatFactorGeneral.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Saturation.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Stratified.lean
+ D moose/proofs/lean-elk-sdd/ELKSDD/Util.lean
+ D moose/proofs/lean-elk-sdd/LICENSE
+ D moose/proofs/lean-elk-sdd/README.md
+ D moose/proofs/lean-elk-sdd/lake-manifest.json
+ D moose/proofs/lean-elk-sdd/lakefile.toml
+ D moose/proofs/lean-elk-sdd/lean-toolchain
+ M moose/proofs/lean/AUDIT.md
+ M moose/proofs/lean/Moose.lean
+ M moose/proofs/lean/Moose/Audit.lean
+ M moose/proofs/lean/Moose/Basic.lean
+ M moose/proofs/lean/Moose/DPL.lean
+ M moose/proofs/lean/Moose/Prior.lean
+ M moose/proofs/lean/Moose/Theorems.lean
+ M moose/proofs/lean/README.md
+ M moose/proofs/lean/THEOREM_AUDIT.md
+ M moose/proofs/lean/lake-manifest.json
+ M moose/proofs/lean/lakefile.toml
+ M owlel/OWL_2_EL_COVERAGE.md
+ M owlel/README.md
+ M owlel/src/owlel/__init__.py
+ M sroiq-nesy/experiments/results/mdj_seed0.json
+ M sroiq-nesy/experiments/results/mdj_seed1.json
+ M sroiq-nesy/experiments/results/mdj_seed2.json
+ M sroiq-nesy/experiments/results/mdj_seed3.json
+ M sroiq-nesy/experiments/results/mdj_seed4.json
+ M sroiq-nesy/experiments/results/mnist_sroiq_seed0.json
+ M sroiq-nesy/experiments/results/mnist_sroiq_seed1.json
+ M sroiq-nesy/experiments/results/mnist_sroiq_seed2.json
+ M sroiq-nesy/experiments/results/mnist_sroiq_seed3.json
+ M sroiq-nesy/experiments/results/mnist_sroiq_seed4.json
+ M sroiq-nesy/experiments/results/pf_seed0.json
+ M sroiq-nesy/experiments/results/pf_seed1.json
+ M sroiq-nesy/experiments/results/pf_seed2.json
+ M sroiq-nesy/experiments/results/pf_seed4.json
+ M sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed0.json
+ M sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed1.json
+ M sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed2.json
+ M sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed3.json
+ M sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed4.json
+?? metabolic-pfp/experiments/cost2_go_core.py
+?? metabolic-pfp/theory/wmc_general/.github/workflows/create-release.yml
+?? metabolic-pfp/theory/wmc_general/.github/workflows/lean_action_ci.yml
+?? metabolic-pfp/theory/wmc_general/.github/workflows/update.yml
+?? metabolic-pfp/theory/wmc_general/README.md
+?? metabolic-pfp/theory/wmc_general/lake-manifest.json
+?? moose/experiments/rebuttal/REBUTTAL_REPRO.md
+?? moose/experiments/rebuttal/REBUTTAL_RESULTS.md
+?? moose/experiments/rebuttal/analyze.py
+?? moose/experiments/rebuttal/collect_when_done.sh
+?? moose/experiments/rebuttal/dispatch.py
+?? moose/experiments/rebuttal/gen_followup.py
+?? moose/experiments/rebuttal/gen_jobs.py
+?? moose/experiments/rebuttal/gen_jobs2.py
+?? moose/experiments/rebuttal/gen_master.py
+?? moose/experiments/rebuttal/jobs_dpl.jsonl
+?? moose/experiments/rebuttal/jobs_master.tsv
+?? moose/experiments/rebuttal/jobs_pizzaAood.jsonl
+?? moose/experiments/rebuttal/jobs_t11.jsonl
+?? moose/experiments/rebuttal/jobs_t12.jsonl
+?? moose/experiments/rebuttal/jobs_t24.jsonl
+?? moose/experiments/rebuttal/jobs_t25.jsonl
+?? moose/experiments/rebuttal/run_array.sbatch
+?? moose/experiments/rebuttal/run_array_dpl.sbatch
+?? moose/experiments/rebuttal/run_chain.sh
+?? moose/experiments/rebuttal/t13_repro.py
+?? moose/paper-modular/cost2_rank_dial.py
+?? moose/paper-modular/main.bbl
+?? moose/paper-modular/main.blg
+?? moose/paper/camera_ready-reviewed.pdf
+?? moose/paper/camera_ready.pdf
+?? moose/paper/camera_ready.tex
+?? moose/paper/camera_ready_16_pages.pdf
+?? moose/paper/camera_ready_16_pages.tex
+?? moose/paper/rebuttal-iswc2026.txt
+?? moose/proofs/lean-sroiq-sdd/
+?? sroiq-nesy/context-reasoner/cbr_reference.py
+?? sroiq-nesy/context-reasoner/domain_close.py
+?? sroiq-nesy/experiments/GROUNDING_FINDINGS.md
+?? sroiq-nesy/experiments/_fast_rerun.py
+?? sroiq-nesy/experiments/agg10.py
+?? sroiq-nesy/experiments/results/disjunction_sroiq.json
+?? sroiq-nesy/experiments/results/mdj_seed5.json
+?? sroiq-nesy/experiments/results/mdj_seed6.json
+?? sroiq-nesy/experiments/results/mdj_seed7.json
+?? sroiq-nesy/experiments/results/mdj_seed8.json
+?? sroiq-nesy/experiments/results/mdj_seed9.json
+?? sroiq-nesy/experiments/results/mnist_sroiq_seed5.json
+?? sroiq-nesy/experiments/results/mnist_sroiq_seed6.json
+?? sroiq-nesy/experiments/results/mnist_sroiq_seed7.json
+?? sroiq-nesy/experiments/results/mnist_sroiq_seed8.json
+?? sroiq-nesy/experiments/results/mnist_sroiq_seed9.json
+?? sroiq-nesy/experiments/results/pf_seed5.json
+?? sroiq-nesy/experiments/results/pf_seed6.json
+?? sroiq-nesy/experiments/results/pf_seed7.json
+?? sroiq-nesy/experiments/results/pf_seed8.json
+?? sroiq-nesy/experiments/results/pf_seed9.json
+?? sroiq-nesy/experiments/results/pizza_sroiq.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed0.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed1.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed2.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed3.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed4.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed5.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed6.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed7.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed8.json
+?? sroiq-nesy/experiments/results/pizza_sroiq_seed9.json
+?? sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed5.json
+?? sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed6.json
+?? sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed7.json
+?? sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed8.json
+?? sroiq-nesy/experiments/results/pizzaiolo_sroiq_seed9.json
+?? sroiq-nesy/experiments/slurm_disj.sh
+?? sroiq-nesy/experiments/slurm_exp.sh
+?? sroiq-nesy/experiments/slurm_rerun.sh
+?? sroiq-nesy/experiments/slurm_rerun_fast.sh
+?? sroiq-nesy/experiments/verify_reasoner_grounding.py
+?? sroiq-nesy/lean/ContextCalculus.lean
+?? sroiq-nesy/lean/ContextCalculus/Basic.lean
+?? sroiq-nesy/lean/ContextCalculus/Checker.lean
+?? sroiq-nesy/lean/ContextCalculus/CheckerFO.lean
+?? sroiq-nesy/lean/ContextCalculus/CheckerTerm.lean
+?? sroiq-nesy/lean/ContextCalculus/CompletenessContext.lean
+?? sroiq-nesy/lean/ContextCalculus/CompletenessEL.lean
+?? sroiq-nesy/lean/ContextCalculus/CompletenessEq.lean
+?? sroiq-nesy/lean/ContextCalculus/CompletenessProp.lean
+?? sroiq-nesy/lean/ContextCalculus/Equivalence.lean
+?? sroiq-nesy/lean/ContextCalculus/Termination.lean
+?? sroiq-nesy/lean/GroundingRefinements.lean
+?? sroiq-nesy/lean/README.md
+?? sroiq-nesy/lean/Validation.lean
+?? sroiq-nesy/lean/Validation/Disj.lean
+?? sroiq-nesy/lean/Validation/Disjoint.lean
+?? sroiq-nesy/lean/Validation/Disjsucc.lean
+?? sroiq-nesy/lean/Validation/Exists.lean
+?? sroiq-nesy/lean/Validation/Hierarchy.lean
+?? sroiq-nesy/lean/Validation/Kinship.lean
+?? sroiq-nesy/lean/Validation/Numrestr.lean
+?? sroiq-nesy/lean/Validation/Paramod.lean
+?? sroiq-nesy/lean/Validation/Transtest.lean
+?? sroiq-nesy/lean/lake-manifest.json
+?? sroiq-nesy/lean/lakefile.toml
+?? sroiq-nesy/lean/lean-toolchain
+?? sroiq-nesy/oracle/.classpath.txt
+?? sroiq-nesy/oracle/Oracle.class
+?? sroiq-nesy/oracle/Oracle.java
+?? sroiq-nesy/oracle/README.md
+?? sroiq-nesy/oracle/bench_km_threads.sh
+?? sroiq-nesy/oracle/bench_reasoners.sh
+?? sroiq-nesy/oracle/factor_test.ofn
+?? sroiq-nesy/oracle/gen_sriq.py
+?? sroiq-nesy/oracle/ontologies/chain_test.ofn
+?? sroiq-nesy/oracle/ontologies/factor_test.ofn
+?? sroiq-nesy/oracle/ontologies/trans_test.ofn
+?? sroiq-nesy/oracle/results/chain_test.json
+?? sroiq-nesy/oracle/results/disjunction.json
+?? sroiq-nesy/oracle/results/factor_test.json
+?? sroiq-nesy/oracle/results/kinship.json
+?? sroiq-nesy/oracle/results/kinship_chain.json
+?? sroiq-nesy/oracle/results/pizza.json
+?? sroiq-nesy/oracle/results/trans_test.json
+?? sroiq-nesy/oracle/run_oracle.sh
+?? sroiq-nesy/oracle/validate.py
+?? sroiq-nesy/pysroiq/README.md
+?? sroiq-nesy/pysroiq/pyproject.toml
+?? sroiq-nesy/pysroiq/pysroiq/__init__.py
+?? sroiq-nesy/pysroiq/pysroiq/__main__.py
+?? sroiq-nesy/pysroiq/pysroiq/cb_saturation.py
+?? sroiq-nesy/pysroiq/pysroiq/compile_sdd.py
+?? sroiq-nesy/pysroiq/pysroiq/dlclauses.py
+?? sroiq-nesy/pysroiq/pysroiq/examples/kinship.ofn
+?? sroiq-nesy/pysroiq/pysroiq/examples/kinship_chain.ofn
+?? sroiq-nesy/pysroiq/pysroiq/grounding/__init__.py
+?? sroiq-nesy/pysroiq/pysroiq/grounding/circuit.py
+?? sroiq-nesy/pysroiq/pysroiq/grounding/domain.py
+?? sroiq-nesy/pysroiq/pysroiq/grounding/formula.py
+?? sroiq-nesy/pysroiq/pysroiq/grounding/ground_theory.py
+?? sroiq-nesy/pysroiq/pysroiq/normalisation.py
+?? sroiq-nesy/pysroiq/pysroiq/owl_loader.py
+?? sroiq-nesy/pysroiq/pysroiq/pizza.owl
+?? sroiq-nesy/pysroiq/pysroiq/pizza_subset.py
+?? sroiq-nesy/pysroiq/pysroiq/syntax.py
+?? sroiq-nesy/pysroiq/pysroiq/tena_cucala.py
+?? sroiq-nesy/pysroiq/pysroiq/unify.py
+?? sroiq-nesy/pysroiq/tests/__init__.py
+?? sroiq-nesy/pysroiq/tests/test_cb_saturation.py
+?? sroiq-nesy/pysroiq/tests/test_end_to_end.py
+?? sroiq-nesy/pysroiq/tests/test_feature_coverage.py
+?? sroiq-nesy/pysroiq/tests/test_normalisation.py
+?? sroiq-nesy/pysroiq/tests/test_public_api.py
+?? sroiq-nesy/pysroiq/tests/test_syntax.py
+?? sroiq-nesy/rust-context-reasoner/.gitignore
+?? sroiq-nesy/rust-context-reasoner/Cargo.lock
+?? sroiq-nesy/rust-context-reasoner/Cargo.toml
+?? sroiq-nesy/rust-context-reasoner/README.md
+?? sroiq-nesy/rust-context-reasoner/py/certgen.py
+?? sroiq-nesy/rust-context-reasoner/py/certgen_fo.py
+?? sroiq-nesy/rust-context-reasoner/py/certgen_term.py
+?? sroiq-nesy/rust-context-reasoner/py/frontend.py
+?? sroiq-nesy/rust-context-reasoner/py/preprocess.py
+?? sroiq-nesy/rust-context-reasoner/py/rust_context.py
+?? sroiq-nesy/rust-context-reasoner/py/test_oracle.py
+?? sroiq-nesy/rust-context-reasoner/src/calc.rs
+?? sroiq-nesy/rust-context-reasoner/src/clause.rs
+?? sroiq-nesy/rust-context-reasoner/src/engine.rs
+?? sroiq-nesy/rust-context-reasoner/src/json_io.rs
+?? sroiq-nesy/rust-context-reasoner/src/main.rs
+?? sroiq-nesy/rust-context-reasoner/src/reasoner.rs
+?? sroiq-nesy/rust-saturation/.gitignore
+?? sroiq-nesy/rust-saturation/Cargo.lock
+?? sroiq-nesy/rust-saturation/Cargo.toml
+?? sroiq-nesy/rust-saturation/README.md
+?? sroiq-nesy/rust-saturation/py/rust_saturate.py
+?? sroiq-nesy/rust-saturation/py/test_against_python.py
+?? sroiq-nesy/rust-saturation/src/atom.rs
+?? sroiq-nesy/rust-saturation/src/clause.rs
+?? sroiq-nesy/rust-saturation/src/json_io.rs
+?? sroiq-nesy/rust-saturation/src/main.rs
+?? sroiq-nesy/rust-saturation/src/saturate.rs
+?? sroiq-nesy/rust-saturation/src/term.rs
+?? sroiq-nesy/rust-saturation/src/unify.rs
+?? sroiq-nesy/validation/README.md
+?? sroiq-nesy/validation/inputs/disj.json
+?? sroiq-nesy/validation/inputs/disjoint.json
+?? sroiq-nesy/validation/inputs/disjsucc.json
+?? sroiq-nesy/validation/inputs/exists.json
+?? sroiq-nesy/validation/inputs/hierarchy.json
+?? sroiq-nesy/validation/inputs/numrestr.json
+?? sroiq-nesy/validation/inputs/paramod.json
+?? sroiq-nesy/validation/run.sh

@@ -1,0 +1,55 @@
+review	severity	finding	disposition	rationale	manuscript_action
+1	major	1	accepted	The reasoner is the empirical and formal contribution; the process reconstruction supports it.	Reframed abstract and introduction with the system primary and process study secondary.
+1	major	2	accepted	Four non-overlapping questions provide a clearer evaluation spine than six overlapping questions.	Consolidated the questions into coverage, performance, services, and development-process RQs.
+1	major	3	accepted	Synthetic lifecycle tests establish interface behavior but not workload-scale utility.	Changed novelty wording and explicitly limited the incremental evidence to controlled regression experiments.
+1	major	4	accepted	The retained evidence establishes a precursor lineage before the standalone repository.	Added the Moose and Baobab precursor period to the Methods chronology and evidence boundary.
+1	major	5	accepted	Conclusions must preserve the populations and epistemic status of the measured results.	Qualified the performance populations and linked the system and process conclusions to the consolidated RQs.
+1	minor	1	accepted	A roadmap should match the actual section order.	Corrected the introduction roadmap.
+1	minor	2	accepted	Forensic detail is necessary for reproducibility but needs stronger navigation.	Added explicit evidence-boundary transitions and retained machine-readable detail in the supplement.
+1	minor	3	deferred	A DOI cannot be truthfully supplied before the final GitHub-to-Zenodo synchronization.	Kept the archive and DOI as an explicit submission-time action.
+2	major	1	accepted	Readers need to know which evidence answers each research question.	Added an evaluation-to-RQ map and a Methods statement identifying the RQ4 evidence.
+2	major	2	accepted	Executed OBO measurements and an unexecuted BioPortal protocol have different evidential status.	Separated the executed OBO freeze from the preregistered BioPortal extension and stated that it produced no measurements.
+2	major	3	accepted	Stateful services are not a continuation of the batch performance experiment.	Added a transition separating complete batch classification from incremental and explanation validation.
+2	major	4	accepted	Commits, sessions, and telemetry counters cannot be treated as equivalent observations.	Added a chronological three-unit evidence map and prohibited conversion among units.
+2	minor	1	accepted	Explicit hand-offs improve navigation across architecture layers.	Added transitions from requirements to architecture, routing to certification, and batch classification to services.
+2	minor	2	accepted	Topic cues are useful where named case studies and process evidence change level.	Added corpus strata, hard-case, and process-unit cues while retaining named case headings.
+2	minor	3	accepted	An opening map makes the threat analysis easier to audit.	Added a four-part map at the start of Limitations.
+3	major	1	accepted	Terminal output and agreement are not equivalent to an adjudicated gold result.	Rewrote the current-corpus RQ and results to distinguish publication, agreement, splits, and witnessed errors.
+3	major	2	accepted	Lean release certification and runtime Rust checks operate at different times and trust boundaries.	Stated that each classification runs Rust route checks while Lean certifies exact release source and is not invoked per ontology.
+3	major	3	accepted	Fresh preprocessing symbols must not leak into the reported taxonomy.	Stated conservative preservation and evaluation over the original source signature.
+3	major	4	accepted	A Boolean decision matrix is not the same object as its positive taxonomy relation.	Introduced separate matrix and positive-relation notation and handled bottom separately.
+3	major	5	accepted	Fail-closed publication does not guarantee that a worker terminates or returns an answer.	Stated that fallback may timeout, exhaust memory, or decline, in which case no result is published.
+3	major	6	accepted	Performance comparisons are meaningful only on named conditioning populations.	Qualified abstract, results, discussion, and conclusion claims by adjudicated or shared-correct populations.
+3	major	7	accepted	The experiment measured end-to-end behavior rather than orchestration alone.	Removed the overhead inference and explicitly stated that orchestration overhead was not isolated.
+3	minor	1	accepted	Observable definitions reduce ambiguity across system and process claims.	Defined certificates, digests, meaningful incrementality, explanation minimization, and telemetry units at first relevant use.
+3	minor	2	accepted	Stable primary records now identify both direct predecessors without relying on reconstructed metadata.	Added exact Moose and Baobab titles, authors, arXiv identifiers, and citations to the lineage passage.
+3	minor	3	accepted	The two telemetry archives need a precise non-overlap convention.	Specified the half-open platform boundary and prohibited summing incompatible counters.
+4	major	1	accepted	The protocol mixed executed and hypothetical procedures in one dense paragraph.	Split OBO execution, BioPortal sampling, preprocessing, and serialization into separate paragraphs.
+4	major	2	accepted	Repeated caveats obscure rather than strengthen the non-additivity constraint.	Centralized the unit distinction and retained only context-specific qualifications.
+4	major	3	accepted	The main result should precede operational recovery detail.	Kept the aggregate result in Results and confined recovery narration to the source-level adjudication passage.
+4	major	4	accepted	Process conclusions should describe evidence rather than advertise it.	Replaced promotional language with an analytical process account and explicit causal limits.
+4	minor	1	accepted	Dense compounds slow readers outside the immediate specialty.	Expanded core terms and simplified abstract and architecture clauses.
+4	minor	2	accepted	Counts and chronology are easier to scan when separated by evidential role.	Split route distributions from interpretation and separated phase tables from milestone narration.
+4	minor	3	accepted	The evidence supports a design choice, not universal transferability or categorical novelty.	Changed the claim to a testable design choice and removed promotional novelty constructions.
+5	major	1	accepted	Cross-disciplinary readers need relationships among the logic, profiles, procedures, and certification claim.	Introduced OWL 2 DL, SROIQ, EL and EL++, proof-carrying publication, and hypertableau in reader-oriented language.
+5	major	2	accepted	Rule vocabulary otherwise assumes specialist familiarity.	Defined contexts, literals, hyperresolution, factoring, subsumption, blocking, dependencies, clashes, and unravelling.
+5	major	3	accepted	A stable glossary can be generated directly from the release route catalogue and option constants.	Added a fail-closed renderer that expands all 39 public route bundles from routing.rs into TSV and TeX supplements.
+5	major	4	accepted	The original notation merged semantically distinct objects.	Separated the total Boolean matrix, positive taxonomy, bottom queries, and consistency value.
+5	major	5	accepted	Readers need to know what state and identity the incremental contract preserves.	Defined revisions, source digests, retained state, meaningful deltas, migration, and receipt fields.
+5	major	6	accepted	Profile and ontology labels need scope at their first substantive use.	Expanded profile families and named biomedical ontologies and identified overlap among profile counts.
+5	minor	1	accepted	Infrastructure acronyms and units should not be left implicit.	Expanded RDF, OSGi, UTC, SWRL, and GiB at first relevant use and described telemetry units.
+5	minor	2	accepted	One-clause algorithm descriptions are sufficient for the claimed explanation interface.	Defined deletion minimization, monotone delta debugging, and deterministic hitting-set search.
+5	minor	3	accepted	The generated glossary now follows the release catalogue and expands common and route-local settings mechanically.	Added route-glossary generation to the paper checks and documented regeneration.
+6	major	1	accepted	The direct research lineage is part of the method and contribution boundary.	Added Moose and Baobab to the precursor chronology and added source-verified publication citations for both projects.
+6	major	2	accepted	The verified R2O2* primary article provides the relevant learned portfolio comparison.	Added a scoped comparison among learned reasoner ranking, MORe partitioning, and KM's source-feature internal selector.
+6	major	3	accepted	Readers need to understand why three procedures appear in one architecture.	Strengthened the foundational positioning of EL completion, consequence-based saturation, and hypertableau in Background.
+6	major	4	accepted	Primary certifying-computation work supports a precise producer/checker comparison.	Added the certifying-computation citation, explicit residual trust assumptions, and a dimension-by-dimension verification-boundary table.
+6	major	5	accepted	Primary incremental-classification and proof-oriented explanation articles were verified.	Added Cuenca Grau et al. and Evonne, and distinguished KM's regression evidence and source justifications from workload evaluation and proof visualisation.
+6	major	6	accepted	The scope requires clearer boundaries around agentic evidence and biomedical evaluation.	Expanded the process-evidence limitations and separated historical ORE, current OBO, BioPortal protocol, and named hard cases.
+6	minor	1	accepted	Libraries, editor integration, and baselines occupy different comparison roles.	Positioned Horned-OWL as frontend infrastructure, Protégé and OWLAPI as interfaces, and reasoners as empirical baselines.
+6	minor	2	accepted	The certifying-computation source set and comparison dimensions are now explicit.	Added a synthesis table covering logic scope, verified object, negative-result treatment, and producer boundary.
+7	major	1	accepted	The cited Horned-OWL source does not support Turtle parsing.	Attributed OWL/XML and RDF/XML to Horned-OWL and described Turtle as a separate RDF-parser path.
+7	major	2	accepted	OpenHands covers broader agent tasks than bounded issue resolution.	Distinguished SWE-agent software repair from OpenHands software, browsing, and general-assistance evaluations.
+7	major	3	accepted	The Sequoia paper describes an early prototype, so mature was unsupported.	Replaced the maturity characterization with a supported systems-engineering statement.
+7	major	4	accepted	Complete metadata improves bibliographic auditability.	Added verified issue, editor, publisher, volume, page, DOI, and source-record metadata to the five records.
+7	minor	1	accepted	Occurrence-level evidence can be generated without weakening the existing key audit.	Added a renderer binding every citation occurrence to its line, claim context, audited source, and verification status.

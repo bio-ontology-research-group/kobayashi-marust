@@ -1,0 +1,26 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/poro.ofn
+M	source_sha256	dc5b1602294985cd4070c846bc8f16f12c5cd7fc7c545bac3be8f81472fb4be6
+M	axioms	5653
+M	logical_axioms	1404
+M	classes	896
+M	object_properties	54
+M	data_properties	0
+M	individuals	2
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	54
+V	OWL2EL	LastPropertyInChainNotInImposedRange	4
+V	OWL2EL	UseOfIllegalAxiom	13
+V	OWL2EL	UseOfIllegalClassExpression	37
+P	OWL2QL	false	117
+V	OWL2QL	UseOfIllegalAxiom	23
+V	OWL2QL	UseOfNonAtomicClassExpression	2
+V	OWL2QL	UseOfNonSubClassExpression	65
+V	OWL2QL	UseOfNonSuperClassExpression	27
+P	OWL2RL	false	351
+V	OWL2RL	UseOfIllegalAxiom	2
+V	OWL2RL	UseOfNonEquivalentClassExpression	59
+V	OWL2RL	UseOfNonSubClassExpression	6
+V	OWL2RL	UseOfNonSuperClassExpression	284
+Z	complete

@@ -1,0 +1,17 @@
+case	role	commit	date	subject
+el_role_chains	proposal	f56ee7134aa29495ed244dd2836c13fb4831aa9b	2026-06-09	el_route: n-ary conjunction + route role-chain onts to completion (sound)
+el_role_chains	conservative_revert	2810ff89b1a2ba46e8d4fc7cd7652c1d967e480a	2026-06-09	el_route: revert role-chain routing to completion (it was unsound)
+el_role_chains	identity_fix_and_reinstatement	6d08e2cdaa08fcbfc09d517696982e87ac1071fe	2026-06-09	el_route: route EL ontologies with role chains to completion
+disjunct_harvest	proposal	83466c4cd94796298bd2205367d2ff1b82b03800	2026-06-19	HT: global common-disjunct harvest (KM_HT_HARVEST) + pairwise blocking (KM_HT_BLOCK=3)
+disjunct_harvest	rejection	ccf269119e381d59ca80c40559158a172dde2959	2026-06-19	HT: document M3 harvest as KNOWN-UNSOUND (over-approximation), keep gated off
+disjunct_harvest	isolated_repair	507274938b5e843f6483b90f173284a6c541755e	2026-06-19	HT: make M3 harvest SOUND via isolated per-disjunct saturation; recovers 4205
+excluded_middle	proposal	28597d44e0d1be3cf0b9bbe2976527caa4189ecc	2026-06-17	emelim: complementary-definer excluded-middle elimination (HT + CB) — HermiT's model fold
+excluded_middle	completeness_guard	554fc8781465a094d27097f5f589c0ecccc9924b	2026-06-18	cb_to_ht EMELIM: completeness guard — never fold a consequence-bearing pair that is not independently derivable
+excluded_middle	corpus_confirmation	5f8d5ed5fcf69f3f7f668fd8b50344c9a700d8d7	2026-06-18	results: confirm EMELIM completeness fix corpus-wide (ht_emelim 564/0/0/23)
+ht_publication	proof_boundary	48cc0478d6e7d528e99288640b2a4150c4cd8bdc	2026-08-20	Align certified folds and expose regular-model boundary
+ht_publication	finite_endpoint_reduction	e36d2e6b8715354361c6f421d62ef7cf18abdd27	2026-08-20	Reduce regular HT checking to finite endpoints
+ht_publication	runtime_evidence_change	de280e09fb62afe802ecb2f17ab979ad8f41535a	2026-08-20	Emit regular HT model certificates
+v1_3_routing	conservative_fence	4ff0a3b81a9b7fd4e7eabdd70a74811d8d954147	2026-08-30	Fence singleton semantics from ABox production
+v1_3_routing	publication_theorem	483186292485f918c31ac145adf418a4f413027b	2026-08-30	Certify incremental and explanation publications
+v1_3_routing	feature_based_repair	5c64a024e0e90b21a9a24521f841c71d36e45881	2026-08-30	Route identity-heavy ABoxes through exact HT probe
+v1_3_routing	release_evidence	f4738bcdd980a1b2fcc840e4b455d37d447510cb	2026-08-30	Record v1.3.0 release evidence

@@ -1,0 +1,19 @@
+{
+  "aggregate_sha256": "e461a10802b95cb0be08e2e12ae09dd96f9a51bc92f71cd98d6d812a7f980998",
+  "baselines": [
+    "km",
+    "konclude",
+    "hermit",
+    "jfact",
+    "openllet",
+    "more",
+    "elk",
+    "whelk"
+  ],
+  "disagreements": 17,
+  "ontologies": 189,
+  "result_record_manifest_sha256": "02a9e381dc6cf121556ce34a01c1adcf2e9502fab7e2db4e9ed05001e487c880",
+  "result_records": 1512,
+  "schema": 1,
+  "status": "verified"
+}

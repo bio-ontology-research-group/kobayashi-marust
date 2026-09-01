@@ -1,0 +1,37 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/mcro.ofn
+M	source_sha256	a207130d32f186a2e7e1e2c8da3b17993ab4a5193183dc82beb2a4cf6530ec78
+M	axioms	9145
+M	logical_axioms	2193
+M	classes	942
+M	object_properties	146
+M	data_properties	26
+M	individuals	25
+P	OWL2	true	0
+P	OWL2DL	false	10
+V	OWL2DL	IllegalPunning	9
+V	OWL2DL	UseOfReservedVocabularyForClassIRI	1
+P	OWL2EL	false	207
+V	OWL2EL	IllegalPunning	9
+V	OWL2EL	LastPropertyInChainNotInImposedRange	14
+V	OWL2EL	UseOfIllegalAxiom	52
+V	OWL2EL	UseOfIllegalClassExpression	117
+V	OWL2EL	UseOfIllegalDataRange	4
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	3
+V	OWL2EL	UseOfObjectPropertyInverse	7
+V	OWL2EL	UseOfReservedVocabularyForClassIRI	1
+P	OWL2QL	false	145
+V	OWL2QL	IllegalPunning	9
+V	OWL2QL	UseOfIllegalAxiom	40
+V	OWL2QL	UseOfIllegalDataRange	4
+V	OWL2QL	UseOfNonSubClassExpression	24
+V	OWL2QL	UseOfNonSuperClassExpression	67
+V	OWL2QL	UseOfReservedVocabularyForClassIRI	1
+P	OWL2RL	false	721
+V	OWL2RL	IllegalPunning	9
+V	OWL2RL	UseOfIllegalAxiom	4
+V	OWL2RL	UseOfNonEquivalentClassExpression	22
+V	OWL2RL	UseOfNonSubClassExpression	2
+V	OWL2RL	UseOfNonSuperClassExpression	683
+V	OWL2RL	UseOfReservedVocabularyForClassIRI	1
+Z	complete

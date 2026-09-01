@@ -1,0 +1,32 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/ohmi.ofn
+M	source_sha256	8fa634fe1cba7b5017188fe91aa58efe6ce3ed265700b30ada04b9c5fd6dd630
+M	axioms	17105
+M	logical_axioms	3723
+M	classes	1724
+M	object_properties	150
+M	data_properties	4
+M	individuals	32
+P	OWL2	true	0
+P	OWL2DL	false	3
+V	OWL2DL	UseOfReservedVocabularyForAnnotationPropertyIRI	3
+P	OWL2EL	false	174
+V	OWL2EL	LastPropertyInChainNotInImposedRange	71
+V	OWL2EL	UseOfIllegalAxiom	46
+V	OWL2EL	UseOfIllegalClassExpression	40
+V	OWL2EL	UseOfIllegalDataRange	1
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	3
+V	OWL2EL	UseOfObjectPropertyInverse	10
+V	OWL2EL	UseOfReservedVocabularyForAnnotationPropertyIRI	3
+P	OWL2QL	false	574
+V	OWL2QL	UseOfIllegalAxiom	67
+V	OWL2QL	UseOfIllegalDataRange	1
+V	OWL2QL	UseOfNonSubClassExpression	397
+V	OWL2QL	UseOfNonSuperClassExpression	106
+V	OWL2QL	UseOfReservedVocabularyForAnnotationPropertyIRI	3
+P	OWL2RL	false	1591
+V	OWL2RL	UseOfIllegalDataRange	1
+V	OWL2RL	UseOfNonEquivalentClassExpression	396
+V	OWL2RL	UseOfNonSuperClassExpression	1191
+V	OWL2RL	UseOfReservedVocabularyForAnnotationPropertyIRI	3
+Z	complete

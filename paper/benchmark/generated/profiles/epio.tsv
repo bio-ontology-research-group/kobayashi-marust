@@ -1,0 +1,22 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/epio.ofn
+M	source_sha256	698ce3c6d9442a3ae91be45c10a6d742743d8532709eec80d901f1230d515017
+M	axioms	27463
+M	logical_axioms	2044
+M	classes	1916
+M	object_properties	12
+M	data_properties	0
+M	individuals	1
+P	OWL2	true	0
+P	OWL2DL	false	2
+V	OWL2DL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2EL	false	2
+V	OWL2EL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2QL	false	14
+V	OWL2QL	UseOfNonSubClassExpression	12
+V	OWL2QL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+P	OWL2RL	false	62
+V	OWL2RL	UseOfNonEquivalentClassExpression	12
+V	OWL2RL	UseOfNonSuperClassExpression	48
+V	OWL2RL	UseOfReservedVocabularyForAnnotationPropertyIRI	2
+Z	complete

@@ -1,0 +1,7 @@
+Prefix(:=<http://example.org/km-paper-test#>)
+Ontology(
+ Declaration(NamedIndividual(:x))
+ Declaration(Class(:A))
+ ClassAssertion(:A :x)
+ ClassAssertion(ObjectComplementOf(:A) :x)
+)

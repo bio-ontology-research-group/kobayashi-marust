@@ -1,0 +1,2084 @@
+{
+  "schema_version": 5,
+  "pricing": {
+    "source": "fetched",
+    "table_version": "2026-08-30T12:47:03Z",
+    "latest_row_updated_at": "2026-08-30T12:47:03.674Z",
+    "custom_override_count": 0,
+    "effective_row_count": 2867,
+    "digest": "sha256:0f00431bb621d7412fe6429afb3eea5c87f7fd5cd68dd46d288fd340233b97cc",
+    "cost_source": "computed",
+    "fallback": {
+      "used": true,
+      "models": [
+        "claude-fable-5",
+        "claude-opus-4-8",
+        "claude-opus-5"
+      ]
+    },
+    "models": {
+      "claude-fable-5": {
+        "cost_source": "computed",
+        "resolutions": [
+          {
+            "priced_model": "claude-fable-5",
+            "matched_pattern": "claude-fable-5",
+            "input_cost_per_mtok": {
+              "microdollars": 10000000
+            },
+            "output_cost_per_mtok": {
+              "microdollars": 50000000
+            },
+            "cache_write_cost_per_mtok": {
+              "microdollars": 12500000
+            },
+            "cache_read_cost_per_mtok": {
+              "microdollars": 1000000
+            },
+            "cost_source": "computed",
+            "bands": null,
+            "application": {
+              "base_request_count": 10,
+              "aggregate_row_count": 0,
+              "bands": null
+            }
+          }
+        ]
+      },
+      "claude-opus-4-8": {
+        "cost_source": "computed",
+        "resolutions": [
+          {
+            "priced_model": "claude-opus-4-8",
+            "matched_pattern": "claude-opus-4-8",
+            "input_cost_per_mtok": {
+              "microdollars": 5000000
+            },
+            "output_cost_per_mtok": {
+              "microdollars": 25000000
+            },
+            "cache_write_cost_per_mtok": {
+              "microdollars": 6250000
+            },
+            "cache_read_cost_per_mtok": {
+              "microdollars": 500000
+            },
+            "cost_source": "computed",
+            "bands": null,
+            "application": {
+              "base_request_count": 1383,
+              "aggregate_row_count": 0,
+              "bands": null
+            }
+          }
+        ]
+      },
+      "claude-opus-5": {
+        "cost_source": "computed",
+        "resolutions": [
+          {
+            "priced_model": "claude-opus-5",
+            "matched_pattern": "claude-opus-5",
+            "input_cost_per_mtok": {
+              "microdollars": 5000000
+            },
+            "output_cost_per_mtok": {
+              "microdollars": 25000000
+            },
+            "cache_write_cost_per_mtok": {
+              "microdollars": 6250000
+            },
+            "cache_read_cost_per_mtok": {
+              "microdollars": 500000
+            },
+            "cost_source": "computed",
+            "bands": null,
+            "application": {
+              "base_request_count": 456,
+              "aggregate_row_count": 0,
+              "bands": null
+            }
+          }
+        ]
+      },
+      "gpt-5.6-sol": {
+        "cost_source": "computed",
+        "resolutions": [
+          {
+            "priced_model": "gpt-5.6-sol",
+            "matched_pattern": "gpt-5.6-sol",
+            "input_cost_per_mtok": {
+              "microdollars": 4000000
+            },
+            "output_cost_per_mtok": {
+              "microdollars": 20000000
+            },
+            "cache_write_cost_per_mtok": {
+              "microdollars": 5000000
+            },
+            "cache_read_cost_per_mtok": {
+              "microdollars": 400000
+            },
+            "cost_source": "computed",
+            "bands": [
+              {
+                "above_input_tokens": 272000,
+                "input_cost_per_mtok": {
+                  "microdollars": 8000000
+                },
+                "output_cost_per_mtok": {
+                  "microdollars": 30000000
+                },
+                "cache_write_cost_per_mtok": {
+                  "microdollars": 10000000
+                },
+                "cache_read_cost_per_mtok": {
+                  "microdollars": 800000
+                }
+              }
+            ],
+            "application": {
+              "base_request_count": 124179,
+              "aggregate_row_count": 0,
+              "bands": [
+                {
+                  "above_input_tokens": 272000,
+                  "request_count": 383
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "projects": {
+    "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d": {
+      "display_label": "kobayashi_marust",
+      "resolution": "resolved",
+      "identity": {
+        "key": "p1:sha256:6abc117c10406a6ab3ffa796ab1b9cbe7d3560ad2222886c1a3f6b4c8362ad28",
+        "kind": "git_remote",
+        "normalized_remote": "github.com/bio-ontology-research-group/kobayashi-marust",
+        "repository_key": "repo1:sha256:ae47c850eab8a2cec06cc3554fffa79c83d2281ae3214e221da7f342fe141d5e"
+      }
+    }
+  },
+  "daily": [
+    {
+      "date": "2026-07-11",
+      "inputTokens": 4075068,
+      "outputTokens": 257113,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 196787456,
+      "totalCost": {
+        "microdollars": 133395870
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 4075068,
+          "outputTokens": 257113,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 196787456,
+          "cost": {
+            "microdollars": 133395870
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 4075068,
+          "outputTokens": 257113,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 196787456,
+          "cost": {
+            "microdollars": 133395870
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 4075068,
+          "outputTokens": 257113,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 196787456,
+          "cost": {
+            "microdollars": 133395870
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 4075068,
+          "outputTokens": 257113,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 196787456,
+          "cost": {
+            "microdollars": 133395870
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-12",
+      "inputTokens": 3727697,
+      "outputTokens": 214526,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 134119168,
+      "totalCost": {
+        "microdollars": 87682606
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 3727697,
+          "outputTokens": 214526,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 134119168,
+          "cost": {
+            "microdollars": 87682606
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 3727697,
+          "outputTokens": 214526,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 134119168,
+          "cost": {
+            "microdollars": 87682606
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 3727697,
+          "outputTokens": 214526,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 134119168,
+          "cost": {
+            "microdollars": 87682606
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 3727697,
+          "outputTokens": 214526,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 134119168,
+          "cost": {
+            "microdollars": 87682606
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-13",
+      "inputTokens": 6058688,
+      "outputTokens": 531225,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 316029184,
+      "totalCost": {
+        "microdollars": 168966089
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 6058688,
+          "outputTokens": 531225,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 316029184,
+          "cost": {
+            "microdollars": 168966089
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 6058688,
+          "outputTokens": 531225,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 316029184,
+          "cost": {
+            "microdollars": 168966089
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 6058688,
+          "outputTokens": 531225,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 316029184,
+          "cost": {
+            "microdollars": 168966089
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 6058688,
+          "outputTokens": 531225,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 316029184,
+          "cost": {
+            "microdollars": 168966089
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-14",
+      "inputTokens": 7694948,
+      "outputTokens": 778027,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 397849856,
+      "totalCost": {
+        "microdollars": 205480288
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 7694948,
+          "outputTokens": 778027,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 397849856,
+          "cost": {
+            "microdollars": 205480288
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 7694948,
+          "outputTokens": 778027,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 397849856,
+          "cost": {
+            "microdollars": 205480288
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 7694948,
+          "outputTokens": 778027,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 397849856,
+          "cost": {
+            "microdollars": 205480288
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 7694948,
+          "outputTokens": 778027,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 397849856,
+          "cost": {
+            "microdollars": 205480288
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-15",
+      "inputTokens": 9865898,
+      "outputTokens": 1049163,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 468238080,
+      "totalCost": {
+        "microdollars": 247742091
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 9865898,
+          "outputTokens": 1049163,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 468238080,
+          "cost": {
+            "microdollars": 247742091
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 9865898,
+          "outputTokens": 1049163,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 468238080,
+          "cost": {
+            "microdollars": 247742091
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 9865898,
+          "outputTokens": 1049163,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 468238080,
+          "cost": {
+            "microdollars": 247742091
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 9865898,
+          "outputTokens": 1049163,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 468238080,
+          "cost": {
+            "microdollars": 247742091
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-16",
+      "inputTokens": 9977722,
+      "outputTokens": 805358,
+      "cacheCreationTokens": 369534,
+      "cacheReadTokens": 359480890,
+      "totalCost": {
+        "microdollars": 203005535
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol",
+        "claude-opus-4-8"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 9977588,
+          "outputTokens": 748606,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 353464832,
+          "cost": {
+            "microdollars": 196268437
+          }
+        },
+        {
+          "modelName": "claude-opus-4-8",
+          "inputTokens": 134,
+          "outputTokens": 56752,
+          "cacheCreationTokens": 369534,
+          "cacheReadTokens": 6016058,
+          "cost": {
+            "microdollars": 6737098
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 9977722,
+          "outputTokens": 805358,
+          "cacheCreationTokens": 369534,
+          "cacheReadTokens": 359480890,
+          "cost": {
+            "microdollars": 203005535
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 9977588,
+          "outputTokens": 748606,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 353464832,
+          "cost": {
+            "microdollars": 196268437
+          }
+        },
+        {
+          "agent": "claude",
+          "inputTokens": 134,
+          "outputTokens": 56752,
+          "cacheCreationTokens": 369534,
+          "cacheReadTokens": 6016058,
+          "cost": {
+            "microdollars": 6737098
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 9977722,
+          "outputTokens": 805358,
+          "cacheCreationTokens": 369534,
+          "cacheReadTokens": 359480890,
+          "cost": {
+            "microdollars": 203005535
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-17",
+      "inputTokens": 3312102,
+      "outputTokens": 1490754,
+      "cacheCreationTokens": 3484372,
+      "cacheReadTokens": 332417104,
+      "totalCost": {
+        "microdollars": 218041817
+      },
+      "modelsUsed": [
+        "claude-opus-4-8",
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "claude-opus-4-8",
+          "inputTokens": 4730,
+          "outputTokens": 1248387,
+          "cacheCreationTokens": 3484372,
+          "cacheReadTokens": 139873872,
+          "cost": {
+            "microdollars": 122947725
+          }
+        },
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 3307372,
+          "outputTokens": 242367,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 192543232,
+          "cost": {
+            "microdollars": 95094092
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 3312102,
+          "outputTokens": 1490754,
+          "cacheCreationTokens": 3484372,
+          "cacheReadTokens": 332417104,
+          "cost": {
+            "microdollars": 218041817
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "claude",
+          "inputTokens": 4730,
+          "outputTokens": 1248387,
+          "cacheCreationTokens": 3484372,
+          "cacheReadTokens": 139873872,
+          "cost": {
+            "microdollars": 122947725
+          }
+        },
+        {
+          "agent": "codex",
+          "inputTokens": 3307372,
+          "outputTokens": 242367,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 192543232,
+          "cost": {
+            "microdollars": 95094092
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 3312102,
+          "outputTokens": 1490754,
+          "cacheCreationTokens": 3484372,
+          "cacheReadTokens": 332417104,
+          "cost": {
+            "microdollars": 218041817
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-30",
+      "inputTokens": 6704179,
+      "outputTokens": 1032932,
+      "cacheCreationTokens": 778660,
+      "cacheReadTokens": 627171281,
+      "totalCost": {
+        "microdollars": 315008420
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol",
+        "claude-opus-5"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 6703327,
+          "outputTokens": 721919,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 524751360,
+          "cost": {
+            "microdollars": 251152200
+          }
+        },
+        {
+          "modelName": "claude-opus-5",
+          "inputTokens": 852,
+          "outputTokens": 311013,
+          "cacheCreationTokens": 778660,
+          "cacheReadTokens": 102419921,
+          "cost": {
+            "microdollars": 63856220
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 6704179,
+          "outputTokens": 1032932,
+          "cacheCreationTokens": 778660,
+          "cacheReadTokens": 627171281,
+          "cost": {
+            "microdollars": 315008420
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 6703327,
+          "outputTokens": 721919,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 524751360,
+          "cost": {
+            "microdollars": 251152200
+          }
+        },
+        {
+          "agent": "claude",
+          "inputTokens": 852,
+          "outputTokens": 311013,
+          "cacheCreationTokens": 778660,
+          "cacheReadTokens": 102419921,
+          "cost": {
+            "microdollars": 63856220
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 6704179,
+          "outputTokens": 1032932,
+          "cacheCreationTokens": 778660,
+          "cacheReadTokens": 627171281,
+          "cost": {
+            "microdollars": 315008420
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-31",
+      "inputTokens": 11032318,
+      "outputTokens": 1179120,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 828384768,
+      "totalCost": {
+        "microdollars": 399065539
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 11032318,
+          "outputTokens": 1179120,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 828384768,
+          "cost": {
+            "microdollars": 399065539
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 11032318,
+          "outputTokens": 1179120,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 828384768,
+          "cost": {
+            "microdollars": 399065539
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 11032318,
+          "outputTokens": 1179120,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 828384768,
+          "cost": {
+            "microdollars": 399065539
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 11032318,
+          "outputTokens": 1179120,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 828384768,
+          "cost": {
+            "microdollars": 399065539
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-01",
+      "inputTokens": 12223573,
+      "outputTokens": 1129552,
+      "cacheCreationTokens": 118499,
+      "cacheReadTokens": 928517888,
+      "totalCost": {
+        "microdollars": 444753721
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol",
+        "claude-fable-5",
+        "claude-opus-5"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 12223546,
+          "outputTokens": 1115311,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 927984384,
+          "cost": {
+            "microdollars": 442394150
+          }
+        },
+        {
+          "modelName": "claude-fable-5",
+          "inputTokens": 19,
+          "outputTokens": 12276,
+          "cacheCreationTokens": 76586,
+          "cacheReadTokens": 420762,
+          "cost": {
+            "microdollars": 1992078
+          }
+        },
+        {
+          "modelName": "claude-opus-5",
+          "inputTokens": 8,
+          "outputTokens": 1965,
+          "cacheCreationTokens": 41913,
+          "cacheReadTokens": 112742,
+          "cost": {
+            "microdollars": 367493
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 12223573,
+          "outputTokens": 1129552,
+          "cacheCreationTokens": 118499,
+          "cacheReadTokens": 928517888,
+          "cost": {
+            "microdollars": 444753721
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 12223546,
+          "outputTokens": 1115311,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 927984384,
+          "cost": {
+            "microdollars": 442394150
+          }
+        },
+        {
+          "agent": "claude",
+          "inputTokens": 27,
+          "outputTokens": 14241,
+          "cacheCreationTokens": 118499,
+          "cacheReadTokens": 533504,
+          "cost": {
+            "microdollars": 2359571
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 12223573,
+          "outputTokens": 1129552,
+          "cacheCreationTokens": 118499,
+          "cacheReadTokens": 928517888,
+          "cost": {
+            "microdollars": 444753721
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "inputTokens": 10187465,
+      "outputTokens": 934292,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 857380096,
+      "totalCost": {
+        "microdollars": 402387723
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 10187465,
+          "outputTokens": 934292,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 857380096,
+          "cost": {
+            "microdollars": 402387723
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 10187465,
+          "outputTokens": 934292,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 857380096,
+          "cost": {
+            "microdollars": 402387723
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 10187465,
+          "outputTokens": 934292,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 857380096,
+          "cost": {
+            "microdollars": 402387723
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 10187465,
+          "outputTokens": 934292,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 857380096,
+          "cost": {
+            "microdollars": 402387723
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-03",
+      "inputTokens": 8862940,
+      "outputTokens": 719976,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 812553984,
+      "totalCost": {
+        "microdollars": 374872885
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 8862940,
+          "outputTokens": 719976,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 812553984,
+          "cost": {
+            "microdollars": 374872885
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 8862940,
+          "outputTokens": 719976,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 812553984,
+          "cost": {
+            "microdollars": 374872885
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 8862940,
+          "outputTokens": 719976,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 812553984,
+          "cost": {
+            "microdollars": 374872885
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 8862940,
+          "outputTokens": 719976,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 812553984,
+          "cost": {
+            "microdollars": 374872885
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-04",
+      "inputTokens": 10947905,
+      "outputTokens": 947299,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 872008448,
+      "totalCost": {
+        "microdollars": 411540979
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 10947905,
+          "outputTokens": 947299,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 872008448,
+          "cost": {
+            "microdollars": 411540979
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 10947905,
+          "outputTokens": 947299,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 872008448,
+          "cost": {
+            "microdollars": 411540979
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 10947905,
+          "outputTokens": 947299,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 872008448,
+          "cost": {
+            "microdollars": 411540979
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 10947905,
+          "outputTokens": 947299,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 872008448,
+          "cost": {
+            "microdollars": 411540979
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-05",
+      "inputTokens": 8974280,
+      "outputTokens": 884206,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 936903168,
+      "totalCost": {
+        "microdollars": 428342518
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 8974280,
+          "outputTokens": 884206,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 936903168,
+          "cost": {
+            "microdollars": 428342518
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 8974280,
+          "outputTokens": 884206,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 936903168,
+          "cost": {
+            "microdollars": 428342518
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 8974280,
+          "outputTokens": 884206,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 936903168,
+          "cost": {
+            "microdollars": 428342518
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 8974280,
+          "outputTokens": 884206,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 936903168,
+          "cost": {
+            "microdollars": 428342518
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-13",
+      "inputTokens": 8434374,
+      "outputTokens": 708111,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 621087488,
+      "totalCost": {
+        "microdollars": 296334725
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 8434374,
+          "outputTokens": 708111,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 621087488,
+          "cost": {
+            "microdollars": 296334725
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 8434374,
+          "outputTokens": 708111,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 621087488,
+          "cost": {
+            "microdollars": 296334725
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 8434374,
+          "outputTokens": 708111,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 621087488,
+          "cost": {
+            "microdollars": 296334725
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 8434374,
+          "outputTokens": 708111,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 621087488,
+          "cost": {
+            "microdollars": 296334725
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-14",
+      "inputTokens": 12056378,
+      "outputTokens": 1250177,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 968439552,
+      "totalCost": {
+        "microdollars": 460604855
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 12056378,
+          "outputTokens": 1250177,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 968439552,
+          "cost": {
+            "microdollars": 460604855
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 12056378,
+          "outputTokens": 1250177,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 968439552,
+          "cost": {
+            "microdollars": 460604855
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 12056378,
+          "outputTokens": 1250177,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 968439552,
+          "cost": {
+            "microdollars": 460604855
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 12056378,
+          "outputTokens": 1250177,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 968439552,
+          "cost": {
+            "microdollars": 460604855
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-15",
+      "inputTokens": 8069186,
+      "outputTokens": 966318,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 817944320,
+      "totalCost": {
+        "microdollars": 378780816
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 8069186,
+          "outputTokens": 966318,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 817944320,
+          "cost": {
+            "microdollars": 378780816
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 8069186,
+          "outputTokens": 966318,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 817944320,
+          "cost": {
+            "microdollars": 378780816
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 8069186,
+          "outputTokens": 966318,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 817944320,
+          "cost": {
+            "microdollars": 378780816
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 8069186,
+          "outputTokens": 966318,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 817944320,
+          "cost": {
+            "microdollars": 378780816
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-17",
+      "inputTokens": 6251611,
+      "outputTokens": 661877,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 435050496,
+      "totalCost": {
+        "microdollars": 212264197
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 6251611,
+          "outputTokens": 661877,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 435050496,
+          "cost": {
+            "microdollars": 212264197
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 6251611,
+          "outputTokens": 661877,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 435050496,
+          "cost": {
+            "microdollars": 212264197
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 6251611,
+          "outputTokens": 661877,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 435050496,
+          "cost": {
+            "microdollars": 212264197
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 6251611,
+          "outputTokens": 661877,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 435050496,
+          "cost": {
+            "microdollars": 212264197
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-19",
+      "inputTokens": 5367784,
+      "outputTokens": 639077,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 311736320,
+      "totalCost": {
+        "microdollars": 158947225
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 5367784,
+          "outputTokens": 639077,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 311736320,
+          "cost": {
+            "microdollars": 158947225
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 5367784,
+          "outputTokens": 639077,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 311736320,
+          "cost": {
+            "microdollars": 158947225
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 5367784,
+          "outputTokens": 639077,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 311736320,
+          "cost": {
+            "microdollars": 158947225
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 5367784,
+          "outputTokens": 639077,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 311736320,
+          "cost": {
+            "microdollars": 158947225
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-20",
+      "inputTokens": 11099079,
+      "outputTokens": 1311845,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 681939456,
+      "totalCost": {
+        "microdollars": 343408978
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 11099079,
+          "outputTokens": 1311845,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 681939456,
+          "cost": {
+            "microdollars": 343408978
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 11099079,
+          "outputTokens": 1311845,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 681939456,
+          "cost": {
+            "microdollars": 343408978
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 11099079,
+          "outputTokens": 1311845,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 681939456,
+          "cost": {
+            "microdollars": 343408978
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 11099079,
+          "outputTokens": 1311845,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 681939456,
+          "cost": {
+            "microdollars": 343408978
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-21",
+      "inputTokens": 12275949,
+      "outputTokens": 1482654,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 705805824,
+      "totalCost": {
+        "microdollars": 361079223
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 12275949,
+          "outputTokens": 1482654,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 705805824,
+          "cost": {
+            "microdollars": 361079223
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 12275949,
+          "outputTokens": 1482654,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 705805824,
+          "cost": {
+            "microdollars": 361079223
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 12275949,
+          "outputTokens": 1482654,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 705805824,
+          "cost": {
+            "microdollars": 361079223
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 12275949,
+          "outputTokens": 1482654,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 705805824,
+          "cost": {
+            "microdollars": 361079223
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-22",
+      "inputTokens": 12930307,
+      "outputTokens": 1437226,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 776075008,
+      "totalCost": {
+        "microdollars": 390895737
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 12930307,
+          "outputTokens": 1437226,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 776075008,
+          "cost": {
+            "microdollars": 390895737
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 12930307,
+          "outputTokens": 1437226,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 776075008,
+          "cost": {
+            "microdollars": 390895737
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 12930307,
+          "outputTokens": 1437226,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 776075008,
+          "cost": {
+            "microdollars": 390895737
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 12930307,
+          "outputTokens": 1437226,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 776075008,
+          "cost": {
+            "microdollars": 390895737
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-23",
+      "inputTokens": 13691034,
+      "outputTokens": 1718524,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 741323520,
+      "totalCost": {
+        "microdollars": 385664016
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 13691034,
+          "outputTokens": 1718524,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 741323520,
+          "cost": {
+            "microdollars": 385664016
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 13691034,
+          "outputTokens": 1718524,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 741323520,
+          "cost": {
+            "microdollars": 385664016
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 13691034,
+          "outputTokens": 1718524,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 741323520,
+          "cost": {
+            "microdollars": 385664016
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 13691034,
+          "outputTokens": 1718524,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 741323520,
+          "cost": {
+            "microdollars": 385664016
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-24",
+      "inputTokens": 9232006,
+      "outputTokens": 1005402,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 507235584,
+      "totalCost": {
+        "microdollars": 259930293
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 9232006,
+          "outputTokens": 1005402,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 507235584,
+          "cost": {
+            "microdollars": 259930293
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 9232006,
+          "outputTokens": 1005402,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 507235584,
+          "cost": {
+            "microdollars": 259930293
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 9232006,
+          "outputTokens": 1005402,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 507235584,
+          "cost": {
+            "microdollars": 259930293
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 9232006,
+          "outputTokens": 1005402,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 507235584,
+          "cost": {
+            "microdollars": 259930293
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-25",
+      "inputTokens": 9364063,
+      "outputTokens": 1303011,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 649948416,
+      "totalCost": {
+        "microdollars": 323495840
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 9364063,
+          "outputTokens": 1303011,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 649948416,
+          "cost": {
+            "microdollars": 323495840
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 9364063,
+          "outputTokens": 1303011,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 649948416,
+          "cost": {
+            "microdollars": 323495840
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 9364063,
+          "outputTokens": 1303011,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 649948416,
+          "cost": {
+            "microdollars": 323495840
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 9364063,
+          "outputTokens": 1303011,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 649948416,
+          "cost": {
+            "microdollars": 323495840
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-26",
+      "inputTokens": 9730026,
+      "outputTokens": 1308193,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 784161024,
+      "totalCost": {
+        "microdollars": 378748353
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 9730026,
+          "outputTokens": 1308193,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 784161024,
+          "cost": {
+            "microdollars": 378748353
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 9730026,
+          "outputTokens": 1308193,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 784161024,
+          "cost": {
+            "microdollars": 378748353
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 9730026,
+          "outputTokens": 1308193,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 784161024,
+          "cost": {
+            "microdollars": 378748353
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 9730026,
+          "outputTokens": 1308193,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 784161024,
+          "cost": {
+            "microdollars": 378748353
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-27",
+      "inputTokens": 7066821,
+      "outputTokens": 952407,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 583537664,
+      "totalCost": {
+        "microdollars": 280730443
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 7066821,
+          "outputTokens": 952407,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 583537664,
+          "cost": {
+            "microdollars": 280730443
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 7066821,
+          "outputTokens": 952407,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 583537664,
+          "cost": {
+            "microdollars": 280730443
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 7066821,
+          "outputTokens": 952407,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 583537664,
+          "cost": {
+            "microdollars": 280730443
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 7066821,
+          "outputTokens": 952407,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 583537664,
+          "cost": {
+            "microdollars": 280730443
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-29",
+      "inputTokens": 10037506,
+      "outputTokens": 1203245,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 734653184,
+      "totalCost": {
+        "microdollars": 358076148
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 10037506,
+          "outputTokens": 1203245,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 734653184,
+          "cost": {
+            "microdollars": 358076148
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 10037506,
+          "outputTokens": 1203245,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 734653184,
+          "cost": {
+            "microdollars": 358076148
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 10037506,
+          "outputTokens": 1203245,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 734653184,
+          "cost": {
+            "microdollars": 358076148
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 10037506,
+          "outputTokens": 1203245,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 734653184,
+          "cost": {
+            "microdollars": 358076148
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-08-30",
+      "inputTokens": 7600289,
+      "outputTokens": 1008862,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 466720000,
+      "totalCost": {
+        "microdollars": 237266388
+      },
+      "modelsUsed": [
+        "gpt-5.6-sol"
+      ],
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5.6-sol",
+          "inputTokens": 7600289,
+          "outputTokens": 1008862,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 466720000,
+          "cost": {
+            "microdollars": 237266388
+          }
+        }
+      ],
+      "projectBreakdowns": [
+        {
+          "project_key": "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d",
+          "project": "kobayashi_marust",
+          "inputTokens": 7600289,
+          "outputTokens": 1008862,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 466720000,
+          "cost": {
+            "microdollars": 237266388
+          }
+        }
+      ],
+      "agentBreakdowns": [
+        {
+          "agent": "codex",
+          "inputTokens": 7600289,
+          "outputTokens": 1008862,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 466720000,
+          "cost": {
+            "microdollars": 237266388
+          }
+        }
+      ],
+      "machineBreakdowns": [
+        {
+          "machineName": "leechuck-office",
+          "inputTokens": 7600289,
+          "outputTokens": 1008862,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 466720000,
+          "cost": {
+            "microdollars": 237266388
+          }
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "inputTokens": 256851196,
+    "outputTokens": 28910472,
+    "cacheCreationTokens": 4751065,
+    "cacheReadTokens": 17853499227,
+    "totalCost": {
+      "microdollars": 8866513318
+    },
+    "cacheSavings": {
+      "microdollars": 64901562591
+    }
+  },
+  "sessionCounts": {
+    "total": 57,
+    "byProject": {
+      "pl1:sha256:21366b39c76c723b0b4a955a9f8c50d78bb786bc75f09ecb7c9767e18863303d": 57
+    },
+    "byAgent": {
+      "claude": 40,
+      "codex": 17
+    }
+  }
+}

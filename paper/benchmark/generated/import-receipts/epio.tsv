@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/epio.owl
+M	source_sha256	efafdd4605792f69b177702e84665fce845031ab8be3bbc9a030a05bd763dd05
+M	closure_size	1
+M	merged_axioms	27463
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	698ce3c6d9442a3ae91be45c10a6d742743d8532709eec80d901f1230d515017
+I	OntologyID(OntologyIRI(<https://bio.scai.fraunhofer.de/ontology/epilepsy>) VersionIRI(<https://bio.scai.fraunhofer.de/ontology/epilepsy/2021-05-28/EPIO.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/epio.owl	27463
+Z	complete

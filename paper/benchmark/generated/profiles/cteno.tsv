@@ -1,0 +1,30 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/cteno.ofn
+M	source_sha256	67dbf4efbf2be853cce6850ec5d8251c63dfe688b9cd94f0201392b37ef42701
+M	axioms	5765
+M	logical_axioms	1862
+M	classes	668
+M	object_properties	190
+M	data_properties	0
+M	individuals	18
+P	OWL2	true	0
+P	OWL2DL	false	1
+V	OWL2DL	UseOfNonSimplePropertyInCardinalityRestriction	1
+P	OWL2EL	false	187
+V	OWL2EL	LastPropertyInChainNotInImposedRange	87
+V	OWL2EL	UseOfIllegalAxiom	78
+V	OWL2EL	UseOfIllegalClassExpression	18
+V	OWL2EL	UseOfNonSimplePropertyInCardinalityRestriction	1
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	3
+P	OWL2QL	false	376
+V	OWL2QL	UseOfIllegalAxiom	118
+V	OWL2QL	UseOfNonSimplePropertyInCardinalityRestriction	1
+V	OWL2QL	UseOfNonSubClassExpression	242
+V	OWL2QL	UseOfNonSuperClassExpression	15
+P	OWL2RL	false	710
+V	OWL2RL	UseOfIllegalAxiom	33
+V	OWL2RL	UseOfNonEquivalentClassExpression	233
+V	OWL2RL	UseOfNonSimplePropertyInCardinalityRestriction	1
+V	OWL2RL	UseOfNonSubClassExpression	7
+V	OWL2RL	UseOfNonSuperClassExpression	436
+Z	complete

@@ -1,0 +1,47 @@
+{
+ "project": "neuro_symbolic",
+ "window_utc_half_open": [
+  "2026-02-01",
+  "2026-07-11"
+ ],
+ "session_count": 1,
+ "first_started_at": "2026-02-02T06:04:00.768Z",
+ "last_started_at": "2026-02-02T06:04:00.768Z",
+ "fields_removed": [
+  "first_message"
+ ],
+ "fields_scrubbed": {
+  "machine": "laptop"
+ },
+ "sessions": [
+  {
+   "id": "opencode:ses_3e30c947fffed2C623SRPD8Pe3",
+   "project": "neuro_symbolic",
+   "machine": "laptop",
+   "agent": "opencode",
+   "started_at": "2026-02-02T06:04:00.768Z",
+   "ended_at": "2026-02-02T06:06:23.153Z",
+   "message_count": 18,
+   "user_message_count": 2,
+   "total_output_tokens": 5541,
+   "peak_context_tokens": 40289,
+   "has_total_output_tokens": true,
+   "has_peak_context_tokens": true,
+   "is_automated": false,
+   "tool_failure_signal_count": 0,
+   "tool_retry_count": 0,
+   "edit_churn_count": 0,
+   "consecutive_failure_max": 0,
+   "outcome": "completed",
+   "outcome_confidence": "medium",
+   "ended_with_role": "assistant",
+   "final_failure_streak": 0,
+   "compaction_count": 0,
+   "mid_task_compaction_count": 0,
+   "health_score": 100,
+   "health_grade": "A",
+   "secret_leak_count": 0,
+   "created_at": "2026-06-15T09:40:35.879Z"
+  }
+ ]
+}

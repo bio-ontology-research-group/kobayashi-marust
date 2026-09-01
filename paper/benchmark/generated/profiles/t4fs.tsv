@@ -1,0 +1,24 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/t4fs.ofn
+M	source_sha256	4e703bde4279c1fa7aeacf2024316d45565f1170b0d86532fffef8eeb57f9a79
+M	axioms	4229
+M	logical_axioms	774
+M	classes	564
+M	object_properties	27
+M	data_properties	1
+M	individuals	18
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	18
+V	OWL2EL	UseOfIllegalAxiom	12
+V	OWL2EL	UseOfIllegalClassExpression	3
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	3
+P	OWL2QL	false	34
+V	OWL2QL	UseOfIllegalAxiom	6
+V	OWL2QL	UseOfNonSubClassExpression	3
+V	OWL2QL	UseOfNonSuperClassExpression	25
+P	OWL2RL	false	129
+V	OWL2RL	UseOfIllegalAxiom	4
+V	OWL2RL	UseOfNonEquivalentClassExpression	3
+V	OWL2RL	UseOfNonSuperClassExpression	122
+Z	complete

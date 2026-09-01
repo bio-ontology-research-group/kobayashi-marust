@@ -1,0 +1,15 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cheminf.owl
+M	source_sha256	f83a0f0254db17cbc7abf3384cb98b3a40c84b3b304a6e4d3b3382878faab002
+M	closure_size	6
+M	merged_axioms	7335
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	0bfd7be3f5f35d31792535c4fc357ad621d1a929765b02c31441ce44f9955012
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/iao.owl>) VersionIRI(<http://purl.obolibrary.org/obo/iao/2026-03-30/iao.owl>))	http://purl.obolibrary.org/obo/iao.owl	3916
+I	OntologyID(OntologyIRI(<http://semanticchemistry.github.io/semanticchemistry/ontology/cdk.owl>) VersionIRI(<null>))	http://semanticchemistry.github.io/semanticchemistry/ontology/cdk.owl	7
+I	OntologyID(OntologyIRI(<http://semanticchemistry.github.io/semanticchemistry/ontology/cheminf-algorithms.owl>) VersionIRI(<null>))	http://semanticchemistry.github.io/semanticchemistry/ontology/cheminf-algorithms.owl	178
+I	OntologyID(OntologyIRI(<http://semanticchemistry.github.io/semanticchemistry/ontology/cheminf-core.owl>) VersionIRI(<null>))	http://semanticchemistry.github.io/semanticchemistry/ontology/cheminf-core.owl	1603
+I	OntologyID(OntologyIRI(<http://semanticchemistry.github.io/semanticchemistry/ontology/cheminf-external.owl>) VersionIRI(<null>))	http://semanticchemistry.github.io/semanticchemistry/ontology/cheminf-external.owl	440
+I	OntologyID(OntologyIRI(<http://semanticchemistry.github.io/semanticchemistry/ontology/cheminf.owl>) VersionIRI(<null>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cheminf.owl	1651
+Z	complete

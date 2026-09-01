@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/eco.owl
+M	source_sha256	3cd12afd4668455a8d441fcff70592be234e1547d0443ac0631fadf5c95ead2c
+M	closure_size	1
+M	merged_axioms	31359
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	4ddf5fb915924138ee5f87ba1ec2734c6da8382cef6070fc71003746409f673f
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/eco.owl>) VersionIRI(<http://purl.obolibrary.org/obo/eco/releases/2026-07-10/eco.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/eco.owl	31359
+Z	complete

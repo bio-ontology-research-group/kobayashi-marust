@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ons.owl
+M	source_sha256	b63755c7d098c69fdf5d3f97de269d92223a6eea2d8393b1f38ec80eba8a859d
+M	closure_size	1
+M	merged_axioms	28154
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	a1ad3d7cade4f952497b0b856233af775b757f0a32eb43376ca9d8f20f8ec882
+I	OntologyID(OntologyIRI(<https://raw.githubusercontent.com/enpadasi/Ontology-for-Nutritional-Studies/master/ons.owl>) VersionIRI(<https://raw.githubusercontent.com/enpadasi/Ontology-for-Nutritional-Studies/releases/download/2026-02-06/ons.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ons.owl	28154
+Z	complete

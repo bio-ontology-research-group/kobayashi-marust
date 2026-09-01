@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cdno.owl
+M	source_sha256	16d40da53cc56bcadc41add2dbc27d98d2eb40f285c9e26e2c80f2da3fb4c8bb
+M	closure_size	1
+M	merged_axioms	37749
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	c0e4e70ec9448f90661ca40a1bb771977bdd656e8eb5779ba6707e313dd5bff0
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cdno.owl>) VersionIRI(<http://purl.obolibrary.org/obo/cdno/releases/2026-06-10/cdno.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cdno.owl	37749
+Z	complete

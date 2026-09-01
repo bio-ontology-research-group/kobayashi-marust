@@ -1,0 +1,239 @@
+BEGIN	bspo	owlxml
+{info} 14:06:15:950 >> Starting Konclude ... 
+{info} 14:06:15:950 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 14:06:15:950 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 18 2021)
+
+{info} 14:06:15:952 >> Starting classification for '/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/verified-xml/bspo.xml'.
+{info} 14:06:15:953 >> Initializing reasoner. Creating calculation context.
+{warning} 14:06:15:955 >> Annotations are currently not handled.
+{info} 14:06:15:958 >> Reasoner initialized with 16 processing unit(s).
+{info} 14:06:15:969 >> Ontology parsed in 15 ms.
+{info} 14:06:15:969 >> Preprocessing ontology 'http://konclude.com/test/kb'.
+{info} 14:06:15:988 >> Finished preprocessing in 18 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:15:988 >> Precomputing ontology 'http://konclude.com/test/kb', expressiveness 'SROIFV'.
+{info} 14:06:16:001 >> Finished precomputing in 13 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:16:001 >> Classifying ontology 'http://konclude.com/test/kb', expressiveness 'SROIFV'.
+{info} 14:06:16:004 >> Finished class classification in 3 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:16:004 >> Query 'UnnamedClassifyQuery' processed in '0' ms.
+{info} 14:06:16:007 >> Query 'UnnamedWriteClassHierarchyQuery' processed in '3' ms.
+{info} 14:06:16:007 >> Total processing time: 55 ms.
+END	bspo	55028
+BEGIN	cdno	owlxml
+{info} 14:06:16:617 >> Starting Konclude ... 
+{info} 14:06:16:617 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 14:06:16:617 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 18 2021)
+
+{info} 14:06:16:619 >> Starting classification for '/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/verified-xml/cdno.xml'.
+{info} 14:06:16:619 >> Initializing reasoner. Creating calculation context.
+{info} 14:06:16:623 >> Reasoner initialized with 16 processing unit(s).
+{warning} 14:06:16:628 >> Annotations are currently not handled.
+{info} 14:06:16:820 >> Ontology parsed in 200 ms.
+{info} 14:06:16:822 >> Preprocessing ontology 'http://konclude.com/test/kb'.
+{info} 14:06:16:896 >> Finished preprocessing in 74 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:16:896 >> Precomputing ontology 'http://konclude.com/test/kb', expressiveness 'SROIFV'.
+{info} 14:06:17:067 >> Finished precomputing in 171 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:17:067 >> Classifying ontology 'http://konclude.com/test/kb', expressiveness 'SROIFV'.
+{info} 14:06:17:067 >> Ontology 'http://konclude.com/test/kb' is deterministic, using satisfiable tests for classification.
+{info} 14:06:17:080 >> Finished class classification in 13 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:17:080 >> Query 'UnnamedClassifyQuery' processed in '0' ms.
+{info} 14:06:17:093 >> Query 'UnnamedWriteClassHierarchyQuery' processed in '12' ms.
+{info} 14:06:17:093 >> Total processing time: 474 ms.
+END	cdno	601574
+BEGIN	cvdo	owlxml
+{info} 14:06:17:612 >> Starting Konclude ... 
+{info} 14:06:17:612 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 14:06:17:612 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 18 2021)
+
+{info} 14:06:17:614 >> Starting classification for '/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/verified-xml/cvdo.xml'.
+{info} 14:06:17:614 >> Initializing reasoner. Creating calculation context.
+{info} 14:06:17:619 >> Reasoner initialized with 16 processing unit(s).
+{warning} 14:06:17:619 >> Annotations are currently not handled.
+{info} 14:06:17:649 >> Ontology parsed in 33 ms.
+{info} 14:06:17:649 >> Preprocessing ontology 'http://konclude.com/test/kb'.
+{info} 14:06:17:664 >> Finished preprocessing in 15 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:17:664 >> Precomputing ontology 'http://konclude.com/test/kb', expressiveness 'SRIQ'.
+{info} 14:06:17:701 >> Finished precomputing in 37 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:17:701 >> Classifying ontology 'http://konclude.com/test/kb', expressiveness 'SRIQ'.
+{info} 14:06:17:733 >> Finished class classification in 32 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:17:734 >> Query 'UnnamedClassifyQuery' processed in '1' ms.
+{info} 14:06:17:740 >> Query 'UnnamedWriteClassHierarchyQuery' processed in '6' ms.
+{info} 14:06:17:740 >> Total processing time: 126 ms.
+END	cvdo	211231
+BEGIN	htn	functional
+{info} 14:06:18:143 >> Starting Konclude ... 
+{info} 14:06:18:143 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 14:06:18:143 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 18 2021)
+
+{info} 14:06:18:145 >> Starting classification for '/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/verified-xml/htn.xml'.
+{info} 14:06:18:145 >> Initializing reasoner. Creating calculation context.
+{error} 14:06:18:147 >> XML parsing error at 1:1: 'Start tag expected.'.
+{info} 14:06:18:150 >> Reasoner initialized with 16 processing unit(s).
+{error} 14:06:18:151 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:151 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:151 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:151 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:151 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:152 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{error} 14:06:18:153 >> Couldn't match parameters for 'Declaration'-Expression.
+{info} 14:06:18:210 >> Ontology parsed in 63 ms.
+{info} 14:06:18:211 >> Preprocessing ontology 'http://konclude.com/test/kb'.
+{info} 14:06:18:229 >> Finished preprocessing in 18 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:18:229 >> Precomputing ontology 'http://konclude.com/test/kb', expressiveness 'SRIQ(D)'.
+{info} 14:06:18:244 >> Finished precomputing in 15 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:18:244 >> Classifying ontology 'http://konclude.com/test/kb', expressiveness 'SRIQ(D)'.
+{info} 14:06:18:252 >> Finished class classification in 8 ms for ontology 'http://konclude.com/test/kb'.
+{info} 14:06:18:252 >> Query 'UnnamedClassifyQuery' processed in '0' ms.
+{info} 14:06:18:256 >> Query 'UnnamedWriteClassHierarchyQuery' processed in '3' ms.
+{info} 14:06:18:256 >> Total processing time: 111 ms.
+END	htn	166420
+KONCLUDE_SERIALIZATION_PILOT_OK	4

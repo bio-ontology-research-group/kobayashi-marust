@@ -1,0 +1,29 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/flopo.ofn
+M	source_sha256	8c1b8996420d6e57a83f2cbb44f9d70f5dbc791ac3580bbd9dcd1c26fa8753f1
+M	axioms	230385
+M	logical_axioms	51886
+M	classes	35353
+M	object_properties	312
+M	data_properties	1
+M	individuals	9
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	270
+V	OWL2EL	LastPropertyInChainNotInImposedRange	132
+V	OWL2EL	UseOfIllegalAxiom	87
+V	OWL2EL	UseOfIllegalClassExpression	47
+V	OWL2EL	UseOfIllegalDataRange	3
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	1
+P	OWL2QL	false	28102
+V	OWL2QL	UseOfIllegalAxiom	161
+V	OWL2QL	UseOfIllegalDataRange	3
+V	OWL2QL	UseOfNonSubClassExpression	27913
+V	OWL2QL	UseOfNonSuperClassExpression	25
+P	OWL2RL	false	37044
+V	OWL2RL	UseOfIllegalAxiom	25
+V	OWL2RL	UseOfIllegalDataRange	3
+V	OWL2RL	UseOfNonEquivalentClassExpression	27805
+V	OWL2RL	UseOfNonSubClassExpression	49
+V	OWL2RL	UseOfNonSuperClassExpression	9162
+Z	complete

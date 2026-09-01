@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/uberon.owl
+M	source_sha256	938f51e7c3fc9fcbe5a2863eb346da8033737e568af5836958891c4c6bfb1192
+M	closure_size	1
+M	merged_axioms	389224
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	3
+M	merged_sha256	13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/uberon.owl>) VersionIRI(<http://purl.obolibrary.org/obo/uberon/releases/2026-06-19/uberon.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/uberon.owl	389221
+Z	complete

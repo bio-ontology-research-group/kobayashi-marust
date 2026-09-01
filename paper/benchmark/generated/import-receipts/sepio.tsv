@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/sepio.owl
+M	source_sha256	ae9161620d677fe16857e0704006b7d07086e2ac75688261be901b0f9c3db488
+M	closure_size	1
+M	merged_axioms	3058
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	fbda7a90cdc0c0033d69391d9e5236b1783b19b8856cb5e48defe8d5fd8a10e5
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/sepio.owl>) VersionIRI(<http://purl.obolibrary.org/obo/sepio/releases/2023-06-13/sepio.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/sepio.owl	3058
+Z	complete

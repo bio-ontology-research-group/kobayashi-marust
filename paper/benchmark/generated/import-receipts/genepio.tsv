@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/genepio.owl
+M	source_sha256	9ccfe40b0529bb05bdf81dea1644759933fe4a3f0e8293b85d7caa1b6a1db73c
+M	closure_size	1
+M	merged_axioms	74316
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	e1496d7e886020d90a984a0c8822bf66354b702ba649740b13de1fec455e97e0
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/genepio.owl>) VersionIRI(<http://purl.obolibrary.org/obo/genepio/releases/2026-04-13/genepio.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/genepio.owl	74316
+Z	complete

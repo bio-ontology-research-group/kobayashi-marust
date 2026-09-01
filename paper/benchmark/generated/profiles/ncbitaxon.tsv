@@ -1,0 +1,15 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/ncbitaxon.ofn
+M	source_sha256	7245f3ea4de33efaf478fdd0ef649541c4423a2b25841b436c1462ee33033316
+M	axioms	20101158
+M	logical_axioms	2854485
+M	classes	2854537
+M	object_properties	0
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	true	0
+P	OWL2QL	true	0
+P	OWL2RL	true	0
+Z	complete

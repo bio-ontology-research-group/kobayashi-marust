@@ -1,0 +1,1835 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{amsmath}
+
+\input{generated/history-summary.tex}
+\input{generated/agent-session-summary.tex}
+\input{generated/agent-usage-summary.tex}
+\input{generated/laptop-evidence-summary.tex}
+\input{benchmark/generated/serialization-summary.tex}
+
+\newcommand{\KM}{Kobayashi-MaRust}
+\newcommand{\km}{KM}
+\title{Kobayashi-MaRust 1.3: A Proof-Carrying Hybrid OWL Reasoner\\
+and an Agentic, Verification-Centred Development Method}
+\author{Robert Hoehndorf\\
+King Abdullah University of Science and Technology (KAUST)\\
+\texttt{robert.hoehndorf@kaust.edu.sa}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present \KM{} (KM) 1.3, an experimental Web Ontology Language (OWL) 2 DL
+reasoner for named-class classification.  KM combines $\mathcal{EL}^{++}$
+completion, a disjunctive consequence-based context calculus, and fenced
+hypertableau procedures.  A source-feature router selects among them, and a
+Rust supervisor publishes only results that pass route-specific acceptance
+checks.  KM also provides transactional incremental reasoning, source-axiom
+explanations, and OWL Application Programming Interface (OWLAPI) and
+Prot\'eg\'e interfaces.
+
+Under 240-second and 20-GiB process-tree limits, the automatic route completed
+591 of 592 ontologies in the historical Ontology Reasoner Evaluation (ORE)
+2015 panel.  All published answers passed full-IRI comparison or independent
+semantic adjudication.  KM had lower mean and median wall time and peak
+process-tree memory than the evaluated ELK, HermiT, Konclude, and Sequoia
+artifacts, both on each system's adjudicated completions and on pairwise
+shared-correct subsets.  A frozen 2026 Open Biological and Biomedical
+Ontologies (OBO) Foundry panel sharply qualifies this result: KM completed 97
+of 189 inputs, including 88 of 160 OWL~2~DL-profile inputs, and did not
+support an unqualified speed ranking.
+
+The standalone reasoner was developed over 89 days through a human-directed
+agentic workflow constrained by exact artifact hashes, fail-closed corpus
+gates, rejected-candidate records, and source-bound checks in the Lean 4 proof
+assistant.  The release formalisation proves soundness and completeness of
+accepted EL-completion, hypertableau, and consequence-based publications and
+their routing composition.  Project-specific AgentsView telemetry documents
+agent use while keeping incompatible platform counters separate.
+\end{abstract}
+
+\noindent\textbf{Keywords:} OWL 2 DL; description logic reasoning;
+consequence-based reasoning; hypertableau; incremental reasoning;
+Lean; agentic software engineering
+
+\section{Introduction}
+
+OWL reasoners occupy an awkward engineering position.  Their logical core is
+defined by model-theoretic semantics, but practical performance depends on
+large collections of representation choices, indexes, preprocessing steps,
+blocking conditions, scheduling policies, and specialised procedures.  A
+single unsound shortcut can silently invalidate a taxonomy; a conservative
+shortcut may preserve soundness while losing answers; and a theoretically
+complete procedure can remain useless on a finite benchmark because of time
+or memory.  Reasoners such as HermiT, Konclude, ELK, and Sequoia embody
+substantial calculus and systems engineering
+\cite{glimm2014hermit,steigmiller2014konclude,kazakov2014elk,bate2016sequoia}.
+
+At the same time, language-model coding agents can now inspect repositories,
+edit files, invoke tools, and iteratively respond to test failures
+\cite{yang2024sweagent,wang2024openhands}.  Reasoner implementation is a
+difficult test of this mode of development.  Plausible-looking code is not
+enough: the relevant failures include semantic corner cases, incorrect
+normalisation, nontermination, accidental approximations, invalid benchmark
+harnesses, and optimisations that alter a fixpoint.  The ability of an agent to
+produce many patches quickly can amplify these risks.
+
+KM addresses both problems, with the proof-carrying hybrid classifier as the
+primary contribution.  We call the design proof-carrying because each public
+result must satisfy a source-bound, route-specific acceptance relation; this
+does not mean that every runtime instruction is formally verified.  The
+automatic classifier completed 591 of 592 ontologies in our ORE~2015 panel.
+As a secondary contribution, we reconstruct the development process in
+which broad agentic search is constrained by four kinds of evidence: local
+unit and differential tests, exact-route and whole-corpus experiments,
+explicit records of rejected changes, and source-bound Lean certification.
+The aim is not to claim that generated code becomes correct merely because a
+proof assistant appears in the repository.  Instead, the system defines a
+narrow publication contract and checks concrete result evidence against that
+contract before an answer becomes visible.
+
+This paper makes the following contributions.
+
+\begin{enumerate}[leftmargin=*]
+  \item We describe the architecture of KM~1.3, including its OWL frontend,
+  feature profiler and automatic router, EL completion procedure,
+  consequence-based calculus, complete-answer-or-defer hypertableau
+  procedures, and fail-closed publication boundary.
+  \item We provide transactional incremental sessions that retain meaningful
+  algorithm state on each production mechanism under the release conformance
+  contract, and source-level,
+  subset-minimal explanations exposed through a native interface, OWLAPI, and
+  Prot\'eg\'e.
+  \item We evaluate the automatic, non-oracle route on a historical
+  592-ontology ORE~2015 panel, a frozen current biomedical snapshot, and named
+  hard cases.  The historical panel compares KM with ELK, Konclude, Sequoia,
+  and HermiT.  The contemporary panel compares KM with Konclude, HermiT,
+  JFact, Openllet, MORe, ELK, and Whelk.  Both use explicit correctness
+  adjudication and profile-aware time and process-tree-memory comparisons.
+  \item We reconstruct the development process from version-control history,
+  experiment artifacts, task worktrees, and agent records.  We present an
+  agentic engineering protocol based on task isolation, falsification,
+  integration ownership, exact-artifact benchmarking, and formal release
+  gates.
+  \item We describe the Lean trust boundary precisely: what is proved, how a
+  concrete Rust result is connected to a theorem, and what remains outside the
+  formal model.
+\end{enumerate}
+
+Sections~\ref{sec:background}--\ref{sec:interface} form the system
+description.  Section~\ref{sec:evaluation} reports the evaluation.
+Sections~\ref{sec:methods} and~\ref{sec:certification-method} describe how the
+system was built.  We then discuss the findings, position them against related
+work, state the limitations and reproducibility provisions, and conclude.
+
+\section{Background and design requirements}
+\label{sec:background}
+
+\subsection{OWL classification}
+
+An OWL~2 ontology is a finite set of axioms interpreted under the OWL~2 Direct
+Semantics \cite{w3c2012direct,w3c2012profiles}.  In this paper, classification
+means computing the entailed subsumption relation between requested named
+classes, together with named-class unsatisfiability and ontology consistency.
+For classes $A$ and $B$, KM reports $A\sqsubseteq B$ only if every model of the
+source ontology interprets $A$ as a subset of $B$.  The implementation uses
+normalised clauses internally, but its public answers are keyed by full source
+IRIs.
+
+The description logic $\mathcal{SROIQ}$, which provides the logical foundation
+for OWL~2~DL, combines Boolean class constructors, existential and universal
+restrictions, role hierarchies and chains, inverse roles, nominals, and
+qualified number restrictions.  Nominals denote singleton classes, while
+qualified number restrictions constrain how many role successors belong to a
+class.  No single implementation technique is best
+for all naturally occurring ontologies.  EL completion can classify large Horn
+ontologies efficiently; context-based calculi derive reusable consequences;
+and tableau or hypertableau search handles nondeterminism and equality through
+model construction and refutation \cite{motik2009hypertableau,
+tenacucala2018consequence}.
+We use TBox for terminological axioms, ABox for assertions about individuals,
+and RBox for role axioms.
+
+\subsection{Requirements adopted by KM}
+
+KM's development converged on five explicit requirements.
+
+\begin{description}[leftmargin=2.8cm,style=nextline]
+  \item[Semantic fidelity.] Unsupported input must cause a decline or error,
+  not an approximation presented as an OWL~2 answer.
+  \item[Automatic selection.] The benchmarked command may inspect source
+  features but not ontology identity or expected output.  Manually choosing a
+  successful route after seeing the answer is an oracle-selected union and is
+  not the reported system.
+  \item[Complete publication.] A specialist may return a complete answer or
+  defer to an exact fallback.  Partial specialist output is never merged into
+  a complete taxonomy without a proved composition rule.
+  \item[Observable provenance.] Results record source identity, selected route,
+  execution route, binary hash, terminal status, and resource measurements.
+  \item[Independent release checks.] The release requires ordinary tests,
+  corpus-level semantic comparison, interface tests, and Lean certification
+  from the exact tagged source.  None substitutes for another.
+\end{description}
+
+These requirements determine both the division of labour among KM's procedures
+and the supervisor boundary described next.
+
+\section{System architecture}
+\label{sec:architecture}
+
+KM is implemented as a Rust multi-call executable.  The command
+\texttt{km classify ontology.owl} acts as a typed supervisor and re-executes
+the same binary as an OWL frontend, EL worker, consequence-based worker, or
+hypertableau worker.  Process isolation releases route-specific memory and
+allows a process-tree watchdog to enforce resource limits.  Small, compatible
+inputs can use an in-process fast path.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.91\linewidth}
+\centering
+OWL source $\longrightarrow$ streaming parser and source profile
+$\longrightarrow$ typed automatic route\\[0.4em]
+$\searrow$ EL++ completion \quad $\downarrow$ consequence-based saturation
+\quad $\swarrow$ complete-or-defer hypertableau\\[0.4em]
+$\longrightarrow$ source-bound evidence checker
+$\longrightarrow$ full-IRI taxonomy, consistency, and provenance
+\end{minipage}}
+\caption{The KM classification pipeline.  A route chooses a procedure and
+fallback order; it does not bypass the evidence checker.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Frontend and normalisation}
+
+The frontend accepts OWL Functional Syntax directly.  The pinned Horned-OWL
+1.4 Rust data model and input framework parses OWL/XML and Resource Description
+Framework/XML (RDF/XML) \cite{lord2024hornedowl}; a separate RDF parser handles
+Turtle.  Both paths write a common Functional Syntax handoff.  A
+streaming first pass resolves exact IRIs, records ontology statistics, and
+constructs a typed source representation.  Normalisation produces
+description-logic (DL) clauses of the form
+$\Gamma\rightarrow\Delta$, where the body $\Gamma$ is a conjunction and the
+head $\Delta$ is a disjunction of concept, role, equality, or inequality
+atoms.  Terms include variables, named individuals, auxiliary constants, and
+Skolem function terms, which represent existential witnesses.
+
+Side structures preserve information that cannot safely be inferred from a
+bare clause vector: named entities, individual provenance, cardinality
+definitions, role automata, datatype assertions, and route fences.  This
+distinction became important for both routing and incremental reasoning.  A
+worker that receives clauses but silently loses typed assertional-component
+(ABox) or cardinality metadata must decline.
+
+Large sources use file-backed streaming handoff so that the complete clause
+set need not be copied through a scripting runtime or retained twice in
+memory.  The production classifier contains no Python dependency.  A retained
+Python orchestrator served as a byte-identity oracle during the Rust
+supervisor port.
+
+\subsection{EL++ completion}
+
+The EL-completion (ELC) path applies normal-form completion rules for named subsumption,
+conjunction, existential propagation, role inclusions, and supported chains.
+It stores class labels, role edges, incoming-edge indexes, and normal-form rule
+indexes.  The worker independently validates that its normalised input belongs
+to the accepted fragment.  Source profiling can propose EL, but only the
+worker's fragment check permits publication.
+
+This separation prevents a parser or profiler omission from widening the
+algorithm's semantic scope.  It also supports a certified-EL portfolio: the
+fast completion answer is used if its source and closure certificate is
+accepted; otherwise the supervisor falls through to a general production
+route.
+
+\subsection{Disjunctive consequence-based engine}
+
+The consequence-based (CB) core follows a disjunctive context calculus in the
+Sequoia family \cite{bate2016sequoia,tenacucala2018consequence}.  A root
+context is seeded for each requested class.  Successor contexts represent
+terms introduced by existential restrictions.  Saturation applies the
+following rule families:
+
+A context stores clauses describing one symbolic term.  A literal is maximal
+when selected by the calculus's fixed ordering.  Hyperresolution combines an
+ontology clause with matching context facts; factoring merges compatible head
+literals; and subsumption removes a clause already covered by a stronger one.
+
+\begin{itemize}[leftmargin=*]
+  \item hyperresolution between ontology clauses and maximal context
+  literals;
+  \item successor propagation of consequences involving function terms;
+  \item predecessor propagation back from successor contexts;
+  \item equality, inequality, and factoring rules for functionality and
+  number restrictions;
+  \item nominal and ABox coordination on routes carrying complete individual
+  provenance; and
+  \item redundancy elimination by indexed forward and backward subsumption.
+\end{itemize}
+
+Parallel workers classify named roots while sharing prepared immutable source
+structures.  Scheduling optimisations, batching, compact indexes, and join
+ordering are treated separately from rule changes.  A scheduling change is
+acceptable without a new calculus theorem only when it preserves the same
+monotone fixpoint, the closure at which repeated rule application derives no
+new consequence; changing rule applicability, ordering admissibility, or
+redundancy requires recertification.
+
+\subsection{Hypertableau and ported completion procedures}
+
+KM contains a Rust hypertableau (HT), a model-construction and refutation
+procedure, and selected completion mechanisms derived
+from published algorithms and behaviour studied in HermiT and Konclude
+\cite{motik2009hypertableau,glimm2014hermit,steigmiller2014konclude}.  These
+procedures cover ordinary Boolean search, equality and qualified cardinality,
+nominal-aware ABoxes, rules whose variables are restricted to named
+individuals (DL-safe rules), and specialised bridge classifications.  Blocking
+detects repeated states to represent a potentially infinite model finitely;
+dependency sets record the choices supporting a conclusion; a clash records a
+contradiction; and unravelling interprets a finite blocked structure as a
+regular model.  These mechanisms are explicit parts of route evidence.
+
+The key engineering rule is \emph{complete answer or defer}.  Several HT
+mechanisms are useful only on fenced source shapes.  They either return the
+complete named-class taxonomy or exact consistency decision requested,
+together with evidence for that result, or return a typed decline with no
+semantic output.  The supervisor then invokes the next semantically complete
+route.  That route may still time out, exhaust memory, or decline, in which
+case KM publishes no classification.  Historical and
+measurement-only tableau routes are excluded from automatic classification.
+
+\subsection{Feature-based automatic routing}
+
+The router reads source statistics and expressivity fields produced before
+normalisation.  Features include axiom-family counts, constructor counts,
+class and role signature sizes, ABox and rule presence, role-chain structure,
+cardinality, nominals, datatypes, source size, and maximum syntactic depths.
+The expressivity profiler was checked against Konclude on all 592 benchmark
+ontologies.
+
+The route catalogue uses named, typed bundles rather than ambient collections
+of environment variables.  The principal production mechanisms in the
+v1.3 sweep were EL completion, flat first-normal-form (NF1) completion, CB production portfolios,
+nominal-aware CB, ordinary and bridge hypertableau, cardinality and nominal
+hypertableau, and DL-safe-rule processing.  Route aliases that differ only in
+thread count or scheduling share a semantic core.
+
+The automatic decision tree never reads an ontology identifier.  Two narrow
+source-shape refinements can be applied after normalisation only when the
+frontend emits the required typed certificate.  Each result records both the
+selected profile route and the worker route that actually answered.
+The supplementary route glossary is generated from the release's Rust route
+catalogue and records every public route name and exact option bundle.  Route
+aliases can therefore be audited without maintaining a second prose catalogue.
+
+\section{Lean-certified publication}
+\label{sec:certification-system}
+
+The Lean~4 development defines common clause and interpretation semantics,
+the ELC closure rules, hypertableau evidence, CB context derivations, and the
+automatic publication relation.  Lean~4 is both an interactive theorem prover
+and an extensible functional language with a small proof-checking kernel
+\cite{demoura2021lean4}.
+
+The release boundary has four layers.
+
+\begin{enumerate}[leftmargin=*]
+  \item The ELC layer checks source normalisation, completion closure,
+  residual compilation, materialised state, inconsistency, and the complete
+  named taxonomy.
+  \item The HT layer checks ordinary, mixed, equality, cardinality, and
+  native-ABox projections; bounded and regular search evidence; blocking; and
+  complete taxonomy or global publications.
+  \item The CB layer checks a chronological retained derivation, local and
+  inter-context rule families, quiescence, canonical closure, and positive or
+  countermodel-backed negative taxonomy cells.
+  \item The routing layer checks the source profile, ordered selector and
+  fallback sequence, exact source identity, requested signature, and dispatch
+  to one concrete ELC, HT, or CB checker.
+\end{enumerate}
+
+The evidence document contains a Boolean decision for every ordered pair in
+the requested named-class signature.  Positive cells require accepted
+entailment evidence.  Negative
+cells require accepted finite, blocked, regular, or canonical countermodel
+evidence, depending on the route.  A route label alone proves nothing: the
+dispatcher delegates to the concrete checker associated with the evidence
+document.
+
+At paper level, let $O$ be the decoded source ontology, $\Sigma$ the complete
+requested named-class signature, and
+$M:\Sigma\times\Sigma\rightarrow\{\mathsf{true},\mathsf{false}\}$ the
+decision matrix.  Its positive taxonomy is
+$T_M=\{(A,B)\mid M(A,B)=\mathsf{true}\}$.  We call the publication exact when
+\[
+\begin{aligned}
+\operatorname{ExactTaxonomy}(O,\Sigma,M)&\;\equiv\;\\
+  \forall A,B\in\Sigma,\quad M(A,B)=\mathsf{true}
+    &\leftrightarrow O\models A\sqsubseteq B.
+\end{aligned}
+\]
+The requested-taxonomy capstone has the following conditional form, where $e$
+is the concrete ELC, HT, or CB evidence selected by the typed worker adapter:
+\[
+\begin{aligned}
+ \operatorname{AcceptTaxonomy}(O,\Sigma,e,M)
+ &\Longrightarrow\\
+ \operatorname{ExactTaxonomy}(O,\Sigma,M).&
+\end{aligned}
+\]
+This corresponds to \texttt{requestedExactAccept\_sound}; its
+\texttt{named\_exact} field prevents a vacuous answer over an incomplete
+requested signature, and its matrix theorem proves both positive and negative
+cells.  Let $\bot$ denote the empty class.  Named unsatisfiability is checked
+separately as $O\models A\sqsubseteq\bot$, or over the extended query signature
+$\Sigma\cup\{\bot\}$; bottom is not a named source class.  Consistency uses a
+Boolean $c$, where $c=\mathsf{true}$ denotes the existence of a model, and has
+the capstone
+\[
+\begin{aligned}
+ \operatorname{AcceptGlobal}(O,e,c)
+ &\Longrightarrow\\
+ c=\mathsf{true}&\leftrightarrow O\text{ has a model}.
+\end{aligned}
+\]
+The acceptance predicates include successful decoding and source binding and
+delegate to a concrete checker.  Selector and fallback theorems separately
+establish that an automatic route has an exact source and a total-calculus or
+complete-fallback coverage basis.  These statements concern accepted
+publications, not every process invocation or internal data structure.
+Benchmark classifications run the Rust source-shape, certificate, and result
+checks implemented by the selected route.  Lean certification is an
+exact-source release gate proving the shared acceptance relations and checker
+obligations; the benchmark does not invoke the Lean kernel once per ontology.
+The artifact binds each paper-level statement to a named declaration and path
+in git tag \texttt{v1.3.0} and verifies those bindings against commit
+\texttt{f4738bc} rather than the submitter's ambient checkout.
+
+All public capstones are audited for Lean's \texttt{sorryAx}.  In v1.3 their
+reported nonlogical dependencies are limited to Lean's standard
+\texttt{propext}, \texttt{Classical.choice}, and \texttt{Quot.sound}.  The
+four certification scripts compile the relevant formalisation and executable
+checkers, run tamper-rejection fixtures, and exercise the Rust-to-Lean
+publication path.  Every full release must pass these gates from the exact
+commit that is tagged.
+
+This is not end-to-end verification of the binary.  The trusted computing base
+still includes Lean's kernel and runtime, the Rust compiler, serialisation and
+system interfaces, and the operating system.  Resource termination is an
+empirical property.  An execution that disables or bypasses the mandatory
+checker is outside the theorem.  The claim is conditional and concrete: if the
+checker accepts a document binding a source, requested signature, derivation
+evidence, and answer, Lean proves that the published answer is exact under the
+formal semantics.
+
+The preceding sections concern complete batch classification.  We next test
+whether the same source-bound publication contract survives stateful updates
+and explanation extraction, without treating either service as evidence for
+the batch-performance claims.
+
+\section{Incremental reasoning and explanations}
+\label{sec:interface}
+
+\subsection{Transactional source-level sessions}
+
+Version~1.3 adds a source-level session shared by the native interface and
+OWLAPI.  A session owns the complete flattened ontology, stable source-axiom
+identifiers, normalised clauses and typed side data, selected route, retained
+backend state, and last accepted classification.  An update is processed as a
+transaction:
+
+\begin{enumerate}[leftmargin=*]
+  \item apply one candidate batch to a private source revision;
+  \item normalise the candidate while preserving stable identities;
+  \item profile the complete candidate and select its automatic route;
+  \item apply a route-specific delta or atomically migrate to another adapter;
+  \item compare or certify the candidate answer at the publication boundary;
+  and
+  \item commit the new source, backend, and answer together, or retain the
+  preceding revision unchanged on any failure.
+\end{enumerate}
+
+Meaningful incrementality requires retained algorithm state and less route
+work than a fresh classification for at least one supported insertion and one
+removal or replacement.  Merely wrapping full rebuilds in an incremental API
+does not satisfy the v1.3 acceptance contract.  Table~\ref{tab:incremental}
+summarises the retained state.  Unsupported deltas and changes crossing a
+documented certificate boundary may still use exact rebuild as a safety
+fallback.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Incremental adapters for production semantic cores.}
+\label{tab:incremental}
+\begin{tabular}{p{0.18\linewidth}p{0.34\linewidth}p{0.38\linewidth}}
+\toprule
+Core & Retained state & Meaningful delta operation \\
+\midrule
+ELC and flat NF1 & labels, role edges, normal-form indexes, dependencies &
+addition replay and component-directed deletion \\
+CB portfolios and nominals & contexts, clauses, messages, derivation
+dependencies & insertion saturation and dependency-directed retraction \\
+Ordinary and quasi-order HT & completed models, query/probe dependencies,
+blocking state & model extension and affected-probe invalidation \\
+Cardinality and native-ABox HT & typed ABox, cardinality and role metadata,
+models and probes & typed-source replay without dropping side metadata \\
+DL-safe rules & exact TBox taxonomy, typed rules and ABox probes & retained
+terminology with incremental assertion clash/retraction \\
+Bridge and mirror routes & exact subject rows and projection dependencies &
+subject/component reclassification while retaining independent rows \\
+Router & profile, route, fallback chain, exact source identity &
+route-preserving delta or atomic adapter migration \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Each receipt reports the pre- and post-update route, revision, strategy,
+retained and invalidated state counts, whether the operation was meaningful,
+and whether migration occurred.  Differential tests compare every committed
+revision with a fresh \texttt{km classify} result over the same complete
+source.  Tests also cover declined updates and rollback.
+
+\subsection{Source-axiom explanations}
+
+KM explains named-class subsumption, named-class unsatisfiability, and ontology
+inconsistency.  It returns source axioms rather than normalised clauses or
+internal definers.  The explanation oracle always invokes the automatic
+production gate on a complete source subset.  It first verifies the full
+entailment, minimises one support using deletion or monotone delta debugging,
+rechecks the final subset, and uses a deterministic hitting-set tree to search
+for alternatives.  Each published support is checked to entail the query and
+to lose the entailment after deletion of any one member.  Monotonicity then
+establishes subset minimality.
+
+Limits bound source axioms, source bytes, classification checks, and returned
+justifications.  Exhausting a budget discards an unfinished support and marks
+enumeration incomplete.  The unbounded OWL Explanation API overload either
+exhausts the search or throws; it does not publish a bounded prefix as the set
+of all explanations.  Duplicate and annotated axioms retain source-occurrence
+identity.  Imports are flattened at the committed revision.
+
+The Lean routing capstone connects an explanation's accepted taxonomy cell to
+source entailment and proves one-deletion and subset minimality.  Inconsistency
+explanations use a separate exact satisfiable/unsatisfiable (SAT/UNSAT)
+publication, avoiding the invalid shortcut of treating a taxonomy-only result
+as a global consistency proof.
+
+\subsection{OWLAPI and Prot\'eg\'e}
+
+The Java module implements the OWLAPI reasoner factory and lifecycle
+\cite{horridge2011owlapi}, including
+buffering and non-buffering modes, pending-change accessors, imports-closure
+updates, interruption, failure atomicity, and disposal.  It also implements the
+OWL Explanation API's explanation-generator and generator-factory interfaces
+for \texttt{OWLAxiom} objects.
+Only named \texttt{SubClassOf} entailments advertised by the reasoner are
+accepted.  Unsupported property, individual, or anonymous-class queries throw
+\texttt{UnsupportedEntailment\allowbreak Exception}.
+
+Prot\'eg\'e integration registers the reasoner and a native explanation service
+for the core Explain action.  Cancellation and timeout terminate the complete
+native process tree.  The release test installs the packaged bundle into the
+OSGi module system of a stock Prot\'eg\'e~5.6.6 distribution and, in one
+session, checks bundle
+activation, native classification, a retained non-buffering update, and an
+exact source-axiom explanation.
+
+\section{Evaluation}
+\label{sec:evaluation}
+
+\subsection{Research questions}
+
+The system evaluation and retrospective process study address four questions.
+
+\begin{description}[leftmargin=1.2cm]
+  \item[RQ1] How many ontologies does the automatic KM route classify correctly
+  in the adjudicated historical ORE panel, and for how many current biomedical
+  inputs does it publish a terminal taxonomy under fixed resource contracts?
+  For current inputs, how often does that taxonomy agree with independent
+  expressive-reasoner consensus or source-level adjudication?
+  \item[RQ2] How do wall time and peak process-tree memory compare with tested
+  versions of established reasoners both on their own correct completions and
+  on pairwise shared-correct ontology subsets?
+  \item[RQ3] Does each production core perform a meaningful incremental update,
+  and do OWLAPI explanations satisfy source membership and subset minimality?
+  \item[RQ4] What human-directed agentic workflow produced KM, which empirical
+  and Lean gates changed or rejected proposed implementations, and what
+  retained evidence supports that reconstruction?
+\end{description}
+
+The experiments in the remainder of this section answer RQ1--RQ3.  The
+development Methods sections answer RQ4 through a retrospective reconstruction
+of the process and its empirical and formal acceptance gates.  Semantic
+equivalence with the certified v1.2 sweep remains a release-validation
+criterion under RQ1 rather than a separate research question.
+
+\subsection{Corpus, reference answers, and correctness}
+
+We use three complementary evaluation strata.  First, a fixed 592-ontology
+sample from the ORE~2015 corpus preserves continuity with the development
+evidence and permits comparison against retained historical runs.  ORE~2015
+drew naturally occurring ontologies from BioPortal, the Oxford Ontology
+Library, and MOWLCorp and was designed for consistency, classification, and
+realisation experiments \cite{parsia2017ore}.  We treat this as a historical
+regression and reproducibility panel, not as evidence that a 2015 sample
+represents current deployed ontologies.  Claims about contemporary biomedical
+performance therefore depend on the second and third strata below.
+
+Second, the executed current-biomedical evaluation uses a 30 August
+2026 Open Biological and Biomedical Ontologies (OBO) Foundry freeze
+\cite{jackson2021obofoundry}.  The completed OBO freeze
+contains every active registry entry
+with a resolvable OWL product.  The BioPortal sample was not acquired by the
+evaluation cutoff because the reproducibility environment contained no API key; no
+BioPortal result is included in the present aggregates.  For every acquired
+source we retain retrieval provenance, licence, version IRI, original-source
+digest, and a deterministic import closure.  Content-identical inputs are
+deduplicated by original-source digest.
+The preregistered extension would draw a stratified sample of current public
+BioPortal submissions \cite{vendetti2025bioportal}.  Before any reasoner run,
+BioPortal candidates would be stratified by the four
+predeclared logical-axiom size bins and by EL, DL non-EL, and outside-DL
+membership.  Each of the 12 cells contributes all inputs up to ten, or the ten
+lowest values under a fixed SHA-256 ranking over acronym, submission identifier,
+and source digest.  Views, summary-only entries, restricted Unified Medical
+Language System (UMLS) derivatives,
+payloads without analysable licence terms, and content duplicates of OBO are
+excluded with recorded reasons.  This protocol yields at most 120 inputs and
+prevents performance-dependent sample selection, but it produced no
+measurements in this study.
+
+For the executed OBO evaluation, inverse property expressions inside
+property chains are replaced by deterministic fresh named roles together with
+their defining inverse-property axioms.  This conservative extension preserves
+entailments over the original signature and the same resulting axiom set is
+given to every reasoner.  The receipt records the transformation version,
+replacement count, and post-transformation digest; preprocessing time is not
+included in classification time.  The canonical frozen form is Functional
+Syntax.  Konclude receives a verified OWL/XML serialization whenever an OWLAPI
+round trip preserves the complete logical axiom set and signature; otherwise
+it receives the canonical Functional Syntax unchanged.  Its tested
+command-line loader silently accepts some Functional Syntax inputs while
+returning an empty taxonomy, and it likewise accepts RDF/XML while loading no
+source classes.  RDF/XML is therefore never used.  The preparation gate
+records the selected syntax, reloads it, and checks the logical axioms,
+signature, and rule count; it also records OWLAPI's alpha-renaming of rule
+variables.  The selection depends only on round-trip equivalence, not on a
+reasoner's result.  All systems therefore receive the same frozen axiom set,
+although not necessarily the same concrete syntax.
+The completed preparation selected OWL/XML for \KMSerializationOWLXML{} inputs
+and the unchanged Functional Syntax for \KMSerializationFunctional{}.
+\KMSerializationAlphaOntologies{} OWL/XML receipts record alpha-renaming of
+\KMSerializationAlphaRules{} Semantic Web Rule Language (SWRL) axioms; no annotation-axiom count
+changed.  A
+four-ontology semantic pilot covering both selected formats completed before
+the full Konclude array was released.
+The OBO stratum contains 189 retrievable eligible products; one further active
+registry entry is retained as source-unavailable.  Independent OWLAPI profile
+checking places 188 inputs in OWL~2, 160 in OWL~2~DL, 44 in EL, 20 in QL, and
+15 in RL.  These counts overlap because an ontology may satisfy several
+profiles.  They also show why an EL-only comparison cannot stand in for the
+full current-corpus experiment.
+Third, the named hard-case matrix comprises SNOMED~CT, GALEN, the Foundational
+Model of Anatomy (FMA), the NCI Thesaurus OBO Edition (NCIt), Uberon, and
+Chemical Entities of Biological Interest (ChEBI), independently of success.
+Table~\ref{tab:corpus-status}
+separates acquired inputs from inputs not acquired at the cutoff.  SNOMED~CT
+requires a licensed International Edition artifact and cannot be
+redistributed.  GALEN acquisition uses BioPortal and shared the API-key
+constraint.  Our task is named-class classification; consistency is recorded
+separately.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Current-biomedical corpus status at the artifact cutoff.  Not-acquired
+rows contribute no benchmark measurements.}
+\label{tab:corpus-status}
+\begin{tabular}{lrl}
+\toprule
+Stratum or case & Inputs & Status \\
+\midrule
+OBO active registry & 190 & 189 frozen; one source unavailable \\
+BioPortal sample & -- & not acquired; API key unavailable \\
+FMA & 1 & frozen and independently profiled \\
+NCIt, Uberon, ChEBI & 3 & frozen in the OBO stratum \\
+GALEN & 1 & not acquired; API key unavailable \\
+SNOMED CT & 1 & not acquired; licensed source unavailable \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+For each ontology and reasoner, the harness canonicalises full-IRI
+subsumptions and named unsatisfiable classes into a compressed signature.
+Correctness is not defined as byte equality with one reasoner in every case.
+The retained reference set began with Konclude results and was then audited
+against other reasoners and manual semantic witnesses.  Three cases required
+independent adjudication: two retained-gold consistency mismatches and one
+ontology without retained gold.  These cases and their evidence are disclosed
+in the artifact.  A status, consistency result, signature digest, taxonomy
+cardinality, or mismatch-count difference is release-blocking.  A route-trace
+difference is provenance and is reported separately.
+
+\subsection{Experimental protocol}
+
+The ORE continuity runs received 240 seconds and a 20-GiB process-tree memory
+cap.  Current-snapshot and hard-case runs receive 600 seconds and 32~GiB.  Each
+run uses 16 central processing unit (CPU) allocations in an exclusive Intel
+Xeon Gold 6248 node allocation.  The
+process-tree monitor includes spawned frontend and worker processes and records
+their summed resident set size (RSS).  A result record, source profile, and
+checkpoint are required for every ontology;
+interrupted array tasks resume only absent or invalid indices.  Records bind
+the owning Slurm job, exact command, corpus digest, and runtime digest.
+Aggregation fails unless every expected tuple exists and passes these checks.
+To answer RQ2 without choosing bins after observing performance, we predeclare
+four logical-axiom size strata: fewer than 1,000, 1,000--9,999,
+10,000--99,999, and at least 100,000.  We separately partition inputs into
+independently verified OWL~2~EL, OWL~2~DL but non-EL, and outside-DL strata.
+
+The historical ORE panel additionally compares the pinned Sequoia artifact
+listed in Table~\ref{tab:benchmark}; Sequoia is not part of the contemporary
+OBO matrix because that matrix uses the eight artifacts in
+Table~\ref{tab:baselines}.
+The expressive baseline set is Konclude, HermiT, JFact, Openllet, and MORe.
+Konclude serves as the standing OWL~2~DL reference, while correctness remains
+consensus- and evidence-based rather than being defined by Konclude alone.
+ELK is the established OWL~2~EL baseline.  Whelk provides a newer EL+RL
+successor comparison based on ELK's classification algorithm.  Each Java
+reasoner runs in an isolated dependency environment.  Table~\ref{tab:baselines}
+identifies the exact tested release or source commit; the artifact manifest
+additionally binds every executable or self-contained runner by SHA-256.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Reasoner artifacts used in the evaluation.  Profile-limited systems
+are correctness baselines only inside an independently verified supported
+profile.}
+\label{tab:baselines}
+\begin{tabular}{lll}
+\toprule
+System & Tested version or source & Evaluation role \\
+\midrule
+KM & v1.3.0; engine \texttt{5c64a02} & automatic hybrid route \\
+Konclude & 0.7.0-1138; \texttt{0002e806} & expressive reference \\
+HermiT & 1.4.5.519 & expressive baseline \\
+JFact & 5.0.3 & expressive baseline \\
+Openllet & 2.6.5 & expressive baseline \\
+MORe & 0.2.0-SNAPSHOT; \texttt{9d29fb15} & modular baseline \\
+ELK & 0.6.0 & OWL~2~EL baseline \\
+Whelk & 1.2.1 & EL+RL successor baseline \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+We consider EL systems as candidate complete references only for inputs
+independently shown to be in their supported profile.  Profile membership is
+necessary, not sufficient: exact-output disagreements such as UO are still
+investigated and are not treated as correct because a profile checker accepts
+the source.  Inputs outside OWL~2~DL remain visible as real-world acceptance
+and fail-closed-behaviour rows, but they do not enter claims about complete DL
+classification.  For the current snapshot, no single reasoner serves as gold.
+Completing expressive reasoners form explicit
+full-IRI named-taxonomy consensus groups, including MORe through its
+relation-only output digest.  Consistency consensus is computed separately
+among systems whose tested interfaces expose consistency.  Unresolved
+disagreements remain contested.  To assess KM without letting it participate
+in its own reference, we additionally require a unanimous relation digest from
+at least two independently completing expressive baselines.  A split external
+panel remains unresolved; a majority is not promoted to gold.  Performance is
+reported over own completions and pairwise relation-agreement subsets, with
+those populations labelled explicitly rather than described as global gold.
+
+The v1.3 release binary was built from engine commit \texttt{5c64a02}; its
+SHA-256 is shown below.
+\begin{center}
+\small\texttt{cb9eabac9f5e4f351947b69f5f61df85}\allowbreak
+\texttt{cdf450da7f4f398b17cf34b79620aa7d}
+\end{center}
+An independent exact-tag build from \texttt{f4738bc} reproduced the same hash.
+Jobs \texttt{51012720} and \texttt{51013597} produced the complete sweep; the
+second resumed 25 tasks rejected before execution on a cluster node whose
+physical CPU did not match its scheduler feature label.
+
+For ORE, metrics are computed independently over each reasoner's adjudicated
+correct completions.  For the current panel, which lacks a complete gold
+standard, coverage means successful terminal publication; correctness evidence
+is reported separately as agreement, disagreement, or unresolved status.
+Timeouts and known incorrect answers do not enter performance aggregates.
+
+\subsection{Classification results}
+
+Table~\ref{tab:benchmark} reports the release aggregate.  KM completed 591 of
+592 inputs.  Of these, 588 matched retained full-IRI signatures, two matched
+independently adjudicated consistency results, and one had no retained gold but
+an independently established result.  ORE~1194 produced an established
+fail-closed parse error.  No semantic result field differed from the certified
+v1.2 sweep.  Twenty-seven selected-route traces changed, including exact
+hypertableau recovery of two identity-heavy ABoxes; these changes did not alter
+their public answers.
+
+\input{generated/ore-results.tex}
+
+Because the aggregate rows condition on different sets, Table~\ref{tab:shared}
+also recomputes both members of each pair on exactly the ontologies that both
+classified correctly.  The external records come from a frozen 66-arm panel
+with the following SHA-256:
+\begin{center}
+\small\texttt{e2bba1ee660f714b85da1e8db16da425}\allowbreak
+\texttt{1a59729af2c2de01b3008738c77ebf56}
+\end{center}
+They used the same CPU model and resource limits, although they were not
+executed in the same Slurm job as the v1.3 sweep.  KM remains lower on all four
+reported measures in every pairwise shared-correct comparison.
+
+On this panel KM therefore has both the highest correct-completion count and
+the lowest mean and median wall time and peak RSS among the tested artifacts,
+both under each system's correct-completion aggregate and under pairwise
+shared-correct conditioning.
+This is an empirical statement about the listed versions, hardware, harness,
+and corpus.  It is not a claim that KM dominates every current release, every
+OWL task, or every ontology distribution.
+
+The automatic selected-profile counts were 288 ELC, 196 production-all CB, 37
+nominal CB, 32 certified nominal, 22 general HT, five certified-EL production,
+five single-thread production, three rule, two bridge, one cardinality-nominal,
+and one nominal-introduction TBox profile.  Execution-route counts differ
+because profiles can defer to fallbacks or select in-process refinements.
+
+\subsection{Current biomedical and hard-case results}
+
+The complete eight-reasoner OBO sweep contains 1,512 terminal records, all of
+which passed identity, artifact, checkpoint, and output validation.  Of the
+160 independently profiled OWL~2~DL inputs, KM completed 88, Konclude 139,
+HermiT 117, JFact 96, Openllet 72, and MORe 115.  ELK returned output for all
+160 and Whelk for 159, but these profile-specialised outputs are not treated as
+complete OWL~2~DL references outside their supported profiles.
+
+Table~\ref{tab:current-obo} separates terminal coverage from performance on
+each system's own DL completions.  KM has the lowest median wall time and
+median peak memory in that conditional comparison.  Its mean wall time is
+higher than Konclude's, and its completion count is substantially lower.
+Table~\ref{tab:current-obo-pairwise} therefore recomputes KM and each baseline
+on the exact DL inputs where their published named-class relations agree.
+Against Konclude on 86 such inputs, KM has lower median time and memory but
+higher mean time and memory; the other pairwise rows remain explicitly
+population-conditioned.  These results do not support an unqualified claim
+that one reasoner is fastest on the contemporary panel.
+
+\input{generated/current-results.tex}
+
+Across all 189 inputs, all six expressive systems completed and agreed on 61,
+while a completing subset agreed on 87.  No expressive system completed 24,
+and 17 inputs contain an expressive-reasoner relation split.  The corresponding
+DL counts are 56, 69, 21, and 14.  Consistency results contain no split among
+the completing consistency-capable systems.  KM agrees with a unanimous
+external expressive consensus on 82 DL inputs and disagrees on one, DOID; the
+other categories are external splits, insufficient external completion, or KM
+non-completion.  We retain all 17 relation splits in the machine-readable
+table and discuss the source-level adjudications below.  CHEMINF is not a
+relation split: all four completing consistency-capable systems report it
+inconsistent, so the aggregate canonicalizes their empty-taxonomy versus
+all-bottom serialization conventions to the universal semantic relation.
+
+The separate KM failure ledger permits route-specific analysis alongside the
+complete comparison.  Table~\ref{tab:km-obo-causes} reports all 189
+terminal outcomes.  KM completed all 44 independently verified EL inputs, but
+only 44 of 116 DL non-EL inputs and nine of 29 inputs outside DL.  Of the 72
+fail-closed errors, 58 are unsupported inverse-role positions or complex rule
+atoms, twelve arise when a source-feature route disables adaptive retry before
+an internal cap, and two are explicit refusals to publish an incomplete CB
+fixpoint.  This gap between 591/592 on the repeatedly used ORE panel and 97/189
+on the frozen OBO snapshot is direct evidence against treating ORE coverage as
+current-distribution coverage.
+
+\input{generated/km-obo-causes.tex}
+
+Three current-corpus disagreements have source-level finite witnesses rather
+than majority labels.  On DOID, KM's relation is a strict subset of the common
+HermiT, Konclude, Openllet, and independently probed MORe relation by one pair,
+\texttt{DOID\_1024} $\sqsubseteq$ \texttt{DOID\_7}.  An 18-axiom witness shows
+that every branch of a four-way existential union reaches the same disease
+superclass.  On CVDO, KM omits 1,092 pairs from the common HermiT, Konclude,
+Openllet, and MORe relation; a five-axiom witness derives one representative
+through nested existential monotonicity.  These are established KM
+incompleteness cases, not KM-only unsound entailments.
+
+The KISAO split has a different shape.  KM, Konclude, HermiT, and
+Openllet agree on 158 named-unsatisfiable classes, while JFact reports 104.
+An eight-axiom witness for \texttt{KISAO\_0000086} uses a property domain,
+range, disjoint classes, and existential bottom propagation.  A small checker
+independently replays all three witnesses after verifying their source and
+explanation hashes.  Conversely, JFact alone marks
+\texttt{STATO\_0000073} unsatisfiable.  A source-bound STAR module reproduces
+that JFact result, while HermiT rejects the bottom entailment and Openllet
+completes the same 443-logical-axiom module with no unsatisfiable named class.
+We classify this as a JFact baseline defect, not a gold relation.  The final
+disagreement table retains every unresolved split rather than promoting a
+majority.
+
+PBPKO provides another exact strict-subset diagnosis without a source-level
+gold adjudication.  JFact emits 7,556 named subsumptions, all present in
+Konclude's 7,568-pair closure, so the split consists of twelve JFact omissions
+and no JFact-only pair.  We retain the split as unresolved because set
+inclusion alone does not prove those twelve candidate entailments.
+
+UO exposes a limitation shared by the two EL implementations despite the
+input's verified OWL~2~EL profile.  HermiT, Konclude, Openllet, and KM agree on
+1,665 named subsumptions.  ELK and Whelk share a 1,611-pair strict subset, and
+JFact returns 1,609.  The 54 common EL omissions follow from legal singleton
+nominals: if $A\equiv\{a\}$, $B\equiv\{b\}$, and $B\sqsubseteq A$, then
+$b=a$ and hence $A\sqsubseteq B$.  The specialists omit these reverse
+inclusions without reporting unsupported input.  We therefore evaluate
+profile-specialised systems against their actual published relations rather
+than assuming completeness from the profile label alone.
+
+Two successful NCBitaxon rows required post-measurement handling.  KM classification
+completed in 92.09 seconds at 7,373.73~MiB and emitted a 5.4-GiB JavaScript
+Object Notation (JSON) taxonomy;
+the original whole-document fingerprint process exhausted its separate job
+allocation.  A bounded-memory sparse strongly connected component
+(SCC)/closure implementation first matched
+the legacy taxonomy and relation digests on all 96 available accepted KM
+outputs, including a non-closed output requiring 23 inferred pairs.  It then
+fingerprinted NCBitaxon's 55,757,044 subsumptions in 248.08 seconds at
+2,418.08~MiB.  A source- and output-bound recovery transaction preserved the
+original classification measurements and passed the strict result validator.
+Konclude classification completed independently in 186.04 seconds at
+12,764.51~MiB and emitted a 781-MiB OWL/XML taxonomy.  The legacy
+whole-document parser reached 36~GiB during postprocessing, so the sparse
+implementation was extended to streaming OWL/XML.  Before use, it matched all
+160 accepted legacy Konclude fingerprints exactly; 29 non-success rows were
+predeclared skips.  On NCBitaxon it reconstructed the same 55,757,044
+subsumptions in 96.65 seconds at 1,845.66~MiB, with complete source-declaration
+coverage.  Its taxonomy and relation digests are identical to KM's.  A second
+bound recovery transaction preserved Konclude's original classification
+measurements and passed the strict validator.
+Postprocessing time and memory do not enter reasoner performance aggregates.
+
+The separate FMA sweep is complete (Table~\ref{tab:fma-results}).  Among the
+expressive systems, only Konclude returned a taxonomy within the resource
+contract.  KM reached the memory limit; HermiT, Openllet, and MORe timed out;
+and JFact terminated with an internal error.  ELK and Whelk returned outputs,
+but FMA is independently outside EL, QL, and RL.  Their outputs also disagree
+with Konclude and with each other, so we report them only as out-of-profile
+execution observations.
+
+\input{generated/fma-results.tex}
+
+\subsection{Incremental and explanation validation}
+
+We add an exact-v1.3 scale check for the two retained saturation backends.
+The synthetic EL input contains 10,000 independent $A_i\sqsubseteq B_i$
+axioms and adds $B_0\sqsubseteq C$.  The CB input contains 500 independent
+two-edge chains plus one disjunction to select CB, and adds
+$B_0\sqsubseteq\mathit{Delta}$.  Job \texttt{51036603} used the same Intel
+Xeon Gold 6248 CPU model, one core, one unmeasured warmup, and ten measured
+repetitions.  It bound the exact release binary and benchmark driver by
+SHA-256.  Every retained answer was equal to a fresh classification of the
+union; every update reported the expected delta strategy and nonzero retained
+state.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Exact-v1.3 incremental scale check.  Add and fresh columns are median
+wall times over ten measured repetitions.  Ratio is fresh-union time divided
+by retained-add time.  Session peak includes initial classification and the
+update; fresh peak covers a new process over the union.}
+\label{tab:incremental-scale}
+\input{generated/incremental-results.tex}
+\end{table*}
+
+The EL update reused 50,000 subsumption facts and added four; the CB update
+reused 1,500 and added two.  Median retained-add latency was 15.88~ms for EL
+and 5.83~ms for CB, compared with 74.38 and 15.37~ms for fresh worker
+processes.  These 4.68$\times$ and 2.64$\times$ end-to-end ratios include
+fresh process startup, parsing, and serialisation, so they are scale checks
+rather than isolated saturation speedups.  Retained sessions also had higher
+peak memory than fresh workers (29.56 versus 19.81~MiB for EL and 13.12 versus
+9.06~MiB for CB), consistent with the failure-atomic deep clone described in
+Section~\ref{sec:limitations}.
+
+The Rust release gate runs differential suites for EL insertion and
+component-local deletion; CB insertion, retraction, disjunction, and role
+chains; ordinary and quasi-order HT probe invalidation; cardinality and native
+ABox replay; rule assertion clashes; bridge and mirror component reuse; route
+migration; declined-transaction rollback; and stable source identity.  Every
+accepted revision is compared with a fresh automatic classification.  Tests
+require nonzero retained-state counts on representative meaningful updates.
+
+Eight native explanation integration tests cover EL, inverse-role CB,
+ordinary HT, cardinality, rule inconsistency, native ABoxes, forced-route
+rejection, and source limits.  The OWLAPI suite contains 31 passing tests: 19
+explanation tests, nine reasoner lifecycle and incremental tests, two
+explanation-controller tests, and one plugin-registration test.  The packaged
+Prot\'eg\'e smoke passes in a stock OSGi installation.  These are conformance
+and regression experiments, not a workload-level incremental speed benchmark;
+Section~\ref{sec:limitations} identifies that missing evaluation.
+
+\section{Methods: how KM was developed}
+\label{sec:methods}
+
+\subsection{Study design and evidence sources}
+
+Having evaluated system outputs and interfaces, we now answer RQ4 using a
+different evidence base.  This section is a retrospective process reconstruction, not a controlled
+comparison between human-only and agent-assisted development.  We use four
+classes of contemporaneous evidence: the git object database through the
+v1.3.0 tag; dated benchmark directories containing scripts, logs, and result
+digests; agent task worktrees and retained session records; and release-gate
+outputs.  A script distributed with the paper regenerates commit dates, source
+counts, and model-attribution trailers.
+
+KM arose from the Moose project and the subsequent Baobab work, both developed
+inside the originating \texttt{neuro\_symbolic\_independence} repository.
+Those projects supplied the immediate research lineage for extending
+neuro-symbolic ontology reasoning into a standalone OWL reasoner.  Moose
+compiles $\mathcal{EL}^{++}$ ontologies for latent-concept learning
+\cite{mashkova2026moose}; Baobab extends that programme to OWL~2~DL through
+consequence-based compilation \cite{mashkova2026baobab}.  The retained record
+first shows KM-relevant project activity on 15 May 2026.  Its initial 31 May
+snapshot already contains a Python SROIQ implementation, tests, a substantial
+Lean development, and an SROIQ plan; another commit that day records OWL
+loading and reference results.
+The privacy-preserving export does not retain the first prompt, so this is an
+evidence boundary rather than a claim about the wording or exact instant of
+conception.  The standalone history begins at \KMFirstCommit{} on \KMFirstDate{} and ends at
+the v1.3 release commit \KMLastCommit{} on \KMLastDate{}.  It contains
+\KMCommitCount{} commits.  At release, the repository contained
+\KMRustFiles{} Rust files with \KMRustLines{} lines, \KMLeanFiles{} Lean files
+with \KMLeanLines{} lines, and \KMJavaFiles{} Java files with \KMJavaLines{}
+lines.  Generated or ported source contributes substantially to these counts,
+so lines of code are scale descriptors, not productivity measures.
+
+\KMAttributedCommitCount{} commits contain a \texttt{Co-Authored-By} trailer
+naming a coding-agent model identity.  Such a trailer records the model active
+for that work item; it does not establish autonomous authorship, intellectual
+responsibility, or the fraction of a patch generated by the model.  The human
+maintainer is the sole git author and retained responsibility for objectives,
+integration, claims, and releases.  The imported laptop bundle, ref listing,
+pre-cutoff commit ledger, selected project memories, and manifests retain the
+earlier source and process record without conversation bodies.
+
+Table~\ref{tab:process-phases} summarises the distribution of commits across
+the five phases reconstructed below.  The high count in Phase~4 reflects the
+then-current practice of committing and tagging small proof milestones; these
+commits are not comparable to user-facing features.  The maintainer later
+replaced patch-per-lemma releases with larger proof milestones, both to make
+release meaning clearer and to reduce unnecessary continuous-integration runs.
+
+The retained coordinator-side session archive provides a second, independent
+view of the process from 16 July onward.  A privacy-preserving extractor found
+\KMSessionEvidenceCount{} KM session records and records only source and prompt
+hashes, timestamps, branch metadata, hashed working directories, and
+methodological category flags.  Among these, \KMIsolatedTaskEvidenceCount{}
+explicitly require worktree or task isolation,
+\KMReadOnlyReviewEvidenceCount{} require read-only review, and
+\KMLeanTaskEvidenceCount{} concern Lean, proof, or certification work.  The
+ledger does not expose conversation text and does not infer contribution size
+from a session count.  It corroborates the task forms described below.  The
+separately imported laptop evidence supplies dated source and aggregate session
+metadata for the preceding period.  This ledger intentionally indexes top-level task records;
+AgentsView additionally follows nested subagent identities, so the two session
+counts measure different units and are not expected to match.
+
+The process reconstruction therefore uses three non-equivalent units in
+chronological order: commits establish repository events, retained sessions
+establish task and orchestration records, and telemetry counters establish
+platform-reported activity.  We use agreement among these sources to locate
+phases, but never convert one unit into another.
+
+We imported the retained workstation platform archives into AgentsView v\KMAgentsViewVersion{}
+\cite{kenn2026agentsview} and
+restricted project identity to KM's Git remote.  This gives a native account
+of retained KM project activity rather than using commit attribution as a
+proxy for computational effort.  Table~\ref{tab:agent-usage} reports API usage counters from
+\KMAgentsViewFirstDate{} through \KMAgentsViewLastDate{}.  Its
+\KMAgentsViewSessions{} sessions
+comprise \KMAgentsViewHumanSessions{} human-initiated sessions, one automation
+session, and \KMAgentsViewSubagents{} subagent sessions.  Input, cache-read,
+and cache-creation counters retain each platform's native definitions and
+must not be summed as disjoint units.  Session counts include records without
+native token counters; token columns aggregate only events that record those
+counters.  We omit AgentsView's price estimate:
+all model names required fallback prices, so it is not evidence of paid cost.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Direct agent-usage telemetry retained on the workstation.  These are
+lower bounds for the workstation period; the preceding laptop period is
+reported separately because its older report schema exposes different fields.
+The final daily bucket straddles the v1.3 tag and therefore includes both
+release work and post-tag evidence or manuscript preparation.}
+\label{tab:agent-usage}
+\begin{tabular}{lrrrrr}
+\toprule
+Platform & Sessions & Input tokens & Output tokens & Cache read & Agent-minutes \\
+\midrule
+Claude Code & \KMClaudeNativeSessions{} & \KMClaudeNativeInput{} &
+  \KMClaudeNativeOutput{} & \KMClaudeNativeCacheRead{} & \KMClaudeAgentMinutes{} \\
+Codex & \KMCodexNativeSessions{} & \KMCodexNativeInput{} &
+  \KMCodexNativeOutput{} & \KMCodexNativeCacheRead{} & \KMCodexAgentMinutes{} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Claude additionally records \KMClaudeNativeCacheCreate{} cache-creation input
+tokens.  Across both platforms AgentsView parsed \KMAgentsViewToolEvents{}
+tool-call events: \KMAgentsViewBashEvents{} Bash,
+\KMAgentsViewEditEvents{} edit, \KMAgentsViewReadEvents{} read,
+\KMAgentsViewTaskEvents{} task, \KMAgentsViewWriteEvents{} write, and
+\KMAgentsViewOtherEvents{} events in AgentsView's other category.  It observed
+peak concurrency of \KMAgentsViewPeak{} agents.
+Native output-token counters comprise \KMCodexModelOutput{} for the recorded
+Codex model, \KMOpusFourOutput{} for Claude Opus~4.8, \KMOpusFiveOutput{} for
+Claude Opus~5, and \KMFableOutput{} for Claude Fable~5.  Model names are the
+identifiers stored by the agent platforms, not independently calibrated
+compute units.
+The \KMAgentsViewAgentMinutes{} agent-minute total includes active and idle
+intervals inside persistent sessions; it is an orchestration-span measure,
+not continuous CPU time or autonomous labour.  Likewise, tool-call events
+include shell polling and internal operations and do not equal distinct code
+changes.  The artifact pins the project-filtered usage, statistics, and
+activity JSON plus their SHA-256 hashes.  The usage and activity reports agree
+on output-token totals; we do not mix these API counters with the separate
+message-content token measure in AgentsView's statistics report.  No prompts,
+responses, shell commands, or tool results are exported.
+
+The original laptop provides a non-overlapping, half-open telemetry window
+ending on 11 July.  AgentsView v\KMLaptopAVVersion{} lists
+\KMLaptopSessions{} records for the standalone KM project from
+\KMLaptopFirstDate{} through \KMLaptopLastDate{}: \KMLaptopTopSessions{}
+top-level sessions and \KMLaptopSubagents{} child records.  Of these records,
+679 carry native output counters totalling \KMLaptopOutputTokens{} tokens, and
+the export contains \KMLaptopMessages{} message events.  This AgentsView
+version lacks the later activity report and project filter for daily usage, so
+we neither derive agent-minutes nor merge its counters with the workstation
+table.  It also lists \KMParentProjectSessions{} sessions and
+\KMParentProjectOutputTokens{} output tokens in the originating Moose, Baobab,
+and KM research repository beginning \KMParentProjectFirstDate{}.  This is the
+correct project lineage, but its aggregate spans all three projects and cannot
+be partitioned retrospectively.  We therefore report it as a lineage-project
+upper bound and do not add it to KM-only totals.  We exclude a lone 2 February repository-housekeeping
+session.  The session exports remove first messages and all prompt and response
+bodies; we retain the machine-wide daily report only as an upper bound.
+
+Table~\ref{tab:agent-usage-phases} aligns the same frozen telemetry with the
+chronological phases below.  The observation window begins during Phase~2, so
+its first row is only the retained tail of that phase.  Phase assignment uses
+Coordinated Universal Time (UTC) calendar boundaries fixed in the rendering
+script.  Output tokens and
+agent-minutes conserve the corresponding totals in
+Table~\ref{tab:agent-usage}; active days count dates with a nonzero native
+output counter, and peak is the maximum concurrent-agent count in a daily
+bucket.  These measurements describe orchestration intensity, not change
+quality or causal effectiveness.
+The final daily bucket cannot be split at the 30 August 06:07 UTC release tag
+from the retained report, so Phase~5 measures KM project activity rather than
+implementation alone.
+Within the retained window, Phase~3 is the largest observed interval, with
+\KMPhaseThreeOutputShare{} of native output tokens and
+\KMPhaseThreeMinuteShare{} of agent-minutes.  The concentrated Phase~4 proof
+campaign accounts for \KMPhaseFourOutputShare{} and
+\KMPhaseFourMinuteShare{}, respectively.  This temporal association supports
+the process chronology, but it does not identify which tokens produced an
+accepted proof or implementation change.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Retained agent usage by reconstructed KM project phase.  Phase~2 is
+left-censored because workstation telemetry starts on 11 July; Phase~5's final
+daily bucket extends beyond the release tag.}
+\label{tab:agent-usage-phases}
+\input{generated/agent-usage-phases.tex}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\caption{Repository activity by reconstructed development phase.  Attribution
+means that a commit carries exactly one coding-model co-author trailer; it does
+not measure generated code or autonomous contribution.}
+\label{tab:process-phases}
+\input{generated/phase-stats.tex}
+\end{table*}
+
+Table~\ref{tab:method-milestones} expands those phases into selected steps
+that changed the system boundary, evaluation outcome, or certification state.
+The distributed ledger stores full commit identifiers and expected dates; its
+renderer verifies every row against the v1.3.0 ancestry before generating the
+table.  These are landmarks rather than an attribution count.  The complete
+1,730-commit chronology remains in the artifact.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Selected, commit-verified milestones in chronological order.}
+\label{tab:method-milestones}
+\input{generated/method-milestones.tex}
+\end{table*}
+
+\subsection{Human-directed agent loop}
+
+The recurring unit of work was an evidence-seeking loop rather than a single
+prompt-to-program invocation.
+
+\begin{enumerate}[leftmargin=*]
+  \item The human maintainer stated an outcome, often in terms of a failing
+  ontology, coverage target, soundness concern, proof milestone, interface
+  contract, or resource bound.
+  \item The coordinating agent inspected source and artifacts, formed a
+  diagnosis, and decomposed independent hypotheses into isolated tasks.
+  \item Subagents worked in separate git worktrees.  Typical assignments were
+  to port one mechanism, audit one rule family, profile one hot path, construct
+  one Lean lemma, or seek a reduced counterexample.
+  \item The coordinating agent reviewed diffs and assumptions.  A patch was
+  integrated only after focused tests and a comparison with the unchanged
+  baseline.  Shared-worktree collisions observed in early cycles led to the
+  worktree isolation rule.
+  \item Promising semantic or routing changes were built as exact artifacts
+  and tested on IBEX.  Targeted probes preceded panels and full sweeps.  A
+  candidate that improved one hard ontology but changed another accepted
+  signature was rejected or fenced.
+  \item Once empirical behaviour stabilised, the corresponding publication
+  boundary was formalised or extended in Lean.  Proof failures could expose a
+  missing invariant and force a Rust change; executable checker tests then
+  connected the revised producer to the theorem.
+  \item Major milestones were committed with provenance and released only
+  after exact-source gates.  Failed approaches remained documented to prevent
+  repeated rediscovery.
+\end{enumerate}
+
+This loop assigned generation and search to agents but reserved acceptance for
+external evidence.  Agents were allowed to be wrong cheaply in an isolated
+worktree.  They were not allowed to convert uncertainty into a public answer.
+
+\subsection{Chronological phases}
+
+The phases below describe standalone KM development from 2 June onward.  The
+Moose and Baobab activity retained from 15 May through the 31 May precursor
+snapshot establishes the research lineage but is not assigned a standalone KM
+phase.
+
+\paragraph{Phase 1: a disjunctive context engine (2--11 June).}
+The initial standalone repository contained a Rust implementation of a
+Sequoia-style context calculus and an early Lean formalisation.  The first
+audits found concrete soundness defects in predecessor propagation, literal
+ordering, and global inconsistency handling.  The implementation and proofs
+were revised together.  Early HermiT comparisons and synthetic ontologies
+established a small correctness base, while ORE runs demonstrated that a pure
+context engine did not yet provide practical corpus coverage.
+
+\paragraph{Phase 2: hybridisation and corpus-driven debugging (12 June--29 July).}
+The system gained a Rust EL completion path, hypertableau experiments,
+Konclude-inspired completion mechanisms, nominal and cardinality handling,
+DL-safe-rule checks, and an adaptive supervisor.  Development increasingly
+used individual ORE failures as semantic probes.  Hard residuals were grouped
+by features rather than patched by identifier: live universal/disjunction
+families, role-chain propagation, nominal/equality ABoxes, datatypes, and large
+EL sources.  Full-route matrices distinguished ontologies solvable by any
+configuration from those solved by the automatic route.
+
+This phase also produced important negative results.  A historical tableau
+could solve synthetic fragments but was not a valid general benchmark
+fallback.  Several ordered-resolution and caching candidates improved a local
+case while failing soundness, completeness, or memory gates.  These were
+disabled and recorded rather than included in an oracle-selected portfolio.
+
+\paragraph{Phase 3: closing and optimising the automatic route (30 July--16 August).}
+The automatic route reached 591 of 592 panel ontologies.  Engineering work
+shifted from finding any solving configuration to preserving a single
+source-feature policy.  Streaming parsing and output, compact indexes,
+in-process EL execution, process-tree memory limits, deterministic hashing,
+shared immutable preparation, and specialised but fail-closed routes reduced
+time and memory.  Every candidate used paired or whole-corpus comparison.  The
+remaining ontology, ORE~1194, exposed a large inverse/cardinality propagation
+residual; attempted repairs are retained as negative evidence.
+
+\paragraph{Phase 4: certification campaign (17--24 August).}
+The project then treated proof completion as the primary deliverable.  Small
+proof milestones covered ELC normalisation and closure, HT refutations and
+models, equality and cardinality, finite and regular blocking, source
+projection, CB chronological derivations, and complete taxonomy matrices.
+Rust producers emitted concrete evidence documents consumed by Lean checkers.
+The campaign culminated in a common source semantics and an automatic-routing
+theorem.  Proof work found runtime assumptions that tests alone had not made
+explicit, including source binding, complete negative taxonomy cells, and
+the distinction between a finite endpoint and a regular unravelling.
+
+\paragraph{Phase 5: release hardening and v1.3 interfaces (25--30 August).}
+Alongside the final v1.2 certification and release work, v1.3 introduced a
+written acceptance contract before implementation.  The work proceeded route
+by route: source sessions, CB and EL
+retention, typed HT state, rules, cardinality and native ABoxes, bridge and
+mirror reuse, migration, rollback, explanations, OWLAPI, and packaged
+Prot\'eg\'e testing.  A fresh full sweep exposed one routing regression on a
+large identity-heavy ABox.  Two forced exact HT probes established a generic
+source-shape rule, which was then tested across the full corpus.  Incremental
+and explanation publication theorems were added before the exact v1.3 tag.
+The retained 30 August usage bucket continues after that tag and includes
+release-evidence reconstruction and manuscript work; it is not attributed
+entirely to implementation.
+
+\subsection{Event-level case studies}
+
+Five episodes show how the loop handled plausible changes that could not be
+accepted on inspection alone.  Table~\ref{tab:case-studies} gives the compact
+sequence; the following paragraphs explain why each episode mattered.
+
+\begin{table*}[t]
+\centering
+\caption{Representative proposal--falsification--revision cycles.}
+\label{tab:case-studies}
+\small
+\begin{tabularx}{\textwidth}{@{}p{0.16\textwidth}XXX@{}}
+\toprule
+Case & Initial proposal & Falsifying evidence & Durable outcome \\
+\midrule
+EL role chains & Route a role-chain EL family through completion & One ontology appeared to gain 1,110 unsupported answers & Full-IRI comparison exposed local-name canonicalisation loss; exact checks reinstated the route \\
+Disjunct harvest & Share common disjuncts across satisfiability probes & ORE~9024 produced a spurious answer & Single-seed isolation removed cross-concept model contamination \\
+Excluded-middle elimination & Remove apparently redundant branches & A hard case became fast, but valid consequences disappeared & An independent-derivability guard restored fail-closed behaviour \\
+HT publication & Certify a finite saturated endpoint & Proof construction required infinite regular witnesses & Runtime certificates gained successor slots, role closure, cardinality evidence, and regular paths \\
+v1.3 routing & Fence singleton-sensitive semantics & ORE~15846 changed from a solution to a timeout & Forced probes justified a generic identity-heavy ABox route, followed by a full sweep \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\paragraph{A route was initially blamed for an output-identity defect.}
+Commit \texttt{f56ee71} routed an EL role-chain family through completion.  A
+subsequent comparison appeared to find 1,110 extra answers for ORE~7868, so the
+change was reverted in \texttt{2810ff8}.  Investigation showed that the
+normaliser already implemented the required chain rule; the discrepancy came
+from truncating IRIs to local names during comparison.  Full-IRI
+canonicalisation and an exact 12-ontology panel then supported reinstatement in
+\texttt{6d08e2c}.  The episode motivated independent tests of reasoner output
+and oracle canonicalisation.
+
+\paragraph{A locally convincing optimisation crossed model boundaries.}
+Commit \texttt{83466c4} proposed harvesting disjuncts shared by several
+satisfiability probes.  A full-corpus check found a spurious ORE~9024 answer;
+\texttt{ccf2691} consequently marked the mechanism known-unsound.  The failure
+was traced to model information leaking between concepts.  Isolating each
+probe in a single-seed saturation repaired that defect in \texttt{5072749},
+restored ORE~9024, and recovered ORE~4205 while retaining a route gate.
+
+\paragraph{A dramatic speedup hid a completeness loss.}
+Excluded-middle elimination in \texttt{28597d4} reduced one intermediate model
+from 170 objects to seven and changed ORE~5303 from a timeout to 0.083 seconds.
+Counterexample analysis then showed that eliminating a branch could silence
+consequences available only through that branch.  Commit \texttt{554fc87}
+added an independent-derivability guard and returned the affected case to an
+honest timeout.  The subsequent full sweep in \texttt{5f8d5ed} reported no
+unadjudicated soundness or completeness disagreement.  The slower outcome was
+accepted because returning fewer classifications is preferable to publishing
+an incomplete one as complete.
+
+\paragraph{Proof construction changed the executable evidence format.}
+The HT certification sequence from \texttt{48cc047} through
+\texttt{e36d2e6} showed that a finite saturated endpoint alone did not justify
+the required model claim.  The proof needed regular witness paths, explicit
+successor slots, role closure, cardinality evidence, and a checked finite
+endpoint.  Commit \texttt{de280e0} consequently made the Rust implementation
+emit regular HT model certificates.  Here formalisation did not merely describe
+the implementation; it strengthened the evidence that the implementation had
+to produce.
+
+\paragraph{The release sweep caught a route-level regression.}
+Commit \texttt{4ff0a3b} fenced singleton-sensitive semantics, but the resulting
+automatic policy timed out on ORE~15846.  Forced \texttt{ht\_general} probes
+solved both ORE~15846 and ORE~8480 with exact signatures.  Commit
+\texttt{5c64a02} replaced ontology-specific exceptions with a source-feature
+predicate for identity-heavy, no-cardinality ABoxes; only those two corpus
+profiles matched it.  The incremental and explanation publication theorem was
+already present in \texttt{4831862}; after the routing repair, all exact-tag
+gates and the 592-ontology sweep were rerun before release commit
+\texttt{f4738bc}.  This case illustrates why component tests cannot replace a
+full automatic-routing sweep.
+
+\subsection{Falsification and benchmark discipline}
+
+Benchmarking served as a semantic test as well as a performance measurement.
+The process evolved after several operational failures: jobs that exited before
+executing reasoner code, stale rows mistaken for resumed output, node feature
+mis-labelling, and route matrices that recorded only one known success.  The
+final harness therefore requires terminal records, validates artifact hashes,
+checks output cardinality and signatures, records process-tree memory, resumes
+only absent indexes, and keeps scheduler output for sanity checks.
+
+The expanded evaluation supplied a prospective test of this discipline.  An
+early current-corpus prefix contained repeated Konclude relation digests.
+Inspection showed zero-exit, 896-byte taxonomies containing only declarations
+for \texttt{owl:Thing} and \texttt{owl:Nothing}, even though the corresponding
+sources declared hundreds or thousands of classes.  The then-current
+validator had accepted these files because they were well-formed outputs.  We
+discarded that Konclude prefix and required every returned taxonomy to cover
+the source class declarations.  A second pilot then established that this
+Konclude build also accepts RDF/XML without loading the source classes.  We
+therefore introduced source-bound, round-trip-equivalent OWL/XML views with an
+unchanged Functional Syntax fallback.  The rerun was dependency-gated on all
+preparation receipts and a four-ontology semantic pilot covering both selected
+formats.  The same
+fail-closed policy applies to baseline evidence, not only to KM output.
+
+The acceptance sequence for a performance change was:
+
+\begin{enumerate}[leftmargin=*]
+  \item establish a source-level hypothesis and a representative ontology;
+  \item build a commit-exact binary and record its hash;
+  \item run a focused A/B probe with semantic signature comparison;
+  \item run a feature-neighbourhood panel to detect overfitting;
+  \item run the full 592-ontology automatic sweep;
+  \item reject any unadjudicated semantic change, even if aggregate coverage or
+  speed improves; and
+  \item retain the patch only if its intended benefit survives exact-artifact
+  aggregation.
+\end{enumerate}
+
+This protocol was not present in complete form at project inception.  It is an
+outcome of failures encountered during agentic development.  In particular,
+rapid parallel generation increased the value of immutable baselines,
+worktree ownership, and automated semantic gates.
+
+\section{Methods: Lean as an integration constraint}
+\label{sec:certification-method}
+
+Formalisation was not postponed until the code was considered finished.  It
+served three roles during development.
+
+First, it separated semantic changes from implementation-preserving changes.
+Changing batching or an index need not produce a new calculus theorem if a
+fixpoint-equivalence argument and differential tests establish that the same
+rule instances remain available.  Changing derivability, literal maximality,
+blocking, or publication completeness does require a proof change.
+
+Second, it converted implicit assumptions into executable interfaces.  A
+taxonomy theorem over an abstract saturated set is insufficient if the Rust
+program can omit source clauses, reorder symbols inconsistently, or publish
+only positive cells.  The proof campaign therefore moved outward from
+calculus lemmas to wire decoders, source identities, complete row-major
+matrices, and route dispatch.  Tampering tests mutate these documents and
+require rejection.
+
+Third, failed proof attempts acted as design feedback.  When a theorem needed
+an assumption that the runtime could not justify, the acceptable responses
+were to strengthen runtime evidence, narrow the route, or remove the
+publication path.  Adding the assumption without a producer obligation would
+only certify an idealised algorithm.
+
+The agents contributed to lemma search, proof decomposition, counterexample
+construction, and wire-checker implementation.  Lean's kernel, not another
+agent, accepted or rejected a proof term.  Human review remained necessary for
+the semantic statement: a machine-checked proof of the wrong theorem is not a
+correctness result.  Release gates therefore audit both theorem dependencies
+and the concrete producer/checker path.
+
+This combination differs from using a proof assistant merely to validate
+isolated generated functions.  The proof boundary is a system architecture:
+fallible and aggressively optimised workers may search in different ways, but
+the only route to public output is through a common source-bound acceptance
+relation.
+
+Together, the commit-verified chronology, event-level falsification cases,
+native usage telemetry, rejected-candidate record, and proof-driven interface
+changes answer RQ4 as a source-supported process reconstruction.  They do not
+provide a human-only counterfactual or a causal productivity estimate.
+
+\section{Discussion}
+
+\paragraph{What the reasoner result establishes.}
+One automatic source-feature policy combines EL completion,
+consequence-based saturation, and hypertableau procedures under a single
+publication contract.  It classified 591 of 592 ORE inputs without choosing
+routes after observing answers.  On pairwise shared-correct subsets, KM's
+end-to-end wall time and process-tree memory remained below those of the tested
+artifacts.  These measurements include routing and worker orchestration but do
+not isolate their overhead.  These conclusions are deliberately
+panel-conditional.  The independently frozen OBO inputs expose a much larger
+acceptance gap: the exact v1.3 binary completes 97 of 189 inputs, including all
+44 EL inputs but only 44 of 116 DL non-EL inputs.  Most failures are explicit
+frontend or route refusals rather than silently published approximations.
+That behaviour is preferable for correctness, but it remains missing system
+coverage.  The contrast makes the contemporary panel more than an additional
+leaderboard: it falsifies any inference from near-complete historical coverage
+to broad current OWL acceptance.
+
+\paragraph{What the development case establishes (RQ4).}
+The evidence supports a process description, not a productivity experiment.
+Agents supplied parallel search over implementations, diagnoses, tests, and
+proof decompositions.  The maintainer supplied objectives, task boundaries,
+acceptance criteria, semantic adjudication, and integration decisions.  Three
+features made this asymmetry operational.  First, isolated worktrees made a
+plausible but wrong proposal inexpensive to discard.  Second, corpus and
+source-level witnesses evaluated semantic behaviour outside the proposing
+agent's own tests.  Third, Lean obligations prevented a runtime route from
+being described as certified unless its concrete evidence reached a proved
+publication theorem.  The event studies show instances in which each gate
+rejected or reshaped an implementation.  They do not show what the project
+would have cost without agents, or whether another maintainer would obtain the
+same outcome.
+
+The usage telemetry helps delimit this claim.  Session, token, tool-event,
+concurrency, and agent-minute totals establish sustained KM project use rather
+than an occasional completion tool.  Their phase distribution is consistent with the
+repository chronology: the largest retained orchestration interval coincides
+with automatic-route closure and optimisation, while a concentrated interval
+coincides with the certification campaign.  However, persistent-session idle
+time, cache accounting, retries, and nested subagents prevent conversion of
+these measures into person-hours or accepted-code shares.  The combination of
+native usage records, commit history, rejected-candidate evidence, and exact
+release gates is more informative than any one measure alone.
+
+\paragraph{Why certification changed the architecture.}
+The formal contribution is not simply a proof of calculus rules.  Moving the
+proof boundary to publication required source identities, complete positive
+and negative taxonomy cells, route-specific evidence types, finite or regular
+countermodel witnesses, and a common dispatcher theorem.  Several of these
+obligations caused Rust changes during the proof campaign.  This motivates a
+testable design choice for agent-built symbolic software: keep the
+search implementation permissive enough to evolve, but make its externally
+visible claim pass through a narrow, source-bound relation whose assumptions
+are executable producer obligations.  The principle does not eliminate the
+trusted computing base, nor does it certify unsupported inputs.  It makes the
+boundary inspectable and turns unsupported or insufficiently evidenced cases
+into explicit refusals.
+
+\paragraph{Next empirical tests.}
+Two studies would test the method beyond this retrospective.  A controlled
+replication could assign comparable reasoner features to human-only,
+agent-assisted test-only, and agent-assisted proof-gated workflows and measure
+accepted semantic defects, elapsed integration time, and discarded work.
+A longitudinal deployment study could evaluate transactional updates and
+explanations over real ontology-release sequences.  Both should retain failed
+attempts and source-bound outputs; reporting only merged commits would erase
+the main mechanism studied here.
+
+\section{Related work}
+
+\paragraph{OWL reasoners.}
+HermiT introduced a hypertableau calculus designed to reduce nondeterminism and
+model size and supports broad OWL~2 reasoning services
+\cite{motik2009hypertableau,glimm2014hermit}.  Konclude combines tableau-style
+completion with extensive indexing, caching, blocking, and parallelisation
+\cite{steigmiller2014konclude}.  ELK uses consequence-based reasoning tailored
+to OWL~2~EL \cite{kazakov2014elk}.  Sequoia implements consequence-based
+reasoning for expressive description logics \cite{bate2016sequoia,
+tenacucala2018consequence}.  KM reuses ideas from all four traditions but
+differs in exposing a typed hybrid router and a common proof-carrying
+publication boundary.
+
+The expanded comparison includes three additional OWL reasoner families.
+JFact is a Java port of FaCT++'s tableau architecture
+\cite{tsarkov2006factpp,palmisano2018jfact}.  Openllet continues the Pellet
+line of OWL~DL reasoners \cite{sirin2007pellet,galigator2019openllet}.  MORe
+combines a tractable-profile reasoner with an expressive reasoner over the
+residual module \cite{armasromero2012more}; its modular routing makes it the
+closest baseline to KM's high-level motivation, although the procedures and
+publication boundary differ.  For EL workloads, we also compare ELK with
+Whelk, a newer EL+RL reasoner based on ELK's algorithm
+\cite{balhoff2024whelk}.  We report EL-only
+systems as complete reasoners only when the input satisfies their supported
+profile, rather than treating profile-limited success as OWL~2~DL coverage.
+
+KM's source-feature selector is also related to per-instance algorithm
+selection.  R2O2* learns ontology-runtime rankings over a portfolio of external
+reasoners and reports gains over each component reasoner
+\cite{kang2020r2o2}.  KM does not learn from benchmark answers and does not
+choose among external black boxes: its release-pinned decision tree selects a
+typed internal procedure from source features, after which that procedure must
+meet a route-specific publication contract.  MORe instead partitions an
+ontology between tractable-profile and expressive procedures.  These systems
+share the observation that no one procedure dominates every ontology shape,
+but differ in the unit selected, the use of learning, and the acceptance
+boundary.
+
+\paragraph{Verified description-logic reasoning.}
+Formal verification of description-logic procedures predates KM.  Chaabani,
+Mezghiche, and Strecker mechanised soundness, completeness, and termination of
+an $\mathcal{ALC}$ tableau procedure in the Isabelle/HOL higher-order-logic
+environment
+\cite{chaabani2013alc}.  Hidalgo-Doblado et al. used refinement in the
+Prototype Verification System (PVS) to
+obtain executable, verified $\mathcal{ALC}$ tableau reasoners
+\cite{hidalgo2014verified}.  VEL instead formalises an $\mathcal{EL}^{++}$
+completion procedure in Coq and extracts an executable OCaml reasoner
+\cite{ileri2024vel}.  A complementary line leaves the high-performance
+reasoner outside the trusted base: Baader, Koopmann, and Tinelli translate ELK
+subsumption proofs into certificates checked against inference rules encoded
+in the Logical Framework with Side Conditions
+\cite{baader2020certify}.  KM follows this last separation between an
+optimised producer and a small checker, but binds each accepted result to its
+source and route and covers a hybrid expressive-OWL pipeline.  It does not
+claim verification of the OWL parser, operating system, Rust compiler, or
+Lean's implementation; Section~\ref{sec:certification-system} states the exact
+trusted boundary.
+More generally, certifying computation separates an untrusted producer from a
+checker whose correctness and witness relation can be verified
+\cite{alkassar2014certifying}.  KM instantiates that architecture at a hybrid
+reasoner boundary, but its checker is not independent of every implementation
+layer: decoded source evidence, the Lean kernel, and the explicitly listed
+runtime and toolchain components remain trusted.  The comparison supports an
+instance-correctness claim for accepted publications, not a claim that the
+complete executable stack has been verified.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Verification and certification boundaries in the closest systems.
+``Procedure'' means that the reasoning implementation is obtained from or
+refined against the formal development; ``checker'' means that an external
+producer emits evidence accepted by a smaller verifier.}
+\label{tab:verification-boundaries}
+\begin{tabularx}{\textwidth}{@{}p{0.14\textwidth}p{0.13\textwidth}XXX@{}}
+\toprule
+System & Logic/scope & Verified object & Negative results & Producer boundary \\
+\midrule
+Chaabani et al. & $\mathcal{ALC}$ & tableau procedure & completeness theorem & formal procedure \\
+Hidalgo-Doblado et al. & $\mathcal{ALC}$ & refined executable & decision procedure & extracted/refined \\
+VEL & $\mathcal{EL}^{++}$ & completion procedure & complete classifier & extracted OCaml \\
+ELK--LFSC & OWL~2~EL subsumption & proof checker & not the reported focus & external ELK \\
+KM & routed OWL~2~DL & source/route evidence checker & countermodel evidence & external Rust producer \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\paragraph{Evaluation.}
+ORE established common corpora, tasks, time limits, and harnesses for OWL
+reasoner comparison \cite{parsia2017ore}.  The ORE authors emphasise both
+coverage and correctness and caution that competition ranking alone does not
+answer every experimental question.  KM retains the corpus as a development
+falsification set and adds exact binary hashes, process-tree memory, route
+provenance, resume validation, and an explicit contested-gold ledger.
+Because that corpus predates current biomedical releases, our contemporary
+strata freeze the active OBO collection and a planned current BioPortal sample,
+and separately retain SNOMED~CT, GALEN, FMA, NCIt, Uberon, and ChEBI as named
+stress cases rather than allowing them to disappear inside corpus averages.
+
+\paragraph{Incremental reasoning and explanations.}
+Incremental classification has been studied through dependency tracking,
+module extraction, and retained completion or tableau structures.  Cuenca Grau
+et al. formalise reuse across ontology versions and evaluate it for OWL
+classification \cite{cuencagrau2010incremental}.  KM's transactional contract
+adds explicit revision identity, route-preserving state reuse, atomic migration,
+and fresh-result comparison, but the present experiments are controlled
+regressions rather than a representative ontology-evolution benchmark.  OWL
+justifications are commonly computed through black-box axiom deletion and
+hitting-set enumeration \cite{kalyanpur2007debugging,horridge2011justification}.
+Proof-oriented explanation systems such as Evonne additionally expose
+reasoning steps and support interactive inspection and repair
+\cite{mendez2023evonne}.  KM currently publishes source-axiom, subset-minimal
+justifications through its native, OWLAPI, and Prot\'eg\'e interfaces; it does
+not claim Evonne-style proof visualisation or user-study evidence.
+KM's novelty is not the deletion algorithm itself, but its composition with an
+automatic multi-procedure reasoner, transactional route migration, and a
+source-bound certified publication contract.
+
+\paragraph{Agentic software engineering.}
+SWE-agent evaluates agents on bounded software-repair tasks
+\cite{yang2024sweagent}; OpenHands evaluates a broader platform across software
+engineering, web browsing, and general-assistance benchmarks
+\cite{wang2024openhands}.  Neither reports the longitudinal construction and
+certification of a new reasoner.  KM is a longitudinal case
+study of building a new symbolic system through many interacting tasks.  Its
+method adds domain-level corpus falsification and theorem-prover gates to the
+usual edit-test loop.  Because this paper reports one project without a
+human-only control, it supports process hypotheses rather than causal claims
+about productivity.
+
+Language models have also been integrated directly into interactive theorem
+proving.  Lean Copilot supplies proof-step suggestion, goal completion, and
+premise selection inside Lean \cite{song2025leancopilot}.  That line of work
+evaluates assistance on theorem corpora.  KM instead studies a wider systems
+loop in which agents modify an evolving Rust reasoner, benchmark harnesses,
+interfaces, and Lean evidence producers, while exact-source proof gates govern
+release.  The distinction matters: kernel acceptance validates a proof term,
+but the engineering method must also bind the proved statement to the source,
+runtime evidence, route, and published answer.
+
+\section{Limitations and threats to validity}
+\label{sec:limitations}
+
+The threats fall into four groups: corpus representativeness, baseline and
+measurement comparability, certification scope, and retrospective process
+evidence.  We discuss them in that order.
+
+\paragraph{Language and service coverage.}
+KM is an experimental classifier, not a drop-in replacement for every OWLAPI
+service.  The paper evaluates named-class classification and consistency.
+Property classification, realisation, arbitrary entailment checking, and
+query answering are outside the reported benchmark.  Explanations are limited
+to named subclass, named unsatisfiability, and inconsistency queries.
+The v1.3.0 Functional Syntax frontend does not accept every legal placement of
+an inverse object-property expression.  It supports inverse roles in class
+expressions and several explicitly desugared axiom forms, but still requires
+named roles in property chains and, among other role-box (RBox) positions, in
+\texttt{EquivalentObjectProperties}.  Its DL-safe-rule extension also requires
+named class atoms and rejects rules containing complex class expressions.  The
+current-corpus preparation replaces
+inverse chain members with deterministic fresh roles and defining
+inverse-property axioms, then gives the same conservative extension to every
+reasoner.  A separately verified OWL/XML serialization, or the unchanged
+canonical form when OWL/XML cannot preserve the source, is used for Konclude
+as described in the protocol.  The preparation intentionally does not repair
+other positions discovered during the evaluation.  Such rows remain visible
+as fail-closed interface errors.
+This preprocessing preserves original-signature entailments, but both the need
+for it and the residual rejections are input-interface limitations of the
+tested release.
+
+\paragraph{One unresolved ontology.}
+ORE~1194 fails closed during the production pipeline.  The repository contains
+many rejected attempts and a residual analysis, but v1.3 does not classify it.
+Reporting 591/592 must not be paraphrased as complete coverage of OWL~2~DL or
+of the ORE corpus under every task.
+
+\paragraph{Benchmark selection and overfitting.}
+The ORE panel was repeatedly used during development, so it is both a training
+and evaluation corpus for routing and optimisation.  Generic source-feature
+rules and full-corpus regression reduce identifier overfitting but do not
+create an unseen test set.  We therefore separate its results from the frozen
+2026 biomedical snapshot and named hard cases.  The external reasoner versions
+are fixed artifacts and, for reproducibility, are not necessarily the newest
+source commits.  Metrics over each system's own correct completions compare
+different ontology subsets, so we also report pairwise shared-correct subsets
+and consensus-conditioned results.
+
+\paragraph{Reference answers.}
+No reasoner is an infallible oracle.  Three cases required adjudication, and
+HermiT and Konclude disagree elsewhere in retained records.  The artifact must
+permit reviewers to inspect every special case.  Independent proof-producing
+classification for the complete corpus remains future work.
+
+\paragraph{Certification boundary.}
+Lean checks the semantics of accepted evidence, not arbitrary Rust execution.
+The frontend-to-clause correspondence is covered through typed source evidence
+and route-specific theorems, but compilers, the direct parser, Horned-OWL and
+its RDF stack, serialisers, resource watchdogs, and the operating system remain
+trusted.  The project does not
+prove practical termination under a finite timeout.
+
+\paragraph{Methodological validity.}
+This is a single-project retrospective with a highly involved maintainer.  Git
+trailers identify configured models but cannot measure token-level authorship
+or independent agency.  Commit counts are shaped by a deliberate fine-grained
+proof-release practice.  Session records can be incomplete, and KM's
+conception within the Moose and Baobab research lineage predates the standalone
+repository.  We therefore report the
+workflow and its observable failure controls, not a productivity multiplier or
+a general claim that agentic coding is safer than conventional development.
+
+\paragraph{Incremental performance.}
+Tests establish meaningful state retention and fresh-result equivalence, and
+Table~\ref{tab:incremental-scale} gives exact-release synthetic EL and CB scale
+checks with raw latency and memory repetitions.  The evaluation still lacks a
+representative ontology-release workload across all routes.  Such an
+experiment is needed before claiming that KM's incremental API is broadly
+faster than repeated batch classification.
+
+\section{Reproducibility and availability}
+
+KM is available under the BSD 3-Clause licence in the
+\href{https://github.com/bio-ontology-research-group/kobayashi-marust}{project
+repository}.  The paper concerns tag \texttt{v1.3.0}, whose peeled commit is
+\texttt{f4738bc}.  The repository contains
+source, lockfiles, the Lean toolchain pin, four certification scripts, OWLAPI
+and Prot\'eg\'e tests, benchmark harnesses, route inventories, contested-gold
+records, and the v1.3 release aggregate.
+
+Before submission we will create an immutable archival deposit containing the
+tagged source; paper source and PDF; the 592-row historical panel; all 1,512
+current-OBO reasoner/ontology records; acquired named-hard-case records;
+profiles, checkpoints, validation and disagreement evidence; canonical
+reference signatures permitted for redistribution; source-bound Lean gate
+logs; privacy-preserving agent-process ledgers and frozen AgentsView reports;
+exact commands; and a machine-readable manifest of SHA-256 digests.  Restricted
+SNOMED~CT content, credentials, and private conversation bodies will be
+excluded.  This is necessary to satisfy the Semantic Web Journal's
+stable-resource requirement and to prevent a moving branch from serving as the
+experimental artifact.
+
+\section{Conclusion}
+
+KM~1.3 demonstrates that a hybrid OWL classifier can combine specialised
+procedures without turning routing into an unsound collection of shortcuts.
+Its automatic route completed 591 of 592 ORE~2015 ontologies in our panel.  It
+had lower mean and median wall time and peak process-tree memory than each
+tested external artifact, both over each system's own adjudicated correct
+completions and over pairwise shared-correct subsets.  The frozen OBO panel sharply qualifies that result: KM completed
+97 of 189 inputs, while Konclude completed 161, and no system completed every
+input.  Transactional incremental sessions and source explanations make
+the reasoner usable through OWLAPI and Prot\'eg\'e rather than only as a batch
+benchmark executable.
+
+The process study provides a second result.  Coding agents supported parallel
+investigation, implementation, profiling, testing, and proof search.  The
+maintainer controlled task boundaries, integration, semantic adjudication, and
+release decisions.  Isolated worktrees, exact-artifact experiments,
+corpus-level checks, retained negative results, and Lean acceptance gates
+exposed several agent-generated defects before release.  The evidence supports
+this development account but not a causal productivity claim.
+
+\section*{Acknowledgements}
+
+The benchmark experiments used the IBEX research-computing facility at King
+Abdullah University of Science and Technology.  Development used OpenAI Codex
+and Anthropic Claude coding-agent interfaces, including the configured model
+identities recorded in commit trailers and retained session artifacts.  These
+systems acted as software-development tools and are not authors.  The human
+author selected the research questions, accepted or rejected changes,
+interpreted the evidence, and retains responsibility for the software and the
+claims in this article.
+
+\section*{Statements and declarations}
+
+\paragraph{Ethical considerations.}
+This study did not recruit human participants or analyse personal data from
+third parties.  The process evidence concerns the author's own software
+development activity; exported telemetry excludes prompts, responses,
+commands, credentials, and tool results.  Ethical approval was not sought.
+
+\paragraph{Author contributions.}
+Robert Hoehndorf conceived the study, directed development, selected and
+adjudicated software changes, designed and interpreted the evaluation,
+constructed and reviewed the formalisation, and wrote and approved the
+manuscript.  Coding agents provided software-development and writing
+assistance as disclosed above and do not meet authorship criteria.
+
+\paragraph{Declaration of conflicting interests.}
+\textbf{[TO CONFIRM BEFORE SUBMISSION:} the author declares no potential
+conflicts of interest with respect to the research, authorship, or publication
+of this article.\textbf{]}
+
+\paragraph{Funding.}
+This work was supported by King Abdullah University of Science and Technology
+(KAUST) through the KAUST Center of Excellence for Generative AI, award 5940
+(FCC/1/5940-07-02); baseline funding BAS/1/1659-01-01; the KCSH theme
+allocation FCC/1/5932-11-01; and the KCSH student general-ledger allocation
+FCC/1/5932-12-10.
+
+\paragraph{Data availability.}
+The source, formalisation, benchmark harnesses, and evidence described in the
+Reproducibility and availability section will be deposited as one immutable,
+publicly accessible archive before submission.  The final statement will cite
+its persistent identifier.  Licensed SNOMED~CT content, credentials, and
+private conversation bodies will not be redistributed; the archive will
+document how an authorised user can supply restricted inputs.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

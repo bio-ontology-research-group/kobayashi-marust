@@ -1,0 +1,39 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/agro.ofn
+M	source_sha256	48a1f57c1931ccc984bb78ca41111d3e6eab7f4ff7870df61669fa52b3973ab5
+M	axioms	29683
+M	logical_axioms	8862
+M	classes	4163
+M	object_properties	203
+M	data_properties	6
+M	individuals	552
+P	OWL2	true	0
+P	OWL2DL	false	6
+V	OWL2DL	UseOfBuiltInDatatypeInDatatypeDefinition	1
+V	OWL2DL	UseOfNonSimplePropertyInCardinalityRestriction	5
+P	OWL2EL	false	442
+V	OWL2EL	LastPropertyInChainNotInImposedRange	101
+V	OWL2EL	UseOfBuiltInDatatypeInDatatypeDefinition	1
+V	OWL2EL	UseOfIllegalAxiom	80
+V	OWL2EL	UseOfIllegalClassExpression	244
+V	OWL2EL	UseOfIllegalDataRange	4
+V	OWL2EL	UseOfNonSimplePropertyInCardinalityRestriction	5
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	3
+V	OWL2EL	UseOfObjectPropertyInverse	4
+P	OWL2QL	false	1602
+V	OWL2QL	UseOfBuiltInDatatypeInDatatypeDefinition	1
+V	OWL2QL	UseOfIllegalAxiom	130
+V	OWL2QL	UseOfIllegalDataRange	4
+V	OWL2QL	UseOfNonAtomicClassExpression	1
+V	OWL2QL	UseOfNonSimplePropertyInCardinalityRestriction	5
+V	OWL2QL	UseOfNonSubClassExpression	1210
+V	OWL2QL	UseOfNonSuperClassExpression	251
+P	OWL2RL	false	2973
+V	OWL2RL	UseOfBuiltInDatatypeInDatatypeDefinition	1
+V	OWL2RL	UseOfIllegalAxiom	31
+V	OWL2RL	UseOfIllegalDataRange	1
+V	OWL2RL	UseOfNonEquivalentClassExpression	1206
+V	OWL2RL	UseOfNonSimplePropertyInCardinalityRestriction	5
+V	OWL2RL	UseOfNonSubClassExpression	2
+V	OWL2RL	UseOfNonSuperClassExpression	1727
+Z	complete

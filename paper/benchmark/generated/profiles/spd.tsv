@@ -1,0 +1,17 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/spd.ofn
+M	source_sha256	6095b35923a0c170b9c3c8e9cbec57130528ab5e9c4269423d50a9578fb3368c
+M	axioms	6417
+M	logical_axioms	1202
+M	classes	832
+M	object_properties	2
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	true	0
+P	OWL2QL	false	1
+V	OWL2QL	UseOfIllegalAxiom	1
+P	OWL2RL	false	584
+V	OWL2RL	UseOfNonSuperClassExpression	584
+Z	complete

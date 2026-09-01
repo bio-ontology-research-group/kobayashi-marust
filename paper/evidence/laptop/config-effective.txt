@@ -1,0 +1,7 @@
+config file: ~/.agentsview/config.toml
+contents after credential removal: (empty; the only key present was
+cursor_secret, a credential, removed for transfer)
+no AgentsView path/project restriction configuration exists on this laptop;
+all default agent session roots are included in the database.
+relevant environment variables (CLAUDE_PROJECTS_DIR, CODEX_SESSIONS_DIR,
+etc.): none set.

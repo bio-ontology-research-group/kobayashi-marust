@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/fbcv.owl
+M	source_sha256	606d156e234af0c995a1819e8cfd84a041914474b21c66a0dbf4eed03c90ce52
+M	closure_size	1
+M	merged_axioms	22562
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	158f04da7462095d3898e3b22b858aad413696704fb14ffa39b8841d7ee9ae8c
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/fbcv.owl>) VersionIRI(<http://purl.obolibrary.org/obo/fbcv/releases/2026-07-10/fbcv.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/fbcv.owl	22562
+Z	complete

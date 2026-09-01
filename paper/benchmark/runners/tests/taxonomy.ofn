@@ -1,0 +1,10 @@
+Prefix(:=<http://example.org/km-paper-test#>)
+Ontology(
+ Declaration(Class(:A))
+ Declaration(Class(:B))
+ Declaration(Class(:C))
+ Declaration(Class(:D))
+ SubClassOf(:A :B)
+ EquivalentClasses(:B :C)
+ SubClassOf(:D owl:Nothing)
+)

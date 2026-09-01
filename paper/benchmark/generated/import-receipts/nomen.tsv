@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/nomen.owl
+M	source_sha256	3e7a4853ea6e704ec2429e7bc71b4b2fc3d447e1c3c750cb903a7130bba7f463
+M	closure_size	1
+M	merged_axioms	1636
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	5cc861e52e4dbfb0f70279c2bc160133916fb519f247b2ff2131fbfb41f4692f
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/NOMEN>) VersionIRI(<null>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/nomen.owl	1636
+Z	complete

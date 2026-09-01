@@ -1,0 +1,23 @@
+	Command being timed: "/usr/bin/java -Xmx30g --add-opens=java.base/java.lang=ALL-UNNAMED -cp /ibex/scratch/hohndor/km/paper-benchmark-20260830/runner-tools/entailment-explanation.jar:/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes/classifier-hermit.jar org.kmbenchmark.EntailmentExplanation org.semanticweb.HermiT.ReasonerFactory /ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/cvdo.ofn http://purl.obolibrary.org/obo/CVDO_0000010 http://purl.obolibrary.org/obo/CVDO_0000546 /ibex/scratch/hohndor/km/paper-benchmark-20260830/diagnostics/entailment-explanations/cvdo/module.ofn /ibex/scratch/hohndor/km/paper-benchmark-20260830/diagnostics/entailment-explanations/cvdo/explanation.tsv"
+	User time (seconds): 8.06
+	System time (seconds): 0.34
+	Percent of CPU this job got: 626%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:01.34
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 405460
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 76524
+	Voluntary context switches: 23399
+	Involuntary context switches: 81
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 560
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

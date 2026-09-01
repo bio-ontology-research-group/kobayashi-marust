@@ -1,0 +1,18 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cteno.owl
+M	source_sha256	ba13033301422dd3e6cdb52855fc98d1ffaa010951507921416a7a4453d2a43e
+M	closure_size	9
+M	merged_axioms	5765
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	67dbf4efbf2be853cce6850ec5d8251c63dfe688b9cd94f0201392b37ef42701
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/bspo.owl>) VersionIRI(<http://purl.obolibrary.org/obo/bspo/releases/2023-05-27/bspo.owl>))	http://purl.obolibrary.org/obo/bspo.owl	3333
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cteno.owl>) VersionIRI(<http://purl.obolibrary.org/obo/cteno/releases/2016-10-19/cteno.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cteno.owl	1397
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cteno/taxonomy.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cteno/taxonomy.owl	552
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/imports/bspo_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cteno/imports/bspo_import.owl	24
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/imports/chebi_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cteno/imports/chebi_import.owl	33
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/imports/cl_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cteno/imports/cl_import.owl	313
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/imports/go_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cteno/imports/go_import.owl	99
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/imports/ro_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cteno/imports/ro_import.owl	68
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/imports/uberon_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cteno/imports/uberon_import.owl	666
+Z	complete

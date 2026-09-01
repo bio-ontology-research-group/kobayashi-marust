@@ -1,0 +1,26 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/gallont.ofn
+M	source_sha256	b9b1f703fc8b2388c091e60ab997ea999eb34879b7d71f09036bc2efb74fdd70
+M	axioms	6042
+M	logical_axioms	973
+M	classes	395
+M	object_properties	132
+M	data_properties	3
+M	individuals	13
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	158
+V	OWL2EL	LastPropertyInChainNotInImposedRange	90
+V	OWL2EL	UseOfIllegalAxiom	58
+V	OWL2EL	UseOfIllegalClassExpression	9
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	1
+P	OWL2QL	false	153
+V	OWL2QL	UseOfIllegalAxiom	102
+V	OWL2QL	UseOfNonSubClassExpression	41
+V	OWL2QL	UseOfNonSuperClassExpression	10
+P	OWL2RL	false	174
+V	OWL2RL	UseOfIllegalAxiom	25
+V	OWL2RL	UseOfNonEquivalentClassExpression	38
+V	OWL2RL	UseOfNonSubClassExpression	2
+V	OWL2RL	UseOfNonSuperClassExpression	109
+Z	complete

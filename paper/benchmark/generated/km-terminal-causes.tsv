@@ -1,0 +1,190 @@
+ontology	profile	status	cause	wall_s	peak_mb	stderr_sha256
+ado	outside OWL 2 DL	ok	ok	0.1093	20.93	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+afpo	OWL 2 DL, non-EL	ok	ok	158.9348	1319.39	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+agro	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0464	9.67	42a08bc5cddca8ecf1f755f4719e419b2aee9a9c9d2e9d37d0f99fa7c9df815c
+aism	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.079	23.57	60c37cd189465983d7e9565afb3391ec896b2bae941d034adf993929b8761188
+amphx	OWL 2 EL	ok	ok	0.0462	8.44	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+apo	OWL 2 EL	ok	ok	0.046	7.43	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+apollo_sv	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.047	16.18	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+aro	OWL 2 EL	ok	ok	0.2274	40.99	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+bco	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0456	5.89	2d59cee33746193204c6f0b7afd63838a99714cb19ab209cf1a456375c5d1086
+bfo	OWL 2 EL	ok	ok	0.0466	6.88	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+bmont	outside OWL 2 DL	ok	ok	0.0455	10.24	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+bspo	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.046	8.06	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+bto	OWL 2 EL	ok	ok	0.169	25.02	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+cdao	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	190.1053	438.84	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+cdno	OWL 2 DL, non-EL	ok	ok	0.4754	206.39	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+chebi	OWL 2 DL, non-EL	ok	ok	21.0457	1367.57	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+cheminf	outside OWL 2 DL	timeout	timeout	600.0175	22.43	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+chiro	OWL 2 DL, non-EL	ok	ok	1.0845	271.48	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+chmo	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	190.1906	625.32	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+cido	outside OWL 2 DL	error	unsupported_inverse_role_position	0.1668	72.03	da2559360d8e77d2d48138cc77871238a4d9cb4330e6fdbd5b7e63b397cd5871
+cio	OWL 2 DL, non-EL	ok	ok	20.3936	2972.12	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+cl	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	90.8427	18487.34	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+clao	outside OWL 2 DL	ok	ok	0.1398	89.02	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+clo	OWL 2 DL, non-EL	ok	ok	10.5086	3245.02	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+clyh	OWL 2 EL	ok	ok	0.0457	9.06	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+cmo	OWL 2 EL	ok	ok	0.1376	19.69	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+cob	OWL 2 DL, non-EL	ok	ok	0.0461	8.75	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+colao	OWL 2 DL, non-EL	ok	ok	0.3268	154.7	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+cro	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0456	4.69	f2dae91b9c7f1200933f4fba4129cc35c6e2f1693575923e05ec5708f0dfbbd2
+cteno	outside OWL 2 DL	error	unsupported_complex_rule_atom	0.0465	11.87	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+cto	outside OWL 2 DL	ok	ok	0.0775	10.23	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+cvdo	OWL 2 DL, non-EL	ok	ok	9.5909	6892.08	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ddanat	OWL 2 EL	ok	ok	0.0464	8.12	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ddpheno	OWL 2 EL	ok	ok	0.0464	10.24	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+dideo	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.046	5.63	f2dae91b9c7f1200933f4fba4129cc35c6e2f1693575923e05ec5708f0dfbbd2
+disdriv	OWL 2 EL	ok	ok	0.046	5.94	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+doid	OWL 2 DL, non-EL	ok	ok	21.0567	1030.71	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+dpo	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	190.5509	6730.74	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+dron	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	14.4124	3046.41	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+duo	OWL 2 DL, non-EL	timeout	timeout	600.0258	21.88	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ecao	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.2987	99.6	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+eco	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0458	9.79	42a08bc5cddca8ecf1f755f4719e419b2aee9a9c9d2e9d37d0f99fa7c9df815c
+ecocore	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.1993	72.77	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+ecto	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	7.7522	18697.41	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+emapa	OWL 2 EL	ok	ok	0.4803	52.42	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+emro	OWL 2 DL, non-EL	ok	ok	0.0455	7.81	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+envo	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	191.1575	15323.83	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+epio	outside OWL 2 DL	ok	ok	0.0767	12.66	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+exmo	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0463	6.89	3237cbc810367ff40ce61e62f8e8623535d772b078851fb13a5221bf8aea7ace
+exo	OWL 2 EL	ok	ok	0.0461	7.5	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fao	OWL 2 EL	ok	ok	0.0459	6.88	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fbbi	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.0457	8.37	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+fbbt	OWL 2 DL, non-EL	error	cb_incomplete_fixpoint	282.3968	9446.22	dc61895b92bde8ca790ca0873c1900229fe3af424b2da25e28517ff50ce21728
+fbcv	OWL 2 DL, non-EL	ok	ok	2.3845	1374.18	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fbdv	OWL 2 DL, non-EL	ok	ok	1.8779	1122.18	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fideo	OWL 2 DL, non-EL	ok	ok	0.6021	163.58	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+flopo	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.9965	339.81	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+fobi	OWL 2 DL, non-EL	ok	ok	0.2303	69.21	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+foodon	OWL 2 DL, non-EL	timeout	timeout	600.0554	22217.5	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fovt	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.1072	38.22	42a08bc5cddca8ecf1f755f4719e419b2aee9a9c9d2e9d37d0f99fa7c9df815c
+fypo	OWL 2 EL	ok	ok	1.6009	140.52	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+gallont	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.0461	8.7	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+gaz	OWL 2 EL	ok	ok	42.4687	3182.59	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+gecko	OWL 2 EL	ok	ok	0.0465	7.5	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+genepio	OWL 2 DL, non-EL	ok	ok	76.1905	159.67	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+geno	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0463	6.82	2d59cee33746193204c6f0b7afd63838a99714cb19ab209cf1a456375c5d1086
+geo	OWL 2 DL, non-EL	timeout	timeout	600.0382	15.06	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+gno	OWL 2 EL	ok	ok	8.7683	739.97	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+go	OWL 2 DL, non-EL	ok	ok	23.9129	1182.8	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+gsso	outside OWL 2 DL	ok	ok	0.322	55.5	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+hancestro	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	190.2078	783.88	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+hao	OWL 2 EL	ok	ok	0.1997	27.43	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+hom	OWL 2 EL	ok	ok	0.0459	6.88	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+hp	OWL 2 DL, non-EL	memout	memout	368.3015	32771.93	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+hsapdv	OWL 2 EL	ok	ok	0.0459	9.61	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+hso	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0457	5.44	f2dae91b9c7f1200933f4fba4129cc35c6e2f1693575923e05ec5708f0dfbbd2
+htn	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0454	6.48	91e2f5877b9e060ae38450a0c74e9f853717aa8ce29c689dea2474dfaf4e5ed6
+iao	OWL 2 DL, non-EL	timeout	timeout	600.035	20.28	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+iceo	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.1439	60.92	da2559360d8e77d2d48138cc77871238a4d9cb4330e6fdbd5b7e63b397cd5871
+ico	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0453	7.42	2d59cee33746193204c6f0b7afd63838a99714cb19ab209cf1a456375c5d1086
+ido	OWL 2 DL, non-EL	ok	ok	36.5102	4687.29	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ino	OWL 2 EL	ok	ok	0.0454	8.37	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+kisao	OWL 2 DL, non-EL	ok	ok	1.3155	87.22	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+labo	outside OWL 2 DL	timeout	timeout	600.0294	18449.16	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+lepao	OWL 2 DL, non-EL	ok	ok	0.3019	162.7	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ma	OWL 2 EL	ok	ok	0.1079	15.86	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+maxo	OWL 2 DL, non-EL	timeout	timeout	600.0235	19239.85	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mco	OWL 2 DL, non-EL	ok	ok	0.7879	195.77	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mcro	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0462	6.49	9c5948830290343aa007e7d78ebc30a0b339723328dcf75ba885db2c7e2c1600
+mf	OWL 2 DL, non-EL	ok	ok	0.0758	36.46	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mfoem	OWL 2 DL, non-EL	ok	ok	0.1106	70.43	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mfomd	OWL 2 DL, non-EL	ok	ok	0.1067	60.14	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mi	OWL 2 DL, non-EL	ok	ok	0.1083	14.25	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+miapa	outside OWL 2 DL	error	route_no_retry_internal_cap	190.1083	562.75	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+mmo	OWL 2 EL	ok	ok	0.0457	9.9	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mmusdv	OWL 2 EL	ok	ok	0.0462	9.38	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mod	OWL 2 EL	ok	ok	0.11	20.22	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mondo	OWL 2 DL, non-EL	memout	memout	421.7855	32768.15	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mop	OWL 2 DL, non-EL	ok	ok	0.2011	54.68	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mp	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	1.4321	439.11	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+mpath	OWL 2 EL	ok	ok	0.0462	9.62	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mpio	OWL 2 DL, non-EL	ok	ok	0.0456	11.16	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+mro	OWL 2 DL, non-EL	ok	ok	12.9435	2136.63	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ms	outside OWL 2 DL	ok	ok	0.1078	22.68	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+nbo	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.1426	49.07	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+ncbitaxon	OWL 2 EL	ok	ok	92.09	7373.73	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ncit	OWL 2 DL, non-EL	ok	ok	49.8985	7056.45	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ncro	OWL 2 DL, non-EL	ok	ok	0.4991	129.45	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ngbo	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0473	6.8	be9daa1a1d32af4d5513b9d513d4f5c34aea60845e14d5a4d0c2309eeefecf61
+nomen	OWL 2 DL, non-EL	ok	ok	0.0461	11.41	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+oae	OWL 2 DL, non-EL	timeout	timeout	600.0219	7480.76	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+oarcs	OWL 2 EL	ok	ok	0.0457	8.06	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+oba	OWL 2 DL, non-EL	timeout	timeout	600.0474	2415.87	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+obcs	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0469	7.42	2d59cee33746193204c6f0b7afd63838a99714cb19ab209cf1a456375c5d1086
+obi	OWL 2 DL, non-EL	timeout	timeout	600.0651	2371.97	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+obib	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0475	8.18	2d59cee33746193204c6f0b7afd63838a99714cb19ab209cf1a456375c5d1086
+occo	OWL 2 DL, non-EL	ok	ok	0.3232	130.84	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ogms	OWL 2 DL, non-EL	ok	ok	0.0456	16.76	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ohd	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	30.625	18537.21	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+ohmi	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0493	7.36	f2dae91b9c7f1200933f4fba4129cc35c6e2f1693575923e05ec5708f0dfbbd2
+ohpi	outside OWL 2 DL	error	unsupported_inverse_role_position	0.1107	31.42	da2559360d8e77d2d48138cc77871238a4d9cb4330e6fdbd5b7e63b397cd5871
+omit	OWL 2 DL, non-EL	ok	ok	15.7286	2977.55	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+omo	OWL 2 DL, non-EL	ok	ok	0.0469	14.53	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+omp	OWL 2 EL	ok	ok	0.1706	23.43	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+omrse	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.0467	11.37	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+one	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0454	11.32	42a08bc5cddca8ecf1f755f4719e419b2aee9a9c9d2e9d37d0f99fa7c9df815c
+ons	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	18.1772	18471.45	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+ontoavida	outside OWL 2 DL	timeout	timeout	600.0206	1922.88	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ontoneo	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0491	8.02	91e2f5877b9e060ae38450a0c74e9f853717aa8ce29c689dea2474dfaf4e5ed6
+oostt	OWL 2 DL, non-EL	timeout	timeout	600.0273	24.33	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+opl	OWL 2 DL, non-EL	ok	ok	0.1395	77.07	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+opmi	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0459	12.79	42a08bc5cddca8ecf1f755f4719e419b2aee9a9c9d2e9d37d0f99fa7c9df815c
+ornaseq	outside OWL 2 DL	ok	ok	0.0452	6.88	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ovae	outside OWL 2 DL	error	route_no_retry_internal_cap	146.7459	18465.63	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+pato	OWL 2 DL, non-EL	timeout	timeout	600.0185	3587.75	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+pbpko	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.0497	14.07	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+pcl	OWL 2 DL, non-EL	error	route_no_retry_internal_cap	18.454	18858.89	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+pco	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.046	7.45	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+pdro	outside OWL 2 DL	error	unsupported_complex_rule_atom	0.047	8.71	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+peco	OWL 2 DL, non-EL	ok	ok	0.5846	289.3	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+phipo	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.3561	123.57	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+plana	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0464	7.12	811f7b93b32b57e392eff5d815562153c7a97865fd6f34c562c253f449238dc6
+planp	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0471	12.49	da2559360d8e77d2d48138cc77871238a4d9cb4330e6fdbd5b7e63b397cd5871
+po	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.0782	16.1	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+poro	OWL 2 DL, non-EL	memout	memout	30.9481	32804.99	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ppo	OWL 2 DL, non-EL	error	cb_incomplete_fixpoint	97.642	23057.29	dc61895b92bde8ca790ca0873c1900229fe3af424b2da25e28517ff50ce21728
+pr	OWL 2 DL, non-EL	timeout	timeout	600.0147	18107.96	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+prefer	OWL 2 DL, non-EL	timeout	timeout	600.0163	232.67	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+proco	outside OWL 2 DL	error	unsupported_inverse_role_position	0.0459	6.48	2d59cee33746193204c6f0b7afd63838a99714cb19ab209cf1a456375c5d1086
+psdo	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0453	7.36	f2dae91b9c7f1200933f4fba4129cc35c6e2f1693575923e05ec5708f0dfbbd2
+pso	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.1104	32.37	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+pw	OWL 2 EL	ok	ok	0.0762	14.96	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+rbo	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0799	29.09	42a08bc5cddca8ecf1f755f4719e419b2aee9a9c9d2e9d37d0f99fa7c9df815c
+ro	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0453	6.5	3237cbc810367ff40ce61e62f8e8623535d772b078851fb13a5221bf8aea7ace
+rs	OWL 2 EL	ok	ok	0.1388	24.18	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+rxno	OWL 2 DL, non-EL	ok	ok	0.1371	49.04	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+sbo	OWL 2 EL	ok	ok	0.0463	9.62	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+scdo	OWL 2 EL	ok	ok	0.5225	310.36	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+sepio	outside OWL 2 DL	error	unsupported_complex_rule_atom	0.0454	7.73	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+slso	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0462	11.56	42a08bc5cddca8ecf1f755f4719e419b2aee9a9c9d2e9d37d0f99fa7c9df815c
+so	OWL 2 DL, non-EL	ok	ok	0.0772	17.25	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+spd	OWL 2 EL	ok	ok	0.0451	9.31	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+stato	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0461	6.8	f2dae91b9c7f1200933f4fba4129cc35c6e2f1693575923e05ec5708f0dfbbd2
+swo	OWL 2 DL, non-EL	error	unsupported_inverse_role_position	0.0458	7.91	2d59cee33746193204c6f0b7afd63838a99714cb19ab209cf1a456375c5d1086
+symp	OWL 2 EL	ok	ok	0.0464	8.68	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+t4fs	OWL 2 DL, non-EL	ok	ok	0.0773	22.09	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+taxrank	OWL 2 EL	ok	ok	0.0457	6.25	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+to	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.1105	39.74	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+trans	OWL 2 EL	ok	ok	0.0464	5.94	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+tto	OWL 2 EL	ok	ok	0.8918	126.63	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+txpo	outside OWL 2 DL	ok	ok	2.105	926.56	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+uberon	OWL 2 DL, non-EL	timeout	timeout	600.018	11082.85	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+uo	OWL 2 EL	ok	ok	0.0472	25.3	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+upheno	OWL 2 DL, non-EL	timeout	timeout	600.0617	21318.69	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+vbo	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.3952	111.27	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+vo	OWL 2 DL, non-EL	ok	ok	74.2589	2955.25	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+vt	OWL 2 EL	ok	ok	0.2318	57.89	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+vto	OWL 2 EL	ok	ok	2.7259	294.87	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+wbbt	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.1428	48.65	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+wbls	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.0455	13.04	10fa4c7c61059aaf51360ec5bc84b447e39f0c9bb83c86cf0a3b824977aec1cb
+wbphenotype	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	0.1673	60.14	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+xao	OWL 2 EL	ok	ok	0.1073	18.37	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+xco	OWL 2 EL	ok	ok	0.0778	13.36	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+xlmod	OWL 2 EL	ok	ok	0.0477	10.94	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+xpo	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	1.613	501.95	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af
+zeco	OWL 2 DL, non-EL	ok	ok	0.0461	6.88	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+zfa	OWL 2 DL, non-EL	ok	ok	0.6784	229.77	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+zfs	OWL 2 DL, non-EL	ok	ok	0.6667	200.87	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+zp	OWL 2 DL, non-EL	error	unsupported_complex_rule_atom	3.268	957.01	b78cc5345d8115643b22ff983ebe738bccfa7d595a455e2f61f40d911a8af6af

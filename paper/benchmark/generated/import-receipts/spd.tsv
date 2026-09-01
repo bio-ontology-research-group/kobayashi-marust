@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/spd.owl
+M	source_sha256	b00e7238362e93b28d3f4b6e212a18afd85cc521da57aab9dca0ce792e200df8
+M	closure_size	1
+M	merged_axioms	6417
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	6095b35923a0c170b9c3c8e9cbec57130528ab5e9c4269423d50a9578fb3368c
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/TEMP>) VersionIRI(<null>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/spd.owl	6417
+Z	complete

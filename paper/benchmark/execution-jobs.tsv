@@ -1,0 +1,9 @@
+id	runner_sha256	allowed_array_job_ids	notes
+km	2e198464d818ec7b8235f9e829eab5178bd5261aca5674de90cc31d54e2be3cd	51028377	Native full array; append only source-preserving resume arrays
+konclude	2e198464d818ec7b8235f9e829eab5178bd5261aca5674de90cc31d54e2be3cd	51028377	Native full array; append only source-preserving resume arrays
+hermit	89c6005a8eba19c84305c9d53627e7565686d94f82a3f3f731f16af58d68f88b	51021831	Java full array; append only source-preserving resume arrays
+jfact	89c6005a8eba19c84305c9d53627e7565686d94f82a3f3f731f16af58d68f88b	51021831	Java full array; append only source-preserving resume arrays
+openllet	89c6005a8eba19c84305c9d53627e7565686d94f82a3f3f731f16af58d68f88b	51021831	Java full array; append only source-preserving resume arrays
+more	89c6005a8eba19c84305c9d53627e7565686d94f82a3f3f731f16af58d68f88b	51021831	Java full array; append only source-preserving resume arrays
+elk	89c6005a8eba19c84305c9d53627e7565686d94f82a3f3f731f16af58d68f88b	51021831	Java full array; append only source-preserving resume arrays
+whelk	89c6005a8eba19c84305c9d53627e7565686d94f82a3f3f731f16af58d68f88b	51021831	Java full array; append only source-preserving resume arrays

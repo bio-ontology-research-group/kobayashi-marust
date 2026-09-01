@@ -1,0 +1,16 @@
+{
+  "derivation": [
+    "the subclass singleton's individual belongs to the superclass singleton",
+    "singleton membership forces the two individual denotations equal",
+    "the two singleton class extensions are equal, giving the reverse inclusion"
+  ],
+  "premise_count": 3,
+  "query": [
+    "http://purl.obolibrary.org/obo/UO_0000244",
+    "http://purl.obolibrary.org/obo/UO_0000329"
+  ],
+  "schema": 1,
+  "source_sha256": "b6f4a0fa082b6357dd34801d09bbf4041667698374aaf8474b900f819f15ffa7",
+  "source_verified": true,
+  "status": "entailed"
+}

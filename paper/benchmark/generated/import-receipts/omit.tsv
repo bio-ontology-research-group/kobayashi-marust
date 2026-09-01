@@ -1,0 +1,23 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/omit.owl
+M	source_sha256	aebcc5503200b9c2605255142fb14d35d801c399972ac4b6d816e8921214af3a
+M	closure_size	14
+M	merged_axioms	410863
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	5425b9a41e82a24bb79f73e4b7380ab1c74ef68bb1540a2da51972fd384b3582
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/bfo.owl>) VersionIRI(<http://purl.obolibrary.org/obo/bfo/2019-08-26/bfo.owl>))	http://purl.obolibrary.org/obo/bfo.owl	576
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/chebi-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/chebi-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/chebi-imports.owl	67
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/clo-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/clo-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/clo-imports.owl	47
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/iao/ontology-metadata.owl>) VersionIRI(<http://purl.obolibrary.org/obo/iao/2019-08-26/ontology-metadata.owl>))	http://purl.obolibrary.org/obo/iao/ontology-metadata.owl	516
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/doid-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/doid-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/doid-imports.owl	49
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/go-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/go-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/go-imports.owl	2485
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/iao-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/iao-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/iao-imports.owl	56
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/ncro.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/ncro.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/ncro.owl	12434
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/obi-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/obi-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/obi-imports.owl	102
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/pr-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/pr-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/pr-imports.owl	17
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/ro-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/ro-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/ro-imports.owl	105
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/so-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/so-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/so-imports.owl	1279
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncro/uberon-imports.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncro/2015-12-10/uberon-imports.owl>))	http://purl.obolibrary.org/obo/ncro/2015-12-10/uberon-imports.owl	91
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/omit.owl>) VersionIRI(<http://purl.obolibrary.org/obo/omit/dev/omit.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/omit.owl	393281
+Z	complete

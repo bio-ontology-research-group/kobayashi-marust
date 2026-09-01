@@ -1,0 +1,70 @@
+{
+  "agentsview_version": "agentsview v0.33.1 (commit 293342a2, built 2026-06-12T19:59:16Z)",
+  "attribution_policy": {
+    "kobayashi_marust": "KM-specific retained project telemetry",
+    "machine_wide_daily": "upper bound only; v0.33.1 lacked project filtering",
+    "neuro_symbolic": "excluded housekeeping session",
+    "neuro_symbolic_independence": "containing-project upper bound; not additive as KM usage"
+  },
+  "history_bundle": {
+    "archived_separately": true,
+    "bytes": 107706216,
+    "filename": "neuro-symbolic-independence.bundle",
+    "sha256": "9e9343417564b6c75c2953b36ebee7e101fc30576a36ed45dc4cb523586b19e4"
+  },
+  "projects": {
+    "kobayashi_marust": {
+      "agents": {
+        "claude": 310,
+        "codex": 367,
+        "opencode": 4
+      },
+      "children": 660,
+      "edit_churn": 178,
+      "first_started_at": "2026-06-10T05:42:36.818Z",
+      "last_started_at": "2026-07-10T09:04:18.064Z",
+      "messages": 158896,
+      "output_tokens": 43421816,
+      "project": "kobayashi_marust",
+      "sessions": 681,
+      "tool_failure_signals": 65,
+      "tool_retries": 982,
+      "top_level": 21
+    },
+    "neuro_symbolic": {
+      "agents": {
+        "opencode": 1
+      },
+      "children": 0,
+      "edit_churn": 0,
+      "first_started_at": "2026-02-02T06:04:00.768Z",
+      "last_started_at": "2026-02-02T06:04:00.768Z",
+      "messages": 18,
+      "output_tokens": 5541,
+      "project": "neuro_symbolic",
+      "sessions": 1,
+      "tool_failure_signals": 0,
+      "tool_retries": 0,
+      "top_level": 1
+    },
+    "neuro_symbolic_independence": {
+      "agents": {
+        "claude": 117,
+        "codex": 9
+      },
+      "children": 107,
+      "edit_churn": 111,
+      "first_started_at": "2026-05-15T04:13:41.234Z",
+      "last_started_at": "2026-06-30T06:07:14.386Z",
+      "messages": 53601,
+      "output_tokens": 37563458,
+      "project": "neuro_symbolic_independence",
+      "sessions": 126,
+      "tool_failure_signals": 146,
+      "tool_retries": 101,
+      "top_level": 19
+    }
+  },
+  "schema": 1,
+  "source_manifests_verified": true
+}

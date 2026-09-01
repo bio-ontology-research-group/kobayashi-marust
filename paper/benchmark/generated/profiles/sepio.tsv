@@ -1,0 +1,31 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/sepio.ofn
+M	source_sha256	fbda7a90cdc0c0033d69391d9e5236b1783b19b8856cb5e48defe8d5fd8a10e5
+M	axioms	3058
+M	logical_axioms	706
+M	classes	127
+M	object_properties	211
+M	data_properties	32
+M	individuals	21
+P	OWL2	true	0
+P	OWL2DL	false	7
+V	OWL2DL	IllegalPunning	7
+P	OWL2EL	false	208
+V	OWL2EL	IllegalPunning	7
+V	OWL2EL	LastPropertyInChainNotInImposedRange	100
+V	OWL2EL	UseOfIllegalAxiom	74
+V	OWL2EL	UseOfIllegalClassExpression	20
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	4
+V	OWL2EL	UseOfObjectPropertyInverse	3
+P	OWL2QL	false	155
+V	OWL2QL	IllegalPunning	7
+V	OWL2QL	UseOfIllegalAxiom	113
+V	OWL2QL	UseOfNonSubClassExpression	11
+V	OWL2QL	UseOfNonSuperClassExpression	24
+P	OWL2RL	false	89
+V	OWL2RL	IllegalPunning	7
+V	OWL2RL	UseOfIllegalAxiom	25
+V	OWL2RL	UseOfNonEquivalentClassExpression	8
+V	OWL2RL	UseOfNonSubClassExpression	2
+V	OWL2RL	UseOfNonSuperClassExpression	47
+Z	complete

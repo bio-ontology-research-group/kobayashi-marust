@@ -1,0 +1,98 @@
+{
+  "common": 856,
+  "left": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/jfact/kisao.taxonomy.tsv",
+  "left_label": "jfact",
+  "left_only": 157,
+  "left_only_sample": [
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000086",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000000"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000086",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000377"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000086",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000435"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000086",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000694"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000087",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000000"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000087",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000377"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000087",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000435"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000087",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000694"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000276",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000000"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000276",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000377"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000276",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000694"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000286",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000000"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000286",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000697"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000287",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000000"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000287",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000697"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000288",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000000"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000290",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000000"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000290",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000377"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000290",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000694"
+    ],
+    [
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000296",
+      "http://www.biomodels.net/kisao/KISAO#KISAO_0000000"
+    ]
+  ],
+  "left_sha256": "abeeee3e4d82a61de79e74389bf4309d5c27fe8db9088cbd13c0c37b13793cb8",
+  "left_total": 1013,
+  "relation": "right_strict_subset",
+  "right": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/hermit/kisao.taxonomy.tsv",
+  "right_label": "hermit",
+  "right_only": 0,
+  "right_only_sample": [],
+  "right_sha256": "4ed926a0f75c9cd1eeed4b23dccae86ab5c1bd389f8f4bc6967009dbd74a9c0b",
+  "right_total": 856,
+  "schema": 1
+}

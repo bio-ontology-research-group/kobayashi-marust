@@ -1,0 +1,82 @@
+% Generated from aggregate SHA-256 e461a10802b95cb0be08e2e12ae09dd96f9a51bc92f71cd98d6d812a7f980998
+\begin{table*}[t]
+\centering
+\small
+\caption{Current OBO snapshot completion and resource results. Metrics use each system's OWL~2~DL completions. Other fail collects named terminal statuses not represented by timeout, memout, or generic error; each status row sums to the independently profiled DL population. Tested artifacts are additionally bound by SHA-256 in the machine-readable aggregate.}
+\label{tab:current-obo}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrrrrr}
+\toprule
+Reasoner & Tested version/commit & OK & Timeout & Memout & Error & Other fail & Mean s & Median s & Mean MiB & Median MiB \\
+\midrule
+KM & v1.3.0 / f4738bc (engine 5c64a02) & 88 & 14 & 3 & 55 & 0 & 7.919 & 0.138 & 636.2 & 31.9 \\
+Konclude & v0.7.0-1138 / source 0002e8063540; embedded banner 500e11d9 & 139 & 1 & 16 & 0 & 4 & 4.481 & 0.201 & 782.1 & 53.0 \\
+HermiT & 1.4.5.519 & 117 & 43 & 0 & 0 & 0 & 40.550 & 2.013 & 1288.4 & 447.5 \\
+JFact & 5.0.3 & 96 & 55 & 0 & 9 & 0 & 28.176 & 2.176 & 907.9 & 472.9 \\
+Openllet & 2.6.5 & 72 & 86 & 0 & 2 & 0 & 12.595 & 1.453 & 673.4 & 350.0 \\
+MORe & 0.2.0-SNAPSHOT / 9d29fb15352b781a3dba015696b1b269320603b2 & 115 & 27 & 1 & 17 & 0 & 20.165 & 1.565 & 1306.5 & 364.4 \\
+ELK & v0.6.0 & 160 & 0 & 0 & 0 & 0 & 8.417 & 1.713 & 1255.1 & 359.9 \\
+Whelk & v1.2.1 & 159 & 1 & 0 & 0 & 0 & 15.943 & 2.050 & 1898.1 & 435.4 \\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Pairwise performance on OWL~2~DL inputs for which KM and the comparison system returned the same full-IRI named-class relation.}
+\label{tab:current-obo-pairwise}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+Comparison & $n$ & Mean s KM & Mean s ext. & Median s KM & Median s ext. & Mean MiB KM & Mean MiB ext. & Median MiB KM & Median MiB ext. \\
+\midrule
+Konclude & 86 & 7.747 & 4.431 & 0.137 & 0.153 & 558.9 & 411.3 & 26.4 & 41.1 \\
+HermiT & 83 & 6.465 & 29.030 & 0.111 & 1.542 & 479.4 & 1162.0 & 25.0 & 393.1 \\
+JFact & 68 & 4.643 & 15.455 & 0.092 & 1.788 & 209.9 & 852.9 & 17.8 & 398.4 \\
+Openllet & 65 & 0.676 & 3.872 & 0.076 & 1.367 & 105.0 & 606.2 & 15.9 & 346.5 \\
+MORe & 78 & 6.547 & 17.833 & 0.109 & 1.257 & 427.5 & 1358.1 & 24.6 & 326.9 \\
+ELK & 76 & 6.268 & 10.253 & 0.108 & 1.374 & 505.6 & 1052.5 & 21.2 & 322.0 \\
+Whelk & 75 & 5.264 & 13.559 & 0.108 & 1.542 & 457.2 & 1557.4 & 22.1 & 343.5 \\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{Completion by expressivity and logical-axiom size. Each cell reports successful terminal runs over inputs in the stratum, followed by median wall time for those runs. EL systems are complete references only in the independently verified EL column.}
+\label{tab:current-obo-strata}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Reasoner & OWL 2 EL & DL non-EL & Outside DL & $<1$k & 1k--10k & 10k--100k & $\geq100$k \\
+\midrule
+KM & 44/44 (0.05 s) & 44/116 (0.54 s) & 9/29 (0.11 s) & 34/48 (0.05 s) & 39/81 (0.14 s) & 16/42 (0.99 s) & 8/18 (31.76 s) \\
+Konclude & 44/44 (0.11 s) & 95/116 (0.24 s) & 22/29 (0.17 s) & 47/48 (0.08 s) & 74/81 (0.22 s) & 29/42 (1.73 s) & 11/18 (30.20 s) \\
+HermiT & 43/44 (1.12 s) & 74/116 (4.18 s) & 17/29 (2.50 s) & 45/48 (0.94 s) & 66/81 (2.51 s) & 17/42 (8.71 s) & 6/18 (144.73 s) \\
+JFact & 41/44 (1.53 s) & 55/116 (3.77 s) & 14/29 (2.72 s) & 43/48 (1.31 s) & 55/81 (4.62 s) & 10/42 (8.69 s) & 2/18 (93.08 s) \\
+Openllet & 41/44 (1.30 s) & 31/116 (1.93 s) & 12/29 (1.38 s) & 36/48 (0.95 s) & 35/81 (1.89 s) & 11/42 (6.34 s) & 2/18 (37.75 s) \\
+MORe & 40/44 (0.89 s) & 75/116 (2.97 s) & 17/29 (1.31 s) & 45/48 (0.78 s) & 63/81 (1.84 s) & 17/42 (8.24 s) & 7/18 (97.21 s) \\
+ELK & 44/44 (1.23 s) & 116/116 (1.93 s) & 29/29 (1.43 s) & 48/48 (1.12 s) & 81/81 (1.59 s) & 42/42 (4.08 s) & 18/18 (22.61 s) \\
+Whelk & 43/44 (1.28 s) & 116/116 (2.55 s) & 28/29 (1.80 s) & 48/48 (1.14 s) & 81/81 (1.95 s) & 41/42 (10.04 s) & 17/18 (58.63 s) \\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{Named hard cases contained in the OBO snapshot. Each cell is the terminal classification status. The final column groups completing expressive systems with identical full-IRI named-class relations.}
+\label{tab:current-obo-hard}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrrrrl}
+\toprule
+Case & Profiles & KM & Konclude & HermiT & JFact & Openllet & MORe & ELK & Whelk & Expressive relation groups \\
+\midrule
+NCIt & OWL 2, DL & ok & ok & ok & timeout & timeout & ok & ok & ok & HermiT,KM,Konclude,MORe \\
+Uberon & OWL 2, DL & timeout & memout & timeout & error & timeout & timeout & ok & ok & -- \\
+ChEBI & OWL 2, DL & ok & ok & ok & timeout & timeout & ok & ok & ok & HermiT,KM,Konclude,MORe \\
+\bottomrule
+\end{tabular}}
+\end{table*}

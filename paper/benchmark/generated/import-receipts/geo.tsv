@@ -1,0 +1,12 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/geo.owl
+M	source_sha256	2727d7d1f470353e44f81f90aa7a6ba4bbdff1e06431bdaa9ef317ce4c4ae822
+M	closure_size	3
+M	merged_axioms	1614
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	4f20d4c2c1890144a5ff9450fca5415d75b3dd26e66b0dfe4b34fbe037d71401
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/bfo.owl>) VersionIRI(<http://purl.obolibrary.org/obo/bfo/classes-only.owl>))	http://purl.obolibrary.org/obo/bfo/2014-05-03/classes-only.owl	570
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/geo.owl>) VersionIRI(<null>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/geo.owl	750
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ro/core.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ro/releases/2025-12-17/core.owl>))	http://purl.obolibrary.org/obo/ro/core.owl	372
+Z	complete

@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/xlmod.owl
+M	source_sha256	1d89e3ff182b41bd3d2d2f438da3d0c54d32c47a55563b7b107869fc449ecc23
+M	closure_size	1
+M	merged_axioms	10407
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	f3601b62f6a774d5662291ee4b4a661ac0122a235796bf9af3439a2f427c9ae4
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/xlmod.owl>) VersionIRI(<http://purl.obolibrary.org/obo/xlmod/1.5.4/xlmod.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/xlmod.owl	10407
+Z	complete

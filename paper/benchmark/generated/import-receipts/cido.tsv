@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cido.owl
+M	source_sha256	bb17610749edccc346921524ed1836475e91421fa1b391f90b9dc9c37691376a
+M	closure_size	1
+M	merged_axioms	411208
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	235786b6338fd11550913d811c0b715c38abb8bc30b1db5afa1749d5c7320ed0
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cido.owl>) VersionIRI(<http://purl.obolibrary.org/obo/cido/releases/2024-02-16/cido.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cido.owl	411208
+Z	complete

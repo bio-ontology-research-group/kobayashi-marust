@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/t4fs.owl
+M	source_sha256	11a3ada96ac23df1cbe9175c7f6946337c3c4b6d6d297f837548fe38a4d18278
+M	closure_size	1
+M	merged_axioms	4229
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	4e703bde4279c1fa7aeacf2024316d45565f1170b0d86532fffef8eeb57f9a79
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/t4fs.owl>) VersionIRI(<http://purl.obolibrary.org/obo/t4fs/releases/2025-02-09/t4fs.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/t4fs.owl	4229
+Z	complete

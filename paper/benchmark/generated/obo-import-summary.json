@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "snapshot_date": "2026-08-30",
+  "registry_entries": 266,
+  "active_registry_entries": 190,
+  "eligible_normalized_ontologies": 189,
+  "source_unavailable": ["ogg"],
+  "normalization": "inverse-chain-members-to-defined-named-roles-v1",
+  "freeze_imports_source_sha256": "4a35242396bc08b92de5b478eca31566be80268dd901337afff3e87e39d98bb3",
+  "freeze_imports_class_sha256": "92ddff253e6de805bb122619263f7a06799ff208a64ef6e7a457962ffd4f909f",
+  "ontologies_with_inverse_chain_replacements": 41,
+  "inverse_chain_members_replaced": 124,
+  "receipt_files": 190,
+  "receipt_sha256_list_digest": "f3e3f1144401fd557d58e385d4d491c91f130a0b1240bea984ab2c2a452d3ab3",
+  "receipt_sha256_list_algorithm": "SHA-256 of lexicographically path-sorted lines produced by sha256sum over generated/import-receipts/*.tsv"
+}

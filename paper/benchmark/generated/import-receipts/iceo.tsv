@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/iceo.owl
+M	source_sha256	b647e59b45ce38ddd30c06213058d9a58164b20a73dbf297e7b327a93c8c7f51
+M	closure_size	1
+M	merged_axioms	366115
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	ddb85296e26622726eb902b58034aee2f8e6dc85cc4a841699a2d088321e53f0
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/2019/1/ICEO>) VersionIRI(<null>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/iceo.owl	366115
+Z	complete

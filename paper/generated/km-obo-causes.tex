@@ -1,0 +1,19 @@
+% Generated from KM terminal-cause summary SHA-256 da9bb783eebaa3a5121c2ec99df0df20608a4e645965a1c6dd421446b0c230a7
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{KM v1.3 automatic-route outcomes on the frozen OBO snapshot, partitioned by independently checked profile.  Inverse role and rule atom denote fail-closed frontend rejections; route cap denotes a source-feature route that disabled adaptive retry before an internal cap; CB defer denotes refusal to publish without a complete fixpoint.}
+\label{tab:km-obo-causes}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Profile & $n$ & OK & Timeout & Memory & Route cap & Inverse role & Rule atom & CB defer \\
+\midrule
+OWL 2 EL & 44 & 44 & 0 & 0 & 0 & 0 & 0 & 0 \\
+OWL 2 DL, non-EL & 116 & 44 & 14 & 3 & 10 & 20 & 23 & 2 \\
+Outside OWL 2 DL & 29 & 9 & 3 & 0 & 2 & 12 & 3 & 0 \\
+\midrule
+All & 189 & 97 & 17 & 3 & 12 & 32 & 26 & 2 \\
+\bottomrule
+\end{tabular}
+\end{table*}

@@ -1,0 +1,2 @@
+job_id	binary_sha256	runner_sha256	job_script_sha256	cpu_contract	status
+51036603	cb9eabac9f5e4f351947b69f5f61df85cdf450da7f4f398b17cf34b79620aa7d	8086d06639bd16dcde6fb9d806aabf6e4825612e21d3f60b5fbb1628f2492c3d	bc5626b4ea4b506b1706a7719877f8dba2e37a8da91c41b126eb133443ff3ef6	1 CPU; exclusive Intel Xeon Gold 6248; 8 GiB	completed; 20 measured rows semantically equal to fresh classifications

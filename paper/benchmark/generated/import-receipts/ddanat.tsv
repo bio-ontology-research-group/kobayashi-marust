@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ddanat.owl
+M	source_sha256	bbc97bda154ddabff4abacad2eb96c73dacfbd1da36860541cf1140c1a8441cf
+M	closure_size	1
+M	merged_axioms	1237
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	5329a010add1e097dc655268ff80d986f041d963048df27b389a4d24ca7c4403
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ddanat.owl>) VersionIRI(<null>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ddanat.owl	1237
+Z	complete

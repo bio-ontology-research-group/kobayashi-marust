@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ohmi.owl
+M	source_sha256	f7c809d9dba32784fd22b8449418b82e2ac5dff7e89bdc67aacfb10df66c3706
+M	closure_size	1
+M	merged_axioms	17103
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	2
+M	merged_sha256	8fa634fe1cba7b5017188fe91aa58efe6ce3ed265700b30ada04b9c5fd6dd630
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ohmi.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ohmi/releases/2026-05-14/ohmi.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ohmi.owl	17101
+Z	complete

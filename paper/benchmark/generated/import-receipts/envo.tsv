@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/envo.owl
+M	source_sha256	a0b919065d33a9cf975b74cadd16c75f32f512d17f4f6d5999b74216701df54c
+M	closure_size	1
+M	merged_axioms	53403
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	3
+M	merged_sha256	0bf9bb7d095ca7ded7368258dc6557cc64e25a622dd1f323cb1f25439d505518
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/envo.owl>) VersionIRI(<http://purl.obolibrary.org/obo/envo/releases/2026-06-26/envo.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/envo.owl	53400
+Z	complete

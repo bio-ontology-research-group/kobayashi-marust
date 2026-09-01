@@ -1,0 +1,11 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/duo.owl
+M	source_sha256	6a34ce09ae07b1e37c6756e049c12129fd1104e7d9e6e2f8cee84d2ab374c45b
+M	closure_size	2
+M	merged_axioms	4253
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	5ec083b36b2e25544e288f841735e587351d74a33933c1106da4f8441967a874
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/duo.owl>) VersionIRI(<http://purl.obolibrary.org/obo/duo/releases/2021-02-23/duo.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/duo.owl	582
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/iao.owl>) VersionIRI(<http://purl.obolibrary.org/obo/iao/2026-03-30/iao.owl>))	http://purl.obolibrary.org/obo/iao.owl	3916
+Z	complete

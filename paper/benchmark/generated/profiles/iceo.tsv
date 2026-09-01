@@ -1,0 +1,24 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/iceo.ofn
+M	source_sha256	ddb85296e26622726eb902b58034aee2f8e6dc85cc4a841699a2d088321e53f0
+M	axioms	366115
+M	logical_axioms	71187
+M	classes	30914
+M	object_properties	53
+M	data_properties	0
+M	individuals	6
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	35
+V	OWL2EL	LastPropertyInChainNotInImposedRange	20
+V	OWL2EL	UseOfIllegalAxiom	7
+V	OWL2EL	UseOfIllegalClassExpression	6
+V	OWL2EL	UseOfObjectPropertyInverse	2
+P	OWL2QL	false	43
+V	OWL2QL	UseOfIllegalAxiom	21
+V	OWL2QL	UseOfNonSubClassExpression	18
+V	OWL2QL	UseOfNonSuperClassExpression	4
+P	OWL2RL	false	40207
+V	OWL2RL	UseOfNonEquivalentClassExpression	18
+V	OWL2RL	UseOfNonSuperClassExpression	40189
+Z	complete

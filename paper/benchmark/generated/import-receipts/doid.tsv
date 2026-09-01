@@ -1,0 +1,25 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/doid.owl
+M	source_sha256	ed1c5e03045f31b64a5b0ec182ee87170ab0d6cd56566af1c10cb3fd283bf673
+M	closure_size	16
+M	merged_axioms	200308
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	62dd92eada1f8825157637bc0b5ac0005cbe55c61716670306427681c1e7d90a
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/doid.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/doid.owl	178757
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/chebi_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/chebi_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/chebi_import.owl	1751
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/cl_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/cl_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/cl_import.owl	691
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/disdriv_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/disdriv_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/disdriv_import.owl	480
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/eco_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/eco_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/eco_import.owl	72
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/foodon_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/foodon_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/foodon_import.owl	179
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/geno_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/geno_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/geno_import.owl	87
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/hp_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/hp_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/hp_import.owl	2333
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/ncbitaxon_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/ncbitaxon_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/ncbitaxon_import.owl	3693
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/omim_susc_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/omim_susc_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/omim_susc_import.owl	1428
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/ro_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/ro_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/ro_import.owl	129
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/so_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/so_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/so_import.owl	1049
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/symp_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/symp_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/symp_import.owl	5811
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/trans_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/trans_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/trans_import.owl	220
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/imports/uberon_import.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/imports/uberon_import.owl>))	http://purl.obolibrary.org/obo/doid/imports/uberon_import.owl	3802
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/doid/obo/ext.owl>) VersionIRI(<http://purl.obolibrary.org/obo/doid/releases/2026-07-31/ext.owl>))	http://purl.obolibrary.org/obo/doid/obo/ext.owl	50
+Z	complete

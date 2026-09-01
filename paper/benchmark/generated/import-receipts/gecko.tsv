@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/gecko.owl
+M	source_sha256	3187e9ceb9a98316dcbed900a7afc88ead1d4c3d5fdb7eec7b08644521c3fb65
+M	closure_size	1
+M	merged_axioms	1311
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	7ac18f725254fafa7523f322653e91bb9ee67487cf3186be57c767c12c03ff88
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/gecko.owl>) VersionIRI(<http://purl.obolibrary.org/obo/gecko/releases/2021-01-18/gecko.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/gecko.owl	1311
+Z	complete

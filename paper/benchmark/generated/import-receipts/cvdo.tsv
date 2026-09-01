@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cvdo.owl
+M	source_sha256	2dc1635cbe88923cea754931d5066873fff7f2f1e7850e151dc3b7d595deefbd
+M	closure_size	1
+M	merged_axioms	7976
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	8ed9b99380bf002104d3faa31488197db13cdefabc0e8d17955fbf85544ef294
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cvdo.owl>) VersionIRI(<http://purl.obolibrary.org/obo/cvdo/2024-05-17/cvdo.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cvdo.owl	7976
+Z	complete

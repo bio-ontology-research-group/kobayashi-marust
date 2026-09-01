@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/amphx.owl
+M	source_sha256	f1f547e212df0c5fbf1d6076d9d44988abecfdefe299c47f06d777281ef8a1ff
+M	closure_size	1
+M	merged_axioms	2743
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	3774d997e7760e5f26d96cd6aa0c375f388f1c218dfd4f4a515d0c08c5450b78
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/amphx/amphx.owl>) VersionIRI(<http://purl.obolibrary.org/obo/amphx/releases/2020-12-18/amphx.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/amphx.owl	2743
+Z	complete

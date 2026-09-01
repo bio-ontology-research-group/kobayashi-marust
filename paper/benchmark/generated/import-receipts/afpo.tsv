@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/afpo.owl
+M	source_sha256	f6704f64a284bba05f9736172bcb0f058c4cc3759273a84d2ad53a8461f30765
+M	closure_size	1
+M	merged_axioms	11279
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	0f74570f6ddbf3032bca912fde25506f23201c4cf1e6efe6a085eb62a13eef7a
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/afpo.owl>) VersionIRI(<http://purl.obolibrary.org/obo/afpo/releases/2024-03-21/afpo.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/afpo.owl	11279
+Z	complete

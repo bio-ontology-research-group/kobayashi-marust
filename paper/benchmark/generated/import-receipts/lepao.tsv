@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/lepao.owl
+M	source_sha256	d2fb4d42adbe2b3e2691f0bc2cd5887aabf3435e2b21ff66f0c5c7fd0fe2d5c6
+M	closure_size	1
+M	merged_axioms	5725
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	1
+M	merged_sha256	974408b1c1af9faae18cc01e3492cb6c55bab675ce05ab83ae76e34dff48002c
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/lepao.owl>) VersionIRI(<http://purl.obolibrary.org/obo/lepao/releases/2023-02-18/lepao.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/lepao.owl	5724
+Z	complete

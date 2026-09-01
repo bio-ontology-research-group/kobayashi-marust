@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/pcl.owl
+M	source_sha256	49b838fa900e765ce0b786b782942162544898d38b1ea75815994c922f23348a
+M	closure_size	1
+M	merged_axioms	635483
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	3
+M	merged_sha256	b3e4cec80e7a4c7c65387818824624fb37b8326af1effb7eeb9521529a767cf4
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/pcl.owl>) VersionIRI(<http://purl.obolibrary.org/obo/pcl/releases/2025-07-07/pcl.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/pcl.owl	635480
+Z	complete

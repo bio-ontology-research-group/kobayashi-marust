@@ -1,0 +1,10 @@
+main.aux
+main.bbl
+main.blg
+main.log
+main.out
+main.toc
+main.pdf
+__pycache__/
+*.pyc
+benchmark/runners/*/target/

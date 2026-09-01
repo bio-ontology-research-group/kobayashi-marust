@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ontoavida.owl
+M	source_sha256	3da46c81ccb8c5219fe9a5a1ca083dab351c29f4c83dd3bac9555594593629d6
+M	closure_size	1
+M	merged_axioms	3035
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	9322026bfdaeeb7dcb7667dd0c2f10d0eb4c19a0ccbd9de13dda3ae172460193
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ontoavida.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ontoavida/releases/2022-03-15/ontoavida.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ontoavida.owl	3035
+Z	complete

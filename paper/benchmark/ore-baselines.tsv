@@ -1,0 +1,6 @@
+id	label	version_or_commit	correct_completions	source_revision
+km	KM	v1.3.0; 5c64a02	591	f4738bcdd980a1b2fcc840e4b455d37d447510cb
+elk	ELK	0.6.0	531	ELK-0.6.0
+konclude	Konclude	0.7.0-1138; 0002e8063540	587	0002e80635403960a7df5d93bd0e8f994d4952d0
+sequoia_strict	Sequoia	0.6.1-alpha; c5248ec7be30	339	c5248ec7be302efc850cf07ab30a0ea651db81b6
+hermit	HermiT	1.4.6.519-SNAPSHOT	557	HermiT-1.4.6.519-SNAPSHOT

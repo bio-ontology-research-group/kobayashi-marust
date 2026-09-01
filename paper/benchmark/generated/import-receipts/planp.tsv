@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/planp.owl
+M	source_sha256	2b46795d2ac2e368e4024b28a6b3aee747a98ea097598e4267d56e7920509913
+M	closure_size	1
+M	merged_axioms	45249
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	3
+M	merged_sha256	9340d035c010f912c2c718d043aaa2894546e4a3e5a8022981e445e0de792f0f
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/planp.owl>) VersionIRI(<http://purl.obolibrary.org/obo/planp/releases/2020-03-28/planp.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/planp.owl	45246
+Z	complete

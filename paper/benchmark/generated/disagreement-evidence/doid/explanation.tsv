@@ -1,0 +1,23 @@
+M	module_logical_axioms	66
+M	module_axioms	516
+M	entailed	true
+M	explanation_axioms	18
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/DOID_0050117> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/DOID_4> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/IDO_0000664> ObjectUnionOf(<http://purl.obolibrary.org/obo/NCBITaxon_10239> <http://purl.obolibrary.org/obo/NCBITaxon_2> <http://purl.obolibrary.org/obo/NCBITaxon_2759> <http://purl.obolibrary.org/obo/NCBITaxon_36469>))) )
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/DOID_2519> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/DOID_4> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/RO_0004026> <http://purl.obolibrary.org/obo/UBERON_0000473>)) )
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/DOID_5614> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/DOID_4> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/RO_0004026> <http://purl.obolibrary.org/obo/UBERON_0000970>)) )
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/DOID_574> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/DOID_4> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/RO_0004026> <http://purl.obolibrary.org/obo/UBERON_0000010>)) )
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/DOID_974> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/DOID_4> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/RO_0004026> <http://purl.obolibrary.org/obo/UBERON_0001557>)) )
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_0050155> <http://purl.obolibrary.org/obo/DOID_863>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_0050338> <http://purl.obolibrary.org/obo/DOID_104>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_1024> <http://purl.obolibrary.org/obo/DOID_0050338>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_1024> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/RO_0004026> ObjectUnionOf(<http://purl.obolibrary.org/obo/UBERON_0000010> <http://purl.obolibrary.org/obo/UBERON_0000473> <http://purl.obolibrary.org/obo/UBERON_0000970> <http://purl.obolibrary.org/obo/UBERON_0001557>)))
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_104> <http://purl.obolibrary.org/obo/DOID_0050117>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_1579> <http://purl.obolibrary.org/obo/DOID_7>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_2277> <http://purl.obolibrary.org/obo/DOID_28>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_2519> <http://purl.obolibrary.org/obo/DOID_2277>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_28> <http://purl.obolibrary.org/obo/DOID_7>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_5614> <http://purl.obolibrary.org/obo/DOID_0050155>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_574> <http://purl.obolibrary.org/obo/DOID_863>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_863> <http://purl.obolibrary.org/obo/DOID_7>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_974> <http://purl.obolibrary.org/obo/DOID_1579>)
+Z	complete

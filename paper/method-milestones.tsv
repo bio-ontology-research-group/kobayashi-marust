@@ -1,0 +1,19 @@
+order	phase	commit	date	milestone
+1	1	25e7243a33fa59512aef54a2699b214cf74cd5d5	2026-06-02	Standalone Rust context reasoner and Lean development tree
+2	1	e9ef4b1ecfdb3b353bf840ecb6e1f54b4ffdcd55	2026-06-04	First strategy-completeness theorem discharged without sorry
+3	1	fc25b5bef831d1d68f17467f492c86018a36a0da	2026-06-09	Rust OWL frontend introduced behind a differential gate
+4	1	ac153efec02f8ec5a6e103d9dc028039ed3a928f	2026-06-10	Streaming clausification removes a giant-input memory failure
+5	1	cd60ce38466face4a734a1b8ee37140aaa56260d	2026-06-11	Clone-free EL completion recovers a large ontology
+6	2	1b5094739ed18a291afd87c5ca3599a4fbdd1afb	2026-06-18	Pure-Rust automatic classification supervisor
+7	2	318192e0aaa46815461a9aa85164f3b2effd3019	2026-07-22	Retained-state EL incremental classification
+8	2	dbf77733b5e236304b305e09cebc0adb4cdc28cc	2026-07-23	Source-level OWL explanations introduced
+9	3	aae8af4dca47de5713e769966a03b824842ce47a	2026-07-30	Source-bound integrated route acceptance chain
+10	3	b83120507825e0b0ff1aca506bf65751d486ee9b	2026-08-01	Automatic route reaches 591-ontology coverage
+11	4	0069c6fe7cdcffc677c00df3aa429be4e0bc5bd1	2026-08-17	Integrated certification campaign begins at v0.3.0
+12	4	7ca040b609a2554bf17269777c32656d08bed030	2026-08-23	Production hypertableau certification completed
+13	4	708c2eeb2f9c64422c759015438cd606e802803f	2026-08-23	Production EL-completion certification completed
+14	4	ef9e9893dcfa8794be630afd47b34ceca86c1c2f	2026-08-24	EL, hypertableau, CB, and routing certification integrated in v1.0.0
+15	5	d093bcf6f6a3882e467510440b177f387b6726bd	2026-08-29	Written v1.3 incremental and explanation acceptance contract
+16	5	2ccdc6a1d682fcee189b1263de663819e55f2d74	2026-08-29	Typed source sessions retained across hypertableau updates
+17	5	5c64a024e0e90b21a9a24521f841c71d36e45881	2026-08-30	Feature-based exact-route repair after full-sweep regression
+18	5	f4738bcdd980a1b2fcc840e4b455d37d447510cb	2026-08-30	Exact v1.3.0 release evidence recorded

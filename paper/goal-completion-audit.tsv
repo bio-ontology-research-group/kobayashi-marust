@@ -1,0 +1,18 @@
+requirement	status	authoritative_evidence	remaining_action
+Full KM v1.3.0 research manuscript	verified	paper/main.tex; paper/main.pdf; paper/generated/sage-staging-verification.json	None
+Normal reasoner-system description	verified	paper/main.tex sections Background and design requirements through Incremental reasoning and explanations; paper/scripts/verify_manuscript_contract.py	None
+Automatic-route architecture and supported interface	verified	paper/main.tex sections System architecture and Lean-certified publication; v1.3.0 tagged source	None
+Historical ORE evaluation	verified	paper/generated/ore-results.tex; paper/generated/shared-correct.tsv; v1.3.0 release-gate summary	None
+Contemporary benchmark	verified	paper/benchmark/generated/current-final/current-aggregate.json; 1512-record import and evidence-archive verification receipts	None
+Requested reasoner baselines	verified	paper/main.tex Evaluation and Related work; paper/benchmark/baselines.tsv; paper/benchmark/ore-baselines.tsv; manuscript contract reports eight families	None
+Named biomedical hard cases	partial	paper/benchmark/hard-cases.tsv; paper/benchmark/generated/fma-aggregate.json	GALEN was not acquired without a BioPortal key; SNOMED CT was not acquired without a licensed source artifact
+Chronological Methods account from first standalone commit	verified	paper/main.tex Methods sections; paper/generated/method-milestones.tex; paper/generated/history-summary.tex; paper/method-milestones.tsv	None
+Project conception and pre-standalone chronology	verified-qualified	paper/evidence/laptop/; claims-ledger.tsv METH-005	Dated precursor activity and source are verified; the unretained first prompt is not claimed
+Agentic-coding methodology	verified	paper/main.tex Methods: how KM was developed; case-study and session evidence ledgers	None
+Native agent-usage telemetry	verified	paper/generated/agent-usage-summary.tex; paper/generated/agent-usage-phases.tex; paper/generated/laptop-evidence-summary.tex; pinned AgentsView JSON and SHA-256 receipts	Tool-version-specific laptop and workstation counters are reported separately; broad repository and machine-wide figures remain upper bounds
+Lean-certification methodology and trust boundary	verified	paper/main.tex Lean-certified publication and Methods: Lean as an integration constraint; formal-claims.tsv; four exact-tag release gates	None
+Primary Semantic Web Journal target	verified	paper/SUBMISSION.md; paper/COVER-LETTER.md; verified 19-page Sage staging build	None
+Journal of Automated Reasoning fallback compatibility	verified	226-word contract-counted abstract; required declarations; documented substantive LLM use in Methods	Funding and competing-interest statements require author confirmation
+Seven aspect-isolated independent reviews	verified	paper/reviews/*.md; paper/reviews/review-usage.tsv; paper/reviews/dispositions.tsv; paper/reviews/disposition-verification.json	None
+Submission cover letter	partial	paper/COVER-LETTER.md	Add archival DOI and confirm exclusivity and competing interests
+Immutable replication artifact	partial	.work/artifacts/submission-artifact-staging/ARTIFACT-RECEIPT.json; verified 858-file top-level manifest	Restage after laptop evidence and reviews, deposit publicly, and record DOI

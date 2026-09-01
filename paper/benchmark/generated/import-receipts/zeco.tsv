@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/zeco.owl
+M	source_sha256	fd917d426350e250b307f6e6bcecdaecfcafcd61e2043a48c13964716d6f6ff1
+M	closure_size	1
+M	merged_axioms	763
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	4522a456574977d5a4a64c71c4e4128ac5ecab060922c3a5ddf7ce1b9a07386f
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/zeco.owl>) VersionIRI(<http://purl.obolibrary.org/obo/zeco/releases/2022-02-14/zeco.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/zeco.owl	763
+Z	complete

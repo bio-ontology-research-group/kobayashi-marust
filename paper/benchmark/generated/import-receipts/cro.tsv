@@ -1,0 +1,13 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cro.owl
+M	source_sha256	1b4b43424d951e2880163cb870737b1c48e50f8ad76f50b5dccfb6af9958fe4c
+M	closure_size	4
+M	merged_axioms	1242
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	defbb9a5ff0fef84aa067434dc2c9917657a714d97019c80d82d227c1a6a2b80
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cro.owl>) VersionIRI(<http://purl.obolibrary.org/obo/cro/releases/2019-12-11/cro.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/cro.owl	724
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cro/imports/bfo_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cro/imports/bfo_import.owl	107
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cro/imports/credit_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cro/imports/credit_import.owl	513
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/cro/imports/iao_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/cro/imports/iao_import.owl	427
+Z	complete

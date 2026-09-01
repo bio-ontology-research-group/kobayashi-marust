@@ -1,0 +1,63 @@
+{
+  "gates": [
+    {
+      "detail": "Rendered manuscript PDF is nonempty and newer than its TeX inputs",
+      "evidence": "paper/main.pdf",
+      "id": "paper_pdf",
+      "ready": true
+    },
+    {
+      "detail": "Every human-facing gate is checked and manuscript declarations are confirmed",
+      "evidence": "paper/SUBMISSION.md",
+      "id": "checklist",
+      "ready": false
+    },
+    {
+      "detail": "Strict 1,512-record import, evidence archive, and aggregate-bound TeX verify",
+      "evidence": "paper/benchmark/generated/current-final/import-verification.json; paper/generated/current-results.tex",
+      "id": "current_obo_final",
+      "ready": true
+    },
+    {
+      "detail": "Final contemporary tables replace provisional running-job prose",
+      "evidence": "paper/main.tex",
+      "id": "current_tables_in_manuscript",
+      "ready": true
+    },
+    {
+      "detail": "Pre-standalone evidence is imported, hashed, and adjudicated",
+      "evidence": "paper/evidence/laptop/SHA256SUMS; paper/claims-ledger.tsv:METH-005",
+      "id": "laptop_history",
+      "ready": true
+    },
+    {
+      "detail": "Seven separate reviews and complete, current-hash author dispositions are retained",
+      "evidence": "paper/reviews/*.md; paper/reviews/dispositions.tsv; paper/reviews/disposition-verification.json",
+      "id": "independent_reviews",
+      "ready": true
+    },
+    {
+      "detail": "Source-bound Sage two-column staging build passes without layout or reference errors",
+      "evidence": "paper/generated/sage-staging-verification.json",
+      "id": "sage_template",
+      "ready": true
+    },
+    {
+      "detail": "Cover letter contains no completion or verification markers",
+      "evidence": "paper/COVER-LETTER.md",
+      "id": "cover_letter",
+      "ready": true
+    },
+    {
+      "detail": "Immutable public archive has DOI, digest manifest, and top-level instructions",
+      "evidence": "paper/archive/{DOI.txt,SHA256SUMS,README.md}",
+      "id": "immutable_archive",
+      "ready": false
+    }
+  ],
+  "note": "Run `make -C paper checks` separately; this audit measures submission packaging gates.",
+  "ready": false,
+  "ready_gates": 7,
+  "schema": 1,
+  "total_gates": 9
+}

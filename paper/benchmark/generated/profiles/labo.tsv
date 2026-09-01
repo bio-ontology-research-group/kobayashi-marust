@@ -1,0 +1,33 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/labo.ofn
+M	source_sha256	99c698dd5f423647df37e6b3f1ba08ab013f4c5cac5c4f8b5a925d77905a1810
+M	axioms	1984
+M	logical_axioms	330
+M	classes	169
+M	object_properties	33
+M	data_properties	2
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	false	27
+V	OWL2DL	UseOfNonSimplePropertyInCardinalityRestriction	21
+V	OWL2DL	UseOfReservedVocabularyForAnnotationPropertyIRI	6
+P	OWL2EL	false	83
+V	OWL2EL	UseOfIllegalAxiom	14
+V	OWL2EL	UseOfIllegalClassExpression	39
+V	OWL2EL	UseOfNonSimplePropertyInCardinalityRestriction	21
+V	OWL2EL	UseOfObjectPropertyInverse	3
+V	OWL2EL	UseOfReservedVocabularyForAnnotationPropertyIRI	6
+P	OWL2QL	false	89
+V	OWL2QL	UseOfIllegalAxiom	4
+V	OWL2QL	UseOfNonSimplePropertyInCardinalityRestriction	21
+V	OWL2QL	UseOfNonSubClassExpression	27
+V	OWL2QL	UseOfNonSuperClassExpression	31
+V	OWL2QL	UseOfReservedVocabularyForAnnotationPropertyIRI	6
+P	OWL2RL	false	117
+V	OWL2RL	UseOfIllegalDataRange	1
+V	OWL2RL	UseOfNonEquivalentClassExpression	25
+V	OWL2RL	UseOfNonSimplePropertyInCardinalityRestriction	21
+V	OWL2RL	UseOfNonSubClassExpression	2
+V	OWL2RL	UseOfNonSuperClassExpression	62
+V	OWL2RL	UseOfReservedVocabularyForAnnotationPropertyIRI	6
+Z	complete

@@ -1,0 +1,29 @@
+diff --git a/pom.xml b/pom.xml
+index c023428..4196446 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -21,8 +21,8 @@
+         		<version>3.0</version>
+         		<configuration>
+-          			<source>1.7</source>
+-          			<target>1.7</target>
++          			<source>1.8</source>
++          			<target>1.8</target>
+         		</configuration>
+       		</plugin>
+@@ -39,6 +39,16 @@
+ 				<configuration>
+ 					<finalName>uber-${artifactId}-${version}</finalName>
++					<filters>
++						<filter>
++							<artifact>*:*</artifact>
++							<excludes>
++								<exclude>META-INF/*.SF</exclude>
++								<exclude>META-INF/*.DSA</exclude>
++								<exclude>META-INF/*.RSA</exclude>
++							</excludes>
++						</filter>
++					</filters>
+ 				</configuration>
+ 			</plugin>
+     	</plugins>

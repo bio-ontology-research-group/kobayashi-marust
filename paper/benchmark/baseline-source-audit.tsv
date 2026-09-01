@@ -1,0 +1,9 @@
+id	tested_version	primary_identity_source	source_revision_or_release	verification_date	notes
+km	v1.3.0	https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.3.0	f4738bc; engine 5c64a02	2026-08-30	Exact tested binary digest is binding in baselines.tsv
+konclude	v0.7.0-1138	https://github.com/konclude/Konclude	0002e8063540	2026-08-30	Source checkout is 0002e8063540; tested binary banner embeds 500e11d9; exact native binary and runtime-library digests are binding
+elk	v0.6.0	https://github.com/liveontologies/elk-reasoner/releases/tag/v0.6.0	b8ac5ce83db0704a7359d96aa382891e2f547863	2026-08-30	Official repository marks 0.6.0 as the latest release; main is 0.6.1-SNAPSHOT
+whelk	v1.2.1	https://github.com/INCATools/whelk/releases/tag/v1.2.1	d0f430f6468b6449cbaa6cf3e5d63f4042aae998	2026-08-30	Official repository describes Whelk as based on ELK's algorithm
+hermit	1.4.5.519	https://repo1.maven.org/maven2/net/sourceforge/owlapi/org.semanticweb.hermit/1.4.5.519/	Maven Central release	2026-08-30	Current-corpus runner is isolated from the historical ORE HermiT build
+jfact	5.0.3	https://repo1.maven.org/maven2/net/sourceforge/owlapi/jfact/5.0.3/	Maven Central release	2026-08-30	Official repository uses a version5 branch rather than a 5.0.3 git tag
+openllet	2.6.5	https://github.com/Galigator/openllet/releases/tag/2.6.5	4064e7568470d52d59770e62eb833e564606cfc2	2026-08-30	Exact shaded runner digest is binding
+more	0.2.0-SNAPSHOT	https://github.com/anaphylactic/MORe/commit/9d29fb15352b781a3dba015696b1b269320603b2	9d29fb15352b781a3dba015696b1b269320603b2	2026-08-30	Final public source with its original OWLAPI, HermiT, ELK, and JRDFox stack

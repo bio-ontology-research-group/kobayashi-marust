@@ -1,0 +1,27 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/geo.ofn
+M	source_sha256	4f20d4c2c1890144a5ff9450fca5415d75b3dd26e66b0dfe4b34fbe037d71401
+M	axioms	1614
+M	logical_axioms	221
+M	classes	91
+M	object_properties	49
+M	data_properties	1
+M	individuals	4
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	49
+V	OWL2EL	LastPropertyInChainNotInImposedRange	1
+V	OWL2EL	UseOfIllegalAxiom	27
+V	OWL2EL	UseOfIllegalClassExpression	20
+V	OWL2EL	UseOfIllegalDataRange	1
+P	OWL2QL	false	32
+V	OWL2QL	UseOfIllegalAxiom	15
+V	OWL2QL	UseOfIllegalDataRange	1
+V	OWL2QL	UseOfNonSubClassExpression	14
+V	OWL2QL	UseOfNonSuperClassExpression	2
+P	OWL2RL	false	22
+V	OWL2RL	UseOfIllegalAxiom	5
+V	OWL2RL	UseOfNonEquivalentClassExpression	12
+V	OWL2RL	UseOfNonSubClassExpression	2
+V	OWL2RL	UseOfNonSuperClassExpression	3
+Z	complete

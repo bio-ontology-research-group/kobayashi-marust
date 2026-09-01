@@ -1,0 +1,18 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/to.owl
+M	source_sha256	369d261d9262fe750c5b1593f92ee3028111e77104b2cfd5a03551cbcb2a16bd
+M	closure_size	9
+M	merged_axioms	52458
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	1
+M	merged_sha256	afed8280938bb2ee9eaafffed115e08bb66429d274d10ff80db7f47bd698c231
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/po.owl>) VersionIRI(<http://purl.obolibrary.org/obo/po/releases/2026-01-09/po.owl>))	http://purl.obolibrary.org/obo/po.owl	24401
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/po/imports/ncbitaxon_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/po/imports/ncbitaxon_import.owl	66
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/po/imports/ro_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/po/imports/ro_import.owl	852
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/to.owl>) VersionIRI(<http://purl.obolibrary.org/obo/to/releases/2026-01-14/to.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/to.owl	19526
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/to/imports/chebi_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/to/imports/chebi_import.owl	8087
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/to/imports/go_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/to/imports/go_import.owl	1673
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/to/imports/ncbitaxon_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/to/imports/ncbitaxon_import.owl	225
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/to/imports/pato_import.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/to/imports/pato_import.owl	700
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/to/patterns/merge_patterns.owl>) VersionIRI(<null>))	http://purl.obolibrary.org/obo/to/patterns/merge_patterns.owl	1850
+Z	complete

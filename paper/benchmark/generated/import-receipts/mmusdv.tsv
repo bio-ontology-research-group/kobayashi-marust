@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/mmusdv.owl
+M	source_sha256	1b2db363f8fe66444e3fe521bebc5eceb3ed497b24174ef456a0cdac3b1d0338
+M	closure_size	1
+M	merged_axioms	2256
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	b8545b4dd896dd124d966ed7249a2e51b1e15f4a766fb9838b0320f09020d615
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/life-stages/components/mmusdv.owl>) VersionIRI(<http://purl.obolibrary.org/obo/life-stages/releases/2025-01-23/components/mmusdv.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/mmusdv.owl	2256
+Z	complete

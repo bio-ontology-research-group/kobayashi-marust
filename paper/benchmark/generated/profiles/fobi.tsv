@@ -1,0 +1,17 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/fobi.ofn
+M	source_sha256	df03780430b0e75a7d0e5d6ae8b83b40901c3589e617351b575dd8b3bc85465e
+M	axioms	16691
+M	logical_axioms	6814
+M	classes	1334
+M	object_properties	4
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	2
+V	OWL2EL	UseOfIllegalAxiom	2
+P	OWL2QL	true	0
+P	OWL2RL	false	5474
+V	OWL2RL	UseOfNonSuperClassExpression	5474
+Z	complete

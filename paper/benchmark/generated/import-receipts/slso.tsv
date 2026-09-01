@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/slso.owl
+M	source_sha256	acfc4ed43d0a6779df9950d375bf37b2a8af3006ce30a4b690e0e32e931d6193
+M	closure_size	1
+M	merged_axioms	39582
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	2
+M	merged_sha256	7a01187954a469e6b39de0f9f3c9db099048b43a1a9919ae21a4e74191d53ea7
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/slso.owl>) VersionIRI(<http://purl.obolibrary.org/obo/slso/releases/2025-12-11/slso.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/slso.owl	39580
+Z	complete

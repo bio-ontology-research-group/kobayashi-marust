@@ -1,0 +1,26 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/ncit.ofn
+M	source_sha256	2bd711eaf0f0df861ec417fe263aa2d492130f6be3fe05218ab6ff3e712b5ce6
+M	axioms	3645989
+M	logical_axioms	327239
+M	classes	209911
+M	object_properties	97
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	179
+V	OWL2EL	UseOfDataOneOfWithMultipleLiterals	18
+V	OWL2EL	UseOfIllegalClassExpression	142
+V	OWL2EL	UseOfIllegalDataRange	19
+P	OWL2QL	false	23767
+V	OWL2QL	UseOfIllegalAxiom	2
+V	OWL2QL	UseOfIllegalDataRange	38
+V	OWL2QL	UseOfNonSubClassExpression	23603
+V	OWL2QL	UseOfNonSuperClassExpression	124
+P	OWL2RL	false	75107
+V	OWL2RL	UseOfIllegalAxiom	19
+V	OWL2RL	UseOfIllegalDataRange	38
+V	OWL2RL	UseOfNonEquivalentClassExpression	16092
+V	OWL2RL	UseOfNonSuperClassExpression	58958
+Z	complete

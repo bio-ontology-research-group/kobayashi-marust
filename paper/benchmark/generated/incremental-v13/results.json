@@ -1,0 +1,334 @@
+{
+  "binary_sha256": "cb9eabac9f5e4f351947b69f5f61df85cdf450da7f4f398b17cf34b79620aa7d",
+  "cases": {
+    "cb": {
+      "fresh_over_incremental_add_ratio": 2.6374594079810825,
+      "measured_rows": [
+        {
+          "fresh_process_peak_kib": 8960,
+          "fresh_union_s": 0.014637126,
+          "incremental_add_s": 0.005904791,
+          "incremental_classify_s": 0.000966361,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.01275842,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.0153807,
+          "incremental_add_s": 0.005293201,
+          "incremental_classify_s": 0.000963456,
+          "incremental_process_peak_kib": 13760,
+          "init_s": 0.011973492,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.015351581,
+          "incremental_add_s": 0.005813994,
+          "incremental_classify_s": 0.000968241,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.011937635,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.015634299,
+          "incremental_add_s": 0.005976433,
+          "incremental_classify_s": 0.001328069,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.012705153,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.015250833,
+          "incremental_add_s": 0.00589448,
+          "incremental_classify_s": 0.000979274,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.012609341,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.015228041,
+          "incremental_add_s": 0.005838235,
+          "incremental_classify_s": 0.000970534,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.012630886,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.016323632,
+          "incremental_add_s": 0.005264698,
+          "incremental_classify_s": 0.000955928,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.011961826,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.015858299,
+          "incremental_add_s": 0.005783956,
+          "incremental_classify_s": 0.000970603,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.012880395,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.014661718,
+          "incremental_add_s": 0.00559219,
+          "incremental_classify_s": 0.000967519,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.011868828,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        },
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.015637693,
+          "incremental_add_s": 0.005841927,
+          "incremental_classify_s": 0.001251655,
+          "incremental_process_peak_kib": 13120,
+          "init_s": 0.012599885,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        }
+      ],
+      "medians": {
+        "fresh_process_peak_kib": 9280.0,
+        "fresh_union_s": 0.0153661405,
+        "incremental_add_s": 0.0058261145,
+        "incremental_classify_s": 0.0009693875,
+        "incremental_process_peak_kib": 13440.0,
+        "init_s": 0.012604613
+      },
+      "size": 500,
+      "warmup_rows": [
+        {
+          "fresh_process_peak_kib": 9280,
+          "fresh_union_s": 0.015099936,
+          "incremental_add_s": 0.005456272,
+          "incremental_classify_s": 0.000986418,
+          "incremental_process_peak_kib": 13440,
+          "init_s": 0.012512796,
+          "new_subsumptions": 2,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 1500,
+          "semantic_result_sha256": "b70af67dd9e0ca48588a274659915b99397b07abd634b21710a760a9433ed299",
+          "strategy": "cb_delta"
+        }
+      ]
+    },
+    "el": {
+      "fresh_over_incremental_add_ratio": 4.684500481612601,
+      "measured_rows": [
+        {
+          "fresh_process_peak_kib": 20284,
+          "fresh_union_s": 0.073154971,
+          "incremental_add_s": 0.015609018,
+          "incremental_classify_s": 0.01211058,
+          "incremental_process_peak_kib": 30268,
+          "init_s": 0.079334247,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20288,
+          "fresh_union_s": 0.074978726,
+          "incremental_add_s": 0.016070667,
+          "incremental_classify_s": 0.01276279,
+          "incremental_process_peak_kib": 30264,
+          "init_s": 0.080763356,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20284,
+          "fresh_union_s": 0.076478519,
+          "incremental_add_s": 0.016037042,
+          "incremental_classify_s": 0.01238453,
+          "incremental_process_peak_kib": 30268,
+          "init_s": 0.080763039,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20164,
+          "fresh_union_s": 0.074323569,
+          "incremental_add_s": 0.015689056,
+          "incremental_classify_s": 0.012029507,
+          "incremental_process_peak_kib": 30268,
+          "init_s": 0.079981523,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20256,
+          "fresh_union_s": 0.074182094,
+          "incremental_add_s": 0.015977155,
+          "incremental_classify_s": 0.012141442,
+          "incremental_process_peak_kib": 30268,
+          "init_s": 0.07959674,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20628,
+          "fresh_union_s": 0.073323175,
+          "incremental_add_s": 0.015796641,
+          "incremental_classify_s": 0.012498199,
+          "incremental_process_peak_kib": 30584,
+          "init_s": 0.079014901,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20284,
+          "fresh_union_s": 0.073843214,
+          "incremental_add_s": 0.01572174,
+          "incremental_classify_s": 0.012236935,
+          "incremental_process_peak_kib": 30264,
+          "init_s": 0.079485491,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20228,
+          "fresh_union_s": 0.076031733,
+          "incremental_add_s": 0.015730044,
+          "incremental_classify_s": 0.012187549,
+          "incremental_process_peak_kib": 30816,
+          "init_s": 0.079980723,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20288,
+          "fresh_union_s": 0.074446282,
+          "incremental_add_s": 0.015961249,
+          "incremental_classify_s": 0.012457354,
+          "incremental_process_peak_kib": 30264,
+          "init_s": 0.080807092,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        },
+        {
+          "fresh_process_peak_kib": 20292,
+          "fresh_union_s": 0.075449469,
+          "incremental_add_s": 0.016161448,
+          "incremental_classify_s": 0.013025423,
+          "incremental_process_peak_kib": 30268,
+          "init_s": 0.082182513,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        }
+      ],
+      "medians": {
+        "fresh_process_peak_kib": 20284.0,
+        "fresh_union_s": 0.0743849255,
+        "incremental_add_s": 0.015878945,
+        "incremental_classify_s": 0.012310732500000001,
+        "incremental_process_peak_kib": 30268.0,
+        "init_s": 0.079981123
+      },
+      "size": 10000,
+      "warmup_rows": [
+        {
+          "fresh_process_peak_kib": 20284,
+          "fresh_union_s": 0.073050527,
+          "incremental_add_s": 0.015762031,
+          "incremental_classify_s": 0.023301304,
+          "incremental_process_peak_kib": 30372,
+          "init_s": 0.08024769,
+          "new_subsumptions": 4,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 50000,
+          "semantic_result_sha256": "f60c5b66c31f52caadc206623076c5532d2df8e30e296fff24639864c2224c24",
+          "strategy": "el_delta"
+        }
+      ]
+    }
+  },
+  "comparison_scope": "Incremental add measures one request inside an initialized process; fresh union includes process startup, parsing, classification, and serialization. Incremental peak covers initialization plus update.",
+  "controlled_environment": {
+    "KM_THREADS": "1",
+    "LC_ALL": "C",
+    "PATH": "/usr/bin:/bin",
+    "RAYON_NUM_THREADS": "1"
+  },
+  "repetitions": 10,
+  "runner_sha256": "8086d06639bd16dcde6fb9d806aabf6e4825612e21d3f60b5fbb1628f2492c3d",
+  "schema": 1,
+  "warmups": 1
+}

@@ -1,0 +1,55 @@
+{
+  "commit": "f4738bcdd980a1b2fcc840e4b455d37d447510cb",
+  "gates": {
+    "cb": {
+      "axiom_reports": 2977,
+      "bytes": 1001520,
+      "log_sha256": "f81676deb8a838026db6c91b4a60bea7bf042cee43b27f82c5220e15ca45163a",
+      "reported_axioms": [
+        "Classical.choice",
+        "Quot.sound",
+        "propext"
+      ],
+      "sorryAx": false,
+      "terminal_evidence": "CB certification gate passed"
+    },
+    "elc": {
+      "axiom_reports": 1636,
+      "bytes": 527431,
+      "log_sha256": "89de594dff0f069b72556faecad2e832f48e004eb6934d17618b96491d53001f",
+      "reported_axioms": [
+        "Classical.choice",
+        "Quot.sound",
+        "propext"
+      ],
+      "sorryAx": false,
+      "terminal_evidence": "ELC certification gate passed"
+    },
+    "ht": {
+      "axiom_reports": 3471,
+      "bytes": 1662387,
+      "log_sha256": "66a8a97a5d6086ace69765063dc82740f908db013a6078435229d05d8d812a09",
+      "reported_axioms": [
+        "Classical.choice",
+        "Quot.sound",
+        "propext"
+      ],
+      "sorryAx": false,
+      "terminal_evidence": "test result: ok. 16 passed; 0 failed"
+    },
+    "routing": {
+      "axiom_reports": 1446,
+      "bytes": 669768,
+      "log_sha256": "c3145108b1c2a0f062dc80a724bfaa028e1d9bfaad23680700fd171e6902cb3a",
+      "reported_axioms": [
+        "Classical.choice",
+        "Quot.sound",
+        "propext"
+      ],
+      "sorryAx": false,
+      "terminal_evidence": "routing certification gate passed"
+    }
+  },
+  "release": "v1.3.0",
+  "schema": 1
+}

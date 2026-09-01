@@ -1,0 +1,40 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/opmi.ofn
+M	source_sha256	05efdce99bd332c232adc84c0a56b08f79f8944c3685b66105bb2ed921e77999
+M	axioms	52508
+M	logical_axioms	5993
+M	classes	4041
+M	object_properties	158
+M	data_properties	4
+M	individuals	36
+P	OWL2	true	0
+P	OWL2DL	false	13
+V	OWL2DL	UseOfNonSimplePropertyInCardinalityRestriction	2
+V	OWL2DL	UseOfPropertyInChainCausesCycle	8
+V	OWL2DL	UseOfReservedVocabularyForObjectPropertyIRI	3
+P	OWL2EL	false	170
+V	OWL2EL	LastPropertyInChainNotInImposedRange	31
+V	OWL2EL	UseOfIllegalAxiom	36
+V	OWL2EL	UseOfIllegalClassExpression	84
+V	OWL2EL	UseOfIllegalDataRange	1
+V	OWL2EL	UseOfNonSimplePropertyInCardinalityRestriction	2
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	1
+V	OWL2EL	UseOfObjectPropertyInverse	4
+V	OWL2EL	UseOfPropertyInChainCausesCycle	8
+V	OWL2EL	UseOfReservedVocabularyForObjectPropertyIRI	3
+P	OWL2QL	false	355
+V	OWL2QL	UseOfIllegalAxiom	73
+V	OWL2QL	UseOfIllegalDataRange	1
+V	OWL2QL	UseOfNonAtomicClassExpression	4
+V	OWL2QL	UseOfNonSimplePropertyInCardinalityRestriction	2
+V	OWL2QL	UseOfNonSubClassExpression	162
+V	OWL2QL	UseOfNonSuperClassExpression	102
+V	OWL2QL	UseOfPropertyInChainCausesCycle	8
+V	OWL2QL	UseOfReservedVocabularyForObjectPropertyIRI	3
+P	OWL2RL	false	971
+V	OWL2RL	UseOfNonEquivalentClassExpression	160
+V	OWL2RL	UseOfNonSimplePropertyInCardinalityRestriction	2
+V	OWL2RL	UseOfNonSuperClassExpression	798
+V	OWL2RL	UseOfPropertyInChainCausesCycle	8
+V	OWL2RL	UseOfReservedVocabularyForObjectPropertyIRI	3
+Z	complete

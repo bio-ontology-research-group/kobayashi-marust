@@ -1,0 +1,24 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/pato.ofn
+M	source_sha256	5c824806eb022c4c7885b8f63a4f10ddcf380fb79f763c0186a20fd72649563f
+M	axioms	104739
+M	logical_axioms	24365
+M	classes	8625
+M	object_properties	255
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	127
+V	OWL2EL	LastPropertyInChainNotInImposedRange	48
+V	OWL2EL	UseOfIllegalAxiom	51
+V	OWL2EL	UseOfIllegalClassExpression	28
+P	OWL2QL	false	4809
+V	OWL2QL	UseOfIllegalAxiom	92
+V	OWL2QL	UseOfNonSubClassExpression	4703
+V	OWL2QL	UseOfNonSuperClassExpression	14
+P	OWL2RL	false	12463
+V	OWL2RL	UseOfNonEquivalentClassExpression	4600
+V	OWL2RL	UseOfNonSubClassExpression	46
+V	OWL2RL	UseOfNonSuperClassExpression	7817
+Z	complete

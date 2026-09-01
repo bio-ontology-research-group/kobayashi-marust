@@ -1,0 +1,39 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/ontoavida.ofn
+M	source_sha256	9322026bfdaeeb7dcb7667dd0c2f10d0eb4c19a0ccbd9de13dda3ae172460193
+M	axioms	3035
+M	logical_axioms	862
+M	classes	675
+M	object_properties	22
+M	data_properties	17
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	false	11
+V	OWL2DL	UseOfNonSimplePropertyInAsymmetricObjectPropertyAxiom	5
+V	OWL2DL	UseOfNonSimplePropertyInCardinalityRestriction	5
+V	OWL2DL	UseOfReservedVocabularyForObjectPropertyIRI	1
+P	OWL2EL	false	59
+V	OWL2EL	LastPropertyInChainNotInImposedRange	1
+V	OWL2EL	UseOfDataOneOfWithMultipleLiterals	1
+V	OWL2EL	UseOfIllegalAxiom	26
+V	OWL2EL	UseOfIllegalClassExpression	19
+V	OWL2EL	UseOfIllegalDataRange	1
+V	OWL2EL	UseOfNonSimplePropertyInAsymmetricObjectPropertyAxiom	5
+V	OWL2EL	UseOfNonSimplePropertyInCardinalityRestriction	5
+V	OWL2EL	UseOfReservedVocabularyForObjectPropertyIRI	1
+P	OWL2QL	false	46
+V	OWL2QL	UseOfIllegalAxiom	14
+V	OWL2QL	UseOfIllegalDataRange	2
+V	OWL2QL	UseOfNonSimplePropertyInAsymmetricObjectPropertyAxiom	5
+V	OWL2QL	UseOfNonSimplePropertyInCardinalityRestriction	5
+V	OWL2QL	UseOfNonSubClassExpression	7
+V	OWL2QL	UseOfNonSuperClassExpression	12
+V	OWL2QL	UseOfReservedVocabularyForObjectPropertyIRI	1
+P	OWL2RL	false	61
+V	OWL2RL	UseOfIllegalDataRange	1
+V	OWL2RL	UseOfNonEquivalentClassExpression	7
+V	OWL2RL	UseOfNonSimplePropertyInAsymmetricObjectPropertyAxiom	5
+V	OWL2RL	UseOfNonSimplePropertyInCardinalityRestriction	5
+V	OWL2RL	UseOfNonSuperClassExpression	42
+V	OWL2RL	UseOfReservedVocabularyForObjectPropertyIRI	1
+Z	complete

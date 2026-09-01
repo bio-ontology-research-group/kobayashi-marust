@@ -1,0 +1,6 @@
+# Preserve frozen benchmark evidence byte-for-byte. These files can contain
+# source line endings or whitespace that form part of recorded digests.
+paper/benchmark/generated/** -diff
+paper/benchmark/obo-candidates-*.tsv -diff
+paper/benchmark/runners/more/jdk8-shade.patch -diff
+paper/generated/shared-correct.tsv -diff

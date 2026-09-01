@@ -1,0 +1,28 @@
+Ontology(
+ Declaration(Class(<http://example.org/inverse-chain#A>))
+ Declaration(Class(<http://example.org/inverse-chain#B>))
+ Declaration(Class(<http://example.org/inverse-chain#C>))
+ Declaration(Class(<http://example.org/inverse-chain#D>))
+ Declaration(ObjectProperty(<http://example.org/inverse-chain#r>))
+ Declaration(ObjectProperty(<http://example.org/inverse-chain#s>))
+ Declaration(ObjectProperty(<http://example.org/inverse-chain#t>))
+ SubObjectPropertyOf(
+   ObjectPropertyChain(
+     ObjectInverseOf(<http://example.org/inverse-chain#r>)
+     <http://example.org/inverse-chain#s>
+   )
+   <http://example.org/inverse-chain#t>
+ )
+ SubClassOf(
+   <http://example.org/inverse-chain#A>
+   ObjectSomeValuesFrom(ObjectInverseOf(<http://example.org/inverse-chain#r>) <http://example.org/inverse-chain#B>)
+ )
+ SubClassOf(
+   <http://example.org/inverse-chain#B>
+   ObjectSomeValuesFrom(<http://example.org/inverse-chain#s> <http://example.org/inverse-chain#C>)
+ )
+ SubClassOf(
+   ObjectSomeValuesFrom(<http://example.org/inverse-chain#t> <http://example.org/inverse-chain#C>)
+   <http://example.org/inverse-chain#D>
+ )
+)

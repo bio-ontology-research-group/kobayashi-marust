@@ -1,0 +1,10 @@
+M	module_logical_axioms	189
+M	module_axioms	1109
+M	entailed	true
+M	explanation_axioms	5
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/CVDO_0000405> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/CVDO_0000403> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000066> <http://purl.obolibrary.org/obo/FMA_7280>)) )
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/CVDO_0000546> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/OGMS_0000031> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000054> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/OGMS_0000063> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000117> <http://purl.obolibrary.org/obo/CVDO_0000403>)))) )
+A	SubClassOf(<http://purl.obolibrary.org/obo/CVDO_0000010> <http://purl.obolibrary.org/obo/DOID_0060000>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_0060000> <http://purl.obolibrary.org/obo/OGMS_0000031>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/DOID_0060000> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000054> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/OGMS_0000063> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000117> <http://purl.obolibrary.org/obo/CVDO_0000405>))))
+Z	complete

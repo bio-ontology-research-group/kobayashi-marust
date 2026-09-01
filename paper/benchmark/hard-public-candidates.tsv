@@ -1,0 +1,2 @@
+id	title	activity_status	source_url	licence_url	repository	snapshot_date	registry_sha256	acquisition_status	exclusion_reason
+fma	Foundational Model of Anatomy Ontology (subset)	inactive	http://purl.obolibrary.org/obo/fma.owl	https://creativecommons.org/licenses/by/3.0/	https://bitbucket.org/uwsig/fma	2026-08-30	b260d561378a666bc032c1a1e246c9f13a7997250f7e26cdc7aa8f64491407de	pending	named hard case retained despite inactive OBO registry status

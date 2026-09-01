@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/geno.owl
+M	source_sha256	12e4ab6201d8125775e99af459702e7c8dda64ddc71689821d05b599943f1389
+M	closure_size	1
+M	merged_axioms	9146
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	c1734ecf613fa61ddcbf8e3612e4d1c20d1949e1bce0a3af1d135290b4fbe15e
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/geno.owl>) VersionIRI(<http://purl.obolibrary.org/obo/geno/releases/2026-02-02/geno.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/geno.owl	9146
+Z	complete

@@ -1,0 +1,7 @@
+M	schema	1
+M	source_sha256	b6f4a0fa082b6357dd34801d09bbf4041667698374aaf8474b900f819f15ffa7
+M	query	http://purl.obolibrary.org/obo/UO_0000244 < http://purl.obolibrary.org/obo/UO_0000329
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/UO_0000244> ObjectOneOf(<http://purl.obolibrary.org/obo/UO_0000244>))
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/UO_0000329> ObjectOneOf(<http://purl.obolibrary.org/obo/UO_0000329>))
+A	SubClassOf(<http://purl.obolibrary.org/obo/UO_0000329> <http://purl.obolibrary.org/obo/UO_0000244>)
+Z	complete

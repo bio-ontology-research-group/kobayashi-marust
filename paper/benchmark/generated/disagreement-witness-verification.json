@@ -1,0 +1,86 @@
+{
+  "method": "source-level finite derivation certificate",
+  "reports": [
+    {
+      "case_branches": 4,
+      "derivation": [
+        "named-class transitivity gives DOID_1024 <= DOID_0050117",
+        "equivalence projection gives DOID_0050117 <= DOID_4",
+        "the asserted existential has a filler in one of four union branches",
+        "in each branch, conjunction introduction and equivalence give its defined disease class",
+        "each of the four defined classes reaches DOID_7 by the checked named hierarchy",
+        "finite case analysis therefore gives DOID_1024 <= DOID_7"
+      ],
+      "explanation_sha256": "46e2ac720684f21bd93a0ea4d85cdce433929ef4909cf878eee06f70f7912400",
+      "module_sha256": "b6b1e13474bc70802627bc0f4e980ef50747504c9824fd5287a2f86665309413",
+      "ontology": "doid",
+      "premise_count": 18,
+      "query": [
+        "<http://purl.obolibrary.org/obo/DOID_1024>",
+        "<http://purl.obolibrary.org/obo/DOID_7>"
+      ],
+      "rules": [
+        "subsumption transitivity",
+        "equivalence projection",
+        "conjunction introduction",
+        "existential-union case analysis"
+      ],
+      "source_sha256": "62dd92eada1f8825157637bc0b5ac0005cbe55c61716670306427681c1e7d90a",
+      "status": "entailed"
+    },
+    {
+      "derivation": [
+        "equivalence projection gives CVDO_0000405 <= CVDO_0000403",
+        "existential monotonicity propagates this through BFO_0000117 and BFO_0000054",
+        "named-class transitivity gives CVDO_0000010 <= OGMS_0000031",
+        "conjunction introduction matches the checked definition of CVDO_0000546",
+        "reverse equivalence projection gives CVDO_0000010 <= CVDO_0000546"
+      ],
+      "explanation_sha256": "54665546bd57463dab33dc99aea336c72eaa6dc82a020c9702e85dbcbde11fde",
+      "module_sha256": "3fa19a0563532d8f2d56a13abcfe51d2b76db70b441c314bcfc7a819fbecb423",
+      "ontology": "cvdo",
+      "premise_count": 5,
+      "query": [
+        "<http://purl.obolibrary.org/obo/CVDO_0000010>",
+        "<http://purl.obolibrary.org/obo/CVDO_0000546>"
+      ],
+      "rules": [
+        "equivalence projection",
+        "existential monotonicity",
+        "subsumption transitivity",
+        "conjunction introduction"
+      ],
+      "source_sha256": "8ed9b99380bf002104d3faa31488197db13cdefabc0e8d17955fbf85544ef294",
+      "status": "entailed"
+    },
+    {
+      "derivation": [
+        "the checked existential on KISAO_0000106 and the property domain imply KISAO_0000106 <= KISAO_0000000",
+        "the checked existential from KISAO_0000261 and the property range imply its KISAO_0000106 successor is in KISAO_0000097",
+        "pairwise disjointness of KISAO_0000000 and KISAO_0000097 makes KISAO_0000106 unsatisfiable",
+        "existential propagation makes KISAO_0000261 and then KISAO_0000064 unsatisfiable",
+        "the checked KISAO_0000435 definition requires a KISAO_0000064 successor, so KISAO_0000435 is unsatisfiable",
+        "the asserted subclass axiom therefore gives KISAO_0000086 <= owl:Nothing"
+      ],
+      "explanation_sha256": "1dca32ddcfd06231fc42ffe0814944f80272e4dc6edc8cb5f5f2f481f21dff1b",
+      "module_sha256": "cb3c3d0277ffb6dc793229d5ce406e815225b28825e95d7a3941b03dd23a0552",
+      "ontology": "kisao",
+      "premise_count": 8,
+      "query": [
+        "<http://www.biomodels.net/kisao/KISAO#KISAO_0000086>",
+        "<http://www.w3.org/2002/07/owl#Nothing>"
+      ],
+      "rules": [
+        "property domain",
+        "property range",
+        "pairwise disjointness",
+        "existential bottom propagation",
+        "equivalence projection",
+        "subsumption transitivity"
+      ],
+      "source_sha256": "d3be1cdba13f46fc5f742593337a8257614137d7635f3062b65c11613a1d0e77",
+      "status": "entailed"
+    }
+  ],
+  "schema": 1
+}

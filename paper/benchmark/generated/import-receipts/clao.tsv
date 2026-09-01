@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/clao.owl
+M	source_sha256	63179e7160df5cc393cd35aaebcb8407acf826fa5c77b5d1d4c3aa6b31395415
+M	closure_size	1
+M	merged_axioms	10478
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	972d3746a90ea81fbb671d150176d06d48f7ad4f79c286ec8ec88b9c9918a31c
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/clao.owl>) VersionIRI(<http://purl.obolibrary.org/obo/clao/releases/2026-06-16/clao.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/clao.owl	10478
+Z	complete

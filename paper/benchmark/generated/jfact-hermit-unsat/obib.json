@@ -1,0 +1,17 @@
+{
+  "common": 0,
+  "left": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/jfact/obib.taxonomy.tsv",
+  "left_label": "jfact",
+  "left_only": 0,
+  "left_only_sample": [],
+  "left_sha256": "4ae033069a83adf3ecb2be65dbfc03c52a066f6c9a281b76085b79035d3f7885",
+  "left_total": 0,
+  "relation": "equal",
+  "right": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/hermit/obib.taxonomy.tsv",
+  "right_label": "hermit",
+  "right_only": 0,
+  "right_only_sample": [],
+  "right_sha256": "f05b151b3073980a1afbc15cae4e32d32a0042b057d8368eb6fbbf36246a1696",
+  "right_total": 0,
+  "schema": 1
+}

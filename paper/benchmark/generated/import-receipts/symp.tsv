@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/symp.owl
+M	source_sha256	9054e6a87d4af4ac18876aef953a5cf151aa0a3d82d15f8850928bd0413e5b87
+M	closure_size	1
+M	merged_axioms	6534
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	3bfc9d51e27edb29c05f243f6def6954d1862a1fbc2d7d2082403283bcf5d29c
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/symp.owl>) VersionIRI(<http://purl.obolibrary.org/obo/symp/releases/2026-07-30/symp.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/symp.owl	6534
+Z	complete

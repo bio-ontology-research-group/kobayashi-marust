@@ -1,0 +1,10 @@
+{
+  "candidate_count": 190,
+  "eligible_count": 189,
+  "registry_sha256": "b260d561378a666bc032c1a1e246c9f13a7997250f7e26cdc7aa8f64491407de",
+  "schema": 1,
+  "snapshot_date": "2026-08-30",
+  "source_unavailable_count": 1,
+  "tsv": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/obo-freeze-20260830.tsv",
+  "tsv_sha256": "1c60f04a633b4bb8f7bdd82f650adf823ef8680de2331ff3ba2480be30fc21f2"
+}

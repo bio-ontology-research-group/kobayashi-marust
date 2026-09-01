@@ -1,0 +1,15 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/taxrank.ofn
+M	source_sha256	da20613058ae690aff94a14401eda4cc4b4902f6a0d4cf48c933cb4dbcec9510
+M	axioms	601
+M	logical_axioms	75
+M	classes	77
+M	object_properties	0
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	true	0
+P	OWL2QL	true	0
+P	OWL2RL	true	0
+Z	complete

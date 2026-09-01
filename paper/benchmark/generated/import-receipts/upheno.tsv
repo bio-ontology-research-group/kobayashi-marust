@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/upheno.owl
+M	source_sha256	f647fb43c6b9434de759f5eafaa50d3917e31ccf1e4162f59b58379935e4b721
+M	closure_size	1
+M	merged_axioms	1736584
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	3
+M	merged_sha256	cea5d35a6ed4703f01054095a83828d8313587448366145829864fd24a58ba4d
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/upheno.owl>) VersionIRI(<http://purl.obolibrary.org/obo/upheno/releases/2025-10-12/upheno.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/upheno.owl	1736581
+Z	complete

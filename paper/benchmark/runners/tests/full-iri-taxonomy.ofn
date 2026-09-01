@@ -1,0 +1,9 @@
+Ontology(
+ Declaration(Class(<http://example.org/km-paper-test#A>))
+ Declaration(Class(<http://example.org/km-paper-test#B>))
+ Declaration(Class(<http://example.org/km-paper-test#C>))
+ Declaration(Class(<http://example.org/km-paper-test#D>))
+ SubClassOf(<http://example.org/km-paper-test#A> <http://example.org/km-paper-test#B>)
+ EquivalentClasses(<http://example.org/km-paper-test#B> <http://example.org/km-paper-test#C>)
+ SubClassOf(<http://example.org/km-paper-test#D> owl:Nothing)
+)

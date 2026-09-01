@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/foodon.owl
+M	source_sha256	1e11fc50283c6498697a7aca9606c9d914f1cda71cc5510e006d949c32df7db0
+M	closure_size	1
+M	merged_axioms	302611
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	41eecf90f29760c340c299d59e6aba5213a83bfc4fef9d8324052e2986350998
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/foodon.owl>) VersionIRI(<http://purl.obolibrary.org/obo/foodon/releases/2025-12-30/foodon.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/foodon.owl	302611
+Z	complete

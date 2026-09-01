@@ -1,0 +1,25 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/ms.ofn
+M	source_sha256	2d40b92dbc1d5b9c22f5f09ea6ca7081b3264d20d9587cf2446cf7697a605919
+M	axioms	29488
+M	logical_axioms	7455
+M	classes	4137
+M	object_properties	12
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	false	1874
+V	OWL2DL	DatatypeIRIAlsoUsedAsClassIRI	508
+V	OWL2DL	UseOfReservedVocabularyForClassIRI	1366
+P	OWL2EL	false	1874
+V	OWL2EL	DatatypeIRIAlsoUsedAsClassIRI	508
+V	OWL2EL	UseOfReservedVocabularyForClassIRI	1366
+P	OWL2QL	false	1875
+V	OWL2QL	DatatypeIRIAlsoUsedAsClassIRI	508
+V	OWL2QL	UseOfIllegalAxiom	1
+V	OWL2QL	UseOfReservedVocabularyForClassIRI	1366
+P	OWL2RL	false	4550
+V	OWL2RL	DatatypeIRIAlsoUsedAsClassIRI	508
+V	OWL2RL	UseOfNonSuperClassExpression	2676
+V	OWL2RL	UseOfReservedVocabularyForClassIRI	1366
+Z	complete

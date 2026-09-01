@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/phipo.owl
+M	source_sha256	683fcbdf96b656093594572adbf5c0cd8e03ca26fbd43e0f41bacee064252892
+M	closure_size	1
+M	merged_axioms	137288
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	3
+M	merged_sha256	e1d21ce4960061055d457be5cbd64737b6827af933a3ce5c759b8f44017a2c0a
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/phipo.owl>) VersionIRI(<http://purl.obolibrary.org/obo/phipo/releases/2026-08-06/phipo.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/phipo.owl	137285
+Z	complete

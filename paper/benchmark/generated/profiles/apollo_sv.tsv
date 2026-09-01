@@ -1,0 +1,28 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/apollo_sv.ofn
+M	source_sha256	aba805ebd1d2958dc8e76e0e93f82ab551e1ba6f74ab84c53ea0db876753efbb
+M	axioms	16593
+M	logical_axioms	2807
+M	classes	1701
+M	object_properties	224
+M	data_properties	5
+M	individuals	26
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	349
+V	OWL2EL	LastPropertyInChainNotInImposedRange	117
+V	OWL2EL	UseOfIllegalAxiom	88
+V	OWL2EL	UseOfIllegalClassExpression	136
+V	OWL2EL	UseOfIllegalDataRange	4
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	4
+P	OWL2QL	false	438
+V	OWL2QL	UseOfIllegalAxiom	126
+V	OWL2QL	UseOfIllegalDataRange	4
+V	OWL2QL	UseOfNonSubClassExpression	171
+V	OWL2QL	UseOfNonSuperClassExpression	137
+P	OWL2RL	false	542
+V	OWL2RL	UseOfIllegalAxiom	25
+V	OWL2RL	UseOfNonEquivalentClassExpression	164
+V	OWL2RL	UseOfNonSubClassExpression	4
+V	OWL2RL	UseOfNonSuperClassExpression	349
+Z	complete

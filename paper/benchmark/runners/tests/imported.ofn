@@ -1,0 +1,6 @@
+Prefix(:=<http://example.org/km-import-test#>)
+Ontology(<http://example.org/km-import-test/imported>
+ Declaration(Class(:B))
+ Declaration(Class(:C))
+ SubClassOf(:B :C)
+)

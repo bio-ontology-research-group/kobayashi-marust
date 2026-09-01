@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/aro.owl
+M	source_sha256	0207b9156898d011cff6397a1cf5b0e178ce7806222c73de875b57a0d0e6b6fc
+M	closure_size	1
+M	merged_axioms	71681
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	2787ee6319ab9fb5c09f60173e59ca578032c9b0fe1e176524ad6dfae9eadac5
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/antibiotic_resistance.owl>) VersionIRI(<null>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/aro.owl	71681
+Z	complete

@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/pato.owl
+M	source_sha256	73a80487130a81a3696f1e03c551288f741ed1be5a07639e69e7ecd8b6f0371c
+M	closure_size	1
+M	merged_axioms	104736
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	3
+M	merged_sha256	5c824806eb022c4c7885b8f63a4f10ddcf380fb79f763c0186a20fd72649563f
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/pato.owl>) VersionIRI(<http://purl.obolibrary.org/obo/pato/releases/2025-05-14/pato.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/pato.owl	104733
+Z	complete

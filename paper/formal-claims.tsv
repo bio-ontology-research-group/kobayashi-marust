@@ -1,0 +1,10 @@
+claim_id	git_ref	path	declaration	paper_interpretation
+FORMAL-ROUTER-SOUND	v1.3.0	lean/ContextCalculus/CertifiedRouting.lean	AutomaticRouter.sound	Every publication from a router assembled from source-bound accepted workers satisfies the common correctness relation
+FORMAL-ROUTER-COMPLETE	v1.3.0	lean/ContextCalculus/CertifiedRouting.lean	AutomaticRouter.complete	A router with an explicit complete-worker coverage witness publishes for every source
+FORMAL-ROUTER-BOTH	v1.3.0	lean/ContextCalculus/CertifiedRouting.lean	AutomaticRouter.sound_and_complete	The abstract automatic router combines its soundness and coverage-conditioned completeness results
+FORMAL-ROUTE-BASIS	v1.3.0	lean/ContextCalculus/KMAutomaticRouting.lean	selected_route_has_coverage_basis	Every concrete source-feature selection is assigned a declared total-calculus or complete-fallback coverage basis
+FORMAL-TAXONOMY	v1.3.0	lean/ContextCalculus/KMConcreteWorkerAdapters.lean	requestedExactAccept_sound	An accepted answer has the exact requested signature and an exact Boolean entailment matrix
+FORMAL-INCREMENTAL	v1.3.0	lean/ContextCalculus/KMIncrementalExplanationCertification.lean	IncrementalRevisionPublication.exact	An accepted publication for an exact incremental revision satisfies the requested taxonomy correctness relation
+FORMAL-EXPLANATION	v1.3.0	lean/ContextCalculus/KMIncrementalExplanationCertification.lean	CertifiedExplanation.subsetMinimal	A certified subclass explanation entails its query and is subset-minimal under the checked deletion obligations
+FORMAL-INCONSISTENCY-EXPLANATION	v1.3.0	lean/ContextCalculus/KMIncrementalExplanationCertification.lean	CertifiedInconsistencyExplanation.subsetMinimal	A certified inconsistency explanation is inconsistent and subset-minimal under the checked deletion obligations
+FORMAL-GLOBAL	v1.3.0	lean/ContextCalculus/HypertableauProductionGlobalPublication.lean	ExactBooleanGlobalPublication.false_iff	The false answer of an exact Boolean global publication is equivalent to negating its semantic proposition

@@ -1,0 +1,37 @@
+citation_key	claim_or_use	verification_source	status	action
+parsia2017ore	ORE 2015 corpus and evaluation protocol	https://doi.org/10.1007/s10817-017-9406-8	verified	None
+w3c2012direct	OWL 2 Direct Semantics	https://www.w3.org/TR/owl2-direct-semantics/	verified	None
+w3c2012profiles	OWL 2 profiles	https://www.w3.org/TR/owl2-profiles/	verified	None
+motik2009hypertableau	hypertableau calculus	https://doi.org/10.1613/jair.2811	verified	None
+glimm2014hermit	HermiT system	https://doi.org/10.1007/s10817-014-9305-1	verified	None
+steigmiller2014konclude	Konclude system architecture and optimisation	https://doi.org/10.1016/j.websem.2014.06.003	corrected	Replaced unrelated Springer chapter DOI and proceedings metadata
+kazakov2014elk	ELK consequence-based EL reasoning	https://doi.org/10.1007/s10817-013-9296-3	verified	Crossref records online publication in 2013 and volume publication in 2014; retain issue year 2014
+bate2016sequoia	SRIQ consequence-based calculus	https://www.cs.ox.ac.uk/publications/publication10435-abstract.html	verified	No DOI located; AAAI Press proceedings metadata retained
+tenacucala2018consequence	disjunction, inverse roles, number restrictions, and nominals	https://doi.org/10.24963/ijcai.2018/272	corrected	Replaced unrelated JAIR article DOI, title, author forename, and venue
+demoura2021lean4	Lean 4 system	https://doi.org/10.1007/978-3-030-79876-5_37	verified	None
+horridge2011owlapi	OWLAPI system	https://doi.org/10.3233/SW-2011-0025	verified	Added citation at first implementation-interface discussion
+kalyanpur2007debugging	all-justification computation	https://doi.org/10.1007/978-3-540-76298-0_20	verified	None
+horridge2011justification	laconic and precise OWL justifications	https://doi.org/10.1007/978-3-540-88564-1_21	corrected	Replaced unrelated chapter DOI, title, pages, volume, and booktitle; citation key retained for source compatibility
+yang2024sweagent	software-engineering agent interfaces	https://doi.org/10.52202/079017-1601; https://proceedings.neurips.cc/paper_files/paper/2024/hash/5a7c947568c1b1328ccc5230172e1e7c-Abstract-Conference.html	verified	Updated to the NeurIPS 2024 archival publication; bibliography uses the DOI to avoid an unbreakable publisher URL hash
+wang2024openhands	general software-development agent platform	https://openreview.net/forum?id=OJd3ayDDoF; https://proceedings.iclr.cc/paper_files/paper/2025/hash/a4b6ad6b48850c0c331d1259fc66a69c-Abstract-Conference.html	verified	Updated to the ICLR 2025 proceedings record and complete proceedings author list; bibliography uses the equivalent shorter primary OpenReview record
+song2025leancopilot	LLM assistance integrated into interactive Lean theorem proving	https://proceedings.mlr.press/v288/song25a.html	verified	Primary PMLR proceedings record
+armasromero2012more	MORe modular combination of tractable and expressive OWL reasoners	https://doi.org/10.1007/978-3-642-35176-1_1	verified	None
+balhoff2024whelk	Whelk EL+RL reasoner, its basis in ELK's algorithm, and supported use cases	https://doi.org/10.4230/TGDK.2.2.7; https://github.com/INCATools/whelk	verified	Software artifact is separately archived as https://doi.org/10.4230/artifacts.22615
+sirin2007pellet	Pellet OWL-DL reasoner	https://doi.org/10.1016/j.websem.2007.03.004	verified	None
+tsarkov2006factpp	FaCT++ system architecture	https://doi.org/10.1007/11814771_26	verified	None
+palmisano2018jfact	JFact software baseline and release identity	https://repo1.maven.org/maven2/net/sourceforge/owlapi/jfact/5.0.3/; https://github.com/owlcs/jfact	corrected	The repository has no 5.0.3 tag; cite the exact Maven Central release directory and retain the project repository as the implementation source
+galigator2019openllet	Openllet software baseline and release identity	https://github.com/Galigator/openllet/releases/tag/2.6.5	verified	Pin benchmark artifact digest in the frozen baseline manifest
+lord2024hornedowl	Horned-OWL Rust data model and common OWL input formats	https://doi.org/10.4230/TGDK.2.2.9	verified	Primary TGDK publication; KM v1.3.0 pins crate 1.4 in Cargo.lock
+jackson2021obofoundry	OBO Foundry resource, registry, and operational principles	https://doi.org/10.1093/database/baab069	verified	Primary 2021 OBO Foundry resource paper
+vendetti2025bioportal	Current BioPortal community repository and services	https://doi.org/10.1093/nar/gkaf402	verified	Current Nucleic Acids Research resource paper
+kenn2026agentsview	Project-filtered session, token, cache, tool, and activity telemetry	https://github.com/kenn-io/agentsview/releases/tag/v0.41.1	verified	Pinned release commit a902515a and binary/report hashes are included in the artifact
+chaabani2013alc	Isabelle/HOL verification of soundness, completeness, and termination for an ALC proof procedure	https://doi.org/10.4204/EPTCS.122.5	verified	Primary EPTCS proceedings paper
+hidalgo2014verified	PVS refinement and executable verified tableau reasoners for ALC	https://doi.org/10.1007/s10817-013-9291-8	verified	Primary Journal of Automated Reasoning article
+baader2020certify	Translation of ELK subsumption proofs into LFSC-checkable certificates	https://ceur-ws.org/Vol-2663/paper-5.pdf	verified	Primary DL 2020 proceedings paper
+ileri2024vel	Coq formalisation and extracted executable reasoner for EL++	https://ceur-ws.org/Vol-3828/paper22.pdf	verified	Primary ISWC 2024 posters and demos proceedings paper
+kang2020r2o2	learned per-ontology ranking and selection over an OWL reasoner portfolio	https://doi.org/10.1016/j.is.2019.07.002	verified	Primary Information Systems article and DOI verified
+cuencagrau2010incremental	incremental reuse across ontology versions for OWL classification	https://doi.org/10.1007/s10817-009-9159-0	verified	Primary Journal of Automated Reasoning article and metadata verified
+mendez2023evonne	proof-oriented OWL explanation visualisation and interactive debugging	https://doi.org/10.1111/cgf.14730	verified	Primary Computer Graphics Forum article and DOI verified
+alkassar2014certifying	verified checker architecture for certifying computations	https://doi.org/10.1007/s10817-013-9289-2	verified	Primary Journal of Automated Reasoning article and DOI verified
+mashkova2026moose	direct Moose predecessor and EL++ neuro-symbolic scope	https://arxiv.org/abs/2608.12961	verified	Primary author-submitted preprint with title, author list, and stable identifier
+mashkova2026baobab	direct Baobab predecessor and OWL 2 DL consequence-based compilation scope	https://arxiv.org/abs/2608.17741	verified	Primary author-submitted preprint with title, author list, and stable identifier

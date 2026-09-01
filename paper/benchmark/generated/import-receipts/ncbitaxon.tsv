@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ncbitaxon.owl
+M	source_sha256	fec2677da6cafd43d24a6d0359f6523da5f79b4db9e5dfbe0fa2efb98b0d4981
+M	closure_size	1
+M	merged_axioms	20101158
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	7245f3ea4de33efaf478fdd0ef649541c4423a2b25841b436c1462ee33033316
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/ncbitaxon.owl>) VersionIRI(<http://purl.obolibrary.org/obo/ncbitaxon/2026-07-12/ncbitaxon.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/ncbitaxon.owl	20101158
+Z	complete

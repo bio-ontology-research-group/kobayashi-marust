@@ -1,0 +1,25 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/upheno.ofn
+M	source_sha256	cea5d35a6ed4703f01054095a83828d8313587448366145829864fd24a58ba4d
+M	axioms	1736587
+M	logical_axioms	446930
+M	classes	193297
+M	object_properties	347
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	false	311
+V	OWL2EL	LastPropertyInChainNotInImposedRange	154
+V	OWL2EL	UseOfAnonymousIndividual	2
+V	OWL2EL	UseOfIllegalAxiom	69
+V	OWL2EL	UseOfIllegalClassExpression	86
+P	OWL2QL	false	74861
+V	OWL2QL	UseOfAnonymousIndividual	2
+V	OWL2QL	UseOfIllegalAxiom	153
+V	OWL2QL	UseOfNonSubClassExpression	35786
+V	OWL2QL	UseOfNonSuperClassExpression	38920
+P	OWL2RL	false	125877
+V	OWL2RL	UseOfNonEquivalentClassExpression	35773
+V	OWL2RL	UseOfNonSuperClassExpression	90104
+Z	complete

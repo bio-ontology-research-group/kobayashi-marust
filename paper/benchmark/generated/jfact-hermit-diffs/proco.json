@@ -1,0 +1,38 @@
+{
+  "common": 7675,
+  "left": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/jfact/proco.taxonomy.tsv",
+  "left_label": "jfact",
+  "left_only": 0,
+  "left_only_sample": [],
+  "left_sha256": "7885c02ef66d01f3894f757737ad57d8557ebd02891919a11a3af58a2ceb0326",
+  "left_total": 7675,
+  "relation": "left_strict_subset",
+  "right": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/current-results/hermit/proco.taxonomy.tsv",
+  "right_label": "hermit",
+  "right_only": 5,
+  "right_only_sample": [
+    [
+      "http://purl.obolibrary.org/obo/OBI_0000656",
+      "http://purl.obolibrary.org/obo/BFO_0000031"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0000656",
+      "http://purl.obolibrary.org/obo/IAO_0000027"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0000656",
+      "http://purl.obolibrary.org/obo/IAO_0000030"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0000656",
+      "http://purl.obolibrary.org/obo/IAO_0000100"
+    ],
+    [
+      "http://purl.obolibrary.org/obo/OBI_0200072",
+      "http://purl.obolibrary.org/obo/OBI_0200000"
+    ]
+  ],
+  "right_sha256": "ec2695d757ea4da1d0d26755dc0f3e576d5e94c36612c87e547e7604e3475173",
+  "right_total": 7680,
+  "schema": 1
+}

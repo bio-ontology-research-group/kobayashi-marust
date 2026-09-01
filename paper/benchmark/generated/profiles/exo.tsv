@@ -1,0 +1,17 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/exo.ofn
+M	source_sha256	0c2cf8859eb8a593c829a1e1af1c7cd61e13c29a6d00ffbe2eb031f9c6430d32
+M	axioms	1607
+M	logical_axioms	220
+M	classes	168
+M	object_properties	8
+M	data_properties	0
+M	individuals	0
+P	OWL2	true	0
+P	OWL2DL	true	0
+P	OWL2EL	true	0
+P	OWL2QL	false	1
+V	OWL2QL	UseOfIllegalAxiom	1
+P	OWL2RL	false	41
+V	OWL2RL	UseOfNonSuperClassExpression	41
+Z	complete

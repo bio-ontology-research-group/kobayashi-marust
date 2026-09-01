@@ -1,0 +1,39 @@
+% Generated from v1.3.0:results/benchmarks/2026-08-30-v1.3.0-release/release-gate-summary.json SHA-256 e894fc4a36e8e7760dd87b748b1eba18ee2b4ec520aea1c84bafb1290c28136e
+% External panel v1.3.0:results/benchmarks/2026-07-22-reproduced-route-performance/full-panel-results.scoring-v2.tsv.gz SHA-256 e2bba1ee660f714b85da1e8db16da4251a59729af2c2de01b3008738c77ebf56
+% Shared-correct summary SHA-256 d3cfdb3ec2f47db89650f7c48969f07fabb176517b166e7a1490753007b06e41
+% Shared-correct detail SHA-256 46fe7eda07dce620b1659eb6c5a139a00b734074430d4b55807005ed07adaa9d
+\begin{table*}[t]
+\centering
+\small
+\caption{ORE~2015 classification results. Time and memory are over each reasoner's correct completions, not a shared easy subset.}
+\label{tab:benchmark}
+\begin{tabular}{llrrrrr}
+\toprule
+Reasoner & Tested version or commit & Correct & Mean s & Median s & Mean MiB & Median MiB \\
+\midrule
+KM & v1.3.0; 5c64a02 & 591/592 & 1.4946 & 0.1376 & 221.57 & 27.19 \\
+ELK & 0.6.0 & 531/592 & 1.5208 & 0.7520 & 493.33 & 234.30 \\
+Konclude & 0.7.0-1138; 0002e8063540 & 587/592 & 3.2765 & 0.2814 & 559.90 & 76.87 \\
+Sequoia & 0.6.1-alpha; c5248ec7be30 & 339/592 & 7.3704 & 2.5371 & 2207.35 & 536.15 \\
+HermiT & 1.4.6.519-SNAPSHOT & 557/592 & 13.1172 & 1.8782 & 1331.72 & 714.22 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{Pairwise shared-correct comparison. Each KM/external pair uses the same $n$ ontologies.}
+\label{tab:shared}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+External reasoner & $n$ & Mean s KM & Mean s ext. & Median s KM & Median s ext. & Mean MiB KM & Mean MiB ext. & Median MiB KM & Median MiB ext. \\
+\midrule
+ELK & 531 & 0.9721 & 1.5208 & 0.1296 & 0.7520 & 131.55 & 493.33 & 21.49 & 234.30 \\
+HermiT & 557 & 0.8043 & 13.1172 & 0.1297 & 1.8782 & 112.72 & 1331.72 & 25.10 & 714.22 \\
+Konclude & 587 & 1.3990 & 3.2765 & 0.1352 & 0.2814 & 213.38 & 559.90 & 27.20 & 76.87 \\
+Sequoia & 339 & 0.8654 & 7.3704 & 0.1310 & 2.5371 & 112.42 & 2207.35 & 20.86 & 536.15 \\
+\bottomrule
+\end{tabular}}
+\end{table*}

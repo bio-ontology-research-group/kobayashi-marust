@@ -1,0 +1,21 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/ornaseq.ofn
+M	source_sha256	8aa45e0b11b19a25d4f78e443a62c0f16498769bb1be06243d3c1a01dc05af6b
+M	axioms	1223
+M	logical_axioms	176
+M	classes	164
+M	object_properties	8
+M	data_properties	0
+M	individuals	1
+P	OWL2	true	0
+P	OWL2DL	false	17
+V	OWL2DL	UseOfReservedVocabularyForAnnotationPropertyIRI	17
+P	OWL2EL	false	17
+V	OWL2EL	UseOfReservedVocabularyForAnnotationPropertyIRI	17
+P	OWL2QL	false	18
+V	OWL2QL	UseOfIllegalAxiom	1
+V	OWL2QL	UseOfReservedVocabularyForAnnotationPropertyIRI	17
+P	OWL2RL	false	25
+V	OWL2RL	UseOfNonSuperClassExpression	8
+V	OWL2RL	UseOfReservedVocabularyForAnnotationPropertyIRI	17
+Z	complete

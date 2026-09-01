@@ -1,0 +1,10 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/pbpko.owl
+M	source_sha256	ae191423a64b9f48fd1957304f615f4fcf10b6e6b5ee5174cc33a5811052c854
+M	closure_size	1
+M	merged_axioms	12283
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	5bfcc864aa76bd4d86587ab544d2908be113fa4743e19c0eefef7f6114cfc611
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/pbpko.owl>) VersionIRI(<http://purl.obolibrary.org/obo/pbpko/releases/2026-07-15/pbpko.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/pbpko.owl	12283
+Z	complete

@@ -1,0 +1,36 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/pdro.ofn
+M	source_sha256	ffaeb07fe7688f5ddca8ea568ce979bc400e5bb067b0cdd2146c2da21e39aeac
+M	axioms	4470
+M	logical_axioms	835
+M	classes	321
+M	object_properties	130
+M	data_properties	4
+M	individuals	18
+P	OWL2	true	0
+P	OWL2DL	false	9
+V	OWL2DL	UseOfNonSimplePropertyInCardinalityRestriction	8
+V	OWL2DL	UseOfReservedVocabularyForAnnotationPropertyIRI	1
+P	OWL2EL	false	219
+V	OWL2EL	LastPropertyInChainNotInImposedRange	87
+V	OWL2EL	UseOfIllegalAxiom	63
+V	OWL2EL	UseOfIllegalClassExpression	56
+V	OWL2EL	UseOfNonSimplePropertyInCardinalityRestriction	8
+V	OWL2EL	UseOfObjectOneOfWithMultipleIndividuals	3
+V	OWL2EL	UseOfObjectPropertyInverse	1
+V	OWL2EL	UseOfReservedVocabularyForAnnotationPropertyIRI	1
+P	OWL2QL	false	194
+V	OWL2QL	UseOfIllegalAxiom	89
+V	OWL2QL	UseOfNonSimplePropertyInCardinalityRestriction	8
+V	OWL2QL	UseOfNonSubClassExpression	35
+V	OWL2QL	UseOfNonSuperClassExpression	61
+V	OWL2QL	UseOfReservedVocabularyForAnnotationPropertyIRI	1
+P	OWL2RL	false	199
+V	OWL2RL	UseOfIllegalAxiom	23
+V	OWL2RL	UseOfIllegalDataRange	3
+V	OWL2RL	UseOfNonEquivalentClassExpression	32
+V	OWL2RL	UseOfNonSimplePropertyInCardinalityRestriction	8
+V	OWL2RL	UseOfNonSubClassExpression	2
+V	OWL2RL	UseOfNonSuperClassExpression	130
+V	OWL2RL	UseOfReservedVocabularyForAnnotationPropertyIRI	1
+Z	complete

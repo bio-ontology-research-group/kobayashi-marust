@@ -1,0 +1,14 @@
+M	schema	1
+M	source	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/mcro.owl
+M	source_sha256	27eae4075e1355e110a1a2a7a2718f952ca4d00223bc2259f9d8ee205dbc2ff6
+M	closure_size	5
+M	merged_axioms	9145
+M	normalization	inverse-chain-members-to-defined-named-roles-v1
+M	normalized_inverse_chain_members	0
+M	merged_sha256	a207130d32f186a2e7e1e2c8da3b17993ab4a5193183dc82beb2a4cf6530ec78
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/iao.owl>) VersionIRI(<http://purl.obolibrary.org/obo/iao/2026-03-30/iao.owl>))	http://purl.obolibrary.org/obo/iao.owl	3916
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/mcro.owl>) VersionIRI(<http://purl.obolibrary.org/obo/mcro/releases/2023-03-07/mcro.owl>))	file:/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/sources/mcro.owl	339
+I	OntologyID(OntologyIRI(<http://purl.obolibrary.org/obo/swo.owl>) VersionIRI(<null>))	https://raw.githubusercontent.com/UTHealth-Ontology/mcro/main/import/swo_import_final.owl	3977
+I	OntologyID(OntologyIRI(<http://www.w3.org/2004/02/skos/core>) VersionIRI(<null>))	http://www.w3.org/2004/02/skos/core	205
+I	OntologyID(OntologyIRI(<http://www.w3.org/ns/prov-o#>) VersionIRI(<http://www.w3.org/ns/prov-o-20130430>))	http://www.w3.org/ns/prov-o-20130430	973
+Z	complete
