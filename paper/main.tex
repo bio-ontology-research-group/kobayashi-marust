@@ -40,9 +40,10 @@ checks.  KM also provides transactional incremental reasoning, source-axiom
 explanations, and OWL Application Programming Interface (OWLAPI) and
 Prot\'eg\'e interfaces.
 
-Under 240-second and 20-GiB process-tree limits, the automatic route completed
+Under 240-second and 20-gibibyte (GiB) process-tree limits, the automatic route completed
 591 of 592 ontologies in the historical Ontology Reasoner Evaluation (ORE)
-2015 panel.  All published answers passed full-IRI comparison or independent
+2015 panel.  All published answers passed full Internationalized Resource
+Identifier (IRI) comparison or independent
 semantic adjudication.  KM had lower mean and median wall time and peak
 process-tree memory than the evaluated ELK, HermiT, Konclude, and Sequoia
 artifacts, both on each system's adjudicated completions and on pairwise
@@ -331,8 +332,9 @@ source-shape refinements can be applied after normalisation only when the
 frontend emits the required typed certificate.  Each result records both the
 selected profile route and the worker route that actually answered.
 The supplementary route glossary is generated from the release's Rust route
-catalogue and records every public route name and exact option bundle.  Route
-aliases can therefore be audited without maintaining a second prose catalogue.
+catalogue.  For every public route it records the admitted fragment, worker,
+publication check, fallback policy, and exact option bundle.  Route aliases can
+therefore be audited without maintaining a second prose catalogue.
 
 \section{Lean-certified publication}
 \label{sec:certification-system}
@@ -638,8 +640,9 @@ four-ontology semantic pilot covering both selected formats completed before
 the full Konclude array was released.
 The OBO stratum contains 189 retrievable eligible products; one further active
 registry entry is retained as source-unavailable.  Independent OWLAPI profile
-checking places 188 inputs in OWL~2, 160 in OWL~2~DL, 44 in EL, 20 in QL, and
-15 in RL.  These counts overlap because an ontology may satisfy several
+checking places 188 inputs in OWL~2, 160 in OWL~2~DL, 44 in the OWL~2~EL
+profile, 20 in the query-oriented OWL~2~QL profile, and 15 in the rule-oriented
+OWL~2~RL profile.  These counts overlap because an ontology may satisfy several
 profiles.  They also show why an EL-only comparison cannot stand in for the
 full current-corpus experiment.
 Third, the named hard-case matrix comprises SNOMED~CT, GALEN, the Foundational
@@ -874,7 +877,8 @@ An eight-axiom witness for \texttt{KISAO\_0000086} uses a property domain,
 range, disjoint classes, and existential bottom propagation.  A small checker
 independently replays all three witnesses after verifying their source and
 explanation hashes.  Conversely, JFact alone marks
-\texttt{STATO\_0000073} unsatisfiable.  A source-bound STAR module reproduces
+\texttt{STATO\_0000073} unsatisfiable.  A source-bound STAR syntactic-locality
+module, extracted by alternating bottom and top locality, reproduces
 that JFact result, while HermiT rejects the bottom entailment and Openllet
 completes the same 443-logical-axiom module with no unsatisfiable named class.
 We classify this as a JFact baseline defect, not a gold relation.  The final
@@ -1663,9 +1667,10 @@ runtime evidence, route, and published answer.
 \section{Limitations and threats to validity}
 \label{sec:limitations}
 
-The threats fall into four groups: corpus representativeness, baseline and
-measurement comparability, certification scope, and retrospective process
-evidence.  We discuss them in that order.
+We first state two direct scope limits, language and service coverage and the
+one unresolved ORE ontology.  We then discuss corpus representativeness,
+reference-answer and measurement comparability, certification scope,
+retrospective process evidence, and incremental-performance generalisation.
 
 \paragraph{Language and service coverage.}
 KM is an experimental classifier, not a drop-in replacement for every OWLAPI

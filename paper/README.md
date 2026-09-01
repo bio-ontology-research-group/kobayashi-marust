@@ -186,9 +186,10 @@ each materially different manuscript claim.
 
 The route-glossary renderer reads the public route list and option constants
 directly from `engine/src/routing.rs`, expands common settings, applies
-route-local overrides, and writes both TSV and TeX supplements. It therefore
-fails when a public route lacks a source mapping instead of allowing a prose
-glossary to drift from the release catalogue.
+route-local overrides, and derives each route's admitted fragment, worker,
+publication check, and fallback policy. It writes both TSV and TeX supplements
+and fails when a public route lacks a source mapping instead of allowing a
+prose glossary to drift from the release catalogue.
 
 The generated files under `paper/generated/` are evidence, not hand-edited
 narrative. `claims-ledger.tsv` maps manuscript claims to authoritative

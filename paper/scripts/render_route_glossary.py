@@ -30,6 +30,59 @@ def tex(value: str) -> str:
     )
 
 
+def route_contract(options: dict[str, str]) -> tuple[str, str, str, str]:
+    """Derive the public execution contract from the effective route bundle."""
+    mechanism = options.get("KM_MECHANISM", "auto")
+    if mechanism == "auto":
+        return (
+            "source-profile-selected OWL 2 DL",
+            "Rust supervisor-selected worker",
+            "selected worker's typed publication check",
+            "typed decision tree with an exact production or nominal fallback",
+        )
+    if mechanism == "elc":
+        certified = options.get("KM_ELC_CERT") == "2"
+        return (
+            "normalised EL++",
+            "EL completion",
+            "EL closure and certificate check" if certified else "EL fragment and closure check",
+            "none; decline or error is terminal for this atomic route",
+        )
+    if mechanism == "cb":
+        fragment = "normalised DL clauses"
+        if options.get("KM_NOMINALS") == "1":
+            fragment += " with singleton semantics"
+        return (
+            fragment,
+            "consequence-based engine",
+            "CB saturation fixpoint and output-contract checks",
+            "none; decline or error is terminal for this atomic route",
+        )
+    if mechanism == "ht":
+        mode = options.get("KM_HT_ONLY", "selected")
+        return (
+            f"typed hypertableau admission ({mode})",
+            "hypertableau worker",
+            f"{mode} admission and route-evidence checks",
+            "none; decline or error is terminal for this atomic route",
+        )
+    if mechanism == "tableau":
+        return (
+            "validated fenced tableau fragment",
+            "tableau worker",
+            "fragment, clash, and result-shape checks",
+            "none; decline or error is terminal for this atomic route",
+        )
+    if mechanism == "portfolio":
+        return (
+            "source-feature-selected certified portfolio",
+            "eligible EL, CB, hypertableau, or tableau workers",
+            "winning worker's route-specific publication check",
+            "exact CB fallback; otherwise fail closed",
+        )
+    raise ValueError(f"unrecognised KM_MECHANISM in public route: {mechanism}")
+
+
 def main() -> None:
     text = SOURCE.read_text(encoding="utf-8")
     named = re.findall(
@@ -56,7 +109,7 @@ def main() -> None:
         constants[constant] = re.findall(r'\("([^\"]+)",\s*"([^\"]*)"\)', body)
 
     common = constants["COMMON_SETTINGS"]
-    rows: list[tuple[str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str, str, str]] = []
     for variant in named:
         route = names[variant]
         symbol = settings[variant]
@@ -66,15 +119,45 @@ def main() -> None:
         elif symbol != "&[]":
             options.update(constants[symbol])
         bundle = "; ".join(f"{key}={value}" for key, value in options.items())
-        rows.append((route, variant, bundle))
+        fragment, worker, checker, fallback = route_contract(options)
+        rows.append((route, variant, fragment, worker, checker, fallback, bundle))
 
     OUT_TSV.parent.mkdir(parents=True, exist_ok=True)
     with OUT_TSV.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
-        writer.writerow(("route", "rust_variant", "effective_option_bundle"))
+        writer.writerow(
+            (
+                "route",
+                "rust_variant",
+                "admitted_fragment",
+                "worker",
+                "publication_check",
+                "fallback",
+                "effective_option_bundle",
+            )
+        )
         writer.writerows(rows)
 
     lines = [
+        r"\begingroup\footnotesize",
+        r"\begin{longtable}{@{}p{0.13\linewidth}p{0.18\linewidth}p{0.17\linewidth}p{0.22\linewidth}p{0.22\linewidth}@{}}",
+        r"\caption{Public v1.3 route contracts generated from \texttt{engine/src/routing.rs}.}\label{tab:route-contracts}\\",
+        r"\toprule",
+        r"Route & Admitted fragment & Worker & Publication check & Fallback \\",
+        r"\midrule",
+        r"\endfirsthead",
+        r"\toprule Route & Admitted fragment & Worker & Publication check & Fallback \\",
+        r"\midrule",
+        r"\endhead",
+    ]
+    lines.extend(
+        "\\texttt{%s} & %s & %s & %s & %s \\\\"
+        % tuple(tex(value) for value in (route, fragment, worker, checker, fallback))
+        for route, _, fragment, worker, checker, fallback, _ in rows
+    )
+    lines.extend((r"\bottomrule", r"\end{longtable}", r"\endgroup", ""))
+    lines.extend(
+        [
         r"\begin{longtable}{@{}p{0.18\linewidth}p{0.76\linewidth}@{}}",
         r"\caption{Public v1.3 route glossary generated from \texttt{engine/src/routing.rs}. Common settings are expanded and route-local values take precedence.}\label{tab:route-glossary}\\",
         r"\toprule",
@@ -84,8 +167,12 @@ def main() -> None:
         r"\toprule Route & Effective option bundle \\",
         r"\midrule",
         r"\endhead",
-    ]
-    lines.extend(f"\\texttt{{{tex(route)}}} & \\texttt{{{tex(bundle)}}} \\\\" for route, _, bundle in rows)
+        ]
+    )
+    lines.extend(
+        f"\\texttt{{{tex(route)}}} & \\texttt{{{tex(bundle)}}} \\\\"
+        for route, _, _, _, _, _, bundle in rows
+    )
     lines.extend((r"\bottomrule", r"\end{longtable}"))
     OUT_TEX.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"ROUTE_GLOSSARY_OK\t{len(rows)}\t{OUT_TSV.relative_to(REPO)}")

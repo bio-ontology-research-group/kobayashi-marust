@@ -1,3 +1,56 @@
+\begingroup\footnotesize
+\begin{longtable}{@{}p{0.13\linewidth}p{0.18\linewidth}p{0.17\linewidth}p{0.22\linewidth}p{0.22\linewidth}@{}}
+\caption{Public v1.3 route contracts generated from \texttt{engine/src/routing.rs}.}\label{tab:route-contracts}\\
+\toprule
+Route & Admitted fragment & Worker & Publication check & Fallback \\
+\midrule
+\endfirsthead
+\toprule Route & Admitted fragment & Worker & Publication check & Fallback \\
+\midrule
+\endhead
+\texttt{default} & source-profile-selected OWL 2 DL & Rust supervisor-selected worker & selected worker's typed publication check & typed decision tree with an exact production or nominal fallback \\
+\texttt{default8} & source-profile-selected OWL 2 DL & Rust supervisor-selected worker & selected worker's typed publication check & typed decision tree with an exact production or nominal fallback \\
+\texttt{default1} & source-profile-selected OWL 2 DL & Rust supervisor-selected worker & selected worker's typed publication check & typed decision tree with an exact production or nominal fallback \\
+\texttt{production\_all} & source-feature-selected certified portfolio & eligible EL, CB, hypertableau, or tableau workers & winning worker's route-specific publication check & exact CB fallback; otherwise fail closed \\
+\texttt{production\_all8} & source-feature-selected certified portfolio & eligible EL, CB, hypertableau, or tableau workers & winning worker's route-specific publication check & exact CB fallback; otherwise fail closed \\
+\texttt{production\_all1} & source-feature-selected certified portfolio & eligible EL, CB, hypertableau, or tableau workers & winning worker's route-specific publication check & exact CB fallback; otherwise fail closed \\
+\texttt{certified\_card\_nominals} & typed hypertableau admission (certified) & hypertableau worker & certified admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{certified\_card\_proxy\_abox} & source-feature-selected certified portfolio & eligible EL, CB, hypertableau, or tableau workers & winning worker's route-specific publication check & exact CB fallback; otherwise fail closed \\
+\texttt{cb\_plain16} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_plain8} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_plain1} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_absorb16} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_absorb8} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_absorb1} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_trigger16} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_trigger8} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_trigger1} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{cb\_absorb\_portfolio16} & source-feature-selected certified portfolio & eligible EL, CB, hypertableau, or tableau workers & winning worker's route-specific publication check & exact CB fallback; otherwise fail closed \\
+\texttt{elc} & normalised EL++ & EL completion & EL fragment and closure check & none; decline or error is terminal for this atomic route \\
+\texttt{elc\_cert} & normalised EL++ & EL completion & EL closure and certificate check & none; decline or error is terminal for this atomic route \\
+\texttt{certified\_el\_production} & normalised EL++ & EL completion & EL closure and certificate check & none; decline or error is terminal for this atomic route \\
+\texttt{lean} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{ht\_general} & typed hypertableau admission (general) & hypertableau worker & general admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{ht\_qo} & typed hypertableau admission (qo) & hypertableau worker & qo admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{ht\_shoq} & typed hypertableau admission (shoq) & hypertableau worker & shoq admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{ht\_card} & typed hypertableau admission (card) & hypertableau worker & card admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{ht\_bridge} & typed hypertableau admission (bridge) & hypertableau worker & bridge admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{certified\_nominals} & source-feature-selected certified portfolio & eligible EL, CB, hypertableau, or tableau workers & winning worker's route-specific publication check & exact CB fallback; otherwise fail closed \\
+\texttt{ht\_features} & typed hypertableau admission (features) & hypertableau worker & features admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{ht\_full} & typed hypertableau admission (full) & hypertableau worker & full admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{ht\_rules} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{tableau} & validated fenced tableau fragment & tableau worker & fragment, clash, and result-shape checks & none; decline or error is terminal for this atomic route \\
+\texttt{tab\_race} & source-feature-selected certified portfolio & eligible EL, CB, hypertableau, or tableau workers & winning worker's route-specific publication check & exact CB fallback; otherwise fail closed \\
+\texttt{card\_fn} & typed hypertableau admission (card) & hypertableau worker & card admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{nominal\_ni\_tbox} & typed hypertableau admission (no\_blocking\_shoiq) & hypertableau worker & no\_blocking\_shoiq admission and route-evidence checks & none; decline or error is terminal for this atomic route \\
+\texttt{nominal\_ni\_abox} & source-feature-selected certified portfolio & eligible EL, CB, hypertableau, or tableau workers & winning worker's route-specific publication check & exact CB fallback; otherwise fail closed \\
+\texttt{nominals} & normalised DL clauses with singleton semantics & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{seq\_on} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\texttt{seq\_off} & normalised DL clauses & consequence-based engine & CB saturation fixpoint and output-contract checks & none; decline or error is terminal for this atomic route \\
+\bottomrule
+\end{longtable}
+\endgroup
+
 \begin{longtable}{@{}p{0.18\linewidth}p{0.76\linewidth}@{}}
 \caption{Public v1.3 route glossary generated from \texttt{engine/src/routing.rs}. Common settings are expanded and route-local values take precedence.}\label{tab:route-glossary}\\
 \toprule
