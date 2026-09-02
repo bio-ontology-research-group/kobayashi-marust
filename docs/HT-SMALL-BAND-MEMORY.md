@@ -278,3 +278,31 @@ wall time. Production therefore enables trimming only for the measured small
 SHOI nominal-worker profile; all other routes retain the ownership changes
 with trimming disabled. This selective policy preserves the closure without
 generalising the 13383 regression.
+
+## 7. Shared clause index across the parallel workers (2026-09-02, unmeasured)
+
+The first open item of section 5 is implemented on branch
+`agent/v14-ht-general-residual` (`engine/src/hypertableau.rs`). The
+read-only half of `Ht` (clause records, trigger tables, global lists,
+∀-index, equality-head roles, inverse-bridge flag) is one
+`Arc<ClauseIndex>`; `classify_parallel` hands every worker of both phases
+a handle to the parent's index and an `Arc<NativeAboxState>` instead of a
+clause template, and each worker allocates only its model and caches.
+Construction still happens once, in `Ht::new`; a worker is
+`Ht::from_index` plus the re-installed per-worker settings
+(`ParallelWorker::into_worker`, the same settings in the same order as
+before).
+
+Argument: a worker's index was already a deterministic function of the
+parent's normalised clause list in cid order (the body-equality pass is the
+identity on that list), so the shared index is the index the worker used to
+build for itself; its search state, configuration and `consistent` calls
+are unchanged. Nothing in the calculus changes and no Lean
+re-certification is needed.
+
+What to measure (same-node paired panel as section 6, arms A = current
+candidate, B = this branch): the 16-worker phase peak should fall by about
+fifteen compiled indexes, the per-worker `Ht` share estimated in section
+3.1 for 960/9668, and the phase timings now printed on the
+`KM_HT [classify-par]` line (`p1_ms`, `p2_ms`) must not rise. Nothing in
+this section was built or run by its author.

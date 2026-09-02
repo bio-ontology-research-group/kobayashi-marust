@@ -44,6 +44,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 // INCR 7 diagnostics: matcher output volume (gated by KM_HT_STATS heartbeat).
@@ -4403,8 +4404,192 @@ impl HtModelSnapshot {
     }
 }
 
-pub struct Ht {
+/// The compiled, read-only half of an [`Ht`]: the clause records with every
+/// index derived from them. It is a pure function of the (normalised, and when
+/// requested harvested) clause list, so `classify_parallel` hands one
+/// `Arc<ClauseIndex>` to all of its workers instead of letting each worker
+/// re-normalise, re-sort and re-hash a private clone of the clause set in both
+/// phases. A worker over the shared index owns exactly what differs between
+/// two `Ht::new` calls on the same clauses: its model (`Ext`), caches,
+/// counters and configuration.
+///
+/// The only path that replaces the clause set after construction
+/// (`KM_HT_QO_INVCOMPOSE`) edits through `Arc::make_mut`, which copies the
+/// index only while some worker still holds it.
+#[derive(Clone)]
+struct ClauseIndex {
+    /// clause records `(clause, sorted body, variable count)`, indexed by `cid`.
     clauses: Vec<ClauseRec>,
+    /// body Concept atoms by literal: clauses triggered when that literal appears.
+    concept_triggers: HashMap<CLit, Vec<(usize, usize)>>,
+    /// body Role atoms by role.
+    role_triggers: HashMap<R, Vec<(usize, usize)>>,
+    /// empty-body (global) clauses, fired per node.
+    global_clauses: Vec<usize>,
+    /// the disjunctive subset of `global_clauses` (≥2 concept head atoms): a
+    /// ⊤-headed disjunction fires on EVERY node. In eager mode these are NOT
+    /// fired on a node until it is confirmed unblocked, so a blocked node never
+    /// spawns their branch points (its blocker covers them) — the HermiT
+    /// model-folding lever. `global_disj_set` is the same set for O(1) skip.
+    global_disj: Vec<usize>,
+    global_disj_set: HashSet<usize>,
+    /// KM_HT_BLOCK=5: Konclude `isLabelConceptOptimizedBlocking` port (B1 subset +
+    /// B2a ∀-operand-on-predecessor; see docs/KONCLUDE-BLOCKING-SPEC.md). `forall_idx`
+    /// maps a (body-concept, role) to the head concepts of every ∀-clause
+    /// `C0(x) ∧ r(x,y) → D(y)` — KM's clause-world encoding of "∀r.D with C0 in the
+    /// label". B2a consults it: for each ∀r.D the blocker w' carries, the predecessor
+    /// v must already carry D. Built once at construction.
+    forall_idx: HashMap<(CLit, R), Vec<CLit>>,
+    /// Roles occurring in an equality-head (at-most/functionality) clause of
+    /// the clause set. Each `Ht` starts its `cert_number_roles` from this set;
+    /// `set_card_defs` extends that per-`Ht` copy.
+    number_roles: HashSet<R>,
+    /// `has_inverse_bridge` of the clause set: the input of the
+    /// `KM_HT_AUTOBLOCK` blocking-mode default.
+    inverse_bridge: bool,
+}
+
+/// `(concept_triggers, role_triggers, global_clauses, global_disj)` of a clause
+/// record list.
+type TriggerTables = (
+    HashMap<CLit, Vec<(usize, usize)>>,
+    HashMap<R, Vec<(usize, usize)>>,
+    Vec<usize>,
+    Vec<usize>,
+);
+
+/// Build the trigger tables of `recs` (index construction and
+/// `Ht::rebuild_triggers` share this one definition).
+fn trigger_tables(recs: &[ClauseRec]) -> TriggerTables {
+    let mut concept_triggers: HashMap<CLit, Vec<(usize, usize)>> = HashMap::new();
+    let mut role_triggers: HashMap<R, Vec<(usize, usize)>> = HashMap::new();
+    let mut global_clauses = Vec::new();
+    let mut global_disj = Vec::new();
+    for (cid, rec) in recs.iter().enumerate() {
+        if rec.1.is_empty() {
+            global_clauses.push(cid);
+            // disjunctive global = empty body + ≥2 concept head atoms (the
+            // ⊤ ⊑ A ∨ B GCIs that fire and branch on every node).
+            let nhc = rec
+                .0
+                .head
+                .iter()
+                .filter(|a| matches!(a, Atom::Concept { .. }))
+                .count();
+            if nhc >= 2 {
+                global_disj.push(cid);
+            }
+        }
+        for (pos, a) in rec.1.iter().enumerate() {
+            match *a {
+                Atom::Concept { lit, .. } => {
+                    concept_triggers.entry(lit).or_default().push((cid, pos));
+                }
+                Atom::Role { r, .. } => {
+                    role_triggers.entry(r).or_default().push((cid, pos));
+                }
+                _ => {}
+            }
+        }
+    }
+    (concept_triggers, role_triggers, global_clauses, global_disj)
+}
+
+impl ClauseIndex {
+    /// Compile `clauses` into the shared index. `recs` must be
+    /// `mk_recs(&clauses)`; the caller passes it in because the harvest step
+    /// of `Ht::new_with_harvest` has already built it.
+    fn build(clauses: &[Clause], recs: Vec<ClauseRec>) -> ClauseIndex {
+        debug_assert_eq!(recs.len(), clauses.len());
+        let (concept_triggers, role_triggers, global_clauses, global_disj) = trigger_tables(&recs);
+        let number_roles: HashSet<R> = clauses
+            .iter()
+            .filter(|clause| {
+                clause
+                    .head
+                    .iter()
+                    .any(|atom| matches!(atom, Atom::Eq { .. }))
+            })
+            .flat_map(|clause| {
+                clause.body.iter().filter_map(|atom| match atom {
+                    Atom::Role { r, .. } => Some(*r),
+                    _ => None,
+                })
+            })
+            .collect();
+        ClauseIndex {
+            forall_idx: index_forall(clauses),
+            inverse_bridge: has_inverse_bridge(clauses),
+            number_roles,
+            global_disj_set: global_disj.iter().copied().collect(),
+            global_disj,
+            global_clauses,
+            concept_triggers,
+            role_triggers,
+            clauses: recs,
+        }
+    }
+}
+
+/// What one `classify_parallel` worker receives from the parent `Ht`: the
+/// shared read-only clause index and native ABox (two `Arc` handles) plus the
+/// settings a fresh `Ht` does not read from the clause set — the first-class
+/// number rules (`card_defs`), the SHOQ o-rule nominals (`nom_set`), the
+/// blocking scope and the forced number/merge switches. Without re-installing
+/// these a worker classifies WITHOUT cardinality / nominals and reports wrong
+/// subsumers (the documented "10908 collapses to 86/6001 at PAR=8" was exactly
+/// that: workers missing the o-rule, not a race). The value is `Send`; the
+/// worker `Ht`, whose model is `Rc`-backed, is built from it inside the worker
+/// thread by `into_worker`, so each worker owns its own mutable state.
+#[derive(Clone)]
+struct ParallelWorker {
+    index: Arc<ClauseIndex>,
+    native_abox: Arc<NativeAboxState>,
+    card_defs: HashMap<C, CardDef>,
+    nom_set: Vec<C>,
+    anywhere: bool,
+    force_number: bool,
+    force_qmerge: bool,
+}
+
+impl ParallelWorker {
+    fn of(parent: &Ht) -> ParallelWorker {
+        ParallelWorker {
+            index: Arc::clone(&parent.index),
+            native_abox: Arc::clone(&parent.native_abox),
+            card_defs: parent.card_defs.clone(),
+            nom_set: parent.nom_set.clone(),
+            anywhere: parent.anywhere,
+            force_number: parent.force_number,
+            force_qmerge: parent.force_qmerge,
+        }
+    }
+
+    /// The worker `Ht`: what `Ht::new` on a clone of the parent's clause set
+    /// gave, minus the clone (the compiled index is shared), with the parent's
+    /// per-worker settings re-installed in the order the fan-out has always
+    /// used.
+    fn into_worker(self) -> Ht {
+        let mut w = Ht::from_index(self.index, None, None);
+        w.set_anywhere(self.anywhere);
+        w.force_number = self.force_number;
+        w.force_qmerge = self.force_qmerge;
+        if !self.card_defs.is_empty() {
+            w.set_card_defs(self.card_defs);
+        }
+        if !self.nom_set.is_empty() {
+            w.set_nominals(self.nom_set);
+        }
+        w.native_abox = self.native_abox;
+        w
+    }
+}
+
+pub struct Ht {
+    /// The compiled clause index (records, trigger tables, global lists,
+    /// ∀-index). Shared read-only by every `classify_parallel` worker; see
+    /// `ClauseIndex`.
+    index: Arc<ClauseIndex>,
     cert_body_normalization: Option<Vec<BodyEqualityNormalizationEvidence>>,
     cert_preprocessing: Option<PreprocessingEvidence>,
     /// Concepts whose last per-concept QoSat saturation had a shared filler
@@ -4420,19 +4605,6 @@ pub struct Ht {
     /// Candidate unsatisfiable concepts seen only by the inverse-augmented run —
     /// confirmed with a complete consistency test before being trusted.
     pc_unsat_candidates: Vec<C>,
-    /// body Concept atoms by literal: clauses triggered when that literal appears.
-    concept_triggers: HashMap<CLit, Vec<(usize, usize)>>,
-    /// body Role atoms by role.
-    role_triggers: HashMap<R, Vec<(usize, usize)>>,
-    /// empty-body (global) clauses, fired per node.
-    global_clauses: Vec<usize>,
-    /// the disjunctive subset of `global_clauses` (≥2 concept head atoms): a
-    /// ⊤-headed disjunction fires on EVERY node. In eager mode these are NOT
-    /// fired on a node until it is confirmed unblocked, so a blocked node never
-    /// spawns their branch points (its blocker covers them) — the HermiT
-    /// model-folding lever. `global_disj_set` is the same set for O(1) skip.
-    global_disj: Vec<usize>,
-    global_disj_set: HashSet<usize>,
     /// KM_HT_EAGER: defer global ⊤-disjunctions to unblocked nodes only.
     eager: bool,
     ext: Ext,
@@ -4553,13 +4725,6 @@ pub struct Ht {
     satcache3: bool,
     sat_sigs3: HashSet<Vec<u64>>,
     sc3_pooled: u64,
-    /// KM_HT_BLOCK=5: Konclude `isLabelConceptOptimizedBlocking` port (B1 subset +
-    /// B2a ∀-operand-on-predecessor; see docs/KONCLUDE-BLOCKING-SPEC.md). `forall_idx`
-    /// maps a (body-concept, role) to the head concepts of every ∀-clause
-    /// `C0(x) ∧ r(x,y) → D(y)` — KM's clause-world encoding of "∀r.D with C0 in the
-    /// label". B2a consults it: for each ∀r.D the blocker w' carries, the predecessor
-    /// v must already carry D. Built once at construction.
-    forall_idx: HashMap<(CLit, R), Vec<CLit>>,
     /// KM_HT_CARD: first-class qualified number restrictions, keyed by their
     /// marker concept (see `CardDef`). The faithful Konclude `applyATLEASTRule` /
     /// `applyATMOSTRule` fire when a marker concept lands on a node, instead of
@@ -4655,7 +4820,8 @@ pub struct Ht {
     /// Exact source ABox roots/edges/inequalities, recreated for every query and
     /// restart.  Negative role assertions are exact guarded clash clauses in the
     /// immutable clause template and therefore do not need mutable side state.
-    native_abox: NativeAboxState,
+    /// Shared read-only with the `classify_parallel` workers.
+    native_abox: Arc<NativeAboxState>,
     /// Role chains `R1∘R2⊑R` (incl. transitive `R∘R⊑R`) received via `set_chains`
     /// side-data, passed to each QoSat worker via `install_edge_compose` for the
     /// faithful Konclude role-automaton edge composition (KM_QO_EDGE_COMPOSE).
@@ -9754,7 +9920,7 @@ impl Ht {
         let Some(normalization) = &self.cert_body_normalization else {
             return Ok(None);
         };
-        if normalization.len() != self.clauses.len() {
+        if normalization.len() != self.index.clauses.len() {
             return Err(
                 "HT source normalization no longer matches the certificate ontology".to_string(),
             );
@@ -10182,7 +10348,7 @@ impl Ht {
         self.validate_lean_address_frontier(frontier)?;
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
                     Atom::Concept { lit, .. } => {
@@ -10645,7 +10811,7 @@ impl Ht {
         }
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
                     Atom::Concept { lit, .. } => {
@@ -10725,7 +10891,7 @@ impl Ht {
             );
         }
 
-        for (clause_id, record) in self.clauses.iter().enumerate() {
+        for (clause_id, record) in self.index.clauses.iter().enumerate() {
             let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
             for assignment in assignments {
@@ -10877,7 +11043,7 @@ impl Ht {
             .max(self.cert_variable_count_floor);
         let mut concept_count = self.cert_concept_count_floor;
         let mut role_count = self.cert_role_count_floor;
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
                     Atom::Concept { lit, t } => {
@@ -12493,7 +12659,7 @@ impl Ht {
         let mut chains = Vec::new();
         let mut reflexive_roles = Vec::new();
 
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             let clause = &record.0;
             for atom in clause.body.iter().chain(clause.head.iter()) {
                 match atom {
@@ -13072,7 +13238,7 @@ impl Ht {
         &self,
     ) -> Result<(bool, String), String> {
         if !self.card_defs.is_empty()
-            || self.clauses.iter().any(|record| {
+            || self.index.clauses.iter().any(|record| {
                 record
                     .0
                     .body
@@ -13087,7 +13253,8 @@ impl Ht {
             );
         }
         let variable_count = self.lean_source_variable_count().max(
-            self.clauses
+            self.index
+                .clauses
                 .iter()
                 .flat_map(|record| record.0.body.iter().chain(record.0.head.iter()))
                 .flat_map(|atom| match atom {
@@ -13256,7 +13423,7 @@ impl Ht {
             );
         }
 
-        for (clause_id, record) in self.clauses.iter().enumerate() {
+        for (clause_id, record) in self.index.clauses.iter().enumerate() {
             let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
             for assignment in assignments {
@@ -13446,7 +13613,7 @@ impl Ht {
             );
         }
 
-        for (clause_id, record) in self.clauses.iter().enumerate() {
+        for (clause_id, record) in self.index.clauses.iter().enumerate() {
             let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
             for assignment in assignments {
@@ -13877,7 +14044,7 @@ impl Ht {
         let mut variable_count = 0usize;
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
                     Atom::Concept { lit, t } => {
@@ -14657,7 +14824,7 @@ impl Ht {
         let mut variable_count = self.lean_source_variable_count();
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
                     Atom::Concept { lit, t } => {
@@ -14891,7 +15058,7 @@ impl Ht {
         initial_labels: &[(Node, CLit)],
         evidence: impl FnOnce(LeanHtRefutationTree) -> LeanHtEvidence,
     ) -> Result<String, String> {
-        if self.clauses.iter().any(|record| {
+        if self.index.clauses.iter().any(|record| {
             record
                 .0
                 .head
@@ -14904,7 +15071,7 @@ impl Ht {
         let mut variable_count = 0usize;
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
                     Atom::Concept { lit, t } => {
@@ -15000,7 +15167,7 @@ impl Ht {
                 }
             });
         }
-        if self.clauses.iter().any(|record| {
+        if self.index.clauses.iter().any(|record| {
             record
                 .0
                 .head
@@ -15130,7 +15297,7 @@ impl Ht {
     /// diagnostic node cap declines fail-closed.
     pub fn lean_equality_free_decision_certificate_json(&self) -> Result<(bool, String), String> {
         if !self.card_defs.is_empty()
-            || self.clauses.iter().any(|record| {
+            || self.index.clauses.iter().any(|record| {
                 record
                     .0
                     .body
@@ -15145,7 +15312,8 @@ impl Ht {
             );
         }
         let variable_count = self.lean_source_variable_count().max(
-            self.clauses
+            self.index
+                .clauses
                 .iter()
                 .flat_map(|record| record.0.body.iter().chain(record.0.head.iter()))
                 .flat_map(|atom| match atom {
@@ -15240,7 +15408,7 @@ impl Ht {
             .max(self.cert_variable_count_floor);
         let mut concept_count = self.cert_concept_count_floor;
         let mut role_count = self.cert_role_count_floor;
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
                     Atom::Concept { lit, t } => {
@@ -15293,7 +15461,7 @@ impl Ht {
                     .to_string(),
             );
         }
-        if !self.clauses.iter().any(|record| {
+        if !self.index.clauses.iter().any(|record| {
             record
                 .0
                 .body
@@ -15586,7 +15754,7 @@ impl Ht {
         } else if !self.card_defs.is_empty() {
             let (consistent, certificate) = self.lean_cardinality_decision_certificate_json()?;
             Ok((consistent, certificate, None))
-        } else if self.clauses.iter().any(|record| {
+        } else if self.index.clauses.iter().any(|record| {
             record
                 .0
                 .body
@@ -15789,7 +15957,7 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut frontier_history = Vec::new();
 
-        let has_equality = self.clauses.iter().any(|record| {
+        let has_equality = self.index.clauses.iter().any(|record| {
             record
                 .0
                 .body
@@ -16575,7 +16743,7 @@ impl Ht {
                 }
             });
         }
-        if self.clauses.iter().any(|record| {
+        if self.index.clauses.iter().any(|record| {
             record
                 .0
                 .head
@@ -16624,7 +16792,7 @@ impl Ht {
                 }
             });
         }
-        if self.clauses.iter().any(|record| {
+        if self.index.clauses.iter().any(|record| {
             record
                 .0
                 .head
@@ -16822,7 +16990,7 @@ impl Ht {
         }
         self.certified_mode6_address_invariant()?;
         let has_equality = !self.card_defs.is_empty()
-            || self.clauses.iter().any(|record| {
+            || self.index.clauses.iter().any(|record| {
                 record
                     .0
                     .body
@@ -16854,7 +17022,7 @@ impl Ht {
                 variable_count = variable_count.max(s as usize + 1).max(t as usize + 1);
             }
         };
-        for record in &self.clauses {
+        for record in &self.index.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 note_atom(atom);
             }
@@ -17679,47 +17847,23 @@ impl Ht {
 
     /// Recompute the tableau trigger indexes (`concept_triggers`,
     /// `role_triggers`, `global_clauses`, `global_disj`) from the CURRENT
-    /// `self.clauses`. Must be called whenever `self.clauses` is replaced after
-    /// construction (e.g. `KM_HT_QO_INVCOMPOSE` swaps in the composed clause
-    /// set): the trigger lists hold `(cid, pos)` pairs that index into the clause
-    /// records, so a stale index fires `fire_anchor_concept`/`_role` at an
-    /// out-of-range `pos` against the new clauses and panics. Same logic as the
-    /// inline build in `new`.
+    /// `self.index.clauses`. Must be called whenever the clause records are
+    /// replaced after construction (e.g. `KM_HT_QO_INVCOMPOSE` swaps in the
+    /// composed clause set): the trigger lists hold `(cid, pos)` pairs that
+    /// index into the clause records, so a stale index fires
+    /// `fire_anchor_concept`/`_role` at an out-of-range `pos` against the new
+    /// clauses and panics. Same `trigger_tables` as construction. The index is
+    /// edited copy-on-write: unshared (no live worker) it is rewritten in
+    /// place; a clone some worker still holds is left untouched.
     fn rebuild_triggers(&mut self) {
-        let mut concept_triggers: HashMap<CLit, Vec<(usize, usize)>> = HashMap::new();
-        let mut role_triggers: HashMap<R, Vec<(usize, usize)>> = HashMap::new();
-        let mut global_clauses = Vec::new();
-        let mut global_disj = Vec::new();
-        for (cid, rec) in self.clauses.iter().enumerate() {
-            if rec.1.is_empty() {
-                global_clauses.push(cid);
-                let nhc = rec
-                    .0
-                    .head
-                    .iter()
-                    .filter(|a| matches!(a, Atom::Concept { .. }))
-                    .count();
-                if nhc >= 2 {
-                    global_disj.push(cid);
-                }
-            }
-            for (pos, a) in rec.1.iter().enumerate() {
-                match *a {
-                    Atom::Concept { lit, .. } => {
-                        concept_triggers.entry(lit).or_default().push((cid, pos));
-                    }
-                    Atom::Role { r, .. } => {
-                        role_triggers.entry(r).or_default().push((cid, pos));
-                    }
-                    _ => {}
-                }
-            }
-        }
-        self.global_disj_set = global_disj.iter().copied().collect();
-        self.global_disj = global_disj;
-        self.global_clauses = global_clauses;
-        self.concept_triggers = concept_triggers;
-        self.role_triggers = role_triggers;
+        let (concept_triggers, role_triggers, global_clauses, global_disj) =
+            trigger_tables(&self.index.clauses);
+        let index = Arc::make_mut(&mut self.index);
+        index.global_disj_set = global_disj.iter().copied().collect();
+        index.global_disj = global_disj;
+        index.global_clauses = global_clauses;
+        index.concept_triggers = concept_triggers;
+        index.role_triggers = role_triggers;
     }
 
     pub fn new(clauses: Vec<Clause>) -> Ht {
@@ -17815,68 +17959,43 @@ impl Ht {
                 recs = mk_recs(&clauses);
             }
         }
-        let mut concept_triggers: HashMap<CLit, Vec<(usize, usize)>> = HashMap::new();
-        let mut role_triggers: HashMap<R, Vec<(usize, usize)>> = HashMap::new();
-        let mut global_clauses = Vec::new();
-        let mut global_disj = Vec::new();
-        for (cid, rec) in recs.iter().enumerate() {
-            if rec.1.is_empty() {
-                global_clauses.push(cid);
-                // disjunctive global = empty body + ≥2 concept head atoms (the
-                // ⊤ ⊑ A ∨ B GCIs that fire and branch on every node).
-                let nhc = rec
-                    .0
-                    .head
-                    .iter()
-                    .filter(|a| matches!(a, Atom::Concept { .. }))
-                    .count();
-                if nhc >= 2 {
-                    global_disj.push(cid);
-                }
-            }
-            for (pos, a) in rec.1.iter().enumerate() {
-                match *a {
-                    Atom::Concept { lit, .. } => {
-                        concept_triggers.entry(lit).or_default().push((cid, pos));
-                    }
-                    Atom::Role { r, .. } => {
-                        role_triggers.entry(r).or_default().push((cid, pos));
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let forall_idx = index_forall(&clauses);
-        let cert_number_roles: HashSet<R> = clauses
-            .iter()
-            .filter(|clause| {
-                clause
-                    .head
-                    .iter()
-                    .any(|atom| matches!(atom, Atom::Eq { .. }))
-            })
-            .flat_map(|clause| {
-                clause.body.iter().filter_map(|atom| match atom {
-                    Atom::Role { r, .. } => Some(*r),
-                    _ => None,
-                })
-            })
-            .collect();
-        let ht = Ht {
-            clauses: recs,
-            cert_body_normalization: if (has_body_equality || preprocessing_evidence.is_some())
-                && !harvest_enabled
-            {
+        let index = ClauseIndex::build(&clauses, recs);
+        // The records now hold the clause list; release this copy before the
+        // reasoner state is allocated.
+        drop(clauses);
+        Self::from_index(
+            Arc::new(index),
+            if (has_body_equality || preprocessing_evidence.is_some()) && !harvest_enabled {
                 Some(normalization)
             } else {
                 None
             },
-            cert_preprocessing: if !harvest_enabled {
+            if !harvest_enabled {
                 preprocessing_evidence
             } else {
                 None
             },
-            forall_idx,
+        )
+    }
+
+    /// Everything an `Ht` holds besides its compiled clause index, in the
+    /// state `Ht::new` gives it: an empty model, empty caches and counters, and
+    /// the environment-selected configuration. `new_with_harvest` calls it
+    /// with a freshly built index and that build's certificate evidence;
+    /// `ParallelWorker::into_worker` calls it with the parent's shared index
+    /// and no evidence, which only certificate publication reads and a
+    /// classify worker never performs.
+    fn from_index(
+        index: Arc<ClauseIndex>,
+        cert_body_normalization: Option<Vec<BodyEqualityNormalizationEvidence>>,
+        cert_preprocessing: Option<PreprocessingEvidence>,
+    ) -> Ht {
+        let cert_number_roles = index.number_roles.clone();
+        let inverse_bridge = index.inverse_bridge;
+        let ht = Ht {
+            index,
+            cert_body_normalization,
+            cert_preprocessing,
             card_defs: HashMap::new(),
             cert_card_defs_override: None,
             cert_concept_count_floor: 0,
@@ -17888,11 +18007,6 @@ impl Ht {
             pc_tainted: Vec::new(),
             pc_candidates: Vec::new(),
             pc_unsat_candidates: Vec::new(),
-            concept_triggers,
-            role_triggers,
-            global_disj_set: global_disj.iter().copied().collect(),
-            global_disj,
-            global_clauses,
             eager: std::env::var_os("KM_HT_EAGER").is_some(),
             ext: Ext::new(),
             anywhere: std::env::var_os("KM_HT_ANCESTOR_ONLY").is_none(),
@@ -17914,8 +18028,7 @@ impl Ht {
                 1
             } else if std::env::var_os("KM_HT_BLOCK").is_some() {
                 env_u8("KM_HT_BLOCK", 1)
-            } else if std::env::var_os("KM_HT_AUTOBLOCK").is_some() && has_inverse_bridge(&clauses)
-            {
+            } else if std::env::var_os("KM_HT_AUTOBLOCK").is_some() && inverse_bridge {
                 5
             } else {
                 1
@@ -17997,7 +18110,7 @@ impl Ht {
             satfold_watch: HashMap::new(),
             satfold_hits: 0,
             nom_set: Vec::new(),
-            native_abox: NativeAboxState::default(),
+            native_abox: Arc::new(NativeAboxState::default()),
             qo_edge_chains: Vec::new(),
             ht_chain_fwd: HashMap::new(),
             ht_chain_bwd: HashMap::new(),
@@ -18005,7 +18118,7 @@ impl Ht {
         };
         if ht.trace {
             let (mut hrole, mut heq, mut hexists, mut hdisj, mut hdisj_ex) = (0, 0, 0, 0, 0);
-            for (c, _, _) in &ht.clauses {
+            for (c, _, _) in &ht.index.clauses {
                 let nrole = c
                     .head
                     .iter()
@@ -18039,7 +18152,7 @@ impl Ht {
             }
             eprintln!(
                 "TR CENSUS clauses={} head_role={} head_eq={} head_exists={} disj(>=2)={} disj_with_exists={}",
-                ht.clauses.len(), hrole, heq, hexists, hdisj, hdisj_ex
+                ht.index.clauses.len(), hrole, heq, hexists, hdisj, hdisj_ex
             );
         }
         ht
@@ -18177,7 +18290,12 @@ impl Ht {
         if chains.is_empty() && transitive.is_empty() {
             return;
         }
-        let clauses: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+        let clauses: Vec<Clause> = self
+            .index
+            .clauses
+            .iter()
+            .map(|(c, _, _)| c.clone())
+            .collect();
         // Ht-only transitive-chain compose (__cmpp__ clauses): propagate the
         // transitive markers through cross-role chains.  Stored separately
         // (ht_tcc_clauses) so QoSat never sees them (cascade); the Ht residue
@@ -18287,11 +18405,11 @@ impl Ht {
         different: Vec<(usize, usize)>,
         role_assertions: Vec<(R, usize, usize)>,
     ) {
-        self.native_abox = NativeAboxState {
+        self.native_abox = Arc::new(NativeAboxState {
             individuals,
             different,
             role_assertions,
-        };
+        });
     }
 
     #[inline]
@@ -18419,7 +18537,7 @@ impl Ht {
                 continue;
             }
             for c0 in self.ext.concepts[wp].keys() {
-                if let Some(heads) = self.forall_idx.get(&(*c0, *r)) {
+                if let Some(heads) = self.index.forall_idx.get(&(*c0, *r)) {
                     for d in heads {
                         if !self.ext.concepts[v].contains_key(d) {
                             return false;
@@ -18851,10 +18969,10 @@ impl Ht {
             self.heartbeat("prop");
             match ev {
                 Event::Concept(n, lit) => {
-                    if let Some(trigs) = self.concept_triggers.get(&lit) {
+                    if let Some(trigs) = self.index.concept_triggers.get(&lit) {
                         for i in 0..trigs.len() {
                             let (cid, pos) = trigs[i];
-                            fire_anchor_concept(&self.clauses, &mut self.ext, cid, pos, n);
+                            fire_anchor_concept(&self.index.clauses, &mut self.ext, cid, pos, n);
                             if self.ext.has_clash() {
                                 return;
                             }
@@ -18893,10 +19011,10 @@ impl Ht {
                     }
                 }
                 Event::Edge(r, s, t) => {
-                    if let Some(trigs) = self.role_triggers.get(&r) {
+                    if let Some(trigs) = self.index.role_triggers.get(&r) {
                         for i in 0..trigs.len() {
                             let (cid, pos) = trigs[i];
-                            fire_anchor_edge(&self.clauses, &mut self.ext, cid, pos, s, t);
+                            fire_anchor_edge(&self.index.clauses, &mut self.ext, cid, pos, s, t);
                             if self.ext.has_clash() {
                                 return;
                             }
@@ -18943,16 +19061,16 @@ impl Ht {
                     }
                 }
                 Event::NodeNew(n) => {
-                    for i in 0..self.global_clauses.len() {
-                        let cid = self.global_clauses[i];
+                    for i in 0..self.index.global_clauses.len() {
+                        let cid = self.index.global_clauses[i];
                         // eager: defer the ⊤-disjunctions; they are fired in
                         // `process_obligations` only on confirmed-unblocked nodes.
                         // The Horn globals still fire (they build the label that
                         // blocking and the deferred check depend on).
-                        if self.eager && self.global_disj_set.contains(&cid) {
+                        if self.eager && self.index.global_disj_set.contains(&cid) {
                             continue;
                         }
-                        fire_global(&self.clauses, &mut self.ext, cid, n);
+                        fire_global(&self.index.clauses, &mut self.ext, cid, n);
                         if self.ext.has_clash() {
                             return;
                         }
@@ -19167,7 +19285,7 @@ impl Ht {
         // its branch count) tiny. Because disjunct choices are not yet in the
         // label at this point, blocking compares Horn-only labels and folds more.
         let _et0 = Instant::now();
-        if self.eager && !self.global_disj.is_empty() {
+        if self.eager && !self.index.global_disj.is_empty() {
             let nn = self.ext.num_nodes();
             for n in 0..nn {
                 if self.ext.globals_fired[n] {
@@ -19182,9 +19300,9 @@ impl Ht {
                 }
                 self.ext.globals_fired[n] = true;
                 self.ext.trail.push(Trail::GlobalsFired(n));
-                for i in 0..self.global_disj.len() {
-                    let cid = self.global_disj[i];
-                    fire_global(&self.clauses, &mut self.ext, cid, n);
+                for i in 0..self.index.global_disj.len() {
+                    let cid = self.index.global_disj[i];
+                    fire_global(&self.index.clauses, &mut self.ext, cid, n);
                 }
                 made = true;
                 if self.ext.has_clash() {
@@ -20880,7 +20998,7 @@ impl Ht {
     /// out-of-fragment (sound: the caller defers to CB).
     ///
     /// Immutable `self`: each worker owns a cloned `Ht`, so this can run while the
-    /// caller still holds the forward `QoSat` borrow of `self.clauses`.
+    /// caller still holds the forward `QoSat` borrow of `self.index.clauses`.
     /// KM_HT_QO_CERTAIN — Konclude-style deterministic disjunction resolution.
     /// A parked concept-level disjunction `Q → h1 ⊔ … ⊔ hk` entails, in EVERY
     /// model, the intersection of the disjuncts' subsumer closures
@@ -20899,7 +21017,7 @@ impl Ht {
     /// + `certain_disjunction_consequences` and needs no model build.
     fn concept_level_disjunction_cids(&self) -> HashSet<usize> {
         let mut out = HashSet::new();
-        for (cid, (cl, _, _)) in self.clauses.iter().enumerate() {
+        for (cid, (cl, _, _)) in self.index.clauses.iter().enumerate() {
             if cl.head.len() < 2 {
                 continue;
             }
@@ -20928,7 +21046,7 @@ impl Ht {
         // same (single) variable, body all positive Concept atoms. (∃/role/Eq
         // heads or multi-var disjunctions are not concept-level certain rules.)
         let mut disj: Vec<(Vec<C>, Vec<C>)> = Vec::new();
-        for (cl, _, _) in &self.clauses {
+        for (cl, _, _) in &self.index.clauses {
             if cl.head.len() < 2 {
                 continue;
             }
@@ -21038,7 +21156,12 @@ impl Ht {
             .unwrap_or(1)
             .max(1);
         let nthreads = par.min(residue.len().max(1)).max(1);
-        let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+        let template: Vec<Clause> = self
+            .index
+            .clauses
+            .iter()
+            .map(|(c, _, _)| c.clone())
+            .collect();
         let anywhere = self.anywhere;
         let next = std::sync::atomic::AtomicUsize::new(0);
         const RWORKER_STACK: usize = 512 * 1024 * 1024;
@@ -21417,7 +21540,7 @@ impl Ht {
         let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
         let mut told: HashMap<C, Vec<C>> = HashMap::new();
         if use_told && !naive {
-            for (c, _, _) in &self.clauses {
+            for (c, _, _) in &self.index.clauses {
                 if c.body.len() == 1 && c.head.len() == 1 {
                     if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
                         (&c.body[0], &c.head[0])
@@ -21584,32 +21707,25 @@ impl Ht {
 
     /// Multi-threaded sibling of `classify` (KM_HT_PAR>1). The global consistency
     /// check has already run in `classify`; here we parallelise the two
-    /// per-concept loops. Each worker builds its own `Ht` (from a clone of the
-    /// read-only clause set) so no mutable state is shared across threads — only
-    /// `Vec<Clause>` (Send, no `Rc`) crosses a thread boundary; the `Rc`-backed
-    /// `Ext` is created and dropped inside one thread. Result set-identical to the
-    /// sequential path (see `classify`). Always non-naive, model-based pruning;
-    /// the sequential modelprune/witreuse/etc. paths are not mirrored because
-    /// they are either inert or order-dependent under parallelism.
+    /// per-concept loops. Each worker builds its own `Ht` over the parent's
+    /// shared read-only clause index (`ParallelWorker`), so no mutable state is
+    /// shared across threads — only `Arc` handles to immutable data (Send +
+    /// Sync, no `Rc`) cross a thread boundary; the `Rc`-backed `Ext` is created
+    /// and dropped inside one thread. Result set-identical to the sequential
+    /// path (see `classify`). Always non-naive, model-based pruning; the
+    /// sequential modelprune/witreuse/etc. paths are not mirrored because they
+    /// are either inert or order-dependent under parallelism.
     fn classify_parallel(&self, queries: &[C], par: usize) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let qset: HashSet<C> = queries.iter().copied().collect();
-        let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
-        let anywhere = self.anywhere;
         let stats = self.stats;
-        // Per-worker config that the fresh `Ht::new(template)` does NOT inherit from
-        // the clause set: the first-class number rules (`card_defs`) and the SHOQ
-        // o-rule (`nom_set`) live in struct fields, not the clauses (the clausal
-        // pigeonhole was dropped for the card route). Without re-installing these,
-        // a parallel worker classifies WITHOUT cardinality / nominals -> wrong
-        // subsumers (the documented "10908 collapses to 86/6001 at PAR=8" was this:
-        // workers missing the o-rule, not a race). Each worker owns its `Ht`, so the
-        // re-installed state is per-thread -> sound. Re-applied below in both phases.
-        let p_card_defs = self.card_defs.clone();
-        let p_nom_set = self.nom_set.clone();
-        let p_native_abox = self.native_abox.clone();
-        let p_force_number = self.force_number;
-        let p_force_qmerge = self.force_qmerge;
+        // Everything a worker takes from the parent, cloned once per worker
+        // thread in each phase: two `Arc` handles (the compiled clause index
+        // and the native ABox) plus the per-worker settings a fresh `Ht` does
+        // not read from the clause set (see `ParallelWorker`). No worker
+        // re-normalises, re-sorts or re-hashes the clause set, and a worker's
+        // resident footprint is its own model and caches.
+        let worker = ParallelWorker::of(self);
         let nq = queries.len();
         let nthreads = par.min(nq).max(1);
         // Workers need a large stack: `dfs` recurses one frame per branch level,
@@ -21626,29 +21742,17 @@ impl Ht {
         // static contiguous chunks do not — and reusing one `Ht` amortises setup
         // and preserves the per-worker activity/phase warm-start the sequential
         // path relies on. The result is set-identical (see `classify`).
+        let t_p1 = Instant::now();
         let next1 = AtomicUsize::new(0);
         let p1: Vec<Option<Vec<(C, bool, Vec<C>)>>> = std::thread::scope(|s| {
             let next1 = &next1;
             let handles: Vec<_> = (0..nthreads)
                 .map(|_| {
-                    let tmpl = template.clone();
-                    let card_defs = p_card_defs.clone();
-                    let nom_set = p_nom_set.clone();
-                    let native_abox = p_native_abox.clone();
+                    let worker = worker.clone();
                     std::thread::Builder::new()
                         .stack_size(HT_WORKER_STACK)
                         .spawn_scoped(s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
-                            let mut w = Ht::new(tmpl);
-                            w.set_anywhere(anywhere);
-                            w.force_number = p_force_number;
-                            w.force_qmerge = p_force_qmerge;
-                            if !card_defs.is_empty() {
-                                w.set_card_defs(card_defs);
-                            }
-                            if !nom_set.is_empty() {
-                                w.set_nominals(nom_set);
-                            }
-                            w.native_abox = native_abox;
+                            let mut w = worker.into_worker();
                             let mut out = Vec::new();
                             loop {
                                 let i = next1.fetch_add(1, Ordering::Relaxed);
@@ -21667,6 +21771,7 @@ impl Ht {
                 .collect();
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
+        let p1_ms = t_p1.elapsed().as_millis();
         let mut unsat = Vec::new();
         let mut sat_q = Vec::new();
         let mut labels: Vec<(C, Vec<C>)> = Vec::new();
@@ -21685,7 +21790,7 @@ impl Ht {
         let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
         let mut told: HashMap<C, Vec<C>> = HashMap::new();
         if use_told {
-            for (c, _, _) in &self.clauses {
+            for (c, _, _) in &self.index.clauses {
                 if c.body.len() == 1 && c.head.len() == 1 {
                     if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
                         (&c.body[0], &c.head[0])
@@ -21700,30 +21805,18 @@ impl Ht {
         let satset: HashSet<C> = sat_q.iter().copied().collect();
 
         // ---- Phase 2: confirm A ⊑ B, dynamic work-stealing over the labels. ----
+        let t_p2 = Instant::now();
         let nl = labels.len();
         let next2 = AtomicUsize::new(0);
         let p2: Vec<Option<Vec<(C, C)>>> = std::thread::scope(|s| {
             let (told, qset, satset, labels, next2) = (&told, &qset, &satset, &labels, &next2);
             let handles: Vec<_> = (0..nthreads.min(nl.max(1)))
                 .map(|_| {
-                    let tmpl = template.clone();
-                    let card_defs = p_card_defs.clone();
-                    let nom_set = p_nom_set.clone();
-                    let native_abox = p_native_abox.clone();
+                    let worker = worker.clone();
                     std::thread::Builder::new()
                         .stack_size(HT_WORKER_STACK)
                         .spawn_scoped(s, move || -> Option<Vec<(C, C)>> {
-                            let mut w = Ht::new(tmpl);
-                            w.set_anywhere(anywhere);
-                            w.force_number = p_force_number;
-                            w.force_qmerge = p_force_qmerge;
-                            if !card_defs.is_empty() {
-                                w.set_card_defs(card_defs);
-                            }
-                            if !nom_set.is_empty() {
-                                w.set_nominals(nom_set);
-                            }
-                            w.native_abox = native_abox;
+                            let mut w = worker.into_worker();
                             let mut subs = Vec::new();
                             loop {
                                 let li = next2.fetch_add(1, Ordering::Relaxed);
@@ -21793,17 +21886,21 @@ impl Ht {
                 .collect();
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
+        let p2_ms = t_p2.elapsed().as_millis();
         let mut subs = Vec::new();
         for part in p2 {
             subs.extend(part?);
         }
         if stats {
             eprintln!(
-                "KM_HT [classify-par] threads={} queries={} sat_q={} subs={}",
+                "KM_HT [classify-par] threads={} queries={} sat_q={} subs={} clauses={} p1_ms={} p2_ms={}",
                 nthreads,
                 nq,
                 sat_q.len(),
-                subs.len()
+                subs.len(),
+                self.index.clauses.len(),
+                p1_ms,
+                p2_ms
             );
         }
         Some((true, unsat, subs))
@@ -21873,7 +21970,7 @@ impl Ht {
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
         let qset: HashSet<C> = queries.iter().copied().collect();
         let mut qf = QoSat::new_opts(
-            &self.clauses,
+            &self.index.clauses,
             true,
             std::env::var_os("KM_HT_QO_FPROP").is_some(),
         ); // forward-only ⇒ sound
@@ -22128,7 +22225,7 @@ impl Ht {
         // writing composed clauses, require zero residual inverse bridges; else
         // defer to the (sound) funnel.
         if qf.fprop_on && !qf.fcheck {
-            let residual = count_inverse_bridges(&self.clauses);
+            let residual = count_inverse_bridges(&self.index.clauses);
             if residual > 0 {
                 if trace {
                     eprintln!(
@@ -22210,7 +22307,7 @@ impl Ht {
             let suspects: Vec<C> = if std::env::var_os("KM_HT_QO_GLOBALSEL").is_some() {
                 // legacy: inverse-augmented global pass selects suspects (slow).
                 let mut qg = QoSat::new_opts(
-                    &self.clauses,
+                    &self.index.clauses,
                     false,
                     std::env::var_os("KM_HT_QO_FPROP").is_some(),
                 );
@@ -22238,7 +22335,7 @@ impl Ht {
                 // inverse-having roles: any role in an inverse-bridge clause (a single
                 // role head whose args are swapped versus a body role atom).
                 let mut inv_roles: HashSet<R> = HashSet::new();
-                for rec in self.clauses.iter() {
+                for rec in self.index.clauses.iter() {
                     let head = &rec.0.head;
                     if head.len() == 1 {
                         if let Atom::Role {
@@ -22321,7 +22418,7 @@ impl Ht {
             let nthreads = par.min(suspects.len().max(1)).max(1);
             let next = std::sync::atomic::AtomicUsize::new(0);
             const QO_WORKER_STACK: usize = 256 * 1024 * 1024;
-            let clauses_ref: &[ClauseRec] = &self.clauses;
+            let clauses_ref: &[ClauseRec] = &self.index.clauses;
             let suspects_ref = &suspects;
             let g_ref = &g;
             let node_of_ref = &node_of;
@@ -22409,7 +22506,7 @@ impl Ht {
             eprintln!(
                 "QOPC entry queries={} clauses={}",
                 queries.len(),
-                self.clauses.len()
+                self.index.clauses.len()
             );
         }
         // KM_HT_QO_TESTONE=A,B : adjudicate one pair A⊑B with the COMPLETE Ht
@@ -22420,13 +22517,23 @@ impl Ht {
             let parts: Vec<C> = v.split(',').filter_map(|s| s.parse().ok()).collect();
             if parts.len() == 2 {
                 let (a, b) = (parts[0], parts[1]);
-                let template: Vec<Clause> =
-                    self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+                let template: Vec<Clause> = self
+                    .index
+                    .clauses
+                    .iter()
+                    .map(|(c, _, _)| c.clone())
+                    .collect();
                 let mut w = Ht::new(template);
                 w.set_fast_tableau();
                 w.set_edge_compose(self.ht_chain_fwd.clone(), self.ht_chain_bwd.clone());
                 let sat_a = w.consistent(&[CLit::pos(a)]);
-                let mut w2 = Ht::new(self.clauses.iter().map(|(c, _, _)| c.clone()).collect());
+                let mut w2 = Ht::new(
+                    self.index
+                        .clauses
+                        .iter()
+                        .map(|(c, _, _)| c.clone())
+                        .collect(),
+                );
                 w2.set_fast_tableau();
                 w2.set_edge_compose(self.ht_chain_fwd.clone(), self.ht_chain_bwd.clone());
                 let sat_anb = w2.consistent(&[CLit::pos(a), CLit::neg(b)]);
@@ -22554,7 +22661,7 @@ impl Ht {
             .unwrap_or(1_000_000);
         let mut tally = (0u64, 0u64, 0u64, 0u64); // (suff, insuff, unsup, clash)
         let mut qf = QoSat::new_opts(
-            &self.clauses,
+            &self.index.clauses,
             true,
             std::env::var_os("KM_HT_QO_FPROP").is_some(),
         );
@@ -22565,7 +22672,7 @@ impl Ht {
             qf.node_cap = pc_cap;
         }
         let mut qu = QoSat::new_opts(
-            &self.clauses,
+            &self.index.clauses,
             false,
             std::env::var_os("KM_HT_QO_FPROP").is_some(),
         );
@@ -22602,7 +22709,7 @@ impl Ht {
             let nthreads = par.min(queries.len().max(1)).max(1);
             let fprop = std::env::var_os("KM_HT_QO_FPROP").is_some();
             let next = std::sync::atomic::AtomicUsize::new(0);
-            let clauses_ref: &[ClauseRec] = &self.clauses;
+            let clauses_ref: &[ClauseRec] = &self.index.clauses;
             let queries_ref = queries;
             let qset_ref = &qset;
             // KM_HT_QO_RESIDUE_HIST: per-clause histogram of which parked
@@ -22931,7 +23038,7 @@ impl Ht {
                     total
                 );
                 for (cid, c) in rows.iter().take(40) {
-                    let cl = &self.clauses[*cid].0;
+                    let cl = &self.index.clauses[*cid].0;
                     let hstr: Vec<String> = cl.head.iter().map(fmt_atom_dbg).collect();
                     let bstr: Vec<String> = cl.body.iter().map(fmt_atom_dbg).collect();
                     eprintln!(
@@ -23185,7 +23292,7 @@ impl Ht {
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
         let qset: HashSet<C> = queries.iter().copied().collect();
         let mut qk = QoSat::new_opts(
-            &self.clauses,
+            &self.index.clauses,
             false,
             std::env::var_os("KM_HT_QO_FPROP").is_some(),
         ); // KEEP inverse bridges
@@ -23416,7 +23523,8 @@ impl Ht {
         // bridge but DO have parked disjunctions the residue-complete verify decides,
         // so do not defer them here; let the forward pass + residue-complete run.
         let residue_complete_disj = std::env::var_os("KM_HT_QO_RESIDUE_COMPLETE").is_some();
-        if certify_only && count_inverse_bridges(&self.clauses) == 0 && !residue_complete_disj {
+        if certify_only && count_inverse_bridges(&self.index.clauses) == 0 && !residue_complete_disj
+        {
             if std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!("QO router: no inverse bridge ⇒ defer (not a hybrid candidate)");
             }
@@ -23436,15 +23544,20 @@ impl Ht {
         if std::env::var_os("KM_HT_QO_INVCOMPOSE").is_some()
             && std::env::var_os("KM_NO_INVCOMPOSE").is_none()
         {
-            let composed = compose_inverse(&self.clauses);
+            let composed = compose_inverse(&self.index.clauses);
             if std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
                     "INVCOMPOSE: {} -> {} clauses",
-                    self.clauses.len(),
+                    self.index.clauses.len(),
                     composed.len()
                 );
             }
-            self.clauses = mk_recs(&composed);
+            // Copy-on-write through the shared handle: no worker is live here,
+            // so this rewrites the index in place. `forall_idx`, `number_roles`
+            // and `inverse_bridge` keep their construction values, as the
+            // ∀-index, `cert_number_roles` and `block_mode` always did on this
+            // path.
+            Arc::make_mut(&mut self.index).clauses = mk_recs(&composed);
             self.cert_body_normalization = None;
             self.cert_preprocessing = None;
             // The tableau trigger indexes were built in `new` from the ORIGINAL
@@ -23566,9 +23679,13 @@ impl Ht {
                         // diverges the global gate saturation).
                         let template: Vec<Clause> =
                             if std::env::var_os("KM_HT_QO_PMCOMPOSE").is_some() {
-                                compose_inverse(&self.clauses)
+                                compose_inverse(&self.index.clauses)
                             } else {
-                                self.clauses.iter().map(|(c, _, _)| c.clone()).collect()
+                                self.index
+                                    .clauses
+                                    .iter()
+                                    .map(|(c, _, _)| c.clone())
+                                    .collect()
                             };
                         let anywhere = self.anywhere;
                         let next = std::sync::atomic::AtomicUsize::new(0);
@@ -23646,11 +23763,15 @@ impl Ht {
                         .unwrap_or(1)
                         .max(1);
                     let nthreads = par.min(cands.len().max(1)).max(1);
-                    let template: Vec<Clause> =
-                        self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+                    let template: Vec<Clause> = self
+                        .index
+                        .clauses
+                        .iter()
+                        .map(|(c, _, _)| c.clone())
+                        .collect();
                     // Ht-only TCC: extend the residue template with the __cmpp__ clauses so
                     // the complete tableau (with blocking) propagates transitive markers
-                    // through cross-role chains.  The QoSat (reads &self.clauses) never sees
+                    // through cross-role chains.  The QoSat (reads &self.index.clauses) never sees
                     // them — no cascade.  The Ht's blocking bounds the propagation.
                     let template: Vec<Clause> = if !self.ht_tcc_clauses.is_empty() {
                         let mut t = template;
@@ -23745,10 +23866,10 @@ impl Ht {
             eprintln!(
                 "QOC entry queries={} clauses={}",
                 queries.len(),
-                self.clauses.len()
+                self.index.clauses.len()
             );
         }
-        let mut qs = QoSat::new(&self.clauses);
+        let mut qs = QoSat::new(&self.index.clauses);
         // Sound ELI saturation: re-fire role/∀ clauses when their guard concept
         // arrives at a node that already has the relevant edge. Without this the
         // global pass misses inverse (∀R⁻) and ∀-role consequences whenever the
@@ -23789,7 +23910,7 @@ impl Ht {
         let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
         let mut told: HashMap<C, Vec<C>> = HashMap::new();
         if use_told {
-            for (c, _, _) in &self.clauses {
+            for (c, _, _) in &self.index.clauses {
                 if c.body.len() == 1 && c.head.len() == 1 {
                     if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
                         (&c.body[0], &c.head[0])
@@ -27104,6 +27225,151 @@ mod tests {
             2,
             "both workers must see the global ABox clash"
         );
+    }
+
+    #[test]
+    fn parallel_workers_attach_to_the_parent_clause_index() {
+        let clauses = vec![
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![con(false, B, X), con(false, D, X)],
+            ),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, B, X), con(false, D, X)], vec![]),
+        ];
+        let parent = Ht::new(clauses.clone());
+        let worker = ParallelWorker::of(&parent);
+        assert!(Arc::ptr_eq(&worker.index, &parent.index));
+        assert!(Arc::ptr_eq(&worker.native_abox, &parent.native_abox));
+        let mut w = worker.into_worker();
+        assert!(Arc::ptr_eq(&w.index, &parent.index));
+        assert_eq!(Arc::strong_count(&parent.index), 2);
+        // Apart from the shared index the worker is a fresh construction over
+        // the same clauses, and decides every probe exactly as one.
+        let mut fresh = Ht::new(clauses);
+        assert_eq!(w.index.clauses.len(), fresh.index.clauses.len());
+        assert_eq!(w.block_mode, fresh.block_mode);
+        assert_eq!(w.cert_number_roles, fresh.cert_number_roles);
+        assert_eq!(w.ext.num_nodes(), 0);
+        for seed in [
+            Vec::new(),
+            vec![CLit::pos(A)],
+            vec![CLit::pos(B)],
+            vec![CLit::pos(A), CLit::neg(B)],
+            vec![CLit::pos(A), CLit::neg(D)],
+            vec![CLit::pos(B), CLit::pos(D)],
+        ] {
+            assert_eq!(w.consistent(&seed), fresh.consistent(&seed));
+        }
+        assert_eq!(w.consistent(&[CLit::pos(B), CLit::pos(D)]), Some(false));
+        drop(w);
+        assert_eq!(Arc::strong_count(&parent.index), 1);
+    }
+
+    #[test]
+    fn parallel_classify_releases_the_shared_index_after_both_phases() {
+        const E: C = 4;
+        // ⊤ ⊑ A ⊔ E, A ⊑ B (told), B ⊑ ∃R0.D, D ⊓ E ⊑ ⊥: the global disjunction
+        // forces D ⊑ A ⊑ B, which phase 1 must put into D's model label and
+        // phase 2 must confirm; B ⋢ A and E ⋢ A need the E branch.
+        let clauses = vec![
+            Clause::new(Vec::new(), vec![con(false, A, X), con(false, E, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, D, X), con(false, E, X)], vec![]),
+        ];
+        let queries = [A, B, D, E];
+        let mut sequential = Ht::new(clauses.clone());
+        let (sc, mut su, mut ss) = sequential.classify(&queries).expect("sequential");
+        let mut parallel = Ht::new(clauses);
+        assert_eq!(parallel.consistent(&[]), Some(true));
+        parallel.release_model_state();
+        let (pc, mut pu, mut ps) = parallel.classify_parallel(&queries, 4).expect("parallel");
+        su.sort_unstable();
+        pu.sort_unstable();
+        ss.sort_unstable();
+        ps.sort_unstable();
+        assert!(sc);
+        assert_eq!(sc, pc);
+        assert_eq!(su, pu);
+        assert_eq!(ss, ps);
+        assert!(su.is_empty());
+        assert!(ss.contains(&(A, B)));
+        assert!(ss.contains(&(D, A)));
+        assert!(ss.contains(&(D, B)));
+        assert!(!ss.contains(&(B, A)));
+        assert!(!ss.contains(&(E, A)));
+        // Every worker of both phases dropped its handles: the index and the
+        // ABox are unshared again.
+        assert_eq!(Arc::strong_count(&parallel.index), 1);
+        assert_eq!(Arc::strong_count(&parallel.native_abox), 1);
+    }
+
+    #[test]
+    fn shared_index_records_number_roles_and_inverse_bridges() {
+        const S: R = 1;
+        let clauses = vec![
+            // R0(x, y) → S(y, x): an inverse bridge.
+            Clause::new(
+                vec![Atom::Role { r: R0, s: X, t: 1 }],
+                vec![Atom::Role { r: S, s: 1, t: X }],
+            ),
+            // functional R0: R0(x, y) ∧ R0(x, z) → y = z.
+            Clause::new(
+                vec![
+                    Atom::Role { r: R0, s: X, t: 1 },
+                    Atom::Role { r: R0, s: X, t: 2 },
+                ],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
+        ];
+        let t = Ht::new(clauses.clone());
+        assert!(t.index.inverse_bridge);
+        assert_eq!(t.index.inverse_bridge, has_inverse_bridge(&clauses));
+        assert_eq!(t.index.number_roles, HashSet::from([R0]));
+        assert_eq!(t.cert_number_roles, t.index.number_roles);
+        assert_eq!(t.index.role_triggers.len(), 1);
+        assert_eq!(t.index.role_triggers[&R0].len(), 3);
+        assert!(t.index.concept_triggers.is_empty());
+        assert!(t.index.global_clauses.is_empty());
+        let worker = ParallelWorker::of(&t).into_worker();
+        assert_eq!(worker.cert_number_roles, t.cert_number_roles);
+        assert_eq!(worker.block_mode, t.block_mode);
+    }
+
+    #[test]
+    fn rebuilding_triggers_copies_an_index_that_a_worker_still_holds() {
+        let mut parent = Ht::new(vec![
+            Clause::new(Vec::new(), vec![con(false, A, X), con(false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, D, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(
+                vec![con(false, D, X), Atom::Role { r: R0, s: X, t: 1 }],
+                vec![con(false, A, 1)],
+            ),
+        ]);
+        let held = Arc::clone(&parent.index);
+        assert_eq!(Arc::strong_count(&parent.index), 2);
+        parent.rebuild_triggers();
+        // A held index is copied, never edited under its holder.
+        assert!(!Arc::ptr_eq(&held, &parent.index));
+        assert_eq!(Arc::strong_count(&held), 1);
+        assert_eq!(Arc::strong_count(&parent.index), 1);
+        // The rebuild reproduces the construction tables exactly.
+        assert_eq!(parent.index.concept_triggers, held.concept_triggers);
+        assert_eq!(parent.index.role_triggers, held.role_triggers);
+        assert_eq!(parent.index.global_clauses, held.global_clauses);
+        assert_eq!(parent.index.global_disj, held.global_disj);
+        assert_eq!(parent.index.global_disj_set, held.global_disj_set);
+        assert_eq!(parent.index.global_clauses, vec![0]);
+        assert_eq!(parent.index.global_disj, vec![0]);
+        assert_eq!(parent.index.role_triggers[&R0], vec![(3, 1)]);
+        assert_eq!(parent.index.concept_triggers[&CLit::pos(D)], vec![(3, 0)]);
+        drop(held);
+        // Unshared, the rebuild edits in place.
+        let unshared = Arc::as_ptr(&parent.index);
+        parent.rebuild_triggers();
+        assert_eq!(Arc::as_ptr(&parent.index), unshared);
     }
 
     #[test]
@@ -30426,7 +30692,7 @@ mod tests {
             ],
             vec![con(false, A, y)],
         )]);
-        let clause = &t.clauses[0].0;
+        let clause = &t.index.clauses[0].0;
         assert!(matches!(clause.body.as_slice(),
             [Atom::Concept { lit, t }] if *lit == CLit::pos(D) && *t == X));
         assert!(matches!(clause.head.as_slice(),
