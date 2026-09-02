@@ -11068,6 +11068,7 @@ impl Ht {
             }
         }
         let ontology = self
+            .index
             .clauses
             .iter()
             .map(|record| LeanHtClause {
@@ -14091,6 +14092,7 @@ impl Ht {
             variable_count = variable_count.max(2);
         }
         let ontology = self
+            .index
             .clauses
             .iter()
             .map(|record| LeanHtClause {
@@ -14908,6 +14910,7 @@ impl Ht {
             })
             .collect();
         let ontology: Vec<LeanHtClause> = self
+            .index
             .clauses
             .iter()
             .map(|record| LeanHtClause {
@@ -15103,6 +15106,7 @@ impl Ht {
         }
         variable_count = variable_count.max(self.lean_source_variable_count());
         let ontology = self
+            .index
             .clauses
             .iter()
             .map(|record| LeanHtClause {
@@ -15437,6 +15441,7 @@ impl Ht {
             role_count = role_count.max(definition.role as usize + 1);
         }
         let ontology = self
+            .index
             .clauses
             .iter()
             .map(|record| LeanHtClause {
@@ -17037,6 +17042,7 @@ impl Ht {
         }
 
         let ontology = self
+            .index
             .clauses
             .iter()
             .map(|record| LeanHtClause {
@@ -25979,7 +25985,7 @@ mod tests {
         ];
         let h = ht(cls);
         // CHECK-only (no kpwrite): the self-node write is deferred ⇒ insufficient.
-        let mut chk = QoSat::new_opts(&h.clauses, false, false);
+        let mut chk = QoSat::new_opts(&h.index.clauses, false, false);
         chk.kpset = true;
         chk.complete_roles = true;
         chk.sat_mode = true;
@@ -25989,7 +25995,7 @@ mod tests {
             "pure check must DEFER the backward self-node write (over-deferral baseline)"
         );
         // KPWRITE: the backward operand is written ⇒ A ⊑ E certified, no miss.
-        let mut qk = QoSat::new_opts(&h.clauses, false, false);
+        let mut qk = QoSat::new_opts(&h.index.clauses, false, false);
         qk.kpset = true;
         qk.complete_roles = true;
         qk.sat_mode = true;
@@ -26073,7 +26079,7 @@ mod tests {
             ),
         ];
         let h = ht(cls);
-        let mut qs = QoSat::new_opts(&h.clauses, true, false); // forward-only (no inverse)
+        let mut qs = QoSat::new_opts(&h.index.clauses, true, false); // forward-only (no inverse)
         qs.complete_roles = true;
         qs.split_mode = true;
         let g = qs.saturate_global(&[A, B, D, CC]);
@@ -26113,7 +26119,7 @@ mod tests {
             ),
         ];
         let h = ht(cls);
-        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        let mut qs = QoSat::new_opts(&h.index.clauses, true, false);
         qs.complete_roles = true;
         qs.split_mode = true;
         let g = qs.saturate_global(&[A, D, CC, F]);
@@ -26140,7 +26146,7 @@ mod tests {
             ),
         ];
         let h = ht(cls);
-        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        let mut qs = QoSat::new_opts(&h.index.clauses, true, false);
         qs.complete_roles = true;
         qs.card_defer = true;
         let _ = qs.saturate_global(&[A, D]);
@@ -26169,7 +26175,7 @@ mod tests {
             ),
         ];
         let h = ht(cls);
-        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        let mut qs = QoSat::new_opts(&h.index.clauses, true, false);
         qs.complete_roles = true;
         qs.card_defer = true;
         let _ = qs.saturate_global(&[A, B, C2]);
@@ -26193,7 +26199,7 @@ mod tests {
             ),
         ];
         let h = ht(cls);
-        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        let mut qs = QoSat::new_opts(&h.index.clauses, true, false);
         qs.complete_roles = true;
         qs.sat_mode = true;
         qs.card_merge = true;
@@ -26220,7 +26226,7 @@ mod tests {
             Clause::new(vec![con(false, B, X), con(false, C2, X)], vec![]),
         ];
         let h = ht(cls);
-        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        let mut qs = QoSat::new_opts(&h.index.clauses, true, false);
         qs.complete_roles = true;
         qs.sat_mode = true;
         qs.card_merge = true;
@@ -26254,7 +26260,7 @@ mod tests {
             ),
         ];
         let h = ht(cls);
-        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        let mut qs = QoSat::new_opts(&h.index.clauses, true, false);
         qs.complete_roles = true;
         qs.sat_mode = true;
         qs.card_merge = true;
