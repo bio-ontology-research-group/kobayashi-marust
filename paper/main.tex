@@ -104,10 +104,12 @@ contract before an answer becomes visible.
 This paper makes the following contributions.
 
 \begin{enumerate}[leftmargin=*]
-  \item We describe the architecture of KM~1.3, including its OWL frontend,
-  feature profiler and automatic router, EL completion procedure,
-  consequence-based calculus, complete-answer-or-defer hypertableau
-  procedures, and fail-closed publication boundary.
+  \item We describe the architecture of KM~1.3, including its OWL frontend
+  and normalised clause language, feature profiler and automatic router
+  with its semantic fragment gate and complete fallbacks, EL completion
+  procedure, consequence-based calculus, complete-answer-or-defer
+  hypertableau procedures, process supervisor, output contract, and
+  fail-closed publication boundary.
   \item We provide transactional incremental sessions that retain meaningful
   algorithm state on each production mechanism under the release conformance
   contract, and source-level,
@@ -197,6 +199,26 @@ hypertableau worker.  Process isolation releases route-specific memory and
 allows a process-tree watchdog to enforce resource limits.  Small, compatible
 inputs can use an in-process fast path.
 
+A classification passes through six stages, and each stage has a check that
+can stop it before any answer becomes visible:
+\begin{enumerate}[leftmargin=*]
+  \item parsing and source profiling, which reject unsupported syntax;
+  \item route selection from the source profile, which applies a semantic
+  fragment gate before any performance preference;
+  \item normalisation to DL clauses with typed side data, which declines
+  constructs that the clause language and its side channels cannot carry;
+  \item execution of one mechanism, or of a portfolio with an exact fallback,
+  under a resource watchdog;
+  \item mechanism-specific fragment and evidence checks, which turn an
+  unsupported or insufficiently evidenced case into a typed decline; and
+  \item output mapping to full source IRIs together with consistency rules
+  that combine frontend facts with the taxonomy.
+\end{enumerate}
+Figure~\ref{fig:pipeline} shows the data flow.  The remainder of this section
+describes each stage as implemented in the tagged v1.3.0 source.  The
+supplementary route glossary generated from that source lists every public
+route with its option bundle.
+
 \begin{figure}[t]
 \centering
 \fbox{\begin{minipage}{0.91\linewidth}
@@ -213,23 +235,100 @@ fallback order; it does not bypass the evidence checker.}
 \label{fig:pipeline}
 \end{figure}
 
-\subsection{Frontend and normalisation}
+\subsection{Input formats, frontend, and normalised clauses}
+\label{sec:frontend}
 
 The frontend accepts OWL Functional Syntax directly.  The pinned Horned-OWL
 1.4 Rust data model and input framework parses OWL/XML and Resource Description
 Framework/XML (RDF/XML) \cite{lord2024hornedowl}; a separate RDF parser handles
-Turtle.  Both paths write a common Functional Syntax handoff.  A
-streaming first pass resolves exact IRIs, records ontology statistics, and
-constructs a typed source representation.  Normalisation produces
-description-logic (DL) clauses of the form
-$\Gamma\rightarrow\Delta$, where the body $\Gamma$ is a conjunction and the
-head $\Delta$ is a disjunction of concept, role, equality, or inequality
-atoms.  Terms include variables, named individuals, auxiliary constants, and
-Skolem function terms, which represent existential witnesses.
+Turtle.  Both paths write a common Functional Syntax handoff.  Format detection
+uses content first and the file extension second.  RDF input must map
+completely onto OWL structures; remaining triples, disconnected blank-node
+structures, or unsupported annotations produce an unsupported result rather
+than a partial ontology.  The classifier does not resolve \texttt{owl:imports}
+and performs no network access, so an import closure must be merged into one
+document before classification, as the evaluation's freeze step does.
 
+\paragraph{Streaming source profile.}
+A streaming first pass resolves exact IRIs, constructs a typed source
+representation, and records the source profile that drives routing.  The
+profile counts logical TBox, RBox, ABox, rule, declaration, annotation, and
+import axioms; declared and distinct classes, properties, and individuals;
+each top-level axiom constructor; each concept constructor, including
+conjunction, disjunction, complement, existential and universal restrictions,
+cardinalities, nominals, value and self restrictions, and datatype use;
+explicit occurrences of the bottom class and the bottom properties; and the
+maximum concept depth, role-chain length, and cardinality bound.  It also
+computes a Konclude-compatible expressivity code by porting Konclude's
+expressiveness calculation, including its preprocessing effects for active
+transitive roles, inverse partners, and reachable nominal domains; on the 592
+benchmark ontologies every code matches the official Konclude binary.  Entity
+sets borrow tokens from the ontology text, so exact distinct counts need no
+duplicate strings even on the largest inputs.  The same pass evaluates several
+source-level certificates, for example that a positive ABox cannot change any
+named-class subsumption, or that no number-restricted role shares a hierarchy
+component with an inverse, chained, or transitive role.
+Section~\ref{sec:routing} explains how the router uses them.
+
+\paragraph{Clause language.}
+Normalisation produces description-logic (DL) clauses of the form
+$\Gamma\rightarrow\Delta$, where the body $\Gamma$ is a conjunction and the
+head $\Delta$ is a disjunction of atoms.  Atoms are concept atoms $A(t)$, role
+atoms $R(s,t)$, and equality atoms $s\approx t$; an inequality is an equality
+atom in a body.  Terms are the central variable $x$ and its neighbour
+variables, named individuals, auxiliary constants, and function terms $f(t)$
+that stand for existential witnesses.  Atom lists are sorted and
+de-duplicated, so structurally equal clauses have one representation.  The
+same clause format is the input contract of the EL worker and the CB worker,
+and it is the source of the hypertableau conversion in Section~\ref{sec:ht}.
+
+\paragraph{Structural transformation.}
+The clausifier follows the structural transformation used by hypertableau and
+consequence-based reasoners \cite{motik2009hypertableau,bate2016sequoia}.
+Axioms are converted to negation normal form.  Each structurally distinct
+complex subconcept receives one fresh definer concept, shared across all its
+occurrences, so that identical subexpressions are clausified once.  A positive
+existential restriction $\exists R.C$ becomes two clauses,
+$\Gamma\rightarrow R(x,f(x))$ and $\Gamma\rightarrow C(f(x))$, with a fresh
+function symbol $f$; a universal restriction receives its introduction clauses
+only where it occurs at negative polarity.  Qualified number restrictions
+become at-least and at-most clauses whose heads contain equality atoms between
+witnesses; on cardinality routes the same restrictions are additionally
+recorded as first-class cardinality definitions in the side data.  A nominal
+$\{o\}$ becomes a fresh proxy concept, and the proxy-to-individual mapping is
+recorded.  Inverse roles produce bridge clauses $R(x,y)\rightarrow S(y,x)$ and
+$S(x,y)\rightarrow R(y,x)$; a symmetric role produces its own bridge.  ABox
+assertions become ground clauses: $\rightarrow C(a)$, $\rightarrow R(a,b)$,
+$\rightarrow a\approx b$, and $a\approx b\rightarrow$ for distinct
+individuals.  An augmentation pass then adds transitivity, role-chain, domain,
+and range clauses, using role automata for chains.
+
+\paragraph{Datatypes.}
+Data ranges and literals are abstracted to concepts over data nodes.  A
+datatype oracle decides membership, equality, and inclusion relations between
+the data concepts that occur in the clause set according to the OWL~2 datatype
+map, and it emits an ordinary concept clause for each decided relation.  When
+a decision procedure returns unknown, it emits nothing, so an unsupported
+datatype corner degrades to the earlier sound abstraction and never to a wrong
+clause.  Datatype reasoning therefore stays in the frontend: no calculus rule
+and no proof is specific to datatypes.
+
+\paragraph{Absorption modes.}
+Two optional clausification modes shrink the disjunctive clause set.
+Polarity-gated definitional absorption replaces excluded-middle clause pairs by
+definitions and is equisatisfiable with direct clausification.  Trigger
+absorption records the normalised source TBox for the ported completion bridge
+of Section~\ref{sec:ht}.  Both modes are options of named routes rather than
+ambient settings.
+
+\paragraph{Side data.}
 Side structures preserve information that cannot safely be inferred from a
-bare clause vector: named entities, individual provenance, cardinality
-definitions, role automata, datatype assertions, and route fences.  This
+bare clause vector: the internal-name-to-IRI map; named and declared classes;
+whether the RBox is EL-safe; ABox facts established during parsing, namely an
+individual asserted into two disjoint named classes and the classes proved to
+have an asserted member; nominal and ABox provenance with a completeness flag;
+first-class cardinality definitions; definer provenance; the normalised source
+TBox; DL-safe rules; the source profile; and the selected route.  This
 distinction became important for both routing and incremental reasoning.  A
 worker that receives clauses but silently loses typed assertional-component
 (ABox) or cardinality metadata must decline.
@@ -238,69 +337,205 @@ Large sources use file-backed streaming handoff so that the complete clause
 set need not be copied through a scripting runtime or retained twice in
 memory.  The production classifier contains no Python dependency.  A retained
 Python orchestrator served as a byte-identity oracle during the Rust
-supervisor port.
+supervisor port, and frontend changes are still validated by byte-identical
+clause and side-data output against the previous binary across the corpus.
 
 \subsection{EL++ completion}
+\label{sec:elc}
 
-The EL-completion (ELC) path applies normal-form completion rules for named subsumption,
-conjunction, existential propagation, role inclusions, and supported chains.
-It stores class labels, role edges, incoming-edge indexes, and normal-form rule
-indexes.  The worker independently validates that its normalised input belongs
-to the accepted fragment.  Source profiling can propose EL, but only the
-worker's fragment check permits publication.
+The EL-completion (ELC) worker implements the completion procedure of ELK
+\cite{kazakov2014elk} over the frontend's clauses, with concept and role names
+interned to dense integers and the worklist running over integer-keyed
+arrays.  It first attempts to map every clause onto one of seven normal forms:
+$A\sqsubseteq B$ (NF1), $A\sqcap B\sqsubseteq C$ (NF2),
+$A\sqsubseteq\exists R.B$ (NF3, reassembled from the two Skolem half-clauses),
+$\exists R.A\sqsubseteq B$ (NF4), $A\sqsubseteq\bot$ (NF5),
+$R\sqsubseteq S$ (NF6), and $R\circ S\sqsubseteq T$ (NF7), with explicit top
+and bottom and reflexive roles.  If any clause fails to map, the worker exits
+with a typed not-EL status and publishes nothing; the supervisor then
+continues with the general route.  Source profiling can propose EL, but only
+this worker-side fragment check permits publication, so a parser or profiler
+omission cannot widen the algorithm's semantic scope.
 
-This separation prevents a parser or profiler omission from widening the
-algorithm's semantic scope.  It also supports a certified-EL portfolio: the
-fast completion answer is used if its source and closure certificate is
-accepted; otherwise the supervisor falls through to a general production
-route.
+Saturation applies the completion rules of the normal forms.  A newly derived
+subsumer of a class fires its NF1 conclusions and the NF2 conjunctions whose
+other operand is already present; an NF3 axiom creates a role edge to its
+filler; NF4 axioms fire through a backward-link propagation index keyed by
+filler and role, so a new edge is joined only with the propagations registered
+for its target; NF5 propagates bottom; NF6 is applied through the
+reflexive-transitive closure of the role hierarchy; and NF7 composes an edge
+with the edges leaving its filler.  The state comprises class labels, role
+edges, incoming-edge indexes, and per-normal-form rule indexes.  A class
+labelled bottom is unsatisfiable, and the ontology is inconsistent when top or
+a class with an asserted member is labelled bottom.
+
+Three execution modes exist.  The pure worker accepts only clause sets that
+map completely onto NF1--NF7.  In certified mode the worker compiles clauses
+outside the pure fragment into a residual, checks a canonical-model
+completeness certificate for the compiled result, and reports a complete
+answer, a partial answer with an explicit residue of subjects, or a decline.
+The supervisor resolves a residue by querying the CB engine for exactly those
+subjects and treats a decline as fall-through; the certified-EL production
+route runs this certified worker first and the absorbed production portfolio
+on refusal.  Flat named-class taxonomies, whose logical axioms are only named
+subclass edges, select the EL worker under a generic source gate regardless of
+conservative external expressivity labels, and their acyclic hierarchy is
+emitted as a reachability graph expanded one subject at a time, so the
+transitive closure of a large flat hierarchy is never materialised twice.
+Structured EL sources run completion inside the supervisor process, which
+avoids a serialisation round trip; flat taxonomies keep a worker process so
+that completion memory is released before output mapping.  Incremental
+sessions use a narrower contract in which every accepted clause must map
+directly onto a normal form, because a later addition could invalidate a
+residual certificate.
 
 \subsection{Disjunctive consequence-based engine}
+\label{sec:cb}
 
-The consequence-based (CB) core follows a disjunctive context calculus in the
-Sequoia family \cite{bate2016sequoia,tenacucala2018consequence}.  A root
-context is seeded for each requested class.  Successor contexts represent
-terms introduced by existential restrictions.  Saturation applies the
-following rule families:
+The consequence-based (CB) core is a port of the disjunctive context calculus
+of Sequoia \cite{bate2016sequoia}, extended with the nominal rules of the
+consequence-based calculus for disjunction, inverse roles, number
+restrictions, and nominals \cite{tenacucala2018consequence}.  The engine
+state is a set of contexts.  A context describes one symbolic term: it has a
+core of literals assumed true for that term, a set of retained clauses over a
+central variable and its neighbour terms, head-atom indexes, and edges to
+successor and predecessor contexts.  A root context is seeded for each
+requested named class and for the top concept; successor contexts represent
+the function terms $f(x)$ introduced by existential restrictions.  The default
+expansion schedule is Sequoia's central strategy, in which successor contexts
+are keyed by their core; its complete retry is a per-function strategy that
+assigns one successor context per function symbol.  Both are sound and
+complete, and the per-function variant avoids collecting every existential's
+consequences in one shared context, which is what grows under disjunction.
 
-A context stores clauses describing one symbolic term.  A literal is maximal
-when selected by the calculus's fixed ordering.  Hyperresolution combines an
-ontology clause with matching context facts; factoring merges compatible head
-literals; and subsumption removes a clause already covered by a stronger one.
+Saturation applies the following rule families.  A literal is maximal when
+the calculus's ordering selects it, and hyperresolution matches ontology-clause
+bodies against maximal head literals of retained clauses.
 
 \begin{itemize}[leftmargin=*]
-  \item hyperresolution between ontology clauses and maximal context
-  literals;
-  \item successor propagation of consequences involving function terms;
-  \item predecessor propagation back from successor contexts;
-  \item equality, inequality, and factoring rules for functionality and
-  number restrictions;
-  \item nominal and ABox coordination on routes carrying complete individual
-  provenance; and
-  \item redundancy elimination by indexed forward and backward subsumption.
+  \item \emph{Core and seeding} install the context core and, in nominal mode,
+  ground ABox facts.
+  \item \emph{Hyper} resolves an ontology clause with retained clauses whose
+  maximal head literals match its body atoms, under a central substitution
+  that maps the clause's variables to the context term and its neighbours.
+  \item \emph{Succ} sends the successor-relevant consequences of a context to
+  the successor context of $f(x)$ and installs the corresponding hypotheses
+  there.
+  \item \emph{Pred} returns consequences over a predecessor edge, resolving the
+  transferred body against provider clauses in the receiving context.
+  \item \emph{Eq}, \emph{Factor}, and \emph{Ineq} implement ordered
+  paramodulation with function terms maximal, merging of equality heads that
+  share a left side, and removal of reflexive inequalities; together they
+  handle functionality and number restrictions.
+  \item \emph{Join}, \emph{Nom}, \emph{r-Succ}, and \emph{r-Pred} form the
+  nominal extension enabled on nominal-aware routes: edges labelled by
+  individuals, grounded hyperresolution in the ground context, and allocation
+  of additional nominals in bounded, stably reused blocks.  A run whose
+  nominal budget does not suffice is marked incomplete before publication and
+  produces no answer.
+  \item \emph{Elim} removes a clause covered by a retained one, both when it
+  arrives and, through backward subsumption, when a stronger clause is derived
+  later.
 \end{itemize}
 
-Parallel workers classify named roots while sharing prepared immutable source
-structures.  Scheduling optimisations, batching, compact indexes, and join
-ordering are treated separately from rule changes.  A scheduling change is
-acceptable without a new calculus theorem only when it preserves the same
-monotone fixpoint, the closure at which repeated rule application derives no
-new consequence; changing rule applicability, ordering admissibility, or
-redundancy requires recertification.
+The literal ordering is a partial order with root and non-root modes.
+Function terms are maximal, which orients paramodulation; predecessor-trigger
+literals take priority; distinct concept names are mutually incomparable in
+root contexts; and a structural gate enables the Sequoia definer ordering.
+Outside nominal mode, clauses that mention an individual term are dropped and
+counted.  That approximation is sound but incomplete whenever the singleton
+meaning of a nominal matters, which is why the router in
+Section~\ref{sec:routing} forbids the plain engine on any ABox that lacks a
+separation certificate.
+
+Named query classes are partitioned into chunks that worker threads classify
+in parallel over a shared immutable prepared ontology.  A query's subsumers do
+not depend on the other queries, so chunking changes no derived result, and a
+single thread reproduces the same closure.  Scheduling optimisations,
+batching, compact indexes, and join ordering are treated separately from rule
+changes.  A scheduling change is acceptable without a new calculus theorem
+only when it preserves the same monotone fixpoint, the closure at which
+repeated rule application derives no new consequence; changing rule
+applicability, ordering admissibility, or redundancy requires
+recertification.  The worker reports subsumptions, unsatisfiable classes,
+consistency, the number of dropped clauses, and an incompleteness flag; the
+supervisor refuses to publish a flagged result.
 
 \subsection{Hypertableau and ported completion procedures}
+\label{sec:ht}
 
 KM contains a Rust hypertableau (HT), a model-construction and refutation
-procedure, and selected completion mechanisms derived
-from published algorithms and behaviour studied in HermiT and Konclude
-\cite{motik2009hypertableau,glimm2014hermit,steigmiller2014konclude}.  These
-procedures cover ordinary Boolean search, equality and qualified cardinality,
-nominal-aware ABoxes, rules whose variables are restricted to named
-individuals (DL-safe rules), and specialised bridge classifications.  Blocking
-detects repeated states to represent a potentially infinite model finitely;
-dependency sets record the choices supporting a conclusion; a clash records a
-contradiction; and unravelling interprets a finite blocked structure as a
-regular model.  These mechanisms are explicit parts of route evidence.
+procedure, and selected completion mechanisms derived from published
+algorithms and behaviour studied in HermiT and Konclude
+\cite{motik2009hypertableau,glimm2014hermit,steigmiller2014konclude}.
+Blocking detects repeated states to represent a potentially infinite model
+finitely; dependency sets record the choices supporting a conclusion; a clash
+records a contradiction; and unravelling interprets a finite blocked structure
+as a regular model.  These mechanisms are explicit parts of route evidence.
+Four components are reachable from automatic routes.
+
+\paragraph{Clause conversion.}
+A converter turns DL clauses into HT clauses.  Its only logical transformation
+is reverse Skolemisation: the pair $\Gamma\rightarrow R(x,f(x))$ and
+$\Gamma\rightarrow C(f(x))$ becomes the HT existential
+$\Gamma\rightarrow\exists R.C$.  It additionally emits RBox edge clauses, the
+standard transitivity propagation, number-restriction encodings, and nominal
+fences, and it reports how many clauses were dropped or fenced and whether
+inverse roles, number restrictions, or nominals occur.  Every HT route is
+admitted only when this conversion is lossless for the shapes that route
+supports; a dropped or fenced clause is a decline, never an approximation.
+
+\paragraph{HermiT-style hypertableau.}
+The hypertableau proper implements the calculus of Motik, Shearer, and
+Horrocks \cite{motik2009hypertableau}: a hyperresolution matcher over guarded
+HT clauses, dependency sets, dependency-directed backjumping, and blocking.
+Matching is delta-driven, so a new fact re-matches only the clauses it can
+trigger.  Optional disjunct-ordering heuristics and restarts are pure
+scheduling over the same exhaustive search; they change no answer and are off
+in the release route bundles.  Qualified number restrictions are handled either
+through the converter's slot-and-equality encoding or, on the cardinality
+routes, through first-class at-least and at-most rules that fold the model
+instead of enumerating witnesses.  In certified mode the constructor uses
+full-label pairwise blocking, materialises blocker edges, and emits finite or
+regular model certificates and exhaustive refutations for the checkers of
+Section~\ref{sec:certification-system}; inverse roles, nominals, and native
+ABoxes remain outside that certified constructor.
+
+\paragraph{Ported completion bridge.}
+A second engine is a direct Rust port of Konclude's completion algorithm
+\cite{steigmiller2014konclude}: implication unfolding, the disjunction rule
+with same-node backtracking, existential and universal successor rules,
+role-chain automata, and classification through known and possible subsumer
+sets.  A bridge maps HT clauses onto the port's concept structures.  Every
+clause the encoder cannot express is counted, and the classification entry
+point returns a defer whenever coverage or an exact fragment certificate
+fails, so production never publishes a taxonomy from an under-approximated
+bridged ontology.  The same bridge carries a typed nominal ABox for the
+certified nominal route, in the narrow layout of exactly one class assertion
+per individual plus one distinct-individuals axiom over that population, and
+it rechecks complete ABox and clause coverage before answering.
+
+\paragraph{DL-safe rules.}
+An ontology with Semantic Web Rule Language (SWRL) rules selects the rule
+route.  The frontend accepts a rule only if every atom is a named-class atom,
+an object-property atom, or a same-individual atom; a rule with a
+data-property, built-in, data-range, or complex-class atom causes the whole
+route to decline.  The worker seeds the ABox as named nominal nodes guarded by
+a marker concept, so that rule variables bind only to named individuals,
+fires the accepted rules, and short-circuits to inconsistent on a clash.  A
+rule that additionally carries a different-individuals atom is dropped from
+this precheck, which can lose an inconsistency but never invent one.  If no
+clash is found, the consequence-based engine classifies the TBox; DL-safe
+rules range over named individuals only and cannot change a named-class
+subsumption, so the fall-through is exact.
+
+\paragraph{Nominal specialists.}
+Two complete-answer-or-defer specialists cover $\mathcal{SHOIQ}$ shapes on
+which the general engines are slow: a TBox procedure for a finite nominal
+layout that avoids nominal introduction, and a typed-ABox procedure selected
+after normalisation when the frontend proves that every positive data
+assertion can be omitted.  Both either return a complete taxonomy or defer to
+the exact nominal-aware CB route.
 
 The key engineering rule is \emph{complete answer or defer}.  Several HT
 mechanisms are useful only on fenced source shapes.  They either return the
@@ -308,33 +543,211 @@ complete named-class taxonomy or exact consistency decision requested,
 together with evidence for that result, or return a typed decline with no
 semantic output.  The supervisor then invokes the next semantically complete
 route.  That route may still time out, exhaust memory, or decline, in which
-case KM publishes no classification.  Historical and
-measurement-only tableau routes are excluded from automatic classification.
+case KM publishes no classification.  Historical and measurement-only tableau
+routes are excluded from automatic classification.
 
-\subsection{Feature-based automatic routing}
+\subsection{Source profile and automatic routing}
+\label{sec:routing}
 
-The router reads source statistics and expressivity fields produced before
-normalisation.  Features include axiom-family counts, constructor counts,
-class and role signature sizes, ABox and rule presence, role-chain structure,
-cardinality, nominals, datatypes, source size, and maximum syntactic depths.
-The expressivity profiler was checked against Konclude on all 592 benchmark
-ontologies.
-
+The router reads the source profile of Section~\ref{sec:frontend} after the
+first parse pass and before normalisation, because route options such as
+trigger absorption and cardinality metadata change the normalised clause set.
 The route catalogue uses named, typed bundles rather than ambient collections
-of environment variables.  The principal production mechanisms in the
-v1.3 sweep were EL completion, flat first-normal-form (NF1) completion, CB production portfolios,
-nominal-aware CB, ordinary and bridge hypertableau, cardinality and nominal
-hypertableau, and DL-safe-rule processing.  Route aliases that differ only in
-thread count or scheduling share a semantic core.
+of environment variables, and route aliases that differ only in thread count
+or scheduling share a semantic core.  Selection proceeds in three steps, and
+no step reads an ontology identifier.
 
-The automatic decision tree never reads an ontology identifier.  Two narrow
-source-shape refinements can be applied after normalisation only when the
-frontend emits the required typed certificate.  Each result records both the
-selected profile route and the worker route that actually answered.
-The supplementary route glossary is generated from the release's Rust route
-catalogue.  For every public route it records the admitted fragment, worker,
-publication check, fallback policy, and exact option bundle.  Route aliases can
-therefore be audited without maintaining a second prose catalogue.
+First, a semantic fragment gate partitions sources into six classes: rules
+outside the supported forms, supported DL-safe rules, the native bridge ABox
+layout, a positive ABox with a source-level separation certificate, any other
+ABox or nominal source, and the nominal-free core.  This gate is a hard
+boundary: timing data may choose among complete procedures inside a class but
+cannot redefine which procedure is semantically applicable.  Every rule
+ontology selects the rule route, and every ABox without a certificate selects
+a nominal-aware route, because the plain engine drops individual terms.  The
+positive-ABox certificate admits an ABox to the nominal-free procedures only
+when the complete source scan finds positive assertions and no bottom class or
+role, disjointness, complement, number restriction, nominal,
+distinct-individual or negative assertion, universal role, rule, key, or
+datatype constraint; it uses an explicit whitelist, so unknown axiom kinds
+fail closed.  For that fragment, interpreting every class and role as full and
+every individual as one element models the TBox and the assertions, and
+nominal-free $\mathcal{SRIQ}$ is preserved by disjoint unions, so the ABox adds
+no named-class subsumption.  The certificate is a proof boundary rather than a
+corpus regularity.
+
+Second, typed candidate predicates over the profile select specialists for
+particular source shapes: flat, intersection-only, or EL-shaped
+terminologies; large ABoxes in which every individual has exactly one class
+assertion and no other constraint; typed object ABoxes; identity-heavy ABoxes
+without cardinality; compact or ground-clause nominal shapes; and sources
+whose number-restricted roles are certified disjoint from inverse and
+non-simple roles.  Each predicate reads only counts, flags, and certificates.
+Table~\ref{tab:mechanisms} lists the mechanisms these predicates reach, the
+procedure each runs, and what happens when it declines.  Sources that reach no
+specialist fall to the learned leaf.  In v1.3.0 the generated tree is a
+constant that selects the composed production portfolio, and the eligibility
+filter around it admits only routes with a complete-procedure contract,
+falling back to the plain certified engine if a stale tree ever proposed a
+measurement arm.  A small-source predicate lowers the portfolio to one thread.
+
+Third, two refinements may run after normalisation, and only when the
+frontend emits the required typed certificate: an EL proposal is confirmed or
+withdrawn by the exact normalised-clause fragment gate, and the typed-ABox
+$\mathcal{SHOIQ}$ specialist replaces the nominal route when the positive
+data-assertion omission obligation is proved.  Each result records both the
+selected profile route and the worker route that answered.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Production mechanisms reachable from the automatic route in v1.3.0,
+with the source condition that selects each, the procedure it runs, and the
+exact fallback installed on decline.  Route names are those of the release
+catalogue; the generated supplementary glossary lists each option bundle.}
+\label{tab:mechanisms}
+\begin{tabularx}{\textwidth}{@{}p{0.19\textwidth}XXp{0.16\textwidth}@{}}
+\toprule
+Route & Selected for & Procedure & On decline \\
+\midrule
+\path{elc} & flat, intersection-only, or EL-shaped terminologies; large
+one-assertion-per-individual EL ABoxes; certified positive EL ABoxes & EL
+completion, in process for structured sources & production portfolio \\
+\path{certified_el_production} & source-certified near-EL candidates &
+certified EL completion, then the absorbed portfolio & internal \\
+\path{production_all} (16, 8, or 1 threads) & nominal-free core and
+certified positive ABoxes; large one-assertion-per-individual ABoxes;
+certified inverse and cardinality separation & absorbed CB with bridge and
+cardinality arms & fail closed \\
+\path{ht_bridge} & inverse-chain EL bridge candidates & ported completion
+bridge & portfolio or nominal CB by fragment \\
+\path{ht_general} & compact nominal, large-cardinality, and ground-clause
+nominal shapes & hypertableau on a lossless, inverse-free clause view &
+nominal CB \\
+\path{certified_nominals} & native bridge ABox layout; large typed object
+ABoxes; large no-cardinality or large nominal sources & bridge with typed ABox
+and nominal CB fallback & internal \\
+\path{certified_card_nominals} & inverse and cardinality separation with a
+typed ABox & first-class cardinality HT carrying the typed ABox & nominal
+CB \\
+\path{certified_card_proxy_abox} & number-role separation without native
+ABox materialisation & cardinality HT racing nominal CB, gated by a normalised
+ABox certificate & internal \\
+\path{nominal_ni_tbox} & finite nominal TBox layout & $\mathcal{SHOIQ}$
+TBox specialist without nominal introduction & nominal CB \\
+\path{nominal_ni_abox} & post-normalisation typed-ABox certificate &
+$\mathcal{SHOIQ}$ typed-ABox specialist & internal \\
+\path{nominals} & every other ABox or nominal source & nominal-aware CB &
+fail closed \\
+\path{ht_rules} & any SWRL rule & rule consistency precheck, then CB &
+none \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\paragraph{Production portfolio.}
+The composed portfolio, \texttt{production\_all}, runs the absorbed CB engine
+as its always-available fallback beside the ported completion bridge and, on
+certified cardinality candidates, the first-class cardinality arm.  Bridge and
+cardinality arms are admitted only when their converted input is lossless and,
+for cardinality, when both the source profile and the normalised RBox certify
+number-role separation.  The CB answer is preferred whenever it arrives; an
+arm's answer is used when the engine errors or exceeds the route's budget.  A
+bridge probe has a 30-second budget with no retry rounds, and hypertableau
+saturation has a 180-second budget, within the common 16-thread and 18-GiB
+settings of every named route.
+
+\paragraph{Complete fallbacks.}
+An atomic specialist has no competitor inside its worker.  When one declines,
+errors, or is killed, the supervisor installs the exact fallback for the
+source's fragment: the nominal-aware CB route for any ABox or nominal source,
+and the production portfolio for the nominal-free core and certified positive
+ABoxes.  Rule sources have no fallback, because no other route processes rule
+axioms.  Portfolio routes carry their fallback internally.  A fallback may
+itself time out, exhaust memory, or decline, in which case KM publishes no
+classification.  Unrestricted general HT under the learned leaf, quasi-order,
+$\mathcal{SHOQ}$, isolated cardinality, functional-cardinality, and historical
+tableau routes are excluded from every automatic leaf regardless of empirical
+speed; the general HT worker is reachable only through the three nominal
+source-shape predicates above and always retains the nominal CB fallback.
+Explanation extraction accepts only the automatic route as its entailment
+oracle, because a forced named route bypasses the gate that establishes its
+fragment.
+
+\subsection{Supervisor, process isolation, and resource control}
+\label{sec:supervisor}
+
+The supervisor reads its configuration once from the selected route's option
+bundle, which replaces ambient settings so that a later frontend pass cannot
+be re-routed.  For a small ontology the frontend runs inside the supervisor
+process; for a large one a frontend worker streams clauses to a file and side
+data to a meta file, and the supervisor rebuilds its configuration from the
+recorded route before starting any reasoner.  Transient parse buffers are
+released before a worker grows its own state.
+
+Every reasoning worker is a child process whose standard input is the clause
+file and whose standard output is a temporary file parsed by streaming, so a
+multi-gigabyte taxonomy is never held in a string or an undrained pipe.  A
+watchdog polls the child's resident set size from the process table and the
+wall clock, with a polling interval that starts at one millisecond and doubles
+to one hundred, and it uses a process descriptor to notice exit without
+waiting a full interval.  A child that exceeds its memory cap or its wall cap
+is killed with an uncatchable signal and reaped.  The parallel CB attempt runs
+under an 18-GiB cap and, under the central schedule, a 190-second wall cap.
+On memory overflow, timeout, or nonzero exit, the supervisor retries once with
+the per-function schedule on one thread and no internal cap, leaving the outer
+harness limit as the bound.  Routes whose bundle disables this retry, such as
+the nominal-aware CB and rule routes, fail closed at the internal cap instead;
+the current-corpus failure ledger in Section~\ref{sec:evaluation} counts those
+cases separately.  A portfolio arm that answers first kills the remaining
+engine children and blocks any subsequent retry from starting.  Concurrent HT
+arms run at low scheduling priority by default; routes with a serial
+certificate arm reserve a fair share instead.  Because a classification
+handles one ontology per process, the memory of a killed or finished worker
+returns to the operating system before the next stage, and the benchmark's
+process-tree monitor observes the sum over the supervisor and all its
+children.
+
+\subsection{Output mapping, consistency rules, and result validation}
+\label{sec:output}
+
+A worker answers in an engine-internal vocabulary.  The supervisor maps every
+internal name to its full source IRI, discards generated names (definers,
+proxies, and auxiliary and datatype concepts) unless they are backed by a
+source IRI, drops reflexive pairs, and collects subsumption by the bottom
+class into the set of unsatisfiable named classes.  The published object has
+four fields: a consistency Boolean, the sorted list of named subsumption pairs
+keyed by full IRI, the sorted list of unsatisfiable classes, and the number of
+dropped clauses.
+
+Three consistency rules combine frontend facts with the taxonomy.  If the
+frontend proved during parsing that an individual is asserted into two
+disjoint named classes, the ontology is reported inconsistent before any
+worker starts.  If the rule precheck of Section~\ref{sec:ht} found a clash,
+the same short-circuit applies.  Otherwise, if any class recorded as having an
+asserted member, directly or through the domain or range of an asserted role,
+is unsatisfiable in the final taxonomy, the ontology is inconsistent.  A
+worker that reports incompleteness, a decline, or a nonzero exit publishes
+nothing.
+
+Validation outside the process uses a canonical signature.  The harness closes
+the published relation transitively, condenses equivalence cycles, and stores
+the sorted named subsumptions together with the unsatisfiable set, so
+reasoners that emit direct edges and reasoners that emit full closures are
+compared on the same object.  A release audit requires a terminal record for
+each of the 592 inputs, binds each record to the binary digest and the owning
+job, compares the semantic fields (status, verdict, consistency, signature
+digest, taxonomy cardinality, and mismatch counts) against the previous
+certified sweep, and reports route-trace differences separately as
+provenance.  Reference signatures are not treated as infallible.  A
+contested-gold ledger records each retained reference that delta debugging
+reduced to a small inconsistent core checked by two external reasoners,
+together with the harness defects that produced the wrong reference.
+Section~\ref{sec:evaluation} reports the adjudicated cases.
+
+The stages above decide what KM computes and when it declines.  The next
+section states which of these decisions are backed by a theorem and where the
+proof boundary lies.
 
 \section{Lean-certified publication}
 \label{sec:certification-system}
@@ -361,6 +774,66 @@ The release boundary has four layers.
   fallback sequence, exact source identity, requested signature, and dispatch
   to one concrete ELC, HT, or CB checker.
 \end{enumerate}
+
+Table~\ref{tab:cert-boundary} states, for each layer, the object Lean checks,
+what the Rust producer must supply for acceptance, and what remains outside
+the layer's theorems.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Certification layers of v1.3.0.  ``Checked object'' is what the Lean
+checker decides; ``producer obligation'' is what the Rust worker must emit for
+acceptance; ``outside'' lists what the layer's theorems do not cover.
+Termination within a resource budget is outside every layer.}
+\label{tab:cert-boundary}
+\begin{tabularx}{\textwidth}{@{}p{0.09\textwidth}XXX@{}}
+\toprule
+Layer & Checked object & Producer obligation & Outside the theorem \\
+\midrule
+ELC & raw clause stream, normalisation certificate, completion trace and
+closure, materialised state, inconsistency flag, and named output & exact
+symbol table; NF1--NF7 forms equal to the reconstructed normal ontology;
+residual compilation with canonical witnesses & the parsers that produced the
+raw stream \\
+HT & finite or regular models, equality quotients, cardinality slots,
+exhaustive refutations, one decision per named class, and a square decision
+matrix & source projection evidence; full-label pairwise blocking data;
+redirect and role-cover tuples; strict-progress frontiers & inverse roles,
+nominals, and native ABoxes in the certified constructor \\
+CB & typed source binding, chronological insertion history, closure of every
+ordinary rule family recomputed from the terminal snapshot, positive
+derivations, and finite or regular countermodels per negative cell &
+retained-clause snapshot with edges, pools, and watermarks; event evidence for
+every inference; nominal allocation blocks & that the engine always emits
+acceptable evidence; context creation and blocking beyond the abstract
+strategy theorems \\
+Routing & source profile, ordered selector and fallback sequence, exact source
+identity, complete requested signature, dispatch to one concrete checker,
+incremental revisions, and explanation minimality & profile, route trace, and
+evidence document bound to the same source digest & the supervisor, watchdog,
+and serialisation code \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+The CB layer deserves one further precision.  Its checkers do not trust the
+engine's rule applications.  From the terminal snapshot they independently
+enumerate every candidate hyperresolution, local resolution, factoring,
+paramodulation, join, successor offer, and ordinary or root predecessor
+transfer under the same partial literal order the engine uses, and they
+require each candidate conclusion to have a retained clause that
+syntactically strengthens it.  Acceptance therefore establishes closure of the
+retained set, and the canonical-model theorems turn closure plus a
+countermodel per negative cell into an exact taxonomy.  What the release does
+not prove is that the Rust engine always emits acceptable evidence: a
+rule-level ledger in the repository records, for each production rule, the
+remaining obligation to derive its ordering and trigger metadata from the
+typed source and to bind its index and queue coverage to the snapshot, and
+context creation with its finite blocking bound is certified only at the
+abstract strategy level.  A run whose evidence is rejected publishes nothing,
+so these obligations bound the completeness of the producer, not the
+correctness of an accepted answer.
 
 The evidence document contains a Boolean decision for every ordered pair in
 the requested named-class signature.  Positive cells require accepted
@@ -421,11 +894,15 @@ in git tag \texttt{v1.3.0} and verifies those bindings against commit
 
 All public capstones are audited for Lean's \texttt{sorryAx}.  In v1.3 their
 reported nonlogical dependencies are limited to Lean's standard
-\texttt{propext}, \texttt{Classical.choice}, and \texttt{Quot.sound}.  The
-four certification scripts compile the relevant formalisation and executable
-checkers, run tamper-rejection fixtures, and exercise the Rust-to-Lean
-publication path.  Every full release must pass these gates from the exact
-commit that is tagged.
+\texttt{propext}, \texttt{Classical.choice}, and \texttt{Quot.sound}.  Each of
+the four certification scripts builds the relevant formalisation and native
+checker executables from the tagged source, fails if any listed theorem
+depends on an admitted proof, prints the axioms of every public capstone, runs
+tamper-rejection fixtures in which a valid evidence document is mutated and
+must be refused, and runs the Rust integration tests that push real worker
+evidence through the native checkers.  The v1.3.0 gate logs contain 9,530
+axiom reports and no other axiom.  Every full release must pass these gates
+from the exact commit that is tagged.
 
 This is not end-to-end verification of the binary.  The trusted computing base
 still includes Lean's kernel and runtime, the Rust compiler, serialisation and
@@ -1420,6 +1897,17 @@ Changing batching or an index need not produce a new calculus theorem if a
 fixpoint-equivalence argument and differential tests establish that the same
 rule instances remain available.  Changing derivability, literal maximality,
 blocking, or publication completeness does require a proof change.
+
+In practice this yields four change classes with distinct gates.  A frontend
+change is validated by byte-identical clause and side-data output against the
+previous binary across the corpus, because the frontend is not calculus logic
+and its correctness is inherited from the retained reference.  A scheduling,
+batching, index, or threading change needs a written argument that the same
+rule instances remain available, so that the monotone fixpoint is unchanged,
+together with differential tests.  A change to derivability, ordering,
+redundancy, blocking, or publication completeness needs a proof change and a
+rerun of the affected gate.  A routing change needs the full automatic sweep,
+with route-trace differences reported apart from semantic fields.
 
 Second, it converted implicit assumptions into executable interfaces.  A
 taxonomy theorem over an abstract saturated set is insufficient if the Rust
