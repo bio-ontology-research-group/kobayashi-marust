@@ -7547,7 +7547,10 @@ pub fn run_tableau() {
         .unwrap_or(2048);
     let worker = std::thread::Builder::new()
         .stack_size(stack_mb * 1024 * 1024)
-        .spawn(move || crate::tableau::run_json(&buf))
+        // The wire text is released inside `run_json_owned` as soon as its
+        // clause graph is parsed (unless the bridge route re-reads it), so the
+        // complete stdin document does not sit under the classification peak.
+        .spawn(move || crate::tableau::run_json_owned(buf))
         .expect("spawn tableau worker thread");
     match worker.join() {
         Ok(Ok(s)) => {

@@ -5185,6 +5185,23 @@ pub fn run_json(input: &str) -> Result<String, String> {
     run_json_inner(input, None)
 }
 
+/// `run_json` over an owned wire string. The text is released as soon as its
+/// clause graph is parsed unless the completion bridge route is active, which
+/// re-parses the producer-side input from the same bytes. Everything else is
+/// identical to `run_json`, so a worker no longer holds its complete stdin
+/// document under the classification peak.
+pub fn run_json_owned(input: String) -> Result<String, String> {
+    let inp: TInput = serde_json::from_str(&input).map_err(|e| e.to_string())?;
+    let raw_input = if std::env::var_os("KM_HT_BRIDGE").is_some() {
+        Some(input)
+    } else {
+        drop(input);
+        None
+    };
+    let output = run_tinput_inner(inp, raw_input.as_deref(), None)?;
+    serde_json::to_string(&output).map_err(|error| error.to_string())
+}
+
 fn producer_id(value: usize, field: &str) -> Result<u32, String> {
     u32::try_from(value).map_err(|_| format!("{field} id exceeds the tableau wire range"))
 }
@@ -5327,6 +5344,7 @@ pub(crate) fn run_bridge_producer_input_typed(
     input: crate::orchestrate::cb_to_ht::TInput,
 ) -> Result<TOutput, String> {
     let concepts = input.concepts.clone();
+    crate::mem::release_transient_heap();
     let result = std::thread::Builder::new()
         .stack_size(4usize << 30)
         .spawn(move || crate::konclude_ht::bridge::bridged_classify(&input))
@@ -5334,6 +5352,7 @@ pub(crate) fn run_bridge_producer_input_typed(
         .join()
         .map_err(|_| "konclude_ht bridge thread panicked".to_string())?
         .ok_or_else(|| "konclude_ht bridge defer".to_string())?;
+    crate::mem::release_transient_heap();
     let name = |concept: usize| {
         concepts
             .get(concept)
@@ -6796,7 +6815,10 @@ fn run_tinput_inner(
         return Err("total HT global decision has no faithful hypertableau route".to_string());
     }
     if ht_route_selected {
-        let mut ht_clauses = clauses.clone();
+        // The hypertableau owns the complete clause view. The legacy tableau
+        // fall-through below rebuilds it from the typed input instead of
+        // keeping a second copy alive across the whole classification.
+        let mut ht_clauses = clauses;
         let q = queries.clone();
         let noms = inp.nominals.clone();
         let abox_individuals = native_individuals.clone();
@@ -7141,6 +7163,10 @@ fn run_tinput_inner(
         // production HT classification must not retain a duplicate of the
         // complete clause set for the lifetime of the worker.
         let source_decision_clauses = lean_cert_requested.then(|| ht_clauses.clone());
+        // The wire text, its parsed clause graph, and the converter's typed
+        // side data are dead by now. Return their pages before the parallel
+        // classify workers allocate their own state (see `crate::mem`).
+        crate::mem::release_transient_heap();
         let res = std::thread::Builder::new()
             // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
             // branch level; SHOQ number+nominal search can nest tens of thousands
@@ -7230,6 +7256,9 @@ fn run_tinput_inner(
             .map_err(|e| e.to_string())?
             .join()
             .map_err(|_| "hypertableau thread panicked".to_string())??;
+        // Every classify worker's arena retains the largest model it built.
+        // Release those pages before the taxonomy is named and serialised.
+        crate::mem::release_transient_heap();
         if std::env::var_os("KM_HT_TRACE").is_some() {
             eprintln!("TR run_json: thread joined (Ht dropped inside thread)");
         }
@@ -7605,7 +7634,10 @@ fn run_tinput_inner(
         if native_abox_active {
             return Err("native ABox hypertableau defer".to_string());
         }
-        // otherwise fall through to the legacy tableau.
+        // otherwise fall through to the legacy tableau. The reconstructed
+        // negative-edge clauses of a native ABox cannot be needed here: a
+        // native ABox already returned its defer above.
+        clauses = clauses_of_tinput(&inp);
     }
 
     let mut t = Tableau::new(clauses);
@@ -7668,6 +7700,57 @@ mod tests {
         let typed: serde_json::Value =
             serde_json::from_str(&run_producer_input(input).unwrap()).unwrap();
         assert_eq!(typed, json);
+    }
+
+    #[test]
+    fn owned_wire_entry_matches_the_borrowed_worker_contract() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
+
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_HT", "1");
+        std::env::remove_var("KM_HT_BRIDGE");
+        let input = crate::orchestrate::cb_to_ht::TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![HAtom::Concept {
+                        neg: false,
+                        c: 0,
+                        t: 0,
+                    }],
+                    head: vec![HAtom::Concept {
+                        neg: false,
+                        c: 1,
+                        t: 0,
+                    }],
+                },
+                HtClause {
+                    body: vec![HAtom::Concept {
+                        neg: false,
+                        c: 1,
+                        t: 0,
+                    }],
+                    head: vec![HAtom::Concept {
+                        neg: false,
+                        c: 2,
+                        t: 0,
+                    }],
+                },
+            ],
+            queries: vec![0, 1, 2],
+            ..Default::default()
+        };
+        let wire = serde_json::to_string(&input).unwrap();
+        let borrowed = run_json(&wire).unwrap();
+        let owned = run_json_owned(wire).unwrap();
+        assert_eq!(owned, borrowed);
+        let json: serde_json::Value = serde_json::from_str(&owned).unwrap();
+        assert_eq!(json["consistent"], true);
+        assert!(json["subsumptions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|pair| pair[0] == "A" && pair[1] == "C"));
     }
 
     #[test]

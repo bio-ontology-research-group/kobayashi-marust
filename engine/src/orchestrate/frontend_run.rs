@@ -371,6 +371,11 @@ pub fn run_ofn_split_cached(
     let elc_binary = TempPath::new(".elc.bin");
     let stderr = TempPath::new(".ofn.err");
 
+    // This process blocks in `status()` while the isolated frontend parses.
+    // A declined in-process attempt above, or the caller's outer frontend on
+    // the recursive probe and fallback routes, leaves freed pages here that
+    // the process-tree watchdog would otherwise count beside the child.
+    crate::mem::release_transient_heap();
     let (ofn_prog, ofn_pre) = cfg.ofn_cmd();
     let status = Command::new(&ofn_prog)
         .args(&ofn_pre)

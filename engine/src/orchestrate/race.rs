@@ -23,17 +23,10 @@ use crate::json_io::{JClause, JInput};
 
 use super::{cb_to_ht, engine_run, frontend_run, parse_out, Config, EngineOut, OrchestrateError};
 
-/// Return pages from the supervisor's transient conversion arena before the
-/// worker grows its own completion state. This changes no live allocation or
-/// reasoner state; it only prevents glibc from retaining dropped parsed-clause
-/// and TInput buffers in the parent process.
-#[inline]
-fn release_transient_heap() {
-    #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    unsafe {
-        libc::malloc_trim(0);
-    }
-}
+// Returns pages from the supervisor's transient conversion arena before a
+// worker grows its own completion state. See `crate::mem` for the contract:
+// no live allocation or reasoner state changes, only resident-set accounting.
+use crate::mem::release_transient_heap;
 
 // ---------------------------------------------------------------------------
 // tableau output -> engine `out` shape
@@ -2378,6 +2371,13 @@ fn spawn_ht(
     thread::spawn(move || {
         let mut w = stdin;
         let _ = w.write_all(&bytes);
+        // The serialised TInput is the largest transient this process holds
+        // while the worker runs, and it is dead once the pipe has drained. The
+        // callers' trim runs before this write finishes, so release it here
+        // exactly as `spawn_tableau` does.
+        drop(w);
+        drop(bytes);
+        release_transient_heap();
     });
     let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
     // The third element gates the SHORT race budget: true for the fast certify-or-
@@ -2522,6 +2522,17 @@ pub fn run_ht_shoq_in_process(
 
     drop(view);
     drop(clauses);
+    // The converter consumed the typed side data by reference and `tin` now
+    // owns everything the classifier reads. Release the frontend-owned copies
+    // here instead of holding them, unread, under the classification peak.
+    drop((
+        rbox,
+        cardinalities,
+        definers,
+        source_axioms,
+        nominal_abox,
+        rules,
+    ));
 
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
@@ -2588,6 +2599,17 @@ pub fn run_ht_general_in_process(
     );
     drop(view);
     drop(clauses);
+    // The converter consumed the typed side data by reference and `tin` now
+    // owns everything the classifier reads. Release the frontend-owned copies
+    // here instead of holding them, unread, under the classification peak.
+    drop((
+        rbox,
+        cardinalities,
+        definers,
+        source_axioms,
+        nominal_abox,
+        rules,
+    ));
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
         ("KM_HT", "1"),
@@ -2668,6 +2690,17 @@ pub fn run_ht_bridge_in_process(
     }
     drop(view);
     drop(clauses);
+    // The converter consumed the typed side data by reference and `tin` now
+    // owns everything the classifier reads. Release the frontend-owned copies
+    // here instead of holding them, unread, under the classification peak.
+    drop((
+        rbox,
+        cardinalities,
+        definers,
+        source_axioms,
+        nominal_abox,
+        rules,
+    ));
 
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
@@ -2710,6 +2743,7 @@ pub fn run_ht_only_bounded(
     else {
         return Ok(None);
     };
+    release_transient_heap();
     let started = Instant::now();
     // Block on the worker's pidfd (Linux) so its exit is seen immediately;
     // the 10 ms cadence remains the budget check interval.
@@ -2761,6 +2795,7 @@ pub fn run_tableau_only(
             "ontology is outside the selected tableau mechanism's structural gate".into(),
         ));
     };
+    release_transient_heap();
     let status = child.wait()?;
     if !status.success() {
         return Err(OrchestrateError::Worker {

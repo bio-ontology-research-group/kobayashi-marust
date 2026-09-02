@@ -19,6 +19,7 @@ mod incremental_positive_abox;
 mod incremental_rules;
 pub mod json_io;
 pub mod konclude_ht;
+pub mod mem;
 pub mod orchestrate;
 pub mod reasoner;
 pub mod role_automaton;

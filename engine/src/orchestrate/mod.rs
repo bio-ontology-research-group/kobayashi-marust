@@ -1489,7 +1489,7 @@ fn classify_with_evidence_mode(
         }
         Err(error) => return Err(error),
     };
-    let out: EngineOut = match atomic_out {
+    let mut out: EngineOut = match atomic_out {
         Some(out) => out,
         None => {
             // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
@@ -1719,7 +1719,11 @@ fn classify_with_evidence_mode(
     // sorted dictionary and are borrowed only while serializing.
     let mut iri_ids = retain_grouped_output.then(|| JsonIriIds::new(&meta.iri_map));
     let mut unsat_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let mut unsat_names: HashSet<&str> = HashSet::new();
+    // Whether an unsatisfiable public class is also an asserted class. It is
+    // decided at the moment a subject first enters `unsat_set`, exactly where
+    // the previous name set collected that subject, so the worker rows can be
+    // released while they are mapped instead of being borrowed until the end.
+    let mut unsat_asserted = false;
     let mut projected_abox_inconsistent = false;
     if let Some(compact) = &out.compact_subsumptions {
         // Dictionary names repeat across rows: a dense taxonomy references
@@ -1762,7 +1766,7 @@ fn classify_with_evidence_mode(
                     }
                     if verdict == NAME_BOTTOM {
                         if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
-                            unsat_names.insert(a.as_str());
+                            unsat_asserted |= asserted.contains(a.as_str());
                         }
                     } else if verdict != NAME_INTERNAL && superclass != subject {
                         mapped_supers.push(verdict);
@@ -1781,7 +1785,7 @@ fn classify_with_evidence_mode(
                     let s = &compact.names[*superclass as usize];
                     if is_bottom(s) {
                         if unsat_set.insert(fa.to_string()) {
-                            unsat_names.insert(a.as_str());
+                            unsat_asserted |= asserted.contains(a.as_str());
                         }
                     } else if !is_internal(s) && s != a {
                         mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());
@@ -1796,8 +1800,12 @@ fn classify_with_evidence_mode(
             }
         }
     } else {
-        for (a, sups) in &out.subsumptions {
-            if is_internal(a) {
+        // Each mapped row is the last reader of its worker-side strings. Take
+        // the map so a row's subject and superclass names are freed as soon as
+        // their public counterparts exist, rather than after the whole
+        // taxonomy has been duplicated.
+        for (a, sups) in std::mem::take(&mut out.subsumptions) {
+            if is_internal(&a) {
                 if asserted.contains(a.as_str()) && sups.iter().any(|sup| is_bottom(sup)) {
                     projected_abox_inconsistent = true;
                 }
@@ -1806,34 +1814,34 @@ fn classify_with_evidence_mode(
             if retain_grouped_output {
                 let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
                 let mut mapped_supers = Vec::with_capacity(sups.len());
-                for s in sups {
+                for s in &sups {
                     if is_bottom(s) {
                         // Preserve the previous first-full-IRI-representative
                         // behaviour when multiple local aliases map to one class.
-                        if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
-                            unsat_names.insert(a.as_str());
+                        if unsat_set.insert(mapped_iri(&meta.iri_map, &a).to_string()) {
+                            unsat_asserted |= asserted.contains(a.as_str());
                         }
-                    } else if !is_internal(s) && s != a {
+                    } else if !is_internal(s) && s != &a {
                         mapped_supers.push(iri_ids.id(s));
                     }
                 }
                 if !mapped_supers.is_empty() {
                     grouped_json
-                        .entry(iri_ids.id(a))
+                        .entry(iri_ids.id(&a))
                         .or_default()
                         .extend(mapped_supers);
                 }
             } else {
-                let fa = mapped_iri(&meta.iri_map, a);
+                let fa = mapped_iri(&meta.iri_map, &a);
                 let mut mapped_supers = Vec::with_capacity(sups.len());
-                for s in sups {
+                for s in &sups {
                     if is_bottom(s) {
                         // Preserve the previous first-full-IRI-representative
                         // behaviour when multiple local aliases map to one class.
                         if unsat_set.insert(fa.to_string()) {
-                            unsat_names.insert(a.as_str());
+                            unsat_asserted |= asserted.contains(a.as_str());
                         }
-                    } else if !is_internal(s) && s != a {
+                    } else if !is_internal(s) && s != &a {
                         mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());
                     }
                 }
@@ -1848,7 +1856,7 @@ fn classify_with_evidence_mode(
             }
         }
     }
-    if projected_abox_inconsistent || unsat_names.iter().any(|n| asserted.contains(*n)) {
+    if projected_abox_inconsistent || unsat_asserted {
         return Ok(ClassificationEvidence {
             classification: Classification {
                 consistent: false,
@@ -1988,6 +1996,14 @@ fn rules_consistency(
         let mut stdin = child.stdin.take().expect("tableau stdin");
         stdin.write_all(&tin_bytes)?;
     }
+    // The worker owns the complete rule-aware input now. Nothing below reads
+    // the parsed clause file, the converted input, or its wire bytes, and the
+    // process-tree watchdog would count them beside the worker's own peak.
+    drop(tin_bytes);
+    drop(tin);
+    drop(named);
+    drop(input);
+    crate::mem::release_transient_heap();
     let status = child.wait()?;
     if !status.success() {
         return Err(OrchestrateError::Worker {

@@ -21180,6 +21180,20 @@ impl Ht {
         Some((unsat, subs))
     }
 
+    /// Drop the model of the last satisfiability test while keeping every
+    /// configuration field. `consistent` rebuilds `Ext` from scratch on entry
+    /// and re-applies the configuration it needs, so a later query observes
+    /// exactly the state it would have observed after any other query. Only
+    /// the certified-address recording flag is carried across rebuilds, as in
+    /// `consistent`.
+    pub fn release_model_state(&mut self) {
+        let certified_addresses = self.ext.address_step.is_some();
+        self.ext = Ext::new();
+        if certified_addresses {
+            self.ext.address_step = Some(Vec::new());
+        }
+    }
+
     pub fn classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
         let global = self.consistent(&[])?;
         if !global {
@@ -21232,6 +21246,11 @@ impl Ht {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(1);
         if par > 1 && !self.naive {
+            // Every parallel worker builds its own `Ht`; nothing below reads
+            // the global consistency model kept in `self.ext`. On ABox-rich
+            // clause views that model is the largest single object in the
+            // main arena, so drop it before the workers allocate theirs.
+            self.release_model_state();
             return self.classify_parallel(queries, par);
         }
         let qset: HashSet<C> = queries.iter().copied().collect();
@@ -27014,6 +27033,59 @@ mod tests {
             vec![(SUB, 0, 1), (SECOND, 1, 2)],
         );
         assert_eq!(chain.consistent(&[]), Some(false));
+    }
+
+    #[test]
+    fn release_model_state_drops_the_model_and_keeps_certified_addresses() {
+        let clauses = vec![
+            Clause::new(Vec::new(), vec![con(false, A, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+        ];
+        let mut plain = Ht::new(clauses.clone());
+        assert_eq!(plain.consistent(&[]), Some(true));
+        assert!(plain.ext.num_nodes() >= 2);
+        plain.release_model_state();
+        assert_eq!(plain.ext.num_nodes(), 0);
+        assert!(plain.ext.address_step.is_none());
+        // The released model is not observable by later queries.
+        assert_eq!(plain.consistent(&[CLit::pos(A)]), Some(true));
+        assert!(plain.ext.num_nodes() >= 2);
+
+        let mut certified = Ht::new_certified(clauses);
+        assert_eq!(certified.consistent(&[]), Some(true));
+        certified.release_model_state();
+        assert_eq!(certified.ext.num_nodes(), 0);
+        assert!(certified.ext.address_step.is_some());
+    }
+
+    #[test]
+    fn parallel_classify_after_model_release_matches_sequential() {
+        const E: C = 4;
+        let clauses = vec![
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![con(false, B, X), con(false, D, X)],
+            ),
+            Clause::new(vec![con(false, B, X)], vec![con(false, E, X)]),
+            Clause::new(vec![con(false, D, X)], vec![con(false, E, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X), con(false, D, X)], vec![]),
+        ];
+        let queries = [A, B, D, E];
+        let mut sequential = Ht::new(clauses.clone());
+        let (sc, mut su, mut ss) = sequential.classify(&queries).expect("sequential");
+        let mut parallel = Ht::new(clauses);
+        assert_eq!(parallel.consistent(&[]), Some(true));
+        parallel.release_model_state();
+        let (pc, mut pu, mut ps) = parallel.classify_parallel(&queries, 3).expect("parallel");
+        su.sort_unstable();
+        pu.sort_unstable();
+        ss.sort_unstable();
+        ps.sort_unstable();
+        assert_eq!(sc, pc);
+        assert_eq!(su, pu);
+        assert_eq!(ss, ps);
+        assert!(ss.contains(&(A, E)));
     }
 
     #[test]
