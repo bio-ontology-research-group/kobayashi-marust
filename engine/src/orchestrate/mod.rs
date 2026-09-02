@@ -1191,12 +1191,15 @@ fn classify_with_evidence_mode(
                 std::env::set_var("KM_HT_SATURATION_BUDGET_S", "120");
                 // Bound the prepass by state size as well as wall time. Faster
                 // CPUs can apply substantially more rules in 120 seconds and
-                // otherwise hit a 20-GiB cgroup before the timer fires.
+                // otherwise hit a 20-GiB cgroup before the timer fires. Four
+                // independent Gold-6248 runs at 14 GiB completed ORE1194 with
+                // the same exact signature at 16.86 GiB process-tree peak;
+                // 15--17.5 GiB consumed more memory and were no faster.
                 let saturation_rss_override =
                     std::env::var("KM_HT_SATURATION_RSS_OVERRIDE_GB").ok();
                 let saturation_rss_gb =
                     production_saturation_rss_override(saturation_rss_override.as_deref())
-                        .unwrap_or("18");
+                        .unwrap_or("14");
                 std::env::set_var("KM_HT_SATURATION_RSS_GB", saturation_rss_gb);
                 // The frontend has already removed the certified-independent
                 // existential-witness ABox before cb_to_ht constructs TInput,
@@ -1899,13 +1902,13 @@ fn classify_with_evidence_mode(
 }
 
 /// Admit a diagnostic production-saturation valve only when it tightens the
-/// validated 18-GiB default. The override deliberately lives outside the
+/// validated 14-GiB default. The override deliberately lives outside the
 /// normalized route environment: it changes only when an optional monotone
 /// prepass defers, never the complete probe/fallback or its publication gate.
 fn production_saturation_rss_override(value: Option<&str>) -> Option<&str> {
     let value = value?.trim();
     let parsed = value.parse::<f64>().ok()?;
-    (parsed.is_finite() && parsed > 0.0 && parsed <= 18.0).then_some(value)
+    (parsed.is_finite() && parsed > 0.0 && parsed <= 14.0).then_some(value)
 }
 
 /// Obtain an exact full-ontology consistency verdict from the isolated general
@@ -2440,11 +2443,12 @@ mod tests {
     #[test]
     fn production_saturation_rss_override_only_tightens_the_default() {
         assert_eq!(
-            production_saturation_rss_override(Some("17.5")),
-            Some("17.5")
+            production_saturation_rss_override(Some("13.5")),
+            Some("13.5")
         );
-        assert_eq!(production_saturation_rss_override(Some("18")), Some("18"));
-        assert_eq!(production_saturation_rss_override(Some("18.1")), None);
+        assert_eq!(production_saturation_rss_override(Some("14")), Some("14"));
+        assert_eq!(production_saturation_rss_override(Some("14.1")), None);
+        assert_eq!(production_saturation_rss_override(Some("18")), None);
         assert_eq!(production_saturation_rss_override(Some("0")), None);
         assert_eq!(production_saturation_rss_override(Some("NaN")), None);
         assert_eq!(production_saturation_rss_override(Some("nonsense")), None);
