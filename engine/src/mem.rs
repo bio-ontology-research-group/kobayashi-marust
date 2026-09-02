@@ -13,24 +13,17 @@
 //!
 //! [`release_transient_heap`] makes the resident set track live data again at
 //! a phase boundary. It never touches a live allocation, changes no reasoner
-//! state, and is a no-op outside glibc. `KM_NO_HEAP_TRIM=1` disables every
-//! call site so the effect can be measured in isolation.
+//! state, and is a no-op outside glibc. `KM_HEAP_TRIM=1` enables the calls on
+//! measured routes; `KM_NO_HEAP_TRIM=1` remains a diagnostic override.
 
 use std::ffi::OsStr;
-use std::sync::OnceLock;
-
-/// Pure decision behind [`heap_trim_enabled`]: only an explicit, non-empty
-/// value other than `0` opts out.
-pub(crate) fn heap_trim_enabled_from(value: Option<&OsStr>) -> bool {
-    match value {
-        None => true,
-        Some(value) => value.is_empty() || value.to_str() == Some("0"),
-    }
+fn switched_on(value: Option<&OsStr>) -> bool {
+    matches!(value.and_then(OsStr::to_str), Some(value) if !value.is_empty() && value != "0")
 }
 
 fn heap_trim_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| heap_trim_enabled_from(std::env::var_os("KM_NO_HEAP_TRIM").as_deref()))
+    switched_on(std::env::var_os("KM_HEAP_TRIM").as_deref())
+        && !switched_on(std::env::var_os("KM_NO_HEAP_TRIM").as_deref())
 }
 
 /// Return every free page of every malloc arena to the kernel.
@@ -52,16 +45,16 @@ pub fn release_transient_heap() {
 
 #[cfg(test)]
 mod tests {
-    use super::{heap_trim_enabled_from, release_transient_heap};
+    use super::{release_transient_heap, switched_on};
     use std::ffi::OsStr;
 
     #[test]
-    fn heap_trim_opt_out_requires_an_explicit_switch() {
-        assert!(heap_trim_enabled_from(None));
-        assert!(heap_trim_enabled_from(Some(OsStr::new(""))));
-        assert!(heap_trim_enabled_from(Some(OsStr::new("0"))));
-        assert!(!heap_trim_enabled_from(Some(OsStr::new("1"))));
-        assert!(!heap_trim_enabled_from(Some(OsStr::new("yes"))));
+    fn heap_trim_requires_an_explicit_nonzero_switch() {
+        assert!(!switched_on(None));
+        assert!(!switched_on(Some(OsStr::new(""))));
+        assert!(!switched_on(Some(OsStr::new("0"))));
+        assert!(switched_on(Some(OsStr::new("1"))));
+        assert!(switched_on(Some(OsStr::new("yes"))));
     }
 
     #[test]

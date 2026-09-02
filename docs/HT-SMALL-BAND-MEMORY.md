@@ -123,10 +123,11 @@ Commit on branch `agent/v14-ht-memory`, on top of a snapshot of the inherited
 working state. Every item is output-identical; the argument is given with it.
 
 1. **`crate::mem::release_transient_heap`** (new `engine/src/mem.rs`). One
-   shared `malloc_trim(0)` helper with a `KM_NO_HEAP_TRIM=1` opt-out, replacing
-   the private copy in `race.rs`. `malloc_trim` releases free pages of every
-   arena and shrinks heap tops; it cannot touch a live allocation, so no
-   reasoner state changes. It is a no-op outside glibc.
+   shared `malloc_trim(0)` helper, replacing the private copy in `race.rs`.
+   `KM_HEAP_TRIM=1` enables it and `KM_NO_HEAP_TRIM=1` overrides that setting.
+   `malloc_trim` releases free pages of every arena and shrinks heap tops; it
+   cannot touch a live allocation, so no reasoner state changes. It is a no-op
+   outside glibc.
 2. **Trim while a worker runs.** `engine_run::run_engine` (every engine/elc
    spawn, hence the `nominals` route), the isolated frontend spawn in
    `run_ofn_split_cached`, `run_ht_only_bounded`, `run_tableau_only`, and
@@ -269,3 +270,11 @@ Record for every run: the canonical signature SHA (must equal A), the harness
 control leaves `both`, and the six targets' memory falls without a wall loss
 beyond the run-to-run spread. If 960/9668 do not move, the remaining gap is
 the 16 concurrent worker models and the next lever is section 5.
+
+The 2026-09-02 IBEX panel ran 90/90 gold-exact classifications. Global
+trimming reduced several peaks, but raised 13383's median from 31.58 to 37.42
+MiB. It closed 13113 at 37.75 MiB against a 38.99 MiB ceiling, with unchanged
+wall time. Production therefore enables trimming only for the measured small
+SHOI nominal-worker profile; all other routes retain the ownership changes
+with trimming disabled. This selective policy preserves the closure without
+generalising the 13383 regression.

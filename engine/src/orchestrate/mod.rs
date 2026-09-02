@@ -1240,6 +1240,11 @@ fn classify_with_evidence_mode(
         {
             std::env::set_var("KM_ELC_ONE_SIDED_NF2", "1");
         }
+        if selected_route == crate::routing::Route::Nominals
+            && crate::routing::small_nominal_heap_trim_candidate(&meta.profile)
+        {
+            std::env::set_var("KM_HEAP_TRIM", "1");
+        }
         if selected_route == crate::routing::Route::HtGeneral
             && crate::routing::compact_role_assertion_general_ht_candidate(&meta.profile)
         {

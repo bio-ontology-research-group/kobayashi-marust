@@ -800,6 +800,28 @@ pub(crate) fn parallel_nf4_frontier_candidate(profile: &OntologyProfile) -> bool
         && !profile.expressivity.datatype
 }
 
+/// Small nominal worker inputs where releasing the consumed frontend arena
+/// closes the measured memory gap without increasing wall time. Other nominal
+/// shapes keep the allocator default: the same trim points increased sampled
+/// tree RSS on a smaller SHOIF(D) control.
+pub(crate) fn small_nominal_heap_trim_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    profile.expressivity.code == "SHOI"
+        && (1_500..3_000).contains(&source.logical_axioms)
+        && (1_000..2_000).contains(&source.distinct_classes)
+        && (100..200).contains(&source.distinct_object_properties)
+        && (150..300).contains(&source.distinct_individuals)
+        && (100..300).contains(&source.abox_axioms)
+        && (100..250).contains(&source.nominals)
+        && (300_000..600_000).contains(&source.file_bytes)
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && profile.expressivity.nominal
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.datatype
+}
+
 /// Dense SI terminologies whose generated conjunction hub makes the symmetric
 /// NF2 trigger index scan hundreds of millions of candidates.  The one-sided
 /// waiter schedule derives the same finite monotone closure, but is profitable
@@ -2316,6 +2338,8 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_ELC_CERT",
     "KM_ELC_PAR_NF4",
     "KM_ELC_ONE_SIDED_NF2",
+    "KM_HEAP_TRIM",
+    "KM_NO_HEAP_TRIM",
     "KM_NO_HT_RACE",
     "KM_NO_HT_QO_ROUTER",
     "KM_NO_HT_SHOQ",
@@ -3306,6 +3330,30 @@ mod tests {
         profile.source.abox_axioms = 0;
         profile.source.logical_axioms = 3_000_000;
         assert!(!parallel_nf4_frontier_candidate(&profile));
+    }
+
+    #[test]
+    fn heap_trim_is_limited_to_the_measured_small_nominal_worker_shape() {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.code = "SHOI".into();
+        profile.expressivity.nominal = true;
+        profile.source.logical_axioms = 2_171;
+        profile.source.distinct_classes = 1_269;
+        profile.source.distinct_object_properties = 141;
+        profile.source.distinct_individuals = 210;
+        profile.source.abox_axioms = 211;
+        profile.source.nominals = 161;
+        profile.source.file_bytes = 412_646;
+        assert!(small_nominal_heap_trim_candidate(&profile));
+
+        profile.expressivity.code = "SHOIF(D)".into();
+        assert!(!small_nominal_heap_trim_candidate(&profile));
+        profile.expressivity.code = "SHOI".into();
+        profile.source.logical_axioms = 864;
+        assert!(!small_nominal_heap_trim_candidate(&profile));
+        profile.source.logical_axioms = 2_171;
+        profile.source.rule_axioms = 1;
+        assert!(!small_nominal_heap_trim_candidate(&profile));
     }
 
     #[test]
