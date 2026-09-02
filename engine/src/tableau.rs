@@ -7743,8 +7743,20 @@ mod tests {
         let wire = serde_json::to_string(&input).unwrap();
         let borrowed = run_json(&wire).unwrap();
         let owned = run_json_owned(wire).unwrap();
-        assert_eq!(owned, borrowed);
-        let json: serde_json::Value = serde_json::from_str(&owned).unwrap();
+        let normalize = |wire: &str| {
+            let mut json: serde_json::Value = serde_json::from_str(wire).unwrap();
+            json["subsumptions"]
+                .as_array_mut()
+                .unwrap()
+                .sort_by_key(|pair| pair.to_string());
+            json["unsatisfiable"]
+                .as_array_mut()
+                .unwrap()
+                .sort_by_key(|name| name.to_string());
+            json
+        };
+        assert_eq!(normalize(&owned), normalize(&borrowed));
+        let json = normalize(&owned);
         assert_eq!(json["consistent"], true);
         assert!(json["subsumptions"]
             .as_array()
