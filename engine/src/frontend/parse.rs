@@ -717,19 +717,38 @@ where
 pub fn parse_axioms_observed_filtered<'a, F>(
     reg: &mut IriRegistry,
     text: &'a str,
-    mut observe_and_retain: F,
+    observe_and_retain: F,
 ) -> Result<Ontology, OutOfFragment>
 where
     F: FnMut(&Node<'a>) -> bool,
 {
     let mut o = Ontology::new();
+    parse_axioms_filtered_into(reg, text, &mut o, observe_and_retain)?;
+    Ok(o)
+}
+
+/// Append selected source axioms to an existing ontology in one streaming
+/// pass. This is used when a speculative source-certified omission fails: the
+/// first pass has already materialised the retained partition, so recovery
+/// only needs to add the omitted partition. Keeping the same IRI registry and
+/// [`Ontology::add`] duplicate suppression gives the same syntax object as a
+/// complete recovery parse without rebuilding the retained axioms.
+pub fn parse_axioms_filtered_into<'a, F>(
+    reg: &mut IriRegistry,
+    text: &'a str,
+    ontology: &mut Ontology,
+    mut retain: F,
+) -> Result<(), OutOfFragment>
+where
+    F: FnMut(&Node<'a>) -> bool,
+{
     for_each_ontology_child(text, |node| {
-        if observe_and_retain(node) {
-            add_axiom(reg, &mut o, node)?;
+        if retain(node) {
+            add_axiom(reg, ontology, node)?;
         }
         Ok(())
     })?;
-    Ok(o)
+    Ok(())
 }
 
 /// Source-level ABox axiom screen. This is used only to avoid constructing a
@@ -797,6 +816,43 @@ mod axiom_drop_regression_tests {
         assert_eq!(observed_abox, 2);
         assert_eq!(ontology.tbox().count(), 1);
         assert_eq!(ontology.abox().count(), 0);
+    }
+
+    #[test]
+    fn appending_omitted_abox_matches_complete_recovery_parse() {
+        let text = "Ontology(\
+            ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <a>) \
+            SubClassOf(<C> <D>) \
+            ObjectPropertyAssertion(<s> <a> <b>) \
+            SubObjectPropertyOf(<s> <t>) \
+            DifferentIndividuals(<a> <b>))";
+
+        let retained = |node: &Node<'_>| !is_abox_axiom_node(node);
+
+        // Historical recovery rebuilt the complete ontology after the filtered
+        // pass, while retaining the registry populated by that first pass.
+        let mut old_reg = IriRegistry::new();
+        let _first = parse_axioms_observed_filtered(&mut old_reg, text, retained)
+            .expect("filtered old pass");
+        let old = parse_axioms(&mut old_reg, text).expect("complete recovery");
+
+        // Incremental recovery retains the first syntax partition and appends
+        // only the source nodes omitted by that pass.
+        let mut new_reg = IriRegistry::new();
+        let mut new = parse_axioms_observed_filtered(&mut new_reg, text, retained)
+            .expect("filtered new pass");
+        parse_axioms_filtered_into(&mut new_reg, text, &mut new, is_abox_axiom_node)
+            .expect("append ABox");
+
+        let collect = |ontology: &Ontology| {
+            ontology
+                .tbox()
+                .chain(ontology.rbox())
+                .chain(ontology.abox())
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(collect(&new), collect(&old));
     }
 
     /// Regression: `DisjointUnion` fell into the silent catch-all and produced

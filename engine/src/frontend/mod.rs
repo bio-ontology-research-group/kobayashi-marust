@@ -509,6 +509,392 @@ fn likely_separable_positive_abox(text: &str) -> bool {
         && !REJECT.iter().any(|token| text.contains(token))
 }
 
+/// Cheap admission screen for speculative omission of a large atomic-class
+/// ABox. This is deliberately not a semantic certificate: the streaming
+/// profile and compact ABox observer later prove that every omitted source
+/// axiom is an atomic class assertion in the exact positive-EL fragment. If
+/// that proof fails, the recovery pass appends every omitted ABox axiom before
+/// normalization. The screen only avoids constructing a giant syntax AST in
+/// the common annotation-reification shape.
+fn likely_atomic_class_only_abox(text: &str) -> bool {
+    const OTHER_ABOX: &[&str] = &[
+        "ObjectPropertyAssertion(",
+        "NegativeObjectPropertyAssertion(",
+        "DataPropertyAssertion(",
+        "NegativeDataPropertyAssertion(",
+        "SameIndividual(",
+        "DifferentIndividuals(",
+    ];
+    // Mirror the coarse source exclusions of the exact positive-EL gate. This
+    // keeps known non-candidates on the one-pass full parser while still
+    // allowing disjoint classes, transitivity, and role chains, which the
+    // downstream EL completion handles exactly.
+    const NON_EL: &[&str] = &[
+        "ObjectUnionOf(",
+        "ObjectComplementOf(",
+        "ObjectAllValuesFrom(",
+        "ObjectMinCardinality(",
+        "ObjectMaxCardinality(",
+        "ObjectExactCardinality(",
+        "FunctionalObjectProperty(",
+        "InverseFunctionalObjectProperty(",
+        "InverseObjectProperties(",
+        "SymmetricObjectProperty(",
+        "AsymmetricObjectProperty(",
+        "IrreflexiveObjectProperty(",
+        "DisjointObjectProperties(",
+        "ObjectPropertyRange(",
+        "ObjectOneOf(",
+        "ObjectHasValue(",
+        "ObjectHasSelf(",
+        "DataSomeValuesFrom(",
+        "DataAllValuesFrom(",
+        "DataMinCardinality(",
+        "DataMaxCardinality(",
+        "DataExactCardinality(",
+        "DataHasValue(",
+        "DatatypeRestriction(",
+        "DataOneOf(",
+        "HasKey(",
+        "owl:topObjectProperty",
+        "owl:bottomObjectProperty",
+        "DLSafeRule(",
+        "Import(",
+    ];
+    text.contains("ClassAssertion(")
+        && !OTHER_ABOX.iter().any(|token| text.contains(token))
+        && !NON_EL.iter().any(|token| text.contains(token))
+}
+
+/// Prove that a role-free collection of existential ABox assertions can be
+/// checked through the ordinary TBox classification.
+///
+/// Each assertion must be `a : exists R.C`, for one named role R and a named
+/// filler C. R may not occur in a TBox concept or in a constraining RBox axiom;
+/// the sole admitted RBox occurrence is `R o S <= R`. If every C is satisfiable,
+/// take one pointed model per assertion, add a fresh root for each individual,
+/// connect that root to the assertion's witness by R, and close R under the
+/// admitted chains. R is otherwise semantically unread, so this construction
+/// preserves every component model and satisfies all assertions. The existing
+/// disjoint-union certificate then proves that projecting the ABox preserves
+/// the public named-class taxonomy.
+fn existential_witness_abox_projection(
+    ontology: &syntax::Ontology,
+    profile: &profile::OntologyProfile,
+) -> Option<BTreeSet<String>> {
+    use syntax::{Axiom, Concept, Role};
+
+    if !profile.disjoint_union_abox_candidate
+        || profile.source.abox_axioms == 0
+        || profile.source.abox_axioms != profile.source.class_assertions
+    {
+        return None;
+    }
+
+    let mut assertion_role: Option<&str> = None;
+    let mut fillers = BTreeSet::new();
+    let mut parsed_assertions = 0u64;
+    for axiom in ontology.abox() {
+        let Axiom::ConceptAssertion(Concept::Exists(Role::Name(role), filler), _) = axiom else {
+            return None;
+        };
+        let Concept::Name(filler) = filler.as_ref() else {
+            return None;
+        };
+        if assertion_role.is_some_and(|established| established != role) {
+            return None;
+        }
+        assertion_role = Some(role);
+        fillers.insert(filler.clone());
+        parsed_assertions += 1;
+    }
+    // The streaming and parsed views must account for exactly the same ABox.
+    // Any unsupported or newly introduced assertion shape fails closed here.
+    if parsed_assertions == 0 || parsed_assertions != profile.source.class_assertions {
+        return None;
+    }
+    let role = assertion_role?;
+
+    fn concept_mentions_role(concept: &Concept, sought: &str) -> bool {
+        let role_matches = |role: &Role| match role {
+            Role::Name(name) | Role::Inverse(name) => name == sought,
+            Role::Universal => false,
+        };
+        match concept {
+            Concept::Not(operand) => concept_mentions_role(operand, sought),
+            Concept::And(operands) | Concept::Or(operands) => operands
+                .iter()
+                .any(|operand| concept_mentions_role(operand, sought)),
+            Concept::Exists(role, filler)
+            | Concept::Forall(role, filler)
+            | Concept::AtLeast(_, role, filler)
+            | Concept::AtMost(_, role, filler) => {
+                role_matches(role) || concept_mentions_role(filler, sought)
+            }
+            Concept::HasSelf(role) => role_matches(role),
+            Concept::Name(_) | Concept::Top | Concept::Bottom | Concept::Nominal(_) => false,
+        }
+    }
+
+    for axiom in ontology.tbox() {
+        let touches = match axiom {
+            Axiom::SubClassOf(left, right)
+            | Axiom::EquivalentClasses(left, right)
+            | Axiom::DisjointClasses(left, right) => {
+                concept_mentions_role(left, role) || concept_mentions_role(right, role)
+            }
+            _ => unreachable!("Ontology::tbox returned a non-TBox axiom"),
+        };
+        if touches {
+            return None;
+        }
+    }
+
+    for axiom in ontology.rbox() {
+        let admitted_chain = matches!(axiom,
+            Axiom::RoleChain(chain, head)
+                if head == role
+                    && chain.first().is_some_and(|first| first == role)
+                    && chain.iter().skip(1).all(|member| member != role));
+        let mentions = match axiom {
+            Axiom::RoleInclusion(sub, sup)
+            | Axiom::InverseRoles(sub, sup)
+            | Axiom::DisjointRoles(sub, sup) => sub == role || sup == role,
+            Axiom::RoleChain(chain, head) => {
+                head == role || chain.iter().any(|member| member == role)
+            }
+            Axiom::TransitiveRole(member)
+            | Axiom::SymmetricRole(member)
+            | Axiom::AsymmetricRole(member)
+            | Axiom::ReflexiveRole(member)
+            | Axiom::IrreflexiveRole(member)
+            | Axiom::FunctionalRole(member)
+            | Axiom::InverseFunctionalRole(member) => member == role,
+            _ => unreachable!("Ontology::rbox returned a non-RBox axiom"),
+        };
+        if mentions && !admitted_chain {
+            return None;
+        }
+    }
+
+    Some(fillers)
+}
+
+/// Replace a positive, equality-free ABox by one fresh conjunction probe per
+/// individual when its role graph is semantically unread by the terminology.
+///
+/// For each individual `a` with asserted named types `C1..Cn`, the projection
+/// adds a fresh internal class `Pa` and axioms `Pa ⊑ Ci`. A complete TBox
+/// classification proves the original ABox consistent exactly when every `Pa`
+/// is satisfiable. Positive role assertions and explicit inequalities can be
+/// interpreted independently because the structural checks below reject every
+/// concept/RBox constructor that could read an asserted edge, impose a negative
+/// role constraint, or generate equality. The added probe names are a
+/// conservative extension and never enter public output.
+fn inert_role_abox_probes(
+    ontology: &syntax::Ontology,
+    profile: &profile::OntologyProfile,
+    universal_role_elided: bool,
+) -> Option<Vec<(String, Vec<String>)>> {
+    use syntax::{Axiom, Concept, Role};
+
+    let debug = std::env::var_os("KM_DEBUG_INERT_ABOX").is_some();
+
+    let source = &profile.source;
+    let source_count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    if source.abox_axioms == 0
+        || source.class_assertions == 0
+        || source.role_assertions == 0
+        || source.imports != 0
+        || source.rule_axioms != 0
+        || source.unsupported_rule_axioms != 0
+        || source.distinct_data_properties != 0
+        || source.datatype_constructors != 0
+        || source.has_values != 0
+        || source.has_self != 0
+        || source.min_cardinalities != 0
+        || source.max_cardinalities != 0
+        || source.exact_cardinalities != 0
+        || source.functional_role_axioms != 0
+        || source.inverse_functional_role_axioms != 0
+        // A domain or range is precisely a reader of an asserted ground role
+        // edge.  These source constructs are retained as RBox side data rather
+        // than syntax::Axiom values, so reject them explicitly here.
+        || source.domain_axioms != 0
+        || source.range_axioms != 0
+        || (profile.expressivity.universal_role && !universal_role_elided)
+        || profile.expressivity.datatype
+        || profile.expressivity.grounding
+        // Parsed DifferentIndividuals is expanded pairwise, so parsed and
+        // source axiom counts need not agree.  Prove source coverage by
+        // constructor instead: these are exactly the three variants accepted
+        // by the parsed inspection below.
+        || source.abox_axioms
+            != source
+                .class_assertions
+                .saturating_add(source.role_assertions)
+                .saturating_add(source_count("DifferentIndividuals"))
+    {
+        if debug {
+            eprintln!("KM_DEBUG_INERT_ABOX decline=source-profile");
+        }
+        return None;
+    }
+
+    // Record every object-role label whose extension a concept can inspect.
+    // Number restrictions, self, nominals, and the universal role were already
+    // rejected above; the recursive walk is otherwise polarity-independent so
+    // Boolean nesting cannot hide a reader.
+    fn collect_read_roles(concept: &Concept, roles: &mut HashSet<String>) -> bool {
+        match concept {
+            Concept::Name(_) | Concept::Top | Concept::Bottom => true,
+            Concept::Nominal(_) => false,
+            Concept::Not(inner) => collect_read_roles(inner, roles),
+            Concept::And(parts) | Concept::Or(parts) => {
+                parts.iter().all(|part| collect_read_roles(part, roles))
+            }
+            Concept::Exists(role, filler) | Concept::Forall(role, filler) => {
+                let role = match role {
+                    Role::Name(role) | Role::Inverse(role) => role,
+                    Role::Universal => return false,
+                };
+                roles.insert(role.clone());
+                collect_read_roles(filler, roles)
+            }
+            Concept::AtLeast(..) | Concept::AtMost(..) | Concept::HasSelf(..) => false,
+        }
+    }
+
+    let mut read_roles = HashSet::new();
+    for axiom in ontology.tbox() {
+        let safe = match axiom {
+            Axiom::SubClassOf(left, right) => {
+                collect_read_roles(left, &mut read_roles)
+                    && collect_read_roles(right, &mut read_roles)
+            }
+            Axiom::EquivalentClasses(left, right) | Axiom::DisjointClasses(left, right) => {
+                collect_read_roles(left, &mut read_roles)
+                    && collect_read_roles(right, &mut read_roles)
+            }
+            _ => unreachable!("Ontology::tbox returned a non-TBox axiom"),
+        };
+        if !safe {
+            if debug {
+                eprintln!("KM_DEBUG_INERT_ABOX decline=tbox axiom={axiom:?}");
+            }
+            return None;
+        }
+    }
+    let mut memberships: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut active_roles = HashSet::new();
+    for axiom in ontology.abox() {
+        match axiom {
+            Axiom::ConceptAssertion(Concept::Name(class), individual) => {
+                memberships
+                    .entry(individual.clone())
+                    .or_default()
+                    .insert(class.clone());
+            }
+            Axiom::RoleAssertion(role, ..) => {
+                active_roles.insert(role.clone());
+            }
+            Axiom::DifferentIndividuals(..) => {}
+            Axiom::ConceptAssertion(..)
+            | Axiom::NegativeRoleAssertion(..)
+            | Axiom::SameIndividual(..) => {
+                if debug {
+                    eprintln!("KM_DEBUG_INERT_ABOX decline=abox axiom={axiom:?}");
+                }
+                return None;
+            }
+            _ => unreachable!("Ontology::abox returned a non-ABox axiom"),
+        }
+    }
+    if memberships.is_empty() {
+        if debug {
+            eprintln!("KM_DEBUG_INERT_ABOX decline=no-memberships");
+        }
+        return None;
+    }
+
+    let rbox: Vec<&Axiom> = ontology.rbox().collect();
+    for axiom in &rbox {
+        if matches!(
+            *axiom,
+            Axiom::AsymmetricRole(_)
+                | Axiom::IrreflexiveRole(_)
+                | Axiom::FunctionalRole(_)
+                | Axiom::InverseFunctionalRole(_)
+                | Axiom::DisjointRoles(..)
+        ) {
+            if debug {
+                eprintln!("KM_DEBUG_INERT_ABOX decline=rbox axiom={axiom:?}");
+            }
+            return None;
+        }
+    }
+
+    // Close the asserted labels under every positive RBox operation that can
+    // make a ground edge visible under another label.  Ignoring endpoint
+    // orientation for inverse/symmetric roles is conservative: it can decline
+    // a safe projection but cannot admit an observable edge.  A chain head is
+    // activated only when every body label can be active; this is still an
+    // over-approximation because it ignores whether matching endpoints exist.
+    loop {
+        let mut changed = false;
+        for axiom in &rbox {
+            match *axiom {
+                Axiom::RoleInclusion(sub, sup) if active_roles.contains(sub) => {
+                    changed |= active_roles.insert(sup.clone());
+                }
+                Axiom::RoleChain(parts, head)
+                    if parts.iter().all(|role| active_roles.contains(role)) =>
+                {
+                    changed |= active_roles.insert(head.clone());
+                }
+                Axiom::InverseRoles(left, right)
+                    if active_roles.contains(left) || active_roles.contains(right) =>
+                {
+                    changed |= active_roles.insert(left.clone());
+                    changed |= active_roles.insert(right.clone());
+                }
+                _ => {}
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    let mut observable: Vec<String> = active_roles.intersection(&read_roles).cloned().collect();
+    observable.sort();
+    if !observable.is_empty() {
+        if debug {
+            eprintln!("KM_DEBUG_INERT_ABOX decline=observable-ground-role roles={observable:?}");
+        }
+        return None;
+    }
+    if debug {
+        eprintln!(
+            "KM_DEBUG_INERT_ABOX accept probes={} source_abox={}",
+            memberships.len(),
+            source.abox_axioms
+        );
+    }
+    Some(
+        memberships
+            .into_iter()
+            .enumerate()
+            .map(|(index, (_individual, classes))| {
+                (
+                    format!("__km_abox_probe_{index}"),
+                    classes.into_iter().collect(),
+                )
+            })
+            .collect(),
+    )
+}
+
 /// Route-explicit frontend core. Production selects `requested` from KM_ROUTE;
 /// tests use the wrapper below so they can exercise automatic routing without
 /// relying on a pre-existing KM_ROUTE value.
@@ -535,8 +921,8 @@ fn ofn_to_clauses_requested(
     let mut data_abox = data_abox::DataAbox::default();
     let speculative_abox_omission = requested == crate::routing::Route::Auto
         && std::env::var_os("KM_NO_FAST_SEPARABLE_ABOX_PARSE").is_none()
-        && text.len() >= (32 << 20)
-        && likely_separable_positive_abox(text);
+        && text.len() >= (8 << 20)
+        && (likely_separable_positive_abox(text) || likely_atomic_class_only_abox(text));
     let mut ontology = parse::parse_axioms_observed_filtered(&mut reg, text, |node| {
         profile_builder.observe(node);
         rule_certificate_scan.observe(node);
@@ -570,11 +956,52 @@ fn ofn_to_clauses_requested(
     // pre-normalisation choice at this exact boundary.
     let (mut profile, source_class_raw) =
         profile_builder.finish_with_separable_class_names(text.len() as u64);
-    if speculative_abox_omission && !profile.positive_abox_tbox_separable {
+    let inert_role_probes =
+        inert_role_abox_probes(&ontology, &profile, elide_top_role).unwrap_or_default();
+    profile.inert_role_abox_probe_candidate = !inert_role_probes.is_empty();
+    let inert_role_asserted: BTreeSet<String> = inert_role_probes
+        .iter()
+        .map(|(probe, _)| probe.clone())
+        .collect();
+    for (probe, classes) in &inert_role_probes {
+        for class in classes {
+            ontology.add(syntax::Axiom::SubClassOf(
+                syntax::Concept::Name(probe.clone()),
+                syntax::Concept::Name(class.clone()),
+            ));
+        }
+    }
+    // An ABox of atomic class assertions has a compact exact certificate: it
+    // is consistent iff every asserted class is satisfiable in the TBox. The
+    // source profile proves the surrounding positive EL fragment, while this
+    // independent observer proves complete atomic-assertion coverage.
+    let atomic_class_abox_raw = if profile.positive_el_abox_materializable
+        && profile.source.abox_axioms == profile.source.class_assertions
+    {
+        data_abox.atomic_class_assertion_classes(profile.source.class_assertions)
+    } else {
+        None
+    };
+    profile.atomic_class_abox_candidate = atomic_class_abox_raw.is_some();
+    let atomic_class_asserted: BTreeSet<String> = atomic_class_abox_raw
+        .unwrap_or_default()
+        .into_iter()
+        .map(|class| reg.short(class))
+        .collect();
+    if speculative_abox_omission
+        && !profile.positive_abox_tbox_separable
+        && !profile.atomic_class_abox_candidate
+        && !profile.inert_role_abox_probe_candidate
+    {
         // The source observer could not prove that dropping the ABox preserves
-        // consistency and every named TBox consequence. Rebuild the complete
-        // syntax representation before any normalization or routing decision.
-        ontology = parse::parse_axioms(&mut reg, text)?;
+        // consistency and every named TBox consequence. The first pass already
+        // materialised the complete TBox/RBox/rule partition, so append only
+        // the omitted ABox instead of reconstructing that retained partition.
+        // Parsing uses the same registry and Ontology::add de-duplication as a
+        // complete recovery pass, preserving names and normalized output.
+        parse::parse_axioms_filtered_into(&mut reg, text, &mut ontology, |node| {
+            parse::is_abox_axiom_node(node)
+        })?;
     }
     // A certified rule/ABox clash makes the full ontology inconsistent before
     // worker selection. In that case unsupported source rules cannot restore
@@ -598,6 +1025,9 @@ fn ofn_to_clauses_requested(
         .source
         .unsupported_rule_axioms
         .saturating_sub(certified_unsupported_rules);
+    let existential_witness_fillers =
+        existential_witness_abox_projection(&ontology, &profile).unwrap_or_default();
+    profile.existential_witness_abox_candidate = !existential_witness_fillers.is_empty();
     let automatic = requested == crate::routing::Route::Auto;
     let mut route = if automatic {
         crate::routing::select(&profile)
@@ -607,6 +1037,17 @@ fn ofn_to_clauses_requested(
     // Named bundles control clausification as well as the later worker. This
     // call occurs before normalisation and before any reasoner thread starts.
     route.apply_environment();
+    // The source-profile gate proves that this is the narrow, datatype-free,
+    // inverse-free native SHOQ fragment whose first-class cardinality payload
+    // is complete. Avoid materialising the quadratic clausal pigeonhole only
+    // for that automatically selected leaf. Explicit/manual routes retain the
+    // ordinary complete clause representation and therefore fail closed.
+    let native_cardinality_only = automatic
+        && route == crate::routing::Route::HtShoq
+        && crate::routing::high_unqualified_cardinality_shoq_candidate(&profile);
+    if native_cardinality_only {
+        std::env::set_var("KM_NATIVE_CARDINALITY_ONLY", "1");
+    }
     // The source-profile certificate proves that this positive ABox is
     // consistent and cannot alter any public TBox subsumption. Remove the
     // certified-irrelevant ABox before normalization so its AST storage no
@@ -631,22 +1072,28 @@ fn ofn_to_clauses_requested(
     let omit_separable_abox = (automatic || route == crate::routing::Route::Elc)
         && profile.source.abox_axioms > 0
         && std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION").is_none()
-        && (profile.positive_abox_tbox_separable || disjoint_union_consistent);
+        && (profile.positive_abox_tbox_separable
+            || profile.atomic_class_abox_candidate
+            || profile.inert_role_abox_probe_candidate
+            || profile.existential_witness_abox_candidate
+            || disjoint_union_consistent);
     if omit_separable_abox {
         ontology.retain_axioms(|axiom| !axiom.is_abox());
         data_abox = data_abox::DataAbox::default();
         // The retained payload no longer contains a typed ABox for the
         // positive-EL materialization consumer. Consistency is supplied either
         // by `positive_abox_tbox_separable` or by the exact full-ontology
-        // verdict carried in `KM_DISJOINT_UNION_ABOX_CONSISTENT`; the original
-        // source counts and signature remain authoritative.
+        // verdict carried in `KM_DISJOINT_UNION_ABOX_CONSISTENT`; an atomic
+        // projection instead retains its asserted class set for the complete
+        // taxonomy consistency check. Source counts and signature remain
+        // authoritative.
         profile.positive_el_abox_materializable = false;
     }
     // ELC computes bottom propagation as part of its own complete fixpoint.
     // Building the general SROIQ bottom certificate is therefore redundant on
     // an ELC-only route and can be quadratic on giant flat taxonomies with
     // many paths to owl:Nothing. Other routes retain the prepass unchanged.
-    let mut bottom_prepass = if !omit_separable_abox
+    let mut bottom_prepass = if (!omit_separable_abox || profile.existential_witness_abox_candidate)
         && route_needs_bottom_prepass(route)
         && std::env::var_os("KM_NO_BOTTOM_PREPASS").is_none()
     {
@@ -664,7 +1111,8 @@ fn ofn_to_clauses_requested(
         }
     }
     t.lap("parse+axioms");
-    let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
+    let (tbox, abox, mut hooks) =
+        normalise::normalise_with_native_cardinality(&ontology, native_cardinality_only);
     let mut nominal_abox = if omit_separable_abox {
         crate::json_io::NominalAboxMeta::default()
     } else {
@@ -675,7 +1123,18 @@ fn ofn_to_clauses_requested(
     // clash check is finished after the RBox domain/range records are built.
     let (abox_data, nominal_enumeration_inconsistent, asserted_direct, asserted_roles) =
         if omit_separable_abox {
-            (None, false, BTreeSet::new(), HashSet::new())
+            (
+                None,
+                false,
+                if profile.atomic_class_abox_candidate {
+                    atomic_class_asserted.clone()
+                } else if profile.inert_role_abox_probe_candidate {
+                    inert_role_asserted.clone()
+                } else {
+                    existential_witness_fillers.clone()
+                },
+                HashSet::new(),
+            )
         } else {
             let (asserted_direct, asserted_roles) = abox_consistency::asserted_profile(&ontology);
             (
@@ -827,7 +1286,17 @@ fn ofn_to_clauses_requested(
     // a named-class subsumption, equality, or unsat (`concept_relevant_roles`).
     // Prune the inert reverse-edge clauses and relax the routing predicate; roles
     // in the slice keep the ontology on the CB engine.
-    let relevant = preprocess::concept_relevant_roles(&tbox);
+    // The backward relevance slice exists only to decide whether reverse-edge
+    // clauses introduced for inverse or symmetric roles are inert. Ordinary EL
+    // ontologies have neither kind of bridge, so computing the slice cannot
+    // affect pruning or routing. Avoid its full clause/index pass and retain
+    // the established strict RBox screen below.
+    let has_reverse_role_bridges = !role_inverses.is_empty() || !symmetric_roles.is_empty();
+    let relevant = if has_reverse_role_bridges {
+        preprocess::concept_relevant_roles(&tbox)
+    } else {
+        HashSet::new()
+    };
     if !no_prune {
         preprocess::prune_inert_role_bridges(
             &mut tbox,
@@ -839,9 +1308,12 @@ fn ofn_to_clauses_requested(
     let inverses_inert = role_inverses
         .iter()
         .all(|(r, s)| !relevant.contains(r) && !relevant.contains(s));
-    let el_rbox_safe = rbox::el_rbox_safe_relaxed(&rbox, &relevant)
-        && inverses_inert
-        && !(nominals_mode && has_individuals);
+    let rbox_safe = if has_reverse_role_bridges {
+        rbox::el_rbox_safe_relaxed(&rbox, &relevant)
+    } else {
+        rbox::el_rbox_safe(&rbox)
+    };
+    let el_rbox_safe = rbox_safe && inverses_inert && !(nominals_mode && has_individuals);
     t.lap("relevance+prune");
     let mut declared = Vec::new();
     for name in declared_raw {
@@ -966,7 +1438,12 @@ fn ofn_to_clauses_requested(
     // removed. Admit the retained TBox only after the normalized clause and
     // RBox screens prove the exact ELC contract. A non-EL retained TBox keeps
     // its originally selected complete route.
-    if automatic && omit_separable_abox && el_rbox_safe && pure_el_shape {
+    if automatic
+        && omit_separable_abox
+        && !profile.inert_role_abox_probe_candidate
+        && el_rbox_safe
+        && pure_el_shape
+    {
         route = crate::routing::Route::Elc;
         route.apply_environment();
     }
@@ -1016,6 +1493,7 @@ fn ofn_to_clauses_requested(
             .any(|concept| private_abox_concepts.contains(concept))
         {
             profile.disjoint_union_abox_candidate = false;
+            profile.existential_witness_abox_candidate = false;
         }
     }
     // The iterator is already in key order. `BTreeMap` can bulk-extend its
@@ -1061,7 +1539,10 @@ fn route_needs_bottom_prepass(route: crate::routing::Route) -> bool {
 
 #[cfg(test)]
 mod separable_abox_elision_tests {
-    use super::{likely_separable_positive_abox, with_ofn_to_clauses_requested_route};
+    use super::{
+        likely_atomic_class_only_abox, likely_separable_positive_abox,
+        with_ofn_to_clauses_requested_route,
+    };
     use crate::routing::Route;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -1090,6 +1571,67 @@ mod separable_abox_elision_tests {
     }
 
     #[test]
+    fn atomic_parse_screen_rejects_every_other_abox_constructor() {
+        assert!(likely_atomic_class_only_abox(
+            "Ontology(DisjointClasses(<A> <B>) ClassAssertion(<A> <a>))"
+        ));
+        for source in [
+            "Ontology(ClassAssertion(<A> <a>) ObjectPropertyAssertion(<r> <a> <b>))",
+            "Ontology(ClassAssertion(<A> <a>) NegativeObjectPropertyAssertion(<r> <a> <b>))",
+            "Ontology(ClassAssertion(<A> <a>) DataPropertyAssertion(<p> <a> 1))",
+            "Ontology(ClassAssertion(<A> <a>) SameIndividual(<a> <b>))",
+            "Ontology(ClassAssertion(<A> <a>) DifferentIndividuals(<a> <b>))",
+            "Ontology(SubClassOf(<A> ObjectMaxCardinality(1 <r>)) ClassAssertion(<A> <a>))",
+        ] {
+            assert!(!likely_atomic_class_only_abox(source), "{source}");
+        }
+    }
+
+    #[test]
+    fn inert_role_abox_is_replaced_by_internal_type_probes() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(\
+               SubClassOf(<A> ObjectComplementOf(<B>)) \
+               SubClassOf(<C> ObjectSomeValuesFrom(<r> <D>)) \
+               InverseObjectProperties(<r> <s>) \
+               SubObjectPropertyOf(<q> owl:topObjectProperty) \
+               ClassAssertion(<A> <a>) \
+               ClassAssertion(<C> <a>) \
+               ObjectPropertyAssertion(<q> <a> <b>) \
+               DifferentIndividuals(<a> <b> <c>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("inert role ABox source");
+        assert!(result.profile.inert_role_abox_probe_candidate);
+        assert_eq!(result.route, Route::ProductionAll.as_str());
+        assert!(result.nominal_abox.is_empty());
+        assert_eq!(result.asserted_classes, vec!["__km_abox_probe_0"]);
+        let rendered = serde_json::to_string(&result.clauses).expect("render clauses");
+        assert!(rendered.contains("__km_abox_probe_0"));
+    }
+
+    #[test]
+    fn role_readers_and_equality_generators_reject_inert_projection() {
+        let _environment_lock = lock_environment();
+        for source in [
+            "Ontology(ObjectPropertyDomain(<q> <A>) ClassAssertion(<A> <a>) ObjectPropertyAssertion(<q> <a> <b>))",
+            "Ontology(SubClassOf(ObjectSomeValuesFrom(<q> owl:Thing) <A>) ClassAssertion(<A> <a>) ObjectPropertyAssertion(<q> <a> <b>))",
+            "Ontology(SubObjectPropertyOf(<q> <r>) SubClassOf(ObjectSomeValuesFrom(<r> owl:Thing) <A>) ClassAssertion(<A> <a>) ObjectPropertyAssertion(<q> <a> <b>))",
+            "Ontology(InverseObjectProperties(<q> <r>) SubClassOf(ObjectSomeValuesFrom(<r> owl:Thing) <A>) ClassAssertion(<A> <a>) ObjectPropertyAssertion(<q> <a> <b>))",
+            "Ontology(FunctionalObjectProperty(<q>) ClassAssertion(<A> <a>) ObjectPropertyAssertion(<q> <a> <b>))",
+            "Ontology(DisjointObjectProperties(<q> <r>) ClassAssertion(<A> <a>) ObjectPropertyAssertion(<q> <a> <b>))",
+            "Ontology(SameIndividual(<a> <b>) ClassAssertion(<A> <a>) ObjectPropertyAssertion(<q> <a> <b>))",
+            "Ontology(EquivalentClasses(<A> ObjectOneOf(<a>)) ClassAssertion(<A> <a>) ObjectPropertyAssertion(<q> <a> <b>))",
+        ] {
+            let result = with_ofn_to_clauses_requested_route(source, Route::Auto, |result| result)
+                .expect("supported source");
+            assert!(!result.profile.inert_role_abox_probe_candidate, "{source}");
+        }
+    }
+
+    #[test]
     fn certified_positive_abox_is_removed_before_clausification() {
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
@@ -1114,7 +1656,45 @@ mod separable_abox_elision_tests {
     }
 
     #[test]
-    fn bottom_constrained_abox_is_not_elided() {
+    fn atomic_class_abox_is_projected_but_retains_consistency_queries() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(\
+               Declaration(Class(<A>)) Declaration(Class(<B>)) \
+               DisjointClasses(<A> <B>) \
+               ClassAssertion(<A> <a>) ClassAssertion(<A> <b>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("atomic ABox source");
+        assert!(!result.profile.positive_abox_tbox_separable);
+        assert!(result.profile.atomic_class_abox_candidate);
+        assert!(!result.profile.positive_el_abox_materializable);
+        assert_eq!(result.asserted_classes, vec!["A"]);
+        assert!(result.nominal_abox.individuals.is_empty());
+        assert!(result.clauses.iter().all(|clause| {
+            clause
+                .body
+                .iter()
+                .chain(&clause.head)
+                .all(|atom| match atom {
+                    crate::json_io::JAtom::Concept { term, .. } => {
+                        !matches!(term, crate::json_io::JTerm::Ind { .. })
+                    }
+                    crate::json_io::JAtom::Role { source, target, .. } => {
+                        !matches!(source, crate::json_io::JTerm::Ind { .. })
+                            && !matches!(target, crate::json_io::JTerm::Ind { .. })
+                    }
+                    crate::json_io::JAtom::Eq { left, right } => {
+                        !matches!(left, crate::json_io::JTerm::Ind { .. })
+                            && !matches!(right, crate::json_io::JTerm::Ind { .. })
+                    }
+                })
+        }));
+    }
+
+    #[test]
+    fn bottom_constrained_atomic_abox_is_projected_for_taxonomy_check() {
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(<A> owl:Nothing) ClassAssertion(<A> <a>))",
@@ -1123,8 +1703,41 @@ mod separable_abox_elision_tests {
         )
         .expect("EL ABox source");
         assert!(!result.profile.positive_abox_tbox_separable);
+        assert!(result.profile.atomic_class_abox_candidate);
+        assert!(!result.profile.positive_el_abox_materializable);
+        assert_eq!(result.asserted_classes, vec!["A"]);
+        assert!(result.nominal_abox.individuals.is_empty());
+    }
+
+    #[test]
+    fn direct_bottom_assertion_stays_on_full_abox_path() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(ClassAssertion(owl:Nothing <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("bottom assertion source");
+        assert!(!result.profile.atomic_class_abox_candidate);
         assert!(result.profile.positive_el_abox_materializable);
         assert_eq!(result.nominal_abox.individuals.len(), 1);
+    }
+
+    #[test]
+    fn complex_class_assertion_stays_on_full_abox_path() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(\
+               DisjointClasses(<A> <B>) \
+               ClassAssertion(ObjectIntersectionOf(<A> <B>) <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("complex assertion source");
+        assert!(!result.profile.atomic_class_abox_candidate);
+        assert!(result.profile.positive_el_abox_materializable);
+        assert_eq!(result.nominal_abox.individuals.len(), 1);
+        assert_eq!(result.nominal_abox.individuals[0].assertions.len(), 1);
     }
 
     #[test]
@@ -1146,6 +1759,117 @@ mod separable_abox_elision_tests {
             result.declared.iter().any(|class| class == "C"),
             "an ABox-only query class must survive projection"
         );
+    }
+
+    #[test]
+    fn isolated_existential_witness_abox_is_projected_to_production() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            "Ontology(\
+               SubClassOf(<X> owl:Nothing) \
+               SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <r>) \
+               ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <a>) \
+               ClassAssertion(ObjectSomeValuesFrom(<r> <D>) <a>) \
+               ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <b>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("isolated existential ABox");
+        assert!(!result.profile.positive_abox_tbox_separable);
+        assert!(result.profile.existential_witness_abox_candidate);
+        assert_eq!(
+            result.route,
+            Route::Elc.as_str(),
+            "the projected synthetic TBox is exact EL; richer SRIQ inputs retain production_all"
+        );
+        assert!(result.nominal_abox.individuals.is_empty());
+        assert_eq!(result.asserted_classes, vec!["C", "D"]);
+        assert!(result
+            .clauses
+            .iter()
+            .all(
+                |clause| clause.body.iter().chain(&clause.head).all(|atom| !matches!(
+                    atom,
+                    crate::json_io::JAtom::Concept {
+                        term: crate::json_io::JTerm::Ind { .. },
+                        ..
+                    } | crate::json_io::JAtom::Role {
+                        source: crate::json_io::JTerm::Ind { .. },
+                        ..
+                    } | crate::json_io::JAtom::Role {
+                        target: crate::json_io::JTerm::Ind { .. },
+                        ..
+                    }
+                ))
+            ));
+    }
+
+    #[test]
+    fn existential_witness_projection_preserves_tbox_bottom_prepass() {
+        let _environment_lock = lock_environment();
+        let projected = with_ofn_to_clauses_requested_route(
+            "Ontology(\
+               Declaration(Class(<A>)) Declaration(Class(<B>)) Declaration(Class(<C>)) \
+               Declaration(Class(<U>)) Declaration(Class(<V>)) Declaration(Class(<W>)) \
+               Declaration(ObjectProperty(<p>)) Declaration(ObjectProperty(<r>)) \
+               Declaration(ObjectProperty(<s>)) \
+               SubClassOf(<B> owl:Nothing) \
+               SubClassOf(<A> ObjectSomeValuesFrom(<p> <B>)) \
+               EquivalentClasses(<U> ObjectUnionOf(<V> <W>)) \
+               SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <r>) \
+               ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <a>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("projected source");
+        let stripped = with_ofn_to_clauses_requested_route(
+            "Ontology(\
+               Declaration(Class(<A>)) Declaration(Class(<B>)) Declaration(Class(<C>)) \
+               Declaration(Class(<U>)) Declaration(Class(<V>)) Declaration(Class(<W>)) \
+               Declaration(ObjectProperty(<p>)) Declaration(ObjectProperty(<r>)) \
+               Declaration(ObjectProperty(<s>)) \
+               SubClassOf(<B> owl:Nothing) \
+               SubClassOf(<A> ObjectSomeValuesFrom(<p> <B>)) \
+               EquivalentClasses(<U> ObjectUnionOf(<V> <W>)) \
+               SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <r>))",
+            Route::Auto,
+            |result| result,
+        )
+        .expect("independently stripped source");
+
+        assert!(projected.profile.existential_witness_abox_candidate);
+        assert_eq!(projected.route, Route::ProductionAll.as_str());
+        assert_eq!(stripped.route, Route::ProductionAll.as_str());
+        assert_eq!(projected.clauses.len(), stripped.clauses.len());
+        assert!(projected.clauses == stripped.clauses);
+        assert_eq!(projected.rbox, stripped.rbox);
+    }
+
+    #[test]
+    fn existential_witness_projection_rejects_every_role_coupling() {
+        let _environment_lock = lock_environment();
+        for rejected in [
+            "Ontology(SubClassOf(<X> owl:Nothing) \
+             SubClassOf(ObjectSomeValuesFrom(<r> <C>) <D>) \
+             ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <a>))",
+            "Ontology(SubClassOf(<X> owl:Nothing) \
+             SubObjectPropertyOf(ObjectPropertyChain(<s> <r>) <r>) \
+             ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <a>))",
+            "Ontology(SubClassOf(<X> owl:Nothing) \
+             SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) \
+             ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <a>))",
+            "Ontology(SubClassOf(<X> owl:Nothing) \
+             ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <a>) \
+             ClassAssertion(ObjectSomeValuesFrom(<s> <C>) <b>))",
+            "Ontology(SubClassOf(<X> owl:Nothing) \
+             ClassAssertion(ObjectSomeValuesFrom(<r> ObjectIntersectionOf(<C> <D>)) <a>))",
+        ] {
+            let result = with_ofn_to_clauses_requested_route(rejected, Route::Auto, |result| {
+                result.profile.existential_witness_abox_candidate
+            })
+            .expect("well-formed rejected source");
+            assert!(!result, "unexpectedly admitted {rejected}");
+        }
     }
 
     #[test]
@@ -1177,7 +1901,7 @@ mod separable_abox_elision_tests {
     }
 
     #[test]
-    fn disjoint_union_precheck_retains_typed_abox_but_emits_tbox_clauses() {
+    fn atomic_abox_supersedes_disjoint_union_precheck() {
         let _environment_lock = lock_environment();
         use crate::json_io::{JAtom, JTerm};
 
@@ -1213,7 +1937,8 @@ mod separable_abox_elision_tests {
         )
         .expect("disjoint-union precheck source");
         assert!(result.profile.disjoint_union_abox_candidate);
-        assert_eq!(result.nominal_abox.individuals.len(), 1);
+        assert!(result.profile.atomic_class_abox_candidate);
+        assert!(result.nominal_abox.individuals.is_empty());
         assert!(result.el_rbox_safe);
         assert!(
             result.declared.iter().any(|class| class == "C"),
@@ -1227,7 +1952,7 @@ mod separable_abox_elision_tests {
     }
 
     #[test]
-    fn subthreshold_disjoint_union_source_keeps_the_v1_nominal_view() {
+    fn subthreshold_atomic_abox_uses_exact_el_projection() {
         let _environment_lock = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ABOX_DISJOINT_UNION_CHECK", "1");
@@ -1239,9 +1964,10 @@ mod separable_abox_elision_tests {
         .expect("subthreshold nominal source");
         assert_eq!(result.profile.source.abox_axioms, 1);
         assert!(result.profile.disjoint_union_abox_candidate);
-        assert_ne!(result.route, Route::Elc.as_str());
-        assert!(result.nominal_abox.complete);
-        assert_eq!(result.nominal_abox.individuals.len(), 1);
+        assert!(result.profile.atomic_class_abox_candidate);
+        assert_eq!(result.route, Route::Elc.as_str());
+        assert_eq!(result.asserted_classes, vec!["C"]);
+        assert!(result.nominal_abox.individuals.is_empty());
     }
 
     #[test]

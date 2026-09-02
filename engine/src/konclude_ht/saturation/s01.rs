@@ -67,6 +67,29 @@ use super::stubs::{
     SaturationNodeBackendAssociationCacheHandler,
 };
 
+/// Opt-in progress beacon for diagnosing a rule application that does not
+/// return to the synchronous driver's budget check. Atomics keep the observer
+/// independent of the mutable calculus state; the production path allocates
+/// and writes nothing unless `KM_SAT_RULE_WATCH=1` is set.
+struct SaturationRuleWatch {
+    done: std::sync::atomic::AtomicBool,
+    node: std::sync::atomic::AtomicI64,
+    concept: std::sync::atomic::AtomicI64,
+    operator: std::sync::atomic::AtomicI64,
+    negated: std::sync::atomic::AtomicBool,
+    applications: std::sync::atomic::AtomicU64,
+}
+
+struct SaturationRuleWatchGuard(std::sync::Arc<SaturationRuleWatch>);
+
+impl Drop for SaturationRuleWatchGuard {
+    fn drop(&mut self) {
+        self.0
+            .done
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// Port of
     /// `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::CCalculationTableauApproximationSaturationTaskHandleAlgorithm`
@@ -559,14 +582,63 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // `complete_saturated_individual_nodes` (see the bail at the bottom): a
         // tripped valve can leave CRITICAL concepts queued but never tested, so no
         // per-node flag is trustworthy — the caller must discard the whole pass.
-        let budget = std::time::Duration::from_secs(
-            std::env::var("KM_HT_SATURATION_BUDGET_S")
-                .ok()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(120),
-        );
+        let budget = std::time::Duration::from_secs(super::saturation_budget_seconds());
         let t0 = std::time::Instant::now();
         let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        let census_interval = std::env::var("KM_SAT_STORAGE_CENSUS_INTERVAL")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0);
+        let mut census_applications = 0u64;
+        let mut next_census = census_interval;
+        let rss_limit_kib = std::env::var("KM_HT_SATURATION_RSS_GB")
+            .ok()
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .map(|value| (value * 1024.0 * 1024.0) as u64);
+        let mut rss_check_applications = 0u64;
+        let rule_watch = std::env::var_os("KM_SAT_RULE_WATCH").map(|_| {
+            let watch = std::sync::Arc::new(SaturationRuleWatch {
+                done: std::sync::atomic::AtomicBool::new(false),
+                node: std::sync::atomic::AtomicI64::new(INVALID),
+                concept: std::sync::atomic::AtomicI64::new(INVALID),
+                operator: std::sync::atomic::AtomicI64::new(INVALID),
+                negated: std::sync::atomic::AtomicBool::new(false),
+                applications: std::sync::atomic::AtomicU64::new(0),
+            });
+            let observer = std::sync::Arc::clone(&watch);
+            std::thread::spawn(move || {
+                let started = std::time::Instant::now();
+                while !observer
+                    .done
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    if observer
+                        .done
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        break;
+                    }
+                    eprintln!(
+                        "BRIDGE-SAT-RULE-WATCH elapsed={:.1}s applications={} node={} concept={} op={} negated={}",
+                        started.elapsed().as_secs_f64(),
+                        observer
+                            .applications
+                            .load(std::sync::atomic::Ordering::Relaxed),
+                        observer.node.load(std::sync::atomic::Ordering::Relaxed),
+                        observer
+                            .concept
+                            .load(std::sync::atomic::Ordering::Relaxed),
+                        observer
+                            .operator
+                            .load(std::sync::atomic::Ordering::Relaxed),
+                        observer.negated.load(std::sync::atomic::Ordering::Relaxed),
+                    );
+                }
+            });
+            SaturationRuleWatchGuard(watch)
+        });
         let report_timeout = |stage: &str, this: &Self, ctx: &CalculationAlgorithmContextBase| {
             if progress {
                 let pc = ctx.process_context();
@@ -751,121 +823,325 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
         self.continue_nominal_delayed_individual_node_processing(calc_alg_context); // 326
 
-        while t0.elapsed() < budget
-            && self.has_remaining_merging_critical_extension_processing_nodes(calc_alg_context)
-        {
+        'fixpoint: loop {
             while t0.elapsed() < budget
-                && self.has_remaining_extension_processing_nodes(calc_alg_context)
+                && self.has_remaining_merging_critical_extension_processing_nodes(calc_alg_context)
             {
-                while t0.elapsed() < budget && self.has_remaining_processing_nodes(calc_alg_context)
+                while t0.elapsed() < budget
+                    && self.has_remaining_extension_processing_nodes(calc_alg_context)
                 {
                     while t0.elapsed() < budget
-                        && calc_alg_context
-                            .processing_data_box()
-                            .has_individual_saturation_process_node_linker()
+                        && self.has_remaining_processing_nodes(calc_alg_context)
                     {
-                        let indi_proc_sat_node_linker = calc_alg_context
-                            .processing_data_box_mut()
-                            .take_individual_saturation_process_node_linker();
-                        let mut indi_proc_sat_node = calc_alg_context
-                            .process_context()
-                            .indi_sat_process_node_linker(indi_proc_sat_node_linker)
-                            .get_processing_individual();
-                        // (separated-saturation + first-processed-node-id tracking,
-                        // cpp 338–349: debug/statistics bookkeeping only.)
-                        if self
-                            .individual_node_initializing(&mut indi_proc_sat_node, calc_alg_context)
+                        while t0.elapsed() < budget
+                            && calc_alg_context
+                                .processing_data_box()
+                                .has_individual_saturation_process_node_linker()
                         {
-                            let mut concept_saturation_process_linker = calc_alg_context
-                                .process_context_mut()
-                                .sat_node_take_concept_saturation_process_linker(
-                                    indi_proc_sat_node,
-                                );
-                            while concept_saturation_process_linker.is_some() {
-                                // Konclude's task scheduler can interrupt between
-                                // rule applications.  This synchronous driver
-                                // must make the same check inside a large node's
-                                // concept queue; checking only between nodes lets
-                                // one item overrun the whole saturation budget.
-                                if t0.elapsed() >= budget {
-                                    report_timeout("concept-queue", self, calc_alg_context);
-                                    return false;
-                                }
-                                self.apply_tableau_saturation_rule(
-                                    &mut indi_proc_sat_node,
-                                    concept_saturation_process_linker,
-                                    calc_alg_context,
-                                );
-                                self.release_concept_saturation_process_linker(
-                                    concept_saturation_process_linker,
-                                    calc_alg_context,
-                                );
-                                concept_saturation_process_linker = calc_alg_context
+                            let indi_proc_sat_node_linker = calc_alg_context
+                                .processing_data_box_mut()
+                                .take_individual_saturation_process_node_linker();
+                            let mut indi_proc_sat_node = calc_alg_context
+                                .process_context()
+                                .indi_sat_process_node_linker(indi_proc_sat_node_linker)
+                                .get_processing_individual();
+                            // (separated-saturation + first-processed-node-id tracking,
+                            // cpp 338–349: debug/statistics bookkeeping only.)
+                            if self.individual_node_initializing(
+                                &mut indi_proc_sat_node,
+                                calc_alg_context,
+                            ) {
+                                let mut concept_saturation_process_linker = calc_alg_context
                                     .process_context_mut()
                                     .sat_node_take_concept_saturation_process_linker(
                                         indi_proc_sat_node,
                                     );
+                                while concept_saturation_process_linker.is_some() {
+                                    // Konclude's task scheduler can interrupt between
+                                    // rule applications.  This synchronous driver
+                                    // must make the same check inside a large node's
+                                    // concept queue; checking only between nodes lets
+                                    // one item overrun the whole saturation budget.
+                                    if t0.elapsed() >= budget {
+                                        report_timeout("concept-queue", self, calc_alg_context);
+                                        return false;
+                                    }
+                                    rss_check_applications += 1;
+                                    if rss_limit_kib.is_some()
+                                        && rss_check_applications % 8_192 == 0
+                                    {
+                                        let rss_kib = std::fs::read_to_string("/proc/self/status")
+                                            .ok()
+                                            .and_then(|status| {
+                                                status.lines().find_map(|line| {
+                                                    line.strip_prefix("VmRSS:").and_then(|value| {
+                                                        value.split_whitespace().next().and_then(
+                                                            |value| value.parse::<u64>().ok(),
+                                                        )
+                                                    })
+                                                })
+                                            });
+                                        if rss_kib
+                                            .zip(rss_limit_kib)
+                                            .is_some_and(|(rss, limit)| rss >= limit)
+                                        {
+                                            if progress {
+                                                eprintln!(
+                                                    "BRIDGE-SATURATION-RSS-LIMIT: rss-kib={} limit-kib={}",
+                                                    rss_kib.unwrap_or(0),
+                                                    rss_limit_kib.unwrap_or(0),
+                                                );
+                                            }
+                                            report_timeout("rss-limit", self, calc_alg_context);
+                                            return false;
+                                        }
+                                    }
+                                    if let Some(watch) = &rule_watch {
+                                        let con_des = calc_alg_context
+                                            .process_context()
+                                            .con_sat_proc_linker(concept_saturation_process_linker)
+                                            .get_concept_saturation_descriptor();
+                                        let descriptor = calc_alg_context
+                                            .process_context()
+                                            .con_sat_desc(con_des);
+                                        let concept = descriptor.get_concept();
+                                        watch.0.node.store(
+                                            indi_proc_sat_node.raw,
+                                            std::sync::atomic::Ordering::Relaxed,
+                                        );
+                                        watch.0.concept.store(
+                                            concept.raw,
+                                            std::sync::atomic::Ordering::Relaxed,
+                                        );
+                                        watch.0.operator.store(
+                                            calc_alg_context
+                                                .ontology_arenas()
+                                                .concept(concept)
+                                                .get_operator_code(),
+                                            std::sync::atomic::Ordering::Relaxed,
+                                        );
+                                        watch.0.negated.store(
+                                            descriptor.get_negation(),
+                                            std::sync::atomic::Ordering::Relaxed,
+                                        );
+                                        watch
+                                            .0
+                                            .applications
+                                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                    }
+                                    if census_interval > 0 {
+                                        census_applications += 1;
+                                        if census_applications >= next_census {
+                                            let pc = calc_alg_context.process_context();
+                                            let (
+                                                main_entries,
+                                                main_capacity,
+                                                layer_references,
+                                                unique_vectors,
+                                                vector_slots,
+                                                unique_chunks,
+                                                chunk_entries,
+                                                chunk_capacity,
+                                            ) = pc.reapply_con_sat_label_physical_storage_counts();
+                                            eprintln!(
+                                            "BRIDGE-SATURATION-STORAGE: applications={} nodes={} labels={} concept-descriptors={} process-linkers={} backward-links={} backward-reapply={} backward-hashes={} implication-reapply={} main-entries={} main-capacity={} layer-references={} unique-vectors={} vector-slots={} unique-chunks={} chunk-entries={} chunk-capacity={}",
+                                            census_applications,
+                                            pc.sat_node_count(),
+                                            pc.reapply_con_sat_label_set_count(),
+                                            pc.con_sat_desc_count(),
+                                            pc.con_sat_proc_linker_count(),
+                                            pc.backward_sat_prop_link_count(),
+                                            pc.backward_sat_prop_reapply_desc_count(),
+                                            pc.role_backward_sat_prop_hash_count(),
+                                            pc.imp_reapply_con_sat_desc_count(),
+                                            main_entries,
+                                            main_capacity,
+                                            layer_references,
+                                            unique_vectors,
+                                            vector_slots,
+                                            unique_chunks,
+                                            chunk_entries,
+                                            chunk_capacity,
+                                        );
+                                            if std::env::var_os("KM_SAT_ARENA_CENSUS").is_some() {
+                                                if std::env::var_os(
+                                                    "KM_SAT_STATE_FINGERPRINT_CENSUS",
+                                                )
+                                                .is_some()
+                                                {
+                                                    let (xor, sum, entries) =
+                                                        pc.saturation_label_state_fingerprint();
+                                                    eprintln!(
+                                                    "BRIDGE-SATURATION-STATE-FINGERPRINT: applications={} xor={:016x} sum={:016x} entries={}",
+                                                    census_applications, xor, sum, entries,
+                                                );
+                                                }
+                                                for (name, len, capacity, item_size, bytes) in pc
+                                                    .saturation_arena_storage_rows()
+                                                    .into_iter()
+                                                    .take(12)
+                                                {
+                                                    eprintln!(
+                                                    "BRIDGE-SATURATION-ARENA: applications={} name={} len={} capacity={} item-size={} reserved-bytes={}",
+                                                    census_applications,
+                                                    name,
+                                                    len,
+                                                    capacity,
+                                                    item_size,
+                                                    bytes,
+                                                );
+                                                }
+                                                for (name, len, capacity, entry_size, bytes) in pc
+                                                    .saturation_nested_storage_rows()
+                                                    .into_iter()
+                                                    .take(12)
+                                                {
+                                                    eprintln!(
+                                                    "BRIDGE-SATURATION-NESTED: applications={} name={} len={} capacity={} entry-size={} estimated-bytes={}",
+                                                    census_applications,
+                                                    name,
+                                                    len,
+                                                    capacity,
+                                                    entry_size,
+                                                    bytes,
+                                                );
+                                                }
+                                                if std::env::var_os("KM_SAT_MAP_DEDUP_CENSUS")
+                                                    .is_some()
+                                                {
+                                                    let (interner_signatures, canonical_maps) = pc
+                                                    .saturation_successor_concept_map_interner_counts();
+                                                    eprintln!(
+                                                    "BRIDGE-SATURATION-MAP-INTERN: applications={} signatures={} canonical-maps={}",
+                                                    census_applications,
+                                                    interner_signatures,
+                                                    canonical_maps,
+                                                );
+                                                    let (
+                                                    sampled_maps,
+                                                    unique_maps,
+                                                    sampled_entries,
+                                                    unique_entries,
+                                                ) = pc
+                                                    .saturation_successor_concept_map_dedup_sample(
+                                                        1_000_000,
+                                                    );
+                                                    eprintln!(
+                                                    "BRIDGE-SATURATION-MAP-DEDUP: applications={} sampled-maps={} unique-maps={} sampled-entries={} unique-entries={}",
+                                                    census_applications,
+                                                    sampled_maps,
+                                                    unique_maps,
+                                                    sampled_entries,
+                                                    unique_entries,
+                                                );
+                                                }
+                                            }
+                                            next_census =
+                                                next_census.saturating_add(census_interval);
+                                        }
+                                    }
+                                    self.apply_tableau_saturation_rule(
+                                        &mut indi_proc_sat_node,
+                                        concept_saturation_process_linker,
+                                        calc_alg_context,
+                                    );
+                                    self.release_concept_saturation_process_linker(
+                                        concept_saturation_process_linker,
+                                        calc_alg_context,
+                                    );
+                                    concept_saturation_process_linker = calc_alg_context
+                                        .process_context_mut()
+                                        .sat_node_take_concept_saturation_process_linker(
+                                            indi_proc_sat_node,
+                                        );
+                                }
                             }
-                        }
-                        calc_alg_context
-                            .process_context_mut()
-                            .indi_sat_process_node_linker_mut(indi_proc_sat_node_linker)
-                            .clear_processing_queued();
-                        self.individual_node_conclusion(&mut indi_proc_sat_node, calc_alg_context);
-                        // 363
-                    }
-
-                    if calc_alg_context
-                        .processing_data_box()
-                        .has_individual_disjunct_common_concept_extract_process_linker()
-                    {
-                        let indi_disj_common_con_ext_process_linker = calc_alg_context
-                            .processing_data_box_mut()
-                            .take_individual_disjunct_common_concept_extract_process_linker();
-                        calc_alg_context
-                            .process_context_mut()
-                            .indi_sat_process_node_linker_mut(
-                                indi_disj_common_con_ext_process_linker,
-                            )
-                            .set_processing_queued(false);
-                        let mut indi_proc_sat_node = calc_alg_context
-                            .process_context()
-                            .indi_sat_process_node_linker(indi_disj_common_con_ext_process_linker)
-                            .get_processing_individual();
-                        if self
-                            .individual_node_initializing(&mut indi_proc_sat_node, calc_alg_context)
-                        {
-                            self.update_extract_disjunct_common_concept(
+                            calc_alg_context
+                                .process_context_mut()
+                                .indi_sat_process_node_linker_mut(indi_proc_sat_node_linker)
+                                .clear_processing_queued();
+                            self.individual_node_conclusion(
                                 &mut indi_proc_sat_node,
                                 calc_alg_context,
-                            ); // 379
+                            );
+                            // 363
                         }
-                        self.individual_node_conclusion(&mut indi_proc_sat_node, calc_alg_context);
-                        // 381
+
+                        if calc_alg_context
+                            .processing_data_box()
+                            .has_individual_disjunct_common_concept_extract_process_linker()
+                        {
+                            let indi_disj_common_con_ext_process_linker = calc_alg_context
+                                .processing_data_box_mut()
+                                .take_individual_disjunct_common_concept_extract_process_linker();
+                            calc_alg_context
+                                .process_context_mut()
+                                .indi_sat_process_node_linker_mut(
+                                    indi_disj_common_con_ext_process_linker,
+                                )
+                                .set_processing_queued(false);
+                            let mut indi_proc_sat_node = calc_alg_context
+                                .process_context()
+                                .indi_sat_process_node_linker(
+                                    indi_disj_common_con_ext_process_linker,
+                                )
+                                .get_processing_individual();
+                            if self.individual_node_initializing(
+                                &mut indi_proc_sat_node,
+                                calc_alg_context,
+                            ) {
+                                self.update_extract_disjunct_common_concept(
+                                    &mut indi_proc_sat_node,
+                                    calc_alg_context,
+                                ); // 379
+                            }
+                            self.individual_node_conclusion(
+                                &mut indi_proc_sat_node,
+                                calc_alg_context,
+                            );
+                            // 381
+                        }
                     }
+
+                    self.process_next_successor_extensions(calc_alg_context); // 396
                 }
 
-                self.process_next_successor_extensions(calc_alg_context); // 396
-            }
-
-            if self.conf_check_critical_concepts
-                && self.has_next_critical_concepts(calc_alg_context)
-            {
-                // KONCLUDE-PORT-NOTE[budget]: same port-side valve as the outer loops —
-                // an overrun here leaves the remaining critical nodes unchecked and
-                // therefore un-completed (UNKNOWN to every consumer), a sound defer.
-                while t0.elapsed() < budget && self.has_next_critical_concepts(calc_alg_context) {
-                    self.check_next_critical_concepts(calc_alg_context); // 414
+                if self.conf_check_critical_concepts
+                    && self.has_next_critical_concepts(calc_alg_context)
+                {
+                    // KONCLUDE-PORT-NOTE[budget]: same port-side valve as the outer loops —
+                    // an overrun here leaves the remaining critical nodes unchecked and
+                    // therefore un-completed (UNKNOWN to every consumer), a sound defer.
+                    while t0.elapsed() < budget && self.has_next_critical_concepts(calc_alg_context)
+                    {
+                        self.check_next_critical_concepts(calc_alg_context); // 414
+                    }
+                    self.check_critical_individuals(calc_alg_context); // 416
                 }
-                self.check_critical_individuals(calc_alg_context); // 416
+
+                if calc_alg_context
+                    .processing_data_box()
+                    .has_saturation_atmost_merging_process_linker()
+                {
+                    self.try_atmost_concept_successor_merging(calc_alg_context);
+                    // 432
+                }
             }
 
-            if calc_alg_context
-                .processing_data_box()
-                .has_saturation_atmost_merging_process_linker()
+            // The intrusive node queues suppress insertion of their current
+            // node. A callback can append node-local work after the global
+            // queue has already decided that current is finished, leaving a
+            // queued bit or local linker with no global owner. Before declaring
+            // a fixpoint, rebuild those ownership links from the authoritative
+            // node-local worklists. This adds no rule application and changes
+            // no label; it only makes already-created work reachable again.
+            if self.conf_requeue_orphaned_saturation_work
+                && t0.elapsed() < budget
+                && self.requeue_orphaned_saturation_work(calc_alg_context)
             {
-                self.try_atmost_concept_successor_merging(calc_alg_context); // 432
+                continue 'fixpoint;
             }
+            break;
         }
 
         // KONCLUDE-PORT-NOTE[budget]: if the valve tripped, work remains queued —
@@ -880,6 +1156,59 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
         self.complete_saturated_individual_nodes(calc_alg_context); // 438
         true // 450 (satisfiable)
+    }
+
+    fn requeue_orphaned_saturation_work(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let node_count = calc_alg_context.process_context().sat_node_count();
+        let mut concept_nodes = Vec::new();
+        let mut successor_nodes = Vec::new();
+        for index in 0..node_count {
+            let node = SatNodeId::new(index as Cint64);
+            if calc_alg_context
+                .process_context()
+                .sat_node(node)
+                .get_concept_saturation_process_linker()
+                .is_some()
+            {
+                concept_nodes.push(node);
+            }
+            if Self::successor_extension_has_pending_work(node, calc_alg_context) {
+                successor_nodes.push(node);
+            }
+        }
+
+        for mut node in concept_nodes.iter().copied() {
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_set_individual_saturation_process_node_linker_queued(node, false);
+            self.add_individual_to_processing_queue(&mut node, calc_alg_context);
+        }
+        for mut node in successor_nodes.iter().copied() {
+            let succ_extension_data = calc_alg_context
+                .process_context_mut()
+                .sat_node_ext_successor_extension_data(node, false);
+            if succ_extension_data.is_some() {
+                calc_alg_context
+                    .process_context_mut()
+                    .sat_indi_node_succ_ext_data_mut(succ_extension_data)
+                    .set_extension_processing_queued(false);
+            }
+            self.add_successor_extension_to_processing_queue(&mut node, calc_alg_context);
+        }
+
+        if (!concept_nodes.is_empty() || !successor_nodes.is_empty())
+            && std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
+        {
+            eprintln!(
+                "BRIDGE-SATURATION-ORPHAN-RECOVERY: concept-nodes={} successor-nodes={}",
+                concept_nodes.len(),
+                successor_nodes.len(),
+            );
+        }
+        !concept_nodes.is_empty() || !successor_nodes.is_empty()
     }
 
     /// Port of `hasRemainingExtensionProcessingNodes` (.cpp 689-698).
@@ -1301,8 +1630,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::model::role::Role;
     use super::super::super::process::sat_node::IndividualSaturationProcessNode;
     use super::super::algorithm::SaturationTaskHandleAlgorithm;
+    use super::super::satellites::{ConceptSaturationProcessLinker, RoleSaturationProcessLinker};
     use super::*;
 
     #[test]
@@ -1321,5 +1652,80 @@ mod tests {
             .insert_process_individual(node, 23);
 
         assert!(algo.has_remaining_extension_processing_nodes(&mut ctx));
+    }
+
+    #[test]
+    fn orphaned_concept_work_is_reconnected_to_the_global_queue() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(23));
+        let concept_work = ctx
+            .process_context_mut()
+            .alloc_con_sat_proc_linker(ConceptSaturationProcessLinker::new());
+        ctx.process_context_mut()
+            .sat_node_mut(node)
+            .set_concept_saturation_process_linker(concept_work);
+
+        // Model the lost-owner state: the node-local work exists and the
+        // intrusive linker still claims to be queued, but the global queue is
+        // empty. Normal insertion would suppress this node indefinitely.
+        let node_linker = ctx
+            .process_context_mut()
+            .sat_node_individual_saturation_process_node_linker(node, true);
+        ctx.process_context_mut()
+            .indi_sat_process_node_linker_mut(node_linker)
+            .set_processing_queued(true);
+        assert!(!ctx
+            .processing_data_box()
+            .has_individual_saturation_process_node_linker());
+
+        assert!(algo.requeue_orphaned_saturation_work(&mut ctx));
+        assert!(ctx
+            .processing_data_box()
+            .has_individual_saturation_process_node_linker());
+        assert_eq!(
+            ctx.processing_data_box_mut()
+                .take_individual_saturation_process_node_linker(),
+            node_linker
+        );
+    }
+
+    #[test]
+    fn orphaned_successor_work_is_reconnected_to_the_global_queue() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(31));
+        let mut role = Role::new();
+        role.init_with_tag(7);
+        let role = ctx.ontology_arenas_mut().alloc_role(role);
+        let succ_ext = ctx
+            .process_context_mut()
+            .sat_node_ext_successor_extension_data(node, true);
+        let all_ext = ctx
+            .process_context_mut()
+            .sat_successor_extension_all_concepts_extension_data(succ_ext, true);
+        let mut role_work = RoleSaturationProcessLinker::new();
+        role_work.init_role_process_linker(role);
+        let role_work = ctx
+            .process_context_mut()
+            .alloc_role_sat_proc_linker(role_work);
+        ctx.process_context_mut()
+            .sat_indi_node_all_concept_ext_data_mut(all_ext)
+            .role_process_linker = role_work;
+        ctx.process_context_mut()
+            .sat_indi_node_succ_ext_data_mut(succ_ext)
+            .set_extension_processing_queued(true);
+
+        assert!(!algo.has_remaining_extension_processing_nodes(&mut ctx));
+        assert!(algo.requeue_orphaned_saturation_work(&mut ctx));
+        assert!(algo.has_remaining_extension_processing_nodes(&mut ctx));
+        assert!(ctx
+            .process_context()
+            .sat_indi_node_succ_ext_data(succ_ext)
+            .is_extension_processing_queued());
     }
 }

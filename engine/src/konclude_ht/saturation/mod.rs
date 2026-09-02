@@ -30,6 +30,27 @@ pub(crate) fn sat_clash_trace_enabled() -> bool {
     *ON.get_or_init(|| std::env::var_os("KM_SAT_CLASH_TRACE").is_some())
 }
 
+/// Effective wall budget for the synchronous saturation pass. Named routes
+/// install their validated default in `KM_HT_SATURATION_BUDGET_S`. A caller
+/// performing a diagnostic can bound that value with an independent floor or
+/// cap without replacing the selected route and its other normalization
+/// settings.
+pub(crate) fn saturation_budget_seconds() -> u64 {
+    let routed = std::env::var("KM_HT_SATURATION_BUDGET_S")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(120);
+    let floor = std::env::var("KM_HT_SATURATION_BUDGET_FLOOR_S")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let cap = std::env::var("KM_HT_SATURATION_BUDGET_CAP_S")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(u64::MAX);
+    routed.max(floor).min(cap)
+}
+
 /// Cached `KM_SAT_ADD_TRACE=<concept index>` watch target (`None` = off).
 pub(crate) fn sat_add_trace_watch() -> Option<usize> {
     static WATCH: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();

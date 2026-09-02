@@ -15,7 +15,7 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use super::tmpfile::TempPath;
@@ -31,7 +31,7 @@ static LIVE: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 static CANCEL: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "linux")]
-fn open_pidfd(pid: u32) -> Option<OwnedFd> {
+pub(crate) fn open_pidfd(pid: u32) -> Option<OwnedFd> {
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) as libc::c_int };
     if fd < 0 {
         None
@@ -41,12 +41,12 @@ fn open_pidfd(pid: u32) -> Option<OwnedFd> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn open_pidfd(_pid: u32) -> Option<()> {
+pub(crate) fn open_pidfd(_pid: u32) -> Option<()> {
     None
 }
 
 #[cfg(target_os = "linux")]
-fn wait_for_exit_or_interval(pidfd: Option<&OwnedFd>, interval: Duration) {
+pub(crate) fn wait_for_exit_or_interval(pidfd: Option<&OwnedFd>, interval: Duration) {
     let Some(pidfd) = pidfd else {
         std::thread::sleep(interval);
         return;
@@ -63,9 +63,123 @@ fn wait_for_exit_or_interval(pidfd: Option<&OwnedFd>, interval: Duration) {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn wait_for_exit_or_interval(_pidfd: Option<&()>, interval: Duration) {
+pub(crate) fn wait_for_exit_or_interval(_pidfd: Option<&()>, interval: Duration) {
     std::thread::sleep(interval);
 }
+
+/// Wake-up channel between a race scheduler and its arms.
+///
+/// The race loops in `race.rs` inspect every arm, then sleep for an
+/// exponentially growing interval (1 ms doubling to 50-100 ms). That interval
+/// is the only thing bounding how late a finished arm is noticed: a CB worker
+/// that exits 16 ms into the race is harvested at the 31 ms wake-up, and the
+/// enclosing HT race notices that harvest at ITS next wake-up (63 ms). On the
+/// small-ontology band the whole classification is shorter than one such
+/// quantum, so the sleep ladder, not reasoning, set the wall clock. Arms now
+/// bump this event when they finish and waiters block on the condition
+/// variable instead of an unconditional sleep. Waiters read the epoch BEFORE
+/// inspecting the arms and wait only while it is unchanged, so a completion
+/// that lands between the inspection and the wait is never slept through.
+///
+/// The decision logic of every race is untouched: the same checks run in the
+/// same order on every wake-up, and the interval ladder still bounds the RSS
+/// watchdog and budget cadence exactly as before.
+pub(crate) struct ArmEvent {
+    epoch: Mutex<u64>,
+    changed: Condvar,
+}
+
+impl ArmEvent {
+    pub(crate) fn new() -> Arc<ArmEvent> {
+        Arc::new(ArmEvent {
+            epoch: Mutex::new(0),
+            changed: Condvar::new(),
+        })
+    }
+
+    /// Current completion epoch; pass it to `wait_past` after inspecting arms.
+    pub(crate) fn epoch(&self) -> u64 {
+        *self
+            .epoch
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// An arm finished (or changed state): wake every waiter.
+    pub(crate) fn notify(&self) {
+        let mut epoch = self
+            .epoch
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *epoch = epoch.wrapping_add(1);
+        self.changed.notify_all();
+    }
+
+    /// Block until the epoch moves past `seen` or `timeout` elapses, whichever
+    /// comes first. Returns immediately when a notification already happened
+    /// after `seen` was read.
+    pub(crate) fn wait_past(&self, seen: u64, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        let mut epoch = self
+            .epoch
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        while *epoch == seen {
+            let now = Instant::now();
+            if now >= deadline {
+                return;
+            }
+            epoch = self
+                .changed
+                .wait_timeout(epoch, deadline - now)
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .0;
+        }
+    }
+}
+
+/// Notify `event` as soon as the child process `pid` exits.
+///
+/// Linux: a detached thread blocks on the child's pidfd, which becomes
+/// readable on exit (also after the child has been reaped by the owner of the
+/// `Child`), so the thread always terminates. The watcher only wakes the race
+/// loop; the loop still reaps and inspects the child itself through
+/// `try_wait`, exactly as before. Other platforms keep the interval poll.
+#[cfg(target_os = "linux")]
+pub(crate) fn notify_on_exit(pid: u32, event: Arc<ArmEvent>) {
+    let Some(pidfd) = open_pidfd(pid) else {
+        // Already gone (or pidfd unsupported): the loop's own poll proceeds.
+        event.notify();
+        return;
+    };
+    let watcher_event = event.clone();
+    let spawned = std::thread::Builder::new()
+        .name("arm-exit".into())
+        .spawn(move || {
+            let mut pollfd = libc::pollfd {
+                fd: pidfd.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            loop {
+                let rc = unsafe { libc::poll(&mut pollfd, 1, -1) };
+                if rc >= 0 {
+                    break;
+                }
+                if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+                    break;
+                }
+            }
+            watcher_event.notify();
+        });
+    if spawned.is_err() {
+        // No watcher thread: the caller's interval poll remains the wake source.
+        event.notify();
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn notify_on_exit(_pid: u32, _event: Arc<ArmEvent>) {}
 
 /// A race was won elsewhere: SIGKILL every live engine child and block new spawns.
 pub fn cancel_and_kill_engines() {
@@ -347,6 +461,60 @@ mod tests {
         .unwrap();
         assert!(result.timed_out);
         assert!(!result.oom);
+    }
+
+    #[test]
+    fn arm_event_wakes_waiter_before_its_timeout() {
+        let event = ArmEvent::new();
+        let seen = event.epoch();
+        let notifier = event.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            notifier.notify();
+        });
+        let started = Instant::now();
+        event.wait_past(seen, Duration::from_secs(5));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_ne!(event.epoch(), seen);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn arm_event_does_not_sleep_through_an_earlier_notification() {
+        let event = ArmEvent::new();
+        let seen = event.epoch();
+        event.notify();
+        let started = Instant::now();
+        event.wait_past(seen, Duration::from_secs(5));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn arm_event_times_out_without_a_notification() {
+        let event = ArmEvent::new();
+        let seen = event.epoch();
+        let started = Instant::now();
+        event.wait_past(seen, Duration::from_millis(30));
+        assert!(started.elapsed() >= Duration::from_millis(30));
+        assert_eq!(event.epoch(), seen);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn exit_notifier_wakes_on_child_exit() {
+        let mut child = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg("sleep 0.05")
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let event = ArmEvent::new();
+        let seen = event.epoch();
+        notify_on_exit(child.id(), event.clone());
+        let started = Instant::now();
+        event.wait_past(seen, Duration::from_secs(10));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(child.wait().unwrap().success());
     }
 
     #[test]

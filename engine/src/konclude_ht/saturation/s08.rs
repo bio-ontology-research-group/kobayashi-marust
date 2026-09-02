@@ -676,13 +676,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             let _ = role;
             return links_deactivated;
         }
-        let succ_data_entries: Vec<(Cint64, SaturationSuccessorDataId)> = calc_alg_context
+        let mut succ_data_entries: Vec<(Cint64, SaturationSuccessorDataId)> = calc_alg_context
             .process_context()
             .linked_role_sat_succ_data(succ_data_map)
             .get_successor_node_data_map()
             .iter()
             .map(|(indi_id, succ_data)| (*indi_id, *succ_data))
             .collect();
+        // Konclude's CPROCESSMAP traversal is ordered by the individual ID.
+        // HashMap iteration would make the saturation schedule process-random,
+        // with potentially very different transient closure sizes.
+        if !super::algorithm::preserve_native_successor_iteration() {
+            succ_data_entries.sort_by_key(|(indi_id, _)| {
+                super::algorithm::successor_iteration_key(0x0801, *indi_id as u64)
+            });
+        }
         for (indi_id, succ_link_data) in succ_data_entries.iter().copied() {
             if calc_alg_context
                 .process_context()
@@ -1106,15 +1114,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // a missing non-trivial operand makes `operantsContained = false`.
         let choose_trigger_linker_available = false;
 
-        let succ_role_data_ids: Vec<_> = calc_alg_context
+        let mut succ_role_data_ids: Vec<_> = calc_alg_context
             .process_context()
             .linked_role_sat_succ_data(succ_data)
             .get_successor_node_data_map()
-            .values()
-            .copied()
+            .iter()
+            .map(|(indi_id, data)| (*indi_id, *data))
             .collect();
+        if !super::algorithm::preserve_native_successor_iteration() {
+            succ_role_data_ids.sort_by_key(|(indi_id, _)| {
+                super::algorithm::successor_iteration_key(0x0802, *indi_id as u64)
+            });
+        }
 
-        for succ_role_data_id in succ_role_data_ids {
+        for (_, succ_role_data_id) in succ_role_data_ids {
             let (
                 active_count,
                 succ_cardinality,
@@ -1157,7 +1170,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 }
             } else {
                 *last_successor_node = succ_node;
-                *last_successor_creation_role_linker = creation_role_linker;
+                *last_successor_creation_role_linker = creation_role_linker.to_vec();
 
                 let succ_con_set = calc_alg_context
                     .process_context_mut()
@@ -2066,7 +2079,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             indi_proc_sat_node,
             indi_succ_node1,
             indi_succ_node2,
-            creation_roles1,
+            creation_roles1.to_vec(),
             calc_alg_context,
         ) {
             return false;
@@ -2075,7 +2088,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             indi_proc_sat_node,
             indi_succ_node2,
             indi_succ_node1,
-            creation_roles2,
+            creation_roles2.to_vec(),
             calc_alg_context,
         ) {
             return false;
@@ -2344,15 +2357,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             }
         }
 
-        let succ_role_data_ids: Vec<_> = calc_alg_context
+        let mut succ_role_data_ids: Vec<_> = calc_alg_context
             .process_context()
             .linked_role_sat_succ_data(pred_succ_data)
             .get_successor_node_data_map()
-            .values()
-            .copied()
+            .iter()
+            .map(|(indi_id, data)| (*indi_id, *data))
             .collect();
+        if !super::algorithm::preserve_native_successor_iteration() {
+            succ_role_data_ids.sort_by_key(|(indi_id, _)| {
+                super::algorithm::successor_iteration_key(0x0803, *indi_id as u64)
+            });
+        }
 
-        for succ_role_data_id in succ_role_data_ids {
+        for (_, succ_role_data_id) in succ_role_data_ids {
             let (active_count, succ_cardinality, value_nominal_connection, succ_node) = {
                 let succ_role_data = calc_alg_context
                     .process_context()

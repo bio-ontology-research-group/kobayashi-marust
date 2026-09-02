@@ -103,6 +103,10 @@ impl<T> std::fmt::Debug for Id<T> {
 /// survives, exactly as Konclude relies on the branch structure to guarantee.
 pub struct Arena<T> {
     items: Vec<T>,
+    /// Use bounded geometric growth for exceptionally large append-only pools.
+    /// `Vec` normally doubles at capacity, which can request multiple GiB at
+    /// once for saturation arenas containing tens of millions of records.
+    tight_growth: bool,
     /// Branch-epoch watermarks (in-process COW): allocation lengths at each
     /// open epoch; `pop_epoch*` truncates back. Empty when no epoch is open —
     /// all epoch machinery is then zero-cost.
@@ -125,6 +129,7 @@ impl<T> Default for Arena<T> {
     fn default() -> Self {
         Arena {
             items: Vec::new(),
+            tight_growth: false,
             wm_stack: Vec::new(),
             journal_stack: Vec::new(),
         }
@@ -135,11 +140,35 @@ impl<T> Arena<T> {
     pub fn new() -> Self {
         Self::default()
     }
+    /// Construct an arena whose backing vector grows by at most 25% at a time.
+    /// IDs, indexing, epoch rollback, and object lifetime are identical to
+    /// `new`; only unused capacity and reallocation granularity differ.
+    pub fn new_tight() -> Self {
+        Arena {
+            tight_growth: true,
+            ..Self::default()
+        }
+    }
     #[inline]
     pub fn push(&mut self, v: T) -> Id<T> {
+        if self.tight_growth && self.items.len() == self.items.capacity() {
+            let additional = (self.items.capacity() / 4).max(4_096);
+            self.items.reserve_exact(additional);
+        }
         let id = Id::new(self.items.len() as Cint64);
         self.items.push(v);
         id
+    }
+    /// Reclaim a just-allocated object that was rejected before publication.
+    /// This is valid only for the current tail id; published ids remain stable.
+    #[inline]
+    pub fn pop_last_if(&mut self, id: Id<T>) -> bool {
+        if id.is_some() && id.index().checked_add(1) == Some(self.items.len()) {
+            self.items.pop();
+            true
+        } else {
+            false
+        }
     }
     #[inline]
     pub fn get(&self, id: Id<T>) -> &T {
@@ -151,10 +180,22 @@ impl<T> Arena<T> {
         self.items.len()
     }
     /// Allocated object slots available before the arena's outer vector grows.
-    #[cfg(test)]
     #[inline]
     pub fn capacity(&self) -> usize {
         self.items.capacity()
+    }
+    /// Bytes reserved by the arena's primary item vector. Nested allocations
+    /// owned by individual items are intentionally excluded and reported by
+    /// their subsystem-specific census.
+    #[inline]
+    pub fn reserved_item_bytes(&self) -> usize {
+        self.items
+            .capacity()
+            .saturating_mul(std::mem::size_of::<T>())
+    }
+    #[inline]
+    pub fn item_size(&self) -> usize {
+        std::mem::size_of::<T>()
     }
     #[inline]
     pub fn watermark(&self) -> usize {
@@ -190,6 +231,21 @@ impl<T> Arena<T> {
         self.items.clear();
         self.wm_stack.clear();
         self.journal_stack.clear();
+    }
+    /// Drop every object and return the backing allocations to the allocator.
+    ///
+    /// Use this only at a task boundary where no arena id can remain live.
+    /// Most resets deliberately retain capacity for reuse; exceptionally large
+    /// one-shot saturation pools must instead be released before a different
+    /// completion phase starts, or their empty backing vectors dominate RSS.
+    #[inline]
+    pub fn clear_releasing_capacity(&mut self) {
+        let tight_growth = self.tight_growth;
+        *self = if tight_growth {
+            Self::new_tight()
+        } else {
+            Self::new()
+        };
     }
     #[inline]
     pub fn iter(&self) -> std::slice::Iter<'_, T> {
@@ -333,5 +389,47 @@ mod tests {
         let id = arena.push(7);
         assert_eq!(id.index(), 0, "reused arenas restart their id space");
         assert_eq!(*arena.get(id), 7, "no old object content survives");
+    }
+
+    #[test]
+    fn arena_releasing_clear_drops_storage_and_preserves_growth_policy() {
+        let mut arena = Arena::new_tight();
+        for value in 0..32_768 {
+            arena.push(value);
+        }
+        assert!(arena.capacity() > 0);
+        arena.push_epoch();
+
+        arena.clear_releasing_capacity();
+
+        assert_eq!(arena.len(), 0);
+        assert_eq!(arena.capacity(), 0);
+        assert!(!arena.epoch_open());
+        assert!(arena.tight_growth);
+        let id = arena.push(7);
+        assert_eq!(id.index(), 0);
+        assert!(arena.capacity() <= 4_096);
+    }
+
+    #[test]
+    fn tight_arena_bounds_capacity_without_changing_ids_or_epoch_rollback() {
+        let mut arena = Arena::new_tight();
+        for value in 0..10_000 {
+            let id = arena.push(value);
+            assert_eq!(id.index(), value);
+        }
+        assert!(arena.capacity() <= 12_500);
+        assert_eq!(*arena.get(super::Id::new(9_999)), 9_999);
+
+        arena.push_epoch();
+        *arena.get_mut_journaled(super::Id::new(7)) = 77_777;
+        let transient = arena.push(10_000);
+        assert_eq!(transient.index(), 10_000);
+        arena.pop_epoch();
+
+        assert_eq!(arena.len(), 10_000);
+        assert_eq!(*arena.get(super::Id::new(7)), 7);
+        let reused = arena.push(10_001);
+        assert_eq!(reused.index(), transient.index());
     }
 }

@@ -20,11 +20,12 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use super::super::completion::stubs::{
     CalculationConfigurationExtension, SatisfiableCalculationTask,
 };
-use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::ConceptId;
 use super::super::process::node_resolution::IndividualProcessNodeVector;
 use super::stubs::{
@@ -42,6 +43,59 @@ pub type TableauRuleFunction = Cint64;
 
 /// Number of rule slots in the jump tables (`mRuleFuncCount`).
 pub const RULE_FUNC_COUNT: usize = 200;
+
+#[derive(Clone, Copy)]
+enum SuccessorIterationOrder {
+    Native,
+    Ascending,
+    Descending,
+    Seeded(u64),
+}
+
+fn successor_iteration_order() -> SuccessorIterationOrder {
+    static ORDER: OnceLock<SuccessorIterationOrder> = OnceLock::new();
+    *ORDER.get_or_init(|| {
+        let value = std::env::var("KM_SAT_SUCCESSOR_ORDER").unwrap_or_default();
+        if value.eq_ignore_ascii_case("native") {
+            SuccessorIterationOrder::Native
+        } else if value.eq_ignore_ascii_case("descending") {
+            SuccessorIterationOrder::Descending
+        } else if value.eq_ignore_ascii_case("seeded") {
+            let seed = std::env::var("KM_SAT_SUCCESSOR_SEED")
+                .ok()
+                .and_then(|seed| seed.parse().ok())
+                .unwrap_or(0);
+            SuccessorIterationOrder::Seeded(seed)
+        } else {
+            SuccessorIterationOrder::Ascending
+        }
+    })
+}
+
+fn splitmix64(mut value: u64) -> u64 {
+    value = (value ^ (value >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94d049bb133111eb);
+    value ^ (value >> 31)
+}
+
+/// Stable traversal key for schedule experiments. Each snapshot site receives
+/// an independent seed-derived salt, approximating the independently keyed
+/// maps in the historical implementation without process-random behaviour.
+pub(super) fn successor_iteration_key(site: u64, raw: u64) -> u64 {
+    match successor_iteration_order() {
+        SuccessorIterationOrder::Native => raw,
+        SuccessorIterationOrder::Ascending => raw,
+        SuccessorIterationOrder::Descending => !raw,
+        SuccessorIterationOrder::Seeded(seed) => {
+            let salt = splitmix64(seed ^ site.wrapping_mul(0x9e3779b97f4a7c15));
+            splitmix64(raw ^ salt)
+        }
+    }
+}
+
+pub(super) fn preserve_native_successor_iteration() -> bool {
+    matches!(successor_iteration_order(), SuccessorIterationOrder::Native)
+}
 
 /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm`.
 ///
@@ -93,6 +147,9 @@ pub struct SaturationTaskHandleAlgorithm {
     pub conf_concepts_extension_processing: bool,
     pub conf_all_concepts_extension_processing: bool,
     pub conf_functional_concepts_extension_processing: bool,
+    /// Retain/recover successor-extension work appended while its node is the
+    /// intrusive queue's current item. Enabled only by a certified route.
+    pub conf_requeue_orphaned_saturation_work: bool,
     pub conf_nominal_processing: bool,
     pub conf_copy_node_from_top_individual_for_many_concepts: bool,
     pub conf_simple_merging_test_for_atmost_critical_testing: bool,
@@ -170,6 +227,12 @@ pub struct SaturationTaskHandleAlgorithm {
     pub debug_testing_saturation_task: Id<SatisfiableCalculationTask>,
     pub debug_test_saturation_debug_indi_model_string: String,
 
+    /// KM allocation scratch: AND-family rules snapshot ontology operands
+    /// before mutating the process context. Reusing one worker-local buffer
+    /// avoids one heap allocation for each of tens of millions of saturation
+    /// applications while preserving the exact operand sequence.
+    pub and_operand_buffer: Vec<NegLink<ConceptId>>,
+
     // --- insufficiency counters (.h 588–589) ---
     pub insufficient_atmost_count: Cint64,
     pub insufficient_all_count: Cint64,
@@ -232,6 +295,10 @@ impl SaturationTaskHandleAlgorithm {
             conf_concepts_extension_processing: false,
             conf_all_concepts_extension_processing: false,
             conf_functional_concepts_extension_processing: false,
+            conf_requeue_orphaned_saturation_work: std::env::var_os(
+                "KM_HT_REQUEUE_ORPHANED_SATURATION_WORK",
+            )
+            .is_some(),
             conf_nominal_processing: false,
             conf_copy_node_from_top_individual_for_many_concepts: false,
             conf_simple_merging_test_for_atmost_critical_testing: false,
@@ -293,6 +360,7 @@ impl SaturationTaskHandleAlgorithm {
             end_saturation_debug_indi_model_string: String::new(),
             debug_testing_saturation_task: Id::NONE,
             debug_test_saturation_debug_indi_model_string: String::new(),
+            and_operand_buffer: Vec::new(),
 
             insufficient_atmost_count: 0,
             insufficient_all_count: 0,

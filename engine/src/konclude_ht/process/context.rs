@@ -47,7 +47,22 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
+
+fn saturation_label_copy_threshold() -> usize {
+    static THRESHOLD: OnceLock<usize> = OnceLock::new();
+    *THRESHOLD.get_or_init(|| {
+        std::env::var("KM_SAT_LABEL_COPY_THRESHOLD")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value > 0)
+            // Below 192, ORE1194 avoids the 20 GiB copy-map cliff. The inherited
+            // layer implementation checkpoints every eight chunks, so 128 keeps
+            // physical sharing without the formerly linear lookup penalty.
+            .unwrap_or(128)
+    })
+}
 
 use super::super::model::substrate::{Arena, Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
@@ -260,10 +275,12 @@ use super::super::saturation::satellites::{
     SaturationAtmostSuccessorMergingHashId, SaturationConceptExtensionMap,
     SaturationConceptExtensionMapId, SaturationDisjunctCommonConceptExtractionData,
     SaturationDisjunctCommonConceptExtractionDataId, SaturationDisjunctExtractionLinker,
-    SaturationDisjunctExtractionLinkerId, SaturationIndividualNodeAllConceptsExtensionData,
+    SaturationDisjunctExtractionLinkerId, SaturationHashMap, SaturationHashSet,
+    SaturationIndividualNodeAllConceptsExtensionData,
     SaturationIndividualNodeAllConceptsExtensionDataId, SaturationIndividualNodeDatatypeData,
     SaturationIndividualNodeDatatypeDataId, SaturationIndividualNodeExtensionResolveData,
     SaturationIndividualNodeExtensionResolveDataId, SaturationIndividualNodeExtensionResolveHash,
+    SaturationIndividualNodeExtensionResolveHashData,
     SaturationIndividualNodeExtensionResolveHashId,
     SaturationIndividualNodeFunctionalConceptsExtensionData,
     SaturationIndividualNodeFunctionalConceptsExtensionDataId,
@@ -273,7 +290,8 @@ use super::super::saturation::satellites::{
     SaturationLinkedSuccessorIndividualAllConceptsExtensionDataId,
     SaturationModifiedProcessUpdateLinker, SaturationModifiedProcessUpdateLinkerId,
     SaturationSuccessorAllConceptExtensionData, SaturationSuccessorAllConceptExtensionDataId,
-    SaturationSuccessorConceptExtensionMap, SaturationSuccessorConceptExtensionMapId,
+    SaturationSuccessorConceptExtensionMap, SaturationSuccessorConceptExtensionMapData,
+    SaturationSuccessorConceptExtensionMapId, SaturationSuccessorConceptMap,
     SaturationSuccessorData, SaturationSuccessorDataId, SaturationSuccessorExtensionData,
     SaturationSuccessorExtensionDataId, SaturationSuccessorFunctionalConceptExtensionData,
     SaturationSuccessorFunctionalConceptExtensionDataId, SaturationSuccessorRoleAssertionLinker,
@@ -619,6 +637,11 @@ pub struct ProcessContext {
     sat_concept_extension_maps: Arena<SaturationConceptExtensionMap>,
     /// `CSaturationSuccessorConceptExtensionMap` pool.
     sat_successor_concept_extension_maps: Arena<SaturationSuccessorConceptExtensionMap>,
+    /// Canonical immutable backings for successor-extension maps. Maps remain
+    /// mutable through `Arc::make_mut`; resolving a map interns its current
+    /// snapshot so later equal maps share all buckets and entries.
+    sat_successor_concept_map_interner:
+        HashMap<(usize, u64, u64), Vec<std::sync::Arc<SaturationSuccessorConceptMap>>>,
     /// `CSaturationIndividualNodeFUNCTIONALConceptsExtensionData` pool.
     sat_indi_node_functional_concept_ext_datas:
         Arena<SaturationIndividualNodeFunctionalConceptsExtensionData>,
@@ -706,7 +729,7 @@ impl ProcessContext {
         ProcessContext {
             branch_epoch_depth: 0,
             nodes: Arena::new(),
-            sat_nodes: Arena::new(),
+            sat_nodes: Arena::new_tight(),
             edges: Arena::new(),
             distinct_edges: Arena::new(),
             disjoint_edges: Arena::new(),
@@ -812,13 +835,13 @@ impl ProcessContext {
             backward_prop_links: Arena::new(),
             backward_prop_reapply_descs: Arena::new(),
             role_backward_prop_hashes: Arena::new(),
-            con_sat_descs: Arena::new(),
+            con_sat_descs: Arena::new_tight(),
             con_sat_proc_linkers: Arena::new(),
             role_sat_proc_linkers: Arena::new(),
-            backward_sat_prop_links: Arena::new(),
-            backward_sat_prop_reapply_descs: Arena::new(),
+            backward_sat_prop_links: Arena::new_tight(),
+            backward_sat_prop_reapply_descs: Arena::new_tight(),
             role_backward_sat_prop_hashes: Arena::new(),
-            sat_succ_datas: Arena::new(),
+            sat_succ_datas: Arena::new_tight(),
             sat_succ_ext_datas: Arena::new(),
             indi_sat_succ_link_data_linkers: Arena::new(),
             linked_role_sat_succ_datas: Arena::new(),
@@ -826,12 +849,13 @@ impl ProcessContext {
             indi_sat_node_ext_datas: Arena::new(),
             sat_indi_node_succ_ext_datas: Arena::new(),
             sat_indi_node_all_concept_ext_datas: Arena::new(),
-            sat_linked_succ_indi_all_concept_ext_datas: Arena::new(),
-            sat_successor_all_concept_ext_datas: Arena::new(),
+            sat_linked_succ_indi_all_concept_ext_datas: Arena::new_tight(),
+            sat_successor_all_concept_ext_datas: Arena::new_tight(),
             sat_indi_node_ext_resolve_datas: Arena::new(),
-            sat_indi_node_ext_resolve_hashes: Arena::new(),
+            sat_indi_node_ext_resolve_hashes: Arena::new_tight(),
             sat_concept_extension_maps: Arena::new(),
-            sat_successor_concept_extension_maps: Arena::new(),
+            sat_successor_concept_extension_maps: Arena::new_tight(),
+            sat_successor_concept_map_interner: HashMap::new(),
             sat_indi_node_functional_concept_ext_datas: Arena::new(),
             sat_successor_functional_concept_ext_datas: Arena::new(),
             sat_disjunct_common_concept_extraction_datas: Arena::new(),
@@ -845,7 +869,7 @@ impl ProcessContext {
             critical_pred_role_card_datas: Arena::new(),
             critical_pred_role_card_hashes: Arena::new(),
             reapply_con_sat_label_sets: Arena::new(),
-            imp_reapply_con_sat_descs: Arena::new(),
+            imp_reapply_con_sat_descs: Arena::new_tight(),
             sat_modified_process_update_linkers: Arena::new(),
             indi_sat_process_node_linkers: Arena::new(),
             individual_merging_hashes: Arena::new(),
@@ -881,11 +905,65 @@ impl ProcessContext {
         self.clear_transient_arenas_preserving_capacity();
         if !preserve_saturation {
             self.clear_saturation_arenas_preserving_capacity();
+            self.release_large_partial_saturation_capacity();
         }
         self.branch_epoch_depth = 0;
         self.used_mem_man = INVALID;
         self.used_process_tagger = ProcessTagger::new();
         self.used_process_stat_gath = INVALID;
+    }
+
+    /// Release the large one-shot backings left by an interrupted saturation
+    /// pass before completion probes begin.  The preceding logical clear has
+    /// already invalidated every saturation id, and partial saturation is never
+    /// coupled into completion.  Small pools retain their normal reuse
+    /// behaviour; the threshold avoids allocation churn on ordinary inputs.
+    fn release_large_partial_saturation_capacity(&mut self) {
+        const RELEASE_THRESHOLD: usize = 256 << 20;
+        let large_reserved = self
+            .sat_succ_datas
+            .reserved_item_bytes()
+            .saturating_add(self.con_sat_descs.reserved_item_bytes())
+            .saturating_add(self.backward_sat_prop_links.reserved_item_bytes())
+            .saturating_add(self.imp_reapply_con_sat_descs.reserved_item_bytes())
+            .saturating_add(
+                self.sat_successor_all_concept_ext_datas
+                    .reserved_item_bytes(),
+            )
+            .saturating_add(
+                self.sat_linked_succ_indi_all_concept_ext_datas
+                    .reserved_item_bytes(),
+            )
+            .saturating_add(
+                self.sat_successor_concept_extension_maps
+                    .reserved_item_bytes(),
+            );
+        if large_reserved < RELEASE_THRESHOLD {
+            return;
+        }
+        self.sat_succ_datas.clear_releasing_capacity();
+        self.con_sat_descs.clear_releasing_capacity();
+        self.backward_sat_prop_links.clear_releasing_capacity();
+        self.imp_reapply_con_sat_descs.clear_releasing_capacity();
+        self.sat_successor_all_concept_ext_datas
+            .clear_releasing_capacity();
+        self.sat_linked_succ_indi_all_concept_ext_datas
+            .clear_releasing_capacity();
+        self.sat_successor_concept_extension_maps
+            .clear_releasing_capacity();
+        self.sat_concept_extension_maps.clear_releasing_capacity();
+        self.linked_role_sat_succ_datas.clear_releasing_capacity();
+        self.linked_role_sat_succ_hashes.clear_releasing_capacity();
+        self.sat_successor_concept_map_interner = HashMap::new();
+    }
+
+    /// Invalidate and release an interrupted saturation task after its labels
+    /// have been copied into the standalone classifier state.  Callers must
+    /// have disabled saturation-node coupling for the following completion
+    /// phase; no process-side saturation id remains valid afterwards.
+    pub fn release_partial_saturation_state(&mut self) {
+        self.clear_saturation_arenas_preserving_capacity();
+        self.release_large_partial_saturation_capacity();
     }
 
     fn clear_transient_arenas_preserving_capacity(&mut self) {
@@ -1101,6 +1179,10 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.sat_successor_concept_extension_maps
             .clear_preserving_capacity();
+        // Canonical backings belong to the saturation arenas above. Keeping
+        // them here after a non-preserving reset would retain every interned
+        // map even though no arena record can reference it any longer.
+        self.sat_successor_concept_map_interner.clear();
         self.sat_successor_functional_concept_ext_datas
             .clear_preserving_capacity();
         self.sat_succ_ext_datas.clear_preserving_capacity();
@@ -3980,6 +4062,449 @@ impl ProcessContext {
             })
     }
 
+    /// Order-independent fingerprint of the physical concept-label contents.
+    /// This deliberately includes inherited shadow entries: it is a diagnostic
+    /// for locating the first state divergence between two saturation runs,
+    /// not a semantic taxonomy hash. It runs only behind the opt-in census flag.
+    pub fn saturation_label_state_fingerprint(&self) -> (u64, u64, usize) {
+        #[inline]
+        fn mix(mut value: u64) -> u64 {
+            value = (value ^ (value >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+            value = (value ^ (value >> 27)).wrapping_mul(0x94d049bb133111eb);
+            value ^ (value >> 31)
+        }
+
+        let mut xor = 0u64;
+        let mut sum = 0u64;
+        let mut count = 0usize;
+        for (label_index, label) in self.reapply_con_sat_label_sets.iter().enumerate() {
+            let mut visit = |tag: Cint64, data: ConceptSaturationDescriptorReapplyData| {
+                let (concept, negated) = if data.con_sat_des.is_some()
+                    && data.con_sat_des.index() < self.con_sat_descs.len()
+                {
+                    let descriptor = self.con_sat_descs.get(data.con_sat_des);
+                    (descriptor.concept.raw as u64, u64::from(descriptor.negated))
+                } else {
+                    (u64::MAX, 0)
+                };
+                let item = mix(label_index as u64)
+                    ^ mix(tag as u64).rotate_left(11)
+                    ^ mix(concept).rotate_left(29)
+                    ^ mix(negated).rotate_left(47)
+                    ^ mix(data.imp_reapply_con_sat_des.raw as u64).rotate_left(53);
+                xor ^= item;
+                sum = sum.wrapping_add(item);
+                count += 1;
+            };
+            for (&tag, &data) in &label.concept_des_dep_hash {
+                visit(tag, data);
+            }
+            if label.has_additional_concept_des_dep_hash {
+                for (&tag, &data) in label.additional_concept_des_dep_hash.iter() {
+                    visit(tag, data);
+                }
+            }
+        }
+        (xor, sum, count)
+    }
+
+    /// Physical saturation-label storage census. Unlike the logical count
+    /// above, shared layer vectors and chunks are counted once by allocation
+    /// identity. This is used only by opt-in ORE memory diagnostics.
+    pub fn reapply_con_sat_label_physical_storage_counts(
+        &self,
+    ) -> (usize, usize, usize, usize, usize, usize, usize, usize) {
+        let mut main_entries = 0usize;
+        let mut main_capacity = 0usize;
+        let mut layer_references = 0usize;
+        let mut vector_ids = HashSet::new();
+        let mut vector_slots = 0usize;
+        let mut chunk_ids = HashSet::new();
+        let mut chunk_entries = 0usize;
+        let mut chunk_capacity = 0usize;
+
+        for label in self.reapply_con_sat_label_sets.iter() {
+            main_entries += label.concept_des_dep_hash.len();
+            main_capacity += label.concept_des_dep_hash.capacity();
+            let (vector_id, layer_count, vector_capacity) = label
+                .additional_concept_des_dep_hash
+                .diagnostic_vector_storage();
+            layer_references += layer_count;
+            if vector_ids.insert(vector_id) {
+                vector_slots += vector_capacity;
+            }
+            for (chunk_id, entries, capacity) in label
+                .additional_concept_des_dep_hash
+                .diagnostic_chunk_storage()
+            {
+                if chunk_ids.insert(chunk_id) {
+                    chunk_entries += entries;
+                    chunk_capacity += capacity;
+                }
+            }
+        }
+        (
+            main_entries,
+            main_capacity,
+            layer_references,
+            vector_ids.len(),
+            vector_slots,
+            chunk_ids.len(),
+            chunk_entries,
+            chunk_capacity,
+        )
+    }
+
+    /// Primary-vector allocation census for the saturation subsystem. This is
+    /// diagnostic-only and excludes nested maps/vectors, which are counted by
+    /// subsystem-specific census code such as the saturation-label report.
+    pub fn saturation_arena_storage_rows(&self) -> Vec<(&'static str, usize, usize, usize, usize)> {
+        let mut rows = Vec::new();
+        macro_rules! row {
+            ($name:literal, $field:ident) => {{
+                let arena = &self.$field;
+                rows.push((
+                    $name,
+                    arena.len(),
+                    arena.capacity(),
+                    arena.item_size(),
+                    arena.reserved_item_bytes(),
+                ));
+            }};
+        }
+        row!("sat_nodes", sat_nodes);
+        row!("con_sat_descs", con_sat_descs);
+        row!("con_sat_proc_linkers", con_sat_proc_linkers);
+        row!("role_sat_proc_linkers", role_sat_proc_linkers);
+        row!("backward_sat_prop_links", backward_sat_prop_links);
+        row!(
+            "backward_sat_prop_reapply_descs",
+            backward_sat_prop_reapply_descs
+        );
+        row!(
+            "role_backward_sat_prop_hashes",
+            role_backward_sat_prop_hashes
+        );
+        row!("sat_succ_datas", sat_succ_datas);
+        row!("sat_succ_ext_datas", sat_succ_ext_datas);
+        row!(
+            "indi_sat_succ_link_data_linkers",
+            indi_sat_succ_link_data_linkers
+        );
+        row!("linked_role_sat_succ_datas", linked_role_sat_succ_datas);
+        row!("linked_role_sat_succ_hashes", linked_role_sat_succ_hashes);
+        row!("indi_sat_node_ext_datas", indi_sat_node_ext_datas);
+        row!("sat_indi_node_succ_ext_datas", sat_indi_node_succ_ext_datas);
+        row!(
+            "sat_indi_node_all_concept_ext_datas",
+            sat_indi_node_all_concept_ext_datas
+        );
+        row!(
+            "sat_linked_succ_indi_all_concept_ext_datas",
+            sat_linked_succ_indi_all_concept_ext_datas
+        );
+        row!(
+            "sat_successor_all_concept_ext_datas",
+            sat_successor_all_concept_ext_datas
+        );
+        row!(
+            "sat_indi_node_ext_resolve_datas",
+            sat_indi_node_ext_resolve_datas
+        );
+        row!(
+            "sat_indi_node_ext_resolve_hashes",
+            sat_indi_node_ext_resolve_hashes
+        );
+        row!("sat_concept_extension_maps", sat_concept_extension_maps);
+        row!(
+            "sat_successor_concept_extension_maps",
+            sat_successor_concept_extension_maps
+        );
+        row!(
+            "sat_indi_node_functional_concept_ext_datas",
+            sat_indi_node_functional_concept_ext_datas
+        );
+        row!(
+            "sat_successor_functional_concept_ext_datas",
+            sat_successor_functional_concept_ext_datas
+        );
+        row!(
+            "sat_disjunct_common_concept_extraction_datas",
+            sat_disjunct_common_concept_extraction_datas
+        );
+        row!(
+            "sat_disjunct_extraction_linkers",
+            sat_disjunct_extraction_linkers
+        );
+        row!(
+            "sat_atmost_successor_merging_datas",
+            sat_atmost_successor_merging_datas
+        );
+        row!(
+            "sat_atmost_successor_merging_hashes",
+            sat_atmost_successor_merging_hashes
+        );
+        row!(
+            "linked_data_value_assertion_datas",
+            linked_data_value_assertion_datas
+        );
+        row!(
+            "data_value_role_assertion_linkers",
+            data_value_role_assertion_linkers
+        );
+        row!("sat_indi_node_datatype_datas", sat_indi_node_datatype_datas);
+        row!(
+            "sat_succ_role_assertion_linkers",
+            sat_succ_role_assertion_linkers
+        );
+        row!(
+            "critical_pred_role_card_datas",
+            critical_pred_role_card_datas
+        );
+        row!(
+            "critical_pred_role_card_hashes",
+            critical_pred_role_card_hashes
+        );
+        row!("reapply_con_sat_label_sets", reapply_con_sat_label_sets);
+        row!("imp_reapply_con_sat_descs", imp_reapply_con_sat_descs);
+        row!(
+            "sat_modified_process_update_linkers",
+            sat_modified_process_update_linkers
+        );
+        row!(
+            "indi_sat_process_node_linkers",
+            indi_sat_process_node_linkers
+        );
+        rows.sort_unstable_by(|left, right| right.4.cmp(&left.4));
+        rows
+    }
+
+    /// Aggregate nested-container capacity for the largest saturation records.
+    /// The byte estimate covers payload slots, excluding allocator metadata and
+    /// hash control bytes.
+    pub fn saturation_nested_storage_rows(
+        &self,
+    ) -> Vec<(&'static str, usize, usize, usize, usize)> {
+        let mut rows = Vec::new();
+        let mut add = |name, len: usize, capacity: usize, entry_size: usize| {
+            rows.push((
+                name,
+                len,
+                capacity,
+                entry_size,
+                capacity.saturating_mul(entry_size),
+            ));
+        };
+
+        let mut creation_role_vectors = HashSet::new();
+        let (len, capacity) = self
+            .sat_succ_datas
+            .iter()
+            .filter_map(|data| {
+                let (ptr, len, capacity) = data.creation_role_linker.diagnostic_heap_storage()?;
+                creation_role_vectors.insert(ptr).then_some((len, capacity))
+            })
+            .fold((0usize, 0usize), |acc, item| {
+                (acc.0 + item.0, acc.1 + item.1)
+            });
+        add(
+            "sat_succ_creation_roles",
+            len,
+            capacity,
+            std::mem::size_of::<NegLink<RoleId>>(),
+        );
+
+        // Interned maps share their allocation through Arc. Count each backing
+        // once so this diagnostic tracks physical storage rather than logical
+        // references to it.
+        let mut successor_concept_maps = HashSet::new();
+        let (len, capacity) = self
+            .sat_successor_concept_extension_maps
+            .iter()
+            .filter_map(|map| {
+                let ptr = std::sync::Arc::as_ptr(&map.concept_extension_map) as usize;
+                successor_concept_maps.insert(ptr).then_some((
+                    map.concept_extension_map.len(),
+                    map.concept_extension_map.capacity(),
+                ))
+            })
+            .fold((0usize, 0usize), |acc, item| {
+                (acc.0 + item.0, acc.1 + item.1)
+            });
+        add(
+            "sat_successor_concept_map_entries",
+            len,
+            capacity,
+            std::mem::size_of::<(Cint64, SaturationSuccessorConceptExtensionMapData)>(),
+        );
+
+        let (len, capacity) =
+            self.sat_linked_succ_indi_all_concept_ext_datas
+                .iter()
+                .fold((0, 0), |acc, data| {
+                    (
+                        acc.0 + data.role_concept_extension_hash.len(),
+                        acc.1 + data.role_concept_extension_hash.capacity(),
+                    )
+                });
+        add(
+            "sat_linked_successor_role_entries",
+            len,
+            capacity,
+            std::mem::size_of::<(RoleId, SaturationSuccessorAllConceptExtensionDataId)>(),
+        );
+
+        let (len, capacity) =
+            self.role_backward_sat_prop_hashes
+                .iter()
+                .fold((0, 0), |acc, hash| {
+                    (
+                        acc.0 + hash.role_back_prop_data_hash.len(),
+                        acc.1 + hash.role_back_prop_data_hash.capacity(),
+                    )
+                });
+        add(
+            "backward_role_hash_entries",
+            len,
+            capacity,
+            std::mem::size_of::<(RoleId, RoleBackwardSaturationPropagationHashData)>(),
+        );
+
+        let (
+            concept_len,
+            concept_capacity,
+            individual_len,
+            individual_capacity,
+            role_len,
+            role_capacity,
+        ) = self
+            .sat_indi_node_ext_resolve_hashes
+            .iter()
+            .fold((0, 0, 0, 0, 0, 0), |acc, hash| {
+                (
+                    acc.0 + hash.concept_resolve_hash.len(),
+                    acc.1 + hash.concept_resolve_hash.capacity(),
+                    acc.2 + hash.individual_resolve_hash.len(),
+                    acc.3 + hash.individual_resolve_hash.capacity(),
+                    acc.4 + hash.role_resolve_hash.len(),
+                    acc.5 + hash.role_resolve_hash.capacity(),
+                )
+            });
+        add(
+            "extension_resolve_concept_entries",
+            concept_len,
+            concept_capacity,
+            std::mem::size_of::<(
+                (ConceptId, bool),
+                SaturationIndividualNodeExtensionResolveHashData,
+            )>(),
+        );
+        add(
+            "extension_resolve_individual_entries",
+            individual_len,
+            individual_capacity,
+            std::mem::size_of::<(SatNodeId, SaturationIndividualNodeExtensionResolveHashData)>(),
+        );
+        add(
+            "extension_resolve_role_entries",
+            role_len,
+            role_capacity,
+            std::mem::size_of::<(RoleId, SaturationIndividualNodeExtensionResolveHashData)>(),
+        );
+
+        let (
+            depending_len,
+            depending_capacity,
+            connected_len,
+            connected_capacity,
+            cardinality_len,
+            cardinality_capacity,
+        ) = self.sat_nodes.iter().fold((0, 0, 0, 0, 0, 0), |acc, node| {
+            (
+                acc.0 + node.depending_indi_node_linker.len(),
+                acc.1 + node.depending_indi_node_linker.capacity(),
+                acc.2 + node.non_inverse_connected_indi_node_linker.len(),
+                acc.3 + node.non_inverse_connected_indi_node_linker.capacity(),
+                acc.4 + node.multiple_cardinality_ancestor_nodes_linker.len(),
+                acc.5 + node.multiple_cardinality_ancestor_nodes_linker.capacity(),
+            )
+        });
+        add(
+            "sat_node_depending_entries",
+            depending_len,
+            depending_capacity,
+            std::mem::size_of::<NegLink<SatNodeId>>(),
+        );
+        add(
+            "sat_node_connected_entries",
+            connected_len,
+            connected_capacity,
+            std::mem::size_of::<SatNodeId>(),
+        );
+        add(
+            "sat_node_cardinality_ancestor_entries",
+            cardinality_len,
+            cardinality_capacity,
+            std::mem::size_of::<SatNodeId>(),
+        );
+
+        rows.sort_unstable_by(|left, right| right.4.cmp(&left.4));
+        rows
+    }
+
+    /// Bounded content-duplication sample for successor concept maps.
+    ///
+    /// The signature is order-independent because the underlying maps are
+    /// hash tables. Two independent 64-bit accumulators plus the exact length
+    /// make accidental collisions negligible for this diagnostic. Production
+    /// never calls this unless `KM_SAT_MAP_DEDUP_CENSUS` is explicitly set.
+    pub fn saturation_successor_concept_map_dedup_sample(
+        &self,
+        max_maps: usize,
+    ) -> (usize, usize, usize, usize) {
+        let map_count = self.sat_successor_concept_extension_maps.len();
+        if map_count == 0 || max_maps == 0 {
+            return (0, 0, 0, 0);
+        }
+        let stride = map_count.div_ceil(max_maps).max(1);
+        let mut signatures = HashSet::with_capacity(map_count.div_ceil(stride));
+        let mut sampled_maps = 0usize;
+        let mut sampled_entries = 0usize;
+        let mut unique_entries = 0usize;
+
+        for (index, map) in self.sat_successor_concept_extension_maps.iter().enumerate() {
+            if index % stride != 0 {
+                continue;
+            }
+            let mut xor = 0u64;
+            let mut sum = 0u64;
+            for (&tag, data) in map.concept_extension_map.iter() {
+                let flags = u64::from(data.positive) | (u64::from(data.negative) << 1);
+                let mut value = (tag as u64)
+                    ^ (data.concept.raw as u64).rotate_left(21)
+                    ^ flags.rotate_left(47);
+                value ^= value >> 30;
+                value = value.wrapping_mul(0xbf58476d1ce4e5b9);
+                value ^= value >> 27;
+                value = value.wrapping_mul(0x94d049bb133111eb);
+                value ^= value >> 31;
+                xor ^= value;
+                sum = sum.wrapping_add(value.rotate_left((tag as u32) & 63));
+            }
+            sampled_maps += 1;
+            sampled_entries += map.concept_extension_map.len();
+            if signatures.insert((map.concept_extension_map.len(), xor, sum)) {
+                unique_entries += map.concept_extension_map.len();
+            }
+        }
+        (
+            sampled_maps,
+            signatures.len(),
+            sampled_entries,
+            unique_entries,
+        )
+    }
+
     /// Move the SATURATION-side arena state out of `other` into `self` (swap).
     ///
     /// KONCLUDE-PORT-NOTE[api]: in Konclude the approximation-saturation task
@@ -4103,6 +4628,10 @@ impl ProcessContext {
         swap(
             &mut self.sat_successor_concept_extension_maps,
             &mut other.sat_successor_concept_extension_maps,
+        );
+        swap(
+            &mut self.sat_successor_concept_map_interner,
+            &mut other.sat_successor_concept_map_interner,
         );
         swap(
             &mut self.sat_indi_node_functional_concept_ext_datas,
@@ -4640,19 +5169,28 @@ impl ProcessContext {
             &mut self.backward_sat_prop_links,
             &mut self.role_backward_sat_prop_hashes,
         );
-        let data = role_hashes
-            .get_mut_journaled(hash)
-            .role_back_prop_data_hash
-            .entry(role)
-            .or_insert_with(RoleBackwardSaturationPropagationHashData::new);
-        let old_head = data.link_linker;
-        let install_link = old_head.is_none()
-            || backward_links.get(old_head).get_source_individual() != link_source;
-        if install_link {
-            backward_links.get_mut_journaled(link).set_next(old_head);
-            data.link_linker = link;
+        let (install_link, reapply_linker) = {
+            let data = role_hashes
+                .get_mut_journaled(hash)
+                .role_back_prop_data_hash
+                .entry(role)
+                .or_insert_with(RoleBackwardSaturationPropagationHashData::new);
+            let old_head = data.link_linker;
+            let install_link = old_head.is_none()
+                || backward_links.get(old_head).get_source_individual() != link_source;
+            if install_link {
+                backward_links.get_mut_journaled(link).set_next(old_head);
+                data.link_linker = link;
+            }
+            (install_link, data.reapply_linker)
+        };
+        if !install_link {
+            // Callers construct and arena-allocate the candidate immediately
+            // before this operation. A duplicate is never published, so reclaim
+            // that tail slot instead of retaining millions of dead candidates.
+            backward_links.pop_last_if(link);
         }
-        (install_link, data.reapply_linker)
+        (install_link, reapply_linker)
     }
 
     /// Port of the predecessor-merging flag tail of
@@ -4925,62 +5463,23 @@ impl ProcessContext {
             return target_label_set;
         }
 
-        let (
-            source_concept_count,
-            source_total_count,
-            source_concept_flags,
-            source_main_len,
-            source_has_additional,
-            source_additional_len,
-        ) = {
+        let (source_concept_count, source_total_count, source_concept_flags, source_main_len) = {
             let source = self.reapply_con_sat_label_set(source_label_set);
             (
                 source.concept_count,
                 source.totel_count,
                 source.concept_flags,
                 source.concept_des_dep_hash.len(),
-                source.has_additional_concept_des_dep_hash,
-                source.additional_concept_des_dep_hash.len(),
             )
         };
 
-        if source_main_len >= ReapplyConceptSaturationLabelSet::ADDITIONALCOPYSIZE as usize
+        if source_main_len >= saturation_label_copy_threshold()
             || (try_flat_label_copy && source_main_len > 0)
         {
-            let (new_additional, new_main) = {
-                let source = self.reapply_con_sat_label_set(source_label_set);
-                if source_has_additional {
-                    let mut tmp = if source_additional_len > source_main_len {
-                        source.additional_concept_des_dep_hash.as_ref().clone()
-                    } else {
-                        source.concept_des_dep_hash.clone()
-                    };
-                    let merge_from = if source_additional_len > source_main_len {
-                        &source.concept_des_dep_hash
-                    } else {
-                        &source.additional_concept_des_dep_hash
-                    };
-                    for (con_tag, data) in merge_from {
-                        let entry = tmp.entry(*con_tag).or_default();
-                        if data.con_sat_des.is_some() {
-                            entry.con_sat_des = data.con_sat_des;
-                        }
-                        if data.imp_reapply_con_sat_des.is_some() {
-                            entry.imp_reapply_con_sat_des = data.imp_reapply_con_sat_des;
-                        }
-                    }
-                    (std::sync::Arc::new(tmp), Default::default())
-                } else {
-                    (
-                        std::sync::Arc::new(source.concept_des_dep_hash.clone()),
-                        Default::default(),
-                    )
-                }
-            };
             let source = self.reapply_con_sat_label_set_mut(source_label_set);
-            source.additional_concept_des_dep_hash = new_additional;
+            let main = std::mem::take(&mut source.concept_des_dep_hash);
+            source.additional_concept_des_dep_hash.push_layer(main);
             source.has_additional_concept_des_dep_hash = true;
-            source.concept_des_dep_hash = new_main;
         }
 
         let (
@@ -5023,12 +5522,19 @@ impl ProcessContext {
             return Vec::new();
         }
 
-        let mut out = Vec::new();
-        for data in self
+        let role_hash = &self
             .role_backward_sat_prop_hash(hash)
-            .role_back_prop_data_hash
-            .values()
-        {
+            .role_back_prop_data_hash;
+        let mut roles: Vec<RoleId> = role_hash.keys().copied().collect();
+        // Konclude's CPROCESSHASH traversal order is not a semantic contract.
+        // Rust's process-random HashMap order must not become a saturation
+        // schedule input, however: these sources feed four rule queues and an
+        // incomplete intermediate schedule can otherwise vary by process.
+        roles.sort_unstable_by_key(|role| role.index());
+
+        let mut out = Vec::new();
+        for role in roles {
+            let data = &role_hash[&role];
             let mut link = data.link_linker;
             while link.is_some() {
                 let link_ref = self.backward_sat_prop_link(link);
@@ -5039,6 +5545,10 @@ impl ProcessContext {
                 link = link_ref.get_next();
             }
         }
+        // Link chains are prepend-ordered, which depends on the order in which
+        // predecessor discoveries happened. Canonicalising the final source
+        // sequence preserves multiplicity and the complete rule-input set.
+        out.sort_unstable_by_key(|source| source.index());
         out
     }
     arena_accessors!(
@@ -5216,6 +5726,74 @@ impl ProcessContext {
     #[inline]
     pub fn sat_successor_concept_extension_map_count(&self) -> usize {
         self.sat_successor_concept_extension_maps.len()
+    }
+
+    /// Hash-cons the current immutable snapshot of one successor-concept map.
+    /// Any later insertion uses `Arc::make_mut`, so sharing cannot couple the
+    /// logical state of two maps. Exact map equality guards the compact
+    /// order-independent signature against collisions.
+    pub fn intern_saturation_successor_concept_map(
+        &mut self,
+        map_id: SaturationSuccessorConceptExtensionMapId,
+    ) {
+        if std::env::var_os("KM_SAT_NO_MAP_INTERN").is_some()
+            || map_id.is_none()
+            || map_id.index() >= self.sat_successor_concept_extension_maps.len()
+        {
+            return;
+        }
+
+        #[inline]
+        fn mix(mut value: u64) -> u64 {
+            value = (value ^ (value >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+            value = (value ^ (value >> 27)).wrapping_mul(0x94d049bb133111eb);
+            value ^ (value >> 31)
+        }
+
+        let backing = self
+            .sat_successor_concept_extension_map(map_id)
+            .concept_extension_map
+            .clone();
+        let mut xor = 0u64;
+        let mut sum = 0u64;
+        for (&tag, data) in backing.iter() {
+            let flags = u64::from(data.positive) | (u64::from(data.negative) << 1);
+            let item = mix(tag as u64)
+                ^ mix(data.concept.raw as u64).rotate_left(17)
+                ^ mix(flags).rotate_left(37);
+            xor ^= item;
+            sum = sum.wrapping_add(item);
+        }
+        let key = (backing.len(), xor, sum);
+
+        let canonical = self
+            .sat_successor_concept_map_interner
+            .get(&key)
+            .and_then(|bucket| {
+                bucket
+                    .iter()
+                    .find(|candidate| candidate.as_ref() == backing.as_ref())
+                    .cloned()
+            });
+        if let Some(canonical) = canonical {
+            self.sat_successor_concept_extension_map_mut(map_id)
+                .concept_extension_map = canonical;
+        } else {
+            self.sat_successor_concept_map_interner
+                .entry(key)
+                .or_default()
+                .push(backing);
+        }
+    }
+
+    pub fn saturation_successor_concept_map_interner_counts(&self) -> (usize, usize) {
+        (
+            self.sat_successor_concept_map_interner.len(),
+            self.sat_successor_concept_map_interner
+                .values()
+                .map(Vec::len)
+                .sum(),
+        )
     }
     arena_accessors!(
         sat_indi_node_functional_concept_ext_datas,
@@ -6015,7 +6593,7 @@ impl ProcessContext {
         &mut self,
         data: SaturationAtmostSuccessorMergingDataId,
         create: bool,
-    ) -> Option<&mut std::collections::HashMap<SaturationSuccessorDataId, Cint64>> {
+    ) -> Option<&mut SaturationHashMap<SaturationSuccessorDataId, Cint64>> {
         if data.is_none() {
             return None;
         }
@@ -6033,8 +6611,7 @@ impl ProcessContext {
         &mut self,
         data: SaturationAtmostSuccessorMergingDataId,
         create: bool,
-    ) -> Option<&mut std::collections::HashMap<SaturationSuccessorDataId, SaturationSuccessorDataId>>
-    {
+    ) -> Option<&mut SaturationHashMap<SaturationSuccessorDataId, SaturationSuccessorDataId>> {
         if data.is_none() {
             return None;
         }
@@ -6052,9 +6629,8 @@ impl ProcessContext {
         &mut self,
         data: SaturationAtmostSuccessorMergingDataId,
         create: bool,
-    ) -> Option<
-        &mut std::collections::HashSet<(SaturationSuccessorDataId, SaturationSuccessorDataId)>,
-    > {
+    ) -> Option<&mut SaturationHashSet<(SaturationSuccessorDataId, SaturationSuccessorDataId)>>
+    {
         if data.is_none() {
             return None;
         }
@@ -7979,6 +8555,125 @@ mod tests {
     };
     use super::*;
 
+    fn backward_source_context(reverse: bool) -> (ProcessContext, SatNodeId) {
+        let mut ctx = ProcessContext::new();
+        let target = ctx.alloc_sat_node(IndividualSaturationProcessNode::default());
+        let source_a = ctx.alloc_sat_node(IndividualSaturationProcessNode::default());
+        let source_b = ctx.alloc_sat_node(IndividualSaturationProcessNode::default());
+        let source_c = ctx.alloc_sat_node(IndividualSaturationProcessNode::default());
+        let links = [
+            (RoleId::new(9), source_c),
+            (RoleId::new(2), source_b),
+            (RoleId::new(9), source_a),
+        ];
+        if reverse {
+            for &(role, source) in links.iter().rev() {
+                ctx.sat_node_add_backward_propagation_link(target, role, source);
+            }
+        } else {
+            for &(role, source) in &links {
+                ctx.sat_node_add_backward_propagation_link(target, role, source);
+            }
+        }
+        (ctx, target)
+    }
+
+    #[test]
+    fn backward_saturation_sources_are_canonical_across_insertion_orders() {
+        let (forward, forward_target) = backward_source_context(false);
+        let (reverse, reverse_target) = backward_source_context(true);
+
+        let forward_sources = forward.sat_node_role_backward_source_individuals(forward_target);
+        let reverse_sources = reverse.sat_node_role_backward_source_individuals(reverse_target);
+
+        assert_eq!(forward_sources, reverse_sources);
+        assert_eq!(
+            forward_sources
+                .iter()
+                .map(|id| id.index())
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn successor_concept_map_dedup_sample_is_order_independent() {
+        let mut ctx = ProcessContext::new();
+        for reverse in [false, true] {
+            let mut map = SaturationSuccessorConceptExtensionMap::new();
+            let entries = [
+                (ConceptId::new(11), false, 101),
+                (ConceptId::new(12), true, 102),
+            ];
+            if reverse {
+                for &(concept, negated, tag) in entries.iter().rev() {
+                    map.add_extension_concept(concept, negated, tag);
+                }
+            } else {
+                for &(concept, negated, tag) in &entries {
+                    map.add_extension_concept(concept, negated, tag);
+                }
+            }
+            ctx.alloc_sat_successor_concept_extension_map(map);
+        }
+        let mut distinct = SaturationSuccessorConceptExtensionMap::new();
+        distinct.add_extension_concept(ConceptId::new(13), false, 103);
+        ctx.alloc_sat_successor_concept_extension_map(distinct);
+
+        assert_eq!(
+            ctx.saturation_successor_concept_map_dedup_sample(100),
+            (3, 2, 5, 3)
+        );
+    }
+
+    #[test]
+    fn successor_concept_map_interning_shares_equal_snapshots_and_detaches_on_write() {
+        let mut ctx = ProcessContext::new();
+        let mut first = SaturationSuccessorConceptExtensionMap::new();
+        first.add_extension_concept(ConceptId::new(21), false, 201);
+        first.add_extension_concept(ConceptId::new(22), true, 202);
+        let first = ctx.alloc_sat_successor_concept_extension_map(first);
+        let mut second = SaturationSuccessorConceptExtensionMap::new();
+        second.add_extension_concept(ConceptId::new(22), true, 202);
+        second.add_extension_concept(ConceptId::new(21), false, 201);
+        let second = ctx.alloc_sat_successor_concept_extension_map(second);
+
+        ctx.intern_saturation_successor_concept_map(first);
+        ctx.intern_saturation_successor_concept_map(second);
+        assert!(std::sync::Arc::ptr_eq(
+            &ctx.sat_successor_concept_extension_map(first)
+                .concept_extension_map,
+            &ctx.sat_successor_concept_extension_map(second)
+                .concept_extension_map,
+        ));
+        assert_eq!(
+            ctx.saturation_successor_concept_map_interner_counts(),
+            (1, 1)
+        );
+
+        assert!(ctx
+            .sat_successor_concept_extension_map_mut(second)
+            .add_extension_concept(ConceptId::new(23), false, 203));
+        assert!(!std::sync::Arc::ptr_eq(
+            &ctx.sat_successor_concept_extension_map(first)
+                .concept_extension_map,
+            &ctx.sat_successor_concept_extension_map(second)
+                .concept_extension_map,
+        ));
+        assert_eq!(
+            ctx.sat_successor_concept_extension_map(first)
+                .concept_extension_map
+                .len(),
+            2
+        );
+        assert_eq!(
+            ctx.sat_successor_concept_extension_map(second)
+                .concept_extension_map
+                .len(),
+            3
+        );
+    }
+
     #[test]
     fn probe_reset_reuses_transient_capacity_with_fresh_logical_state() {
         let mut ctx = ProcessContext::new();
@@ -8017,6 +8712,10 @@ mod tests {
         let mut saturation_node = IndividualSaturationProcessNode::default();
         saturation_node.set_individual_id(41);
         let saturation_id = ctx.alloc_sat_node(saturation_node);
+        let mut successor_map = SaturationSuccessorConceptExtensionMap::new();
+        successor_map.add_extension_concept(ConceptId::new(17), false, 17);
+        let successor_map = ctx.alloc_sat_successor_concept_extension_map(successor_map);
+        ctx.intern_saturation_successor_concept_map(successor_map);
         ctx.alloc_node(IndividualProcessNode::default());
 
         let sat_capacity = ctx.sat_nodes.capacity();
@@ -8029,11 +8728,19 @@ mod tests {
         assert_eq!(ctx.sat_node_count(), 1);
         assert_eq!(ctx.sat_node(saturation_id).get_individual_id(), 41);
         assert_eq!(ctx.sat_nodes.capacity(), sat_capacity);
+        assert_eq!(
+            ctx.saturation_successor_concept_map_interner_counts(),
+            (1, 1)
+        );
 
         ctx.reset_for_probe_preserving_capacity(false);
 
         assert_eq!(ctx.sat_node_count(), 0);
         assert_eq!(ctx.sat_nodes.capacity(), sat_capacity);
+        assert_eq!(
+            ctx.saturation_successor_concept_map_interner_counts(),
+            (0, 0)
+        );
         let first = ctx.alloc_sat_node(IndividualSaturationProcessNode::default());
         assert_eq!(first.index(), 0, "discarded saturation ids do not survive");
     }

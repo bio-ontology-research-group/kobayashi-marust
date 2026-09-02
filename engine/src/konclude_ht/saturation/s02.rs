@@ -68,6 +68,24 @@ use super::super::process::stubs::ConceptSaturationProcessLinkerId;
 use super::super::process::{NodeId, SatNodeId};
 use super::algorithm::SaturationTaskHandleAlgorithm;
 
+fn slow_successor_trace_concept() -> Option<Cint64> {
+    static TARGET: std::sync::OnceLock<Option<Cint64>> = std::sync::OnceLock::new();
+    *TARGET.get_or_init(|| {
+        std::env::var("KM_SAT_SLOW_SUCCESSOR_CONCEPT")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+    })
+}
+
+fn slow_successor_trace_node() -> Option<Cint64> {
+    static TARGET: std::sync::OnceLock<Option<Cint64>> = std::sync::OnceLock::new();
+    *TARGET.get_or_init(|| {
+        std::env::var("KM_SAT_SLOW_SUCCESSOR_NODE")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Opaque saturation-satellite param aliases (W6-DEFER[api]).
 // These C++ pointer parameter types belong to not-yet-ported saturation satellite
@@ -1478,6 +1496,9 @@ impl SaturationTaskHandleAlgorithm {
             .process_context()
             .con_sat_desc(con_des)
             .get_concept();
+        let slow_trace = slow_successor_trace_concept() == Some(concept.raw)
+            && slow_successor_trace_node().map_or(true, |node| node == process_indi.raw);
+        let slow_started = std::time::Instant::now();
         let role = calc_alg_context
             .ontology_arenas()
             .concept(concept)
@@ -1535,6 +1556,15 @@ impl SaturationTaskHandleAlgorithm {
             self.set_insufficient_node_occured(calc_alg_context);
             return;
         }
+        if slow_trace {
+            eprintln!(
+                "SAT-SLOW-SUCCESSOR phase=resolved concept={} node={} exist-node={} elapsed={:.6}",
+                concept.raw,
+                process_indi.raw,
+                exist_indi_node.raw,
+                slow_started.elapsed().as_secs_f64(),
+            );
+        }
 
         // --- cpp 7009–7099 ---
         let separated_mode = calc_alg_context
@@ -1552,6 +1582,13 @@ impl SaturationTaskHandleAlgorithm {
                 calc_alg_context,
             ); // 7012
         }
+        if slow_trace {
+            eprintln!(
+                "SAT-SLOW-SUCCESSOR phase=queued concept={} elapsed={:.6}",
+                concept.raw,
+                slow_started.elapsed().as_secs_f64(),
+            );
+        }
 
         let exist_indirect_flags = *calc_alg_context
             .process_context_mut()
@@ -1562,6 +1599,14 @@ impl SaturationTaskHandleAlgorithm {
             &exist_indirect_flags,
             calc_alg_context,
         ); // 7015
+        if slow_trace {
+            eprintln!(
+                "SAT-SLOW-SUCCESSOR phase=status concept={} flags={} elapsed={:.6}",
+                concept.raw,
+                exist_indirect_flags.get_flags(),
+                slow_started.elapsed().as_secs_f64(),
+            );
+        }
         let exist_nominal_set = calc_alg_context
             .process_context_mut()
             .sat_node_successor_connected_nominal_set(exist_indi_node, false);
@@ -1570,6 +1615,14 @@ impl SaturationTaskHandleAlgorithm {
             exist_nominal_set,
             calc_alg_context,
         ); // 7016
+        if slow_trace {
+            eprintln!(
+                "SAT-SLOW-SUCCESSOR phase=nominals concept={} set={} elapsed={:.6}",
+                concept.raw,
+                exist_nominal_set.raw,
+                slow_started.elapsed().as_secs_f64(),
+            );
+        }
         let (exist_atleast, exist_atmost) = {
             let exist_node = calc_alg_context.process_context().sat_node(exist_indi_node);
             (
@@ -1583,6 +1636,15 @@ impl SaturationTaskHandleAlgorithm {
             exist_atmost,
             calc_alg_context,
         ); // 7017
+        if slow_trace {
+            eprintln!(
+                "SAT-SLOW-SUCCESSOR phase=cardinality concept={} atleast={} atmost={} elapsed={:.6}",
+                concept.raw,
+                exist_atleast,
+                exist_atmost,
+                slow_started.elapsed().as_secs_f64(),
+            );
+        }
 
         if cardinality > 1 {
             if calc_alg_context
@@ -1633,8 +1695,18 @@ impl SaturationTaskHandleAlgorithm {
             let mut con_set = super::satellites::ReapplyConceptSaturationLabelSetId::NONE; // 7037
             let super_roles: Vec<NegLink<RoleId>> =
                 Self::saturation_indirect_super_roles(role, calc_alg_context); // 7038 ([identity])
+            if slow_trace {
+                eprintln!(
+                    "SAT-SLOW-SUCCESSOR phase=roles concept={} role={} count={} elapsed={:.6}",
+                    concept.raw,
+                    role.raw,
+                    super_roles.len(),
+                    slow_started.elapsed().as_secs_f64(),
+                );
+            }
             let mut connected = false; // 7039
-            for super_role_link in super_roles {
+            for (super_role_index, super_role_link) in super_roles.into_iter().enumerate() {
+                let role_started = std::time::Instant::now();
                 let super_role = super_role_link.target;
                 let super_role_inversed = super_role_link.negated;
                 if !calc_alg_context
@@ -1761,6 +1833,24 @@ impl SaturationTaskHandleAlgorithm {
                         calc_alg_context,
                     ); // 7089
                 }
+                if slow_trace && role_started.elapsed() >= std::time::Duration::from_millis(50) {
+                    eprintln!(
+                        "SAT-SLOW-SUCCESSOR phase=role concept={} index={} role={} inverse={} role-elapsed={:.6} total-elapsed={:.6}",
+                        concept.raw,
+                        super_role_index,
+                        super_role.raw,
+                        super_role_inversed,
+                        role_started.elapsed().as_secs_f64(),
+                        slow_started.elapsed().as_secs_f64(),
+                    );
+                }
+            }
+            if slow_trace {
+                eprintln!(
+                    "SAT-SLOW-SUCCESSOR phase=roles-done concept={} elapsed={:.6}",
+                    concept.raw,
+                    slow_started.elapsed().as_secs_f64(),
+                );
             }
             if !connected && !separated_mode {
                 calc_alg_context

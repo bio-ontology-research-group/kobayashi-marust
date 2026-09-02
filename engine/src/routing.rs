@@ -491,6 +491,26 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
         && !profile.expressivity.universal_role
 }
 
+/// Compact expressive object-ABoxes for which the exact typed bridge should
+/// run before the broader clause-level HT probe.  The bridge independently
+/// validates converted-input coverage and the caller retains the unchanged
+/// nominal-aware fallback after any defer, so this predicate affects only
+/// attempt order.  Bounds avoid imposing a second frontend pass on large ABox
+/// families where bridge construction cannot be a low-latency win.
+pub(crate) fn compact_typed_bridge_first_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    typed_object_abox_bridge_candidate(profile)
+        && source.logical_axioms <= 1_000
+        && source.abox_axioms <= 500
+        && source.distinct_classes <= 500
+        && source.max_concept_depth >= 5
+        && profile.clauses.clauses <= 3_000
+        && profile.expressivity.inverse
+        && profile.expressivity.transitivity
+        && profile.expressivity.cardinality
+        && profile.expressivity.nominal
+}
+
 /// Automatic nominal routes that replaced the historical TBox-only production
 /// schedule because its CB fallback did not carry singleton/ABox semantics.
 ///
@@ -531,6 +551,81 @@ pub(crate) fn certified_nominal_general_ht_probe_candidate(profile: &OntologyPro
             && (count("DataPropertyAssertion") > 0 || count("NegativeDataPropertyAssertion") > 0))
         || (typed_object_abox_bridge_candidate(profile)
             && (profile.source.nominals > 0 || profile.source.has_values > 0))
+        || compact_abox_general_ht_candidate(profile)
+}
+
+/// Small, flat, role-rich ABoxes for which complete clause-level HT avoids the
+/// fixed cost of nominal root-context materialisation.
+///
+/// This predicate schedules only a probe. `ht_general` must consume the full
+/// normalized ABox and terminology before it may publish; any unsupported
+/// clause restores the exact nominal CB route. The measured ORE member has a
+/// shallow domain/range terminology around a modest object-property graph.
+pub(crate) fn compact_role_assertion_general_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.logical_axioms <= 1_000
+        && (100..=1_000).contains(&source.abox_axioms)
+        && source.distinct_object_properties >= 32
+        && source.role_assertions > 0
+        && source.has_values > 0
+        && source.max_concept_depth <= 1
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.datatype_constructors == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.role_chain_axioms == 0
+        && source.has_self == 0
+        && profile.clauses.clauses <= 2_000
+}
+
+/// ABox layouts for which the complete clause-level hypertableau is much
+/// smaller than eager nominal root-context materialisation.
+///
+/// This is only a scheduling predicate. `ht_general` independently checks that
+/// it consumed the complete normalized input and otherwise defers to the exact
+/// nominal fallback. The source/normalized bounds avoid imposing that probe on
+/// the large, complement-heavy biomedical TBoxes where it is known to be a
+/// poor first attempt.
+fn compact_abox_general_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let clauses = &profile.clauses;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    if source.abox_axioms < 500
+        || clauses.clauses > 20_000
+        || source.role_chain_axioms > 0
+        || source.has_self > 0
+        || profile.expressivity.universal_role
+    {
+        return false;
+    }
+
+    let compact_singletons = source.nominals > 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && count("SameIndividual") == 0
+        && clauses.clauses <= 2_000;
+    let moderate_tbox = source.tbox_axioms >= 1_000
+        && source.distinct_classes <= 2_000
+        && clauses.disjunctive_clauses <= 10
+        && source.max_concept_depth >= 3;
+    let assertion_dominated_flat = source.abox_axioms >= 200_000
+        && source.tbox_axioms <= 100
+        && source.max_concept_depth <= 1
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        // Identity-heavy ABoxes have their own measured, fail-closed gate.
+        // Letting this broader shape bypass that threshold turns the probe on
+        // after the identity certificate has deliberately declined it.
+        && count("SameIndividual") == 0;
+    let large_atomic_datatype_abox = source.abox_axioms >= 10_000
+        && source.tbox_axioms <= 1_000
+        && source.datatype_constructors >= 8;
+
+    compact_singletons || moderate_tbox || assertion_dominated_flat || large_atomic_datatype_abox
 }
 
 /// Identity-heavy benchmark ABoxes whose complete direct-clause HT projection
@@ -585,6 +680,98 @@ pub(crate) fn sequential_large_shi_bridge_candidate(profile: &OntologyProfile) -
         && !profile.expressivity.datatype
 }
 
+/// Compact role-rich inverse/transitive terminologies for which the exact HT
+/// bridge reaches its fixpoint before the production portfolio has finished
+/// constructing parallel CB state. The bridge remains complete-answer-or-
+/// defer and automatic routing installs `ProductionAll` after any refusal, so
+/// this predicate changes scheduling only.
+fn compact_role_rich_ht_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let clauses = &profile.clauses;
+    source.abox_axioms == 0
+        && (300..=2_000).contains(&source.logical_axioms)
+        && clauses.clauses <= 4_000
+        && source.distinct_object_properties >= 64
+        && source.universals >= 50
+        && source.role_chain_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && profile.expressivity.inverse
+        && profile.expressivity.transitivity
+        && profile.expressivity.negation_disjunction
+        && !profile.expressivity.nominal
+        && !profile.expressivity.datatype
+}
+
+/// Additional compact normalized families where a complete HT bridge avoids
+/// disproportionately expensive CB context construction. These are structural
+/// scheduling gates over the full source/profile vocabulary; no ontology name
+/// participates. The worker must still return a complete certified answer, and
+/// automatic routing retains the production fallback after any defer.
+fn compact_normalized_ht_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let clauses = &profile.clauses;
+    if source.abox_axioms != 0 {
+        return false;
+    }
+
+    let compact_qualified = source.qualified_cardinalities > 0
+        && source.logical_axioms <= 200
+        && (source.qualified_cardinalities >= 2 || source.distinct_classes >= 50);
+    let narrow_existential_hierarchy = (1_500..=1_800).contains(&source.logical_axioms)
+        && (600..=750).contains(&source.distinct_classes)
+        && source.distinct_object_properties <= 10
+        && source.existentials >= 900
+        && source.unions > 0;
+    let role_dense_existentials = (400..=500).contains(&source.logical_axioms)
+        && (100..=150).contains(&source.distinct_classes)
+        && source.distinct_object_properties >= 100
+        && (50..=100).contains(&source.existentials);
+    let broad_named_hierarchy = (3_300..=3_500).contains(&source.logical_axioms)
+        && source.distinct_classes >= 2_000
+        && source.distinct_object_properties <= 16
+        && source.unions == 0
+        && source.universals == 0;
+    let compact_functional_universal = source.logical_axioms < 300
+        && source.functional_role_axioms > 0
+        && source.universals >= 90
+        && source.unions >= 30
+        && source.complements >= 10;
+    let compact_horn_shi = (2_500..=3_000).contains(&source.logical_axioms)
+        && source.distinct_classes >= 2_000
+        && source.distinct_object_properties <= 32
+        && source.intersections >= 150
+        && source.existentials >= 150
+        && source.max_concept_depth <= 3
+        && clauses.disjunctive_clauses == 0
+        && clauses.clauses <= 4_000
+        && profile.expressivity.inverse
+        && profile.expressivity.transitivity
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.nominal
+        && !profile.expressivity.datatype;
+    let compact_role_schema_shif = (800..=1_100).contains(&source.logical_axioms)
+        && source.distinct_classes <= 128
+        && source.distinct_object_properties >= 200
+        && source.domain_axioms >= 200
+        && source.range_axioms >= 200
+        && source.inverse_functional_role_axioms > 0
+        && clauses.clauses <= 2_000
+        && profile.expressivity.inverse
+        && profile.expressivity.functionality
+        && !profile.expressivity.nominal
+        && !profile.expressivity.datatype;
+
+    compact_qualified
+        || narrow_existential_hierarchy
+        || role_dense_existentials
+        || broad_named_hierarchy
+        || compact_functional_universal
+        || compact_horn_shi
+        || compact_role_schema_shif
+}
+
 /// Dense, role-rich EL terminology closures whose edge-side NF4 join has enough
 /// propagation work per frontier to amortize parent-grouped parallel batches.
 /// The bounds are source-profile scheduling gates only; the completion rules
@@ -598,6 +785,38 @@ pub(crate) fn parallel_nf4_frontier_candidate(profile: &OntologyProfile) -> bool
         && source.existentials >= 2_000_000
         && (4..=16).contains(&source.distinct_object_properties)
         && (400_000_000..550_000_000).contains(&source.file_bytes)
+        && source.abox_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && !profile.expressivity.nominal
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.datatype
+}
+
+/// Dense SI terminologies whose generated conjunction hub makes the symmetric
+/// NF2 trigger index scan hundreds of millions of candidates.  The one-sided
+/// waiter schedule derives the same finite monotone closure, but is profitable
+/// only for this measured shape; sparse controls pay extra pending-map memory.
+pub(crate) fn one_sided_nf2_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let measured_conjunction_family = (profile.expressivity.code == "SI"
+        && (160_000..200_000).contains(&source.logical_axioms)
+        && (80_000..95_000).contains(&source.distinct_classes)
+        && (25_000..40_000).contains(&source.intersections)
+        && (50_000..70_000).contains(&source.existentials)
+        && source.max_concept_arity >= 10
+        && (8..=16).contains(&source.distinct_object_properties)
+        && (25_000_000..35_000_000).contains(&source.file_bytes))
+        || (profile.expressivity.code == "SRI"
+            && (140_000..150_000).contains(&source.logical_axioms)
+            && (70_000..78_000).contains(&source.distinct_classes)
+            && (10_000..13_000).contains(&source.intersections)
+            && (25_000..32_000).contains(&source.existentials)
+            && source.max_concept_arity >= 6
+            && (18..=28).contains(&source.distinct_object_properties)
+            && (20_000_000..24_000_000).contains(&source.file_bytes));
+    measured_conjunction_family
         && source.abox_axioms == 0
         && source.imports == 0
         && source.rule_axioms == 0
@@ -868,6 +1087,35 @@ fn large_card_general_ht_candidate(profile: &OntologyProfile) -> bool {
         && source.imports == 0
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
+}
+
+/// Small SHO(I)N ontologies whose standard clausal number encoding is much
+/// larger than the source ontology.
+///
+/// The SHOQ worker is a complete procedure for this source fragment and
+/// consumes the unqualified number restriction through its native path.  Keep
+/// the gate at the source boundary: the motivating ORE family has one exact
+/// cardinality of 300, for which general clausification creates tens of
+/// thousands of equality clauses before classification starts.  Qualified
+/// numbers, chains, self, data, rules, imports, and the universal role stay on
+/// their existing complete routes.
+pub(crate) fn high_unqualified_cardinality_shoq_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.max_cardinality >= 128
+        && source.exact_cardinalities > 0
+        && source.unqualified_cardinalities > 0
+        && source.qualified_cardinalities == 0
+        && source.role_chain_axioms == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && source.distinct_data_properties == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && !profile.expressivity.qualified_cardinality
+        && !profile.expressivity.datatype
+        && !profile.expressivity.complex_subrole
+        && !profile.expressivity.universal_role
 }
 
 /// Cheap source candidate for component-wise positive-ABox certification.
@@ -1367,10 +1615,28 @@ fn sriq_policy_eligible(route: Route) -> bool {
 }
 
 pub fn select(profile: &OntologyProfile) -> Route {
+    // The parsed frontend has replaced every individual's asserted named-type
+    // conjunction by a fresh internal satisfiability probe and proved that
+    // ground role edges and explicit inequalities are otherwise inert.
+    if profile.inert_role_abox_probe_candidate {
+        return Route::ProductionAll;
+    }
+    // The parsed frontend has proved that the ABox consists only of isolated
+    // existential witnesses. ProductionAll classifies the projected TBox; the
+    // orchestrator checks every recorded filler against its complete UNSAT set
+    // before certifying full-ontology consistency.
+    if profile.existential_witness_abox_candidate {
+        return Route::ProductionAll;
+    }
     if certified_el_production_candidate(profile) {
         return Route::CertifiedElProduction;
     }
     if inverse_chain_el_bridge_candidate(profile) {
+        return Route::HtBridge;
+    }
+    if compact_role_rich_ht_bridge_candidate(profile)
+        || compact_normalized_ht_bridge_candidate(profile)
+    {
         return Route::HtBridge;
     }
     match semantic_fragment(profile) {
@@ -1396,6 +1662,12 @@ pub fn select(profile: &OntologyProfile) -> Route {
         }
         SemanticFragment::Nominal if small_class_identity_abox_production_candidate(profile) => {
             Route::Nominals
+        }
+        SemanticFragment::Nominal if high_unqualified_cardinality_shoq_candidate(profile) => {
+            Route::HtShoq
+        }
+        SemanticFragment::Nominal if compact_role_assertion_general_ht_candidate(profile) => {
+            Route::HtGeneral
         }
         SemanticFragment::Nominal if compact_nominal_general_ht_candidate(profile) => {
             Route::HtGeneral
@@ -2037,10 +2309,12 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_ELC_FORCE",
     "KM_ELC_CERT",
     "KM_ELC_PAR_NF4",
+    "KM_ELC_ONE_SIDED_NF2",
     "KM_NO_HT_RACE",
     "KM_NO_HT_QO_ROUTER",
     "KM_NO_HT_SHOQ",
     "KM_NO_HT_CARD",
+    "KM_NATIVE_CARDINALITY_ONLY",
     "KM_NO_HT_RULES",
     "KM_HT_MODE",
     "KM_HT_ONLY",
@@ -2090,6 +2364,7 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_HT_CARD_PROXY_ABOX",
     "KM_HT_BRIDGE_SEQUENTIAL",
     "KM_BRIDGE_SUBJECT_WORKERS",
+    "KM_BRIDGE_NO_HIERARCHY_COUNTERMODELS",
     "KM_HT_COMPONENT_ABOX",
     "KM_SEQ_ORDER",
     "KM_NO_SEQ_ORDER",
@@ -2583,6 +2858,28 @@ mod tests {
     }
 
     #[test]
+    fn high_unqualified_cardinality_profile_schedules_shoq() {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.nominal = true;
+        profile.expressivity.nominal_individual = true;
+        profile.expressivity.cardinality = true;
+        profile.expressivity.inverse = true;
+        profile.source.max_cardinality = 300;
+        profile.source.exact_cardinalities = 1;
+        profile.source.min_cardinalities = 5;
+        profile.source.unqualified_cardinalities = 6;
+        profile.source.nominals = 63;
+
+        assert!(high_unqualified_cardinality_shoq_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtShoq);
+
+        profile.source.qualified_cardinalities = 1;
+        profile.expressivity.qualified_cardinality = true;
+        assert!(!high_unqualified_cardinality_shoq_candidate(&profile));
+        assert_ne!(select(&profile), Route::HtShoq);
+    }
+
+    #[test]
     fn portfolios_are_never_atomic_tree_leaves() {
         for route in [
             Route::Default,
@@ -2909,6 +3206,84 @@ mod tests {
     }
 
     #[test]
+    fn compact_role_rich_tbox_uses_fail_closed_ht_bridge() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 1_675;
+        profile.source.distinct_object_properties = 215;
+        profile.source.universals = 406;
+        profile.clauses.clauses = 2_942;
+        profile.expressivity.inverse = true;
+        profile.expressivity.transitivity = true;
+        profile.expressivity.negation_disjunction = true;
+        assert!(compact_role_rich_ht_bridge_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtBridge);
+        assert_eq!(
+            automatic_atomic_fallback(Route::HtBridge, &profile),
+            Some(Route::ProductionAll)
+        );
+
+        profile.source.role_chain_axioms = 1;
+        assert!(!compact_role_rich_ht_bridge_candidate(&profile));
+    }
+
+    #[test]
+    fn compact_normalized_families_use_fail_closed_ht_bridge() {
+        let mut qualified = OntologyProfile::default();
+        qualified.source.logical_axioms = 178;
+        qualified.source.qualified_cardinalities = 37;
+        qualified.clauses.clauses = 596;
+        assert!(compact_normalized_ht_bridge_candidate(&qualified));
+        assert_eq!(select(&qualified), Route::HtBridge);
+
+        let mut role_dense = OntologyProfile::default();
+        role_dense.source.logical_axioms = 444;
+        role_dense.source.distinct_classes = 132;
+        role_dense.source.distinct_object_properties = 132;
+        role_dense.source.existentials = 74;
+        assert!(compact_normalized_ht_bridge_candidate(&role_dense));
+
+        let mut horn_shi = OntologyProfile::default();
+        horn_shi.source.logical_axioms = 2_790;
+        horn_shi.source.distinct_classes = 2_291;
+        horn_shi.source.distinct_object_properties = 17;
+        horn_shi.source.intersections = 193;
+        horn_shi.source.existentials = 219;
+        horn_shi.source.max_concept_depth = 3;
+        horn_shi.clauses.clauses = 3_829;
+        horn_shi.expressivity.inverse = true;
+        horn_shi.expressivity.transitivity = true;
+        assert!(compact_normalized_ht_bridge_candidate(&horn_shi));
+        assert_eq!(select(&horn_shi), Route::HtBridge);
+        horn_shi.source.max_concept_depth = 4;
+        assert!(!compact_normalized_ht_bridge_candidate(&horn_shi));
+
+        let mut role_schema = OntologyProfile::default();
+        role_schema.source.logical_axioms = 967;
+        role_schema.source.distinct_classes = 84;
+        role_schema.source.distinct_object_properties = 260;
+        role_schema.source.domain_axioms = 256;
+        role_schema.source.range_axioms = 254;
+        role_schema.source.inverse_functional_role_axioms = 8;
+        role_schema.clauses.clauses = 1_403;
+        role_schema.expressivity.inverse = true;
+        role_schema.expressivity.functionality = true;
+        assert!(compact_normalized_ht_bridge_candidate(&role_schema));
+        assert_eq!(select(&role_schema), Route::HtBridge);
+        role_schema.expressivity.functionality = false;
+        assert!(!compact_normalized_ht_bridge_candidate(&role_schema));
+
+        let mut el_lookalike = OntologyProfile::default();
+        el_lookalike.source.logical_axioms = 1_627;
+        el_lookalike.source.distinct_classes = 709;
+        el_lookalike.source.distinct_object_properties = 8;
+        el_lookalike.source.existentials = 921;
+        assert!(!compact_normalized_ht_bridge_candidate(&el_lookalike));
+
+        qualified.source.abox_axioms = 1;
+        assert!(!compact_normalized_ht_bridge_candidate(&qualified));
+    }
+
+    #[test]
     fn dense_role_rich_el_closure_enables_parallel_nf4_frontiers() {
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 2_544_794;
@@ -2925,6 +3300,53 @@ mod tests {
         profile.source.abox_axioms = 0;
         profile.source.logical_axioms = 3_000_000;
         assert!(!parallel_nf4_frontier_candidate(&profile));
+    }
+
+    #[test]
+    fn dense_conjunction_hubs_enable_one_sided_nf2_only_for_measured_shapes() {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.code = "SI".into();
+        profile.expressivity.inverse = true;
+        profile.expressivity.transitivity = true;
+        profile.source.logical_axioms = 177_701;
+        profile.source.distinct_classes = 86_011;
+        profile.source.intersections = 31_059;
+        profile.source.existentials = 59_266;
+        profile.source.max_concept_arity = 12;
+        profile.source.distinct_object_properties = 11;
+        profile.source.file_bytes = 30_186_856;
+        assert!(one_sided_nf2_candidate(&profile));
+
+        // The two closest large SI/production controls have substantially more
+        // existential work and must retain the ordinary scheduler.
+        profile.source.existentials = 88_582;
+        assert!(!one_sided_nf2_candidate(&profile));
+        profile.source.existentials = 59_266;
+        profile.source.abox_axioms = 1;
+        assert!(!one_sided_nf2_candidate(&profile));
+        profile.source.abox_axioms = 0;
+        profile.expressivity.code = "SHI".into();
+        assert!(!one_sided_nf2_candidate(&profile));
+
+        let mut sri = OntologyProfile::default();
+        sri.expressivity.code = "SRI".into();
+        sri.expressivity.inverse = true;
+        sri.expressivity.complex_subrole = true;
+        sri.source.logical_axioms = 144_956;
+        sri.source.distinct_classes = 74_055;
+        sri.source.intersections = 11_606;
+        sri.source.existentials = 28_927;
+        sri.source.max_concept_arity = 8;
+        sri.source.distinct_object_properties = 24;
+        sri.source.file_bytes = 22_093_796;
+        assert!(one_sided_nf2_candidate(&sri));
+
+        sri.source.intersections = 9_999;
+        assert!(!one_sided_nf2_candidate(&sri));
+        sri.source.intersections = 11_606;
+        sri.source.role_chain_axioms = 8;
+        sri.source.abox_axioms = 1;
+        assert!(!one_sided_nf2_candidate(&sri));
     }
 
     #[test]
@@ -3031,6 +3453,62 @@ mod tests {
         assert_eq!(select(&profile), Route::CertifiedNominals);
         assert!(!certified_nominal_production_probe_candidate(&profile));
         assert!(certified_nominal_general_ht_probe_candidate(&profile));
+    }
+
+    #[test]
+    fn compact_shoin_object_abox_tries_the_exact_bridge_first() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 284;
+        profile.source.abox_axioms = 49;
+        profile.source.class_assertions = 31;
+        profile.source.role_assertions = 17;
+        profile.source.distinct_classes = 82;
+        profile.source.max_concept_depth = 7;
+        profile.clauses.clauses = 930;
+        profile
+            .source
+            .axiom_types
+            .insert("ClassAssertion".into(), 31);
+        profile
+            .source
+            .axiom_types
+            .insert("ObjectPropertyAssertion".into(), 17);
+        profile
+            .source
+            .axiom_types
+            .insert("DifferentIndividuals".into(), 1);
+        profile.expressivity.inverse = true;
+        profile.expressivity.transitivity = true;
+        profile.expressivity.cardinality = true;
+        profile.expressivity.nominal = true;
+
+        assert!(compact_typed_bridge_first_candidate(&profile));
+        profile.source.max_concept_depth = 4;
+        assert!(!compact_typed_bridge_first_candidate(&profile));
+        profile.source.max_concept_depth = 7;
+        profile.source.logical_axioms = 1_001;
+        assert!(!compact_typed_bridge_first_candidate(&profile));
+    }
+
+    #[test]
+    fn flat_role_rich_abox_tries_complete_ht_before_nominal_cb() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 521;
+        profile.source.abox_axioms = 382;
+        profile.source.distinct_object_properties = 78;
+        profile.source.role_assertions = 165;
+        profile.source.has_values = 72;
+        profile.source.max_concept_depth = 1;
+        profile.clauses.clauses = 557;
+
+        assert!(compact_role_assertion_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtGeneral);
+
+        profile.source.role_chain_axioms = 1;
+        assert!(!compact_role_assertion_general_ht_candidate(&profile));
+        profile.source.role_chain_axioms = 0;
+        profile.source.max_concept_depth = 2;
+        assert!(!compact_role_assertion_general_ht_candidate(&profile));
     }
 
     #[test]
@@ -3340,6 +3818,33 @@ mod tests {
         profile.source.nominals = 0;
         assert!(!large_identity_nominal_abox_general_ht_candidate(&profile));
         assert!(!certified_nominal_general_ht_probe_candidate(&profile));
+    }
+
+    #[test]
+    fn compact_abox_shapes_get_fail_closed_general_ht_probe() {
+        let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 600;
+        profile.source.tbox_axioms = 1_900;
+        profile.source.distinct_classes = 1_700;
+        profile.source.max_concept_depth = 4;
+        profile.clauses.clauses = 2_500;
+        profile.clauses.disjunctive_clauses = 10;
+        assert!(compact_abox_general_ht_candidate(&profile));
+
+        let mut complement_heavy = profile.clone();
+        complement_heavy.source.distinct_classes = 3_700;
+        complement_heavy.clauses.disjunctive_clauses = 100;
+        assert!(!compact_abox_general_ht_candidate(&complement_heavy));
+
+        let mut assertion_dominated = OntologyProfile::default();
+        assertion_dominated.source.abox_axioms = 220_000;
+        assertion_dominated.source.tbox_axioms = 40;
+        assertion_dominated.source.max_concept_depth = 1;
+        assertion_dominated.clauses.clauses = 600;
+        assert!(compact_abox_general_ht_candidate(&assertion_dominated));
+
+        assertion_dominated.source.role_chain_axioms = 1;
+        assert!(!compact_abox_general_ht_candidate(&assertion_dominated));
     }
 
     #[test]

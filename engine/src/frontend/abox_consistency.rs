@@ -161,11 +161,27 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
             Axiom::SubClassOf(Concept::Name(a), Concept::Name(b)) => {
                 sup.entry(a.clone()).or_default().push(b.clone());
             }
+            // OWL's `A ⊑ ¬B` is exactly the named disjointness constraint
+            // `A ⊓ B ⊑ ⊥`.  Several ORE ontologies use this source form
+            // instead of `DisjointClasses(A B)`, so retain it in the same
+            // sound asserted-membership clash check.
+            Axiom::SubClassOf(Concept::Name(a), Concept::Not(inner)) => {
+                if let Concept::Name(b) = inner.as_ref() {
+                    disjoint.push((a.clone(), b.clone()));
+                }
+            }
+            // `A ⊑ ⊥` makes every asserted `A(a)` globally inconsistent.
+            // Represent it as the reflexive disjoint pair `(A,A)` so the
+            // existing ancestor/intersection test handles it without a second
+            // code path.
+            Axiom::SubClassOf(Concept::Name(a), Concept::Bottom) => {
+                disjoint.push((a.clone(), a.clone()));
+            }
             Axiom::EquivalentClasses(Concept::Name(a), Concept::Name(b)) => {
                 sup.entry(a.clone()).or_default().push(b.clone());
                 sup.entry(b.clone()).or_default().push(a.clone());
             }
-            Axiom::DisjointClasses(Concept::Name(a), Concept::Name(b)) if a != b => {
+            Axiom::DisjointClasses(Concept::Name(a), Concept::Name(b)) => {
                 disjoint.push((a.clone(), b.clone()));
             }
             _ => {}
@@ -446,6 +462,44 @@ mod tests {
             "b".into(),
         )]);
         assert!(collect(&o).is_none());
+    }
+
+    #[test]
+    fn complement_subclass_clash_is_detected() {
+        let o = ont(vec![
+            Axiom::SubClassOf(
+                Concept::Name("A".into()),
+                Concept::Not(Box::new(Concept::Name("B".into()))),
+            ),
+            Axiom::ConceptAssertion(Concept::Name("A".into()), "a".into()),
+            Axiom::ConceptAssertion(Concept::Name("B".into()), "a".into()),
+        ]);
+        let data = collect(&o).expect("A subClassOf not B is named disjointness");
+        assert!(data.is_inconsistent(&[]));
+    }
+
+    #[test]
+    fn asserted_bottom_subclass_is_detected() {
+        let o = ont(vec![
+            Axiom::SubClassOf(Concept::Name("A".into()), Concept::Bottom),
+            Axiom::ConceptAssertion(Concept::Name("A".into()), "a".into()),
+        ]);
+        let data = collect(&o).expect("A subClassOf bottom is a clash constraint");
+        assert!(data.is_inconsistent(&[]));
+    }
+
+    #[test]
+    fn complement_subclass_without_joint_membership_remains_consistent() {
+        let o = ont(vec![
+            Axiom::SubClassOf(
+                Concept::Name("A".into()),
+                Concept::Not(Box::new(Concept::Name("B".into()))),
+            ),
+            Axiom::ConceptAssertion(Concept::Name("A".into()), "a".into()),
+            Axiom::ConceptAssertion(Concept::Name("B".into()), "b".into()),
+        ]);
+        let data = collect(&o).expect("the complement constraint forces collection");
+        assert!(!data.is_inconsistent(&[]));
     }
 
     /// This precheck is SOUND ONLY. It closes asserted memberships over named

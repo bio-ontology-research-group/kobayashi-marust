@@ -1020,6 +1020,18 @@ impl Reasoner {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let n = queries.len();
         let cursor = AtomicUsize::new(0);
+        // A larger guided grab amortizes the inter-context Pred fixpoint over
+        // more query roots; a smaller one bounds each worker's transient
+        // message wave. This is scheduling-only: every query is claimed once
+        // and each long-lived engine still reaches a complete monotone
+        // fixpoint after every grab. Keep the established 64 default while
+        // allowing resource-profiled routes to spend memory for throughput.
+        let guided_grab_max = std::env::var("KM_GUIDED_GRAB_MAX")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|&value| value > 0)
+            .unwrap_or(64)
+            .clamp(1, 1024);
         let prepared_ref: &PreparedOntology = &prepared;
         let queries_ref: &[Iri] = &queries;
         let partials: std::sync::Mutex<Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)>> =
@@ -1035,8 +1047,8 @@ impl Reasoner {
                             break;
                         }
                         // Guided self-scheduling: grab ~1/(2·threads) of what is
-                        // left, clamped to [1, 64].
-                        let grab = ((n - seen) / (2 * threads)).clamp(1, 64);
+                        // left, clamped to the configured resource envelope.
+                        let grab = ((n - seen) / (2 * threads)).clamp(1, guided_grab_max);
                         let start = cursor.fetch_add(grab, Ordering::Relaxed);
                         if start >= n {
                             break;

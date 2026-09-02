@@ -619,6 +619,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         succ_con_ext_map: SaturationSuccessorConceptExtensionMapId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
+        // Resolution treats this map as an immutable snapshot. Intern equal
+        // snapshots before walking them; a subsequent extension insertion
+        // detaches only that map through Arc copy-on-write.
+        calc_alg_context
+            .process_context_mut()
+            .intern_saturation_successor_concept_map(succ_con_ext_map);
         let mut resolve_data =
             self.base_extension_resolve_data_for_node(indi_proc_sat_node, calc_alg_context);
         let mut copy_indi_proc_sat_node = indi_proc_sat_node;

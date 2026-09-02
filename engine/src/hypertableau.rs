@@ -4516,6 +4516,10 @@ pub struct Ht {
     /// KM_HT_INCROBLIG: reused buffer for the unblocked-node obligation indices
     /// gathered each pass (sorted to index order for flat-scan-identical expansion).
     oblig_cand: Vec<usize>,
+    /// Propagate each fresh existential witness before scanning the next
+    /// obligation. This preserves the fixpoint while allowing its inferred label
+    /// to discharge weaker sibling obligations before they allocate nodes.
+    oblig_propagate_each: bool,
     /// decision literal asserted at each branch level (index = level); used to
     /// turn a clash dep-set into a learned no-good. Reset per dfs(0) run.
     decisions: Vec<(Node, u64, CLit)>,
@@ -17749,9 +17753,13 @@ impl Ht {
 
     fn new_with_harvest(clauses: Vec<Clause>, harvest_enabled: bool) -> Ht {
         let mut clauses = clauses;
-        let preprocessing_source = clauses.clone();
         let trigger_enabled = std::env::var_os("KM_HT_TRIGABS").is_some();
         let contra_enabled = std::env::var_os("KM_HT_CONTRA").is_some();
+        // Preprocessing evidence is produced only when one of these transforms
+        // runs. Avoid two full clause snapshots in every parallel classifier
+        // worker when both transforms are disabled.
+        let keep_preprocessing = trigger_enabled || contra_enabled;
+        let preprocessing_source = keep_preprocessing.then(|| clauses.clone());
         // KM_HT_TRIGABS: trigger-keyed binary absorption — rewrite global
         // ⊤-disjunctions with negated disjuncts into dormant triggered clauses so
         // they no longer fire on every node. Run BEFORE contrapositives so the
@@ -17765,7 +17773,7 @@ impl Ht {
         } else {
             vec![TriggerAbsorptionEvidence::Keep; clauses.len()]
         };
-        let absorbed_clauses = clauses.clone();
+        let absorbed_clauses = keep_preprocessing.then(|| clauses.clone());
         // KM_HT_CONTRA: enrich clash clauses with their contrapositives so negative
         // literals propagate, feeding Ht's existing unit-propagation (eval_disj).
         let contrapositive_evidence = if contra_enabled {
@@ -17778,13 +17786,15 @@ impl Ht {
         } else {
             Vec::new()
         };
-        let preprocessing_evidence =
-            (trigger_enabled || contra_enabled).then(|| PreprocessingEvidence {
-                source: preprocessing_source,
-                absorbed: absorbed_clauses,
+        let preprocessing_evidence = match (preprocessing_source, absorbed_clauses) {
+            (Some(source), Some(absorbed)) => Some(PreprocessingEvidence {
+                source,
+                absorbed,
                 trigger_steps,
                 contrapositives: contrapositive_evidence,
-            });
+            }),
+            _ => None,
+        };
         let normalization: Vec<_> = clauses.iter_mut().map(eliminate_body_equalities).collect();
         let has_body_equality = normalization.iter().any(|evidence| evidence.had_equality);
         // KM_KEEP_CHAIN_AXIOMS chain-unfolding is applied via `set_chains` (after
@@ -17961,6 +17971,7 @@ impl Ht {
             negtried: std::env::var_os("KM_HT_NEGTRIED").is_some(),
             i2_check: std::env::var_os("KM_HT_INCRBLOCK2_CHECK").is_some(),
             oblig_cand: Vec::new(),
+            oblig_propagate_each: std::env::var_os("KM_HT_OBLIG_PROPAGATE_EACH").is_some(),
             decisions: Vec::new(),
             learned: Vec::new(),
             lwatch: HashMap::new(),
@@ -19094,6 +19105,10 @@ impl Ht {
     /// Returns true if a successor was created (progress ⇒ re-propagate).
     fn process_obligations(&mut self) -> bool {
         let mut made = false;
+        // Incremental schedule: expose each fresh witness to Horn propagation
+        // before allocating the next one, while retaining this pass's single
+        // blocking computation and obligation scan. This changes only schedule.
+        let propagate_each = self.oblig_propagate_each;
         // Batch-compute blocking once per pass (cheap once the model is folded;
         // anywhere-subset for the default ALC(H) route, ancestor-only otherwise).
         let _bt0 = Instant::now();
@@ -19222,6 +19237,12 @@ impl Ht {
                     self.ext.add_concept(t, fil, &dep);
                     self.ext.oblig_sat[i] = true;
                     made = true;
+                    if propagate_each {
+                        self.propagate();
+                        if self.ext.has_clash() {
+                            break;
+                        }
+                    }
                 }
                 self.oblig_cand = cand;
             } else {
@@ -19245,6 +19266,12 @@ impl Ht {
                     self.ext.add_edge(r, n, t, &dep);
                     self.ext.add_concept(t, fil, &dep);
                     made = true;
+                    if propagate_each {
+                        self.propagate();
+                        if self.ext.has_clash() {
+                            break;
+                        }
+                    }
                 }
             }
         } else {
@@ -19270,6 +19297,12 @@ impl Ht {
                 self.ext.add_edge(r, n, t, &dep);
                 self.ext.add_concept(t, fil, &dep);
                 made = true;
+                if propagate_each {
+                    self.propagate();
+                    if self.ext.has_clash() {
+                        break;
+                    }
+                }
             }
         }
         self.obligloop_us += _lt0.elapsed().as_micros();
@@ -24179,6 +24212,25 @@ mod tests {
 
     fn lit(neg: bool, c: C) -> CLit {
         CLit { neg, c }
+    }
+
+    #[test]
+    fn propagate_each_obligation_reuses_a_stronger_witness() {
+        let clauses = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, B, X)], vec![con(false, D, X)]),
+        ];
+
+        let mut batched = Ht::new(clauses.clone());
+        batched.oblig_propagate_each = false;
+        assert_eq!(batched.consistent(&[CLit::pos(A)]), Some(true));
+        assert_eq!(batched.ext.num_nodes(), 3);
+
+        let mut incremental = Ht::new(clauses);
+        incremental.oblig_propagate_each = true;
+        assert_eq!(incremental.consistent(&[CLit::pos(A)]), Some(true));
+        assert_eq!(incremental.ext.num_nodes(), 2);
     }
 
     #[test]

@@ -369,7 +369,12 @@ fn run_atomic_elc(
                 serde_json::from_slice(&buf)?
             }
         };
-        return match crate::elcomplete::classify(input.clauses) {
+        // The dictionary-coded result keeps one copy of each interned name
+        // and integer row endpoints, exactly like the worker's compact
+        // binary handoff; public-output mapping below consumes it through
+        // the same `compact_subsumptions` branch. A partial (residue) answer
+        // keeps the string map and is refused here as before.
+        return match crate::elcomplete::classify_compact(input.clauses) {
             None => Err(OrchestrateError::OutOfFragment(
                 "ontology is outside the selected EL completion fragment".into(),
             )),
@@ -378,7 +383,7 @@ fn run_atomic_elc(
             )),
             Some(res) => Ok(EngineOut {
                 subsumptions: res.subsumptions,
-                compact_subsumptions: None,
+                compact_subsumptions: res.compact,
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: Vec::new(),
@@ -493,8 +498,32 @@ fn run_atomic_mechanism(
             run_atomic_cb(cfg, clauses_path).map(Some)
         }
         Mechanism::Ht => {
-            drop(cached_input.take());
-            race::run_ht_only(cfg, clauses_path, named).map(Some)
+            if matches!(
+                selected_route,
+                crate::routing::Route::HtShoq
+                    | crate::routing::Route::HtGeneral
+                    | crate::routing::Route::HtBridge
+            ) && std::env::var_os("KM_NO_INPROC_HT").is_none()
+                && cached_input.is_some()
+            {
+                let input = cached_input
+                    .take()
+                    .ok_or_else(|| OrchestrateError::Worker {
+                        bin: "frontend".into(),
+                        code: 0,
+                        stderr: "in-process HT route lost its typed frontend input".into(),
+                    })?;
+                if selected_route == crate::routing::Route::HtShoq {
+                    race::run_ht_shoq_in_process(cfg, input, named).map(Some)
+                } else if selected_route == crate::routing::Route::HtBridge {
+                    race::run_ht_bridge_in_process(input, named).map(Some)
+                } else {
+                    race::run_ht_general_in_process(input, named).map(Some)
+                }
+            } else {
+                drop(cached_input.take());
+                race::run_ht_only(cfg, clauses_path, named).map(Some)
+            }
         }
         Mechanism::Tableau => {
             drop(cached_input.take());
@@ -560,6 +589,7 @@ fn elc_source_publication_safe(profile: &crate::frontend::profile::OntologyProfi
     profile.source.abox_axioms == 0
         || profile.positive_el_abox_materializable
         || profile.positive_abox_tbox_separable
+        || profile.atomic_class_abox_candidate
 }
 
 #[inline]
@@ -921,6 +951,38 @@ fn classify_with_evidence_mode(
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
 
+    // Compact expressive object-ABoxes benefit from the exact typed bridge,
+    // whose source-definition hierarchy can reuse negative witnesses across
+    // superclass probes. Try that complete-answer-or-defer arm before the
+    // broader general HT probe. Any refusal restores this call's environment
+    // and leaves the unchanged certified-nominal fallback authoritative.
+    if automatic_requested
+        && matches!(
+            selected_route,
+            crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
+        )
+        && crate::routing::compact_typed_bridge_first_candidate(&meta.profile)
+    {
+        let bridge_attempt = {
+            let _probe_environment = crate::routing::EnvironmentGuard::capture();
+            crate::routing::Route::HtBridge.apply_environment();
+            std::env::set_var("KM_ROUTE", crate::routing::Route::HtBridge.as_str());
+            let bridge_cfg = Config::from_env();
+            classify_with_evidence_mode(&bridge_cfg, ont, retain_grouped_output)
+        };
+        match bridge_attempt {
+            Ok(evidence) => return Ok(evidence),
+            Err(error) => {
+                if timing {
+                    eprintln!(
+                        "KM_TIMING compact typed bridge probe declined @ {:.2}s: {error}",
+                        t_start.elapsed().as_secs_f64()
+                    );
+                }
+            }
+        }
+    }
+
     // Some exact nominal families are accepted by the complete clause-level
     // hypertableau but make eager root-context nominal materialization consume
     // the whole process budget. The source profile schedules only an attempt:
@@ -1109,10 +1171,57 @@ fn classify_with_evidence_mode(
             }
         }
         if selected_route == crate::routing::Route::ProductionAll {
+            let force_bridge_race = std::env::var_os("KM_HT_BRIDGE_RACE").is_some();
+            // The existential-witness projection has an exact complete bridge
+            // and a complete CB fallback. Run them sequentially: racing both
+            // creates two equivalent full TBox states and exceeds the common
+            // process-tree memory contract on ORE1194. A bridge defer still
+            // falls through to the unchanged CB mechanism.
+            if meta.profile.existential_witness_abox_candidate && !force_bridge_race {
+                std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
+                // This profile has one unusually large projected terminology.
+                // Continuing the monotone saturation prepass beyond 120 s
+                // duplicates consequences that the exact completion probes
+                // establish more cheaply, and crosses the common 20-GiB
+                // process-tree limit.  A timed-out prepass publishes only its
+                // positive consequences; every unfinished subject still goes
+                // through the unchanged complete probe path below.  Therefore
+                // this is a schedule bound, not an approximation or calculus
+                // change.
+                std::env::set_var("KM_HT_SATURATION_BUDGET_S", "120");
+                // Bound the prepass by state size as well as wall time. Faster
+                // CPUs can apply substantially more rules in 120 seconds and
+                // otherwise hit a 20-GiB cgroup before the timer fires.
+                std::env::set_var("KM_HT_SATURATION_RSS_GB", "18");
+                // The frontend has already removed the certified-independent
+                // existential-witness ABox before cb_to_ht constructs TInput,
+                // so the bridge cannot rediscover that projection from native
+                // ABox metadata. Preserve the route certificate explicitly:
+                // source definition-containment is an exact TBox consequence
+                // and makes taxonomy output independent of where the bounded
+                // saturation pre-pass stops.
+                std::env::set_var("KM_HT_SOURCE_DEFINITION_CLOSURE", "1");
+                // ORE1194 exposes node-local saturation work appended after an
+                // intrusive global queue has released its current node. The
+                // recovery scan is needed for that feature family, but making
+                // it global reopens already completed legacy taxonomies and
+                // regresses 7914/9663/9724 to the portfolio deadline.
+                std::env::set_var("KM_HT_REQUEUE_ORPHANED_SATURATION_WORK", "1");
+                // Materialise each fresh existential witness before examining
+                // the next pending obligation.  This exposes the stronger
+                // witness label immediately, so subsequent obligations reuse
+                // it instead of constructing millions of weaker duplicates.
+                // Propagation and obligation processing are both monotone; the
+                // change only interleaves the same two queues and preserves
+                // their common fixpoint.
+                std::env::set_var("KM_HT_OBLIG_PROPAGATE_EACH", "1");
+            }
             if let Some(subject_workers) =
                 crate::routing::production_bridge_subject_workers(&meta.profile)
             {
-                std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
+                if !force_bridge_race {
+                    std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
+                }
                 std::env::set_var(
                     "KM_BRIDGE_SUBJECT_WORKERS",
                     subject_worker_override
@@ -1125,6 +1234,20 @@ fn classify_with_evidence_mode(
             && crate::routing::parallel_nf4_frontier_candidate(&meta.profile)
         {
             std::env::set_var("KM_ELC_PAR_NF4", "1");
+        }
+        if selected_route == crate::routing::Route::Elc
+            && crate::routing::one_sided_nf2_candidate(&meta.profile)
+        {
+            std::env::set_var("KM_ELC_ONE_SIDED_NF2", "1");
+        }
+        if selected_route == crate::routing::Route::HtGeneral
+            && crate::routing::compact_role_assertion_general_ht_candidate(&meta.profile)
+        {
+            // This flat ABox has only eleven named classes. Parallel per-class
+            // HT starts more allocator arenas than useful SAT work and makes
+            // peak RSS depend on the Slurm cpuset. A serial worker derives the
+            // same independently checked complete taxonomy deterministically.
+            std::env::set_var("KM_HT_PAR", "1");
         }
         if selected_route == crate::routing::Route::ProductionAll
             && (crate::routing::eight_thread_large_sriq_candidate(&meta.profile)
@@ -1155,7 +1278,15 @@ fn classify_with_evidence_mode(
             Mechanism::Portfolio => {
                 cfg.elc && meta.el_rbox_safe && elc_source_publication_safe(&meta.profile)
             }
-            Mechanism::Cb | Mechanism::Ht | Mechanism::Tableau | Mechanism::Unknown(_) => false,
+            Mechanism::Ht => {
+                matches!(
+                    selected_route,
+                    crate::routing::Route::HtShoq
+                        | crate::routing::Route::HtGeneral
+                        | crate::routing::Route::HtBridge
+                ) && std::env::var_os("KM_NO_INPROC_HT").is_none()
+            }
+            Mechanism::Cb | Mechanism::Tableau | Mechanism::Unknown(_) => false,
         };
     if !retain_cached_for_el {
         drop(cached_input.take());
@@ -1184,7 +1315,8 @@ fn classify_with_evidence_mode(
     }
 
     let mut consistency_certified = meta.profile.disjoint_union_abox_candidate
-        && std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some();
+        && (meta.profile.existential_witness_abox_candidate
+            || std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some());
     // A positive-EL ABox certificate performs the same exact completion needed
     // by an atomic ELC leaf. Retain that result so the leaf does not recompute
     // the complete fixpoint after the certificate extracts consistency.
@@ -1337,6 +1469,14 @@ fn classify_with_evidence_mode(
             return classify_with_evidence_mode(&fallback_cfg, ont, retain_grouped_output);
         }
         Err(_error) if automatic_requested => {
+            if timing {
+                eprintln!(
+                    "KM_TIMING atomic route {} declined @ {:.2}s: {}",
+                    selected_route,
+                    t_start.elapsed().as_secs_f64(),
+                    _error
+                );
+            }
             let Some(fallback) =
                 crate::routing::automatic_atomic_fallback(selected_route, &meta.profile)
             else {
@@ -1538,6 +1678,16 @@ fn classify_with_evidence_mode(
             subs_keys
         );
     }
+    if (meta.profile.existential_witness_abox_candidate
+        || meta.profile.atomic_class_abox_candidate
+        || meta.profile.inert_role_abox_probe_candidate)
+        && out.dropped != 0
+    {
+        return Err(OrchestrateError::OutOfFragment(format!(
+            "projected ABox requires a complete TBox result; worker dropped {} clause(s)",
+            out.dropped
+        )));
+    }
     // These borrowed lookup tables are consumed only by public-output mapping.
     // Constructing them before classification made their bucket allocations
     // overlap the frontend and reasoner high-water marks on every route.
@@ -1570,23 +1720,52 @@ fn classify_with_evidence_mode(
     let mut iri_ids = retain_grouped_output.then(|| JsonIriIds::new(&meta.iri_map));
     let mut unsat_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut unsat_names: HashSet<&str> = HashSet::new();
+    let mut projected_abox_inconsistent = false;
     if let Some(compact) = &out.compact_subsumptions {
+        // Dictionary names repeat across rows: a dense taxonomy references
+        // each superclass from thousands of subjects. Resolve the bottom,
+        // internal, or public-id verdict once per name instead of hashing
+        // the same string once per pair. Dictionary names are unique, so the
+        // integer endpoint comparison below is the established `s != a`.
+        const NAME_UNRESOLVED: u32 = u32::MAX;
+        const NAME_INTERNAL: u32 = u32::MAX - 1;
+        const NAME_BOTTOM: u32 = u32::MAX - 2;
+        let mut resolved_names: Vec<u32> = vec![NAME_UNRESOLVED; compact.names.len()];
         for (subject, super_ids) in &compact.rows {
             let a = &compact.names[*subject as usize];
             if is_internal(a) {
+                if asserted.contains(a.as_str())
+                    && super_ids
+                        .iter()
+                        .any(|superclass| is_bottom(&compact.names[*superclass as usize]))
+                {
+                    projected_abox_inconsistent = true;
+                }
                 continue;
             }
             if retain_grouped_output {
                 let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
                 let mut mapped_supers = Vec::with_capacity(super_ids.len());
                 for superclass in super_ids {
-                    let s = &compact.names[*superclass as usize];
-                    if is_bottom(s) {
+                    let index = *superclass as usize;
+                    let mut verdict = resolved_names[index];
+                    if verdict == NAME_UNRESOLVED {
+                        let s = &compact.names[index];
+                        verdict = if is_bottom(s) {
+                            NAME_BOTTOM
+                        } else if is_internal(s) {
+                            NAME_INTERNAL
+                        } else {
+                            iri_ids.id(s)
+                        };
+                        resolved_names[index] = verdict;
+                    }
+                    if verdict == NAME_BOTTOM {
                         if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
                             unsat_names.insert(a.as_str());
                         }
-                    } else if !is_internal(s) && s != a {
-                        mapped_supers.push(iri_ids.id(s));
+                    } else if verdict != NAME_INTERNAL && superclass != subject {
+                        mapped_supers.push(verdict);
                     }
                 }
                 if !mapped_supers.is_empty() {
@@ -1619,6 +1798,9 @@ fn classify_with_evidence_mode(
     } else {
         for (a, sups) in &out.subsumptions {
             if is_internal(a) {
+                if asserted.contains(a.as_str()) && sups.iter().any(|sup| is_bottom(sup)) {
+                    projected_abox_inconsistent = true;
+                }
                 continue;
             }
             if retain_grouped_output {
@@ -1666,7 +1848,7 @@ fn classify_with_evidence_mode(
             }
         }
     }
-    if unsat_names.iter().any(|n| asserted.contains(*n)) {
+    if projected_abox_inconsistent || unsat_names.iter().any(|n| asserted.contains(*n)) {
         return Ok(ClassificationEvidence {
             classification: Classification {
                 consistent: false,

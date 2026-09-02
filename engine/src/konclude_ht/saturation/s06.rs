@@ -141,13 +141,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context_mut()
             .sat_node_ext_linked_role_successor_hash(*indi_proc_sat_node, false);
         if linked_succ_hash.is_some() {
-            let role_succ_pairs: Vec<_> = calc_alg_context
+            let mut role_succ_pairs: Vec<_> = calc_alg_context
                 .process_context()
                 .linked_role_sat_succ_hash(linked_succ_hash)
                 .get_linked_role_successor_hash()
                 .iter()
                 .map(|(role, succ_data)| (*role, *succ_data))
                 .collect();
+            if !super::algorithm::preserve_native_successor_iteration() {
+                role_succ_pairs.sort_by_key(|(role, _)| {
+                    super::algorithm::successor_iteration_key(0x0601, role.index() as u64)
+                });
+            }
             let backward_prop_hash = calc_alg_context
                 .process_context_mut()
                 .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
@@ -802,7 +807,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .iter()
                             .map(|(succ_id, linked_succ_data)| (*succ_id, *linked_succ_data))
                             .collect();
-                    succ_data_map_entries.sort_by_key(|(succ_id, _)| *succ_id);
+                    if !super::algorithm::preserve_native_successor_iteration() {
+                        succ_data_map_entries.sort_by_key(|(succ_id, _)| {
+                            super::algorithm::successor_iteration_key(0x0602, *succ_id as u64)
+                        });
+                    }
 
                     for (_, linked_succ_data) in succ_data_map_entries.iter().copied() {
                         let (active_count, value_nominal_connection, succ_indi_node) = {
@@ -1295,7 +1304,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 role,
                                 succ_indi_node,
                                 pred_anc_indi_node,
-                                creation_role_linker.clone(),
+                                creation_role_linker.to_vec(),
                                 calc_alg_context,
                             );
                         }
@@ -2341,6 +2350,7 @@ mod tests {
                 .get_source_individual(),
             source
         );
+        let link_count_after_first = ctx.process_context().backward_sat_prop_link_count();
 
         let mut duplicate = BackwardSaturationPropagationLink::new();
         duplicate.init_backward_propagation_link(source, role);
@@ -2358,6 +2368,11 @@ mod tests {
                 .unwrap()
                 .link_linker,
             link
+        );
+        assert_eq!(
+            ctx.process_context().backward_sat_prop_link_count(),
+            link_count_after_first,
+            "a rejected tail candidate must be reclaimed"
         );
     }
 

@@ -7338,9 +7338,10 @@ fn reset_probe_env_impl(
     // node ids point into these arenas, and the saturation-node coupling
     // (u08/u17/u22, Konclude's expand-from-saturation + caching-blocking)
     // reads them during every probe. Probes never write them, so the carry
-    // reproduces Konclude's stable saturation-task pointers. Carried even
-    // when the coupling is off (budget-aborted pass) so the linkings never
-    // dangle.
+    // reproduces Konclude's stable saturation-task pointers. A budget-aborted
+    // pass is never coupled; its labels have already been copied into KPSet,
+    // and the reset may therefore invalidate its linkings and release the
+    // large one-shot saturation backing allocations.
     // Clear every transient arena before replacing the outer context. Unlike
     // dropping `ctx`, `Arena::clear_preserving_capacity` keeps the typed pool's
     // backing allocation for the next probe. It drops all objects, epoch
@@ -10862,6 +10863,76 @@ impl SaturationOutcome {
     }
 }
 
+/// Canonical, allocation-light diagnostic fingerprint of the complete plain
+/// saturation hand-off. This is deliberately independent of `HashMap` state
+/// and process hash seeds, so repeated-process mismatches localise semantic
+/// variance to saturation rather than the downstream classifier.
+fn saturation_outcome_fingerprint(outcome: &SaturationOutcome) -> u64 {
+    const OFFSET: u64 = 0xcbf29ce484222325;
+    const PRIME: u64 = 0x100000001b3;
+    fn mix(hash: &mut u64, value: u64) {
+        for byte in value.to_le_bytes() {
+            *hash ^= u64::from(byte);
+            *hash = hash.wrapping_mul(PRIME);
+        }
+    }
+
+    let mut hash = OFFSET;
+    mix(&mut hash, outcome.sat_verdict.len() as u64);
+    for subject in 0..outcome.sat_verdict.len() {
+        mix(&mut hash, subject as u64);
+        mix(
+            &mut hash,
+            match outcome.sat_verdict[subject] {
+                None => 0,
+                Some(false) => 1,
+                Some(true) => 2,
+            },
+        );
+        match &outcome.certain_subsumers[subject] {
+            None => mix(&mut hash, u64::MAX),
+            Some(subsumers) => {
+                mix(&mut hash, subsumers.len() as u64);
+                for &subsumer in subsumers {
+                    mix(&mut hash, subsumer as u64);
+                }
+            }
+        }
+        let known = &outcome.known_subsumers[subject];
+        mix(&mut hash, known.len() as u64);
+        for &subsumer in known {
+            mix(&mut hash, subsumer as u64);
+        }
+    }
+    hash
+}
+
+fn report_saturation_outcome_fingerprint(outcome: &SaturationOutcome) {
+    if std::env::var_os("KM_SAT_OUTCOME_FINGERPRINT").is_none() {
+        return;
+    }
+    let unsat = outcome
+        .sat_verdict
+        .iter()
+        .filter(|verdict| **verdict == Some(true))
+        .count();
+    let sat = outcome
+        .sat_verdict
+        .iter()
+        .filter(|verdict| **verdict == Some(false))
+        .count();
+    let known_pairs: usize = outcome.known_subsumers.iter().map(Vec::len).sum();
+    eprintln!(
+        "BRIDGE-SATURATION-FINGERPRINT hash={:016x} subjects={} sat={} unsat={} unknown={} known-pairs={}",
+        saturation_outcome_fingerprint(outcome),
+        outcome.sat_verdict.len(),
+        sat,
+        unsat,
+        outcome.sat_verdict.len() - sat - unsat,
+        known_pairs,
+    );
+}
+
 /// Resolve Konclude's saturation substitute chain and report the named
 /// concepts carried by its intermediate nodes.
 ///
@@ -11114,12 +11185,8 @@ fn run_bridged_saturation_with_native_consistency_prefix(
     sat_algo.native_consistency_nominal_nondeterministic_prefix = native_consistency_prefix;
     configure_production_saturation(&mut sat_algo);
     let preparation_started = std::time::Instant::now();
-    let preparation_budget = std::time::Duration::from_secs(
-        std::env::var("KM_HT_SATURATION_BUDGET_S")
-            .ok()
-            .and_then(|value| value.parse::<u64>().ok())
-            .unwrap_or(120),
-    );
+    let preparation_budget =
+        std::time::Duration::from_secs(super::saturation::saturation_budget_seconds());
     let preparation_deadline = Some(preparation_started + preparation_budget);
     let phase_progress = super::completion::bridge_progress_enabled();
     extract_propagation_into_creation_direction(ctx);
@@ -11349,7 +11416,10 @@ fn source_told_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet
 /// and never emitted. This pass decides that class of consequence up front, and
 /// because the pairs also land in the known-subsumer set they REMOVE pair
 /// probes instead of adding any.
-fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usize, usize)> {
+fn source_named_subsumer_closure_seeded(
+    tin: &TInput,
+    seed_pairs: &[(usize, usize)],
+) -> std::collections::HashSet<(usize, usize)> {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -11489,6 +11559,14 @@ fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usi
                 crate::json_io::SourceAxiomKind::Disjoint => {}
             }
         }
+        // Semantic pairs established by saturation/completion can discharge a
+        // source definition only after classification. Feed them through the
+        // same transitive and structural-conjunct fixpoint instead of relying
+        // on whichever definitions a bounded saturation prefix happened to
+        // encounter. Every seed is already an established entailment, and the
+        // only additional rule is conjunction introduction followed by the
+        // asserted `D ⊑ M` definition direction.
+        pair_stack.extend(seed_pairs.iter().copied());
     }
 
     let mut closure: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
@@ -11575,6 +11653,48 @@ fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usi
         }
     }
     closure
+}
+
+fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usize, usize)> {
+    source_named_subsumer_closure_seeded(tin, &[])
+}
+
+fn hierarchy_countermodel_subject_order(
+    subjects: &mut [usize],
+    known_subsumptions: &std::collections::HashSet<(usize, usize)>,
+) {
+    let original_rank: HashMap<usize, usize> = subjects
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(rank, subject)| (subject, rank))
+        .collect();
+    let mut known_super_count: HashMap<usize, usize> = HashMap::new();
+    for &(sub, _) in known_subsumptions {
+        *known_super_count.entry(sub).or_default() += 1;
+    }
+    subjects.sort_by_key(|subject| {
+        (
+            std::cmp::Reverse(known_super_count.get(subject).copied().unwrap_or(0)),
+            original_rank.get(subject).copied().unwrap_or(usize::MAX),
+        )
+    });
+}
+
+fn propagate_refuted_candidate_to_known_supers(
+    sub: usize,
+    candidate: usize,
+    known_subsumptions: &std::collections::HashSet<(usize, usize)>,
+    refuted_candidates: &mut std::collections::HashSet<(usize, usize)>,
+) {
+    refuted_candidates.insert((sub, candidate));
+    refuted_candidates.extend(
+        known_subsumptions
+            .iter()
+            .filter_map(|&(known_sub, known_super)| {
+                (known_sub == sub).then_some((known_super, candidate))
+            }),
+    );
 }
 
 /// Does the source terminology contain the inverse-sensitive mirror pattern
@@ -11795,6 +11915,45 @@ fn bridged_classify_opts_with_trigger_absorption_workers(
     subject_workers: usize,
 ) -> Option<BridgedClassification> {
     let subject_workers = subject_workers.clamp(1, 8);
+    let subject_batch = std::env::var("KM_BRIDGE_SUBJECT_BATCH")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|&value| value > 0);
+    if subject_workers == 1 {
+        if let Some(batch_size) = subject_batch.filter(|&size| tin.queries.len() > size) {
+            // Execute the unchanged complete per-subject classifier in bounded
+            // sequential batches. Each inner call receives the complete
+            // ontology and independently establishes consistency; only the
+            // taxonomy subject set is partitioned. The pieces are disjoint by
+            // subject, so their union is exactly the unbatched classification,
+            // while dropping each environment between batches bounds the
+            // completion arena and cache high-water mark.
+            let mut merged = BridgedClassification {
+                consistent: true,
+                unsatisfiable: Vec::new(),
+                subsumptions: Vec::new(),
+            };
+            for queries in tin.queries.chunks(batch_size) {
+                let piece = bridged_classify_opts_with_trigger_absorption_inner(
+                    tin,
+                    use_saturation,
+                    use_satcache,
+                    trigger_absorb,
+                    Some(queries),
+                )?;
+                if !piece.consistent {
+                    return Some(piece);
+                }
+                merged.unsatisfiable.extend(piece.unsatisfiable);
+                merged.subsumptions.extend(piece.subsumptions);
+            }
+            merged.unsatisfiable.sort_unstable();
+            merged.unsatisfiable.dedup();
+            merged.subsumptions.sort_unstable();
+            merged.subsumptions.dedup();
+            return Some(merged);
+        }
+    }
     if subject_workers > 1 && tin.queries.len() >= subject_workers {
         use rayon::prelude::*;
         // Source signatures commonly group whole ontology branches together.
@@ -11845,6 +12004,27 @@ fn bridged_classify_opts_with_trigger_absorption_workers(
         trigger_absorb,
         None,
     )
+}
+
+/// Diagnostic process-memory checkpoints for bridge phase attribution.
+/// Disabled by default and intentionally independent of the calculus state.
+fn report_bridge_memory(phase: &str) {
+    if std::env::var_os("KM_BRIDGE_MEM").is_none() {
+        return;
+    }
+    let Ok(status) = std::fs::read_to_string("/proc/self/status") else {
+        return;
+    };
+    let mut rss = "?";
+    let mut hwm = "?";
+    for line in status.lines() {
+        if let Some(value) = line.strip_prefix("VmRSS:") {
+            rss = value.trim();
+        } else if let Some(value) = line.strip_prefix("VmHWM:") {
+            hwm = value.trim();
+        }
+    }
+    eprintln!("BRIDGE-MEM phase={phase} rss={rss} hwm={hwm}");
 }
 
 fn bridged_classify_opts_with_trigger_absorption_inner(
@@ -11971,6 +12151,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     let t_env = std::time::Instant::now();
     let (mut algo, mut ctx, bridged) =
         fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+    report_bridge_memory("fresh-env");
     if progress {
         eprintln!(
             "BRIDGE-ENV: {:.2}s (named={}, trigger_absorb={trigger_absorb}, unsupported={}, independent_abox={independent_abox_elided})",
@@ -11992,18 +12173,27 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         .unwrap_or(2);
     let card_nominal_profile = native_cardinality_abox_profile(tin, bridged.has_native_nominals());
     // The exact, search-free part of the relation (told names + definition
-    // conjunct containment, transitively closed).  Select the richer
-    // definition rule from the bridge's actual retained-native-nominal state,
-    // not from broader source metadata that may describe a nominal-free
-    // normalized TBox.
-    let mut saturation_known_pairs = if card_nominal_profile {
+    // conjunct containment, transitively closed). Select the richer
+    // definition rule for both retained native-nominal taxonomies and the
+    // certified independent-ABox projection. The latter classifies the same
+    // complete source TBox after proving that its ABox components cannot alter
+    // taxonomy. Its source-level definition consequences must therefore not
+    // depend on how far the bounded saturation pre-pass happened to progress.
+    let source_definition_closure = card_nominal_profile
+        || independent_abox_elided
+        || std::env::var_os("KM_HT_SOURCE_DEFINITION_CLOSURE").is_some();
+    let mut saturation_known_pairs = if source_definition_closure {
         source_named_subsumer_closure(tin)
-    } else if independent_abox_elided {
-        HashSet::new()
     } else {
         source_told_named_subsumer_closure(tin)
     };
     saturation_known_pairs.retain(|(sub, sup)| subject_set.contains(sub) && universe.contains(sup));
+    if progress {
+        eprintln!(
+            "BRIDGE-SOURCE-CLOSURE pairs={} definition-containment={source_definition_closure}",
+            saturation_known_pairs.len(),
+        );
+    }
     out.subsumptions
         .extend(saturation_known_pairs.iter().copied());
     let mut native_saturation_ran = false;
@@ -12341,6 +12531,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             } else {
                 run_bridged_saturation(&mut ctx, &bridged)
             };
+            report_bridge_memory("saturation-complete");
             // An interrupted approximation pass still contains only monotonic
             // consequences. Extracted positive labels and clash flags are
             // sound KPSet seeds; the completed-node guard prevents unfinished
@@ -12348,6 +12539,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // into completion below.
             let t_extract = std::time::Instant::now();
             let extracted = extract_saturation_outcome(&mut ctx, &bridged);
+            report_bridge_memory("saturation-extracted");
             if progress {
                 eprintln!(
                     "BRIDGE-SAT-PHASE extract: {:.2}s",
@@ -12359,6 +12551,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             bridged_saturate_with_trigger_absorption(tin, trigger_absorb)
         };
         if let Some(mut outcome) = outcome {
+            report_saturation_outcome_fingerprint(&outcome);
             // Unit-bottom certificates are completed satisfiability jobs, not
             // merely an output shortcut. Seed every active certified item so
             // KPSet can propagate its UNSAT result through the class graph and
@@ -12472,6 +12665,16 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             kpset_state = Some(state);
             saturation_ran = use_satcache && saturation_complete;
             satcache_active = use_satcache && saturation_complete;
+            if use_satcache && !saturation_complete {
+                // `state` owns every verdict, label and scheduling edge copied
+                // from the interrupted pass. Partial saturation is never
+                // coupled into completion, so retaining its multi-gigabyte
+                // arenas beyond this point only raises the phase high-water
+                // mark. Invalidate those ids before installing independent
+                // completion caches.
+                ctx.process_context_mut().release_partial_saturation_state();
+                report_bridge_memory("partial-saturation-released");
+            }
             if progress {
                 eprintln!(
                     "BRIDGE-SATURATION{}: {:.2}s, answered {} unsat + {} sat of {} subjects ({} residue to probes, known-label-subjects={}, satcache={})",
@@ -12529,6 +12732,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none() {
         install_bridge_satisfiable_expander_cache(&mut ctx);
     }
+    report_bridge_memory("probe-caches-installed");
     let mut kpset_state = kpset_state.expect("synchronous KPSet state initialized");
     // Diagnostic scheduler replay: accept an explicit comma-separated subject
     // order so a Konclude trace can be replayed without baking ontology names or
@@ -12559,6 +12763,16 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         if std::env::var_os("KM_BRIDGE_ORDER_ONLY").is_some() {
             pending.retain(|subject| rank.contains_key(subject));
         }
+    }
+    // Definition containment and told-name closure are exact positive
+    // subsumptions.  Most-specific-first verification lets one concrete
+    // `S !<= C` countermodel refute `T <= C` for every known `S <= T` by
+    // transitivity.  This changes only scheduling and is limited to the
+    // source-certified closure profiles; retain an opt-out for corpus A/Bs.
+    let hierarchy_countermodels = source_definition_closure
+        && std::env::var_os("KM_BRIDGE_NO_HIERARCHY_COUNTERMODELS").is_none();
+    if hierarchy_countermodels {
+        hierarchy_countermodel_subject_order(&mut pending, &saturation_known_pairs);
     }
     // Diagnostic only: retain a single post-saturation subject while preserving
     // construction of the complete KPSet graph and saturation cache above.
@@ -12607,6 +12821,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         1_000
     };
     let mut synchronous_satisfiable_phase_finished = false;
+    let mut hierarchy_refuted_candidates: HashSet<(usize, usize)> = HashSet::new();
     let mut classify_one = |s: usize,
                             algo: &mut CompletionTaskHandleAlgorithm,
                             ctx: &mut CalculationAlgorithmContextBase,
@@ -12911,6 +13126,15 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             if saturation_known_pairs.contains(&(s, c)) {
                 continue;
             }
+            if hierarchy_countermodels && hierarchy_refuted_candidates.contains(&(s, c)) {
+                if progress {
+                    eprintln!(
+                        "BRIDGE-KPSET-SKIP {} v {}: inherited-countermodel",
+                        tin.concepts[s], tin.concepts[c]
+                    );
+                }
+                continue;
+            }
             // Deterministic subsumers were extracted branch-tag gated, so
             // `s ⊑ c` is entailed. Konclude records them as subsumptions and
             // never tests them; accept without a probe (see the authoritative
@@ -13026,6 +13250,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         false,
                         ctx.ontology_arenas().concepts(),
                     );
+                    if hierarchy_countermodels {
+                        propagate_refuted_candidate_to_known_supers(
+                            s,
+                            c,
+                            &saturation_known_pairs,
+                            &mut hierarchy_refuted_candidates,
+                        );
+                    }
                 }
                 None => {
                     if progress {
@@ -13068,6 +13300,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 }
             }
             log_bridge_satisfiable_expander_cache_stats(&ctx, "prepare", s);
+            if k % 1024 == 0 {
+                report_bridge_memory("prepare");
+            }
             if progress && (k % 64 == 0 || k + 1 == total || permanent_defer > 0) {
                 eprintln!(
                     "BRIDGE-PREPARE round {round} subject {}/{total} deferred={} permanent={}",
@@ -13130,6 +13365,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 }
             }
             log_bridge_satisfiable_expander_cache_stats(&ctx, "verify", s);
+            if k % 1024 == 0 {
+                report_bridge_memory("verify");
+            }
             if progress && (k % 64 == 0 || k + 1 == total || permanent_defer > 0) {
                 eprintln!(
                     "BRIDGE-VERIFY round {round} subject {}/{total} deferred={} permanent={}",
@@ -13177,6 +13415,18 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         }
         return None;
     }
+    if source_definition_closure {
+        let before = out.subsumptions.len();
+        let closed = source_named_subsumer_closure_seeded(tin, &out.subsumptions);
+        out.subsumptions.extend(closed);
+        if progress {
+            eprintln!(
+                "BRIDGE-SOURCE-POST-CLOSURE seeded={} combined={}",
+                before,
+                out.subsumptions.len(),
+            );
+        }
+    }
     out.unsatisfiable.sort_unstable();
     out.unsatisfiable.dedup();
     if !out.unsatisfiable.is_empty() {
@@ -13199,6 +13449,34 @@ mod tests {
     use super::super::process::sat_node::IndividualSaturationProcessNode;
     use super::super::process::sat_ref::ExtendedConceptReferenceLinkingData;
     use super::*;
+
+    #[test]
+    fn saturation_outcome_fingerprint_is_stable_and_semantically_sensitive() {
+        let baseline = SaturationOutcome {
+            sat_verdict: vec![Some(false), None, Some(true)],
+            certain_subsumers: vec![Some(vec![1, 2]), None, None],
+            known_subsumers: vec![vec![1, 2], vec![2], Vec::new()],
+        };
+        let identical = SaturationOutcome {
+            sat_verdict: baseline.sat_verdict.clone(),
+            certain_subsumers: baseline.certain_subsumers.clone(),
+            known_subsumers: baseline.known_subsumers.clone(),
+        };
+        let changed = SaturationOutcome {
+            sat_verdict: baseline.sat_verdict.clone(),
+            certain_subsumers: baseline.certain_subsumers.clone(),
+            known_subsumers: vec![vec![1, 2], vec![0, 2], Vec::new()],
+        };
+
+        assert_eq!(
+            saturation_outcome_fingerprint(&baseline),
+            saturation_outcome_fingerprint(&identical)
+        );
+        assert_ne!(
+            saturation_outcome_fingerprint(&baseline),
+            saturation_outcome_fingerprint(&changed)
+        );
+    }
 
     fn source_equivalence(
         left: crate::frontend::syntax::Concept,
@@ -16825,6 +17103,61 @@ mod tests {
         assert!(!closure.contains(&(upper, lower)));
         assert!(!closure.contains(&(upper, chain)));
         assert!(!closure.contains(&(a, upper)));
+    }
+
+    #[test]
+    fn hierarchy_countermodels_order_specific_classes_first_and_propagate_upward() {
+        let known = HashSet::from([(0usize, 1usize), (0, 2), (1, 2), (3, 2)]);
+        let mut subjects = vec![2, 1, 3, 0, 4];
+        hierarchy_countermodel_subject_order(&mut subjects, &known);
+        assert_eq!(subjects, vec![0, 1, 3, 2, 4]);
+
+        let mut refuted = HashSet::new();
+        propagate_refuted_candidate_to_known_supers(0, 9, &known, &mut refuted);
+        assert_eq!(refuted, HashSet::from([(0, 9), (1, 9), (2, 9)]));
+        assert!(
+            !refuted.contains(&(3, 9)),
+            "siblings do not share a witness"
+        );
+    }
+
+    #[test]
+    fn source_post_closure_uses_semantic_pairs_to_discharge_a_definition() {
+        use crate::frontend::syntax::Concept as C;
+
+        let tin = TInput {
+            concepts: vec![
+                "X".into(),
+                "A".into(),
+                "B".into(),
+                "A-and-B".into(),
+                "Target".into(),
+            ],
+            queries: vec![0, 1, 2, 3, 4],
+            source_axioms: vec![
+                source_equivalence(
+                    C::Name("A-and-B".into()),
+                    C::And(
+                        [C::Name("A".into()), C::Name("B".into())]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+                source_subclass(C::Name("A-and-B".into()), C::Name("Target".into())),
+            ],
+            ..Default::default()
+        };
+
+        assert!(!source_named_subsumer_closure(&tin).contains(&(0, 3)));
+        let closure = source_named_subsumer_closure_seeded(&tin, &[(0, 1), (0, 2)]);
+        assert!(
+            closure.contains(&(0, 3)),
+            "X ⊑ A and X ⊑ B must discharge the asserted A ⊓ B ⊑ A-and-B definition"
+        );
+        assert!(
+            closure.contains(&(0, 4)),
+            "the post-closure must carry the newly discharged definition through a told superclass"
+        );
     }
 
     #[test]

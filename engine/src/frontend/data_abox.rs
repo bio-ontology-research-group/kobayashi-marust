@@ -440,6 +440,30 @@ fn atmost1_role<'n, 'a>(node: &'n Node<'a>, kinds: [&str; 2]) -> Option<&'a str>
 }
 
 impl<'a> DataAbox<'a> {
+    /// Return the asserted class tokens when the complete source ABox consists
+    /// exclusively of atomic named-class assertions. `expected` comes from the
+    /// independent streaming profile; matching it proves that no complex or
+    /// malformed class assertion escaped this compact observer.
+    pub fn atomic_class_assertion_classes(
+        &self,
+        expected: u64,
+    ) -> Option<std::collections::BTreeSet<&'a str>> {
+        if expected == 0
+            || self.cassert.len() as u64 != expected
+            // A direct `a : owl:Nothing` is an immediate clash rather than an
+            // ordinary named-class UNSAT query. Keep it on the full ABox path.
+            || self.cassert.iter().any(|(class, _)| {
+                matches!(
+                    *class,
+                    "owl:Nothing" | "<http://www.w3.org/2002/07/owl#Nothing>"
+                )
+            })
+        {
+            return None;
+        }
+        Some(self.cassert.iter().map(|(class, _)| *class).collect())
+    }
+
     pub fn observe(&mut self, node: &Node<'a>) {
         let (head, args) = match node {
             Node::List(h, a) => (*h, a),

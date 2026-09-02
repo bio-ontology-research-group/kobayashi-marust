@@ -291,11 +291,17 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .get_concept();
         // KONCLUDE-PORT-NOTE[ownership]: snapshot the operand-linker list before the
         // `&mut self` add so the terminology-arena read borrow is released first.
-        let concept_op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
-            .ontology_arenas()
-            .concept(concept)
-            .get_operand_list()
-            .to_vec();
+        // The algorithm owns one reusable buffer: this rule is synchronous and
+        // queues newly derived descriptors rather than recursively dispatching
+        // them, so no nested AND application can alias the temporary snapshot.
+        let mut concept_op_linker = std::mem::take(&mut self.and_operand_buffer);
+        concept_op_linker.clear();
+        concept_op_linker.extend_from_slice(
+            calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list(),
+        );
         if let Some(watched_tag) = super::sat_add_trace_tag() {
             if concept_op_linker.iter().any(|operand| {
                 calc_alg_context
@@ -332,12 +338,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 );
             }
         }
-        self.add_concepts_filtered_to_individual(
+        self.add_concepts_filtered_to_individual_update_copy(
             &concept_op_linker,
             con_negation,
             process_indi,
+            false,
             calc_alg_context,
         );
+        concept_op_linker.clear();
+        self.and_operand_buffer = concept_op_linker;
     }
 
     // =======================================================================
@@ -1079,7 +1088,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 #[cfg(test)]
 mod tests {
     use super::super::super::model::concept::Concept;
-    use super::super::super::model::op::CCATOM;
+    use super::super::super::model::op::{CCAND, CCATOM};
     use super::super::super::model::role::Role;
     use super::super::super::model::Id;
     use super::super::super::process::sat_node::IndividualSaturationProcessNode;
@@ -1104,6 +1113,66 @@ mod tests {
         let mut role = Role::new();
         role.set_role_tag(tag);
         ctx.ontology_arenas_mut().alloc_role(role)
+    }
+
+    #[test]
+    fn s03_apply_and_does_not_replay_operands_into_copy_dependents() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(291);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let conjunction = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCAND)
+                .set_concept_tag(293)
+                .add_operand_linker(operand, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let dependent = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(source, true);
+        let dependent_label = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(dependent, true);
+        ctx.process_context_mut()
+            .sat_node_mut(source)
+            .add_copy_depending_individual_node_linker(NegLink {
+                target: dependent,
+                negated: false,
+            });
+        let linker = concept_process_linker(&mut ctx, conjunction, false);
+
+        algo.apply_and_rule(&mut source, linker, &mut ctx);
+
+        assert_eq!(
+            SaturationTaskHandleAlgorithm::sat_label_set_contains_concept_get_negation(
+                ctx.process_context()
+                    .sat_node(source)
+                    .reapply_con_sat_label_set,
+                operand,
+                &ctx,
+            ),
+            Some(false),
+        );
+        assert_eq!(
+            SaturationTaskHandleAlgorithm::sat_label_set_contains_concept_get_negation(
+                dependent_label,
+                operand,
+                &ctx,
+            ),
+            None,
+        );
     }
 
     #[test]

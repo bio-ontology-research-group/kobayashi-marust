@@ -88,7 +88,7 @@ use super::super::model::op::{
     ConceptOperator, CCALL, CCAQSOME, CCATLEAST, CCATMOST, CCFS_ALL_AQALL_TYPE, CCFS_SOME_TYPE,
     CCSOME, CCVALUE,
 };
-use super::super::model::substrate::{Cint64, Id};
+use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{
     ConceptId, ConceptProcessDataId, RoleId, SaturationConceptReferenceLinkingId,
 };
@@ -658,19 +658,66 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             }
         }
 
-        if calc_alg_context
-            .process_context()
-            .sat_indi_node_succ_ext_data(succ_extension_data)
-            .is_extension_processing_queued()
-        {
-            calc_alg_context
-                .process_context_mut()
-                .sat_indi_node_succ_ext_data_mut(succ_extension_data)
-                .set_extension_processing_queued(false);
-        }
-
         let _ = initialized;
         updated
+    }
+
+    /// Whether a current successor-extension node still owns work that must be
+    /// revisited before the queue may release it.
+    ///
+    /// Role callbacks can append one of these intrusive worklists while the
+    /// node is current. `insert_process_individual` deliberately ignores that
+    /// same current node, so the queue driver must retain it even when the
+    /// callback itself reported no structural update. Otherwise clearing the
+    /// current node and its queued bit loses the newly appended work.
+    pub(super) fn successor_extension_has_pending_work(
+        indi_proc_sat_node: SatNodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let succ_extension_data = calc_alg_context
+            .process_context_mut()
+            .sat_node_ext_successor_extension_data(indi_proc_sat_node, false);
+        if succ_extension_data.is_none() {
+            return false;
+        }
+
+        let all = calc_alg_context
+            .process_context_mut()
+            .sat_successor_extension_all_concepts_extension_data(succ_extension_data, false);
+        if all.is_some() {
+            let all = calc_alg_context
+                .process_context()
+                .sat_indi_node_all_concept_ext_data(all);
+            if all.role_process_linker.is_some() || all.extension_process_linker.is_some() {
+                return true;
+            }
+        }
+
+        let functional = calc_alg_context
+            .process_context_mut()
+            .sat_successor_extension_functional_concepts_extension_data(succ_extension_data, false);
+        if functional.is_some() {
+            let functional = calc_alg_context
+                .process_context()
+                .sat_indi_node_functional_concept_ext_data(functional);
+            if functional.successor_extension_process_linker.is_some()
+                || functional
+                    .linked_successor_added_role_process_linker
+                    .is_some()
+                || functional.functionality_added_role_process_linker.is_some()
+                || functional
+                    .copying_initializing_role_process_linker
+                    .is_some()
+                || functional.qual_func_atmost_con_process_linker.is_some()
+                || functional
+                    .linked_predecessor_added_role_process_linker
+                    .is_some()
+                || functional.predecessor_extension_process_linker != INVALID
+            {
+                return true;
+            }
+        }
+        false
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::processNextSuccessorExtensions`.
@@ -718,8 +765,31 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         calc_alg_context,
                     );
                 }
+                // A callback may have appended work while this node was the
+                // queue's current item. Such a requeue cannot enter the map
+                // (`insert_process_individual` suppresses the current node), so
+                // the certified recovery route retains current while intrusive
+                // work remains. Keep the legacy schedule elsewhere: some
+                // completion profiles deliberately leave disabled extension
+                // faces populated, and treating those as runnable work keeps
+                // their current node alive forever.
+                if self.conf_requeue_orphaned_saturation_work {
+                    extension_processed |= Self::successor_extension_has_pending_work(
+                        indi_proc_sat_node,
+                        calc_alg_context,
+                    );
+                }
             }
             if !extension_processed {
+                let succ_extension_data = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_ext_successor_extension_data(indi_proc_sat_node, false);
+                if succ_extension_data.is_some() {
+                    calc_alg_context
+                        .process_context_mut()
+                        .sat_indi_node_succ_ext_data_mut(succ_extension_data)
+                        .set_extension_processing_queued(false);
+                }
                 calc_alg_context
                     .process_context_mut()
                     .sat_succ_ext_ind_node_proc_queue_mut(ext_pro_indi_queue)
@@ -736,7 +806,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// linked successors, lazily initialises the ALL-concepts extension (fanning the
     /// initialisation out to dependent individuals on first init), drains the per-
     /// role process-linker worklist via `updateSuccessorRoleALLConceptsExtensions`,
-    /// clears the queued flags, then runs `updateSuccessorALLConceptsExtensions`.
+    /// clears the ALL-local queued flag, then runs `updateSuccessorALLConceptsExtensions`.
+    /// The outer successor-extension flag belongs to the queue driver, which
+    /// clears it only after both processors leave no appended work.
     /// Returns whether anything updated.
     pub fn process_successor_all_concepts_extensions(
         &mut self,
@@ -828,17 +900,6 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .sat_indi_node_all_concept_ext_data_mut(all_concepts_extension)
                 .set_extension_processing_queued(false);
         }
-        if calc_alg_context
-            .process_context()
-            .sat_indi_node_succ_ext_data(succ_extension_data)
-            .is_extension_processing_queued()
-        {
-            calc_alg_context
-                .process_context_mut()
-                .sat_indi_node_succ_ext_data_mut(succ_extension_data)
-                .set_extension_processing_queued(false);
-        }
-
         let updated =
             self.update_successor_all_concepts_extensions(indi_proc_sat_node, calc_alg_context);
         let _ = initialized;
@@ -2074,6 +2135,87 @@ mod tests {
     }
 
     #[test]
+    fn s07_process_next_successor_extensions_retains_current_node_with_appended_work() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_requeue_orphaned_saturation_work = true;
+        // Isolate the queue-driver invariant: a callback has appended ALL-role
+        // work after this processing cycle's ALL face was visited.
+        algo.conf_all_concepts_extension_processing = false;
+        algo.conf_functional_concepts_extension_processing = false;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = make_sat_node_with_individual(&mut ctx, 72);
+        let role = make_role(&mut ctx, 720);
+        let succ_ext = ctx
+            .process_context_mut()
+            .sat_node_ext_successor_extension_data(node, true);
+        let all_ext = ctx
+            .process_context_mut()
+            .sat_successor_extension_all_concepts_extension_data(succ_ext, true);
+        let mut role_work = RoleSaturationProcessLinker::new();
+        role_work.init_role_process_linker(role);
+        let role_work = ctx
+            .process_context_mut()
+            .alloc_role_sat_proc_linker(role_work);
+        ctx.process_context_mut()
+            .sat_indi_node_all_concept_ext_data_mut(all_ext)
+            .role_process_linker = role_work;
+        ctx.process_context_mut()
+            .sat_indi_node_succ_ext_data_mut(succ_ext)
+            .set_extension_processing_queued(true);
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(true);
+        ctx.process_context_mut()
+            .sat_succ_ext_ind_node_proc_queue_mut(queue)
+            .insert_process_individual(node, 72);
+
+        assert!(algo.process_next_successor_extensions(&mut ctx));
+        assert_eq!(
+            ctx.process_context()
+                .sat_succ_ext_ind_node_proc_queue(queue)
+                .get_current_process_individual(),
+            node
+        );
+        assert!(ctx
+            .process_context()
+            .sat_indi_node_succ_ext_data(succ_ext)
+            .is_extension_processing_queued());
+    }
+
+    #[test]
+    fn s07_legacy_schedule_does_not_retain_disabled_extension_work() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_requeue_orphaned_saturation_work = false;
+        algo.conf_all_concepts_extension_processing = false;
+        algo.conf_functional_concepts_extension_processing = false;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = make_sat_node_with_individual(&mut ctx, 73);
+        let role = make_role(&mut ctx, 730);
+        let succ_ext = ctx
+            .process_context_mut()
+            .sat_node_ext_successor_extension_data(node, true);
+        let all_ext = ctx
+            .process_context_mut()
+            .sat_successor_extension_all_concepts_extension_data(succ_ext, true);
+        let mut role_work = RoleSaturationProcessLinker::new();
+        role_work.init_role_process_linker(role);
+        let role_work = ctx
+            .process_context_mut()
+            .alloc_role_sat_proc_linker(role_work);
+        ctx.process_context_mut()
+            .sat_indi_node_all_concept_ext_data_mut(all_ext)
+            .role_process_linker = role_work;
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(true);
+        ctx.process_context_mut()
+            .sat_succ_ext_ind_node_proc_queue_mut(queue)
+            .insert_process_individual(node, 73);
+
+        assert!(!algo.process_next_successor_extensions(&mut ctx));
+        assert!(ctx
+            .process_context()
+            .sat_succ_ext_ind_node_proc_queue(queue)
+            .is_empty());
+    }
+
+    #[test]
     fn s07_process_next_successor_extensions_skips_separated_node() {
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2296,7 +2438,7 @@ mod tests {
             .process_context()
             .sat_indi_node_all_concept_ext_data(all_ext)
             .is_successor_extension_initialized());
-        assert!(!ctx
+        assert!(ctx
             .process_context()
             .sat_indi_node_succ_ext_data(succ_ext)
             .is_extension_processing_queued());
@@ -2371,7 +2513,7 @@ mod tests {
             .collect();
         assert!(released.contains(&head.raw));
         assert!(released.contains(&tail.raw));
-        assert!(!ctx
+        assert!(ctx
             .process_context()
             .sat_indi_node_succ_ext_data(succ_ext)
             .is_extension_processing_queued());
@@ -2402,7 +2544,7 @@ mod tests {
             .process_context()
             .sat_indi_node_functional_concept_ext_data(functional_ext)
             .is_successor_extension_initialized());
-        assert!(!ctx
+        assert!(ctx
             .process_context()
             .sat_indi_node_succ_ext_data(succ_ext)
             .is_extension_processing_queued());
@@ -3436,6 +3578,7 @@ mod tests {
                 target: role,
                 negated: false
             }]
+            .into()
         );
     }
 

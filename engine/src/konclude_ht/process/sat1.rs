@@ -1435,10 +1435,9 @@ mod tests {
         let target_after = ctx.reapply_con_sat_label_set(target_label_set);
         assert!(target_after.concept_des_dep_hash.is_empty());
         assert!(target_after.has_additional_concept_des_dep_hash);
-        assert!(std::sync::Arc::ptr_eq(
-            &source_after.additional_concept_des_dep_hash,
-            &target_after.additional_concept_des_dep_hash,
-        ));
+        assert!(source_after
+            .additional_concept_des_dep_hash
+            .ptr_eq(&target_after.additional_concept_des_dep_hash));
         assert_eq!(
             target_after
                 .additional_concept_des_dep_hash
@@ -1446,6 +1445,82 @@ mod tests {
                 .unwrap()
                 .con_sat_des,
             ConceptSaturationDescriptorId::new(37)
+        );
+    }
+
+    #[test]
+    fn sat1_layered_flat_copy_preserves_newest_values_and_unique_iteration() {
+        let mut ctx = ProcessContext::new();
+        let source = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
+        let first_copy = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
+        let second_copy = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
+        let source_label_set = ctx.sat_node_reapply_concept_saturation_label_set(source, true);
+
+        ctx.reapply_con_sat_label_set_mut(source_label_set)
+            .concept_des_dep_hash
+            .insert(
+                41,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: ConceptSaturationDescriptorId::new(43),
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.sat_node_init_coping_individual_saturation_process_node(first_copy, source, true);
+
+        ctx.reapply_con_sat_label_set_mut(source_label_set)
+            .concept_des_dep_hash
+            .insert(
+                41,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: ConceptSaturationDescriptorId::new(47),
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.reapply_con_sat_label_set_mut(source_label_set)
+            .concept_des_dep_hash
+            .insert(
+                53,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: ConceptSaturationDescriptorId::new(59),
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.sat_node_init_coping_individual_saturation_process_node(second_copy, source, true);
+
+        let source_after = ctx.reapply_con_sat_label_set(source_label_set);
+        assert_eq!(
+            source_after
+                .additional_concept_des_dep_hash
+                .get(&41)
+                .unwrap()
+                .con_sat_des,
+            ConceptSaturationDescriptorId::new(47)
+        );
+        assert_eq!(
+            source_after
+                .additional_concept_des_dep_hash
+                .get(&53)
+                .unwrap()
+                .con_sat_des,
+            ConceptSaturationDescriptorId::new(59)
+        );
+
+        let mut iterator = source_after.get_iterator(true, true);
+        let mut tags = Vec::new();
+        while iterator.has_next() {
+            tags.push(iterator.get_data_tag());
+            iterator.move_next();
+        }
+        assert_eq!(tags, vec![41, 53]);
+
+        let first_label = ctx.sat_node(first_copy).reapply_con_sat_label_set;
+        assert_eq!(
+            ctx.reapply_con_sat_label_set(first_label)
+                .additional_concept_des_dep_hash
+                .get(&41)
+                .unwrap()
+                .con_sat_des,
+            ConceptSaturationDescriptorId::new(43)
         );
     }
 
@@ -2211,6 +2286,7 @@ mod tests {
                 target: creation_role,
                 negated: false
             }]
+            .into()
         );
 
         assert!(ctx.linked_role_successor_hash_deactivate_linked_successor(
@@ -2230,6 +2306,7 @@ mod tests {
                 target: creation_role,
                 negated: true
             }]
+            .into()
         );
     }
 

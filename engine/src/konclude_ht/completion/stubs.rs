@@ -8855,7 +8855,7 @@ mod tests {
         succ_data
             .set_successor_individual_node(successor)
             .set_active_count(active_count);
-        succ_data.creation_role_linker = creation_roles;
+        succ_data.creation_role_linker = creation_roles.into();
         let succ_data = process_context.alloc_sat_succ_data(succ_data);
         process_context
             .linked_role_sat_succ_data_mut(role_data)

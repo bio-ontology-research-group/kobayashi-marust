@@ -146,6 +146,12 @@ pub struct Clausifier {
     /// byte-identical either way — this only populates the additive `cardinalities`
     /// side-data field, consumed solely by the card-routed HT path.
     card: bool,
+    /// Experimental native-number handoff.  The SHOQ consumer receives the
+    /// same restrictions through `CardMeta`, so materialising the quadratic
+    /// Skolem/distinctness family is redundant.  Recognition marker clauses
+    /// remain present.  This is deliberately opt-in until its route gate and
+    /// differential benchmark have been validated.
+    native_cardinality_only: bool,
     /// Compile structurally triggerable subclass antecedents directly into
     /// guarded DL-clause bodies and retain fresh-concept provenance.
     trigger_absorb: bool,
@@ -155,6 +161,10 @@ impl Clausifier {
     const MAX_TRIGGER_ALTERNATIVES: usize = 64;
 
     pub fn new() -> Self {
+        Self::new_with_native_cardinality_only(false)
+    }
+
+    fn new_with_native_cardinality_only(native_cardinality_only: bool) -> Self {
         Clausifier {
             counter: 0,
             role_counter: 0,
@@ -174,6 +184,7 @@ impl Clausifier {
             def_pos: HashSet::new(),
             def_neg: HashSet::new(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
+            native_cardinality_only,
             trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
         }
     }
@@ -773,24 +784,26 @@ impl Clausifier {
                         filler: filler_name.clone(),
                     });
                 }
-                for i in 0..*n {
-                    let f_name = format!("f_{}_{}", q, i);
-                    let fxi = Term::Fun(f_name, Box::new(x.clone()));
-                    self.clauses.push(clause(
-                        [qx.clone()],
-                        [Atom::Role(role_name.clone(), x.clone(), fxi.clone())],
-                    ));
-                    self.clauses.push(clause(
-                        [qx.clone()],
-                        [Atom::Concept(filler_name.clone(), fxi)],
-                    ));
-                }
-                for i in 0..*n {
-                    for j in (i + 1)..*n {
-                        let fxi = Term::Fun(format!("f_{}_{}", q, i), Box::new(x.clone()));
-                        let fxj = Term::Fun(format!("f_{}_{}", q, j), Box::new(x.clone()));
-                        self.clauses
-                            .push(clause([qx.clone(), Atom::Eq(fxi, fxj)], []));
+                if !self.native_cardinality_only {
+                    for i in 0..*n {
+                        let f_name = format!("f_{}_{}", q, i);
+                        let fxi = Term::Fun(f_name, Box::new(x.clone()));
+                        self.clauses.push(clause(
+                            [qx.clone()],
+                            [Atom::Role(role_name.clone(), x.clone(), fxi.clone())],
+                        ));
+                        self.clauses.push(clause(
+                            [qx.clone()],
+                            [Atom::Concept(filler_name.clone(), fxi)],
+                        ));
+                    }
+                    for i in 0..*n {
+                        for j in (i + 1)..*n {
+                            let fxi = Term::Fun(format!("f_{}_{}", q, i), Box::new(x.clone()));
+                            let fxj = Term::Fun(format!("f_{}_{}", q, j), Box::new(x.clone()));
+                            self.clauses
+                                .push(clause([qx.clone(), Atom::Eq(fxi, fxj)], []));
+                        }
                     }
                 }
                 if *n == 1 {
@@ -844,19 +857,21 @@ impl Clausifier {
                         filler: filler_name.clone(),
                     });
                 }
-                let ys: Vec<Term> = (0..=*n).map(|i| Term::Var(format!("y{}", i))).collect();
-                let mut body_atoms: Vec<Atom> = vec![qx.clone()];
-                for yi in &ys {
-                    body_atoms.push(Atom::Role(role_name.clone(), x.clone(), yi.clone()));
-                    body_atoms.push(Atom::Concept(filler_name.clone(), yi.clone()));
-                }
-                let mut head_atoms: Vec<Atom> = Vec::new();
-                for i in 0..ys.len() {
-                    for j in (i + 1)..ys.len() {
-                        head_atoms.push(Atom::Eq(ys[i].clone(), ys[j].clone()));
+                if !self.native_cardinality_only {
+                    let ys: Vec<Term> = (0..=*n).map(|i| Term::Var(format!("y{}", i))).collect();
+                    let mut body_atoms: Vec<Atom> = vec![qx.clone()];
+                    for yi in &ys {
+                        body_atoms.push(Atom::Role(role_name.clone(), x.clone(), yi.clone()));
+                        body_atoms.push(Atom::Concept(filler_name.clone(), yi.clone()));
                     }
+                    let mut head_atoms: Vec<Atom> = Vec::new();
+                    for i in 0..ys.len() {
+                        for j in (i + 1)..ys.len() {
+                            head_atoms.push(Atom::Eq(ys[i].clone(), ys[j].clone()));
+                        }
+                    }
+                    self.clauses.push(clause(body_atoms, head_atoms));
                 }
-                self.clauses.push(clause(body_atoms, head_atoms));
                 // Recognition: `≤n r.F ⊑ Q` via excluded middle — NQ stands for
                 // ¬Q ≡ ≥(n+1) r.F (n+1 pairwise-distinct witnesses), so a
                 // context whose constraints refute the witnesses derives Q.
@@ -883,20 +898,22 @@ impl Clausifier {
                     self.clauses.push(clause([], [qx.clone(), nqx.clone()]));
                     self.clauses.push(clause([qx, nqx.clone()], []));
                     let g = |i: i64| Term::Fun(format!("f_{}_{}", nq, i), Box::new(x.clone()));
-                    for i in 0..=*n {
-                        self.clauses.push(clause(
-                            [nqx.clone()],
-                            [Atom::Role(role_name.clone(), x.clone(), g(i))],
-                        ));
-                        self.clauses.push(clause(
-                            [nqx.clone()],
-                            [Atom::Concept(filler_name.clone(), g(i))],
-                        ));
-                    }
-                    for i in 0..=*n {
-                        for j in (i + 1)..=*n {
-                            self.clauses
-                                .push(clause([nqx.clone(), Atom::Eq(g(i), g(j))], []));
+                    if !self.native_cardinality_only {
+                        for i in 0..=*n {
+                            self.clauses.push(clause(
+                                [nqx.clone()],
+                                [Atom::Role(role_name.clone(), x.clone(), g(i))],
+                            ));
+                            self.clauses.push(clause(
+                                [nqx.clone()],
+                                [Atom::Concept(filler_name.clone(), g(i))],
+                            ));
+                        }
+                        for i in 0..=*n {
+                            for j in (i + 1)..=*n {
+                                self.clauses
+                                    .push(clause([nqx.clone(), Atom::Eq(g(i), g(j))], []));
+                            }
                         }
                     }
                 }
@@ -1020,6 +1037,32 @@ mod tests {
         cf.mark_polarity(&mk(), true);
         cf.q(&mk());
         assert!(has_recognition(&cf), "negative ≥2 must emit recognition");
+    }
+
+    #[test]
+    fn native_cardinality_omits_only_the_positive_expansion() {
+        let restriction = Concept::AtLeast(
+            128,
+            Role::Name("r".to_string()),
+            Box::new(Concept::Name("J".to_string())),
+        );
+        let mut ordinary = Clausifier::new();
+        ordinary.mark_polarity(&restriction, false);
+        let ordinary_marker = ordinary.q(&restriction);
+        assert!(ordinary.clauses.len() > 8_000);
+
+        let mut native = Clausifier::new_with_native_cardinality_only(true);
+        native.mark_polarity(&restriction, false);
+        let native_marker = native.q(&restriction);
+        assert_eq!(native_marker, ordinary_marker);
+        assert!(native.clauses.is_empty());
+        assert_eq!(native.hooks.cardinalities.len(), 1);
+        let definition = &native.hooks.cardinalities[0];
+        assert_eq!(definition.marker, native_marker);
+        assert!(definition.min);
+        assert_eq!(definition.n, 128);
+        assert_eq!(definition.role, "r");
+        assert_eq!(definition.filler, "J");
     }
 
     /// AtMost recognition (`≤n r.F ⊑ Q` via excluded middle + n+1 distinct
@@ -1259,7 +1302,18 @@ mod tests {
 
 /// Returns `(tbox_clauses, abox_clauses, hooks)`.
 pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHooks) {
-    let mut clausifier = Clausifier::new();
+    normalise_with_native_cardinality(ontology, false)
+}
+
+/// Normalize while handing qualified number restrictions to the selected
+/// native SHOQ consumer through `CardMeta`. This representation omits only the
+/// redundant witness/distinctness expansion; marker and recognition clauses
+/// remain available for exact-cardinality provenance.
+pub fn normalise_with_native_cardinality(
+    ontology: &Ontology,
+    native_cardinality_only: bool,
+) -> (Vec<DLClause>, Vec<DLClause>, GroundHooks) {
+    let mut clausifier = Clausifier::new_with_native_cardinality_only(native_cardinality_only);
     let x = var_x();
     let y = var_y();
 

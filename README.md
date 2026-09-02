@@ -14,11 +14,10 @@ without access to the expected answer.
 
 ## Highlights
 
-- `km classify` completes 591 of 592 ORE 2015 ontologies under the documented
+- `km classify` completes all 592 ORE 2015 ontologies under the documented
   240-second and 20-GiB benchmark contract.
-- Those results comprise 588 exact retained or independently derived full-IRI
-  signatures and three independently adjudicated cases: 2669, 15516, and
-  10860. Ontology 1194 is the remaining non-completing input.
+- Those results comprise 588 exact retained signatures and four independently
+  adjudicated cases: 2669, 15516, 10860, and the no-gold ontology 1194.
 - KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle.
 - Conversion, routing, and certification paths fail closed when they cannot
   justify a complete result.
@@ -31,9 +30,10 @@ without access to the expected answer.
   production ELC, hypertableau, and CB publication boundaries and for their
   automatic routing composition. Accepted routed taxonomies are bound to the
   exact source clauses and requested named-class signature.
-- On the completed ORE panel, the automatic route has lower mean and median
-  wall time and peak process-tree RSS than the retained correct-completion
-  results for ELK, HermiT, Konclude, and Sequoia.
+- On the completed ORE panel, the automatic route has lower median wall time
+  and lower mean and median peak process-tree RSS than the retained
+  correct-completion results for ELK, HermiT, Konclude, and Sequoia. Its mean
+  wall time is lower than HermiT, Konclude, and Sequoia, but not ELK.
 
 ## Install
 
@@ -83,7 +83,7 @@ memory are computed over correct completions.
 
 | Reasoner | Tested version / commit | Correct completions | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
 |---|---|---:|---:|---:|---:|---:|
-| KM | v1.3.0; engine `5c64a02`; binary `cb9eabac…9620aa7d` | 591/592 | 1.4946 | 0.1376 | 221.57 | 27.19 |
+| KM | v1.4.0 candidate; source archive `affa892f…ed83a6`; binary `33951140…c320e1` | 592/592 | 1.7798 | 0.1588 | 227.64 | 27.31 |
 | ELK | 0.6.0 | 531/592 | 1.5208 | 0.7520 | 493.33 | 234.30 |
 | Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 3.2765 | 0.2814 | 559.90 | 76.87 |
 | Sequoia | 0.6.1-alpha; `c5248ec7be30` | 339/592 | 7.3704 | 2.5371 | 2207.35 | 536.15 |

@@ -4929,7 +4929,7 @@ pub struct JCardDef {
 }
 
 #[derive(Serialize)]
-pub struct TOutput {
+pub(crate) struct TOutput {
     pub consistent: bool,
     pub unsatisfiable: Vec<String>,
     pub subsumptions: Vec<[String; 2]>,
@@ -5183,6 +5183,176 @@ fn validate_native_abox(inp: &TInput) -> Result<ValidatedNativeAbox, String> {
 /// Read a `TInput` JSON string, classify, and return a `TOutput` JSON string.
 pub fn run_json(input: &str) -> Result<String, String> {
     run_json_inner(input, None)
+}
+
+fn producer_id(value: usize, field: &str) -> Result<u32, String> {
+    u32::try_from(value).map_err(|_| format!("{field} id exceeds the tableau wire range"))
+}
+
+fn producer_atom(atom: crate::orchestrate::cb_to_ht::HAtom) -> Result<JAtom, String> {
+    use crate::orchestrate::cb_to_ht::HAtom;
+    Ok(match atom {
+        HAtom::Concept { neg, c, t } => JAtom::Concept {
+            neg,
+            c: producer_id(c, "concept")?,
+            t: producer_id(t, "variable")?,
+        },
+        HAtom::Role { r, s, t } => JAtom::Role {
+            r: producer_id(r, "role")?,
+            s: producer_id(s, "variable")?,
+            t: producer_id(t, "variable")?,
+        },
+        HAtom::Exist { r, neg, c, t } => JAtom::Exists {
+            r: producer_id(r, "role")?,
+            neg,
+            c: producer_id(c, "concept")?,
+            t: producer_id(t, "variable")?,
+        },
+        HAtom::Eq { s, t } => JAtom::Eq {
+            s: producer_id(s, "variable")?,
+            t: producer_id(t, "variable")?,
+        },
+    })
+}
+
+fn producer_input(input: crate::orchestrate::cb_to_ht::TInput) -> Result<TInput, String> {
+    let clauses = input
+        .clauses
+        .into_iter()
+        .map(|clause| {
+            Ok(JClause {
+                body: clause
+                    .body
+                    .into_iter()
+                    .map(producer_atom)
+                    .collect::<Result<_, _>>()?,
+                head: clause
+                    .head
+                    .into_iter()
+                    .map(producer_atom)
+                    .collect::<Result<_, _>>()?,
+            })
+        })
+        .collect::<Result<_, String>>()?;
+    let card_defs = input
+        .card_defs
+        .into_iter()
+        .map(|definition| {
+            Ok(JCardDef {
+                marker: producer_id(definition.marker, "cardinality marker")?,
+                min: definition.min,
+                n: definition.n,
+                role: producer_id(definition.role, "cardinality role")?,
+                filler: producer_id(definition.filler, "cardinality filler")?,
+                exact: definition.exact,
+            })
+        })
+        .collect::<Result<_, String>>()?;
+    let triples = |values: Vec<(usize, usize, usize)>| {
+        values
+            .into_iter()
+            .map(|(a, b, c)| {
+                Ok((
+                    producer_id(a, "role")?,
+                    producer_id(b, "role")?,
+                    producer_id(c, "role")?,
+                ))
+            })
+            .collect::<Result<Vec<_>, String>>()
+    };
+    Ok(TInput {
+        concepts: input.concepts,
+        roles: input.roles,
+        clauses,
+        direct_projection_source: input.direct_projection_source,
+        mixed_projection_source: input.mixed_projection_source,
+        bundle_projection_source: input.bundle_projection_source,
+        queries: input
+            .queries
+            .into_iter()
+            .map(|id| producer_id(id, "query"))
+            .collect::<Result<_, _>>()?,
+        dropped: input.dropped,
+        fenced: input
+            .fenced
+            .into_iter()
+            .map(|fence| serde_json::to_value(fence).map_err(|error| error.to_string()))
+            .collect::<Result<_, _>>()?,
+        inverse: input.inverse,
+        inverse_cardinality_role_separable: input.inverse_cardinality_role_separable,
+        number: input.number,
+        nominals: input
+            .nominals
+            .into_iter()
+            .map(|id| producer_id(id, "nominal"))
+            .collect::<Result<_, _>>()?,
+        native_abox: input.native_abox,
+        card_defs,
+        cardinality_exact_pairs: input.cardinality_exact_pairs,
+        cardinality_projection_complete: input.cardinality_projection_complete,
+        chains: triples(input.chains)?,
+        transitive: input
+            .transitive
+            .into_iter()
+            .map(|id| producer_id(id, "transitive role"))
+            .collect::<Result<_, _>>()?,
+    })
+}
+
+/// Classify a converter value without serializing and reparsing its clause
+/// graph. This is the typed equivalent of `run_json`; bridge routes retain the
+/// wire entry point because they consume producer-only provenance fields.
+pub(crate) fn run_producer_input(
+    input: crate::orchestrate::cb_to_ht::TInput,
+) -> Result<String, String> {
+    let output = run_tinput_inner(producer_input(input)?, None, None)?;
+    serde_json::to_string(&output).map_err(|error| error.to_string())
+}
+
+/// Typed in-process publication path. The subprocess-compatible worker keeps
+/// JSON at its boundary, while the orchestrator consumes the owned result
+/// directly without a serialize/parse round trip.
+pub(crate) fn run_producer_input_typed(
+    input: crate::orchestrate::cb_to_ht::TInput,
+) -> Result<TOutput, String> {
+    run_tinput_inner(producer_input(input)?, None, None)
+}
+
+/// Classify an owned producer input through the native completion bridge
+/// without serializing it solely to reconstruct the same producer-side value.
+/// `bridged_classify` remains the sole publication gate and returns either a
+/// complete taxonomy or `None`; this adapter converts only the already
+/// certified result into the worker's typed output shape.
+pub(crate) fn run_bridge_producer_input_typed(
+    input: crate::orchestrate::cb_to_ht::TInput,
+) -> Result<TOutput, String> {
+    let concepts = input.concepts.clone();
+    let result = std::thread::Builder::new()
+        .stack_size(4usize << 30)
+        .spawn(move || crate::konclude_ht::bridge::bridged_classify(&input))
+        .map_err(|error| error.to_string())?
+        .join()
+        .map_err(|_| "konclude_ht bridge thread panicked".to_string())?
+        .ok_or_else(|| "konclude_ht bridge defer".to_string())?;
+    let name = |concept: usize| {
+        concepts
+            .get(concept)
+            .cloned()
+            .unwrap_or_else(|| format!("C{concept}"))
+    };
+    Ok(TOutput {
+        consistent: result.consistent,
+        unsatisfiable: result
+            .unsatisfiable
+            .iter()
+            .map(|&concept| name(concept))
+            .collect(),
+        subsumptions: result
+            .subsumptions
+            .iter()
+            .map(|&(sub, sup)| [name(sub), name(sup)])
+            .collect(),
+    })
 }
 
 /// Read the global consistency verdict carried by a checker-ready HT
@@ -6491,6 +6661,15 @@ pub(crate) fn ht_lean_certification_requested() -> bool {
 /// always passes `None` and reads the selected mechanism from the environment.
 fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String> {
     let inp: TInput = serde_json::from_str(input).map_err(|e| e.to_string())?;
+    let output = run_tinput_inner(inp, Some(input), forced_ht)?;
+    serde_json::to_string(&output).map_err(|error| error.to_string())
+}
+
+fn run_tinput_inner(
+    inp: TInput,
+    raw_input: Option<&str>,
+    forced_ht: Option<bool>,
+) -> Result<TOutput, String> {
     let native_abox = validate_native_abox(&inp)?;
     let native_abox_active = native_abox.active;
     let ht_enabled = forced_ht.unwrap_or_else(|| std::env::var_os("KM_HT").is_some());
@@ -6531,7 +6710,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             unsatisfiable: Vec::new(),
             subsumptions: Vec::new(),
         };
-        return serde_json::to_string(&out).map_err(|e| e.to_string());
+        return Ok(out);
     }
 
     // KM_HT: route ALC(H) KBs (no number restrictions / nominals / inverses) to
@@ -6552,8 +6731,11 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
     if std::env::var_os("KM_HT_BRIDGE").is_some() && !lean_cert_requested {
         // The bridge consumes the producer-side TInput (cb_to_ht) — same wire
         // format as this worker's TInput; re-parse the raw input for it.
-        let tin_bridge: crate::orchestrate::cb_to_ht::TInput =
-            serde_json::from_str(input).map_err(|e| e.to_string())?;
+        let tin_bridge: crate::orchestrate::cb_to_ht::TInput = serde_json::from_str(
+            raw_input
+                .ok_or_else(|| "typed tableau input cannot enter the bridge route".to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
         let res = std::thread::Builder::new()
             .stack_size(4usize << 30)
             .spawn(move || crate::konclude_ht::bridge::bridged_classify(&tin_bridge))
@@ -6582,7 +6764,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 unsatisfiable: r.unsatisfiable.iter().map(|&c| name(c as C)).collect(),
                 subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
             };
-            return serde_json::to_string(&out).map_err(|e| e.to_string());
+            return Ok(out);
         }
         // The bridge declined. If it was the ONLY route this worker was
         // spawned for (KM_HT_BRIDGE_ONLY, set by spawn_ht), emit NO answer —
@@ -6955,7 +7137,10 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             .collect();
         let ht_chains = inp.chains.clone();
         let ht_transitive = inp.transitive.clone();
-        let source_decision_clauses = ht_clauses.clone();
+        // Only Lean certificate publication consumes this snapshot. Ordinary
+        // production HT classification must not retain a duplicate of the
+        // complete clause set for the lifetime of the worker.
+        let source_decision_clauses = lean_cert_requested.then(|| ht_clauses.clone());
         let res = std::thread::Builder::new()
             // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
             // branch level; SHOQ number+nominal search can nest tens of thousands
@@ -7051,6 +7236,10 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         if let Some(((consistent, unsat, subs), lean_certificate)) = res {
             let mut validated_taxonomy = None;
             if let Some((certificate, native_global_run, taxonomy_certificate)) = lean_certificate {
+                let source_decision_clauses: &[Clause] =
+                    source_decision_clauses.as_deref().ok_or_else(|| {
+                        "HT certificate requested without retained source clauses".to_string()
+                    })?;
                 let certificate_value: serde_json::Value = serde_json::from_str(&certificate)
                     .map_err(|error| format!("KM_HT_LEAN_CERT produced invalid JSON: {error}"))?;
                 let evidence_consistent = certified_ht_global_consistency(&certificate_value)?;
@@ -7374,7 +7563,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .map(|(sub, sup)| [name(sub), name(sup)])
                         .collect(),
                 };
-                return serde_json::to_string(&out).map_err(|error| error.to_string());
+                return Ok(out);
             }
             // The per-concept model-label candidate sets can miss an entailed
             // A ⊑ C when A ⊑ B ⊑ C and C is absent from A's one captured model
@@ -7396,7 +7585,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
                 subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
             };
-            return serde_json::to_string(&out).map_err(|e| e.to_string());
+            return Ok(out);
         }
         if lean_cert_requested {
             return Err(
@@ -7439,7 +7628,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
         subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
     };
-    serde_json::to_string(&out).map_err(|e| e.to_string())
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -7450,6 +7639,36 @@ pub(crate) fn run_json_for_native_ht_test(input: &str) -> Result<String, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_producer_handoff_matches_the_json_worker_contract() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
+
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_HT", "1");
+        let input = crate::orchestrate::cb_to_ht::TInput {
+            concepts: vec!["A".into(), "B".into()],
+            clauses: vec![HtClause {
+                body: vec![HAtom::Concept {
+                    neg: false,
+                    c: 0,
+                    t: 0,
+                }],
+                head: vec![HAtom::Concept {
+                    neg: false,
+                    c: 1,
+                    t: 0,
+                }],
+            }],
+            queries: vec![0, 1],
+            ..Default::default()
+        };
+        let wire = serde_json::to_string(&input).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&run_json(&wire).unwrap()).unwrap();
+        let typed: serde_json::Value =
+            serde_json::from_str(&run_producer_input(input).unwrap()).unwrap();
+        assert_eq!(typed, json);
+    }
 
     #[test]
     fn certified_global_verdict_is_derived_from_the_checked_evidence_shape() {

@@ -930,14 +930,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .get(&role)
                     .copied();
                 if let Some(succ_data) = succ_data.filter(|d| d.is_some()) {
-                    let indi_succ_datas: Vec<SaturationSuccessorDataId> = calc_alg_context
-                        .process_context()
-                        .linked_role_sat_succ_data(succ_data)
-                        .succ_node_data_map
-                        .values()
-                        .copied()
-                        .collect();
-                    for indi_succ_data in indi_succ_datas {
+                    let mut indi_succ_datas: Vec<(Cint64, SaturationSuccessorDataId)> =
+                        calc_alg_context
+                            .process_context()
+                            .linked_role_sat_succ_data(succ_data)
+                            .succ_node_data_map
+                            .iter()
+                            .map(|(indi_id, data)| (*indi_id, *data))
+                            .collect();
+                    if !super::algorithm::preserve_native_successor_iteration() {
+                        indi_succ_datas.sort_by_key(|(indi_id, _)| {
+                            super::algorithm::successor_iteration_key(0x0901, *indi_id as u64)
+                        });
+                    }
+                    for (_, indi_succ_data) in indi_succ_datas {
                         let (active, value_nominal_connection, succ_node) = {
                             let d = calc_alg_context
                                 .process_context()

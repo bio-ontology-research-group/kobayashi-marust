@@ -234,6 +234,20 @@ pub struct OntologyProfile {
     /// before it may publish the nominal-free taxonomy.
     #[serde(default)]
     pub positive_el_abox_materializable: bool,
+    /// Parsed/source cross-certificate for an ABox containing only atomic
+    /// named-class assertions. Such an ABox changes no TBox subsumption; after
+    /// complete TBox classification it is consistent exactly when none of the
+    /// recorded asserted classes is unsatisfiable.
+    #[serde(default)]
+    pub atomic_class_abox_candidate: bool,
+    /// Parsed structural certificate for a positive named-class/object-role
+    /// ABox whose role edges cannot be read by any concept or negative RBox
+    /// constraint and whose TBox cannot generate equality. The frontend
+    /// replaces each individual's asserted type conjunction by one fresh
+    /// internal probe class; complete TBox classification proves consistency
+    /// iff every probe remains satisfiable.
+    #[serde(default)]
+    pub inert_role_abox_probe_candidate: bool,
     /// Source-only admission gate for the disjoint-union ABox projection. This
     /// is not itself a consistency certificate: the orchestrator must first
     /// obtain an exact full-ontology consistency verdict. The gate excludes
@@ -241,6 +255,15 @@ pub struct OntologyProfile {
     /// through a concept nominal, universal role, key, import, or rule.
     #[serde(default)]
     pub disjoint_union_abox_candidate: bool,
+    /// Parsed-source certificate for a role-isolated existential ABox. Every
+    /// assertion has shape `a : exists R.C` for one role R and a named filler
+    /// C; R is absent from TBox concepts and occurs in the RBox only as the
+    /// first and head role of `R o S <= R`. Classification may project this
+    /// ABox, provided the complete TBox result proves every recorded filler
+    /// satisfiable. The frontend computes this after parsing; the streaming
+    /// source profiler therefore initializes it to false.
+    #[serde(default)]
+    pub existential_witness_abox_candidate: bool,
     /// Source-only certificate for the inverse-aware cardinality route. Every
     /// object role used by a number restriction (including functionality) is
     /// in a role-hierarchy component disjoint from inverse/symmetric and
@@ -1025,7 +1048,10 @@ impl<'a> SourceProfileBuilder<'a> {
                 schema_version: 2,
                 positive_abox_tbox_separable,
                 positive_el_abox_materializable,
+                atomic_class_abox_candidate: false,
+                inert_role_abox_probe_candidate: false,
                 disjoint_union_abox_candidate,
+                existential_witness_abox_candidate: false,
                 inverse_cardinality_role_separable,
                 card_number_role_separable,
                 expressivity: self.expr,

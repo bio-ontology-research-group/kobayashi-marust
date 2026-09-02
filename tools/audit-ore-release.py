@@ -37,6 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--release", required=True)
     parser.add_argument("--owner-job", required=True)
     parser.add_argument("--baseline", type=Path, help="prior sweep directory")
+    parser.add_argument("--output", type=Path, help="also write the audit JSON to this path")
     return parser.parse_args()
 
 
@@ -52,8 +53,7 @@ def result_path(root: Path, ontology: str) -> Path:
     return root / "results" / f"{ontology}.json"
 
 
-def audit() -> dict:
-    args = parse_args()
+def audit(args: argparse.Namespace) -> dict:
     root = args.root.resolve()
     ontologies = [line.strip() for line in (root / "ore592.txt").read_text().splitlines() if line.strip()]
     assert len(ontologies) == 592, f"expected 592 ontology rows, got {len(ontologies)}"
@@ -142,4 +142,9 @@ def audit() -> dict:
 
 
 if __name__ == "__main__":
-    print(json.dumps(audit(), indent=2, sort_keys=True))
+    args = parse_args()
+    report = json.dumps(audit(args), indent=2, sort_keys=True) + "\n"
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(report, encoding="utf-8")
+    print(report, end="")

@@ -27,7 +27,8 @@
 //! into the matching per-test arena on `ProcessContext` (`Id::NONE` == the C++
 //! `nullptr`); the intrusive `CLinker`/`CNegLinker` self-chains become an explicit
 //! `next: Id<Self>` link field (head-at-front, the canonical PORT.md §6 linker
-//! convention); a `CXNegLinker<CRole*>*` chain becomes `Vec<NegLink<RoleId>>`;
+//! convention); a `CXNegLinker<CRole*>*` chain becomes an inline-small
+//! role-link vector;
 //! a `CPROCESSHASH`/`CPROCESSMAP` becomes an owned `HashMap`. Behaviour is
 //! identical; only the representation differs.
 //!
@@ -41,9 +42,22 @@
 
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap as StdHashMap, HashSet as StdHashSet};
 use std::hash::{BuildHasherDefault, Hasher};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+use smallvec::SmallVec;
+
+fn saturation_label_checkpoint_layers() -> usize {
+    static LAYERS: OnceLock<usize> = OnceLock::new();
+    *LAYERS.get_or_init(|| {
+        std::env::var("KM_SAT_LABEL_CHECKPOINT_LAYERS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value >= 2)
+            .unwrap_or(8)
+    })
+}
 
 use super::super::model::ontology::OntologyArenas;
 use super::super::model::substrate::{Arena, Cint64, Id, NegLink, INVALID};
@@ -106,14 +120,27 @@ impl Hasher for SaturationConceptTagHasher {
 }
 
 pub type SaturationConceptTagMap<V> =
-    HashMap<Cint64, V, BuildHasherDefault<SaturationConceptTagHasher>>;
+    StdHashMap<Cint64, V, BuildHasherDefault<SaturationConceptTagHasher>>;
+
+/// General saturation maps retain Rust's collision-resistant `RandomState`.
+/// The cheap deterministic integer hasher is appropriate for the dedicated
+/// concept-tag and arena-role maps above, but applying it to heterogeneous
+/// composite keys creates severe collision clusters in real taxonomies. That
+/// changed formerly short saturation routes into portfolio-deadline runs.
+/// Correctness is schedule-independent; diagnostics that compare schedules
+/// use the explicit semantic fingerprints instead.
+pub type SaturationHashMap<K, V> = StdHashMap<K, V>;
+pub type SaturationHashSet<K> = StdHashSet<K>;
+
+type HashMap<K, V> = SaturationHashMap<K, V>;
+type HashSet<K> = SaturationHashSet<K>;
 
 /// Konclude stores role pointers in `CPROCESSHASH<CRole*, ...>`. Qt hashes a
 /// pointer as an integer; use the same cheap-integer path for the Rust arena id
 /// instead of SipHash. `Id<T>::hash` feeds its single `i64` payload to this
 /// hasher, so key equality and all map semantics remain unchanged.
 pub type SaturationRoleIdMap<V> =
-    HashMap<RoleId, V, BuildHasherDefault<SaturationConceptTagHasher>>;
+    StdHashMap<RoleId, V, BuildHasherDefault<SaturationConceptTagHasher>>;
 
 // ===========================================================================
 // Id aliases (the `CXxx*` → `Id<Xxx>` arena handles). The `process::stubs`
@@ -649,6 +676,58 @@ impl RoleBackwardSaturationPropagationHash {
 // CSaturationSuccessorData
 // ===========================================================================
 
+/// Compact representation of Konclude's creation-role linker.
+///
+/// Successor updates retain historical records and copy their creation-role
+/// linker. A plain `Vec` deep-copied that linker into every historical record;
+/// ORE1194 consequently reserved hundreds of millions of tiny allocations.
+/// Nearly every linker has zero or one role, so storing one role inline removes
+/// those allocations while preserving ordinary value semantics. The rare
+/// multi-role linker spills to the heap through `SmallVec`.
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct CompactCreationRoleLinks(SmallVec<[NegLink<RoleId>; 1]>);
+
+impl CompactCreationRoleLinks {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn diagnostic_heap_storage(&self) -> Option<(usize, usize, usize)> {
+        self.0
+            .spilled()
+            .then_some((self.0.as_ptr() as usize, self.0.len(), self.0.capacity()))
+    }
+}
+
+impl From<Vec<NegLink<RoleId>>> for CompactCreationRoleLinks {
+    fn from(value: Vec<NegLink<RoleId>>) -> Self {
+        Self(value.into_iter().collect())
+    }
+}
+
+impl std::ops::Deref for CompactCreationRoleLinks {
+    type Target = SmallVec<[NegLink<RoleId>; 1]>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for CompactCreationRoleLinks {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl IntoIterator for CompactCreationRoleLinks {
+    type Item = NegLink<RoleId>;
+    type IntoIter = smallvec::IntoIter<[NegLink<RoleId>; 1]>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 /// Port of `CSaturationSuccessorData`.
 ///
 /// A per-successor record in a `CLinkedRoleSaturationSuccessorData`'s
@@ -672,7 +751,7 @@ pub struct SaturationSuccessorData {
     /// `mNextLink`.
     pub next_link: SaturationSuccessorDataId,
     /// `mCreationRoleLinker` (`CXNegLinker<CRole*>*` → negated-role chain).
-    pub creation_role_linker: Vec<NegLink<RoleId>>,
+    pub creation_role_linker: CompactCreationRoleLinks,
 }
 
 impl Default for SaturationSuccessorData {
@@ -685,7 +764,7 @@ impl Default for SaturationSuccessorData {
             value_nominal_id: 0,
             succ_indi_node: SatNodeId::NONE,
             next_link: SaturationSuccessorDataId::NONE,
-            creation_role_linker: Vec::new(),
+            creation_role_linker: CompactCreationRoleLinks::new(),
         }
     }
 }
@@ -996,7 +1075,7 @@ pub struct LinkedRoleSaturationSuccessorHash {
 impl Default for LinkedRoleSaturationSuccessorHash {
     fn default() -> Self {
         LinkedRoleSaturationSuccessorHash {
-            role_succ_data_hash: HashMap::new(),
+            role_succ_data_hash: HashMap::default(),
             last_examined_con_des: ConceptSaturationDescriptorId::NONE,
             last_examined_role_ass_linker: INVALID,
         }
@@ -1309,7 +1388,7 @@ impl Default for CriticalPredecessorRoleCardinalityHash {
     fn default() -> Self {
         CriticalPredecessorRoleCardinalityHash {
             process_context: INVALID,
-            critical_predecessor_role_data_hash: HashMap::new(),
+            critical_predecessor_role_data_hash: HashMap::default(),
         }
     }
 }
@@ -1399,7 +1478,7 @@ impl Default for SaturationDisjunctCommonConceptCountHash {
     fn default() -> Self {
         SaturationDisjunctCommonConceptCountHash {
             process_context: INVALID,
-            common_concept_count_hash: HashMap::new(),
+            common_concept_count_hash: HashMap::default(),
             disjunct_count: 0,
         }
     }
@@ -1748,7 +1827,7 @@ impl Default for SaturationAtmostSuccessorMergingHash {
     fn default() -> Self {
         SaturationAtmostSuccessorMergingHash {
             process_context: INVALID,
-            atmost_concept_merging_data_hash: HashMap::new(),
+            atmost_concept_merging_data_hash: HashMap::default(),
         }
     }
 }
@@ -1821,9 +1900,9 @@ impl Default for SaturationAtmostSuccessorMergingData {
             merging_indi_process_linker: IndividualSaturationProcessNodeLinker::new(),
             merging_concept_linker: ConceptSaturationProcessLinkerId::NONE,
             concept_merging_data_hash: SaturationAtmostSuccessorMergingHashId::NONE,
-            remain_mergeable_card_hash: HashMap::new(),
-            merge_distinct_hash: HashMap::new(),
-            merge_distinct_set: HashSet::new(),
+            remain_mergeable_card_hash: HashMap::default(),
+            merge_distinct_hash: HashMap::default(),
+            merge_distinct_set: HashSet::default(),
             has_remain_mergeable_card_hash: false,
             has_merge_distinct_hash: false,
             has_merge_distinct_set: false,
@@ -2121,7 +2200,7 @@ pub struct SaturationConceptExtensionMap {
 impl Default for SaturationConceptExtensionMap {
     fn default() -> Self {
         Self {
-            concept_extension_map: HashMap::new(),
+            concept_extension_map: HashMap::default(),
         }
     }
 }
@@ -2174,13 +2253,16 @@ impl SaturationSuccessorConceptExtensionMapData {
 #[derive(Clone)]
 pub struct SaturationSuccessorConceptExtensionMap {
     /// `mConceptExtensionMap`.
-    pub concept_extension_map: HashMap<Cint64, SaturationSuccessorConceptExtensionMapData>,
+    pub concept_extension_map: Arc<SaturationSuccessorConceptMap>,
 }
+
+pub type SaturationSuccessorConceptMap =
+    HashMap<Cint64, SaturationSuccessorConceptExtensionMapData>;
 
 impl Default for SaturationSuccessorConceptExtensionMap {
     fn default() -> Self {
         Self {
-            concept_extension_map: HashMap::new(),
+            concept_extension_map: Arc::new(HashMap::default()),
         }
     }
 }
@@ -2192,20 +2274,20 @@ impl SaturationSuccessorConceptExtensionMap {
     }
     /// Port of `initSuccessorConceptExtensionMap`.
     pub fn init_successor_concept_extension_map(&mut self) -> &mut Self {
-        self.concept_extension_map.clear();
+        Arc::make_mut(&mut self.concept_extension_map).clear();
         self
     }
     /// Port-facing accessor for `getSuccessorConceptExtensionMap`.
     pub fn get_successor_concept_extension_map(
         &self,
     ) -> &HashMap<Cint64, SaturationSuccessorConceptExtensionMapData> {
-        &self.concept_extension_map
+        self.concept_extension_map.as_ref()
     }
     /// Mutable port-facing accessor for `getSuccessorConceptExtensionMap`.
     pub fn get_successor_concept_extension_map_mut(
         &mut self,
     ) -> &mut HashMap<Cint64, SaturationSuccessorConceptExtensionMapData> {
-        &mut self.concept_extension_map
+        Arc::make_mut(&mut self.concept_extension_map)
     }
     /// Port of `addExtensionConcept`.
     pub fn add_extension_concept(
@@ -2214,7 +2296,9 @@ impl SaturationSuccessorConceptExtensionMap {
         negation: bool,
         concept_tag: Cint64,
     ) -> bool {
-        let data = self.concept_extension_map.entry(concept_tag).or_default();
+        let data = Arc::make_mut(&mut self.concept_extension_map)
+            .entry(concept_tag)
+            .or_default();
         data.concept = concept;
         let modified = if negation {
             !data.negative
@@ -2433,7 +2517,7 @@ impl Default for SaturationLinkedSuccessorIndividualAllConceptsExtensionData {
     fn default() -> Self {
         Self {
             indi_proc_sat_node: SatNodeId::NONE,
-            role_concept_extension_hash: HashMap::new(),
+            role_concept_extension_hash: HashMap::default(),
             only_role: RoleId::NONE,
             only_all_concept_ext_data: SaturationSuccessorAllConceptExtensionDataId::NONE,
         }
@@ -2474,7 +2558,7 @@ pub struct SaturationLinkedSuccessorIndividualAllConceptsExtensionHash {
 impl Default for SaturationLinkedSuccessorIndividualAllConceptsExtensionHash {
     fn default() -> Self {
         Self {
-            linked_successor_individual_all_concepts_extension_hash: HashMap::new(),
+            linked_successor_individual_all_concepts_extension_hash: HashMap::default(),
         }
     }
 }
@@ -2533,9 +2617,9 @@ pub struct SaturationIndividualNodeExtensionResolveHash {
 impl Default for SaturationIndividualNodeExtensionResolveHash {
     fn default() -> Self {
         Self {
-            concept_resolve_hash: HashMap::new(),
-            individual_resolve_hash: HashMap::new(),
-            role_resolve_hash: HashMap::new(),
+            concept_resolve_hash: HashMap::default(),
+            individual_resolve_hash: HashMap::default(),
+            role_resolve_hash: HashMap::default(),
             neighbour_resolve_data: SaturationIndividualNodeExtensionResolveHashData::new(),
         }
     }
@@ -3033,7 +3117,7 @@ pub struct SaturationLinkedSuccessorRoleFunctionalConceptsExtensionHash {
 impl Default for SaturationLinkedSuccessorRoleFunctionalConceptsExtensionHash {
     fn default() -> Self {
         Self {
-            linked_succ_role_functional_concept_ext_hash: HashMap::new(),
+            linked_succ_role_functional_concept_ext_hash: HashMap::default(),
         }
     }
 }
@@ -3125,7 +3209,7 @@ impl Default for SaturationIndividualNodeFunctionalConceptsExtensionData {
             qual_func_atmost_con_process_linker: ConceptSaturationProcessLinkerId::NONE,
             linked_predecessor_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             predecessor_extension_process_linker: INVALID,
-            forwarding_pred_merged_hash: HashMap::new(),
+            forwarding_pred_merged_hash: HashMap::default(),
             qualified_functional_atmost_concept_process_set: INVALID,
         }
     }
@@ -3527,6 +3611,179 @@ impl ConceptSaturationDescriptorReapplyData {
     }
 }
 
+/// Persistent inherited saturation-label chunks. Copying a label clones only
+/// shared `Arc`s. To keep lookup time bounded on long copy chains, periodically
+/// chunks are folded into one sorted checkpoint shared by the source and copy.
+/// The checkpoint trades hash-table overhead for a compact binary-searchable
+/// array while retaining newest-entry-wins lookup semantics.
+#[derive(Clone)]
+pub struct SaturationConceptTagLayers {
+    checkpoint: Arc<Vec<(Cint64, ConceptSaturationDescriptorReapplyData)>>,
+    layers: Arc<Vec<Arc<SaturationConceptTagMap<ConceptSaturationDescriptorReapplyData>>>>,
+}
+
+impl Default for SaturationConceptTagLayers {
+    fn default() -> Self {
+        Self {
+            checkpoint: Arc::new(Vec::new()),
+            layers: Arc::new(Vec::new()),
+        }
+    }
+}
+
+impl SaturationConceptTagLayers {
+    #[inline]
+    pub fn get(&self, key: &Cint64) -> Option<&ConceptSaturationDescriptorReapplyData> {
+        self.layers
+            .iter()
+            .rev()
+            .find_map(|layer| layer.get(key))
+            .or_else(|| {
+                self.checkpoint
+                    .binary_search_by_key(key, |(tag, _)| *tag)
+                    .ok()
+                    .map(|index| &self.checkpoint[index].1)
+            })
+    }
+
+    #[inline]
+    pub fn contains_key(&self, key: &Cint64) -> bool {
+        self.get(key).is_some()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.checkpoint.len() + self.layers.iter().map(|layer| layer.len()).sum::<usize>()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.checkpoint.is_empty() && self.layers.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Cint64, &ConceptSaturationDescriptorReapplyData)> {
+        self.layers
+            .iter()
+            .rev()
+            .flat_map(|layer| layer.iter())
+            .chain(self.checkpoint.iter().map(|(tag, data)| (tag, data)))
+    }
+
+    pub fn push_layer(
+        &mut self,
+        mut layer: SaturationConceptTagMap<ConceptSaturationDescriptorReapplyData>,
+    ) {
+        if layer.is_empty() {
+            return;
+        }
+
+        // One tag carries two independently populated pointers. The original
+        // flat overflow-map merge retained an older pointer whenever the newer
+        // entry left that component empty. Preserve that component-wise merge
+        // invariant before making this delta independently searchable; replacing
+        // the whole value can silently discard either a concept descriptor or an
+        // implication-reapply queue and makes saturation depend on checkpoint
+        // frequency.
+        for (tag, data) in layer.iter_mut() {
+            if let Some(inherited) = self.get(tag) {
+                if data.con_sat_des.is_none() {
+                    data.con_sat_des = inherited.con_sat_des;
+                }
+                if data.imp_reapply_con_sat_des.is_none() {
+                    data.imp_reapply_con_sat_des = inherited.imp_reapply_con_sat_des;
+                }
+            }
+        }
+        if self.layers.len() + 1 < saturation_label_checkpoint_layers() {
+            Arc::make_mut(&mut self.layers).push(Arc::new(layer));
+            return;
+        }
+
+        // Do not rebuild through a full-size temporary HashMap. On long copy
+        // chains that briefly required the old checkpoint, a replacement hash
+        // table, and the final vector simultaneously; glibc then retained the
+        // freed multi-GiB hash allocations. Gather only the at-most-eight-layer
+        // delta, collapse duplicate tags by insertion order, and merge it
+        // directly with the already-sorted checkpoint.
+        let delta_capacity =
+            self.layers.iter().map(|chunk| chunk.len()).sum::<usize>() + layer.len();
+        let mut delta = Vec::with_capacity(delta_capacity);
+        for (generation, chunk) in self.layers.iter().enumerate() {
+            delta.extend(chunk.iter().map(|(tag, data)| (*tag, *data, generation)));
+        }
+        let newest_generation = self.layers.len();
+        delta.extend(
+            layer
+                .into_iter()
+                .map(|(tag, data)| (tag, data, newest_generation)),
+        );
+        delta.sort_unstable_by(|left, right| {
+            left.0.cmp(&right.0).then_with(|| left.2.cmp(&right.2))
+        });
+
+        let mut unique_delta = Vec::with_capacity(delta.len());
+        for (tag, data, _) in delta {
+            if unique_delta
+                .last()
+                .is_some_and(|(previous_tag, _)| *previous_tag == tag)
+            {
+                unique_delta.last_mut().unwrap().1 = data;
+            } else {
+                unique_delta.push((tag, data));
+            }
+        }
+
+        let mut checkpoint = Vec::with_capacity(self.checkpoint.len() + unique_delta.len());
+        let mut inherited = self.checkpoint.iter().copied().peekable();
+        let mut newest = unique_delta.into_iter().peekable();
+        loop {
+            match (inherited.peek(), newest.peek()) {
+                (Some((old_tag, _)), Some((new_tag, _))) if old_tag < new_tag => {
+                    checkpoint.push(inherited.next().unwrap());
+                }
+                (Some((old_tag, _)), Some((new_tag, _))) if old_tag == new_tag => {
+                    inherited.next();
+                    checkpoint.push(newest.next().unwrap());
+                }
+                (Some(_), Some(_)) => checkpoint.push(newest.next().unwrap()),
+                (Some(_), None) => checkpoint.extend(&mut inherited),
+                (None, Some(_)) => checkpoint.extend(&mut newest),
+                (None, None) => break,
+            }
+        }
+        self.checkpoint = Arc::new(checkpoint);
+        self.layers = Arc::new(Vec::new());
+    }
+
+    #[inline]
+    pub fn diagnostic_vector_storage(&self) -> (usize, usize, usize) {
+        (
+            Arc::as_ptr(&self.layers) as usize,
+            self.layers.len(),
+            self.layers.capacity(),
+        )
+    }
+
+    pub fn diagnostic_chunk_storage(&self) -> impl Iterator<Item = (usize, usize, usize)> + '_ {
+        std::iter::once((
+            Arc::as_ptr(&self.checkpoint) as usize,
+            self.checkpoint.len(),
+            self.checkpoint.capacity(),
+        ))
+        .filter(|(_, entries, _)| *entries > 0)
+        .chain(
+            self.layers
+                .iter()
+                .map(|layer| (Arc::as_ptr(layer) as usize, layer.len(), layer.capacity())),
+        )
+    }
+
+    #[cfg(test)]
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.checkpoint, &other.checkpoint) && Arc::ptr_eq(&self.layers, &other.layers)
+    }
+}
+
 /// Snapshot entry for `CReapplyConceptSaturationLabelSetIterator`.
 #[derive(Clone, Copy)]
 pub struct ReapplyConceptSaturationLabelSetIteratorEntry {
@@ -3638,8 +3895,7 @@ pub struct ReapplyConceptSaturationLabelSet {
     /// `mConceptDesDepHash` (`CPROCESSHASH<cint64,CConceptSaturationDescriptorReapplyData>`).
     pub concept_des_dep_hash: SaturationConceptTagMap<ConceptSaturationDescriptorReapplyData>,
     /// `mAdditionalConceptDesDepHash` (the overflow copy, allocated lazily in C++).
-    pub additional_concept_des_dep_hash:
-        Arc<SaturationConceptTagMap<ConceptSaturationDescriptorReapplyData>>,
+    pub additional_concept_des_dep_hash: SaturationConceptTagLayers,
     /// Whether the additional overflow hash has been allocated (`mAdditional… != nullptr`).
     pub has_additional_concept_des_dep_hash: bool,
     /// `mConceptSatDesLinker` (head of the concept-saturation-descriptor chain).
@@ -3666,7 +3922,7 @@ impl ReapplyConceptSaturationLabelSet {
     pub fn new(process_context: Cint64) -> Self {
         ReapplyConceptSaturationLabelSet {
             concept_des_dep_hash: SaturationConceptTagMap::default(),
-            additional_concept_des_dep_hash: Arc::new(SaturationConceptTagMap::default()),
+            additional_concept_des_dep_hash: SaturationConceptTagLayers::default(),
             has_additional_concept_des_dep_hash: false,
             concept_sat_des_linker: ConceptSaturationDescriptorId::NONE,
             last_nominal_indep_con_sat_des: ConceptSaturationDescriptorId::NONE,
@@ -3680,7 +3936,7 @@ impl ReapplyConceptSaturationLabelSet {
     /// Port of `initReapplyConceptSaturationLabelSet` (reset the per-test state).
     pub fn init_reapply_concept_saturation_label_set(&mut self) -> &mut Self {
         self.concept_des_dep_hash.clear();
-        self.additional_concept_des_dep_hash = Arc::new(SaturationConceptTagMap::default());
+        self.additional_concept_des_dep_hash = SaturationConceptTagLayers::default();
         self.has_additional_concept_des_dep_hash = false;
         self.concept_sat_des_linker = ConceptSaturationDescriptorId::NONE;
         self.last_nominal_indep_con_sat_des = ConceptSaturationDescriptorId::NONE;
@@ -3836,16 +4092,19 @@ impl ReapplyConceptSaturationLabelSet {
             )
             .collect();
         if self.has_additional_concept_des_dep_hash {
-            entries.extend(
-                self.additional_concept_des_dep_hash
-                    .iter()
-                    .map(
-                        |(key, data)| ReapplyConceptSaturationLabelSetIteratorEntry {
+            // Main entries shadow inherited entries. Layers are visited newest
+            // first, so retain only the first inherited value for each tag.
+            // The former flat overflow map had exactly these lookup semantics.
+            let mut seen: HashSet<Cint64> = self.concept_des_dep_hash.keys().copied().collect();
+            entries.extend(self.additional_concept_des_dep_hash.iter().filter_map(
+                |(key, data)| {
+                    seen.insert(*key)
+                        .then_some(ReapplyConceptSaturationLabelSetIteratorEntry {
                             key: *key,
                             data: *data,
-                        },
-                    ),
-            );
+                        })
+                },
+            ));
         }
         entries.sort_by_key(|entry| entry.key);
         ReapplyConceptSaturationLabelSetIterator::new(
@@ -3868,5 +4127,112 @@ impl ReapplyConceptSaturationLabelSet {
 impl Default for ReapplyConceptSaturationLabelSet {
     fn default() -> Self {
         Self::new(INVALID)
+    }
+}
+
+#[cfg(test)]
+mod layered_label_tests {
+    use super::*;
+
+    fn data(raw: Cint64) -> ConceptSaturationDescriptorReapplyData {
+        ConceptSaturationDescriptorReapplyData {
+            con_sat_des: ConceptSaturationDescriptorId::new(raw),
+            imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+        }
+    }
+
+    #[test]
+    fn saturation_layers_checkpoint_and_preserve_newest_entry_lookup() {
+        let mut layers = SaturationConceptTagLayers::default();
+        let checkpoint_layers = saturation_label_checkpoint_layers();
+        for tag in 0..checkpoint_layers as Cint64 {
+            let mut layer = SaturationConceptTagMap::default();
+            layer.insert(tag, data(tag + 10));
+            layers.push_layer(layer);
+        }
+        assert_eq!(layers.checkpoint.len(), checkpoint_layers);
+        assert!(layers.layers.is_empty());
+        for tag in 0..checkpoint_layers as Cint64 {
+            assert_eq!(layers.get(&tag).unwrap().con_sat_des.raw, tag + 10);
+        }
+
+        let mut newest = SaturationConceptTagMap::default();
+        newest.insert(3, data(99));
+        layers.push_layer(newest);
+        assert_eq!(layers.get(&3).unwrap().con_sat_des.raw, 99);
+
+        // Force another checkpoint and verify that a newer layer still wins
+        // over the existing sorted checkpoint after the direct delta merge.
+        let refill_start = checkpoint_layers as Cint64 + 30;
+        for tag in refill_start..refill_start + checkpoint_layers as Cint64 - 1 {
+            let mut layer = SaturationConceptTagMap::default();
+            layer.insert(tag, data(tag + 100));
+            layers.push_layer(layer);
+        }
+        assert!(layers.layers.is_empty());
+        assert_eq!(layers.get(&3).unwrap().con_sat_des.raw, 99);
+        for tag in refill_start..refill_start + checkpoint_layers as Cint64 - 1 {
+            assert_eq!(layers.get(&tag).unwrap().con_sat_des.raw, tag + 100);
+        }
+
+        let mut copied = layers.clone();
+        assert!(copied.ptr_eq(&layers));
+        let mut copied_delta = SaturationConceptTagMap::default();
+        let copied_tag = checkpoint_layers as Cint64 + 20;
+        copied_delta.insert(copied_tag, data(120));
+        copied.push_layer(copied_delta);
+        assert!(!copied.ptr_eq(&layers));
+        assert!(layers.get(&copied_tag).is_none());
+        assert_eq!(copied.get(&copied_tag).unwrap().con_sat_des.raw, 120);
+        assert_eq!(copied.get(&3).unwrap().con_sat_des.raw, 99);
+    }
+
+    #[test]
+    fn saturation_layers_preserve_independently_populated_components() {
+        let mut layers = SaturationConceptTagLayers::default();
+        let tag = 17;
+        let mut concept_layer = SaturationConceptTagMap::default();
+        concept_layer.insert(tag, data(41));
+        layers.push_layer(concept_layer);
+
+        let implication = ImplicationReapplyConceptSaturationDescriptorId::new(73);
+        let mut implication_layer = SaturationConceptTagMap::default();
+        implication_layer.insert(
+            tag,
+            ConceptSaturationDescriptorReapplyData {
+                con_sat_des: ConceptSaturationDescriptorId::NONE,
+                imp_reapply_con_sat_des: implication,
+            },
+        );
+        layers.push_layer(implication_layer);
+
+        let merged = layers.get(&tag).unwrap();
+        assert_eq!(merged.con_sat_des.raw, 41);
+        assert_eq!(merged.imp_reapply_con_sat_des.raw, 73);
+    }
+
+    #[test]
+    fn successor_creation_roles_store_one_inline_and_clone_by_value() {
+        let role_a = RoleId::new(11);
+        let role_b = RoleId::new(13);
+        let mut original = CompactCreationRoleLinks::from(vec![NegLink {
+            target: role_a,
+            negated: false,
+        }]);
+        let mut copied = original.clone();
+
+        assert!(!original.0.spilled());
+        assert!(!copied.0.spilled());
+        copied.push(NegLink {
+            target: role_b,
+            negated: true,
+        });
+
+        assert!(copied.0.spilled());
+        assert_eq!(original.len(), 1);
+        assert_eq!(copied.len(), 2);
+        original[0].negated = true;
+        assert!(original[0].negated);
+        assert!(!copied[0].negated);
     }
 }

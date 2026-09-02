@@ -23,6 +23,18 @@ use crate::json_io::{JClause, JInput};
 
 use super::{cb_to_ht, engine_run, frontend_run, parse_out, Config, EngineOut, OrchestrateError};
 
+/// Return pages from the supervisor's transient conversion arena before the
+/// worker grows its own completion state. This changes no live allocation or
+/// reasoner state; it only prevents glibc from retaining dropped parsed-clause
+/// and TInput buffers in the parent process.
+#[inline]
+fn release_transient_heap() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // tableau output -> engine `out` shape
 // ---------------------------------------------------------------------------
@@ -174,6 +186,9 @@ fn spawn_tableau(
     thread::spawn(move || {
         let mut w = stdin;
         let _ = w.write_all(&bytes);
+        drop(w);
+        drop(bytes);
+        release_transient_heap();
     });
     Some((child, out_path))
 }
@@ -191,25 +206,32 @@ where
     F: FnOnce() -> Result<EngineOut, OrchestrateError> + Send,
 {
     let eng_done = Arc::new(AtomicBool::new(false));
+    // Every arm bumps this event when it finishes, so the scheduler below
+    // wakes immediately instead of at the end of its current sleep quantum.
+    let event = engine_run::ArmEvent::new();
     thread::scope(|s| -> Result<EngineOut, OrchestrateError> {
         let ed = eng_done.clone();
+        let engine_event = event.clone();
         let handle = s.spawn(move || {
             let r = engine_run();
             ed.store(true, Ordering::SeqCst);
+            engine_event.notify();
             r
         });
 
         // grace delay: an ontology the engine finishes within it pays zero
         // tableau cost (no clause read, no conversion, no extra process).
-        // Adaptive sleep (1 ms doubling to 200 ms): a fast engine exit is
-        // noticed near-immediately instead of after a 200 ms quantum.
+        // Adaptive wait (1 ms doubling to 200 ms), cut short by the engine's
+        // completion event: a fast engine exit is noticed when it happens
+        // instead of after the current quantum.
         let t0 = Instant::now();
         let mut interval = Duration::from_millis(1);
         while t0.elapsed().as_secs_f64() < cfg.tab_race_delay {
+            let seen = event.epoch();
             if eng_done.load(Ordering::SeqCst) {
                 break;
             }
-            thread::sleep(interval);
+            event.wait_past(seen, interval);
             interval = (interval * 2).min(Duration::from_millis(200));
         }
         let mut tab = if eng_done.load(Ordering::SeqCst) {
@@ -217,10 +239,14 @@ where
         } else {
             spawn_tableau(cfg, clauses_path, named)
         };
+        if let Some((child, _)) = tab.as_ref() {
+            engine_run::notify_on_exit(child.id(), event.clone());
+        }
 
         let mut winner: Option<EngineOut> = None;
         let mut interval = Duration::from_millis(1);
         loop {
+            let seen = event.epoch();
             let mut tab_failed = false;
             if let Some((child, outp)) = tab.as_mut() {
                 if let Ok(Some(st)) = child.try_wait() {
@@ -251,7 +277,7 @@ where
             if eng_done.load(Ordering::SeqCst) {
                 break;
             }
-            thread::sleep(interval);
+            event.wait_past(seen, interval);
             interval = (interval * 2).min(Duration::from_millis(50));
         }
 
@@ -329,6 +355,21 @@ fn avail_cpus() -> usize {
         .unwrap_or(2)
 }
 
+/// Bound ordinary HT fan-out when every worker owns a very large normalized
+/// clause set. On ORE10621 (283,229 clauses), eight workers are both faster
+/// and substantially smaller than sixteen: 9.22 s / 1452 MiB versus
+/// 9.50 s / 2471 MiB on the same Gold 6248 node. Smaller HT inputs retain all
+/// available CPUs; an explicit `KM_HT_PAR` remains authoritative.
+fn ordinary_ht_workers(clause_count: usize, available: usize) -> usize {
+    const LARGE_HT_CLAUSE_SET: usize = 200_000;
+    const LARGE_HT_WORKER_CAP: usize = 8;
+    if clause_count >= LARGE_HT_CLAUSE_SET {
+        available.min(LARGE_HT_WORKER_CAP).max(1)
+    } else {
+        available.max(1)
+    }
+}
+
 /// Spawn the certified-elc racer (`KM_ELC_CERT`, default 2). Its (possibly
 /// hundreds-of-MB) output goes straight to a temp file, never an undrained pipe.
 /// Not registered in the LIVE engine set — it is killed directly, mirroring
@@ -398,12 +439,18 @@ pub fn race_adaptive_vs_elc(
 
     let read_tout = |p: &Path| super::parse_out_path(p).ok();
 
+    // Completion event shared by the CB thread, the certified-elc process,
+    // and the residue racer: the scheduler wakes when any of them finishes.
+    let event = engine_run::ArmEvent::new();
+    engine_run::notify_on_exit(elc.id(), event.clone());
     let cb_done = Arc::new(AtomicBool::new(false));
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
         let cd = cb_done.clone();
+        let cb_event = event.clone();
         let cb = s.spawn(move || {
             let r = cb_run();
             cd.store(true, Ordering::SeqCst);
+            cb_event.notify();
             r
         });
 
@@ -417,6 +464,7 @@ pub fn race_adaptive_vs_elc(
 
         let mut interval = Duration::from_millis(1);
         loop {
+            let seen = event.epoch();
             // --- poll the certified-elc process ---
             if !elc_lost {
                 if let Ok(Some(st)) = elc.try_wait() {
@@ -440,12 +488,13 @@ pub fn race_adaptive_vs_elc(
                                 break;
                             }
                             let q = names.join(",");
+                            let residue_event = event.clone();
                             tgt = Some(s.spawn(move || {
                                 // Python inherits the (possibly reserved) global
                                 // KM_THREADS; we pass it explicitly for the same effect.
                                 let ts = engine_threads.map(|t| t.to_string());
                                 let (engine_prog, engine_pre) = cfg.engine_cmd();
-                                engine_run::run_engine(
+                                let r = engine_run::run_engine(
                                     &engine_prog,
                                     &engine_pre,
                                     clauses_path,
@@ -454,7 +503,9 @@ pub fn race_adaptive_vs_elc(
                                     None,
                                     &[("KM_QUERIES", q.as_str())],
                                     false,
-                                )
+                                );
+                                residue_event.notify();
+                                r
                             }));
                         }
                         elc_lost = true; // elc itself is done; the racers continue
@@ -500,7 +551,7 @@ pub fn race_adaptive_vs_elc(
                     }
                 }
             }
-            thread::sleep(interval);
+            event.wait_past(seen, interval);
             interval = (interval * 2).min(Duration::from_millis(100));
         }
 
@@ -2298,8 +2349,9 @@ fn spawn_ht(
     // `nice`'d, so on ontologies CB wins these threads simply fill idle cores and
     // yield to CB; on the disjunction-family / central-blowup onts where CB never
     // finishes, the parallelism is what brings HT in under budget (5303: ~23s
-    // single-threaded → ~10s). Default to the available core count; explicit
-    // KM_HT_PAR wins.
+    // single-threaded → ~10s). Default to the available core count, except for
+    // very large clause sets where measured replication cost makes eight workers
+    // faster and smaller than sixteen; explicit KM_HT_PAR wins.
     // NB shoq_candidate forces KM_HT_PAR=1 above (parallel classify is unsound with
     // the nominal o-rule); do not override it back to all-cores here.
     if std::env::var_os("KM_HT_PAR").is_none()
@@ -2307,7 +2359,10 @@ fn spawn_ht(
         && !no_blocking_shoiq_candidate
         && !card_candidate
     {
-        cmd.env("KM_HT_PAR", avail_cpus().max(1).to_string());
+        cmd.env(
+            "KM_HT_PAR",
+            ordinary_ht_workers(tin.clauses.len(), avail_cpus()).to_string(),
+        );
     }
     if cfg.ht_qo {
         // QuasiOrderClassification: non-branching park-saturation + residual SAT
@@ -2376,6 +2431,7 @@ pub fn run_ht_only(
             "ontology is outside the selected HT mechanism's structural gate".into(),
         ));
     };
+    release_transient_heap();
     let status = child.wait()?;
     if !status.success() {
         return Err(OrchestrateError::OutOfFragment(format!(
@@ -2405,6 +2461,241 @@ pub fn run_ht_only(
     Ok(tableau_to_out(parsed))
 }
 
+/// Run the narrowly routed SHOQ worker in this process.
+///
+/// The automatic high-unqualified-cardinality route has already selected an
+/// isolated, complete SHOQ mechanism.  Reusing the typed frontend value here
+/// avoids rereading it and avoids retaining a second Rust process while the
+/// tableau classifies.  The converter, structural checks, worker flags, JSON
+/// wire decoder, and output decoder are deliberately the same as `spawn_ht`;
+/// this changes only the hand-off schedule, not the derived taxonomy.
+pub fn run_ht_shoq_in_process(
+    cfg: &Config,
+    mut frontend: JInput,
+    named: &std::collections::HashSet<String>,
+) -> Result<EngineOut, OrchestrateError> {
+    if std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some() {
+        frontend.nominal_abox = crate::json_io::NominalAboxMeta::default();
+    }
+    let JInput {
+        clauses,
+        rbox,
+        cardinalities,
+        definers,
+        source_axioms,
+        nominal_abox,
+        rules,
+        ..
+    } = frontend;
+    let view =
+        native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, !rules.is_empty());
+    let mut tin = cb_to_ht::convert(
+        &view,
+        Some(rbox.as_slice()),
+        named,
+        &cardinalities,
+        &definers,
+        &source_axioms,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
+        &[],
+        false,
+    );
+    if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, false) {
+        return Err(OrchestrateError::OutOfFragment(
+            "SHOQ typed ABox conversion was incomplete".into(),
+        ));
+    }
+    let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
+    let card_candidate = card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&clauses));
+    let shoq_candidate = cfg.ht_shoq
+        && !card_candidate
+        && tin.dropped == 0
+        && tin.fenced.is_empty()
+        && !tin.nominals.is_empty()
+        && tin.native_abox.complete
+        && !has_datatype(&clauses);
+    if !shoq_candidate {
+        return Err(OrchestrateError::OutOfFragment(
+            "ontology is outside the selected SHOQ mechanism's structural gate".into(),
+        ));
+    }
+
+    drop(view);
+    drop(clauses);
+
+    let _guard = crate::routing::EnvironmentGuard::capture();
+    for (key, value) in [
+        ("KM_HT", "1"),
+        ("KM_HT_NOMINALS", "1"),
+        ("KM_HT_QMERGE", "1"),
+        ("KM_HT_PAR", "1"),
+        ("KM_HT_EAGER", "1"),
+        ("KM_HT_NEGTRIED", "1"),
+        ("KM_HT_ORD", "1"),
+        ("KM_HT_INCRBLOCK2", "1"),
+        ("KM_HT_INCROBLIG", "1"),
+        ("KM_HT_WITREUSE", "1"),
+        ("KM_HT_MODELPRUNE", "1"),
+    ] {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
+    let result = crate::tableau::run_producer_input_typed(tin).map_err(|error| {
+        OrchestrateError::OutOfFragment(format!("selected SHOQ mechanism deferred ({error})"))
+    })?;
+    Ok(tableau_to_out(TOutput {
+        consistent: result.consistent,
+        subsumptions: result.subsumptions,
+        unsatisfiable: result.unsatisfiable,
+    }))
+}
+
+/// Run the selected clause-only general hypertableau in this process. The
+/// conversion and worker flags are the same as the isolated `KM_HT_ONLY=general`
+/// worker. In particular, this route deliberately keeps its clause-only view:
+/// it does not install the native ABox or any specialist side channel.
+pub fn run_ht_general_in_process(
+    frontend: JInput,
+    named: &std::collections::HashSet<String>,
+) -> Result<EngineOut, OrchestrateError> {
+    let JInput {
+        clauses,
+        rbox,
+        cardinalities,
+        definers,
+        source_axioms,
+        nominal_abox,
+        rules,
+        ..
+    } = frontend;
+    if !rules.is_empty() {
+        return Err(OrchestrateError::OutOfFragment(
+            "general HT route received rules".into(),
+        ));
+    }
+    let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, false);
+    let tin = cb_to_ht::convert(
+        &view,
+        Some(rbox.as_slice()),
+        named,
+        &cardinalities,
+        &definers,
+        &source_axioms,
+        false,
+        &[],
+        false,
+    );
+    drop(view);
+    drop(clauses);
+    let _guard = crate::routing::EnvironmentGuard::capture();
+    for (key, value) in [
+        ("KM_HT", "1"),
+        ("KM_HT_EAGER", "1"),
+        ("KM_HT_NEGTRIED", "1"),
+        ("KM_HT_ORD", "1"),
+        ("KM_HT_INCRBLOCK2", "1"),
+        ("KM_HT_INCROBLIG", "1"),
+        ("KM_HT_WITREUSE", "1"),
+        ("KM_HT_MODELPRUNE", "1"),
+    ] {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
+    if std::env::var_os("KM_HT_PAR").is_none() {
+        std::env::set_var(
+            "KM_HT_PAR",
+            ordinary_ht_workers(tin.clauses.len(), avail_cpus()).to_string(),
+        );
+    }
+    let result = crate::tableau::run_producer_input_typed(tin).map_err(|error| {
+        OrchestrateError::OutOfFragment(format!("selected general HT mechanism deferred ({error})"))
+    })?;
+    Ok(tableau_to_out(TOutput {
+        consistent: result.consistent,
+        subsumptions: result.subsumptions,
+        unsatisfiable: result.unsatisfiable,
+    }))
+}
+
+/// Run the exact native completion bridge over the typed frontend payload in
+/// this process. This mirrors the isolated `KM_HT_ONLY=bridge` conversion and
+/// its complete-answer-or-defer publication gate; only the JSON pipe and
+/// worker process boundary are removed.
+pub fn run_ht_bridge_in_process(
+    frontend: JInput,
+    named: &std::collections::HashSet<String>,
+) -> Result<EngineOut, OrchestrateError> {
+    let JInput {
+        clauses,
+        rbox,
+        cardinalities,
+        definers,
+        source_axioms,
+        nominal_abox,
+        rules,
+        ..
+    } = frontend;
+    if !rules.is_empty() {
+        return Err(OrchestrateError::OutOfFragment(
+            "native HT bridge received rules".into(),
+        ));
+    }
+    let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, false);
+    let mut tin = cb_to_ht::convert(
+        &view,
+        Some(rbox.as_slice()),
+        named,
+        &cardinalities,
+        &definers,
+        &source_axioms,
+        false,
+        &[],
+        false,
+    );
+    if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, false) {
+        return Err(OrchestrateError::OutOfFragment(
+            "native HT bridge ABox conversion was incomplete".into(),
+        ));
+    }
+    let source_tbox =
+        !tin.source_axioms.is_empty() && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
+    if !bridge_candidate_from(&tin, true, source_tbox) {
+        return Err(OrchestrateError::OutOfFragment(
+            "ontology is outside the native HT bridge certificate".into(),
+        ));
+    }
+    drop(view);
+    drop(clauses);
+
+    let _guard = crate::routing::EnvironmentGuard::capture();
+    for (key, value) in [
+        ("KM_HT", "1"),
+        ("KM_HT_BRIDGE", "1"),
+        ("KM_HT_BRIDGE_ONLY", "1"),
+        ("KM_HT_EAGER", "1"),
+        ("KM_HT_NEGTRIED", "1"),
+        ("KM_HT_ORD", "1"),
+        ("KM_HT_INCRBLOCK2", "1"),
+        ("KM_HT_INCROBLIG", "1"),
+        ("KM_HT_WITREUSE", "1"),
+        ("KM_HT_MODELPRUNE", "1"),
+    ] {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
+    let result = crate::tableau::run_bridge_producer_input_typed(tin).map_err(|error| {
+        OrchestrateError::OutOfFragment(format!("selected native HT bridge deferred ({error})"))
+    })?;
+    Ok(tableau_to_out(TOutput {
+        consistent: result.consistent,
+        subsumptions: result.subsumptions,
+        unsatisfiable: result.unsatisfiable,
+    }))
+}
+
 /// Bounded variant used by fail-open preprocessing probes. A timeout,
 /// structural refusal, or worker defer returns `Ok(None)` after reaping the
 /// exact child PID; no partial output can become a classification.
@@ -2420,6 +2711,9 @@ pub fn run_ht_only_bounded(
         return Ok(None);
     };
     let started = Instant::now();
+    // Block on the worker's pidfd (Linux) so its exit is seen immediately;
+    // the 10 ms cadence remains the budget check interval.
+    let pidfd = engine_run::open_pidfd(child.id());
     let status = loop {
         if let Some(status) = child.try_wait()? {
             break status;
@@ -2429,7 +2723,7 @@ pub fn run_ht_only_bounded(
             let _ = child.wait();
             return Ok(None);
         }
-        thread::sleep(Duration::from_millis(10));
+        engine_run::wait_for_exit_or_interval(pidfd.as_ref(), Duration::from_millis(10));
     };
     if !status.success() {
         return Ok(None);
@@ -2581,9 +2875,26 @@ where
     // worker error, or honest defer falls through to the unchanged CB
     // mechanism. Named measurement routes do not set this switch.
     if std::env::var_os("KM_HT_BRIDGE_SEQUENTIAL").is_some() {
+        let started = Instant::now();
         match run_ht_only(cfg, clauses_path, named) {
-            Ok(out) => return Ok(out),
-            Err(_) => return engine_run(cfg.threads),
+            Ok(out) => {
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!(
+                        "KM_TIMING sequential bridge accepted after {:.2}s",
+                        started.elapsed().as_secs_f64()
+                    );
+                }
+                return Ok(out);
+            }
+            Err(error) => {
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!(
+                        "KM_TIMING sequential bridge deferred after {:.2}s: {error}",
+                        started.elapsed().as_secs_f64()
+                    );
+                }
+                return engine_run(cfg.threads);
+            }
         }
     }
     let (
@@ -2598,6 +2909,7 @@ where
         Some(x) => x,
         None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
     };
+    release_transient_heap();
     let reserved = limit_synchronous_bridge_competitor(
         ht_reserved_threads(cfg),
         bridge_class_count,
@@ -2652,11 +2964,17 @@ where
     let cb_slot: Arc<Mutex<Option<Result<EngineOut, OrchestrateError>>>> =
         Arc::new(Mutex::new(None));
     let race_mode = mode.to_string();
+    // Completion event shared by the CB thread and the HT worker: the
+    // scheduler wakes when either finishes instead of at its next quantum.
+    let event = engine_run::ArmEvent::new();
+    engine_run::notify_on_exit(ht.id(), event.clone());
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
         let slot = cb_slot.clone();
+        let cb_event = event.clone();
         s.spawn(move || {
             let r = engine_run(reserved);
             *slot.lock().unwrap() = Some(r);
+            cb_event.notify();
         });
 
         let mut ht_res: Option<EngineOut> = None;
@@ -2680,6 +2998,7 @@ where
 
         let mut interval = Duration::from_millis(1);
         loop {
+            let seen = event.epoch();
             // watchdog the still-running HT racer's RSS
             if !ht_polled {
                 if let Some(rss) = engine_run::read_rss(ht.id()) {
@@ -2773,7 +3092,7 @@ where
                     }
                 }
             }
-            thread::sleep(interval);
+            event.wait_past(seen, interval);
             interval = (interval * 2).min(Duration::from_millis(50));
         }
     });
@@ -2783,6 +3102,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn very_large_ht_inputs_cap_replication_at_eight_workers() {
+        assert_eq!(ordinary_ht_workers(199_999, 16), 16);
+        assert_eq!(ordinary_ht_workers(200_000, 16), 8);
+        assert_eq!(ordinary_ht_workers(283_229, 16), 8);
+        assert_eq!(ordinary_ht_workers(283_229, 4), 4);
+        assert_eq!(ordinary_ht_workers(283_229, 0), 1);
+    }
 
     fn ind(name: &str) -> crate::json_io::JTerm {
         crate::json_io::JTerm::Ind { name: name.into() }

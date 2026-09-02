@@ -1366,6 +1366,7 @@ struct SubRulesBuilder {
 struct Idx {
     // Newly derived subsumer -> its NF1 conclusions and NF2 candidates.
     sub_rules: HashMap<u32, SubRules>,
+    one_sided_nf2: bool,
     nf3_by_sub: HashMap<u32, Vec<(u32, u32)>>, // sub -> [(role, filler)]
     // NF4 (∃R.D⊑E) indexed by FILLER only: `filler D -> [(role R, sup E)]`. Both
     // the propagation-registration (Sub rule) and the join (Edge rule, via the
@@ -1392,6 +1393,14 @@ impl Idx {
 /// index immutably while pushing conclusions here mutably.
 struct State {
     sub_super: Vec<HashSet<u32>>,
+    // Cert-off EL completion indexes each binary conjunction under only its
+    // lower-degree operand.  If that trigger arrives before its partner, park
+    // the conclusion here; arrival of the partner discharges it.  Thus every
+    // NF2 instance still fires whichever operand arrives second, while dense
+    // generated operands no longer rescan all incident axioms in every label.
+    // Certificate/incremental modes retain the established symmetric index and
+    // leave this map empty.
+    nf2_pending: HashMap<(u32, u32), Vec<u32>>,
     edges: Vec<HashSet<(u32, u32)>>,
     // Backward links indexed by EXACT role: `in_by_role[(d, r)]` lists the
     // parents of `d` along `r`, in edge-creation order. A `Vec`, not a
@@ -2238,6 +2247,7 @@ impl State {
         debug_assert!(self.worklist.is_empty());
         State {
             sub_super: self.sub_super.clone(),
+            nf2_pending: self.nf2_pending.clone(),
             edges: self.edges.clone(),
             in_by_role: self.in_by_role.clone(),
             in_roles: self.in_roles.clone(),
@@ -2265,7 +2275,7 @@ impl State {
 }
 
 /// Build the read-only rule indexes (including the role-hierarchy closure).
-fn build_idx(nfs: &Nfs, n: usize) -> Idx {
+fn build_idx(nfs: &Nfs, n: usize, one_sided_nf2: bool) -> Idx {
     // ----- build indexes -----
     let mut sub_rule_builders: HashMap<u32, SubRulesBuilder> = HashMap::default();
     for a in &nfs.nf1 {
@@ -2275,18 +2285,45 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
             .nf1_sups
             .push(a.sup);
     }
+    let mut nf2_degree: HashMap<u32, usize> = HashMap::default();
+    if one_sided_nf2 {
+        for a in &nfs.nf2 {
+            *nf2_degree.entry(a.sub1).or_default() += 1;
+            *nf2_degree.entry(a.sub2).or_default() += 1;
+        }
+    }
     for a in &nfs.nf2 {
-        // indexed by both sides; store the *other* side + the conclusion
-        sub_rule_builders
-            .entry(a.sub1)
-            .or_default()
-            .nf2_cand
-            .push((a.sub2, a.sup));
-        sub_rule_builders
-            .entry(a.sub2)
-            .or_default()
-            .nf2_cand
-            .push((a.sub1, a.sup));
+        if one_sided_nf2 {
+            // One trigger plus a context-local waiter is sufficient: if the
+            // partner is already present this arm fires now; otherwise its
+            // later Sub item drains the waiter.  Prefer the lower-degree side
+            // to avoid the giant generated-conjunction buckets.
+            let d1 = nf2_degree.get(&a.sub1).copied().unwrap_or(0);
+            let d2 = nf2_degree.get(&a.sub2).copied().unwrap_or(0);
+            let (trigger, other) = if d1 <= d2 {
+                (a.sub1, a.sub2)
+            } else {
+                (a.sub2, a.sub1)
+            };
+            sub_rule_builders
+                .entry(trigger)
+                .or_default()
+                .nf2_cand
+                .push((other, a.sup));
+        } else {
+            // Certificate and incremental completion retain the established
+            // symmetric scheduling.
+            sub_rule_builders
+                .entry(a.sub1)
+                .or_default()
+                .nf2_cand
+                .push((a.sub2, a.sup));
+            sub_rule_builders
+                .entry(a.sub2)
+                .or_default()
+                .nf2_cand
+                .push((a.sub1, a.sup));
+        }
     }
     // The index is immutable after construction. Boxed slices keep each merged
     // map value to two pointers (rather than two three-word Vec headers), while
@@ -2372,6 +2409,7 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
 
     Idx {
         sub_rules,
+        one_sided_nf2,
         nf3_by_sub,
         nf4_by_filler,
         nf5_subs,
@@ -2385,6 +2423,7 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
 fn init_state(nfs: &Nfs, n: usize) -> State {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
+        nf2_pending: HashMap::default(),
         edges: vec![HashSet::default(); n],
         in_by_role: HashMap::default(),
         in_roles: vec![Vec::new(); n],
@@ -2550,6 +2589,15 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
         match item {
             Item::Sub(c, d) => {
                 prof.sub_items += 1;
+                // Discharge conjunctions whose chosen trigger arrived earlier.
+                // Removing the bucket before adding conclusions keeps the map
+                // borrow independent of worklist growth and makes every waiter
+                // one-shot.
+                if let Some(sups) = st.nf2_pending.remove(&(c, d)) {
+                    for sup in sups {
+                        st.add_sub(c, sup);
+                    }
+                }
                 // One lookup serves both concept-only rules. The two loops keep
                 // their original order, so NF1 conclusions are visible to NF2
                 // immediately just as they were with the separate indexes.
@@ -2564,6 +2612,8 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                     for &(other, sup) in rules.nf2_cand.iter() {
                         if st.sub_super[c as usize].contains(&other) {
                             st.add_sub(c, sup);
+                        } else if idx.one_sided_nf2 {
+                            st.nf2_pending.entry((c, other)).or_default().push(sup);
                         }
                     }
                 }
@@ -5486,7 +5536,7 @@ impl IncrementalElClassifier {
             });
         }
 
-        let idx = build_idx(&nfs, interner.len());
+        let idx = build_idx(&nfs, interner.len(), false);
         let mut state = init_state(&nfs, interner.len());
         seed_reflexive_edges(&nfs, &idx, &mut state);
         run(&idx, &mut state, &mut Prof::default());
@@ -5553,7 +5603,7 @@ impl IncrementalElClassifier {
             // monotone, but that compact rule translation is not. Retaining
             // the old canonical TOP edge could enable spurious role-chain
             // joins, so restart this rare transaction from Init.
-            let next_idx = build_idx(&next_nfs, next_interner.len());
+            let next_idx = build_idx(&next_nfs, next_interner.len(), false);
             let mut next_state = init_state(&next_nfs, next_interner.len());
             seed_reflexive_edges(&next_nfs, &next_idx, &mut next_state);
             run(&next_idx, &mut next_state, &mut Prof::default());
@@ -5605,7 +5655,7 @@ impl IncrementalElClassifier {
         }
         self.state.worklist = replay;
 
-        let next_idx = build_idx(&next_nfs, next_len);
+        let next_idx = build_idx(&next_nfs, next_len, false);
         // Init and newly reflexive roles can add facts that did not exist in
         // the retained closure. Duplicate facts are filtered by State.
         for &c in &next_nfs.concept_names {
@@ -5689,6 +5739,7 @@ impl IncrementalElClassifier {
             |tag: char, id: u32| affected.contains(&format!("{tag}:{}", next_interner.name(id)));
         let mut state = State {
             sub_super: vec![HashSet::default(); next_len],
+            nf2_pending: HashMap::default(),
             edges: vec![HashSet::default(); next_len],
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); next_len],
@@ -5744,7 +5795,7 @@ impl IncrementalElClassifier {
                 }
             }
         }
-        let idx = build_idx(&next_nfs, next_len);
+        let idx = build_idx(&next_nfs, next_len, false);
         seed_reflexive_edges(&next_nfs, &idx, &mut state);
         run(&idx, &mut state, &mut Prof::default());
 
@@ -5893,7 +5944,26 @@ pub(crate) fn classify_worker(clauses: Vec<JClause>) -> Option<ElResult> {
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
     let compact_nf1_output = std::env::var_os("KM_ELC_OUTPUT_BINARY").is_some()
         && std::env::var_os("KM_NO_ELC_OUTPUT_BINARY").is_none();
-    classify_inner_mode(clauses, cert, debug, compact_nf1_output)
+    classify_inner_mode(clauses, cert, debug, compact_nf1_output, false)
+}
+
+/// Orchestrator entry point for the exact in-process EL leaf: the complete
+/// fixpoint is returned dictionary-coded (`ElResult::compact`) instead of as
+/// one owned superclass string per pair. Residue answers keep the string map.
+pub(crate) fn classify_compact(clauses: Vec<JClause>) -> Option<ElResult> {
+    let cert = configured_cert_mode();
+    let debug = std::env::var("KM_ELC_DEBUG").is_ok();
+    classify_inner_mode(clauses, cert, debug, false, true)
+}
+
+/// `KM_ELC_TIMING` phase laps inside the completion itself (the worker's
+/// `classify=` line only brackets the whole call). Off by default.
+fn elc_timing_lap(on: bool, last: &mut std::time::Instant, label: &str) {
+    if on {
+        let now = std::time::Instant::now();
+        eprintln!("KM_ELC_TIMING {label}={:.3}s", (now - *last).as_secs_f64());
+        *last = now;
+    }
 }
 
 /// KM_ELC_HOIST (P1) — *semantic* common-disjunct extraction, the EL-side
@@ -6231,7 +6301,7 @@ fn acyclic_nf1_taxonomy(
 }
 
 fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<ElResult> {
-    classify_inner_mode(clauses, cert, debug, false)
+    classify_inner_mode(clauses, cert, debug, false, false)
 }
 
 fn classify_inner_mode(
@@ -6239,7 +6309,10 @@ fn classify_inner_mode(
     cert: CertMode,
     debug: bool,
     compact_nf1_output: bool,
+    compact_fixpoint_output: bool,
 ) -> Option<ElResult> {
+    let elc_timing = std::env::var_os("KM_ELC_TIMING").is_some();
+    let mut elc_lap = std::time::Instant::now();
     let lean_cert_path = std::env::var_os("KM_ELC_LEAN_CERT_OUT").map(std::path::PathBuf::from);
     let lean_cert_checker =
         std::env::var_os("KM_ELC_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
@@ -6266,6 +6339,7 @@ fn classify_inner_mode(
     let clauses = clauses;
     let mut it = Interner::new();
     let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
+    elc_timing_lap(elc_timing, &mut elc_lap, "to_nf");
     // TOP is always a semantic concept context, even when no normalized axiom
     // mentions it explicitly. The inconsistency readout queries TOP ⊑ BOTTOM,
     // so omitting this initialization could miss an ontology-level clash.
@@ -6317,7 +6391,8 @@ fn classify_inner_mode(
         }
     };
     let n = it.len();
-    let idx = build_idx(&nfs, n);
+    let one_sided_nf2 = cert == CertMode::Off && std::env::var_os("KM_ELC_ONE_SIDED_NF2").is_some();
+    let idx = build_idx(&nfs, n, one_sided_nf2);
     let mut st = init_state(&nfs, n);
     // EL++ reflexive roles: seed a self-edge (C,R,C) at every satisfiable concept
     // node for each reflexive role (closed up the role hierarchy). The existing
@@ -6351,8 +6426,10 @@ fn classify_inner_mode(
         nfs.role_names = HashSet::default();
         nfs.reflexive_roles = HashSet::default();
     }
+    elc_timing_lap(elc_timing, &mut elc_lap, "index+init");
     let mut prof = Prof::default();
     run(&idx, &mut st, &mut prof);
+    elc_timing_lap(elc_timing, &mut elc_lap, "saturate");
     if lean_cert_requested {
         let source_clauses = certificate_clauses
             .as_deref()
@@ -6526,6 +6603,44 @@ fn classify_inner_mode(
     drop(residual);
     drop(skolem_target);
 
+    // Dictionary-coded rows for the in-process orchestrator. The interned ids
+    // and the single name table replace one owned superclass string per pair
+    // and the string-keyed map. Rows follow the name order of that map, so a
+    // consumer that keys on row order (the first-alias unsat representative)
+    // sees the same subject sequence. Only a complete answer is coded: a
+    // residue keeps the string map because its subjects are merged by name.
+    if compact_fixpoint_output && unresolved.is_empty() {
+        let names = std::mem::take(&mut it.names);
+        let mut order: Vec<u32> = (0..sub_super.len() as u32)
+            .filter(|&cid| cid != TOP && cid != BOTTOM && !sub_super[cid as usize].is_empty())
+            .collect();
+        order.sort_unstable_by(|&a, &b| names[a as usize].cmp(&names[b as usize]));
+        let mut rows = Vec::with_capacity(order.len());
+        for cid in order {
+            let sups = std::mem::take(&mut sub_super[cid as usize]);
+            let out: Vec<u32> = sups
+                .iter()
+                .copied()
+                .filter(|&d| d != cid && d != TOP)
+                .collect();
+            if !out.is_empty() {
+                rows.push((cid, out));
+            }
+        }
+        elc_timing_lap(elc_timing, &mut elc_lap, "output(compact)");
+        return Some(ElResult {
+            unresolved: Vec::new(),
+            subsumptions: std::collections::BTreeMap::new(),
+            inconsistent: el_inconsistent,
+            compact: Some(crate::json_io::CompactElcOutput {
+                names,
+                rows,
+                inconsistent: el_inconsistent,
+                dropped: 0,
+            }),
+        });
+    }
+
     let mut subsumptions = std::collections::BTreeMap::new();
     for c in 0..sub_super.len() {
         let cid = c as u32;
@@ -6557,6 +6672,7 @@ fn classify_inner_mode(
             subsumptions.insert(it.name(cid).to_string(), out);
         }
     }
+    elc_timing_lap(elc_timing, &mut elc_lap, "output(strings)");
 
     Some(ElResult {
         subsumptions,
@@ -6611,7 +6727,7 @@ mod tests {
             role_names: roles,
             conjunction_origins: HashMap::default(),
         };
-        let idx = build_idx(&nfs, 7);
+        let idx = build_idx(&nfs, 7, false);
         let mut state = init_state(&nfs, 7);
         for &a in &nfs.concept_names {
             if a != BOTTOM {
@@ -6668,6 +6784,65 @@ mod tests {
             name,
             v(t)
         )
+    }
+
+    #[test]
+    fn compact_fixpoint_output_matches_the_string_map() {
+        use std::collections::{BTreeMap, BTreeSet};
+        // NF1, NF2, NF3 (existential pair), NF4, and a bottom conjunction, so
+        // the general fixpoint runs (the acyclic NF1 shortcut declines).
+        let cs = clauses(&format!(
+            "[{},{},{},{},{},{},{},{}]",
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("B", "x"), c("C", "x")], &[c("D", "x")]),
+            cl(&[c("A", "x")], &[c("C", "x")]),
+            cl(&[c("B", "x")], &[cf("F", "f", "x")]),
+            cl(&[c("B", "x")], &[rf("r", "x", "f")]),
+            cl(&[r("r", "x", "y"), c("F", "y")], &[c("E", "x")]),
+            cl(&[c("G", "x"), c("B", "x")], &[]),
+            cl(&[c("A", "x")], &[c("G", "x")]),
+        ));
+        let expected = classify_inner_mode(cs.clone(), CertMode::Off, false, false, false)
+            .expect("pure EL input");
+        let compact =
+            classify_inner_mode(cs, CertMode::Off, false, false, true).expect("pure EL input");
+        assert!(compact.subsumptions.is_empty());
+        assert!(compact.unresolved.is_empty());
+        let compact = compact.compact.expect("dictionary-coded fixpoint");
+        assert_eq!(compact.inconsistent, expected.inconsistent);
+        let mut rebuilt: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut previous: Option<&str> = None;
+        for (subject, supers) in &compact.rows {
+            let name = compact.names[*subject as usize].as_str();
+            assert!(
+                previous.map_or(true, |p| p < name),
+                "rows follow the string map's name order"
+            );
+            previous = Some(name);
+            let sups: BTreeSet<String> = supers
+                .iter()
+                .map(|&d| {
+                    if d == BOTTOM {
+                        "owl:Nothing".to_string()
+                    } else {
+                        compact.names[d as usize].clone()
+                    }
+                })
+                .collect();
+            assert!(rebuilt.insert(name.to_string(), sups).is_none());
+        }
+        let expected: BTreeMap<String, BTreeSet<String>> = expected
+            .subsumptions
+            .into_iter()
+            .map(|(subject, supers)| (subject, supers.into_iter().collect()))
+            .collect();
+        assert_eq!(rebuilt, expected);
+        // The fixture exercises every path the coding must preserve: NF2
+        // (D), the existential join (E), and the bottom translation.
+        assert!(expected["A"].contains("D"));
+        assert!(expected["A"].contains("E"));
+        assert!(expected["A"].contains("owl:Nothing"));
+        assert!(expected["B"].contains("E"));
     }
 
     fn positive_abox_consistency(ofn: &str) -> Option<bool> {
@@ -6778,7 +6953,7 @@ mod tests {
         let (mut nfs, residual, _) = to_nf(&source, &mut interner).expect("direct EL source");
         assert!(residual.is_empty());
         nfs.concept_names.insert(TOP);
-        let idx = build_idx(&nfs, interner.len());
+        let idx = build_idx(&nfs, interner.len(), false);
         let mut state = init_state(&nfs, interner.len());
         run(&idx, &mut state, &mut Prof::default());
         let certificate =
@@ -7705,7 +7880,7 @@ mod tests {
         assert_eq!(direct.len(), 1);
         assert_eq!(witnesses.len(), 1);
         nfs.concept_names.insert(TOP);
-        let idx = build_idx(&nfs, interner.len());
+        let idx = build_idx(&nfs, interner.len(), false);
         let mut state = init_state(&nfs, interner.len());
         run(&idx, &mut state, &mut Prof::default());
         let certificate = build_lean_el_certificate(
@@ -8231,6 +8406,7 @@ mod tests {
     fn state_of(n: usize, labels: &[(u32, &[u32])], edges: &[(u32, u32, u32)]) -> State {
         let mut st = State {
             sub_super: vec![HashSet::default(); n],
+            nf2_pending: HashMap::default(),
             edges: vec![HashSet::default(); n],
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); n],
@@ -8576,6 +8752,7 @@ mod tests {
             .collect();
         Idx {
             sub_rules: HashMap::default(),
+            one_sided_nf2: false,
             nf3_by_sub: HashMap::default(),
             nf4_by_filler,
             nf5_subs: HashSet::default(),
@@ -8588,6 +8765,7 @@ mod tests {
     fn blank_state(n: usize) -> State {
         State {
             sub_super: vec![HashSet::default(); n],
+            nf2_pending: HashMap::default(),
             edges: vec![HashSet::default(); n],
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); n],
@@ -8634,7 +8812,7 @@ mod tests {
             role_names: HashSet::default(),
             conjunction_origins: HashMap::default(),
         };
-        let idx = build_idx(&nfs, 8);
+        let idx = build_idx(&nfs, 8, false);
         assert_eq!(idx.sub_rules.len(), 3);
         assert_eq!(&*idx.sub_rules[&A].nf1_sups, &[B]);
         assert_eq!(&*idx.sub_rules[&A].nf2_cand, &[(B, E)]);
@@ -8652,6 +8830,42 @@ mod tests {
         }
         assert_eq!(prof.nf1_scan, 2);
         assert_eq!(prof.nf2_scan, 4);
+    }
+
+    #[test]
+    fn one_sided_nf2_waiter_fires_in_both_arrival_orders() {
+        const ROOT: u32 = 2;
+        const A: u32 = 3;
+        const B: u32 = 4;
+        const E: u32 = 5;
+        let nfs = Nfs {
+            nf1: Vec::new(),
+            nf2: vec![Nf2 {
+                sub1: A,
+                sub2: B,
+                sup: E,
+            }],
+            nf3: Vec::new(),
+            nf4: Vec::new(),
+            nf5: Vec::new(),
+            nf6: Vec::new(),
+            nf7: Vec::new(),
+            reflexive_roles: HashSet::default(),
+            concept_names: [ROOT, A, B, E].into_iter().collect(),
+            role_names: HashSet::default(),
+            conjunction_origins: HashMap::default(),
+        };
+        let idx = build_idx(&nfs, 6, true);
+
+        for (first, second) in [(A, B), (B, A)] {
+            let mut st = blank_state(6);
+            st.add_sub(ROOT, first);
+            run(&idx, &mut st, &mut Prof::default());
+            assert!(!st.sub_super[ROOT as usize].contains(&E));
+            st.add_sub(ROOT, second);
+            run(&idx, &mut st, &mut Prof::default());
+            assert!(st.sub_super[ROOT as usize].contains(&E));
+        }
     }
 
     #[test]
@@ -8980,6 +9194,7 @@ mod tests {
             .collect();
         Idx {
             sub_rules: HashMap::default(),
+            one_sided_nf2: false,
             nf3_by_sub: HashMap::default(),
             nf4_by_filler: HashMap::default(),
             nf5_subs: HashSet::default(),

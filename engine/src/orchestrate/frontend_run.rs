@@ -46,6 +46,103 @@ fn manual_route() -> String {
 /// in-process transient peak is only tens of MB and is freed before the engine
 /// runs, so the classify RSS high-water-mark is unaffected.
 const IN_PROCESS_OFN_MAX: u64 = 4 << 20;
+/// Retain a parsed general-HT input across the frontend/solver boundary only
+/// for the measured small-source band.  Large sources that pass the lexical
+/// EL screen can still select general HT after full profiling; retaining their
+/// typed input makes a declined in-process attempt coexist with the automatic
+/// fallback and sharply raises both wall time and peak RSS.  They keep the
+/// established serialized, isolated worker path instead.
+const IN_PROCESS_GENERAL_HT_MAX: usize = 2 << 20;
+
+fn ht_typed_handoff_candidate(route: Option<crate::routing::Route>, source_bytes: usize) -> bool {
+    match route {
+        Some(crate::routing::Route::HtShoq) => true,
+        Some(crate::routing::Route::HtGeneral | crate::routing::Route::HtBridge) => {
+            source_bytes < IN_PROCESS_GENERAL_HT_MAX
+        }
+        _ => false,
+    }
+}
+/// Upper source size for the in-process frontend on the exact-EL band.
+/// The 4 MiB to 60 MB band was screened end to end under explicit threshold
+/// experiments: every exact
+/// EL member dropped both worker boundaries (frontend subprocess and EL
+/// completion subprocess), and its summed process-tree peak stayed flat or
+/// fell because the orchestrator no longer sits beside a child that holds
+/// the same clause set. Non-EL members retain freed frontend heap beside a
+/// CB or HT child instead, so they keep the isolated frontend:
+/// `source_looks_exact_el` separates the two cases before parsing.
+const MEASURED_IN_PROCESS_EL_OFN_MAX: u64 = 60_000_000;
+
+/// Functional-syntax constructor names that put a source outside the exact
+/// EL completion route or on an identity-bearing ABox family that the
+/// completion route never serves. Inverse, symmetric, transitive, and
+/// chained object properties stay admitted: the EL route accepts them when
+/// the relevance slice proves them inert, and every measured exact-EL band
+/// member uses at least one of them.
+const NON_EL_CONSTRUCTORS: &[&str] = &[
+    "ObjectUnionOf",
+    "ObjectComplementOf",
+    "ObjectAllValuesFrom",
+    "ObjectMinCardinality",
+    "ObjectMaxCardinality",
+    "ObjectExactCardinality",
+    "ObjectOneOf",
+    "ObjectHasValue",
+    "ObjectHasSelf",
+    "FunctionalObjectProperty",
+    "InverseFunctionalObjectProperty",
+    "AsymmetricObjectProperty",
+    "IrreflexiveObjectProperty",
+    "ReflexiveObjectProperty",
+    "DisjointObjectProperties",
+    "SameIndividual",
+    "DifferentIndividuals",
+    "NegativeObjectPropertyAssertion",
+    "HasKey",
+    "DLSafeRule",
+    "Import",
+];
+
+/// One-pass lexical screen for the measured exact-EL band. Every functional
+/// syntax constructor is the identifier that immediately precedes an opening
+/// parenthesis, so the scan jumps between parentheses and inspects only the
+/// identifier behind each one. A source is admitted when no identifier names
+/// a non-EL constructor and none starts with `Data` (data properties,
+/// datatypes, and concrete-domain restrictions). The screen fails closed: a
+/// rejected source keeps the isolated frontend and produces byte-identical
+/// output through that established path, so a false rejection costs only the
+/// worker boundaries it would have removed.
+fn source_looks_exact_el(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut cursor = 0usize;
+    while let Some(offset) = text[cursor..].find('(') {
+        let paren = cursor + offset;
+        let mut start = paren;
+        while start > cursor
+            && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_')
+        {
+            start -= 1;
+        }
+        let identifier = &bytes[start..paren];
+        if !identifier.is_empty()
+            && (identifier.starts_with(b"Data")
+                || NON_EL_CONSTRUCTORS
+                    .iter()
+                    .any(|token| token.as_bytes() == identifier))
+        {
+            return false;
+        }
+        cursor = paren + 1;
+    }
+    true
+}
+
+/// The measured exact-EL band between the unconditional small in-process
+/// bound and the screened upper size.
+fn in_process_el_band(source_bytes: u64) -> bool {
+    (IN_PROCESS_OFN_MAX..MEASURED_IN_PROCESS_EL_OFN_MAX).contains(&source_bytes)
+}
 const GIANT_IN_PROCESS_OFN_MIN: u64 = 300 << 20;
 const GIANT_IN_PROCESS_OFN_MAX: u64 = 600 << 20;
 
@@ -112,15 +209,15 @@ fn use_in_process_ofn(path: &Path, source_bytes: u64) -> bool {
 /// clause set is dropped before returning, so no frontend memory is held during
 /// the engine run. `ofn_to_clauses` is the SAME function the subprocess calls,
 /// so the output is byte-for-byte identical.
+/// Returns the parsed meta, the typed clause vector when the selected exact
+/// EL leaf consumes it in process, and otherwise the compact EL sidecar for
+/// an exact EL worker (the same `--elc-binary` handoff the subprocess
+/// frontend writes). Every other route reads the serialized JSON file.
 fn run_ofn_in_process(
-    ont: &Path,
+    text: &str,
     clauses_path: &Path,
-) -> Result<(Meta, Option<crate::json_io::JInput>), OrchestrateError> {
-    let text = std::fs::read_to_string(ont).map_err(|e| OrchestrateError::Spawn {
-        bin: "ofn".into(),
-        source: e,
-    })?;
-    let result = match crate::frontend::ofn_to_clauses(&text) {
+) -> Result<(Meta, Option<crate::json_io::JInput>, Option<TempPath>), OrchestrateError> {
+    let result = match crate::frontend::ofn_to_clauses(text) {
         Ok(r) => r,
         Err(e) => return Err(OrchestrateError::OutOfFragment(e.0)),
     };
@@ -143,15 +240,18 @@ fn run_ofn_in_process(
         nominal_abox: result.nominal_abox,
         rules: result.rules,
     };
-    // Only EL completion can consume this representation directly. Dropping
-    // non-EL inputs before returning preserves the old frontend lifetime and
-    // avoids making its allocations part of the orchestrator's RSS high-water.
+    // Retain this representation only when the selected leaf consumes it
+    // directly. Dropping every other input preserves the old frontend lifetime
+    // and avoids making parser allocations part of the classifier high-water.
     let selected_route = meta.route.parse::<crate::routing::Route>().ok();
-    let cacheable = std::env::var_os("KM_NO_INPROC_ELC").is_none()
+    let cacheable_el = std::env::var_os("KM_NO_INPROC_ELC").is_none()
         && std::env::var_os("KM_EL_ABOX_CHECK").is_none()
         && meta.el_rbox_safe
         && !meta.profile.positive_el_abox_materializable
         && selected_route.is_some_and(|route| super::use_atomic_inproc_elc(route, &meta.profile));
+    let cacheable_ht = std::env::var_os("KM_NO_INPROC_HT").is_none()
+        && ht_typed_handoff_candidate(selected_route, text.len());
+    let cacheable = cacheable_el || cacheable_ht;
     // The subprocess JSON path rebuilds an exactly-sized outer clause vector.
     // Match that footprint before retaining frontend-owned clauses across the
     // phase boundary; spare parser growth capacity otherwise survives into EL
@@ -162,14 +262,35 @@ fn run_ofn_in_process(
     // Exact Elc consumes `out` directly. CertifiedElProduction also consumes
     // it directly and recursively reruns this frontend under ProductionAll if
     // its certificate declines, so neither needs an eager serialized copy.
-    if !cacheable {
+    //
+    // An exact EL leaf that is NOT retained in process (the flat and
+    // unstructured members of the band) still runs the isolated EL worker.
+    // Mirror `cli::run_ofn`: hand that worker the compact typed-clause
+    // sidecar instead of a JSON stream it would have to re-parse, and skip
+    // the JSON entirely under the same conditions the subprocess frontend
+    // uses (no positive-ABox materialization, no rules, no ABox check).
+    let binary_sidecar = !cacheable
+        && selected_route == Some(crate::routing::Route::Elc)
+        && meta.el_rbox_safe
+        && !meta.profile.positive_el_abox_materializable
+        && meta.profile.source.rule_axioms == 0
+        && std::env::var_os("KM_EL_ABOX_CHECK").is_none();
+    let mut elc_binary = None;
+    if binary_sidecar {
+        let sidecar = TempPath::new(".elc.bin");
+        let f = File::create(sidecar.path())?;
+        let mut w = std::io::BufWriter::new(f);
+        crate::json_io::write_elc_binary(&mut w, &out.clauses)?;
+        std::io::Write::flush(&mut w)?;
+        elc_binary = Some(sidecar);
+    } else if !cacheable {
         let f = File::create(clauses_path)?;
         let mut w = std::io::BufWriter::new(f);
         serde_json::to_writer(&mut w, &out)?;
         std::io::Write::flush(&mut w)?;
     }
     let cached = cacheable.then_some(out);
-    Ok((meta, cached))
+    Ok((meta, cached, elc_binary))
 }
 
 pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), OrchestrateError> {
@@ -202,16 +323,47 @@ pub fn run_ofn_split_cached(
     // leaves can pass their already-built clauses directly to completion, while
     // the two certified-EL controls preserve their isolated completion route.
     // Any failure falls through to the subprocess path below (identical output).
-    let small = std::fs::metadata(ont)
-        .map(|m| use_in_process_ofn(ont, m.len()))
-        .unwrap_or(false);
-    if small && std::env::var_os("KM_NO_INPROC_OFN").is_none() {
-        match run_ofn_in_process(ont, clauses.path()) {
-            Ok((meta, cached)) => return Ok((clauses, meta, cached, None)),
-            // OutOfFragment is a real verdict (not a transient failure): surface it
-            // exactly as the subprocess exit-3 path does, don't silently retry.
-            Err(e @ OrchestrateError::OutOfFragment(_)) => return Err(e),
-            Err(_) => { /* fall through to the subprocess path */ }
+    let source_bytes = std::fs::metadata(ont).map(|m| m.len()).unwrap_or(0);
+    let small = use_in_process_ofn(ont, source_bytes);
+    // Above the small bound, the measured exact-EL band is admitted only
+    // after the lexical screen. The explicit size override keeps its
+    // unscreened meaning for experiments.
+    let screened_el_band = !small
+        && std::env::var_os("KM_INPROC_OFN_MAX").is_none()
+        && in_process_el_band(source_bytes);
+    if (small || screened_el_band) && std::env::var_os("KM_NO_INPROC_OFN").is_none() {
+        let timing = std::env::var_os("KM_TIMING").is_some();
+        let t_read = std::time::Instant::now();
+        if let Ok(text) = std::fs::read_to_string(ont) {
+            let read_s = t_read.elapsed().as_secs_f64();
+            let t_screen = std::time::Instant::now();
+            let admitted = !screened_el_band || source_looks_exact_el(&text);
+            let screen_s = t_screen.elapsed().as_secs_f64();
+            if admitted {
+                let t_parse = std::time::Instant::now();
+                match run_ofn_in_process(&text, clauses.path()) {
+                    Ok((meta, cached, elc_binary)) => {
+                        if timing {
+                            eprintln!(
+                                "KM_TIMING in-process frontend: read={read_s:.2}s screen={screen_s:.2}s \
+                                 parse+clausify+handoff={:.2}s cached={} sidecar={}",
+                                t_parse.elapsed().as_secs_f64(),
+                                cached.is_some(),
+                                elc_binary.is_some()
+                            );
+                        }
+                        return Ok((clauses, meta, cached, elc_binary));
+                    }
+                    // OutOfFragment is a real verdict (not a transient failure): surface it
+                    // exactly as the subprocess exit-3 path does, don't silently retry.
+                    Err(e @ OrchestrateError::OutOfFragment(_)) => return Err(e),
+                    Err(_) => { /* fall through to the subprocess path */ }
+                }
+            } else if timing {
+                eprintln!(
+                    "KM_TIMING in-process frontend declined by the exact-EL screen: bytes={source_bytes} screen={screen_s:.2}s"
+                );
+            }
         }
     }
 
@@ -295,7 +447,169 @@ pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath>
 
 #[cfg(test)]
 mod tests {
-    use super::{giant_source_uses_certified_rbox, TempPath};
+    use super::{
+        giant_source_uses_certified_rbox, ht_typed_handoff_candidate, in_process_el_band,
+        run_ofn_in_process, source_looks_exact_el, use_in_process_ofn, TempPath,
+        IN_PROCESS_GENERAL_HT_MAX, IN_PROCESS_OFN_MAX, MEASURED_IN_PROCESS_EL_OFN_MAX,
+    };
+
+    #[test]
+    fn general_ht_typed_handoff_is_bounded_but_shoq_is_not() {
+        use crate::routing::Route;
+
+        assert!(ht_typed_handoff_candidate(
+            Some(Route::HtGeneral),
+            IN_PROCESS_GENERAL_HT_MAX - 1,
+        ));
+        assert!(!ht_typed_handoff_candidate(
+            Some(Route::HtGeneral),
+            IN_PROCESS_GENERAL_HT_MAX,
+        ));
+        assert!(ht_typed_handoff_candidate(
+            Some(Route::HtShoq),
+            IN_PROCESS_GENERAL_HT_MAX,
+        ));
+        assert!(ht_typed_handoff_candidate(
+            Some(Route::HtBridge),
+            IN_PROCESS_GENERAL_HT_MAX - 1,
+        ));
+        assert!(!ht_typed_handoff_candidate(
+            Some(Route::HtBridge),
+            IN_PROCESS_GENERAL_HT_MAX,
+        ));
+        assert!(!ht_typed_handoff_candidate(Some(Route::Elc), 1));
+    }
+
+    #[test]
+    fn exact_el_screen_admits_inverse_rich_el_and_rejects_non_el_constructors() {
+        assert!(source_looks_exact_el(
+            "Ontology(SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>)) \
+             SubClassOf(ObjectIntersectionOf(<A> <B>) <C>) \
+             InverseObjectProperties(<r> <s>) TransitiveObjectProperty(<r>) \
+             SymmetricObjectProperty(<s>) \
+             SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) \
+             ClassAssertion(<A> <a>) ObjectPropertyAssertion(<r> <a> <b>) \
+             DisjointClasses(<A> <B>) EquivalentClasses(<C> <D>))"
+        ));
+        for source in [
+            "Ontology(SubClassOf(<A> ObjectUnionOf(<B> <C>)))",
+            "Ontology(SubClassOf(<A> ObjectComplementOf(<B>)))",
+            "Ontology(SubClassOf(<A> ObjectAllValuesFrom(<r> <B>)))",
+            "Ontology(SubClassOf(<A> ObjectMaxCardinality(1 <r>)))",
+            "Ontology(SubClassOf(<A> ObjectOneOf(<a>)))",
+            "Ontology(FunctionalObjectProperty(<r>))",
+            "Ontology(Declaration(DataProperty(<p>)))",
+            "Ontology(Declaration(Datatype(<d>)))",
+            "Ontology(SubClassOf(<A> DataSomeValuesFrom(<p> xsd:integer)))",
+            "Ontology(DifferentIndividuals(<a> <b>))",
+            "Ontology(SameIndividual(<a> <b>))",
+            "Ontology(Import(<http://example.org/o>))",
+            "Ontology(DLSafeRule(Body() Head()))",
+        ] {
+            assert!(!source_looks_exact_el(source), "{source}");
+        }
+        // Identifiers are matched whole and only in constructor position: a
+        // class named after a constructor is still an ordinary class.
+        assert!(source_looks_exact_el(
+            "Ontology(SubClassOf(<ObjectUnionOf> <B>) SubClassOf(<x:ObjectUnionOfThing> <B>))"
+        ));
+        assert!(source_looks_exact_el(""));
+    }
+
+    #[test]
+    fn in_process_el_band_sits_between_the_small_and_giant_bounds() {
+        assert!(!in_process_el_band(IN_PROCESS_OFN_MAX - 1));
+        assert!(in_process_el_band(IN_PROCESS_OFN_MAX));
+        assert!(in_process_el_band(MEASURED_IN_PROCESS_EL_OFN_MAX - 1));
+        assert!(!in_process_el_band(MEASURED_IN_PROCESS_EL_OFN_MAX));
+        // The size rule alone never admits the band: the screen decides.
+        let path = TempPath::new(".ofn");
+        assert!(use_in_process_ofn(path.path(), IN_PROCESS_OFN_MAX - 1));
+        assert!(!use_in_process_ofn(path.path(), IN_PROCESS_OFN_MAX));
+        assert!(!use_in_process_ofn(
+            path.path(),
+            MEASURED_IN_PROCESS_EL_OFN_MAX - 1
+        ));
+    }
+
+    #[test]
+    fn in_process_frontend_writes_the_el_binary_sidecar_for_an_uncached_el_route() {
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "elc");
+        std::env::remove_var("KM_EL_ABOX_CHECK");
+        std::env::remove_var("KM_NO_INPROC_ELC");
+        // Five declared classes over three axioms sit below the structured
+        // ratio, and the existential excludes the small flat admission, so
+        // the exact EL leaf is not retained in process. The worker boundary
+        // must then receive the compact handoff, not a JSON stream.
+        let source = "Ontology(Declaration(Class(<A>)) Declaration(Class(<B>)) \
+                      Declaration(Class(<C>)) Declaration(Class(<D>)) Declaration(Class(<E>)) \
+                      SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>)) \
+                      SubClassOf(ObjectSomeValuesFrom(<r> <B>) <C>) SubClassOf(<D> <E>))";
+        let clauses = TempPath::new(".clauses.json");
+        let (meta, cached, sidecar) =
+            run_ofn_in_process(source, clauses.path()).expect("frontend parses");
+        assert_eq!(meta.route, "elc");
+        assert!(meta.el_rbox_safe);
+        assert!(cached.is_none());
+        let sidecar = sidecar.expect("an uncached exact EL leaf writes the binary sidecar");
+        assert!(!clauses.path().exists());
+        let bytes = std::fs::read(sidecar.path()).unwrap();
+        let decoded = crate::json_io::decode_elc_binary(&bytes)
+            .unwrap()
+            .expect("compact EL handoff header");
+        assert!(!decoded.is_empty());
+    }
+
+    #[test]
+    fn in_process_frontend_retains_the_selected_shoq_input() {
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        // Route selection itself has a separate profile regression test. This
+        // fixture exercises the typed-handoff contract of a selected leaf.
+        std::env::set_var("KM_ROUTE", "ht_shoq");
+        std::env::remove_var("KM_NO_INPROC_HT");
+        let source = "Ontology(Declaration(Class(<A>)) Declaration(ObjectProperty(<r>)) \
+                      EquivalentClasses(<A> ObjectExactCardinality(128 <r>)))";
+        let clauses = TempPath::new(".clauses.json");
+        let (meta, cached, sidecar) =
+            run_ofn_in_process(source, clauses.path()).expect("frontend parses");
+        assert_eq!(meta.route, "ht_shoq");
+        assert!(cached.is_some(), "SHOQ must cross the typed handoff");
+        assert!(sidecar.is_none());
+        assert!(!clauses.path().exists());
+    }
+
+    #[test]
+    fn in_process_frontend_retains_the_selected_general_ht_input() {
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "ht_general");
+        std::env::remove_var("KM_NO_INPROC_HT");
+        let source = "Ontology(Declaration(Class(<A>)) Declaration(Class(<B>)) \
+                      SubClassOf(<A> ObjectComplementOf(<B>)))";
+        let clauses = TempPath::new(".clauses.json");
+        let (meta, cached, sidecar) =
+            run_ofn_in_process(source, clauses.path()).expect("frontend parses");
+        assert_eq!(meta.route, "ht_general");
+        assert!(cached.is_some(), "general HT must cross the typed handoff");
+        assert!(sidecar.is_none());
+        assert!(!clauses.path().exists());
+    }
+
+    #[test]
+    fn in_process_frontend_retains_the_selected_bridge_input() {
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "ht_bridge");
+        std::env::remove_var("KM_NO_INPROC_HT");
+        let source = "Ontology(Declaration(Class(<A>)) Declaration(Class(<B>)) \
+                      SubClassOf(<A> <B>))";
+        let clauses = TempPath::new(".clauses.json");
+        let (meta, cached, sidecar) =
+            run_ofn_in_process(source, clauses.path()).expect("frontend parses");
+        assert_eq!(meta.route, "ht_bridge");
+        assert!(cached.is_some(), "bridge must cross the typed handoff");
+        assert!(sidecar.is_none());
+        assert!(!clauses.path().exists());
+    }
 
     #[test]
     fn giant_rbox_scan_detects_tokens_across_chunk_boundaries() {
