@@ -1192,7 +1192,12 @@ fn classify_with_evidence_mode(
                 // Bound the prepass by state size as well as wall time. Faster
                 // CPUs can apply substantially more rules in 120 seconds and
                 // otherwise hit a 20-GiB cgroup before the timer fires.
-                std::env::set_var("KM_HT_SATURATION_RSS_GB", "18");
+                let saturation_rss_override =
+                    std::env::var("KM_HT_SATURATION_RSS_OVERRIDE_GB").ok();
+                let saturation_rss_gb =
+                    production_saturation_rss_override(saturation_rss_override.as_deref())
+                        .unwrap_or("18");
+                std::env::set_var("KM_HT_SATURATION_RSS_GB", saturation_rss_gb);
                 // The frontend has already removed the certified-independent
                 // existential-witness ABox before cb_to_ht constructs TInput,
                 // so the bridge cannot rediscover that projection from native
@@ -1893,6 +1898,16 @@ fn classify_with_evidence_mode(
     })
 }
 
+/// Admit a diagnostic production-saturation valve only when it tightens the
+/// validated 18-GiB default. The override deliberately lives outside the
+/// normalized route environment: it changes only when an optional monotone
+/// prepass defers, never the complete probe/fallback or its publication gate.
+fn production_saturation_rss_override(value: Option<&str>) -> Option<&str> {
+    let value = value?.trim();
+    let parsed = value.parse::<f64>().ok()?;
+    (parsed.is_finite() && parsed > 0.0 && parsed <= 18.0).then_some(value)
+}
+
 /// Obtain an exact full-ontology consistency verdict from the isolated general
 /// HT mechanism. The temporary route environment is restored before return;
 /// a structural defer is not an error and leaves the established v1.0 route
@@ -2133,7 +2148,7 @@ impl Classification {
 mod tests {
     use super::{
         composite_layout, flatten_grouped_subsumptions, inproc_engine_out, is_bottom,
-        use_atomic_inproc_elc, use_elc_portfolio,
+        production_saturation_rss_override, use_atomic_inproc_elc, use_elc_portfolio,
     };
     use crate::reasoner::Reasoner;
 
@@ -2420,5 +2435,19 @@ mod tests {
         profile.clauses.function_term_symbols = 130_303;
         profile.source.distinct_individuals = 18_055;
         assert_eq!(composite_layout(&profile), Some(15));
+    }
+
+    #[test]
+    fn production_saturation_rss_override_only_tightens_the_default() {
+        assert_eq!(
+            production_saturation_rss_override(Some("17.5")),
+            Some("17.5")
+        );
+        assert_eq!(production_saturation_rss_override(Some("18")), Some("18"));
+        assert_eq!(production_saturation_rss_override(Some("18.1")), None);
+        assert_eq!(production_saturation_rss_override(Some("0")), None);
+        assert_eq!(production_saturation_rss_override(Some("NaN")), None);
+        assert_eq!(production_saturation_rss_override(Some("nonsense")), None);
+        assert_eq!(production_saturation_rss_override(None), None);
     }
 }
