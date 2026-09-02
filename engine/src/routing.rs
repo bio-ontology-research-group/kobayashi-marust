@@ -822,38 +822,6 @@ pub(crate) fn small_nominal_heap_trim_candidate(profile: &OntologyProfile) -> bo
         && !profile.expressivity.datatype
 }
 
-/// Dense SI terminologies whose generated conjunction hub makes the symmetric
-/// NF2 trigger index scan hundreds of millions of candidates.  The one-sided
-/// waiter schedule derives the same finite monotone closure, but is profitable
-/// only for this measured shape; sparse controls pay extra pending-map memory.
-pub(crate) fn one_sided_nf2_candidate(profile: &OntologyProfile) -> bool {
-    let source = &profile.source;
-    let measured_conjunction_family = (profile.expressivity.code == "SI"
-        && (160_000..200_000).contains(&source.logical_axioms)
-        && (80_000..95_000).contains(&source.distinct_classes)
-        && (25_000..40_000).contains(&source.intersections)
-        && (50_000..70_000).contains(&source.existentials)
-        && source.max_concept_arity >= 10
-        && (8..=16).contains(&source.distinct_object_properties)
-        && (25_000_000..35_000_000).contains(&source.file_bytes))
-        || (profile.expressivity.code == "SRI"
-            && (140_000..150_000).contains(&source.logical_axioms)
-            && (70_000..78_000).contains(&source.distinct_classes)
-            && (10_000..13_000).contains(&source.intersections)
-            && (25_000..32_000).contains(&source.existentials)
-            && source.max_concept_arity >= 6
-            && (18..=28).contains(&source.distinct_object_properties)
-            && (20_000_000..24_000_000).contains(&source.file_bytes));
-    measured_conjunction_family
-        && source.abox_axioms == 0
-        && source.imports == 0
-        && source.rule_axioms == 0
-        && source.unsupported_rule_axioms == 0
-        && !profile.expressivity.nominal
-        && !profile.expressivity.cardinality
-        && !profile.expressivity.datatype
-}
-
 /// Large role-chain/cardinality TBoxes whose completion workload loses a small
 /// amount of throughput to the default 16-way orchestration. The automatic
 /// pipeline also runs their complete-answer-or-defer bridge before allocating
@@ -2337,7 +2305,6 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_ELC_FORCE",
     "KM_ELC_CERT",
     "KM_ELC_PAR_NF4",
-    "KM_ELC_ONE_SIDED_NF2",
     "KM_HEAP_TRIM",
     "KM_NO_HEAP_TRIM",
     "KM_NO_HT_RACE",
@@ -3354,53 +3321,6 @@ mod tests {
         profile.source.logical_axioms = 2_171;
         profile.source.rule_axioms = 1;
         assert!(!small_nominal_heap_trim_candidate(&profile));
-    }
-
-    #[test]
-    fn dense_conjunction_hubs_enable_one_sided_nf2_only_for_measured_shapes() {
-        let mut profile = OntologyProfile::default();
-        profile.expressivity.code = "SI".into();
-        profile.expressivity.inverse = true;
-        profile.expressivity.transitivity = true;
-        profile.source.logical_axioms = 177_701;
-        profile.source.distinct_classes = 86_011;
-        profile.source.intersections = 31_059;
-        profile.source.existentials = 59_266;
-        profile.source.max_concept_arity = 12;
-        profile.source.distinct_object_properties = 11;
-        profile.source.file_bytes = 30_186_856;
-        assert!(one_sided_nf2_candidate(&profile));
-
-        // The two closest large SI/production controls have substantially more
-        // existential work and must retain the ordinary scheduler.
-        profile.source.existentials = 88_582;
-        assert!(!one_sided_nf2_candidate(&profile));
-        profile.source.existentials = 59_266;
-        profile.source.abox_axioms = 1;
-        assert!(!one_sided_nf2_candidate(&profile));
-        profile.source.abox_axioms = 0;
-        profile.expressivity.code = "SHI".into();
-        assert!(!one_sided_nf2_candidate(&profile));
-
-        let mut sri = OntologyProfile::default();
-        sri.expressivity.code = "SRI".into();
-        sri.expressivity.inverse = true;
-        sri.expressivity.complex_subrole = true;
-        sri.source.logical_axioms = 144_956;
-        sri.source.distinct_classes = 74_055;
-        sri.source.intersections = 11_606;
-        sri.source.existentials = 28_927;
-        sri.source.max_concept_arity = 8;
-        sri.source.distinct_object_properties = 24;
-        sri.source.file_bytes = 22_093_796;
-        assert!(one_sided_nf2_candidate(&sri));
-
-        sri.source.intersections = 9_999;
-        assert!(!one_sided_nf2_candidate(&sri));
-        sri.source.intersections = 11_606;
-        sri.source.role_chain_axioms = 8;
-        sri.source.abox_axioms = 1;
-        assert!(!one_sided_nf2_candidate(&sri));
     }
 
     #[test]

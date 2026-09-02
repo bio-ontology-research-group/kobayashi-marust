@@ -48,7 +48,22 @@ impl FxHasher {
 impl Hasher for FxHasher {
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
-        for &b in bytes {
+        // Fold eight bytes per step (then four, then the tail), as rustc-hash
+        // does, instead of one multiply-rotate per byte: interning a 60-100
+        // byte IRI drops from ~80 to ~12 hash steps. The result is still a
+        // deterministic function of the byte sequence alone, so every table
+        // keyed by strings keeps its exact membership semantics.
+        let mut words = bytes.chunks_exact(8);
+        for word in &mut words {
+            self.add(u64::from_le_bytes(word.try_into().expect("8-byte chunk")));
+        }
+        let mut halves = words.remainder().chunks_exact(4);
+        for half in &mut halves {
+            self.add(u64::from(u32::from_le_bytes(
+                half.try_into().expect("4-byte chunk"),
+            )));
+        }
+        for &b in halves.remainder() {
             self.add(b as u64);
         }
     }
@@ -907,6 +922,13 @@ fn to_nf(
         }};
     }
 
+    // Per-clause atom partitions. Declared once and cleared per clause so the
+    // scan does not allocate (and free) four vectors per clause: on a 440k
+    // clause terminology that was 1.8M allocations inside `to_nf` alone.
+    let mut bc: Vec<&JAtom> = Vec::new();
+    let mut br: Vec<&JAtom> = Vec::new();
+    let mut hc: Vec<&JAtom> = Vec::new();
+    let mut hr: Vec<&JAtom> = Vec::new();
     for c in clauses {
         let b = &c.body;
         let h = &c.head;
@@ -918,16 +940,14 @@ fn to_nf(
             residual.push(c.clone());
             continue;
         }
-        let bc: Vec<&JAtom> = b.iter().filter(|a| concept_of(a).is_some()).collect();
-        let br: Vec<&JAtom> = b
-            .iter()
-            .filter(|a| matches!(a, JAtom::Role { .. }))
-            .collect();
-        let hc: Vec<&JAtom> = h.iter().filter(|a| concept_of(a).is_some()).collect();
-        let hr: Vec<&JAtom> = h
-            .iter()
-            .filter(|a| matches!(a, JAtom::Role { .. }))
-            .collect();
+        bc.clear();
+        bc.extend(b.iter().filter(|a| concept_of(a).is_some()));
+        br.clear();
+        br.extend(b.iter().filter(|a| matches!(a, JAtom::Role { .. })));
+        hc.clear();
+        hc.extend(h.iter().filter(|a| concept_of(a).is_some()));
+        hr.clear();
+        hr.extend(h.iter().filter(|a| matches!(a, JAtom::Role { .. })));
 
         // empty head => ⊥ (NF5 / disjointness). Every body concept must sit on
         // ONE shared variable: `A(x) ∧ B(y) → ⊥` is a global constraint (A
@@ -1347,33 +1367,55 @@ enum Item {
     EdgeAfterNf4(u32, u32, u32),
 }
 
-/// NF1 and NF2 rules triggered by the same newly derived subsumer. Keeping the
-/// two immutable slices in one bucket lets the serial Sub hot path pay for one
-/// integer-keyed lookup while preserving its NF1-before-NF2 firing order.
-struct SubRules {
+/// Every completion rule triggered by one newly derived subsumer `d`, packed
+/// in a single record: the NF1 conclusions, the NF2 candidates, the NF3
+/// existentials, the NF4 axioms whose filler is `d`, and the NF5 flag. The Sub
+/// arm of `run` reaches the record through one dense index (`Idx::rules_of`)
+/// where it previously paid four hash probes on `d` per item (`sub_rules`,
+/// `nf5_subs`, `nf3_by_sub`, `nf4_by_filler`). The slices are immutable after
+/// construction, so the hot path iterates them in place. Boxed slices keep
+/// each record to two words per rule family instead of three-word `Vec`
+/// headers.
+#[derive(Default)]
+struct ConceptRules {
+    /// NF1 `d ⊑ E`: the conclusions `E`.
     nf1_sups: Box<[u32]>,
+    /// NF2 `d ⊓ X ⊑ E`, with `d` in either operand position, as `(X, E)`,
+    /// SORTED by `X` so the label-side join can binary-search a partner.
     nf2_cand: Box<[(u32, u32)]>,
+    /// NF3 `d ⊑ ∃R.F` as `(R, F)`.
+    nf3_edges: Box<[(u32, u32)]>,
+    /// NF4 `∃R.d ⊑ E` as `(R, E)`, SORTED by role so the sub-side join visits
+    /// one contiguous exact-role group per backward-link bucket.
+    nf4_axioms: Box<[(u32, u32)]>,
+    /// NF5 `d ⊑ ⊥`.
+    bottom: bool,
 }
 
 #[derive(Default)]
-struct SubRulesBuilder {
+struct ConceptRulesBuilder {
     nf1_sups: Vec<u32>,
     nf2_cand: Vec<(u32, u32)>,
+    nf3_edges: Vec<(u32, u32)>,
+    nf4_axioms: Vec<(u32, u32)>,
+    bottom: bool,
 }
+
+/// `Idx::rule_slot` entry of a symbol that triggers no rule.
+const NO_RULES: u32 = u32::MAX;
 
 /// Read-only indexes over the normal forms; built once, never mutated during the
 /// loop, so the hot path can iterate their slices directly (no per-item clone).
 struct Idx {
-    // Newly derived subsumer -> its NF1 conclusions and NF2 candidates.
-    sub_rules: HashMap<u32, SubRules>,
-    one_sided_nf2: bool,
-    nf3_by_sub: HashMap<u32, Vec<(u32, u32)>>, // sub -> [(role, filler)]
-    // NF4 (∃R.D⊑E) indexed by FILLER only: `filler D -> [(role R, sup E)]`. Both
-    // the propagation-registration (Sub rule) and the join (Edge rule, via the
-    // `prop` store) need only this view; the old `(role,filler)->[sup]` index is
-    // gone with the per-edge label rescan it served.
-    nf4_by_filler: HashMap<u32, Vec<(u32, u32)>>, // filler -> [(role, sup)]
-    nf5_subs: HashSet<u32>,
+    /// Symbol id -> position in `rules`, or `NO_RULES`. Dense (four bytes per
+    /// interned symbol) so the per-item lookup of the Sub arm stays in cache,
+    /// while the records themselves exist only for symbols that trigger a
+    /// rule.
+    rule_slot: Vec<u32>,
+    rules: Vec<ConceptRules>,
+    /// Whether any NF4 axiom exists: the edge-side join and its frontier batch
+    /// are skipped entirely otherwise.
+    has_nf4: bool,
     nf7_by_pair: HashMap<(u32, u32), Vec<u32>>, // (r1,r2) -> [sup]
     role_sub: Vec<HashSet<u32>>,                // role -> {super roles} (computed once)
     // Reflexive roles closed up the hierarchy: every super-role of a declared
@@ -1387,20 +1429,23 @@ impl Idx {
     fn role_supers(&self, r: u32) -> &HashSet<u32> {
         &self.role_sub[r as usize]
     }
+
+    /// The rules triggered by the newly derived subsumer `d`, if any. A symbol
+    /// outside the index (never produced by `to_nf`, but harmless) triggers
+    /// nothing.
+    #[inline]
+    fn rules_of(&self, d: u32) -> Option<&ConceptRules> {
+        match self.rule_slot.get(d as usize) {
+            Some(&slot) if slot != NO_RULES => Some(&self.rules[slot as usize]),
+            _ => None,
+        }
+    }
 }
 
 /// Mutable saturation state. Kept separate from `Idx` so a rule can iterate an
 /// index immutably while pushing conclusions here mutably.
 struct State {
     sub_super: Vec<HashSet<u32>>,
-    // Cert-off EL completion indexes each binary conjunction under only its
-    // lower-degree operand.  If that trigger arrives before its partner, park
-    // the conclusion here; arrival of the partner discharges it.  Thus every
-    // NF2 instance still fires whichever operand arrives second, while dense
-    // generated operands no longer rescan all incident axioms in every label.
-    // Certificate/incremental modes retain the established symmetric index and
-    // leave this map empty.
-    nf2_pending: HashMap<(u32, u32), Vec<u32>>,
     edges: Vec<HashSet<(u32, u32)>>,
     // Backward links indexed by EXACT role: `in_by_role[(d, r)]` lists the
     // parents of `d` along `r`, in edge-creation order. A `Vec`, not a
@@ -2247,7 +2292,6 @@ impl State {
         debug_assert!(self.worklist.is_empty());
         State {
             sub_super: self.sub_super.clone(),
-            nf2_pending: self.nf2_pending.clone(),
             edges: self.edges.clone(),
             in_by_role: self.in_by_role.clone(),
             in_roles: self.in_roles.clone(),
@@ -2275,96 +2319,75 @@ impl State {
 }
 
 /// Build the read-only rule indexes (including the role-hierarchy closure).
-fn build_idx(nfs: &Nfs, n: usize, one_sided_nf2: bool) -> Idx {
-    // ----- build indexes -----
-    let mut sub_rule_builders: HashMap<u32, SubRulesBuilder> = HashMap::default();
+fn build_idx(nfs: &Nfs, n: usize) -> Idx {
+    // ----- per-trigger rule records -----
+    let mut builders: HashMap<u32, ConceptRulesBuilder> = HashMap::default();
     for a in &nfs.nf1 {
-        sub_rule_builders
-            .entry(a.sub)
-            .or_default()
-            .nf1_sups
-            .push(a.sup);
-    }
-    let mut nf2_degree: HashMap<u32, usize> = HashMap::default();
-    if one_sided_nf2 {
-        for a in &nfs.nf2 {
-            *nf2_degree.entry(a.sub1).or_default() += 1;
-            *nf2_degree.entry(a.sub2).or_default() += 1;
-        }
+        builders.entry(a.sub).or_default().nf1_sups.push(a.sup);
     }
     for a in &nfs.nf2 {
-        if one_sided_nf2 {
-            // One trigger plus a context-local waiter is sufficient: if the
-            // partner is already present this arm fires now; otherwise its
-            // later Sub item drains the waiter.  Prefer the lower-degree side
-            // to avoid the giant generated-conjunction buckets.
-            let d1 = nf2_degree.get(&a.sub1).copied().unwrap_or(0);
-            let d2 = nf2_degree.get(&a.sub2).copied().unwrap_or(0);
-            let (trigger, other) = if d1 <= d2 {
-                (a.sub1, a.sub2)
-            } else {
-                (a.sub2, a.sub1)
-            };
-            sub_rule_builders
-                .entry(trigger)
-                .or_default()
-                .nf2_cand
-                .push((other, a.sup));
-        } else {
-            // Certificate and incremental completion retain the established
-            // symmetric scheduling.
-            sub_rule_builders
-                .entry(a.sub1)
-                .or_default()
-                .nf2_cand
-                .push((a.sub2, a.sup));
-            sub_rule_builders
-                .entry(a.sub2)
-                .or_default()
-                .nf2_cand
-                .push((a.sub1, a.sup));
-        }
+        // Indexed under both operands; each entry stores the OTHER operand and
+        // the conclusion, so whichever operand is derived second finds the
+        // first one already in the label (R⊓ needs both). The join itself
+        // (`fire_nf2`) enumerates the smaller of the two sides, so a hub
+        // operand shared by thousands of conjunctions costs one label scan
+        // per arrival rather than a rescan of every incident axiom.
+        builders
+            .entry(a.sub1)
+            .or_default()
+            .nf2_cand
+            .push((a.sub2, a.sup));
+        builders
+            .entry(a.sub2)
+            .or_default()
+            .nf2_cand
+            .push((a.sub1, a.sup));
     }
-    // The index is immutable after construction. Boxed slices keep each merged
-    // map value to two pointers (rather than two three-word Vec headers), while
-    // reusing the builders' backing allocations.
-    let sub_rules: HashMap<u32, SubRules> = sub_rule_builders
-        .into_iter()
-        .map(|(sub, rules)| {
-            (
-                sub,
-                SubRules {
-                    nf1_sups: rules.nf1_sups.into_boxed_slice(),
-                    nf2_cand: rules.nf2_cand.into_boxed_slice(),
-                },
-            )
-        })
-        .collect();
-    let mut nf3_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf3 {
-        nf3_by_sub
+        builders
             .entry(a.sub)
             .or_default()
+            .nf3_edges
             .push((a.role, a.filler));
     }
     // NF4 (∃R.D⊑E) indexed by filler D -> [(role R, sup E)]. The Sub rule reads
     // it to register propagations; the Edge rule consults the `prop` store the
     // Sub rule fills, so no `(role,filler)` index is needed.
-    let mut nf4_by_filler: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf4 {
-        nf4_by_filler
+        builders
             .entry(a.filler)
             .or_default()
+            .nf4_axioms
             .push((a.role, a.sup));
     }
-    // Keep each filler bucket ordered by role. The Sub-NF4 rule can then visit
-    // only the exact-role range for a backward link instead of scanning and
-    // rejecting every axiom attached to the filler. This changes index order,
-    // not the set of axioms or conclusions.
-    for axs in nf4_by_filler.values_mut() {
-        axs.sort_unstable();
+    for &sub in &nfs.nf5 {
+        builders.entry(sub).or_default().bottom = true;
     }
-    let nf5_subs: HashSet<u32> = nfs.nf5.iter().copied().collect();
+    let has_nf4 = !nfs.nf4.is_empty();
+    // Records are laid out in ascending symbol order (a deterministic layout
+    // that keeps neighbouring triggers adjacent). Sorting the candidate lists
+    // changes index order, not the set of axioms or conclusions: NF2 by
+    // partner for the label-side binary search, NF4 by role so the sub-side
+    // join visits only the exact-role range of a backward-link bucket instead
+    // of scanning and rejecting every axiom attached to the filler.
+    let mut triggers: Vec<u32> = builders.keys().copied().collect();
+    triggers.sort_unstable();
+    let width = triggers.last().map_or(n, |&last| n.max(last as usize + 1));
+    let mut rule_slot = vec![NO_RULES; width];
+    let mut rules = Vec::with_capacity(triggers.len());
+    for trigger in triggers {
+        let mut b = builders.remove(&trigger).expect("collected trigger");
+        b.nf2_cand.sort_unstable();
+        b.nf4_axioms.sort_unstable();
+        rule_slot[trigger as usize] = rules.len() as u32;
+        rules.push(ConceptRules {
+            nf1_sups: b.nf1_sups.into_boxed_slice(),
+            nf2_cand: b.nf2_cand.into_boxed_slice(),
+            nf3_edges: b.nf3_edges.into_boxed_slice(),
+            nf4_axioms: b.nf4_axioms.into_boxed_slice(),
+            bottom: b.bottom,
+        });
+    }
     let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
     for a in &nfs.nf7 {
         nf7_by_pair.entry((a.r1, a.r2)).or_default().push(a.sup);
@@ -2408,11 +2431,9 @@ fn build_idx(nfs: &Nfs, n: usize, one_sided_nf2: bool) -> Idx {
     }
 
     Idx {
-        sub_rules,
-        one_sided_nf2,
-        nf3_by_sub,
-        nf4_by_filler,
-        nf5_subs,
+        rule_slot,
+        rules,
+        has_nf4,
         nf7_by_pair,
         role_sub,
         reflexive_closed,
@@ -2423,7 +2444,6 @@ fn build_idx(nfs: &Nfs, n: usize, one_sided_nf2: bool) -> Idx {
 fn init_state(nfs: &Nfs, n: usize) -> State {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
-        nf2_pending: HashMap::default(),
         edges: vec![HashSet::default(); n],
         in_by_role: HashMap::default(),
         in_roles: vec![Vec::new(); n],
@@ -2449,7 +2469,8 @@ struct Prof {
     sub_items: u64,
     edge_items: u64,
     nf1_scan: u64,
-    nf2_scan: u64,
+    nf2_scan: u64, // NF2 candidates (direct scan) or label members (label-side join) examined
+    nf2_label_side: u64, // Sub items whose R⊓ join enumerated the label instead of the candidates
     nf3_scan: u64,
     nf4_sub_scan: u64,  // exact-role (backward link, axiom) pairs fired sub-side
     nf4_edge_scan: u64, // (super_role, d_super) lookups in the Edge-NF4 rule
@@ -2475,7 +2496,7 @@ const PAR_NF4_MAX_EDGES: usize = 65_536;
 /// edge-side NF4 rule would attempt; delaying and deduplicating attempts does
 /// not change the finite monotone closure.
 fn fire_edge_nf4_batch(idx: &Idx, st: &mut State, prof: &mut Prof, parallel_nf4: bool) -> bool {
-    if !parallel_nf4 || idx.nf4_by_filler.is_empty() {
+    if !parallel_nf4 || !idx.has_nf4 {
         return false;
     }
     let edge_count = st
@@ -2564,6 +2585,69 @@ fn fire_edge_nf4_batch(idx: &Idx, st: &mut State, prof: &mut Prof, parallel_nf4:
     true
 }
 
+/// A Sub item enumerates its context's label instead of its NF2 candidate
+/// list once the list is more than this many times longer than the label.
+/// Each label-side step is a binary search (a handful of comparisons) where a
+/// direct step is one hash probe, so the label side must be clearly smaller
+/// to pay; the bound keeps the join within a small constant of the cheaper
+/// side in either regime.
+const NF2_LABEL_SIDE_RATIO: usize = 8;
+
+/// R⊓ for one newly derived subsumer of `c` whose candidate list is `cands`
+/// (`(partner, conclusion)`, sorted by partner). The rule needs the join of
+/// that list with the label of `c`; this enumerates whichever side is smaller
+/// (ELK's `ObjectIntersectionFromConjunctRule` does the same). Both branches
+/// fire exactly the conclusions `E` with `(X, E) ∈ cands` and `X ∈ label(c)`,
+/// so the derived set is identical either way; only the order in which those
+/// conclusions are queued differs, which the finite monotone closure does not
+/// see. The label side collects into `scratch` while the label is borrowed
+/// and applies the conclusions afterwards.
+#[inline]
+fn fire_nf2(cands: &[(u32, u32)], st: &mut State, scratch: &mut Vec<u32>, prof: &mut Prof, c: u32) {
+    let label_len = st.sub_super[c as usize].len();
+    if cands.len() <= label_len.saturating_mul(NF2_LABEL_SIDE_RATIO) {
+        prof.nf2_scan += cands.len() as u64;
+        for &(other, sup) in cands {
+            if st.sub_super[c as usize].contains(&other) {
+                st.add_sub(c, sup);
+            }
+        }
+        return;
+    }
+    prof.nf2_scan += label_len as u64;
+    prof.nf2_label_side += 1;
+    debug_assert!(scratch.is_empty());
+    for &present in st.sub_super[c as usize].iter() {
+        let from = cands.partition_point(|&(other, _)| other < present);
+        for &(other, sup) in &cands[from..] {
+            if other != present {
+                break;
+            }
+            scratch.push(sup);
+        }
+    }
+    for sup in scratch.drain(..) {
+        st.add_sub(c, sup);
+    }
+}
+
+/// Drop a dead, allocation-heavy value. By default this is the ordinary inline
+/// drop. With `KM_ELC_BG_DROP` set the frees run on a detached thread, so the
+/// completion no longer waits on its critical path for the millions of small
+/// `free` calls of a parsed clause set or of the saturation indexes.
+/// Scheduling only: nothing derived depends on when memory is returned, the
+/// value is unreachable either way, and a failed spawn drops the closure (and
+/// so the value) inline exactly as without the flag.
+fn release<T: Send + 'static>(value: T, background: bool) {
+    if !background {
+        drop(value);
+        return;
+    }
+    let _ = std::thread::Builder::new()
+        .name("elc-release".into())
+        .spawn(move || drop(value));
+}
+
 /// Run the completion rules to fixpoint over whatever is on `st`'s worklist.
 /// Re-entrant: the certificate repair re-enters with extra seeded facts and the
 /// SAME `idx` (the rule set never changes), so a repaired structure is again
@@ -2573,6 +2657,10 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
     // without a per-lookup allocation (it never occurs for edge roles in
     // practice, but keeps the borrow simple).
     let empty: HashSet<u32> = HashSet::default();
+    // Conclusions gathered while the label of the current context is being
+    // iterated (the label-side join in `fire_nf2`), applied once that borrow
+    // ends. Kept across items so the join stops allocating after first use.
+    let mut nf2_scratch: Vec<u32> = Vec::new();
 
     // ----- Main loop -----
     // `idx` is borrowed immutably throughout; `st` mutably. Because they are
@@ -2589,42 +2677,28 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
         match item {
             Item::Sub(c, d) => {
                 prof.sub_items += 1;
-                // Discharge conjunctions whose chosen trigger arrived earlier.
-                // Removing the bucket before adding conclusions keeps the map
-                // borrow independent of worklist growth and makes every waiter
-                // one-shot.
-                if let Some(sups) = st.nf2_pending.remove(&(c, d)) {
-                    for sup in sups {
-                        st.add_sub(c, sup);
-                    }
-                }
-                // One lookup serves both concept-only rules. The two loops keep
-                // their original order, so NF1 conclusions are visible to NF2
-                // immediately just as they were with the separate indexes.
-                if let Some(rules) = idx.sub_rules.get(&d) {
+                // One dense lookup serves every rule keyed by the new subsumer
+                // `d`. The rules keep their established firing order (NF1,
+                // NF2, NF5, NF3, ⊥ back-propagation, NF4), so NF1 conclusions
+                // are visible to NF2 immediately just as before.
+                let rules = idx.rules_of(d);
+                if let Some(rules) = rules {
                     // R⊑ : C ⊑ D, D ⊑ E ⟹ C ⊑ E  (NF1)
                     prof.nf1_scan += rules.nf1_sups.len() as u64;
                     for &sup in rules.nf1_sups.iter() {
                         st.add_sub(c, sup);
                     }
                     // R⊓ : C ⊑ D, C ⊑ D', D ⊓ D' ⊑ E ⟹ C ⊑ E  (NF2)
-                    prof.nf2_scan += rules.nf2_cand.len() as u64;
-                    for &(other, sup) in rules.nf2_cand.iter() {
-                        if st.sub_super[c as usize].contains(&other) {
-                            st.add_sub(c, sup);
-                        } else if idx.one_sided_nf2 {
-                            st.nf2_pending.entry((c, other)).or_default().push(sup);
-                        }
+                    if !rules.nf2_cand.is_empty() {
+                        fire_nf2(&rules.nf2_cand, st, &mut nf2_scratch, prof, c);
                     }
-                }
-                // R⊥ : D ⊑ ⊥ axiomatically (NF5) ⟹ C ⊑ ⊥
-                if idx.nf5_subs.contains(&d) {
-                    st.add_sub(c, BOTTOM);
-                }
-                // R∃ : C ⊑ D, D ⊑ ∃R.E ⟹ edge (C,R,E)  (NF3)
-                if let Some(edges) = idx.nf3_by_sub.get(&d) {
-                    prof.nf3_scan += edges.len() as u64;
-                    for &(role, filler) in edges {
+                    // R⊥ : D ⊑ ⊥ axiomatically (NF5) ⟹ C ⊑ ⊥
+                    if rules.bottom {
+                        st.add_sub(c, BOTTOM);
+                    }
+                    // R∃ : C ⊑ D, D ⊑ ∃R.E ⟹ edge (C,R,E)  (NF3)
+                    prof.nf3_scan += rules.nf3_edges.len() as u64;
+                    for &(role, filler) in rules.nf3_edges.iter() {
                         st.add_edge(c, role, filler);
                     }
                 }
@@ -2670,44 +2744,53 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                 // never touched, where the flat list visited every backward link
                 // per Sub item. `add_sub_parts` never mutates `in_by_role`, so
                 // the parent slices are iterated in place, self-edges included.
-                if let Some(axs) = idx.nf4_by_filler.get(&d) {
-                    for &(s, e) in axs {
-                        // No dedup: each (c,s,e) propagation is pushed ~once in EL
-                        // (measured bucket-duplication on the 8737 giant is <0.5%),
-                        // so ELK's `propagatedSubsumers_` Set buys nothing here and
-                        // a `contains` guard only adds cost. The residual `add_sub`
-                        // re-fires are confluence (the same `c⊑E` reached via many
-                        // edges), which ELK's join pays identically.
-                        st.prop.entry((c, s)).or_default().push(e);
-                    }
-                    let State {
-                        sub_super,
-                        in_by_role,
-                        worklist,
-                        sub_journal,
-                        ..
-                    } = &mut *st;
-                    // `axs` is role-sorted (build_idx), so each iteration handles
-                    // one contiguous exact-role group [lo..hi).
-                    let mut lo = 0;
-                    while lo < axs.len() {
-                        let role = axs[lo].0;
-                        let hi = axs.partition_point(|&(s, _)| s <= role);
-                        if let Some(parents) = in_by_role.get(&(c, role)) {
-                            prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
-                            for &parent in parents {
-                                for &(_, e) in &axs[lo..hi] {
-                                    State::add_sub_parts(
-                                        sub_super,
-                                        worklist,
-                                        sub_journal,
-                                        parent,
-                                        e,
-                                    );
+                if let Some(rules) = rules {
+                    let axs: &[(u32, u32)] = &rules.nf4_axioms;
+                    if !axs.is_empty() {
+                        for &(s, e) in axs {
+                            // No dedup: each (c,s,e) propagation is pushed ~once in EL
+                            // (measured bucket-duplication on the 8737 giant is <0.5%),
+                            // so ELK's `propagatedSubsumers_` Set buys nothing here and
+                            // a `contains` guard only adds cost. The residual `add_sub`
+                            // re-fires are confluence (the same `c⊑E` reached via many
+                            // edges), which ELK's join pays identically.
+                            st.prop.entry((c, s)).or_default().push(e);
+                        }
+                        // A context with no backward links at all has nothing to
+                        // join sub-side yet; the propagations registered above
+                        // serve its future edges. Skip the exact-role bucket
+                        // probes instead of missing them one role at a time.
+                        if !st.in_roles[c as usize].is_empty() {
+                            let State {
+                                sub_super,
+                                in_by_role,
+                                worklist,
+                                sub_journal,
+                                ..
+                            } = &mut *st;
+                            // `axs` is role-sorted (build_idx), so each iteration
+                            // handles one contiguous exact-role group [lo..hi).
+                            let mut lo = 0;
+                            while lo < axs.len() {
+                                let role = axs[lo].0;
+                                let hi = axs.partition_point(|&(s, _)| s <= role);
+                                if let Some(parents) = in_by_role.get(&(c, role)) {
+                                    prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
+                                    for &parent in parents {
+                                        for &(_, e) in &axs[lo..hi] {
+                                            State::add_sub_parts(
+                                                sub_super,
+                                                worklist,
+                                                sub_journal,
+                                                parent,
+                                                e,
+                                            );
+                                        }
+                                    }
                                 }
+                                lo = hi;
                             }
                         }
-                        lo = hi;
                     }
                 }
             }
@@ -2726,7 +2809,7 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                 // see `fire_edge_nf4` for why `prop[(d,r)]` is stable across
                 // the loop, self-edge c==d included. Skipped entirely when
                 // there are no NF4 axioms.
-                if !nf4_already_fired && !idx.nf4_by_filler.is_empty() {
+                if !nf4_already_fired && idx.has_nf4 {
                     prof.nf4_edge_scan += st.fire_edge_nf4(c, r, d);
                 }
                 // R⊥-edge: edge to a known-unsat target propagates.
@@ -5536,7 +5619,7 @@ impl IncrementalElClassifier {
             });
         }
 
-        let idx = build_idx(&nfs, interner.len(), false);
+        let idx = build_idx(&nfs, interner.len());
         let mut state = init_state(&nfs, interner.len());
         seed_reflexive_edges(&nfs, &idx, &mut state);
         run(&idx, &mut state, &mut Prof::default());
@@ -5603,7 +5686,7 @@ impl IncrementalElClassifier {
             // monotone, but that compact rule translation is not. Retaining
             // the old canonical TOP edge could enable spurious role-chain
             // joins, so restart this rare transaction from Init.
-            let next_idx = build_idx(&next_nfs, next_interner.len(), false);
+            let next_idx = build_idx(&next_nfs, next_interner.len());
             let mut next_state = init_state(&next_nfs, next_interner.len());
             seed_reflexive_edges(&next_nfs, &next_idx, &mut next_state);
             run(&next_idx, &mut next_state, &mut Prof::default());
@@ -5655,7 +5738,7 @@ impl IncrementalElClassifier {
         }
         self.state.worklist = replay;
 
-        let next_idx = build_idx(&next_nfs, next_len, false);
+        let next_idx = build_idx(&next_nfs, next_len);
         // Init and newly reflexive roles can add facts that did not exist in
         // the retained closure. Duplicate facts are filtered by State.
         for &c in &next_nfs.concept_names {
@@ -5739,7 +5822,6 @@ impl IncrementalElClassifier {
             |tag: char, id: u32| affected.contains(&format!("{tag}:{}", next_interner.name(id)));
         let mut state = State {
             sub_super: vec![HashSet::default(); next_len],
-            nf2_pending: HashMap::default(),
             edges: vec![HashSet::default(); next_len],
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); next_len],
@@ -5795,7 +5877,7 @@ impl IncrementalElClassifier {
                 }
             }
         }
-        let idx = build_idx(&next_nfs, next_len, false);
+        let idx = build_idx(&next_nfs, next_len);
         seed_reflexive_edges(&next_nfs, &idx, &mut state);
         run(&idx, &mut state, &mut Prof::default());
 
@@ -6360,7 +6442,13 @@ fn classify_inner_mode(
     // Drop it BEFORE saturation so the parse tree never coexists with the peak
     // saturation state. On a pure-EL ont (`residual` empty) this is the whole
     // input freed; the saturation then peaks on the interned state alone.
-    let certificate_clauses = lean_cert_requested.then_some(clauses);
+    let background_release = std::env::var_os("KM_ELC_BG_DROP").is_some();
+    let certificate_clauses = if lean_cert_requested {
+        Some(clauses)
+    } else {
+        release(clauses, background_release);
+        None
+    };
     let (rcs, residual_skolem_witnesses) = if residual.is_empty() {
         (Vec::new(), HashMap::default())
     } else {
@@ -6391,8 +6479,7 @@ fn classify_inner_mode(
         }
     };
     let n = it.len();
-    let one_sided_nf2 = cert == CertMode::Off && std::env::var_os("KM_ELC_ONE_SIDED_NF2").is_some();
-    let idx = build_idx(&nfs, n, one_sided_nf2);
+    let idx = build_idx(&nfs, n);
     let mut st = init_state(&nfs, n);
     // EL++ reflexive roles: seed a self-edge (C,R,C) at every satisfiable concept
     // node for each reflexive role (closed up the role hierarchy). The existing
@@ -6519,13 +6606,15 @@ fn classify_inner_mode(
     }
     if std::env::var_os("KM_ELC_PROFILE").is_some() {
         eprintln!(
-            "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} nf3_scan={} \
-             nf4_sub_scan={} nf4_edge_scan={} nf7_scan={} botback={} | \
-             nf4_batch_calls={} nf4_batch_edges={} nf4_batch_groups={} nf4_batch_missing={}",
+            "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} \
+             nf2_label_side={} nf3_scan={} nf4_sub_scan={} nf4_edge_scan={} nf7_scan={} \
+             botback={} | nf4_batch_calls={} nf4_batch_edges={} nf4_batch_groups={} \
+             nf4_batch_missing={}",
             prof.sub_items,
             prof.edge_items,
             prof.nf1_scan,
             prof.nf2_scan,
+            prof.nf2_label_side,
             prof.nf3_scan,
             prof.nf4_sub_scan,
             prof.nf4_edge_scan,
@@ -6596,12 +6685,32 @@ fn classify_inner_mode(
     // top of the full saturation state (process peak RSS on the ORE giants
     // sits exactly at this point, the fixpoint). Destructuring `res` drops the
     // unbound `State` fields in place.
-    let State { mut sub_super, .. } = res;
-    drop(idx);
-    drop(nfs);
-    drop(rcs);
-    drop(residual);
-    drop(skolem_target);
+    let State {
+        mut sub_super,
+        edges,
+        in_by_role,
+        in_roles,
+        prop,
+        worklist,
+        sub_journal,
+        edge_epoch: _,
+    } = res;
+    release(
+        (
+            idx,
+            nfs,
+            rcs,
+            residual,
+            skolem_target,
+            edges,
+            in_by_role,
+            in_roles,
+            prop,
+            worklist,
+            sub_journal,
+        ),
+        background_release,
+    );
 
     // Dictionary-coded rows for the in-process orchestrator. The interned ids
     // and the single name table replace one owned superclass string per pair
@@ -6727,7 +6836,7 @@ mod tests {
             role_names: roles,
             conjunction_origins: HashMap::default(),
         };
-        let idx = build_idx(&nfs, 7, false);
+        let idx = build_idx(&nfs, 7);
         let mut state = init_state(&nfs, 7);
         for &a in &nfs.concept_names {
             if a != BOTTOM {
@@ -6953,7 +7062,7 @@ mod tests {
         let (mut nfs, residual, _) = to_nf(&source, &mut interner).expect("direct EL source");
         assert!(residual.is_empty());
         nfs.concept_names.insert(TOP);
-        let idx = build_idx(&nfs, interner.len(), false);
+        let idx = build_idx(&nfs, interner.len());
         let mut state = init_state(&nfs, interner.len());
         run(&idx, &mut state, &mut Prof::default());
         let certificate =
@@ -7880,7 +7989,7 @@ mod tests {
         assert_eq!(direct.len(), 1);
         assert_eq!(witnesses.len(), 1);
         nfs.concept_names.insert(TOP);
-        let idx = build_idx(&nfs, interner.len(), false);
+        let idx = build_idx(&nfs, interner.len());
         let mut state = init_state(&nfs, interner.len());
         run(&idx, &mut state, &mut Prof::default());
         let certificate = build_lean_el_certificate(
@@ -8406,7 +8515,6 @@ mod tests {
     fn state_of(n: usize, labels: &[(u32, &[u32])], edges: &[(u32, u32, u32)]) -> State {
         let mut st = State {
             sub_super: vec![HashSet::default(); n],
-            nf2_pending: HashMap::default(),
             edges: vec![HashSet::default(); n],
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); n],
@@ -8736,36 +8844,23 @@ mod tests {
     /// edge role needs. Vectors are role-sorted, as `build_idx` guarantees for
     /// the Sub-rule's `partition_point` join.
     fn nf4_only_idx(nf4: &[(u32, u32, u32)], nroles: u32) -> Idx {
-        let mut nf4_by_filler: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+        let mut nfs = empty_nfs();
         for &(role, filler, sup) in nf4 {
-            nf4_by_filler.entry(filler).or_default().push((role, sup));
+            nfs.nf4.push(Nf4 { role, filler, sup });
         }
-        for axs in nf4_by_filler.values_mut() {
-            axs.sort_unstable();
-        }
-        let role_sub = (0..nroles)
-            .map(|r| {
-                let mut s: HashSet<u32> = HashSet::default();
-                s.insert(r);
-                s
-            })
-            .collect();
-        Idx {
-            sub_rules: HashMap::default(),
-            one_sided_nf2: false,
-            nf3_by_sub: HashMap::default(),
-            nf4_by_filler,
-            nf5_subs: HashSet::default(),
-            nf7_by_pair: HashMap::default(),
-            role_sub,
-            reflexive_closed: HashSet::default(),
-        }
+        nfs.role_names = (0..nroles).collect();
+        let width = nf4
+            .iter()
+            .map(|&(role, filler, sup)| role.max(filler).max(sup) + 1)
+            .max()
+            .unwrap_or(0)
+            .max(nroles);
+        build_idx(&nfs, width as usize)
     }
 
     fn blank_state(n: usize) -> State {
         State {
             sub_super: vec![HashSet::default(); n],
-            nf2_pending: HashMap::default(),
             edges: vec![HashSet::default(); n],
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); n],
@@ -8773,6 +8868,23 @@ mod tests {
             worklist: VecDeque::new(),
             sub_journal: None,
             edge_epoch: 0,
+        }
+    }
+
+    /// A normal-form set with no axioms and an empty signature.
+    fn empty_nfs() -> Nfs {
+        Nfs {
+            nf1: Vec::new(),
+            nf2: Vec::new(),
+            nf3: Vec::new(),
+            nf4: Vec::new(),
+            nf5: Vec::new(),
+            nf6: Vec::new(),
+            nf7: Vec::new(),
+            reflexive_roles: HashSet::default(),
+            concept_names: HashSet::default(),
+            role_names: HashSet::default(),
+            conjunction_origins: HashMap::default(),
         }
     }
 
@@ -8812,10 +8924,13 @@ mod tests {
             role_names: HashSet::default(),
             conjunction_origins: HashMap::default(),
         };
-        let idx = build_idx(&nfs, 8, false);
-        assert_eq!(idx.sub_rules.len(), 3);
-        assert_eq!(&*idx.sub_rules[&A].nf1_sups, &[B]);
-        assert_eq!(&*idx.sub_rules[&A].nf2_cand, &[(B, E)]);
+        let idx = build_idx(&nfs, 8);
+        assert_eq!(idx.rules.len(), 3);
+        let a_rules = idx.rules_of(A).expect("A triggers NF1 and NF2");
+        assert_eq!(&*a_rules.nf1_sups, &[B]);
+        assert_eq!(&*a_rules.nf2_cand, &[(B, E)]);
+        assert!(idx.rules_of(ROOT).is_none());
+        assert!(!idx.has_nf4);
 
         let mut st = blank_state(8);
         st.add_sub(ROOT, A);
@@ -8833,39 +8948,342 @@ mod tests {
     }
 
     #[test]
-    fn one_sided_nf2_waiter_fires_in_both_arrival_orders() {
+    fn nf2_join_fires_in_both_arrival_orders_from_either_side() {
+        // One ordinary conjunction A ⊓ B ⊑ E, plus a hub H that is an operand
+        // of 64 conjunctions H ⊓ X_i ⊑ E_i. The hub's candidate list is far
+        // longer than any label here, so a Sub(_, H) item takes the
+        // label-side join while every other item takes the direct scan. Both
+        // must fire exactly the conjunctions whose partner is present,
+        // whichever operand arrives second.
         const ROOT: u32 = 2;
         const A: u32 = 3;
         const B: u32 = 4;
         const E: u32 = 5;
-        let nfs = Nfs {
-            nf1: Vec::new(),
-            nf2: vec![Nf2 {
-                sub1: A,
-                sub2: B,
-                sup: E,
-            }],
-            nf3: Vec::new(),
-            nf4: Vec::new(),
-            nf5: Vec::new(),
-            nf6: Vec::new(),
-            nf7: Vec::new(),
-            reflexive_roles: HashSet::default(),
-            concept_names: [ROOT, A, B, E].into_iter().collect(),
-            role_names: HashSet::default(),
-            conjunction_origins: HashMap::default(),
-        };
-        let idx = build_idx(&nfs, 6, true);
+        const H: u32 = 6;
+        const FIRST_X: u32 = 7;
+        const FIRST_E: u32 = FIRST_X + 64;
+        let mut nfs = empty_nfs();
+        nfs.nf2.push(Nf2 {
+            sub1: A,
+            sub2: B,
+            sup: E,
+        });
+        for i in 0..64 {
+            nfs.nf2.push(Nf2 {
+                sub1: H,
+                sub2: FIRST_X + i,
+                sup: FIRST_E + i,
+            });
+        }
+        let n = (FIRST_E + 64) as usize;
+        let idx = build_idx(&nfs, n);
+        assert_eq!(idx.rules_of(H).map(|r| r.nf2_cand.len()), Some(64));
+        assert_eq!(
+            idx.rules_of(FIRST_X + 3).map(|r| &*r.nf2_cand),
+            Some(&[(H, FIRST_E + 3)][..])
+        );
 
+        // Direct scan, both arrival orders.
         for (first, second) in [(A, B), (B, A)] {
-            let mut st = blank_state(6);
+            let mut st = blank_state(n);
             st.add_sub(ROOT, first);
             run(&idx, &mut st, &mut Prof::default());
             assert!(!st.sub_super[ROOT as usize].contains(&E));
             st.add_sub(ROOT, second);
-            run(&idx, &mut st, &mut Prof::default());
+            let mut prof = Prof::default();
+            run(&idx, &mut st, &mut prof);
             assert!(st.sub_super[ROOT as usize].contains(&E));
+            assert_eq!(prof.nf2_label_side, 0);
         }
+        // Partner first, hub second: the hub item joins from the label.
+        let mut st = blank_state(n);
+        st.add_sub(ROOT, FIRST_X + 3);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(!st.sub_super[ROOT as usize].contains(&(FIRST_E + 3)));
+        st.add_sub(ROOT, H);
+        let mut prof = Prof::default();
+        run(&idx, &mut st, &mut prof);
+        assert!(st.sub_super[ROOT as usize].contains(&(FIRST_E + 3)));
+        assert_eq!(prof.nf2_label_side, 1);
+        // Exactly the one conjunction whose partner is present fired.
+        assert_eq!(st.sub_super[ROOT as usize].len(), 3);
+        // Hub first, partner second: the partner's short list is scanned.
+        let mut st = blank_state(n);
+        st.add_sub(ROOT, H);
+        let mut prof = Prof::default();
+        run(&idx, &mut st, &mut prof);
+        assert_eq!(prof.nf2_label_side, 1);
+        assert_eq!(st.sub_super[ROOT as usize].len(), 1);
+        st.add_sub(ROOT, FIRST_X + 3);
+        let mut prof = Prof::default();
+        run(&idx, &mut st, &mut prof);
+        assert!(st.sub_super[ROOT as usize].contains(&(FIRST_E + 3)));
+        assert_eq!(prof.nf2_label_side, 0);
+        assert_eq!(st.sub_super[ROOT as usize].len(), 3);
+    }
+
+    #[test]
+    fn interner_distinguishes_long_names_at_every_chunk_boundary() {
+        // The hasher folds 8-byte words, then a 4-byte half, then single
+        // bytes. Names differing inside each of those regions, and names of
+        // lengths 8k, 8k+1..3, 8k+4, 8k+5.., must stay distinct symbols while
+        // the same spelling always maps back to its first id.
+        let mut it = Interner::new();
+        let base = "http://example.org/onto#ClassNumber0123456789";
+        let mut names: Vec<String> = vec![base.to_string()];
+        for cut in [0usize, 5, 8, 12, 15, 16, 20, 23] {
+            let mut s = base.to_string();
+            s.replace_range(cut..cut + 1, "Z");
+            names.push(s);
+        }
+        for len in [8usize, 9, 11, 12, 13, 16, 17] {
+            names.push(base[..len].to_string());
+        }
+        let ids: Vec<u32> = names.iter().map(|s| it.intern(s)).collect();
+        for (i, name) in names.iter().enumerate() {
+            assert_eq!(it.intern(name), ids[i], "re-interning {name}");
+            assert_eq!(it.name(ids[i]), name.as_str());
+            assert_eq!(it.id(name), Some(ids[i]));
+        }
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), names.len(), "distinct spellings share an id");
+        assert_eq!(it.len(), 2 + names.len());
+    }
+
+    /// Deterministic xorshift64* stream for the random differential fixtures.
+    struct Rng(u64);
+
+    impl Rng {
+        fn step(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x >> 12;
+            x ^= x << 25;
+            x ^= x >> 27;
+            self.0 = x;
+            x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        }
+
+        fn below(&mut self, n: u32) -> u32 {
+            (self.step() % u64::from(n)) as u32
+        }
+    }
+
+    /// A small random EL++ terminology over disjoint concept and role id
+    /// ranges (as the interner lays them out), using every normal form the
+    /// completion implements: NF1-NF7, a domain-style `∃R.⊤` filler, a
+    /// reflexive role, and one conjunction hub whose candidate list exceeds
+    /// eight times any label these terminologies can grow, so the label-side
+    /// NF2 join is exercised alongside the direct scan.
+    fn random_terminology(seed: u64) -> (Nfs, usize) {
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        let nc = 6 + rng.below(7);
+        let nr = 2 + rng.below(2);
+        let first_role = 2 + nc;
+        let n = (first_role + nr) as usize;
+        let mut nfs = empty_nfs();
+        nfs.concept_names = (2..first_role).collect();
+        nfs.concept_names.insert(TOP);
+        nfs.role_names = (first_role..first_role + nr).collect();
+        let concept = |rng: &mut Rng| 2 + rng.below(nc);
+        let role = |rng: &mut Rng| first_role + rng.below(nr);
+        for _ in 0..nc {
+            nfs.nf1.push(Nf1 {
+                sub: concept(&mut rng),
+                sup: concept(&mut rng),
+            });
+        }
+        for _ in 0..nc / 2 {
+            nfs.nf2.push(Nf2 {
+                sub1: concept(&mut rng),
+                sub2: concept(&mut rng),
+                sup: concept(&mut rng),
+            });
+        }
+        let hub = concept(&mut rng);
+        for _ in 0..64 {
+            nfs.nf2.push(Nf2 {
+                sub1: hub,
+                sub2: concept(&mut rng),
+                sup: concept(&mut rng),
+            });
+        }
+        for _ in 0..nc / 2 {
+            nfs.nf3.push(Nf3 {
+                sub: concept(&mut rng),
+                role: role(&mut rng),
+                filler: concept(&mut rng),
+            });
+        }
+        for _ in 0..nc / 2 {
+            let filler = if rng.below(4) == 0 {
+                TOP
+            } else {
+                concept(&mut rng)
+            };
+            nfs.nf4.push(Nf4 {
+                role: role(&mut rng),
+                filler,
+                sup: concept(&mut rng),
+            });
+        }
+        if rng.below(3) == 0 {
+            let sub = concept(&mut rng);
+            nfs.nf5.push(sub);
+        }
+        for _ in 0..rng.below(3) {
+            nfs.nf6.push(Nf6 {
+                sub: role(&mut rng),
+                sup: role(&mut rng),
+            });
+        }
+        if rng.below(2) == 0 {
+            nfs.nf7.push(Nf7 {
+                r1: role(&mut rng),
+                r2: role(&mut rng),
+                sup: role(&mut rng),
+            });
+        }
+        if rng.below(3) == 0 {
+            let reflexive = role(&mut rng);
+            nfs.reflexive_roles.insert(reflexive);
+        }
+        (nfs, n)
+    }
+
+    /// Reference least fixpoint of the EL++ rule set over an `Nfs`, computed
+    /// by naive rule-by-rule iteration over explicit fact sets: no indexes,
+    /// no worklist, no scheduling. `n` bounds the symbol ids.
+    fn naive_fixpoint(nfs: &Nfs, n: usize) -> (HashSet<(u32, u32)>, HashSet<(u32, u32, u32)>) {
+        // Reflexive-transitive role closure of NF6 over the role signature.
+        let mut supers: Vec<HashSet<u32>> = vec![HashSet::default(); n];
+        for &r in &nfs.role_names {
+            supers[r as usize].insert(r);
+        }
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for a in &nfs.nf6 {
+                let reach: Vec<u32> = supers[a.sup as usize].iter().copied().collect();
+                for s in reach {
+                    changed |= supers[a.sub as usize].insert(s);
+                }
+            }
+        }
+        let reflexive: HashSet<u32> = nfs
+            .reflexive_roles
+            .iter()
+            .flat_map(|&r| supers[r as usize].iter().copied())
+            .collect();
+        let nf5: HashSet<u32> = nfs.nf5.iter().copied().collect();
+        let mut sub: HashSet<(u32, u32)> = HashSet::default();
+        let mut edge: HashSet<(u32, u32, u32)> = HashSet::default();
+        for &c in &nfs.concept_names {
+            if c == BOTTOM {
+                continue;
+            }
+            sub.insert((c, c));
+            sub.insert((c, TOP));
+            for &r in &reflexive {
+                edge.insert((c, r, c));
+            }
+        }
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let subs: Vec<(u32, u32)> = sub.iter().copied().collect();
+            let edges: Vec<(u32, u32, u32)> = edge.iter().copied().collect();
+            for &(a, d) in &subs {
+                for x in &nfs.nf1 {
+                    if x.sub == d {
+                        changed |= sub.insert((a, x.sup));
+                    }
+                }
+                for x in &nfs.nf2 {
+                    let both = (x.sub1 == d && sub.contains(&(a, x.sub2)))
+                        || (x.sub2 == d && sub.contains(&(a, x.sub1)));
+                    if both {
+                        changed |= sub.insert((a, x.sup));
+                    }
+                }
+                if nf5.contains(&d) {
+                    changed |= sub.insert((a, BOTTOM));
+                }
+                for x in &nfs.nf3 {
+                    if x.sub == d {
+                        changed |= edge.insert((a, x.role, x.filler));
+                    }
+                }
+            }
+            for &(a, r, t) in &edges {
+                if sub.contains(&(t, BOTTOM)) {
+                    changed |= sub.insert((a, BOTTOM));
+                }
+                for x in &nfs.nf4 {
+                    if x.role == r && sub.contains(&(t, x.filler)) {
+                        changed |= sub.insert((a, x.sup));
+                    }
+                }
+                for &s in &supers[r as usize] {
+                    changed |= edge.insert((a, s, t));
+                }
+                for &(b, r2, u) in &edges {
+                    if b != t {
+                        continue;
+                    }
+                    for x in &nfs.nf7 {
+                        if x.r1 == r && x.r2 == r2 {
+                            for &s in &supers[x.sup as usize] {
+                                changed |= edge.insert((a, s, u));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        (sub, edge)
+    }
+
+    #[test]
+    fn saturation_matches_the_naive_fixpoint_on_random_terminologies() {
+        // Differential oracle for the indexed completion (`build_idx`, the
+        // dense rule records, the min-side NF2 join, the backward-link guard
+        // of the sub-side NF4 join, and `run`'s scheduling): 32 random
+        // terminologies, each compared fact for fact against a naive
+        // fixpoint over explicit sets.
+        let mut label_side_joins = 0u64;
+        for seed in 1..=32u64 {
+            let (nfs, n) = random_terminology(seed);
+            let idx = build_idx(&nfs, n);
+            let mut st = init_state(&nfs, n);
+            seed_reflexive_edges(&nfs, &idx, &mut st);
+            let mut prof = Prof::default();
+            run(&idx, &mut st, &mut prof);
+            label_side_joins += prof.nf2_label_side;
+            let (want_sub, want_edge) = naive_fixpoint(&nfs, n);
+            let mut got_sub: HashSet<(u32, u32)> = HashSet::default();
+            for (c, sups) in st.sub_super.iter().enumerate() {
+                for &d in sups {
+                    got_sub.insert((c as u32, d));
+                }
+            }
+            let mut got_edge: HashSet<(u32, u32, u32)> = HashSet::default();
+            for (c, es) in st.edges.iter().enumerate() {
+                for &(r, d) in es {
+                    got_edge.insert((c as u32, r, d));
+                }
+            }
+            assert_eq!(
+                got_sub, want_sub,
+                "seed {seed}: subsumption closure differs"
+            );
+            assert_eq!(got_edge, want_edge, "seed {seed}: edge closure differs");
+        }
+        assert!(
+            label_side_joins > 0,
+            "the hub never took the label-side join"
+        );
     }
 
     #[test]
@@ -9181,27 +9599,18 @@ mod tests {
     /// An `Idx` holding only role chains `r1 ∘ r2 ⊑ s` plus the identity role
     /// hierarchy, for the NF7 all-edge consumers.
     fn nf7_only_idx(chains: &[(u32, u32, u32)], nroles: u32) -> Idx {
-        let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
-        for &(r1, r2, s) in chains {
-            nf7_by_pair.entry((r1, r2)).or_default().push(s);
+        let mut nfs = empty_nfs();
+        for &(r1, r2, sup) in chains {
+            nfs.nf7.push(Nf7 { r1, r2, sup });
         }
-        let role_sub = (0..nroles)
-            .map(|r| {
-                let mut s: HashSet<u32> = HashSet::default();
-                s.insert(r);
-                s
-            })
-            .collect();
-        Idx {
-            sub_rules: HashMap::default(),
-            one_sided_nf2: false,
-            nf3_by_sub: HashMap::default(),
-            nf4_by_filler: HashMap::default(),
-            nf5_subs: HashSet::default(),
-            nf7_by_pair,
-            role_sub,
-            reflexive_closed: HashSet::default(),
-        }
+        nfs.role_names = (0..nroles).collect();
+        let width = chains
+            .iter()
+            .map(|&(r1, r2, sup)| r1.max(r2).max(sup) + 1)
+            .max()
+            .unwrap_or(0)
+            .max(nroles);
+        build_idx(&nfs, width as usize)
     }
 
     #[test]

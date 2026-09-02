@@ -1235,11 +1235,6 @@ fn classify_with_evidence_mode(
         {
             std::env::set_var("KM_ELC_PAR_NF4", "1");
         }
-        if selected_route == crate::routing::Route::Elc
-            && crate::routing::one_sided_nf2_candidate(&meta.profile)
-        {
-            std::env::set_var("KM_ELC_ONE_SIDED_NF2", "1");
-        }
         if selected_route == crate::routing::Route::Nominals
             && crate::routing::small_nominal_heap_trim_candidate(&meta.profile)
         {
