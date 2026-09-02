@@ -1355,6 +1355,7 @@ fn to_nf(
 // ---------------------------------------------------------------------------
 
 /// Worklist item, mirroring the Python `("sub", ...)` / `("edge", ...)` tuples.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Item {
     Sub(u32, u32),
     Edge(u32, u32, u32),
@@ -1365,6 +1366,300 @@ enum Item {
     /// The edge-side NF4 join was already discharged by a frontier batch. The
     /// remaining edge rules still run in the original queue order.
     EdgeAfterNf4(u32, u32, u32),
+}
+
+impl Item {
+    /// The context an item belongs to: the subject of a subsumption or the
+    /// source of an edge. Processing the item reads and extends that context's
+    /// own label, out-edge set and backward-link roles; everything else it
+    /// touches is read-only index data or the remote endpoint of an edge.
+    #[inline]
+    fn context(self) -> u32 {
+        match self {
+            Item::Sub(c, _)
+            | Item::Edge(c, _, _)
+            | Item::EdgeSerial(c, _, _)
+            | Item::EdgeAfterNf4(c, _, _) => c,
+        }
+    }
+}
+
+/// Empty per-context chain in [`ContextQueue::head`].
+const NO_ITEM: u32 = u32::MAX;
+/// No context is being drained (`ContextQueue::current`).
+const NO_CONTEXT: u32 = u32::MAX;
+
+/// The completion worklist and its scheduling discipline.
+///
+/// The historical discipline is one global FIFO: every conclusion of every
+/// context is appended to a single queue, so consecutive items belong to
+/// different contexts most of the time and each item pays cold cache misses
+/// on its context's label (`sub_super[c]`, a separate hash table per context),
+/// its edge set and its backward-link roles. On the ORE EL terminologies that
+/// miss the wall targets (100k-260k symbols, one table per symbol) those
+/// tables do not fit the cache, and the retained profiles put the saturation
+/// at memory latency rather than at rule speed.
+///
+/// `Contextual` is ELK's scheduling (Kazakov, Krötzsch, Simančík, JAR 2014,
+/// §4: a context is *activated* when it receives its first pending item and
+/// is then processed until its queue is empty). Items are chained per context
+/// and `pop` drains the activated context completely, including the items its
+/// own processing produces, before moving on to the next activated context in
+/// activation order. A context's whole burst of conclusions is therefore
+/// processed while its tables are hot, and the tables are fetched from memory
+/// once per activation instead of once per item.
+///
+/// This is scheduling only. Every fact enters the state through `add_sub` or
+/// `add_edge`, which queue exactly one item for it, and `run` processes every
+/// queued item exactly once with rule code shared by both disciplines; the
+/// backward links, propagations and labels a rule joins against are updated
+/// when a fact is inserted, so every (backward link, propagation), (edge, ⊥)
+/// and (edge, edge) pair fires from whichever side arrives second under any
+/// order. The completion is a finite monotone closure, so the set of derived
+/// facts, the number of items and the number of rule instances fired are the
+/// same under either discipline; only the order in which conclusions are
+/// queued differs.
+///
+/// The parallel NF4 frontier batch (`fire_edge_nf4_batch`, armed with
+/// `KM_ELC_PAR_NF4` for one giant profile) reads a run of consecutive edge
+/// items off the front of one global queue, so that mode keeps the FIFO;
+/// `KM_ELC_FIFO` selects it explicitly for A/B measurement.
+enum Worklist {
+    /// One global first-in first-out queue.
+    Fifo(VecDeque<Item>),
+    /// Per-context chains drained one activated context at a time.
+    Contextual(ContextQueue),
+}
+
+/// Per-context item chains plus the activation queue of [`Worklist::Contextual`].
+struct ContextQueue {
+    /// The most recently queued pending item of each context (`NO_ITEM` when
+    /// the context has none); the rest of the context's items chain through
+    /// `slots`. Four bytes per symbol, dense, so the push of a cross-context
+    /// conclusion touches one cache line of this table and nothing else.
+    head: Vec<u32>,
+    /// Item arena: `(item, next item of the same context)`. Freed slots are
+    /// recycled last-freed first, so the conclusions a context produces while
+    /// it is being drained land in the lines its previous items just left.
+    /// The arena never holds more than the peak number of simultaneously
+    /// pending items, which is far below the global FIFO's peak because a
+    /// context's own conclusions are consumed as soon as they are produced.
+    slots: Vec<(Item, u32)>,
+    free: Vec<u32>,
+    /// Contexts holding pending items, in activation order.
+    active: VecDeque<u32>,
+    /// Whether a context is in `active` or is the one being drained, so an
+    /// item queued for it does not activate it a second time.
+    queued: Vec<bool>,
+    /// The context being drained, `NO_CONTEXT` between activations. A
+    /// context stays current until a `pop` finds its chain empty, so items it
+    /// queues for itself are processed in the same activation.
+    current: u32,
+    len: usize,
+    /// Activations so far (KM_ELC_PROFILE `ctx_activations`).
+    activations: u64,
+}
+
+impl ContextQueue {
+    fn new(n: usize) -> ContextQueue {
+        ContextQueue {
+            head: vec![NO_ITEM; n],
+            slots: Vec::new(),
+            free: Vec::new(),
+            active: VecDeque::new(),
+            queued: vec![false; n],
+            current: NO_CONTEXT,
+            len: 0,
+            activations: 0,
+        }
+    }
+
+    /// Admit contexts up to `n` (symbols an incremental transaction appends).
+    fn grow(&mut self, n: usize) {
+        if n > self.head.len() {
+            self.head.resize(n, NO_ITEM);
+            self.queued.resize(n, false);
+        }
+    }
+
+    #[inline]
+    fn push(&mut self, item: Item) {
+        let c = item.context() as usize;
+        let next = self.head[c];
+        let slot = match self.free.pop() {
+            Some(slot) => {
+                self.slots[slot as usize] = (item, next);
+                slot
+            }
+            None => {
+                self.slots.push((item, next));
+                (self.slots.len() - 1) as u32
+            }
+        };
+        self.head[c] = slot;
+        self.len += 1;
+        if !self.queued[c] {
+            self.queued[c] = true;
+            self.active.push_back(c as u32);
+        }
+    }
+
+    /// The next item: the current context's most recently queued item while
+    /// it has any, else the first item of the next activated context.
+    #[inline]
+    fn pop(&mut self) -> Option<Item> {
+        loop {
+            if self.current != NO_CONTEXT {
+                let c = self.current as usize;
+                let slot = self.head[c];
+                if slot != NO_ITEM {
+                    let (item, next) = self.slots[slot as usize];
+                    self.head[c] = next;
+                    self.free.push(slot);
+                    self.len -= 1;
+                    return Some(item);
+                }
+                self.queued[c] = false;
+                self.current = NO_CONTEXT;
+            }
+            let c = self.active.pop_front()?;
+            self.current = c;
+            self.activations += 1;
+        }
+    }
+
+    #[cfg(test)]
+    fn clear(&mut self) {
+        self.head.iter_mut().for_each(|h| *h = NO_ITEM);
+        self.queued.iter_mut().for_each(|q| *q = false);
+        self.slots.clear();
+        self.free.clear();
+        self.active.clear();
+        self.current = NO_CONTEXT;
+        self.len = 0;
+    }
+
+    /// Every pending item in the order `pop` would return it.
+    #[cfg(test)]
+    fn items(&self) -> Vec<Item> {
+        let mut out = Vec::with_capacity(self.len);
+        let chain = |c: u32, out: &mut Vec<Item>| {
+            let mut slot = self.head[c as usize];
+            while slot != NO_ITEM {
+                let (item, next) = self.slots[slot as usize];
+                out.push(item);
+                slot = next;
+            }
+        };
+        if self.current != NO_CONTEXT {
+            chain(self.current, &mut out);
+        }
+        for &c in &self.active {
+            chain(c, &mut out);
+        }
+        out
+    }
+}
+
+impl Worklist {
+    fn contextual(n: usize) -> Worklist {
+        Worklist::Contextual(ContextQueue::new(n))
+    }
+
+    fn fifo() -> Worklist {
+        Worklist::Fifo(VecDeque::new())
+    }
+
+    /// The discipline the environment selects for a state of `n` symbols:
+    /// the global FIFO when the parallel NF4 frontier batch is armed
+    /// (`KM_ELC_PAR_NF4`) or asked for outright (`KM_ELC_FIFO`), else the
+    /// context-local queue.
+    fn from_env(n: usize) -> Worklist {
+        if std::env::var_os("KM_ELC_PAR_NF4").is_some() || std::env::var_os("KM_ELC_FIFO").is_some()
+        {
+            Worklist::fifo()
+        } else {
+            Worklist::contextual(n)
+        }
+    }
+
+    /// An empty worklist with the same discipline and symbol width.
+    fn new_like(&self) -> Worklist {
+        match self {
+            Worklist::Fifo(_) => Worklist::fifo(),
+            Worklist::Contextual(queue) => Worklist::contextual(queue.head.len()),
+        }
+    }
+
+    #[inline]
+    fn push(&mut self, item: Item) {
+        match self {
+            Worklist::Fifo(queue) => queue.push_back(item),
+            Worklist::Contextual(queue) => queue.push(item),
+        }
+    }
+
+    /// Queue `item` so that it is processed next: at the front of the FIFO,
+    /// or on top of its context's chain (the frontier batch hands the edges
+    /// it took back this way, in their original order).
+    fn push_next(&mut self, item: Item) {
+        match self {
+            Worklist::Fifo(queue) => queue.push_front(item),
+            Worklist::Contextual(queue) => queue.push(item),
+        }
+    }
+
+    #[inline]
+    fn pop(&mut self) -> Option<Item> {
+        match self {
+            Worklist::Fifo(queue) => queue.pop_front(),
+            Worklist::Contextual(queue) => queue.pop(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Worklist::Fifo(queue) => queue.len(),
+            Worklist::Contextual(queue) => queue.len,
+        }
+    }
+
+    #[cfg(test)]
+    fn clear(&mut self) {
+        match self {
+            Worklist::Fifo(queue) => queue.clear(),
+            Worklist::Contextual(queue) => queue.clear(),
+        }
+    }
+
+    /// Admit contexts up to `n` (a no-op for the FIFO, which is not indexed
+    /// by context).
+    fn grow(&mut self, n: usize) {
+        if let Worklist::Contextual(queue) = self {
+            queue.grow(n);
+        }
+    }
+
+    /// Context activations so far (0 under the FIFO).
+    fn activations(&self) -> u64 {
+        match self {
+            Worklist::Fifo(_) => 0,
+            Worklist::Contextual(queue) => queue.activations,
+        }
+    }
+
+    /// Every pending item in the order `pop` would return it.
+    #[cfg(test)]
+    fn items(&self) -> Vec<Item> {
+        match self {
+            Worklist::Fifo(queue) => queue.iter().copied().collect(),
+            Worklist::Contextual(queue) => queue.items(),
+        }
+    }
 }
 
 /// Every completion rule triggered by one newly derived subsumer `d`, packed
@@ -1479,7 +1774,11 @@ struct State {
     // it. Keyed globally (one map, sparse) rather than a Vec-per-context so a
     // 400k-node giant pays only for the contexts that actually carry fillers.
     prop: HashMap<(u32, u32), Vec<u32>>,
-    worklist: VecDeque<Item>,
+    // Pending items, scheduled per context by default (see `Worklist`): the
+    // rules of one activated context run back to back while its label and
+    // edge tables are hot, instead of interleaving every context's items
+    // through one global queue.
+    worklist: Worklist,
     // ----- certificate-repair bookkeeping (inert during base saturation) -----
     // Journal of the `sub_super` entries added since it was last drained, so the
     // certificate's enumeration index can be refreshed from the delta instead of
@@ -2218,13 +2517,13 @@ impl State {
     #[inline]
     fn add_sub_parts(
         sub_super: &mut [HashSet<u32>],
-        worklist: &mut VecDeque<Item>,
+        worklist: &mut Worklist,
         journal: &mut Option<Vec<(u32, u32)>>,
         c: u32,
         d: u32,
     ) {
         if sub_super[c as usize].insert(d) {
-            worklist.push_back(Item::Sub(c, d));
+            worklist.push(Item::Sub(c, d));
             if let Some(j) = journal {
                 // A round that adds more than this is cheaper to re-index by a
                 // full rescan than by a merge, so the journal stops at the cap
@@ -2282,7 +2581,7 @@ impl State {
                 self.in_roles[d as usize].push(r);
             }
             parents.push(c);
-            self.worklist.push_back(Item::Edge(c, r, d));
+            self.worklist.push(Item::Edge(c, r, d));
         }
     }
 
@@ -2296,7 +2595,7 @@ impl State {
             in_by_role: self.in_by_role.clone(),
             in_roles: self.in_roles.clone(),
             prop: self.prop.clone(),
-            worklist: VecDeque::new(),
+            worklist: self.worklist.new_like(),
             sub_journal: None,
             edge_epoch: self.edge_epoch,
         }
@@ -2441,14 +2740,21 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
 }
 
 /// Fresh state seeded with the Init rule R₀: C ⊑ C and C ⊑ ⊤ for every concept.
+/// The worklist discipline is the environment's (`Worklist::from_env`).
 fn init_state(nfs: &Nfs, n: usize) -> State {
+    init_state_with(nfs, n, Worklist::from_env(n))
+}
+
+/// `init_state` over an explicit worklist (the differential tests run the
+/// same terminology under both disciplines).
+fn init_state_with(nfs: &Nfs, n: usize, worklist: Worklist) -> State {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
         edges: vec![HashSet::default(); n],
         in_by_role: HashMap::default(),
         in_roles: vec![Vec::new(); n],
         prop: HashMap::default(),
-        worklist: VecDeque::new(),
+        worklist,
         sub_journal: None,
         edge_epoch: 0,
     };
@@ -2480,6 +2786,7 @@ struct Prof {
     nf4_batch_edges: u64,
     nf4_batch_groups: u64,
     nf4_batch_missing: u64,
+    ctx_activations: u64, // context activations of the contextual worklist (0 under the FIFO)
 }
 
 const PAR_NF4_MIN_EDGES: usize = 256;
@@ -2499,8 +2806,14 @@ fn fire_edge_nf4_batch(idx: &Idx, st: &mut State, prof: &mut Prof, parallel_nf4:
     if !parallel_nf4 || !idx.has_nf4 {
         return false;
     }
-    let edge_count = st
-        .worklist
+    // The batch is defined over a consecutive edge frontier at the front of
+    // one global queue. The context-local discipline has no such frontier
+    // (each context joins its own edges while its label is hot), so it keeps
+    // the ordinary edge-side join.
+    let Worklist::Fifo(queue) = &st.worklist else {
+        return false;
+    };
+    let edge_count = queue
         .iter()
         .take(PAR_NF4_MAX_EDGES)
         .take_while(|item| matches!(item, Item::Edge(..)))
@@ -2511,7 +2824,7 @@ fn fire_edge_nf4_batch(idx: &Idx, st: &mut State, prof: &mut Prof, parallel_nf4:
 
     let mut edges = Vec::with_capacity(edge_count);
     for _ in 0..edge_count {
-        let Some(Item::Edge(c, r, d)) = st.worklist.pop_front() else {
+        let Some(Item::Edge(c, r, d)) = st.worklist.pop() else {
             unreachable!("the measured consecutive edge frontier changed")
         };
         edges.push((c, r, d));
@@ -2527,7 +2840,7 @@ fn fire_edge_nf4_batch(idx: &Idx, st: &mut State, prof: &mut Prof, parallel_nf4:
         .sum();
     if estimated_scan < edge_count.saturating_mul(128) {
         for (c, r, d) in edges.into_iter().rev() {
-            st.worklist.push_front(Item::EdgeSerial(c, r, d));
+            st.worklist.push_next(Item::EdgeSerial(c, r, d));
         }
         return true;
     }
@@ -2538,7 +2851,7 @@ fn fire_edge_nf4_batch(idx: &Idx, st: &mut State, prof: &mut Prof, parallel_nf4:
     }
     if by_parent.len().saturating_mul(2) > edge_count {
         for (c, r, d) in edges.into_iter().rev() {
-            st.worklist.push_front(Item::EdgeSerial(c, r, d));
+            st.worklist.push_next(Item::EdgeSerial(c, r, d));
         }
         return true;
     }
@@ -2580,7 +2893,7 @@ fn fire_edge_nf4_batch(idx: &Idx, st: &mut State, prof: &mut Prof, parallel_nf4:
     // Preserve the original order for bottom propagation, role chains, and
     // hierarchy lifting. Only the already-completed NF4 join is skipped.
     for (c, r, d) in edges.into_iter().rev() {
-        st.worklist.push_front(Item::EdgeAfterNf4(c, r, d));
+        st.worklist.push_next(Item::EdgeAfterNf4(c, r, d));
     }
     true
 }
@@ -2652,6 +2965,8 @@ fn release<T: Send + 'static>(value: T, background: bool) {
 /// Re-entrant: the certificate repair re-enters with extra seeded facts and the
 /// SAME `idx` (the rule set never changes), so a repaired structure is again
 /// closed under every EL rule — i.e. it stays a model of the EL clause set.
+/// The order in which items are processed is the worklist's discipline (see
+/// `Worklist`); the rule code below is the same under either.
 fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
     // Empty fallback so an unindexed role still yields the empty super-set
     // without a per-lookup allocation (it never occurs for edge roles in
@@ -2669,11 +2984,14 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
     // state's *own* mutated collections (sub_super[d], edges[d], the backward
     // links of c).
     let parallel_nf4 = std::env::var_os("KM_ELC_PAR_NF4").is_some();
-    while !st.worklist.is_empty() {
+    let activations_before = st.worklist.activations();
+    loop {
         if fire_edge_nf4_batch(idx, st, prof, parallel_nf4) {
             continue;
         }
-        let item = st.worklist.pop_front().expect("checked non-empty");
+        let Some(item) = st.worklist.pop() else {
+            break;
+        };
         match item {
             Item::Sub(c, d) => {
                 prof.sub_items += 1;
@@ -2866,6 +3184,7 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
             }
         }
     }
+    prof.ctx_activations += st.worklist.activations() - activations_before;
 }
 
 // ---------------------------------------------------------------------------
@@ -5725,18 +6044,20 @@ impl IncrementalElClassifier {
         // facts are retained, while only newly enabled add_sub/add_edge calls
         // enter the normal worklist recursively.
         self.state.prop.clear();
-        let mut replay = VecDeque::new();
+        // The retained worklist is empty at a fixpoint; widen it to the new
+        // symbol space and queue the replay through its own discipline.
+        debug_assert!(self.state.worklist.is_empty());
+        self.state.worklist.grow(next_len);
         for (c, supers) in self.state.sub_super.iter().enumerate() {
             for &d in supers {
-                replay.push_back(Item::Sub(c as u32, d));
+                self.state.worklist.push(Item::Sub(c as u32, d));
             }
         }
         for (c, edges) in self.state.edges.iter().enumerate() {
             for &(r, d) in edges {
-                replay.push_back(Item::Edge(c as u32, r, d));
+                self.state.worklist.push(Item::Edge(c as u32, r, d));
             }
         }
-        self.state.worklist = replay;
 
         let next_idx = build_idx(&next_nfs, next_len);
         // Init and newly reflexive roles can add facts that did not exist in
@@ -5826,7 +6147,7 @@ impl IncrementalElClassifier {
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); next_len],
             prop: HashMap::default(),
-            worklist: VecDeque::new(),
+            worklist: Worklist::from_env(next_len),
             sub_journal: None,
             edge_epoch: 0,
         };
@@ -6609,7 +6930,7 @@ fn classify_inner_mode(
             "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} \
              nf2_label_side={} nf3_scan={} nf4_sub_scan={} nf4_edge_scan={} nf7_scan={} \
              botback={} | nf4_batch_calls={} nf4_batch_edges={} nf4_batch_groups={} \
-             nf4_batch_missing={}",
+             nf4_batch_missing={} | ctx_activations={}",
             prof.sub_items,
             prof.edge_items,
             prof.nf1_scan,
@@ -6623,7 +6944,8 @@ fn classify_inner_mode(
             prof.nf4_batch_calls,
             prof.nf4_batch_edges,
             prof.nf4_batch_groups,
-            prof.nf4_batch_missing
+            prof.nf4_batch_missing,
+            prof.ctx_activations
         );
     }
     let mut res = st;
@@ -8519,7 +8841,7 @@ mod tests {
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); n],
             prop: HashMap::default(),
-            worklist: VecDeque::new(),
+            worklist: Worklist::contextual(n),
             sub_journal: None,
             edge_epoch: 0,
         };
@@ -8865,7 +9187,7 @@ mod tests {
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); n],
             prop: HashMap::default(),
-            worklist: VecDeque::new(),
+            worklist: Worklist::contextual(n),
             sub_journal: None,
             edge_epoch: 0,
         }
@@ -9384,12 +9706,14 @@ mod tests {
         const FIRST_TARGET: u32 = 10;
         let idx = nf4_only_idx(&[(R, FIRST_TARGET, E1)], 1);
         let mut st = blank_state(300);
+        // The frontier batch is defined over the global FIFO.
+        st.worklist = Worklist::fifo();
         for target in FIRST_TARGET..FIRST_TARGET + PAR_NF4_MIN_EDGES as u32 {
             st.prop.insert(
                 (target, R),
                 (0..128).map(|i| if i % 2 == 0 { E1 } else { E2 }).collect(),
             );
-            st.worklist.push_back(Item::Edge(PARENT, R, target));
+            st.worklist.push(Item::Edge(PARENT, R, target));
         }
         let mut prof = Prof::default();
         assert!(fire_edge_nf4_batch(&idx, &mut st, &mut prof, true));
@@ -9397,15 +9721,16 @@ mod tests {
         assert!(st.sub_super[PARENT as usize].contains(&E1));
         assert!(st.sub_super[PARENT as usize].contains(&E2));
         assert_eq!(st.sub_super[PARENT as usize].len(), 2);
+        let pending = st.worklist.items();
         assert_eq!(
-            st.worklist
+            pending
                 .iter()
                 .filter(|item| matches!(item, Item::EdgeAfterNf4(..)))
                 .count(),
             PAR_NF4_MIN_EDGES
         );
         assert_eq!(
-            st.worklist
+            pending
                 .iter()
                 .filter(|item| matches!(item, Item::Sub(PARENT, E1 | E2)))
                 .count(),
@@ -9421,20 +9746,172 @@ mod tests {
         const FIRST_TARGET: u32 = 10;
         let idx = nf4_only_idx(&[(R, FIRST_TARGET, SUP)], 1);
         let mut st = blank_state(300);
+        st.worklist = Worklist::fifo();
         for target in FIRST_TARGET..FIRST_TARGET + PAR_NF4_MIN_EDGES as u32 {
             st.prop.insert((target, R), vec![SUP]);
-            st.worklist.push_back(Item::Edge(PARENT, R, target));
+            st.worklist.push(Item::Edge(PARENT, R, target));
         }
         let mut prof = Prof::default();
         assert!(fire_edge_nf4_batch(&idx, &mut st, &mut prof, true));
         assert_eq!(prof.nf4_batch_calls, 0);
         assert!(st
             .worklist
+            .items()
             .iter()
             .all(|item| matches!(item, Item::EdgeSerial(..))));
         run(&idx, &mut st, &mut prof);
         assert!(st.sub_super[PARENT as usize].contains(&SUP));
         assert_eq!(prof.nf4_edge_scan, PAR_NF4_MIN_EDGES as u64);
+        assert_eq!(prof.ctx_activations, 0);
+    }
+
+    #[test]
+    fn frontier_batch_keeps_the_serial_join_on_the_contextual_worklist() {
+        // The parallel frontier batch is defined over the global FIFO. On the
+        // context-local worklist it declines without touching the queue, and
+        // the ordinary edge-side join reaches the same closure in one
+        // activation of the parent context.
+        const R: u32 = 0;
+        const PARENT: u32 = 2;
+        const SUP: u32 = 3;
+        const FIRST_TARGET: u32 = 10;
+        let idx = nf4_only_idx(&[(R, FIRST_TARGET, SUP)], 1);
+        let mut st = blank_state(300);
+        assert!(matches!(st.worklist, Worklist::Contextual(_)));
+        for target in FIRST_TARGET..FIRST_TARGET + PAR_NF4_MIN_EDGES as u32 {
+            st.prop.insert((target, R), vec![SUP; 128]);
+            st.worklist.push(Item::Edge(PARENT, R, target));
+        }
+        let mut prof = Prof::default();
+        assert!(!fire_edge_nf4_batch(&idx, &mut st, &mut prof, true));
+        assert_eq!(st.worklist.len(), PAR_NF4_MIN_EDGES);
+        assert!(st
+            .worklist
+            .items()
+            .iter()
+            .all(|item| matches!(item, Item::Edge(..))));
+        run(&idx, &mut st, &mut prof);
+        assert_eq!(prof.nf4_batch_calls, 0);
+        assert!(st.sub_super[PARENT as usize].contains(&SUP));
+        assert_eq!(prof.nf4_edge_scan, 128 * PAR_NF4_MIN_EDGES as u64);
+        assert_eq!(prof.ctx_activations, 1);
+        assert!(st.worklist.is_empty());
+    }
+
+    #[test]
+    fn contextual_worklist_drains_one_activated_context_at_a_time() {
+        let mut wl = Worklist::contextual(8);
+        assert!(wl.is_empty());
+        assert_eq!(wl.pop(), None);
+        wl.push(Item::Sub(3, 4));
+        wl.push(Item::Sub(5, 6));
+        wl.push(Item::Edge(3, 0, 7));
+        assert_eq!(wl.len(), 3);
+        assert_eq!(
+            wl.items(),
+            vec![Item::Edge(3, 0, 7), Item::Sub(3, 4), Item::Sub(5, 6)]
+        );
+        // Context 3 was activated first; its items come back newest first.
+        assert_eq!(wl.pop(), Some(Item::Edge(3, 0, 7)));
+        assert_eq!(wl.activations(), 1);
+        // A conclusion the drain produces for its own context is processed
+        // in the same activation, before any other context.
+        wl.push(Item::Sub(3, 5));
+        assert_eq!(wl.pop(), Some(Item::Sub(3, 5)));
+        assert_eq!(wl.pop(), Some(Item::Sub(3, 4)));
+        // The context is released only by the pop that finds it empty; that
+        // pop moves on to the next activated context.
+        assert_eq!(wl.pop(), Some(Item::Sub(5, 6)));
+        assert_eq!(wl.activations(), 2);
+        // A released context is re-activated by a later item, behind the
+        // contexts already waiting; the current context keeps priority.
+        wl.push(Item::Sub(3, 6));
+        wl.push(Item::Sub(1, 2));
+        wl.push(Item::Sub(5, 7));
+        assert_eq!(wl.pop(), Some(Item::Sub(5, 7)));
+        assert_eq!(wl.pop(), Some(Item::Sub(3, 6)));
+        assert_eq!(wl.pop(), Some(Item::Sub(1, 2)));
+        assert_eq!(wl.pop(), None);
+        assert!(wl.is_empty());
+        assert_eq!(wl.activations(), 4);
+        // Freed slots are recycled: the arena holds the peak pending count.
+        let Worklist::Contextual(queue) = &wl else {
+            unreachable!("built contextual")
+        };
+        assert_eq!(queue.slots.len(), 3);
+        // Symbols appended by an incremental transaction widen the queue.
+        wl.grow(16);
+        wl.push(Item::Sub(12, 1));
+        assert_eq!(wl.pop(), Some(Item::Sub(12, 1)));
+        assert_eq!(wl.pop(), None);
+        wl.push(Item::Sub(1, 2));
+        wl.push(Item::Sub(2, 3));
+        wl.clear();
+        assert!(wl.is_empty());
+        assert_eq!(wl.pop(), None);
+        wl.push(Item::Sub(2, 4));
+        assert_eq!(wl.items(), vec![Item::Sub(2, 4)]);
+        assert_eq!(wl.pop(), Some(Item::Sub(2, 4)));
+        assert_eq!(wl.pop(), None);
+        // A repair fork keeps the discipline and the symbol width.
+        let forked = wl.new_like();
+        assert!(forked.is_empty());
+        let Worklist::Contextual(forked) = &forked else {
+            unreachable!("forked contextual")
+        };
+        assert_eq!(forked.head.len(), 16);
+        let fifo = Worklist::fifo();
+        assert!(matches!(fifo.new_like(), Worklist::Fifo(_)));
+        assert_eq!(fifo.activations(), 0);
+    }
+
+    #[test]
+    fn contextual_scheduling_reaches_the_fifo_closure_on_random_terminologies() {
+        // The two disciplines process the same items with the same rule
+        // code: the closure, the item counts and the per-item scan counters
+        // must agree, and only the contextual queue activates contexts.
+        for seed in 1..=32u64 {
+            let (nfs, n) = random_terminology(seed);
+            let idx = build_idx(&nfs, n);
+            let mut fifo = init_state_with(&nfs, n, Worklist::fifo());
+            let mut contextual = init_state_with(&nfs, n, Worklist::contextual(n));
+            seed_reflexive_edges(&nfs, &idx, &mut fifo);
+            seed_reflexive_edges(&nfs, &idx, &mut contextual);
+            let mut fifo_prof = Prof::default();
+            let mut contextual_prof = Prof::default();
+            run(&idx, &mut fifo, &mut fifo_prof);
+            run(&idx, &mut contextual, &mut contextual_prof);
+            assert_eq!(
+                fifo.sub_super, contextual.sub_super,
+                "seed {seed}: labels differ"
+            );
+            assert_eq!(fifo.edges, contextual.edges, "seed {seed}: edges differ");
+            assert_eq!(
+                fifo_prof.sub_items, contextual_prof.sub_items,
+                "seed {seed}: subsumption items"
+            );
+            assert_eq!(
+                fifo_prof.edge_items, contextual_prof.edge_items,
+                "seed {seed}: edge items"
+            );
+            assert_eq!(
+                fifo_prof.nf1_scan, contextual_prof.nf1_scan,
+                "seed {seed}: NF1 scans"
+            );
+            assert_eq!(
+                fifo_prof.nf3_scan, contextual_prof.nf3_scan,
+                "seed {seed}: NF3 scans"
+            );
+            assert_eq!(fifo_prof.ctx_activations, 0);
+            assert!(contextual_prof.ctx_activations > 0, "seed {seed}");
+            assert!(
+                contextual_prof.ctx_activations
+                    <= contextual_prof.sub_items + contextual_prof.edge_items,
+                "seed {seed}: an activation processes at least one item"
+            );
+            assert!(fifo.worklist.is_empty());
+            assert!(contextual.worklist.is_empty());
+        }
     }
 
     #[test]

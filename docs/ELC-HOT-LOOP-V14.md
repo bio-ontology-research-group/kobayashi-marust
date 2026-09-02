@@ -243,3 +243,125 @@ was 1.9007 seconds, and both remain below the 2.1075-second threshold. All ten
 paired classifications matched gold. The optional background-drop arm was
 slower and used more memory on the three-ontology diagnostic panel, so
 `KM_ELC_BG_DROP` remains disabled by default.
+
+## 8. Context-local worklist scheduling (agent/v14-elc-residual2, 2026-09-02)
+
+Second patch on the same family, written without building or running
+anything (rustfmt-checked only). It targets the cost section 1 left in
+place: the saturation lap still runs at memory latency, and section 4 had
+deliberately left the worklist discipline alone because of the frontier
+batch.
+
+### 8.1 Diagnosis
+
+The 18 elc-routed strict residuals after section 7 (1579, 13224, 6722,
+15976, 7868, 16596, 2469, 795, 4802, 15929, 12087, 5566, 12387, 5612, 2828,
+10248, 2803, 11293) are wall-only misses; peak passes with 2-3x headroom on
+every one (`v14-combined-full-sweep/strict-audit.json`). Eight of them are
+within 20% of the ELK wall target and four within 5% (11293 1.007x, 2803
+1.012x, 10248 1.05x, 2828 1.07x).
+
+Retained laps of the in-process route (`v14-close-elc-profile/*.timing`,
+`v14-elc-hard-classify-job51200104/*.timing`) split the wall of the
+near-threshold members into roughly 40% frontend parse+clausify, 40% EL
+block, 15-20% public-output mapping and serialisation; inside the EL block
+the saturation is the largest lap (13224: 1.7 s of 3.1 s before section 3;
+7868: 2.2 s of 2.8 s). The rule profiles of section 2 put that lap at 4.4M
+items and about 13M label probes for 13224, i.e. 100-130 ns per probe: the
+per-context label tables (`sub_super[c]`, one hash table per symbol, 130k
+symbols) are visited cold because the single FIFO interleaves the items of
+every context. The compact-output sort keys on interned names and is also
+miss-bound, but its name order is load-bearing (the first-alias unsat
+representative in the orchestrator's mapping), so it is left alone.
+
+### 8.2 The change
+
+`elcomplete::Worklist` replaces the `VecDeque<Item>` of `State`. The default
+discipline, `Worklist::Contextual`, is ELK's context activation: items are
+chained per context (the subject of a `Sub` item, the source of an edge) in
+a slot arena with a dense `head[c]` table; a context enters a FIFO activation
+queue when it receives its first pending item and `pop` drains it completely,
+including the items its own processing queues for it, before the next
+activated context is taken. A context's burst of conclusions is therefore
+processed while its label, edge set and backward-link roles are hot, and
+those tables are fetched once per activation instead of once per item. The
+arena recycles freed slots last-freed first and never holds more than the
+peak number of simultaneously pending items, which is far below the FIFO's
+layer-sized peak.
+
+`Worklist::Fifo` keeps the historical single queue. It is selected by
+`Worklist::from_env` when `KM_ELC_PAR_NF4` is set (the parallel NF4 frontier
+batch, armed by the orchestrator for one giant profile, is defined over a
+consecutive edge frontier at the front of that queue and now declines on a
+contextual worklist) or when `KM_ELC_FIFO` is set for A/B measurement. The
+incremental classifier replays its retained facts through the same API
+(`grow` widens the context table for appended symbols), the repair fork
+copies the discipline, and `KM_ELC_PROFILE` reports `ctx_activations`.
+
+### 8.3 Fixpoint preservation
+
+Every fact enters the state through `add_sub`/`add_edge`, which queue exactly
+one item for it, and `run` processes every queued item exactly once with the
+same per-item rule code under either discipline. The joins are
+order-independent because their partner tables are updated at insertion
+time: backward links (`in_by_role`) at `add_edge`, propagations (`prop`) when
+the filler `Sub` item is processed and joined against the links that exist
+then, labels at `add_sub`; so each (backward link, propagation), (edge, ⊥ in
+target) and (edge, edge) chain pair fires from whichever side arrives second.
+The completion is a finite monotone closure, hence the derived facts, the
+item counts (`sub_items`, `edge_items`) and the per-item scan counters
+(`nf1_scan`, `nf3_scan`) are identical; `nf2_scan`, `nf4_sub_scan`,
+`nf4_edge_scan` and `botback` may redistribute between the two sides of a
+join. The hash sets of the state can iterate in a different order after a
+different insertion order; every consumer sorts or treats them as sets
+(compact rows are name-sorted, the string map is a BTreeMap, the
+certificate indexes are set-based), as section 3.2 already relied on.
+
+### 8.4 Expected effect (estimate, not a measurement)
+
+Under the FIFO, items of one context are contiguous only within the burst
+one item produces (one to three conclusions), so roughly every other item
+switches context; under activation the switch happens a few times per
+context. On 13224 that is about 2.5M fewer cold label visits (two misses
+each) in a 4.4M-item lap, an estimated 0.3-0.5 s of the saturate lap; the
+edge-set and backward-link accesses of edge items gain the same way. On the
+near-threshold members the saturate lap is 0.3-0.4 s of a 2.0-2.1 s wall, so
+the expected 5-10% wall cut is what closes 11293, 2803 and 10248 and moves
+2828, 5612 and 12387 toward their thresholds. Peak memory should not rise:
+the arena is smaller than the FIFO's layer, and the dense tables cost five
+bytes per symbol.
+
+### 8.5 Tests added
+
+* `contextual_worklist_drains_one_activated_context_at_a_time`: activation
+  order, same-activation processing of a context's own conclusions, release
+  and re-activation, slot recycling, `grow`, `clear`, `items`, `new_like`.
+* `contextual_scheduling_reaches_the_fifo_closure_on_random_terminologies`:
+  the 32 random terminologies of section 5 run under both disciplines via
+  `init_state_with`; labels, edges, `sub_items`, `edge_items`, `nf1_scan`,
+  `nf3_scan` must agree, only the contextual run activates contexts.
+* `frontier_batch_keeps_the_serial_join_on_the_contextual_worklist`: the
+  batch declines on a contextual worklist and the serial join reaches the
+  closure in one activation; the two existing batch tests pin the FIFO.
+* `saturation_matches_the_naive_fixpoint_on_random_terminologies` and every
+  other `run`-based test now exercise the contextual discipline by default.
+
+### 8.6 Tests and A/B to run (Codex)
+
+```
+cd engine
+export CARGO_TARGET_DIR=$PWD/../.work/target-elc-residual2
+cargo test --release --lib elcomplete::tests::contextual_worklist_drains_one_activated_context_at_a_time
+cargo test --release --lib elcomplete::tests::contextual_scheduling_reaches_the_fifo_closure_on_random_terminologies
+cargo test --release --lib elcomplete::tests::frontier_batch_keeps_the_serial_join_on_the_contextual_worklist
+cargo test --release --lib elcomplete::
+cargo test --release
+```
+
+Corpus check as in section 6, with arms baseline (`KM_ELC_FIFO=1`) and
+candidate (default), three replicates, on the 18 residuals plus the elc
+controls and the 8737 giant (which must keep `KM_ELC_PAR_NF4` and hence the
+FIFO; its `nf4_batch_calls` must be unchanged). Every signature must match
+gold; `KM_ELC_PROFILE` must show identical `sub_items`, `edge_items`,
+`nf1_scan`, `nf3_scan` between arms and a non-zero `ctx_activations` on the
+candidate only.
