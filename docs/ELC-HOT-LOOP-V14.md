@@ -193,7 +193,7 @@ Use an isolated target directory (the shared one races with sibling jobs):
 
 ```
 cd engine
-export CARGO_TARGET_DIR=/tmp/km-elc-wall-target
+export CARGO_TARGET_DIR=$PWD/../.work/target-elc-wall
 cargo build --release
 cargo test --release --lib elcomplete::tests::saturation_matches_the_naive_fixpoint_on_random_terminologies
 cargo test --release --lib elcomplete::tests::nf2_join_fires_in_both_arrival_orders_from_either_side
@@ -227,3 +227,19 @@ Corpus check (IBEX, three replicates each, same harness as
    lower `saturate`, `to_nf` and (flagged arm) `index+init` laps.
 5. Report wall and peak per arm; the peak of the flagged arm must stay within
    the sweep's headroom on every member.
+
+## 7. Measured result
+
+The 2026-09-02 IBEX gate classified all 253 ontologies selected by the ELC
+automatic route with the candidate binary. Every signature matched gold and
+every run retained the `elc` route. Against the frozen per-ontology thresholds,
+14 previous failures became joint wall-and-memory wins, including 5462, which
+also crossed its memory threshold. The number of strict ELC wins increased
+from 215 to 228 in the one-shot sweep.
+
+The only apparent regression, 5927, did not reproduce in a five-repetition
+same-node paired run. Candidate median wall was 1.9166 seconds, baseline median
+was 1.9007 seconds, and both remain below the 2.1075-second threshold. All ten
+paired classifications matched gold. The optional background-drop arm was
+slower and used more memory on the three-ontology diagnostic panel, so
+`KM_ELC_BG_DROP` remains disabled by default.
