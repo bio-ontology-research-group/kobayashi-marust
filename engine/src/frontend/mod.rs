@@ -949,6 +949,12 @@ fn ofn_to_clauses_requested(
         if std::env::var_os("KM_DEBUG_TOP_ROLE").is_some() {
             eprintln!("KM_DEBUG_TOP_ROLE elided {removed} vacuous top-role inclusion(s)");
         }
+        // The retained ontology has no universal role at all. Let the source
+        // profile describe that ontology, so the disjoint-union and positive
+        // separation certificates and the universal-role fences of the
+        // automatic router are evaluated for the terminology KM classifies
+        // rather than for a tautology it has already removed.
+        profile_builder.elide_vacuous_universal_role();
     }
     let mut ontology = ontology;
     // Source features are now complete and their borrowed distinct-entity sets
@@ -2003,6 +2009,74 @@ mod separable_abox_elision_tests {
             2,
             "global axiom plus tautological C query seed"
         );
+    }
+
+    /// Miniature of the ORE 16303 feature shape: an inverse/complement
+    /// terminology whose only universal-role occurrence is a tautological
+    /// `r ⊑ owl:topObjectProperty`, plus a positive object ABox whose asserted
+    /// role is read by a TBox existential. No projection certificate applies,
+    /// so the exact typed bridge portfolio must be selected instead of eager
+    /// nominal root-context materialisation.
+    const VACUOUS_TOP_ROLE_OBJECT_ABOX: &str = "Ontology(\
+           SubObjectPropertyOf(<r> owl:topObjectProperty) \
+           InverseObjectProperties(<s> <t>) \
+           SubClassOf(<A> ObjectComplementOf(<B>)) \
+           SubClassOf(<C> ObjectSomeValuesFrom(<s> <A>)) \
+           SubClassOf(ObjectSomeValuesFrom(<r> owl:Thing) <D>) \
+           ClassAssertion(<A> <a>) \
+           ClassAssertion(<B> <b>) \
+           ObjectPropertyAssertion(<s> <a> <b>) \
+           DifferentIndividuals(<a> <b>))";
+
+    #[test]
+    fn vacuous_top_role_object_abox_selects_the_certified_typed_bridge() {
+        let _environment_lock = lock_environment();
+        let result = with_ofn_to_clauses_requested_route(
+            VACUOUS_TOP_ROLE_OBJECT_ABOX,
+            Route::Auto,
+            |result| result,
+        )
+        .expect("vacuous top-role object ABox source");
+        assert!(
+            !result.profile.expressivity.universal_role,
+            "the retained ontology has no universal role"
+        );
+        assert!(result.profile.disjoint_union_abox_candidate);
+        assert!(!result.profile.positive_abox_tbox_separable);
+        assert!(
+            !result.profile.inert_role_abox_probe_candidate,
+            "the asserted role is read by a TBox existential"
+        );
+        assert!(!result.profile.existential_witness_abox_candidate);
+        assert_eq!(result.route, Route::CertifiedNominals.as_str());
+        assert!(result.nominal_abox.complete);
+        assert!(result.nominal_abox.unsupported.is_empty());
+        assert_eq!(result.nominal_abox.individuals.len(), 2);
+        let mentions_top = |text: &str| text.contains("topObjectProperty");
+        assert!(result
+            .clauses
+            .iter()
+            .all(|clause| !mentions_top(&serde_json::to_string(clause).expect("clause json"))));
+        assert!(result
+            .rbox
+            .iter()
+            .all(|row| !row.iter().any(|cell| mentions_top(cell))));
+    }
+
+    #[test]
+    fn a_read_universal_role_keeps_the_exact_nominal_fence() {
+        let _environment_lock = lock_environment();
+        // The builtin now also occurs in a class expression, so nothing is
+        // elided and the conservative occurrence flag stays authoritative.
+        let text = VACUOUS_TOP_ROLE_OBJECT_ABOX.replace(
+            "SubClassOf(ObjectSomeValuesFrom(<r> owl:Thing) <D>)",
+            "SubClassOf(ObjectSomeValuesFrom(owl:topObjectProperty <A>) <D>)",
+        );
+        let result = with_ofn_to_clauses_requested_route(&text, Route::Auto, |result| result)
+            .expect("read universal-role source");
+        assert!(result.profile.expressivity.universal_role);
+        assert!(!result.profile.disjoint_union_abox_candidate);
+        assert_eq!(result.route, Route::Nominals.as_str());
     }
 }
 

@@ -31,6 +31,12 @@
 //! Any other occurrence of the builtin (sub-role position, a role chain
 //! component, a domain/range/inverse/transitivity row, a class expression, an
 //! assertion) leaves the whole ontology exactly as it was.
+//!
+//! The pass also tells the source profiler that the retained ontology has no
+//! universal role ([`super::profile::SourceProfileBuilder::elide_vacuous_universal_role`]).
+//! The ABox certificates and the automatic route are therefore derived for the
+//! universal-role-free terminology KM actually classifies; on `ore_ont_16303`
+//! the vacuous inclusion alone kept a typed object ABox on eager nominal CB.
 
 use super::iri::IriRegistry;
 use super::rbox::RboxRecord;
@@ -260,6 +266,27 @@ mod tests {
             .rbox
             .iter()
             .any(|row| row == &vec!["subrole".to_string(), "r".to_string(), "s".to_string()]));
+    }
+
+    #[test]
+    fn vacuous_inclusion_clears_the_source_profile_flag() {
+        let ontology = "Ontology(\
+             SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
+             SubClassOf(<http://e#A> ObjectSomeValuesFrom(<http://e#r> <http://e#B>)))";
+        let result = ofn_to_clauses(ontology).expect("frontend");
+        assert!(
+            !result.profile.expressivity.universal_role,
+            "the retained ontology has no universal role"
+        );
+
+        let real_use = "Ontology(\
+             SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
+             SubClassOf(<http://e#A> ObjectAllValuesFrom(owl:topObjectProperty <http://e#B>)))";
+        let result = ofn_to_clauses(real_use).expect("frontend");
+        assert!(
+            result.profile.expressivity.universal_role,
+            "a read universal role keeps the conservative occurrence flag"
+        );
     }
 
     #[test]

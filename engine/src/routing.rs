@@ -470,6 +470,12 @@ fn independent_large_abox_el_candidate(profile: &OntologyProfile) -> bool {
 /// source predictors for normalized bridge fences; ordinary inverse roles,
 /// transitivity, unqualified cardinality, object nominals, role assertions,
 /// and pairwise inequality remain eligible.
+///
+/// A universal role that occurs only as the super-role of tautological
+/// `R ⊑ owl:topObjectProperty` inclusions is not an occurrence here: the
+/// frontend removes those axioms and clears the profile flag before routing
+/// (`frontend::top_role`), so such sources are ordinary typed-object
+/// candidates and the bridge sees a role table without the builtin.
 fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
@@ -3907,6 +3913,69 @@ mod tests {
             &profile
         ));
         assert_eq!(select(&profile), Route::Nominals);
+    }
+
+    #[test]
+    fn vacuous_top_role_object_abox_uses_the_certified_typed_bridge() {
+        // Inverse/complement SHOI terminology of roughly 8,600 axioms with a
+        // compact positive object ABox whose roles are read by the TBox: the
+        // ORE 16303 feature shape. No projection certificate applies.
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.code = "SHOI".into();
+        profile.expressivity.negation_disjunction = true;
+        profile.expressivity.existential = true;
+        profile.expressivity.role_hierarchy = true;
+        profile.expressivity.nominal = true;
+        profile.expressivity.nominal_individual = true;
+        profile.source.logical_axioms = 8_600;
+        profile.source.tbox_axioms = 8_250;
+        profile.source.rbox_axioms = 190;
+        profile.source.subclass_axioms = 8_250;
+        profile.source.role_inclusion_axioms = 147;
+        profile.source.distinct_classes = 4_200;
+        profile.source.distinct_object_properties = 156;
+        profile.source.distinct_individuals = 151;
+        profile.source.existentials = 3_300;
+        profile.source.complements = 44;
+        profile.source.concept_expressions = 20_000;
+        profile.source.max_concept_depth = 2;
+        profile.source.abox_axioms = 185;
+        profile.source.class_assertions = 163;
+        profile.source.role_assertions = 20;
+        for (kind, count) in [
+            ("SubClassOf", 8_250),
+            ("SubObjectPropertyOf", 147),
+            ("InverseObjectProperties", 42),
+            ("ClassAssertion", 163),
+            ("ObjectPropertyAssertion", 20),
+            ("DifferentIndividuals", 2),
+        ] {
+            profile.source.axiom_types.insert(kind.into(), count);
+        }
+
+        // A conservative universal-role occurrence keeps the input on eager
+        // nominal CB, the only nominal route that never consults the bridge.
+        profile.expressivity.universal_role = true;
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(!typed_object_abox_bridge_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+
+        // After the frontend elides a vacuous `R ⊑ owl:topObjectProperty`, the
+        // profile describes a universal-role-free ontology: the exact typed
+        // bridge portfolio is selected and retains its nominal-aware CB
+        // fallback, on the ordinary low-latency schedule for compact ABoxes.
+        profile.expressivity.universal_role = false;
+        assert!(typed_object_abox_bridge_candidate(&profile));
+        assert_eq!(select(&profile), Route::CertifiedNominals);
+        assert!(certified_nominal_production_probe_candidate(&profile));
+        assert!(!certified_nominal_general_ht_probe_candidate(&profile));
+        assert!(!compact_typed_bridge_first_candidate(&profile));
+        assert!(!sequential_typed_bridge_candidate(&profile));
+        assert_eq!(
+            automatic_atomic_fallback(Route::CertifiedNominals, &profile),
+            None,
+            "the portfolio carries its own exact nominal fallback"
+        );
     }
 
     #[test]

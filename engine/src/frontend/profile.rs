@@ -913,6 +913,30 @@ impl<'a> SourceProfileBuilder<'a> {
         }
     }
 
+    /// Record that the frontend has removed every `R ⊑ owl:topObjectProperty`
+    /// (or role-chain-into-top) inclusion because the builtin occurred nowhere
+    /// else in the document ([`super::top_role::TopRoleScan::eliminable`]).
+    ///
+    /// `(owl:topObjectProperty)^I = ΔI × ΔI` in every OWL 2 DL interpretation,
+    /// so each removed axiom is a tautology and the retained ontology is
+    /// logically equivalent to the source. That retained ontology contains no
+    /// universal role at all: it is closed under disjoint unions, every worker
+    /// receives a role table without the builtin, and no clause or RBox row
+    /// can read it. The profile therefore describes the ontology KM actually
+    /// classifies: the occurrence flag is cleared before the ABox certificates
+    /// (`positive_abox_tbox_separable`, `disjoint_union_abox_candidate`) and
+    /// the automatic route are derived from it.
+    ///
+    /// A document with any other occurrence of the builtin is never elided,
+    /// so its flag and every fence keyed on it are unchanged. Under
+    /// `KM_NO_TOP_ROLE_ELISION` the frontend does not call this method and the
+    /// conservative occurrence flag stays authoritative. The DL code is not
+    /// affected: Konclude's `V` is contributed by grounding, never by this
+    /// occurrence flag.
+    pub(crate) fn elide_vacuous_universal_role(&mut self) {
+        self.expr.universal_role = false;
+    }
+
     pub fn finish(self, file_bytes: u64) -> OntologyProfile {
         self.finish_with_separable_class_names(file_bytes).0
     }
@@ -2647,5 +2671,58 @@ mod tests {
         assert_eq!(p.expressivity.code, "SRI");
         assert_eq!(p.source.role_chain_axioms, 1);
         assert_eq!(p.source.max_role_chain_length, 2);
+    }
+
+    #[test]
+    fn vacuous_universal_role_elision_describes_the_retained_ontology() {
+        // Inverse/complement terminology with a positive object ABox whose
+        // asserted role is read by a TBox existential, and one tautological
+        // `r ⊑ owl:topObjectProperty` as the only universal-role occurrence.
+        let text = r#"Ontology(
+              SubObjectPropertyOf(<r> owl:topObjectProperty)
+              InverseObjectProperties(<s> <t>)
+              SubClassOf(<A> ObjectComplementOf(<B>))
+              SubClassOf(<C> ObjectSomeValuesFrom(<s> <A>))
+              ClassAssertion(<A> <a>)
+              ObjectPropertyAssertion(<s> <a> <b>)
+              DifferentIndividuals(<a> <b>)
+            )"#;
+        let elided_profile = |text: &str| {
+            let mut builder = SourceProfileBuilder::new();
+            parse::for_each_ontology_child(text, |n| {
+                builder.observe(n);
+                Ok(())
+            })
+            .unwrap();
+            builder.elide_vacuous_universal_role();
+            builder.finish(text.len() as u64)
+        };
+
+        // The raw source profile records every occurrence of the builtin and
+        // therefore withholds the disjoint-union certificate.
+        let raw = source(text);
+        assert!(raw.expressivity.universal_role);
+        assert!(!raw.disjoint_union_abox_candidate);
+
+        // After the frontend removes the tautology, the profile describes a
+        // universal-role-free ontology: closed under disjoint unions, while
+        // the complement still blocks the positive separation certificate.
+        let elided = elided_profile(text);
+        assert!(!elided.expressivity.universal_role);
+        assert!(elided.disjoint_union_abox_candidate);
+        assert!(!elided.positive_abox_tbox_separable);
+        assert_eq!(elided.expressivity.code, raw.expressivity.code);
+        assert_eq!(elided.source, raw.source, "source statistics are untouched");
+
+        // The same tautology was the only obstacle to the positive-ABox
+        // separation certificate on an otherwise positive source.
+        let positive = r#"Ontology(
+              SubObjectPropertyOf(<r> owl:topObjectProperty)
+              SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>))
+              ClassAssertion(<A> <a>)
+              ObjectPropertyAssertion(<r> <a> <b>)
+            )"#;
+        assert!(!source(positive).positive_abox_tbox_separable);
+        assert!(elided_profile(positive).positive_abox_tbox_separable);
     }
 }

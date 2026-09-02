@@ -238,6 +238,32 @@ leaves unless their complete-or-defer contract is documented.
 changes CB derivations and remains an opt-in experiment pending Lean
 re-certification and a complete corpus A/B comparison.
 
+### Vacuous universal-role inclusions
+
+`SubObjectPropertyOf(R owl:topObjectProperty)` holds in every OWL 2 DL
+interpretation, so it is a tautology. When it is the document's only mention
+of the builtin, the frontend removes the axiom and its RBox row before
+normalization (`engine/src/frontend/top_role.rs`), and the source profile then
+describes the retained, universal-role-free terminology:
+`expressivity.universal_role` is false, and the ABox certificates
+(`positive_abox_tbox_separable`, `disjoint_union_abox_candidate`) together
+with every automatic predicate keyed on the universal role are evaluated for
+that terminology. This is exact in both directions. The retained ontology is
+logically equivalent to the source, it is closed under disjoint unions, and no
+clause or RBox row reads the builtin, so every worker fence that exists because
+KM has no universal-role object is moot. A document that uses the builtin
+anywhere else is never elided and keeps the conservative occurrence flag; so
+does a run under `KM_NO_TOP_ROLE_ELISION`. The Konclude DL code is unaffected,
+because `V` is contributed by grounding rather than by this flag.
+
+The corpus witness is ORE 16303, an inverse/complement SHOI terminology with a
+positive object ABox of 185 assertions whose asserted `is about` edges are read
+by TBox existentials. No ABox projection certificate applies to it, and its
+only universal-role occurrence is one tautological inclusion. That occurrence
+alone used to force the eager nominal CB route. The typed object-ABox bridge
+portfolio (`certified_nominals`) is now selected, with the unchanged
+nominal-aware CB fallback. See [`SOLVE-16303.md`](SOLVE-16303.md).
+
 ## Learning objective and safety gates
 
 Each ontology and all 24 KM procedures run sequentially on one exclusive Intel
