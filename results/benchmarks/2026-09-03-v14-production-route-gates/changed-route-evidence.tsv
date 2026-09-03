@@ -1,0 +1,19 @@
+ontology	fragment	gate	route_after	logical_axioms	abox_axioms	distinct_classes	unions	complements	universals	cardinalities	functional_role_axioms	file_bytes	sweep_production_all_wall_s	sweep_production_all_peak_mib	sweep_new_arm_wall_s	sweep_new_arm_peak_mib	sweep_new_arm_status	sweep_new_arm_sound	sweep_new_arm_complete	sweep_new_arm_verdict	panel_51250847_arm	panel_wall_s_median	panel_peak_mib_median	panel_reps	panel_verdict
+ore_ont_10127.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	106790	105548	688	0	0	292	0	1	17845208	1.7072	235.96	0.8096	141.70	ok	yes	yes	match	cb_absorb8	0.8895	175.43	3	match
+ore_ont_10212.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	10223	9853	219	0	0	56	0	1	1714653	0.0999	26.01	0.0995	28.43	ok	yes	yes	match					
+ore_ont_10697.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	187573	186403	651	0	0	258	0	1	31753427	3.2372	421.60	1.4814	245.37	ok	yes	yes	match					
+ore_ont_10951.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	22073	21476	333	0	0	134	0	1	3700501	0.2224	37.04	0.2251	36.89	ok	yes	yes	match					
+ore_ont_11207.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	102179	99982	1082	0	0	570	0	1	17185027	1.8142	252.03	0.7639	137.53	ok	yes	yes	match	cb_absorb8	0.8893	166.16	3	match
+ore_ont_14375.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	48262	47450	404	0	0	183	0	1	8085489	0.8575	113.69	0.3697	67.23	ok	yes	yes	match					
+ore_ont_15536.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	63804	62706	582	0	0	249	0	1	10735544	1.0150	159.61	0.5139	88.84	ok	yes	yes	match					
+ore_ont_15725.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	145711	144582	581	0	0	263	0	1	24299011	2.1206	274.04	1.0035	187.14	ok	yes	yes	match	cb_trigger8	1.2578	229.73	3	match
+ore_ont_1618.owl	SriqCore	bounded_non_el_cb_terminology	cb_trigger16	144	0	35	0	0	0	1	0	34364	0.0415	15.72	0.0398	10.62	ok	yes	yes	match					
+ore_ont_2195.owl	SriqCore	bounded_non_el_cb_terminology	cb_plain1	1118	0	19	0	0	0	0	87	186295	0.0965	12.58	0.0662	7.81	ok	yes	yes	match	cb_plain1	0.0456	8.32	3	match
+ore_ont_3164.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	275243	273990	642	0	0	303	0	1	46300579	4.6293	529.02	2.1104	347.11	ok	yes	yes	match					
+ore_ont_3640.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	7465	7169	167	0	0	55	0	1	1253294	0.1004	21.45	0.0705	15.00	ok	yes	yes	match					
+ore_ont_3658.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	329879	327960	997	0	0	503	0	1	55591354	5.5985	723.77	2.6507	423.04	ok	yes	yes	match					
+ore_ont_4187.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	396325	394902	789	0	0	334	0	1	66470774	6.7725	789.87	3.2462	508.78	ok	yes	yes	match					
+ore_ont_4827.owl	SriqCore	bounded_non_el_cb_terminology	cb_absorb8	1125	0	865	11	2	0	6	0	191942	0.3175	48.71	0.0725	22.28	ok	yes	yes	match	cb_absorb8	0.0765	16.66	3	match
+ore_ont_5103.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	75012	74340	368	0	0	132	0	1	12462443	1.2299	172.70	0.5223	103.27	ok	yes	yes	match					
+ore_ont_7901.owl	SriqCore	bounded_non_el_cb_terminology	cb_trigger16	489	0	104	1	0	3	5	43	81109	0.1600	21.16	0.0695	21.80	ok	yes	yes	match	cb_trigger16	0.0458	14.17	3	match
+ore_ont_9958.owl	PositiveAbox	positive_abox_horn_cb	cb_absorb8	331790	329101	1393	0	0	674	0	1	55675105	5.7528	668.92	2.6811	425.67	ok	yes	yes	match					
