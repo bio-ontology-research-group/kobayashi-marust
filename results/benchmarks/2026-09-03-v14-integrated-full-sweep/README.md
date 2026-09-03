@@ -34,12 +34,15 @@ route. A subsequent compact expressive nominal scheduling gate recovered ORE
 5184. A ten-repetition boundary confirmation also established that the
 unchanged automatic route for ORE 9096 beats both external targets on its
 median. These recoveries raise the current evidence-composite score to
-**516/589**, with 73 comparable ontologies remaining. Their repeated
+**516/589**, with 73 comparable ontologies remaining. A compact datatype
+hypertableau scheduling gate subsequently recovered ORE 9635, raising the score
+to **517/589** with 72 remaining. Their repeated
 confirmations are recorded in `../2026-09-03-v14-elc-wide-role-routing/`,
 `../2026-09-03-v14-compact-nominal-ht-scheduling/`, and
-`../2026-09-03-v14-9096-boundary-confirmation/`. The composite uses medians for
-every claimed narrow recovery and this full sweep as the coverage and
-regression gate.
+`../2026-09-03-v14-9096-boundary-confirmation/`, and
+`../2026-09-03-v14-9635-three-worker-ht/`. The composite uses medians for every
+claimed narrow recovery and this full sweep as the coverage and regression
+gate.
 
 `per-ontology.tsv` records the complete one-shot comparison against the frozen
 v1.4 external target ledger. Raw results and Slurm logs are retained in
