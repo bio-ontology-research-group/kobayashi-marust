@@ -178,6 +178,12 @@ paired medians and targets.  The archived raw results are
 `.work/artifacts/v14-elc-auto-integration/results-51252332.tar.gz`, SHA-256
 `a5e9cd9eea30de895edce615e39b36bc3eaf615c92c9e02ba6c48e842663d21f`.
 
+The required full default-route sweep subsequently confirmed ORE 4802 at
+1.8075 seconds and 283.41 MiB, again below both targets. It is therefore a
+fifth measured recovery. Together with the bounded-near-EL panel, the settled
+EL contribution is 502/589 before the separately measured production-routing
+recoveries.
+
 ## Files
 
 * `context-parallel-panel-medians.tsv` - the 18-ontology, 4-arm, 216-run panel.
