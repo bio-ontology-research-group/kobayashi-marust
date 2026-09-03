@@ -59,44 +59,51 @@ pub struct GroundHooks {
 // ---------------------------------------------------------------------------
 
 pub fn nnf(c: &Concept) -> Concept {
-    match c {
-        Concept::Name(_) | Concept::Top | Concept::Bottom | Concept::Nominal(_) => c.clone(),
-        Concept::Not(b) => nnf_not(b),
-        Concept::And(cs) => mk_and(cs.iter().map(nnf)),
-        Concept::Or(cs) => mk_or(cs.iter().map(nnf)),
-        Concept::Exists(r, f) => Concept::Exists(r.clone(), Box::new(nnf(f))),
-        Concept::Forall(r, f) => Concept::Forall(r.clone(), Box::new(nnf(f))),
-        Concept::AtLeast(n, r, f) => Concept::AtLeast(*n, r.clone(), Box::new(nnf(f))),
-        Concept::AtMost(n, r, f) => Concept::AtMost(*n, r.clone(), Box::new(nnf(f))),
-        Concept::HasSelf(_) => c.clone(),
-    }
+    nnf_with_polarity(c, false)
 }
 
-fn nnf_not(b: &Concept) -> Concept {
-    match b {
-        Concept::Top => Concept::Bottom,
-        Concept::Bottom => Concept::Top,
-        Concept::Not(inner) => nnf(inner),
-        Concept::Name(_) | Concept::Nominal(_) => Concept::Not(Box::new(b.clone())),
-        Concept::And(cs) => mk_or(cs.iter().map(|x| nnf(&Concept::Not(Box::new(x.clone()))))),
-        Concept::Or(cs) => mk_and(cs.iter().map(|x| nnf(&Concept::Not(Box::new(x.clone()))))),
-        Concept::Exists(r, f) => Concept::Forall(
-            r.clone(),
-            Box::new(nnf(&Concept::Not(Box::new((**f).clone())))),
-        ),
-        Concept::Forall(r, f) => Concept::Exists(
-            r.clone(),
-            Box::new(nnf(&Concept::Not(Box::new((**f).clone())))),
-        ),
-        Concept::AtLeast(n, r, f) => {
-            if *n <= 0 {
-                Concept::Bottom
-            } else {
-                Concept::AtMost(n - 1, r.clone(), Box::new(nnf(f)))
-            }
+/// Construct NNF directly under the requested polarity. The previous negative
+/// path cloned every child into a temporary `Not` tree and immediately walked
+/// that tree again. Keeping polarity on the call stack produces the identical
+/// normal form while allocating only the returned tree.
+fn nnf_with_polarity(c: &Concept, negated: bool) -> Concept {
+    match (c, negated) {
+        (Concept::Top, false) | (Concept::Bottom, true) => Concept::Top,
+        (Concept::Bottom, false) | (Concept::Top, true) => Concept::Bottom,
+        (Concept::Name(_) | Concept::Nominal(_), false) => c.clone(),
+        (Concept::Name(_) | Concept::Nominal(_), true) => Concept::Not(Box::new(c.clone())),
+        (Concept::Not(inner), polarity) => nnf_with_polarity(inner, !polarity),
+        (Concept::And(cs), false) => mk_and(cs.iter().map(|x| nnf_with_polarity(x, false))),
+        (Concept::And(cs), true) => mk_or(cs.iter().map(|x| nnf_with_polarity(x, true))),
+        (Concept::Or(cs), false) => mk_or(cs.iter().map(|x| nnf_with_polarity(x, false))),
+        (Concept::Or(cs), true) => mk_and(cs.iter().map(|x| nnf_with_polarity(x, true))),
+        (Concept::Exists(r, f), false) => {
+            Concept::Exists(r.clone(), Box::new(nnf_with_polarity(f, false)))
         }
-        Concept::AtMost(n, r, f) => Concept::AtLeast(n + 1, r.clone(), Box::new(nnf(f))),
-        Concept::HasSelf(_) => Concept::Not(Box::new(b.clone())),
+        (Concept::Exists(r, f), true) => {
+            Concept::Forall(r.clone(), Box::new(nnf_with_polarity(f, true)))
+        }
+        (Concept::Forall(r, f), false) => {
+            Concept::Forall(r.clone(), Box::new(nnf_with_polarity(f, false)))
+        }
+        (Concept::Forall(r, f), true) => {
+            Concept::Exists(r.clone(), Box::new(nnf_with_polarity(f, true)))
+        }
+        (Concept::AtLeast(n, r, f), false) => {
+            Concept::AtLeast(*n, r.clone(), Box::new(nnf_with_polarity(f, false)))
+        }
+        (Concept::AtLeast(n, _, _), true) if *n <= 0 => Concept::Bottom,
+        (Concept::AtLeast(n, r, f), true) => {
+            Concept::AtMost(n - 1, r.clone(), Box::new(nnf_with_polarity(f, false)))
+        }
+        (Concept::AtMost(n, r, f), false) => {
+            Concept::AtMost(*n, r.clone(), Box::new(nnf_with_polarity(f, false)))
+        }
+        (Concept::AtMost(n, r, f), true) => {
+            Concept::AtLeast(n + 1, r.clone(), Box::new(nnf_with_polarity(f, false)))
+        }
+        (Concept::HasSelf(_), false) => c.clone(),
+        (Concept::HasSelf(_), true) => Concept::Not(Box::new(c.clone())),
     }
 }
 
@@ -967,6 +974,84 @@ impl Default for Clausifier {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn legacy_nnf(c: &Concept) -> Concept {
+        match c {
+            Concept::Name(_) | Concept::Top | Concept::Bottom | Concept::Nominal(_) => c.clone(),
+            Concept::Not(b) => legacy_nnf_not(b),
+            Concept::And(cs) => mk_and(cs.iter().map(legacy_nnf)),
+            Concept::Or(cs) => mk_or(cs.iter().map(legacy_nnf)),
+            Concept::Exists(r, f) => Concept::Exists(r.clone(), Box::new(legacy_nnf(f))),
+            Concept::Forall(r, f) => Concept::Forall(r.clone(), Box::new(legacy_nnf(f))),
+            Concept::AtLeast(n, r, f) => Concept::AtLeast(*n, r.clone(), Box::new(legacy_nnf(f))),
+            Concept::AtMost(n, r, f) => Concept::AtMost(*n, r.clone(), Box::new(legacy_nnf(f))),
+            Concept::HasSelf(_) => c.clone(),
+        }
+    }
+
+    fn legacy_nnf_not(c: &Concept) -> Concept {
+        match c {
+            Concept::Top => Concept::Bottom,
+            Concept::Bottom => Concept::Top,
+            Concept::Not(inner) => legacy_nnf(inner),
+            Concept::Name(_) | Concept::Nominal(_) => Concept::Not(Box::new(c.clone())),
+            Concept::And(cs) => mk_or(
+                cs.iter()
+                    .map(|x| legacy_nnf(&Concept::Not(Box::new(x.clone())))),
+            ),
+            Concept::Or(cs) => mk_and(
+                cs.iter()
+                    .map(|x| legacy_nnf(&Concept::Not(Box::new(x.clone())))),
+            ),
+            Concept::Exists(r, f) => Concept::Forall(
+                r.clone(),
+                Box::new(legacy_nnf(&Concept::Not(Box::new((**f).clone())))),
+            ),
+            Concept::Forall(r, f) => Concept::Exists(
+                r.clone(),
+                Box::new(legacy_nnf(&Concept::Not(Box::new((**f).clone())))),
+            ),
+            Concept::AtLeast(n, r, f) => {
+                if *n <= 0 {
+                    Concept::Bottom
+                } else {
+                    Concept::AtMost(n - 1, r.clone(), Box::new(legacy_nnf(f)))
+                }
+            }
+            Concept::AtMost(n, r, f) => Concept::AtLeast(n + 1, r.clone(), Box::new(legacy_nnf(f))),
+            Concept::HasSelf(_) => Concept::Not(Box::new(c.clone())),
+        }
+    }
+
+    #[test]
+    fn stack_polarity_nnf_matches_clone_based_conversion_for_every_constructor() {
+        let r = Role::Name("r".into());
+        let inv = Role::Inverse("s".into());
+        let a = Concept::Name("A".into());
+        let b = Concept::Name("B".into());
+        let conjunction = mk_and([a.clone(), Concept::Nominal("i".into())]);
+        let disjunction = mk_or([b.clone(), Concept::HasSelf(inv.clone())]);
+        let samples = vec![
+            Concept::Top,
+            Concept::Bottom,
+            a.clone(),
+            Concept::Nominal("i".into()),
+            Concept::Not(Box::new(Concept::Not(Box::new(a)))),
+            conjunction.clone(),
+            disjunction.clone(),
+            Concept::Exists(r.clone(), Box::new(conjunction)),
+            Concept::Forall(inv.clone(), Box::new(disjunction)),
+            Concept::AtLeast(0, r.clone(), Box::new(b.clone())),
+            Concept::AtLeast(3, r.clone(), Box::new(b.clone())),
+            Concept::AtMost(2, inv.clone(), Box::new(b)),
+            Concept::HasSelf(r),
+        ];
+        for sample in samples {
+            assert_eq!(nnf(&sample), legacy_nnf(&sample), "positive {sample:?}");
+            let negative = Concept::Not(Box::new(sample.clone()));
+            assert_eq!(nnf(&negative), legacy_nnf(&negative), "negative {sample:?}");
+        }
+    }
 
     /// `≥n r.F` (n ≥ 2) must get a recognition clause
     /// `r(x,y0) ∧ F(y0) ∧ ... ∧ r(x,y_{n-1}) ∧ F(y_{n-1}) → Q ∨ ⋁ yi≈yj`,
