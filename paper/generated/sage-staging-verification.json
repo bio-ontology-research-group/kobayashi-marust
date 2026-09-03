@@ -3,15 +3,15 @@
   "class_options": "Afour,sageh,times",
   "files": {
     "SageH.bst": "70e72e23674f828550e55eadc0de8f110c4d6683c12288d58f6a583ae48a3f71",
-    "main-swj.log": "ba53c339e5589e0aa3d0a9d00caa5f2fc5a278e71341a00b5e69935599648c64",
-    "main-swj.pdf": "938818c8acea786e5c836d2a2157d376f1e36d5e3e7786e315bd832f5241d984",
-    "main-swj.tex": "6e1411193aee2354977b7a9d8a64c55d0cf49818b1e0ec9197c7a5e1aad1ad78",
+    "main-swj.log": "e66dbbaa51a296f188b969c2239e50181ceb54e3a82048c27c887bbdfae2ef48",
+    "main-swj.pdf": "2573a3bfcd65344af7149300ce48334102252c7b5b9dea9f748461f122622288",
+    "main-swj.tex": "87cd05a8c3f92903cda897a11bbb9577a83788c079ec06f1e8dd1278e24ade45",
     "sagej.cls": "3d355246afa097b6dc8b637ff49d74fccaf8886f9331b3a97bb1b0a3b22b9e23"
   },
   "log_policy": "undefined|Overfull|multiply defined|LaTeX Error|Package .* Error",
-  "pages": 19,
+  "pages": 25,
   "schema": 1,
-  "source": "/home/leechuck/Public/software/kobayashi-marust/paper/main.tex",
-  "source_sha256": "6ad09424b862166f859d6b7d51665332ef435979ac36d50d5771ddf478a8716b",
+  "source": "/home/leechuck/Public/software/kobayashi-marust/.work/worktrees/v1.4/paper/main.tex",
+  "source_sha256": "570c4e38f18c923a7b6549310c736535c9e4d6a5fc896b8c53648feda4484b74",
   "status": "pass"
 }

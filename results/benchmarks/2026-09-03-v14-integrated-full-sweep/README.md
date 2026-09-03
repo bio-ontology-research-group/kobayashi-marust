@@ -28,8 +28,12 @@ EL panel plus this full sweep confirms five additional disjoint recoveries:
 15929, 2828, 4802, 5612, and 795. The five-repetition production-routing panel
 confirms eleven more: 10127, 10697, 11207, 15725, 2195, 3164, 3658, 4187,
 4827, 7901, and 9958. The evidence-composite strict score is therefore
-513/589, with 76 comparable ontologies remaining. This score uses medians for
-every claimed narrow recovery and the full sweep as the coverage and
+513/589 at this sweep checkpoint.  A subsequent source-feature extension of
+the same context-parallel EL schedule recovered ORE 7567 under the automatic
+route, raising the current evidence-composite score to **514/589**, with 75
+comparable ontologies remaining.  Its repeated confirmation is recorded in
+`../2026-09-03-v14-elc-wide-role-routing/`.  The composite uses medians for
+every claimed narrow recovery and this full sweep as the coverage and
 regression gate.
 
 `per-ontology.tsv` records the complete one-shot comparison against the frozen
