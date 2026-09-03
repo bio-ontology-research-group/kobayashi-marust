@@ -365,3 +365,130 @@ FIFO; its `nf4_batch_calls` must be unchanged). Every signature must match
 gold; `KM_ELC_PROFILE` must show identical `sub_items`, `edge_items`,
 `nf1_scan`, `nf3_scan` between arms and a non-zero `ctx_activations` on the
 candidate only.
+
+## 9. Context-parallel saturation (agent/v14-elc-context-parallel, 2026-09-03)
+
+Third patch on the same hot loop. Section 8 made the schedule context-local
+on one thread; this one runs that decomposition on several threads. It is
+opt-in (`KM_ELC_PAR_CTX`), off by default, and it changes no rule and no
+route.
+
+### 9.1 The change
+
+`KM_ELC_PAR_CTX=<n>` (or `auto`, capped at 8) saturates on `n` workers.
+Context `c` is owned by worker `c % n` and stored at slot `c / n` of that
+worker's dense tables. A worker holds the entire mutable state of the
+contexts it owns and nothing else: the label `sub_super[c]`, the forward
+edges `edges[c]`, the backward links `in_by_role[(c, ·)]` with their role
+list `in_roles[c]`, and the propagations `prop[(c, ·)]`. Nothing is shared
+and nothing is locked on the rule path; `Idx` is immutable and read by every
+worker. Conclusions for a context another worker owns are batched (1024
+messages) and handed to that worker's mailbox.
+
+The edge rules are split into the two halves the serial arm fuses, which is
+what makes every rule read only the context it fires in:
+
+| item | context | rules |
+|---|---|---|
+| `Sub(c, d)` | `c` | NF1, NF2, NF5, NF3, ⊥ back-propagation, NF4 registration and the sub-side join |
+| `Fwd(c, r, d)` | source `c` | role lift, NF7 with `c` as the middle context |
+| `Link(c, r, d)` | target `d` | edge-side NF4 join on `prop[(d, r)]`, the ⊥ check on the label of `d`, NF7 with `d` as the middle context |
+
+The serial Edge arm runs the `Link` half at the source while reading the
+target's propagations, label and out-edges; moving it to the target is the
+only structural difference between the two engines.
+
+### 9.2 Fixpoint preservation
+
+The completion is a finite monotone closure, so its least fixpoint depends
+only on every applicable rule instance firing at least once, not on the
+order. Each fact is inserted into its owner's table exactly once (the
+`HashSet::insert` and new-edge guards) and queues exactly one item, so every
+one-premise instance fires exactly once. Every two-premise join of the
+calculus is intra-context, hence totally ordered by its owner's thread, and
+both sides register before they scan:
+
+* NF2 at `c`: both premises are members of `sub_super[c]`; an item is queued
+  after its member is inserted and then scans the label for the partner.
+* NF4 at `d`: the `Sub` item of a filler extends `prop[(d, R)]` and then
+  scans `in_by_role[(d, R)]`; the message that queues a `Link` item appends
+  to `in_by_role[(d, R)]` first and the item then scans `prop[(d, R)]`.
+* ⊥ over an edge at `d`: `Sub(d, ⊥)` scans the backward links; a `Link` item
+  scans the label for ⊥.
+* NF7 at the middle context `m`: a `Link` item is queued after its link is in
+  `in_by_role[(m, ·)]` and scans `edges[m]`; a `Fwd` item is queued after its
+  edge is in `edges[m]` and scans `in_by_role[(m, ·)]`.
+
+In each case the side that arrives second cannot miss the side that arrived
+first, because the first was in its own table before the second was created
+and both sequences run on one thread. So the derived set is the fixpoint the
+serial `run` computes; `sub_items`, `edge_items`, `nf1_scan` and `nf3_scan`
+are invariant, while `nf2_scan`, `nf4_sub_scan`, `nf4_edge_scan` and
+`botback` may redistribute between the sides of a join, exactly as in
+section 8.
+
+Termination is a credit count: a worker holds one credit while it has
+anything to do and one credit accompanies each published batch, taken before
+the batch is visible and released by the receiver after it is applied (the
+receiver re-takes its own credit first). `credit == 0` therefore certifies
+that no worker is running, no item is queued and no message is in flight, and
+zero is stable because new work is only created while holding a credit.
+
+Determinism: the fixpoint is unique but the arrival order of a label's
+members is not, and the classification writes each row in the label's
+iteration order. Each worker therefore rebuilds the labels of its contexts
+from a sorted vector before it exits, so the output is byte-identical for any
+worker count and any interleaving.
+
+### 9.3 What stays serial
+
+The parallel engine reaches the same fixpoint but not the same construction
+order, so it declines wherever the order is load-bearing rather than the
+result: `KM_ELC_PAR_NF4` (whose frontier batch is defined over a consecutive
+edge run at the front of one global FIFO), `KM_ELC_FIFO` (the A/B baseline),
+and every certificate mode (`KM_ELC_CERT`, the Lean certificate), whose
+repair fork picks merge representatives and blame witnesses in construction
+order. The incremental classifier and the positive-ABox path build their
+states directly and are untouched. A failed thread spawn falls back to the
+serial engine.
+
+### 9.4 Tests
+
+* `context_parallel_saturation_matches_the_serial_fixpoint`: the 32 random
+  terminologies of section 5 at one, two, three and four workers, compared
+  against the serial engine and the naive fixpoint fact for fact, including
+  the backward links, the propagations, the edge count and the invariant
+  counters.
+* `context_parallel_labels_iterate_identically_for_every_worker_count`: a
+  256-concept terminology run at eight different worker counts; the label
+  ITERATION order (what the output rows are written from) must be identical,
+  and the multi-worker runs must actually have exchanged batches.
+* `context_parallel_stress_matches_the_serial_fixpoint_over_repeated_runs`:
+  four larger terminologies with every normal form live, four repetitions
+  each at four workers against the serial engine.
+* `context_parallel_classification_is_byte_identical_across_worker_counts`:
+  end to end through `classify` (NF1 chains, conjunctions, existentials, an
+  NF4 axiom, a role inclusion, a role chain, an unsatisfiable conjunction) at
+  one, two and four workers; the serialised result is compared byte for byte
+  across worker counts and answer for answer against the serial engine.
+* `context_parallel_propagates_bottom_and_chains_across_shards`: a chain
+  whose consecutive contexts land on different workers, so ⊥, the NF4 join
+  and the role composition all travel as messages.
+* `context_parallel_plan_keeps_the_order_sensitive_modes_serial` and
+  `shard_queue_drains_one_activated_context_at_a_time`: the policy and the
+  shard-local activation queue.
+
+### 9.5 Not measured
+
+Nothing here was benchmarked. The mode is off by default and the A/B has to
+run before it is armed anywhere: arms baseline (default) and
+`KM_ELC_PAR_CTX` at 2, 4 and 8 on the 18 residuals of section 8.1 plus the
+elc controls, three replicates, every signature checked against gold, with
+`KM_ELC_PROFILE` showing identical `sub_items`, `edge_items`, `nf1_scan` and
+`nf3_scan` between arms and `link_items == edge_items` on the parallel arm.
+The known costs to look for: the per-context tables are split over the
+workers, so a shard's dense queue tables cost 5 bytes per owned context and
+nothing per foreign one, but the message buffers and the label rebuild at the
+end of the run are new work; and the static `c % n` ownership does not
+rebalance, so a run whose closure concentrates in a few hub contexts will not
+scale.

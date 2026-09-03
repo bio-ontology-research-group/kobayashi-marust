@@ -16,6 +16,8 @@
 
 use std::collections::VecDeque;
 use std::hash::{BuildHasherDefault, Hasher};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 use rayon::prelude::*;
 
@@ -2787,6 +2789,40 @@ struct Prof {
     nf4_batch_groups: u64,
     nf4_batch_missing: u64,
     ctx_activations: u64, // context activations of the contextual worklist (0 under the FIFO)
+    // Context-parallel saturation only (see `Shard`). `link_items` counts the
+    // target half of the edge rules, which the serial engine runs inside the
+    // Edge item counted by `edge_items`, so the two are equal and both equal
+    // the number of derived edges.
+    link_items: u64,
+    par_workers: u64,
+    par_batches: u64,
+    par_messages: u64,
+}
+
+impl Prof {
+    /// Fold a worker's counters into the run's. The item and per-item scan
+    /// counters are additive over the workers because every fact is derived,
+    /// and hence processed, by exactly one of them.
+    fn merge(&mut self, other: &Prof) {
+        self.sub_items += other.sub_items;
+        self.edge_items += other.edge_items;
+        self.nf1_scan += other.nf1_scan;
+        self.nf2_scan += other.nf2_scan;
+        self.nf2_label_side += other.nf2_label_side;
+        self.nf3_scan += other.nf3_scan;
+        self.nf4_sub_scan += other.nf4_sub_scan;
+        self.nf4_edge_scan += other.nf4_edge_scan;
+        self.nf7_scan += other.nf7_scan;
+        self.botback += other.botback;
+        self.nf4_batch_calls += other.nf4_batch_calls;
+        self.nf4_batch_edges += other.nf4_batch_edges;
+        self.nf4_batch_groups += other.nf4_batch_groups;
+        self.nf4_batch_missing += other.nf4_batch_missing;
+        self.ctx_activations += other.ctx_activations;
+        self.link_items += other.link_items;
+        self.par_batches += other.par_batches;
+        self.par_messages += other.par_messages;
+    }
 }
 
 const PAR_NF4_MIN_EDGES: usize = 256;
@@ -3185,6 +3221,1082 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
         }
     }
     prof.ctx_activations += st.worklist.activations() - activations_before;
+}
+
+// ---------------------------------------------------------------------------
+// Context-parallel saturation
+// ---------------------------------------------------------------------------
+//
+// The serial completion above already decomposes the work by *context*: an
+// item belongs to the subject of a subsumption or the source of an edge, and
+// `Worklist::Contextual` drains one activated context at a time (see
+// `Worklist`). This section runs that decomposition on several threads.
+//
+// Ownership. Context `c` is owned by worker `c % W` and stored at slot
+// `c / W` of that worker's dense tables. A worker holds the whole mutable
+// state of the contexts it owns and nothing else: the label `sub_super[c]`,
+// the forward edges `edges[c]`, the backward links `in_by_role[(c, ·)]` with
+// their role list `in_roles[c]`, and the propagations `prop[(c, ·)]`. Nothing
+// is shared and nothing is locked on the rule path; the rule indexes (`Idx`)
+// are immutable and read by every worker.
+//
+// Locality of the rules. A conclusion about another context is a message to
+// its owner, exactly as in ELK's concurrent saturation (Kazakov, Krötzsch,
+// Simančík, JAR 2014, §5). This is possible because every join of the
+// calculus has both of its premises in ONE context, once the edge rules are
+// split into the two halves that the serial arm fuses:
+//
+//   * `PItem::Sub(c, d)` runs at `c`: NF1, NF2 and NF5 read and extend the
+//     label of `c`; NF3 extends the forward edges of `c`; the NF4 filler
+//     registration extends `prop[(c, ·)]` and joins it against the backward
+//     links `in_by_role[(c, ·)]`; ⊥ back-propagation walks the same links.
+//     The conclusions that leave `c` (`⊥` and the NF4 conclusions of the
+//     predecessors) are `Msg::Sub`.
+//   * `PItem::Fwd(c, r, d)` runs at the SOURCE `c` of a new edge: the role
+//     lift `R ⊑ S`, and the NF7 compositions whose middle context is `c`
+//     (backward links of `c` composed with this new forward link). Both
+//     premises are at `c`; the conclusions are edges of the predecessors,
+//     sent as `Msg::Edge`.
+//   * `PItem::Link(c, r, d)` runs at the TARGET `d` of the same new edge: the
+//     edge-side NF4 join against `prop[(d, r)]`, the ⊥ check on the label of
+//     `d`, and the NF7 compositions whose middle context is `d` (this new
+//     backward link composed with the forward edges of `d`). Both premises
+//     are at `d`; the conclusions belong to `c` and are sent as `Msg::Sub`
+//     and `Msg::Edge`.
+//
+// The serial Edge arm performs the `Link` half at the source while reading
+// the target's `prop`, label and edge set; splitting it moves those three
+// reads into the context that owns them. No rule reads a context it does not
+// own.
+//
+// Confluence. The completion is a finite monotone closure, so the least
+// fixpoint does not depend on the order in which rule instances fire, only on
+// every applicable instance firing at least once. Every fact is inserted into
+// the owning worker's table exactly once (the insert guards on
+// `HashSet::insert` / the new-edge branch) and queues exactly one item, so
+// each rule instance with a single premise fires exactly once. Each two-premise
+// join is intra-context, hence totally ordered by its owner's thread, and both
+// sides register before they scan:
+//
+//   * NF2 (`D ⊓ D' ⊑ E` at `c`): both premises are members of `sub_super[c]`;
+//     the item for a member is queued after the member is inserted, and scans
+//     the label for the partner.
+//   * NF4 (`∃R.X ⊑ E` at `d`): `prop[(d, R)]` is extended by the `Sub` item of
+//     the filler `X`, which then scans `in_by_role[(d, R)]`; a backward link is
+//     appended to `in_by_role[(d, R)]` by the message that queues the `Link`
+//     item, which then scans `prop[(d, R)]`.
+//   * ⊥ over an edge (at `d`): `Sub(d, ⊥)` scans the backward links; a `Link`
+//     item scans the label for `⊥`.
+//   * NF7 (`R ∘ S ⊑ T` at the middle context `m`): a `Link` item is queued
+//     after its link is in `in_by_role[(m, ·)]` and scans `edges[m]`; a `Fwd`
+//     item is queued after its edge is in `edges[m]` and scans
+//     `in_by_role[(m, ·)]`.
+//
+// In each case, if the side that arrived first missed the second, the second
+// cannot miss the first: the first was in its own table before the second was
+// created (all four sequences happen on one thread). So every join fires, and
+// the derived set is the same least fixpoint the serial `run` computes.
+//
+// Termination. A worker holds one *busy* credit in `ParShared::credit` while
+// it has anything to do, and each published message batch holds one credit of
+// its own, taken before the batch becomes visible and released by the receiver
+// after the batch has been applied (the receiver re-takes its busy credit
+// first). A worker releases its busy credit only when its queue is empty, its
+// outgoing buffers are flushed and its inbox is empty. `credit == 0` therefore
+// certifies that no worker is running, no item is queued and no message is in
+// flight; and since new work is only ever created while holding a credit, zero
+// is stable. Workers exit exactly on that observation.
+//
+// Determinism. The fixpoint is unique, but the *iteration order* of a label
+// depends on the order its members arrived, which a parallel run does not fix.
+// Each worker therefore rebuilds the label sets of its contexts from a sorted
+// vector before it exits, so `sub_super` iterates in ascending id order and
+// the classification output is byte-identical for any worker count and any
+// interleaving. The remaining tables (edges, links, propagations) are consumed
+// as sets by the rules and are released before the output is built.
+//
+// Scope. The mode is opt-in (`KM_ELC_PAR_CTX`) and declines wherever the
+// serial engine's ORDER is load-bearing rather than its result: the FIFO
+// disciplines (`KM_ELC_PAR_NF4`'s frontier batch and `KM_ELC_FIFO`) and every
+// certificate mode, whose repair pass forks the state and picks representatives
+// and blame witnesses in construction order. Those keep the serial engine
+// exactly as before.
+
+/// A conclusion for a context this worker does not own. Sent to that context's
+/// owner, which applies it to its own tables.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Msg {
+    /// `d` is a subsumer of `c`. Applied by the owner of `c`.
+    Sub(u32, u32),
+    /// The edge `(c, r, d)` holds. Applied by the owner of `c`, which owns the
+    /// forward edge set of `c`.
+    Edge(u32, u32, u32),
+    /// The edge `(c, r, d)` holds. Applied by the owner of `d` as a backward
+    /// link of `d`; sent by the owner of `c` when the forward edge is new, so
+    /// exactly one link is registered per distinct edge.
+    Link(u32, u32, u32),
+}
+
+/// A pending item of an owned context.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PItem {
+    /// `d` was just added to the label of `c`: the Sub rules of `c`.
+    Sub(u32, u32),
+    /// `(c, r, d)` was just added to the forward edges of `c`: the source half
+    /// of the edge rules (role lift, NF7 with `c` as the middle context).
+    Fwd(u32, u32, u32),
+    /// `(c, r, d)` was just added to the backward links of `d`: the target half
+    /// of the edge rules (NF4 propagation join, ⊥ check, NF7 with `d` as the
+    /// middle context).
+    Link(u32, u32, u32),
+}
+
+/// Per-owned-context item chains plus the activation queue, the shard-local
+/// counterpart of [`ContextQueue`]. Indexed by the owner's dense slot
+/// (`c / workers`) rather than by the context id, so the tables of a shard
+/// cost one entry per context it owns and nothing for the others.
+struct ShardQueue {
+    head: Vec<u32>,
+    slots: Vec<(PItem, u32)>,
+    free: Vec<u32>,
+    active: VecDeque<u32>,
+    queued: Vec<bool>,
+    current: u32,
+    len: usize,
+    activations: u64,
+}
+
+impl ShardQueue {
+    fn new(owned: usize) -> ShardQueue {
+        ShardQueue {
+            head: vec![NO_ITEM; owned],
+            slots: Vec::new(),
+            free: Vec::new(),
+            active: VecDeque::new(),
+            queued: vec![false; owned],
+            current: NO_CONTEXT,
+            len: 0,
+            activations: 0,
+        }
+    }
+
+    #[inline]
+    fn push(&mut self, slot: usize, item: PItem) {
+        let next = self.head[slot];
+        let cell = match self.free.pop() {
+            Some(cell) => {
+                self.slots[cell as usize] = (item, next);
+                cell
+            }
+            None => {
+                self.slots.push((item, next));
+                (self.slots.len() - 1) as u32
+            }
+        };
+        self.head[slot] = cell;
+        self.len += 1;
+        if !self.queued[slot] {
+            self.queued[slot] = true;
+            self.active.push_back(slot as u32);
+        }
+    }
+
+    /// The next item: the current context's most recently queued item while it
+    /// has any, else the first item of the next activated context.
+    #[inline]
+    fn pop(&mut self) -> Option<PItem> {
+        loop {
+            if self.current != NO_CONTEXT {
+                let slot = self.current as usize;
+                let cell = self.head[slot];
+                if cell != NO_ITEM {
+                    let (item, next) = self.slots[cell as usize];
+                    self.head[slot] = next;
+                    self.free.push(cell);
+                    self.len -= 1;
+                    return Some(item);
+                }
+                self.queued[slot] = false;
+                self.current = NO_CONTEXT;
+            }
+            let slot = self.active.pop_front()?;
+            self.current = slot;
+            self.activations += 1;
+        }
+    }
+}
+
+/// One worker's inbox. `len` is a lock-free "has batches" hint maintained under
+/// the mutex, so the hot idle check costs one atomic load.
+struct Mailbox {
+    batches: Mutex<Vec<Vec<Msg>>>,
+    len: AtomicUsize,
+}
+
+/// State shared by the workers: the inboxes, the termination credit and the
+/// startup handshake.
+struct ParShared {
+    boxes: Vec<Mailbox>,
+    /// One credit per busy worker plus one per published, unconsumed batch.
+    /// Zero certifies global quiescence (see the section header).
+    credit: AtomicUsize,
+    /// Set once every worker thread has been spawned. A worker that observes
+    /// `abort` before `started` exits without touching the state, so a failed
+    /// spawn cannot leave the already-spawned workers waiting for a worker that
+    /// will never run.
+    started: AtomicBool,
+    abort: AtomicBool,
+}
+
+impl ParShared {
+    fn new(workers: usize) -> ParShared {
+        ParShared {
+            boxes: (0..workers)
+                .map(|_| Mailbox {
+                    batches: Mutex::new(Vec::new()),
+                    len: AtomicUsize::new(0),
+                })
+                .collect(),
+            credit: AtomicUsize::new(workers),
+            started: AtomicBool::new(false),
+            abort: AtomicBool::new(false),
+        }
+    }
+}
+
+/// Messages buffered for one destination before the batch is published. Larger
+/// batches amortize the receiver's mutex and the credit atomics; smaller ones
+/// keep a receiver from idling while the sender is in a long burst.
+const PAR_FLUSH_MESSAGES: usize = 1024;
+
+/// Conclusion sink over the pieces of a [`Shard`] a rule may extend while it
+/// scans another of the shard's tables (its backward links, its propagations,
+/// its edges). Keeping the sink to these fields is what lets the rule bodies
+/// iterate the shard's own indexes in place, exactly as the serial arms do.
+struct Sink<'s> {
+    id: usize,
+    workers: usize,
+    sub_super: &'s mut Vec<HashSet<u32>>,
+    edges: &'s mut Vec<HashSet<(u32, u32)>>,
+    queue: &'s mut ShardQueue,
+    out: &'s mut Vec<Vec<Msg>>,
+    /// Backward links for contexts of THIS shard, registered once the rule that
+    /// created the edge has stopped iterating (`in_by_role` is the one table a
+    /// rule may be scanning while it creates an edge).
+    self_links: &'s mut Vec<(u32, u32, u32)>,
+    pending: &'s mut usize,
+    edges_total: &'s mut u64,
+}
+
+impl Sink<'_> {
+    #[inline]
+    fn owner(&self, c: u32) -> usize {
+        c as usize % self.workers
+    }
+
+    #[inline]
+    fn slot(&self, c: u32) -> usize {
+        c as usize / self.workers
+    }
+
+    /// `c ⊑ d`, wherever `c` lives.
+    #[inline]
+    fn sub(&mut self, c: u32, d: u32) {
+        let owner = self.owner(c);
+        if owner == self.id {
+            let slot = self.slot(c);
+            if self.sub_super[slot].insert(d) {
+                self.queue.push(slot, PItem::Sub(c, d));
+            }
+        } else {
+            self.out[owner].push(Msg::Sub(c, d));
+            *self.pending += 1;
+        }
+    }
+
+    /// The edge `(c, r, d)`, wherever `c` lives. A new edge queues the source
+    /// half here and the target half at the owner of `d`.
+    #[inline]
+    fn edge(&mut self, c: u32, r: u32, d: u32) {
+        let owner = self.owner(c);
+        if owner != self.id {
+            self.out[owner].push(Msg::Edge(c, r, d));
+            *self.pending += 1;
+            return;
+        }
+        let slot = self.slot(c);
+        if !self.edges[slot].insert((r, d)) {
+            return;
+        }
+        *self.edges_total += 1;
+        self.queue.push(slot, PItem::Fwd(c, r, d));
+        let target = self.owner(d);
+        if target == self.id {
+            self.self_links.push((c, r, d));
+        } else {
+            self.out[target].push(Msg::Link(c, r, d));
+            *self.pending += 1;
+        }
+    }
+
+    /// R⊓ (NF2) for the new subsumer of `c`, the shard-local mirror of
+    /// [`fire_nf2`]: enumerate the smaller of the candidate list and the label,
+    /// firing exactly the conclusions whose partner is already in the label.
+    fn nf2(&mut self, c: u32, cands: &[(u32, u32)], scratch: &mut Vec<u32>, prof: &mut Prof) {
+        let slot = self.slot(c);
+        let label_len = self.sub_super[slot].len();
+        if cands.len() <= label_len.saturating_mul(NF2_LABEL_SIDE_RATIO) {
+            prof.nf2_scan += cands.len() as u64;
+            for &(other, sup) in cands {
+                if self.sub_super[slot].contains(&other) {
+                    self.sub(c, sup);
+                }
+            }
+            return;
+        }
+        prof.nf2_scan += label_len as u64;
+        prof.nf2_label_side += 1;
+        debug_assert!(scratch.is_empty());
+        for &present in self.sub_super[slot].iter() {
+            let from = cands.partition_point(|&(other, _)| other < present);
+            for &(other, sup) in &cands[from..] {
+                if other != present {
+                    break;
+                }
+                scratch.push(sup);
+            }
+        }
+        for i in 0..scratch.len() {
+            let sup = scratch[i];
+            self.sub(c, sup);
+        }
+        scratch.clear();
+    }
+}
+
+/// One worker: the contexts it owns, their pending items, and its outgoing
+/// message buffers. The rule indexes are shared and immutable.
+struct Shard<'a> {
+    id: usize,
+    workers: usize,
+    idx: &'a Idx,
+    shared: &'a ParShared,
+    /// Label of the owned context at slot `i`, i.e. of context `i * W + id`.
+    sub_super: Vec<HashSet<u32>>,
+    edges: Vec<HashSet<(u32, u32)>>,
+    in_roles: Vec<Vec<u32>>,
+    in_by_role: HashMap<(u32, u32), Vec<u32>>,
+    prop: HashMap<(u32, u32), Vec<u32>>,
+    queue: ShardQueue,
+    /// Outgoing buffer per destination worker (`out[id]` stays empty: a
+    /// conclusion for an owned context is applied in place).
+    out: Vec<Vec<Msg>>,
+    /// Buffers recycled from consumed inboxes, reused for outgoing batches.
+    spare: Vec<Vec<Msg>>,
+    pending: usize,
+    self_links: Vec<(u32, u32, u32)>,
+    link_drain: Vec<(u32, u32, u32)>,
+    nf2_scratch: Vec<u32>,
+    pred_scratch: Vec<(u32, u32)>,
+    edge_scratch: Vec<(u32, u32)>,
+    edges_total: u64,
+    prof: Prof,
+}
+
+impl<'a> Shard<'a> {
+    fn new(id: usize, workers: usize, n: usize, idx: &'a Idx, shared: &'a ParShared) -> Shard<'a> {
+        // Contexts `id, id + W, id + 2W, ...` below `n`.
+        let owned = if id < n {
+            (n - id).div_ceil(workers)
+        } else {
+            0
+        };
+        Shard {
+            id,
+            workers,
+            idx,
+            shared,
+            sub_super: vec![HashSet::default(); owned],
+            edges: vec![HashSet::default(); owned],
+            in_roles: vec![Vec::new(); owned],
+            in_by_role: HashMap::default(),
+            prop: HashMap::default(),
+            queue: ShardQueue::new(owned),
+            out: (0..workers).map(|_| Vec::new()).collect(),
+            spare: Vec::new(),
+            pending: 0,
+            self_links: Vec::new(),
+            link_drain: Vec::new(),
+            nf2_scratch: Vec::new(),
+            pred_scratch: Vec::new(),
+            edge_scratch: Vec::new(),
+            edges_total: 0,
+            prof: Prof::default(),
+        }
+    }
+
+    #[inline]
+    fn owner(&self, c: u32) -> usize {
+        c as usize % self.workers
+    }
+
+    #[inline]
+    fn slot(&self, c: u32) -> usize {
+        c as usize / self.workers
+    }
+
+    #[inline]
+    fn owns(&self, c: u32) -> bool {
+        self.owner(c) == self.id
+    }
+
+    /// R₀ (Init) over the owned contexts, plus the EL++ reflexive self-edges:
+    /// the same seeds as `init_state` and `seed_reflexive_edges`, restricted to
+    /// this shard. Every context is seeded by exactly one worker.
+    fn seed(&mut self, nfs: &Nfs) {
+        for &c in &nfs.concept_names {
+            if c == BOTTOM || !self.owns(c) {
+                continue;
+            }
+            let slot = self.slot(c);
+            if self.sub_super[slot].insert(c) {
+                self.queue.push(slot, PItem::Sub(c, c));
+            }
+            if self.sub_super[slot].insert(TOP) {
+                self.queue.push(slot, PItem::Sub(c, TOP));
+            }
+        }
+        let idx = self.idx;
+        if idx.reflexive_closed.is_empty() {
+            return;
+        }
+        for &c in &nfs.concept_names {
+            if c == BOTTOM || !self.owns(c) {
+                continue;
+            }
+            for &r in &idx.reflexive_closed {
+                self.create_edge(c, r, c);
+            }
+        }
+    }
+
+    /// Apply a message for one of this shard's contexts.
+    #[inline]
+    fn apply(&mut self, msg: Msg) {
+        match msg {
+            Msg::Sub(c, d) => {
+                let slot = self.slot(c);
+                if self.sub_super[slot].insert(d) {
+                    self.queue.push(slot, PItem::Sub(c, d));
+                }
+            }
+            Msg::Edge(c, r, d) => self.create_edge(c, r, d),
+            Msg::Link(c, r, d) => self.register_link(c, r, d),
+        }
+    }
+
+    /// Record the forward edge `(c, r, d)` at the owned source `c`, queue its
+    /// source half, and hand the backward link to the owner of `d`. Same
+    /// effect as [`Sink::edge`] for an owned source, without the deferral (no
+    /// table of this shard is being iterated here).
+    fn create_edge(&mut self, c: u32, r: u32, d: u32) {
+        let slot = self.slot(c);
+        if !self.edges[slot].insert((r, d)) {
+            return;
+        }
+        self.edges_total += 1;
+        self.queue.push(slot, PItem::Fwd(c, r, d));
+        if self.owns(d) {
+            self.register_link(c, r, d);
+        } else {
+            let target = self.owner(d);
+            self.out[target].push(Msg::Link(c, r, d));
+            self.pending += 1;
+        }
+    }
+
+    /// Record the backward link of the owned target `d` and queue its target
+    /// half. Called once per distinct edge, so the parent lists hold no
+    /// duplicates, exactly as in `State::add_edge`.
+    fn register_link(&mut self, c: u32, r: u32, d: u32) {
+        let slot = self.slot(d);
+        let parents = self.in_by_role.entry((d, r)).or_default();
+        if parents.is_empty() {
+            self.in_roles[slot].push(r);
+        }
+        parents.push(c);
+        self.queue.push(slot, PItem::Link(c, r, d));
+    }
+
+    /// Register the backward links a rule deferred while it was iterating.
+    #[inline]
+    fn drain_self_links(&mut self) {
+        if self.self_links.is_empty() {
+            return;
+        }
+        std::mem::swap(&mut self.self_links, &mut self.link_drain);
+        for i in 0..self.link_drain.len() {
+            let (c, r, d) = self.link_drain[i];
+            self.register_link(c, r, d);
+        }
+        self.link_drain.clear();
+    }
+
+    /// The Sub rules at `c` for its new subsumer `d`: the same rule bodies, in
+    /// the same order, as the `Item::Sub` arm of [`run`].
+    fn process_sub(&mut self, c: u32, d: u32) {
+        let idx = self.idx;
+        let rules = idx.rules_of(d);
+        let slot = self.slot(c);
+        let Shard {
+            id,
+            workers,
+            sub_super,
+            edges,
+            queue,
+            out,
+            pending,
+            self_links,
+            edges_total,
+            in_roles,
+            in_by_role,
+            prop,
+            nf2_scratch,
+            prof,
+            ..
+        } = self;
+        prof.sub_items += 1;
+        let mut sink = Sink {
+            id: *id,
+            workers: *workers,
+            sub_super,
+            edges,
+            queue,
+            out,
+            self_links,
+            pending,
+            edges_total,
+        };
+        if let Some(rules) = rules {
+            // R⊑ (NF1)
+            prof.nf1_scan += rules.nf1_sups.len() as u64;
+            for &sup in rules.nf1_sups.iter() {
+                sink.sub(c, sup);
+            }
+            // R⊓ (NF2)
+            if !rules.nf2_cand.is_empty() {
+                sink.nf2(c, &rules.nf2_cand, nf2_scratch, prof);
+            }
+            // R⊥ (NF5)
+            if rules.bottom {
+                sink.sub(c, BOTTOM);
+            }
+            // R∃ (NF3)
+            prof.nf3_scan += rules.nf3_edges.len() as u64;
+            for &(role, filler) in rules.nf3_edges.iter() {
+                sink.edge(c, role, filler);
+            }
+        }
+        // R⊥-edge, backwards: every predecessor of an unsatisfiable context is
+        // unsatisfiable. Reads this shard's own backward links.
+        if d == BOTTOM {
+            for &role in &in_roles[slot] {
+                if let Some(parents) = in_by_role.get(&(c, role)) {
+                    prof.botback += parents.len() as u64;
+                    for &parent in parents {
+                        sink.sub(parent, BOTTOM);
+                    }
+                }
+            }
+        }
+        // R∃⁻ (NF4): register the propagations of the new filler `d` at `c` for
+        // future backward links, and join them with the links already there.
+        if let Some(rules) = rules {
+            let axs: &[(u32, u32)] = &rules.nf4_axioms;
+            if axs.is_empty() {
+                return;
+            }
+            for &(s, e) in axs {
+                prop.entry((c, s)).or_default().push(e);
+            }
+            if in_roles[slot].is_empty() {
+                return;
+            }
+            let mut lo = 0;
+            while lo < axs.len() {
+                let role = axs[lo].0;
+                let hi = axs.partition_point(|&(s, _)| s <= role);
+                if let Some(parents) = in_by_role.get(&(c, role)) {
+                    prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
+                    for &parent in parents {
+                        for &(_, e) in &axs[lo..hi] {
+                            sink.sub(parent, e);
+                        }
+                    }
+                }
+                lo = hi;
+            }
+        }
+    }
+
+    /// The source half of the edge rules for the new edge `(c, r, d)`: the NF7
+    /// compositions whose middle context is `c`, then the role-hierarchy lift.
+    fn process_fwd(&mut self, c: u32, r: u32, d: u32) {
+        let idx = self.idx;
+        let slot = self.slot(c);
+        let Shard {
+            id,
+            workers,
+            sub_super,
+            edges,
+            queue,
+            out,
+            pending,
+            self_links,
+            edges_total,
+            in_roles,
+            in_by_role,
+            pred_scratch,
+            prof,
+            ..
+        } = self;
+        prof.edge_items += 1;
+        let mut sink = Sink {
+            id: *id,
+            workers: *workers,
+            sub_super,
+            edges,
+            queue,
+            out,
+            self_links,
+            pending,
+            edges_total,
+        };
+        // R∘ (NF7) with `c` in the middle: a backward link of `c` composed with
+        // this new forward link. Only the roles that actually compose with `r`
+        // are read out of the backward-link index.
+        if !idx.nf7_by_pair.is_empty() {
+            let empty: HashSet<u32> = HashSet::default();
+            pred_scratch.clear();
+            for &r0 in &in_roles[slot] {
+                if !idx.nf7_by_pair.contains_key(&(r0, r)) {
+                    continue;
+                }
+                if let Some(ps) = in_by_role.get(&(c, r0)) {
+                    pred_scratch.extend(ps.iter().map(|&p| (p, r0)));
+                }
+            }
+            for i in 0..pred_scratch.len() {
+                let (parent, r0) = pred_scratch[i];
+                if let Some(sups) = idx.nf7_by_pair.get(&(r0, r)) {
+                    for &nfsup in sups {
+                        for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
+                            sink.edge(parent, super_role, d);
+                        }
+                    }
+                }
+            }
+        }
+        // Role-hierarchy lift: an R-edge is also an S-edge for R ⊑ S.
+        for &super_role in idx.role_supers(r) {
+            if super_role != r {
+                sink.edge(c, super_role, d);
+            }
+        }
+    }
+
+    /// The target half of the edge rules for the new edge `(c, r, d)`, run at
+    /// `d`: the edge-side NF4 join against the propagations stored at `d`, the
+    /// ⊥ check on the label of `d`, and the NF7 compositions whose middle
+    /// context is `d`. These are the three reads the serial Edge arm makes into
+    /// the target's tables.
+    fn process_link(&mut self, c: u32, r: u32, d: u32) {
+        let idx = self.idx;
+        let slot = self.slot(d);
+        let Shard {
+            id,
+            workers,
+            sub_super,
+            edges,
+            queue,
+            out,
+            pending,
+            self_links,
+            edges_total,
+            prop,
+            edge_scratch,
+            prof,
+            ..
+        } = self;
+        prof.link_items += 1;
+        let mut sink = Sink {
+            id: *id,
+            workers: *workers,
+            sub_super,
+            edges,
+            queue,
+            out,
+            self_links,
+            pending,
+            edges_total,
+        };
+        // R∃⁻ (NF4), ELK backward-link join: the propagations already stored at
+        // `d` for this exact role fire into the source `c`.
+        if idx.has_nf4 {
+            if let Some(es) = prop.get(&(d, r)) {
+                prof.nf4_edge_scan += es.len() as u64;
+                for &sup in es {
+                    sink.sub(c, sup);
+                }
+            }
+        }
+        // R⊥-edge: an edge into a known-unsatisfiable target propagates.
+        if sink.sub_super[slot].contains(&BOTTOM) {
+            sink.sub(c, BOTTOM);
+        }
+        // R∘ (NF7) with `d` in the middle: this new backward link composed with
+        // the forward edges of `d`.
+        if !idx.nf7_by_pair.is_empty() {
+            let empty: HashSet<u32> = HashSet::default();
+            edge_scratch.clear();
+            edge_scratch.extend(sink.edges[slot].iter().copied());
+            prof.nf7_scan += edge_scratch.len() as u64;
+            for i in 0..edge_scratch.len() {
+                let (r2, e) = edge_scratch[i];
+                if let Some(sups) = idx.nf7_by_pair.get(&(r, r2)) {
+                    for &nfsup in sups {
+                        for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
+                            sink.edge(c, super_role, e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Shard<'_> {
+    /// Publish the buffered messages for one destination. The credit is taken
+    /// BEFORE the batch becomes visible, so the global count never drops to
+    /// zero between the sender releasing its own credit and the receiver taking
+    /// the batch.
+    fn publish(&mut self, to: usize) {
+        let shared = self.shared;
+        let refill = self.spare.pop().unwrap_or_default();
+        let batch = std::mem::replace(&mut self.out[to], refill);
+        self.prof.par_batches += 1;
+        self.prof.par_messages += batch.len() as u64;
+        shared.credit.fetch_add(1, Ordering::SeqCst);
+        let mailbox = &shared.boxes[to];
+        let mut queued = mailbox.batches.lock().expect("elc parallel mailbox");
+        queued.push(batch);
+        mailbox.len.store(queued.len(), Ordering::SeqCst);
+    }
+
+    /// Publish every non-empty outgoing buffer.
+    fn flush(&mut self) {
+        for to in 0..self.workers {
+            if to == self.id || self.out[to].is_empty() {
+                continue;
+            }
+            self.publish(to);
+        }
+        self.pending = 0;
+    }
+
+    /// Apply everything addressed to this shard. Returns whether anything was
+    /// taken. The caller holds a busy credit throughout, so the batch credits
+    /// released here cannot bring the global count to zero while their
+    /// conclusions are still being applied.
+    fn take_inbox(&mut self) -> bool {
+        let shared = self.shared;
+        let mailbox = &shared.boxes[self.id];
+        if mailbox.len.load(Ordering::SeqCst) == 0 {
+            return false;
+        }
+        let mut batches = {
+            let mut queued = mailbox.batches.lock().expect("elc parallel mailbox");
+            let taken = std::mem::take(&mut *queued);
+            mailbox.len.store(0, Ordering::SeqCst);
+            taken
+        };
+        if batches.is_empty() {
+            return false;
+        }
+        shared.credit.fetch_sub(batches.len(), Ordering::SeqCst);
+        for mut batch in batches.drain(..) {
+            for i in 0..batch.len() {
+                self.apply(batch[i]);
+                self.drain_self_links();
+            }
+            batch.clear();
+            self.spare.push(batch);
+        }
+        true
+    }
+
+    /// Release the busy credit and wait for work or for global quiescence.
+    /// Returns `true` when the saturation is over for every worker.
+    fn wait(&mut self) -> bool {
+        let shared = self.shared;
+        shared.credit.fetch_sub(1, Ordering::SeqCst);
+        let mailbox = &shared.boxes[self.id];
+        let mut spins = 0u32;
+        loop {
+            if mailbox.len.load(Ordering::SeqCst) != 0 {
+                // Take the busy credit back before consuming, so the count
+                // never passes through zero while this worker has work.
+                shared.credit.fetch_add(1, Ordering::SeqCst);
+                return false;
+            }
+            if shared.credit.load(Ordering::SeqCst) == 0 {
+                return true;
+            }
+            if shared.abort.load(Ordering::SeqCst) {
+                return true;
+            }
+            spins += 1;
+            if spins < 128 {
+                std::hint::spin_loop();
+            } else if spins < 1024 {
+                std::thread::yield_now();
+            } else {
+                std::thread::sleep(std::time::Duration::from_micros(100));
+            }
+        }
+    }
+
+    /// Saturate: drain the owned contexts, publish, consume, and idle until the
+    /// whole worker set is quiescent.
+    fn saturate(&mut self) {
+        loop {
+            while let Some(item) = self.queue.pop() {
+                match item {
+                    PItem::Sub(c, d) => self.process_sub(c, d),
+                    PItem::Fwd(c, r, d) => self.process_fwd(c, r, d),
+                    PItem::Link(c, r, d) => self.process_link(c, r, d),
+                }
+                self.drain_self_links();
+                if self.pending >= PAR_FLUSH_MESSAGES {
+                    self.flush();
+                }
+            }
+            self.flush();
+            if self.take_inbox() {
+                continue;
+            }
+            if self.wait() {
+                break;
+            }
+        }
+        self.prof.ctx_activations = self.queue.activations;
+    }
+
+    /// Rebuild the labels of the owned contexts from sorted vectors, so their
+    /// iteration order (which the classification output follows row by row) is
+    /// a function of the derived set alone and not of the arrival order of the
+    /// conclusions. Runs on the worker that owns the contexts.
+    fn canonicalize(&mut self) {
+        let mut sorted: Vec<u32> = Vec::new();
+        for set in self.sub_super.iter_mut() {
+            if set.len() < 2 {
+                continue;
+            }
+            sorted.clear();
+            sorted.extend(set.iter().copied());
+            sorted.sort_unstable();
+            let mut fresh: HashSet<u32> =
+                HashSet::with_capacity_and_hasher(sorted.len(), FxBuild::default());
+            for &d in sorted.iter() {
+                fresh.insert(d);
+            }
+            *set = fresh;
+        }
+    }
+}
+
+// Test-only worker-count override, so the differential and stress tests can
+// drive `classify` on several worker counts without touching the process
+// environment other tests read concurrently. Thread-local: it applies to the
+// classification the test itself starts and to nothing else.
+#[cfg(test)]
+thread_local! {
+    static TEST_PAR_WORKERS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Auto worker count ceiling: past this the message traffic of the shared
+/// conclusions dominates, and the EL route is one worker of a classify run
+/// that may already be racing other processes.
+const PAR_CTX_AUTO_CAP: usize = 8;
+
+/// The worker count `KM_ELC_PAR_CTX` asks for (`0` = the serial engine).
+/// `auto` follows the machine, capped at [`PAR_CTX_AUTO_CAP`].
+fn requested_par_workers() -> usize {
+    #[cfg(test)]
+    {
+        let override_workers = TEST_PAR_WORKERS.with(|w| w.get());
+        if override_workers != 0 {
+            return override_workers;
+        }
+    }
+    match std::env::var("KM_ELC_PAR_CTX") {
+        Ok(value) => {
+            let value = value.trim().to_ascii_lowercase();
+            if value == "auto" {
+                std::thread::available_parallelism()
+                    .map_or(1, |p| p.get())
+                    .min(PAR_CTX_AUTO_CAP)
+            } else {
+                value.parse::<usize>().unwrap_or(0)
+            }
+        }
+        Err(_) => 0,
+    }
+}
+
+/// How many workers the context-parallel saturation may use, or `None` for the
+/// serial engine. Pure, so the policy is testable without the environment.
+///
+/// The parallel engine reaches the same fixpoint but not the same construction
+/// ORDER, so it declines wherever the order is load-bearing: the FIFO
+/// disciplines (`KM_ELC_PAR_NF4`'s consecutive edge frontier and the
+/// `KM_ELC_FIFO` A/B baseline) and every certificate mode, whose repair pass
+/// forks the saturated state and picks merge representatives and blame
+/// witnesses in construction order.
+fn context_parallel_plan(
+    requested: usize,
+    par_nf4: bool,
+    fifo: bool,
+    cert: CertMode,
+    lean_cert_requested: bool,
+    symbols: usize,
+    available: usize,
+) -> Option<usize> {
+    if requested < 2 || par_nf4 || fifo || cert != CertMode::Off || lean_cert_requested {
+        return None;
+    }
+    let workers = requested.min(available.max(1)).min(symbols);
+    (workers >= 2).then_some(workers)
+}
+
+/// The plan for this process and this classification.
+fn context_parallel_workers(
+    cert: CertMode,
+    lean_cert_requested: bool,
+    symbols: usize,
+) -> Option<usize> {
+    context_parallel_plan(
+        requested_par_workers(),
+        std::env::var_os("KM_ELC_PAR_NF4").is_some(),
+        std::env::var_os("KM_ELC_FIFO").is_some(),
+        cert,
+        lean_cert_requested,
+        symbols,
+        std::thread::available_parallelism().map_or(1, |p| p.get()),
+    )
+}
+
+/// Saturate on `workers` threads and return the same state the serial
+/// `init_state` + `seed_reflexive_edges` + [`run`] sequence produces, with the
+/// labels in canonical iteration order. `None` means the worker threads could
+/// not be started and the caller must run the serial engine.
+fn run_context_parallel(
+    nfs: &Nfs,
+    idx: &Idx,
+    n: usize,
+    workers: usize,
+    prof: &mut Prof,
+) -> Option<State> {
+    let shared = ParShared::new(workers);
+    let mut shards: Vec<Shard<'_>> = (0..workers)
+        .map(|id| Shard::new(id, workers, n, idx, &shared))
+        .collect();
+    let spawned = std::thread::scope(|scope| {
+        let mut shards = shards.iter_mut();
+        let first = shards.next().expect("at least one worker");
+        let mut handles = Vec::with_capacity(workers - 1);
+        let mut spawned = true;
+        for shard in shards {
+            let builder = std::thread::Builder::new().name(format!("elc-ctx-{}", shard.id));
+            match builder.spawn_scoped(scope, move || {
+                // Wait for the whole worker set: a shard that started while a
+                // later spawn failed would otherwise wait for a worker that
+                // never runs.
+                while !shard.shared.started.load(Ordering::SeqCst) {
+                    if shard.shared.abort.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    std::thread::yield_now();
+                }
+                shard.seed(nfs);
+                shard.saturate();
+                shard.canonicalize();
+            }) {
+                Ok(handle) => handles.push(handle),
+                Err(error) => {
+                    eprintln!("KM_ELC_PAR_CTX cannot start a worker ({error}); running serially");
+                    shared.abort.store(true, Ordering::SeqCst);
+                    spawned = false;
+                    break;
+                }
+            }
+        }
+        if !spawned {
+            return false;
+        }
+        shared.started.store(true, Ordering::SeqCst);
+        first.seed(nfs);
+        first.saturate();
+        first.canonicalize();
+        drop(handles);
+        true
+    });
+    if !spawned {
+        return None;
+    }
+    debug_assert_eq!(shared.credit.load(Ordering::SeqCst), 0);
+    Some(collect_shards(shards, n, workers, prof))
+}
+
+/// Move the shards' tables into the shape the rest of the module expects. The
+/// contexts of a shard are `id, id + W, ...`, so every entry lands at its own
+/// index and the maps are merged over disjoint key sets.
+fn collect_shards(shards: Vec<Shard<'_>>, n: usize, workers: usize, prof: &mut Prof) -> State {
+    let mut sub_super: Vec<HashSet<u32>> = vec![HashSet::default(); n];
+    let mut edges: Vec<HashSet<(u32, u32)>> = vec![HashSet::default(); n];
+    let mut in_roles: Vec<Vec<u32>> = vec![Vec::new(); n];
+    let mut in_by_role: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    let mut prop: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    let mut edge_epoch = 0u64;
+    for (id, shard) in shards.into_iter().enumerate() {
+        for (slot, label) in shard.sub_super.into_iter().enumerate() {
+            sub_super[slot * workers + id] = label;
+        }
+        for (slot, out) in shard.edges.into_iter().enumerate() {
+            edges[slot * workers + id] = out;
+        }
+        for (slot, roles) in shard.in_roles.into_iter().enumerate() {
+            in_roles[slot * workers + id] = roles;
+        }
+        in_by_role.extend(shard.in_by_role);
+        prop.extend(shard.prop);
+        edge_epoch += shard.edges_total;
+        prof.merge(&shard.prof);
+    }
+    prof.par_workers = workers as u64;
+    State {
+        sub_super,
+        edges,
+        in_by_role,
+        in_roles,
+        prop,
+        // Empty: the fixpoint is reached. The discipline is the environment's,
+        // so a later re-entry (an incremental replay over this state) behaves
+        // exactly as after a serial saturation.
+        worklist: Worklist::from_env(n),
+        sub_journal: None,
+        edge_epoch,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -6801,24 +7913,26 @@ fn classify_inner_mode(
     };
     let n = it.len();
     let idx = build_idx(&nfs, n);
-    let mut st = init_state(&nfs, n);
-    // EL++ reflexive roles: seed a self-edge (C,R,C) at every satisfiable concept
-    // node for each reflexive role (closed up the role hierarchy). The existing
-    // NF4 (∃R.D⊑E), NF7 (R∘S⊑T, both chain positions), ⊥-edge, and role-lift
-    // rules then fire over these edges through the normal fixpoint -- no new rule
-    // logic. This mirrors ELK's `⊤⊑∃R.Self` + ObjectHasSelf decomposition, and
-    // because a self-edge feeds NF7 in both directions it also closes the
-    // reflexive-role-plus-chain corner ELK marks only partially supported.
-    if !idx.reflexive_closed.is_empty() {
-        for &c in &nfs.concept_names {
-            if c == BOTTOM {
-                continue;
-            }
-            for &r in &idx.reflexive_closed {
-                st.add_edge(c, r, c);
-            }
+    // Context-parallel saturation when it is asked for and nothing depends on
+    // the serial construction order (see `context_parallel_plan`); it seeds its
+    // own shards, so the serial state is not built at all on that path.
+    let parallel_workers = context_parallel_workers(cert, lean_cert_requested, n);
+    let mut seeded = match parallel_workers {
+        Some(_) => None,
+        None => {
+            let mut st = init_state(&nfs, n);
+            // EL++ reflexive roles: seed a self-edge (C,R,C) at every satisfiable
+            // concept node for each reflexive role (closed up the role hierarchy).
+            // The existing NF4 (∃R.D⊑E), NF7 (R∘S⊑T, both chain positions),
+            // ⊥-edge, and role-lift rules then fire over these edges through the
+            // normal fixpoint -- no new rule logic. This mirrors ELK's
+            // `⊤⊑∃R.Self` + ObjectHasSelf decomposition, and because a self-edge
+            // feeds NF7 in both directions it also closes the
+            // reflexive-role-plus-chain corner ELK marks only partially supported.
+            seed_reflexive_edges(&nfs, &idx, &mut st);
+            Some(st)
         }
-    }
+    };
     // build_idx owns copies of every normal form used by the fixpoint. On the
     // pure-EL path there is no residual certificate, so only concept_names is
     // read after this point. Release the duplicate normal forms before the
@@ -6836,7 +7950,24 @@ fn classify_inner_mode(
     }
     elc_timing_lap(elc_timing, &mut elc_lap, "index+init");
     let mut prof = Prof::default();
-    run(&idx, &mut st, &mut prof);
+    let st = match (seeded.take(), parallel_workers) {
+        (None, Some(workers)) => match run_context_parallel(&nfs, &idx, n, workers, &mut prof) {
+            Some(st) => st,
+            // The worker threads could not be started: fall back to the serial
+            // engine, seeds and all.
+            None => {
+                let mut st = init_state(&nfs, n);
+                seed_reflexive_edges(&nfs, &idx, &mut st);
+                run(&idx, &mut st, &mut prof);
+                st
+            }
+        },
+        (Some(mut st), _) => {
+            run(&idx, &mut st, &mut prof);
+            st
+        }
+        (None, None) => unreachable!("the serial path seeds its state"),
+    };
     elc_timing_lap(elc_timing, &mut elc_lap, "saturate");
     if lean_cert_requested {
         let source_clauses = certificate_clauses
@@ -6930,7 +8061,8 @@ fn classify_inner_mode(
             "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} \
              nf2_label_side={} nf3_scan={} nf4_sub_scan={} nf4_edge_scan={} nf7_scan={} \
              botback={} | nf4_batch_calls={} nf4_batch_edges={} nf4_batch_groups={} \
-             nf4_batch_missing={} | ctx_activations={}",
+             nf4_batch_missing={} | ctx_activations={} link_items={} par_workers={} \
+             par_batches={} par_messages={}",
             prof.sub_items,
             prof.edge_items,
             prof.nf1_scan,
@@ -6945,7 +8077,11 @@ fn classify_inner_mode(
             prof.nf4_batch_edges,
             prof.nf4_batch_groups,
             prof.nf4_batch_missing,
-            prof.ctx_activations
+            prof.ctx_activations,
+            prof.link_items,
+            prof.par_workers,
+            prof.par_batches,
+            prof.par_messages
         );
     }
     let mut res = st;
@@ -10764,5 +11900,488 @@ mod tests {
         ));
         assert!(!is_pure_el_shape(&reverse_nf3));
         assert!(classify_inner(reverse_nf3, CertMode::Off, false).is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Context-parallel saturation
+    // -----------------------------------------------------------------------
+
+    /// Run `body` with the context-parallel worker count forced, without
+    /// touching the process environment other tests read concurrently.
+    fn with_par_workers<T>(workers: usize, body: impl FnOnce() -> T) -> T {
+        TEST_PAR_WORKERS.with(|slot| slot.set(workers));
+        let out = body();
+        TEST_PAR_WORKERS.with(|slot| slot.set(0));
+        out
+    }
+
+    /// The label relation in ITERATION order, which is what the classification
+    /// output writes row by row. Equality of this rendering is the byte-level
+    /// determinism the parallel engine has to provide; equality of the sets
+    /// alone would not catch a run-dependent iteration order.
+    fn label_order_digest(st: &State) -> String {
+        let mut out = String::new();
+        for (c, sups) in st.sub_super.iter().enumerate() {
+            out.push_str(&format!("{c}:"));
+            for &d in sups.iter() {
+                out.push_str(&format!("{d},"));
+            }
+            out.push(';');
+        }
+        out
+    }
+
+    /// The state's fact sets, order-independent, for comparing two engines.
+    fn state_facts(st: &State) -> (Vec<(u32, u32)>, Vec<(u32, u32, u32)>) {
+        let mut subs: Vec<(u32, u32)> = Vec::new();
+        for (c, sups) in st.sub_super.iter().enumerate() {
+            for &d in sups {
+                subs.push((c as u32, d));
+            }
+        }
+        let mut edges: Vec<(u32, u32, u32)> = Vec::new();
+        for (c, out) in st.edges.iter().enumerate() {
+            for &(r, d) in out {
+                edges.push((c as u32, r, d));
+            }
+        }
+        subs.sort_unstable();
+        edges.sort_unstable();
+        (subs, edges)
+    }
+
+    /// The backward links and propagations, canonicalised: the parallel engine
+    /// appends them in a different order but must build the same multisets.
+    fn link_facts(st: &State) -> (Vec<(u32, u32, u32)>, Vec<(u32, u32, u32)>) {
+        let mut links: Vec<(u32, u32, u32)> = Vec::new();
+        for (&(d, r), parents) in st.in_by_role.iter() {
+            for &p in parents {
+                links.push((d, r, p));
+            }
+        }
+        let mut props: Vec<(u32, u32, u32)> = Vec::new();
+        for (&(c, r), sups) in st.prop.iter() {
+            for &e in sups {
+                props.push((c, r, e));
+            }
+        }
+        links.sort_unstable();
+        props.sort_unstable();
+        (links, props)
+    }
+
+    /// A terminology big enough to spread over every shard and to force real
+    /// cross-worker traffic: `size` concepts over four roles, with NF1 chains,
+    /// a conjunction hub, existentials, NF4 axioms, a role inclusion, a role
+    /// chain, an unsatisfiable concept and a reflexive role.
+    fn stress_terminology(seed: u64, size: u32) -> (Nfs, usize) {
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        let nr = 4u32;
+        let first_role = 2 + size;
+        let n = (first_role + nr) as usize;
+        let mut nfs = empty_nfs();
+        nfs.concept_names = (2..first_role).collect();
+        nfs.concept_names.insert(TOP);
+        nfs.role_names = (first_role..first_role + nr).collect();
+        let concept = |rng: &mut Rng| 2 + rng.below(size);
+        let role = |rng: &mut Rng| first_role + rng.below(nr);
+        for i in 0..size {
+            // A chain plus a random edge, so the taxonomy is deep and the
+            // conclusions travel between shards.
+            nfs.nf1.push(Nf1 {
+                sub: 2 + i,
+                sup: 2 + (i + 1) % size,
+            });
+            nfs.nf1.push(Nf1 {
+                sub: concept(&mut rng),
+                sup: concept(&mut rng),
+            });
+        }
+        let hub = concept(&mut rng);
+        for _ in 0..64 {
+            nfs.nf2.push(Nf2 {
+                sub1: hub,
+                sub2: concept(&mut rng),
+                sup: concept(&mut rng),
+            });
+        }
+        for _ in 0..size / 2 {
+            nfs.nf2.push(Nf2 {
+                sub1: concept(&mut rng),
+                sub2: concept(&mut rng),
+                sup: concept(&mut rng),
+            });
+            nfs.nf3.push(Nf3 {
+                sub: concept(&mut rng),
+                role: role(&mut rng),
+                filler: concept(&mut rng),
+            });
+            nfs.nf4.push(Nf4 {
+                role: role(&mut rng),
+                filler: concept(&mut rng),
+                sup: concept(&mut rng),
+            });
+        }
+        nfs.nf5.push(concept(&mut rng));
+        nfs.nf6.push(Nf6 {
+            sub: first_role,
+            sup: first_role + 1,
+        });
+        nfs.nf7.push(Nf7 {
+            r1: first_role,
+            r2: first_role + 1,
+            sup: first_role + 2,
+        });
+        nfs.reflexive_roles.insert(first_role + 3);
+        (nfs, n)
+    }
+
+    #[test]
+    fn context_parallel_saturation_matches_the_serial_fixpoint() {
+        // The sharded engine against the serial one (itself pinned to the
+        // naive rule-by-rule fixpoint by
+        // `saturation_matches_the_naive_fixpoint_on_random_terminologies`) on
+        // the 32 random terminologies, at one, two, three and four workers.
+        // One worker exercises the same rule split with every conclusion
+        // delivered locally; more workers add the message paths.
+        for seed in 1..=32u64 {
+            let (nfs, n) = random_terminology(seed);
+            let idx = build_idx(&nfs, n);
+            let mut serial = init_state(&nfs, n);
+            seed_reflexive_edges(&nfs, &idx, &mut serial);
+            let mut serial_prof = Prof::default();
+            run(&idx, &mut serial, &mut serial_prof);
+            let (want_sub, want_edge) = naive_fixpoint(&nfs, n);
+            let (serial_subs, serial_edges) = state_facts(&serial);
+            let (serial_links, serial_props) = link_facts(&serial);
+            for workers in [1usize, 2, 3, 4] {
+                let mut prof = Prof::default();
+                let st = run_context_parallel(&nfs, &idx, n, workers, &mut prof)
+                    .expect("the worker threads start");
+                let (subs, edges) = state_facts(&st);
+                assert_eq!(subs, serial_subs, "seed {seed}, {workers} workers: labels");
+                assert_eq!(edges, serial_edges, "seed {seed}, {workers} workers: edges");
+                let got_sub: HashSet<(u32, u32)> = subs.iter().copied().collect();
+                let got_edge: HashSet<(u32, u32, u32)> = edges.iter().copied().collect();
+                assert_eq!(got_sub, want_sub, "seed {seed}, {workers} workers: closure");
+                assert_eq!(got_edge, want_edge, "seed {seed}, {workers} workers: edges");
+                // The role graph the rules join over is rebuilt identically,
+                // link for link and propagation for propagation.
+                let (links, props) = link_facts(&st);
+                assert_eq!(links, serial_links, "seed {seed}, {workers} workers: links");
+                assert_eq!(props, serial_props, "seed {seed}, {workers} workers: props");
+                // Every fact is processed exactly once, by exactly one worker,
+                // so the item counts and the per-item scans are invariant. The
+                // two halves of the edge rules are counted separately and both
+                // equal the number of derived edges.
+                assert_eq!(prof.sub_items, serial_prof.sub_items, "seed {seed}");
+                assert_eq!(prof.edge_items, serial_prof.edge_items, "seed {seed}");
+                assert_eq!(prof.link_items, prof.edge_items, "seed {seed}");
+                assert_eq!(prof.nf1_scan, serial_prof.nf1_scan, "seed {seed}");
+                assert_eq!(prof.nf3_scan, serial_prof.nf3_scan, "seed {seed}");
+                assert_eq!(prof.par_workers, workers as u64);
+                assert_eq!(st.edge_epoch, serial.edge_epoch, "seed {seed}");
+                assert!(st.worklist.is_empty());
+                assert!(st.sub_journal.is_none());
+                // Every context that received an item was activated.
+                assert!(prof.ctx_activations > 0, "seed {seed}");
+                assert!(
+                    prof.ctx_activations <= prof.sub_items + prof.edge_items + prof.link_items,
+                    "seed {seed}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn context_parallel_labels_iterate_identically_for_every_worker_count() {
+        // Byte-level determinism of the state the output is written from: the
+        // label of a context iterates in the same order whatever the worker
+        // count and whatever the interleaving, so the classification bytes do
+        // not depend on either. Repeats catch a scheduling race that only
+        // shows up on some interleavings.
+        let (nfs, n) = stress_terminology(7, 256);
+        let idx = build_idx(&nfs, n);
+        let mut reference: Option<String> = None;
+        let mut digest_len = 0usize;
+        let mut facts: Option<(Vec<(u32, u32)>, Vec<(u32, u32, u32)>)> = None;
+        for workers in [1usize, 2, 4, 3, 4, 2, 4, 1] {
+            let mut prof = Prof::default();
+            let st = run_context_parallel(&nfs, &idx, n, workers, &mut prof)
+                .expect("the worker threads start");
+            let digest = label_order_digest(&st);
+            digest_len = digest.len();
+            match &reference {
+                None => reference = Some(digest),
+                Some(want) => assert_eq!(&digest, want, "{workers} workers: label order"),
+            }
+            let got = state_facts(&st);
+            match &facts {
+                None => facts = Some(got),
+                Some(want) => assert_eq!(&got, want, "{workers} workers: closure"),
+            }
+            if workers > 1 {
+                // The shards really did exchange conclusions, so the run is a
+                // test of the message paths and not of one local worker.
+                assert!(prof.par_batches > 0, "{workers} workers: no batch sent");
+                assert!(prof.par_messages > 0, "{workers} workers: no message sent");
+            } else {
+                assert_eq!(prof.par_batches, 0, "one worker sends no message");
+            }
+        }
+        assert!(digest_len > 100_000, "the fixture is too small to race");
+    }
+
+    #[test]
+    fn context_parallel_stress_matches_the_serial_fixpoint_over_repeated_runs() {
+        // Volume plus repetition: four terminologies of a few hundred contexts
+        // with every normal form live, each run four times at four workers
+        // against the serial engine.
+        for seed in 1..=4u64 {
+            let (nfs, n) = stress_terminology(seed, 192);
+            let idx = build_idx(&nfs, n);
+            let mut serial = init_state(&nfs, n);
+            seed_reflexive_edges(&nfs, &idx, &mut serial);
+            let mut serial_prof = Prof::default();
+            run(&idx, &mut serial, &mut serial_prof);
+            let want = state_facts(&serial);
+            let want_links = link_facts(&serial);
+            // A closure worth racing over: tens of thousands of facts spread
+            // across every shard, not a handful that one worker finishes
+            // before the others have started.
+            assert!(
+                want.0.len() > 20_000 && want.1.len() > 1_000,
+                "seed {seed}: {} subsumptions, {} edges",
+                want.0.len(),
+                want.1.len()
+            );
+            for round in 0..4 {
+                let mut prof = Prof::default();
+                let st = run_context_parallel(&nfs, &idx, n, 4, &mut prof)
+                    .expect("the worker threads start");
+                assert_eq!(state_facts(&st), want, "seed {seed}, round {round}");
+                assert_eq!(link_facts(&st), want_links, "seed {seed}, round {round}");
+                assert_eq!(prof.sub_items, serial_prof.sub_items);
+                assert_eq!(prof.edge_items, serial_prof.edge_items);
+                assert_eq!(prof.link_items, serial_prof.edge_items);
+                assert_eq!(prof.nf1_scan, serial_prof.nf1_scan);
+                assert_eq!(prof.nf3_scan, serial_prof.nf3_scan);
+                assert_eq!(st.edge_epoch, serial.edge_epoch);
+            }
+        }
+    }
+
+    #[test]
+    fn context_parallel_classification_is_byte_identical_across_worker_counts() {
+        // End to end through `classify`: NF1 chains, a conjunction, an
+        // existential pair, an NF4 axiom, a role inclusion, a role chain and
+        // an unsatisfiable conjunction, classified serially and at one, two
+        // and four workers. The serialised result must be byte for byte the
+        // same for every worker count, and must carry the same answers as the
+        // serial engine.
+        let mut axioms: Vec<String> = Vec::new();
+        for i in 0..48u32 {
+            axioms.push(cl(
+                &[c(&format!("C{i}"), "x")],
+                &[c(&format!("C{}", (i + 1) % 48), "x")],
+            ));
+            axioms.push(cl(
+                &[c(&format!("C{i}"), "x")],
+                &[c(&format!("D{}", i % 7), "x")],
+            ));
+        }
+        for i in 0..12u32 {
+            axioms.push(cl(&[c(&format!("D{}", i % 7), "x")], &[rf("R", "x", "f")]));
+            axioms.push(cl(
+                &[c(&format!("D{}", i % 7), "x")],
+                &[cf(&format!("E{i}"), "f", "x")],
+            ));
+            axioms.push(cl(
+                &[r("R", "x", "y"), c(&format!("E{i}"), "y")],
+                &[c(&format!("F{i}"), "x")],
+            ));
+            axioms.push(cl(
+                &[c(&format!("E{i}"), "x"), c(&format!("F{i}"), "x")],
+                &[c(&format!("G{i}"), "x")],
+            ));
+        }
+        axioms.push(cl(&[r("R", "x", "y")], &[r("S", "x", "y")]));
+        axioms.push(cl(
+            &[r("R", "x", "y"), r("S", "y", "z")],
+            &[r("T", "x", "z")],
+        ));
+        axioms.push(cl(&[r("T", "x", "y"), c("E0", "y")], &[c("H", "x")]));
+        // An unsatisfiable concept with a predecessor, so ⊥ is derived and
+        // then propagated backwards over an edge.
+        axioms.push(cl(&[c("Z", "x")], &[c("D0", "x")]));
+        axioms.push(cl(&[c("Z", "x")], &[c("E0", "x")]));
+        // An empty head is ⊥ (`to_nf`); a named `owl:Nothing` would only be a
+        // concept called that.
+        axioms.push(cl(&[c("D0", "x"), c("E0", "x")], &[]));
+        axioms.push(cl(&[c("Y", "x")], &[rf("R", "x", "g")]));
+        axioms.push(cl(&[c("Y", "x")], &[cf("Z", "g", "x")]));
+        let source = clauses(&format!("[{}]", axioms.join(",")));
+
+        let serial = classify(source.clone()).expect("the EL route accepts the fixture");
+        assert!(!serial.subsumptions.is_empty());
+        let mut bytes: Option<String> = None;
+        for workers in [1usize, 2, 4, 2, 4] {
+            let result = with_par_workers(workers, || classify(source.clone()))
+                .expect("the EL route accepts the fixture");
+            let rendered = serde_json::to_string(&result).expect("the result serialises");
+            match &bytes {
+                None => bytes = Some(rendered),
+                Some(want) => assert_eq!(&rendered, want, "{workers} workers: output bytes"),
+            }
+            // Same answers as the serial engine (which orders each row by its
+            // own insertion history, so the rows are compared as sets).
+            assert_eq!(result.inconsistent, serial.inconsistent);
+            assert_eq!(result.unresolved, serial.unresolved);
+            assert_eq!(
+                result.subsumptions.keys().collect::<Vec<_>>(),
+                serial.subsumptions.keys().collect::<Vec<_>>(),
+                "{workers} workers: subjects"
+            );
+            for (subject, sups) in &result.subsumptions {
+                let mut got = sups.clone();
+                let mut want = serial.subsumptions[subject].clone();
+                got.sort();
+                want.sort();
+                assert_eq!(got, want, "{workers} workers: supers of {subject}");
+            }
+        }
+        // The fixture really exercises ⊥, its backward propagation over an
+        // edge, and the existential rules.
+        assert!(serial.subsumptions["Z"].iter().any(|s| s == "owl:Nothing"));
+        assert!(serial.subsumptions["Y"].iter().any(|s| s == "owl:Nothing"));
+        assert!(!serial.inconsistent);
+    }
+
+    #[test]
+    fn context_parallel_plan_keeps_the_order_sensitive_modes_serial() {
+        // The policy, without the environment: the parallel engine is opt-in
+        // and declines wherever the serial construction ORDER is load-bearing.
+        let plan = |requested, par_nf4, fifo, cert, lean, symbols, available| {
+            context_parallel_plan(requested, par_nf4, fifo, cert, lean, symbols, available)
+        };
+        assert_eq!(
+            plan(4, false, false, CertMode::Off, false, 1000, 8),
+            Some(4)
+        );
+        // Off by default, and one worker is the serial engine.
+        assert_eq!(plan(0, false, false, CertMode::Off, false, 1000, 8), None);
+        assert_eq!(plan(1, false, false, CertMode::Off, false, 1000, 8), None);
+        // The frontier batch reads a consecutive edge run off the global FIFO,
+        // and the A/B baseline asks for that FIFO outright.
+        assert_eq!(plan(4, true, false, CertMode::Off, false, 1000, 8), None);
+        assert_eq!(plan(4, false, true, CertMode::Off, false, 1000, 8), None);
+        // The certificate check and its repair fork read the saturated state
+        // in construction order.
+        assert_eq!(plan(4, false, false, CertMode::Check, false, 1000, 8), None);
+        assert_eq!(
+            plan(4, false, false, CertMode::Repair, false, 1000, 8),
+            None
+        );
+        assert_eq!(plan(4, false, false, CertMode::Off, true, 1000, 8), None);
+        // Never more workers than CPUs or contexts.
+        assert_eq!(
+            plan(16, false, false, CertMode::Off, false, 1000, 4),
+            Some(4)
+        );
+        assert_eq!(plan(8, false, false, CertMode::Off, false, 3, 8), Some(3));
+        assert_eq!(plan(8, false, false, CertMode::Off, false, 1, 8), None);
+    }
+
+    #[test]
+    fn shard_queue_drains_one_activated_context_at_a_time() {
+        // The shard-local counterpart of
+        // `contextual_worklist_drains_one_activated_context_at_a_time`, over
+        // owner slots instead of context ids.
+        let mut queue = ShardQueue::new(4);
+        assert_eq!(queue.pop(), None);
+        queue.push(1, PItem::Sub(5, 4));
+        queue.push(2, PItem::Sub(9, 6));
+        queue.push(1, PItem::Fwd(5, 0, 7));
+        assert_eq!(queue.len, 3);
+        // Slot 1 was activated first; its items come back newest first, and a
+        // conclusion it produces for itself is taken in the same activation.
+        assert_eq!(queue.pop(), Some(PItem::Fwd(5, 0, 7)));
+        assert_eq!(queue.activations, 1);
+        queue.push(1, PItem::Link(3, 0, 5));
+        assert_eq!(queue.pop(), Some(PItem::Link(3, 0, 5)));
+        assert_eq!(queue.pop(), Some(PItem::Sub(5, 4)));
+        // The context is released by the pop that finds it empty.
+        assert_eq!(queue.pop(), Some(PItem::Sub(9, 6)));
+        assert_eq!(queue.activations, 2);
+        assert_eq!(queue.pop(), None);
+        assert_eq!(queue.len, 0);
+        // Freed cells are recycled: the arena holds the peak pending count.
+        assert_eq!(queue.slots.len(), 3);
+    }
+
+    #[test]
+    fn context_parallel_propagates_bottom_and_chains_across_shards() {
+        // A targeted cross-shard case: consecutive concept ids land on
+        // different workers under `c % W`, so this chain of edges forces the
+        // ⊥ back-propagation, the NF4 join and the role composition to travel
+        // as messages in both directions.
+        let mut nfs = empty_nfs();
+        let concepts: Vec<u32> = (2..10).collect();
+        let (r1, r2, r3) = (10u32, 11u32, 12u32);
+        nfs.concept_names = concepts.iter().copied().collect();
+        nfs.concept_names.insert(TOP);
+        nfs.role_names = [r1, r2, r3].into_iter().collect();
+        for window in concepts.windows(2) {
+            // Cᵢ ⊑ ∃R1.Cᵢ₊₁
+            nfs.nf3.push(Nf3 {
+                sub: window[0],
+                role: r1,
+                filler: window[1],
+            });
+        }
+        // The far end is unsatisfiable, so ⊥ has to walk the whole chain back.
+        nfs.nf5.push(9);
+        // ∃R1.C9 ⊑ C2 and the chain R1∘R1 ⊑ R3 with ∃R3.C9 ⊑ C3.
+        nfs.nf4.push(Nf4 {
+            role: r1,
+            filler: 9,
+            sup: 2,
+        });
+        nfs.nf4.push(Nf4 {
+            role: r3,
+            filler: 9,
+            sup: 3,
+        });
+        nfs.nf6.push(Nf6 { sub: r1, sup: r2 });
+        nfs.nf7.push(Nf7 {
+            r1,
+            r2: r1,
+            sup: r3,
+        });
+        let n = 13;
+        let idx = build_idx(&nfs, n);
+        let mut serial = init_state(&nfs, n);
+        seed_reflexive_edges(&nfs, &idx, &mut serial);
+        run(&idx, &mut serial, &mut Prof::default());
+        let (want_sub, want_edge) = naive_fixpoint(&nfs, n);
+        let want = state_facts(&serial);
+        assert!(serial.sub_super[2].contains(&BOTTOM), "⊥ reaches the head");
+        for workers in [1usize, 2, 3, 4, 5] {
+            let mut prof = Prof::default();
+            let st = run_context_parallel(&nfs, &idx, n, workers, &mut prof)
+                .expect("the worker threads start");
+            assert_eq!(state_facts(&st), want, "{workers} workers");
+            let (subs, edges) = state_facts(&st);
+            assert_eq!(
+                subs.iter().copied().collect::<HashSet<(u32, u32)>>(),
+                want_sub,
+                "{workers} workers"
+            );
+            assert_eq!(
+                edges.iter().copied().collect::<HashSet<(u32, u32, u32)>>(),
+                want_edge,
+                "{workers} workers"
+            );
+        }
     }
 }
