@@ -17,6 +17,7 @@
 use std::collections::VecDeque;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use rayon::prelude::*;
@@ -99,8 +100,11 @@ type HashSet<T> = std::collections::HashSet<T, FxBuild>;
 /// first two ids so the saturation can branch on them by integer compare.
 #[derive(Clone)]
 struct Interner {
-    map: HashMap<String, u32>,
-    names: Vec<String>,
+    // Share each immutable symbol allocation between the forward and reverse
+    // tables. OWL IRIs are commonly tens of bytes long, so retaining two owned
+    // Strings per concept/role needlessly duplicated the EL signature's bytes.
+    map: HashMap<Arc<str>, u32>,
+    names: Vec<Arc<str>>,
 }
 
 const TOP: u32 = 0;
@@ -122,13 +126,14 @@ impl Interner {
             return id;
         }
         let id = self.names.len() as u32;
-        self.names.push(s.to_string());
-        self.map.insert(s.to_string(), id);
+        let name: Arc<str> = Arc::from(s);
+        self.names.push(Arc::clone(&name));
+        self.map.insert(name, id);
         id
     }
 
     fn name(&self, id: u32) -> &str {
-        &self.names[id as usize]
+        self.names[id as usize].as_ref()
     }
 
     /// Non-creating lookup (P1 hoisting reads ids of already-seen concepts only).
@@ -138,6 +143,20 @@ impl Interner {
 
     fn len(&self) -> usize {
         self.names.len()
+    }
+
+    /// Materialise the external string table after saturation has finished.
+    /// Dropping the forward map first releases its `Arc` references, and each
+    /// shared symbol is then replaced by the owned `String` required by the
+    /// stable JSON/result contract.
+    fn into_names(self) -> Vec<String> {
+        let Interner { map, names } = self;
+        drop(map);
+        names.into_iter().map(|name| name.to_string()).collect()
+    }
+
+    fn cloned_names(&self) -> Vec<String> {
+        self.names.iter().map(|name| name.to_string()).collect()
     }
 }
 
@@ -2501,7 +2520,7 @@ fn build_lean_el_certificate(
         rust_subsumptions,
         rust_edges,
         public_subsumptions,
-        symbols: interner.names.clone(),
+        symbols: interner.cloned_names(),
         public_named_subsumptions,
         public_inconsistent: st.sub_super[TOP as usize].contains(&BOTTOM),
     })
@@ -7905,7 +7924,7 @@ fn acyclic_nf1_taxonomy(
             subsumptions: std::collections::BTreeMap::new(),
             inconsistent: false,
             compact: Some(crate::json_io::CompactElcOutput {
-                names: it.names.clone(),
+                names: it.cloned_names(),
                 rows,
                 inconsistent: false,
                 dropped: 0,
@@ -8300,7 +8319,7 @@ fn classify_inner_mode(
     // sees the same subject sequence. Only a complete answer is coded: a
     // residue keeps the string map because its subjects are merged by name.
     if compact_fixpoint_output && unresolved.is_empty() {
-        let names = std::mem::take(&mut it.names);
+        let names = it.into_names();
         let mut order: Vec<u32> = (0..sub_super.len() as u32)
             .filter(|&cid| cid != TOP && cid != BOTTOM && !sub_super[cid as usize].is_empty())
             .collect();
@@ -10761,6 +10780,21 @@ mod tests {
         sorted.dedup();
         assert_eq!(sorted.len(), names.len(), "distinct spellings share an id");
         assert_eq!(it.len(), 2 + names.len());
+    }
+
+    #[test]
+    fn interner_shares_symbol_storage_and_preserves_external_names() {
+        let mut it = Interner::new();
+        let iri = "http://example.org/a/deliberately/long/concept/name";
+        let id = it.intern(iri);
+        let (forward_name, &forward_id) = it.map.get_key_value(iri).unwrap();
+        assert_eq!(forward_id, id);
+        assert!(Arc::ptr_eq(forward_name, &it.names[id as usize]));
+
+        let names = it.into_names();
+        assert_eq!(names[TOP as usize], "⊤");
+        assert_eq!(names[BOTTOM as usize], "⊥");
+        assert_eq!(names[id as usize], iri);
     }
 
     /// Deterministic xorshift64* stream for the random differential fixtures.
