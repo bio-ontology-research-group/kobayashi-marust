@@ -1023,6 +1023,19 @@ fn classify_with_evidence_mode(
     // `ht_general` independently requires lossless converted-input coverage.
     // A refusal or worker failure restores this call's environment and leaves
     // the unchanged nominal route authoritative below.
+    if timing
+        && automatic_requested
+        && matches!(
+            selected_route,
+            crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
+        )
+    {
+        eprintln!(
+            "KM_TIMING nominal HT schedule: workers3={} workers4={}",
+            crate::routing::three_worker_compact_datatype_ht_candidate(&meta.profile),
+            crate::routing::four_worker_compact_expressive_ht_candidate(&meta.profile),
+        );
+    }
     if automatic_requested
         && matches!(
             selected_route,

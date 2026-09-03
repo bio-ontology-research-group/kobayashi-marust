@@ -622,7 +622,10 @@ pub(crate) fn three_worker_compact_datatype_ht_candidate(profile: &OntologyProfi
         && (16..=32).contains(&source.distinct_object_properties)
         && (1..=10).contains(&source.distinct_data_properties)
         && (2..=3).contains(&source.max_concept_depth)
-        && (300..=600).contains(&profile.clauses.clauses)
+        // Source routing runs before normalized clause statistics are
+        // populated (`clauses == 0`). Retain only the post-normalization upper
+        // fence so the same predicate is valid in both routing phases.
+        && profile.clauses.clauses <= 600
         && source.has_values > 0
         && source.role_assertions > 0
         && profile.expressivity.datatype
@@ -4735,7 +4738,8 @@ mod tests {
         profile.source.distinct_data_properties = 6;
         profile.source.max_concept_depth = 3;
         profile.source.has_values = 3;
-        profile.clauses.clauses = 435;
+        // Automatic source routing has not populated normalized clause counts.
+        profile.clauses.clauses = 0;
         profile
             .source
             .axiom_types
