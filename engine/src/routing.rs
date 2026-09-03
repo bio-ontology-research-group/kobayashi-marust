@@ -1668,6 +1668,179 @@ pub(crate) fn elc_context_parallel_workers(
     }
 }
 
+/// Source-only screen for the certified positive-ABox Horn SHIF family that the
+/// bare CB engine decides on its own.
+///
+/// These sources carry a large asserted graph (class assertions plus object
+/// role assertions) over a small terminology whose class constructors are
+/// intersection, existential and universal restriction only. Two consequences
+/// follow from the source alone:
+///
+/// * The clause set is Horn. No source union, complement, named disjointness,
+///   or number restriction can produce a disjunctive head, so the CB engine
+///   never has to choose between incomparable disjunctive facts.
+/// * At least one universal restriction occurs, so the source is outside the
+///   EL class fragment and the portfolio's EL arm can only refuse.
+///
+/// The remaining portfolio arm is the certified Konclude bridge, whose probe
+/// and conversion the CB engine has to be scheduled against. Over the fourteen
+/// ORE members of this family the isolated CB bundle is faster on thirteen
+/// (roughly twice as fast on the eight large members) and 2.7 ms slower on one,
+/// and it lowers peak on thirteen (2026-07-27 route sweep,
+/// `km_route_cb_absorb8` vs `km_route_production_all`).
+///
+/// The caller restricts this to `SemanticFragment::PositiveAbox`, so the source
+/// certificate has already proved that the asserted graph is consistent and
+/// cannot change any named-class subsumption. The CB engine classifies exactly
+/// the retained terminology, which is what `production_all` would have made it
+/// classify.
+///
+/// `file_bytes <= 128 MiB` bounds the attempt. Unlike the production portfolio,
+/// an isolated CB bundle sets `KM_NO_RETRY=1`, so its RSS-capped attempt is not
+/// repeated single-threaded; the bound keeps the screen inside the measured
+/// envelope of this family, whose largest member is 63 MiB. A worker error or
+/// RSS trip still returns to `production_all` through
+/// [`automatic_atomic_fallback`].
+fn positive_abox_horn_cb_candidate(profile: &OntologyProfile) -> bool {
+    // Twice the largest measured member of this family.
+    const ATTEMPT_BUDGET_BYTES: u64 = 128 * 1024 * 1024;
+
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+
+    source.abox_axioms > 0
+        && source.class_assertions > 0
+        && source.role_assertions > 0
+        && source.file_bytes <= ATTEMPT_BUDGET_BYTES
+        // Source-Horn: nothing here can clausify to a disjunctive head.
+        && source.unions == 0
+        && source.complements == 0
+        && source.disjoint_class_axioms == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.bottom_occurrences == 0
+        // Outside the EL class fragment, so the EL arm of the portfolio can
+        // only refuse, and genuinely existential, so this is not one of the
+        // flat identity ABoxes the independent-ABox gates already recognize.
+        && source.universals > 0
+        && source.existentials > 0
+        // Everything the positive-ABox screens leave to the exact nominal or
+        // bridge routes fails closed here.
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.bottom_role_occurrences == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && count("NegativeObjectPropertyAssertion") == 0
+        && count("NegativeDataPropertyAssertion") == 0
+        && count("SameIndividual") == 0
+        && count("DifferentIndividuals") == 0
+        && !profile.expressivity.nominal
+        && !profile.expressivity.universal_role
+}
+
+/// Source-only screen for small nominal-free terminologies that no portfolio
+/// arm other than CB can decide.
+///
+/// The screen requires a construct that is outside the EL class fragment in
+/// every position: a universal restriction, a number restriction, or role
+/// functionality. Any one of them forces the portfolio's EL arm to refuse
+/// after paying for its own normalization, which leaves the CB engine to
+/// decide the ontology while being scheduled against the certified bridge.
+///
+/// Two bounds keep the screen inside the family it was measured on:
+///
+/// * `logical_axioms <= 2_000` and `file_bytes <= 512 KiB`. The next larger
+///   ORE terminologies this screen would otherwise admit are 11623 and 1016 at
+///   4,529 and 5,771 source axioms, where every isolated CB arm is slower than
+///   the portfolio, and then 7127, 7581, 9663, 9724 and 14817, where no
+///   isolated CB arm in the 2026-07-27 sweep produces a result at all. An
+///   isolated CB bundle has no portfolio arm left to answer instead.
+/// * Disjunction density, using the bound the established certified-EL screens
+///   already use: at most one union and at most one complement per hundred
+///   logical axioms. The isolated CB bundles are precisely the arms that lose
+///   to the portfolio on live disjunction, and this is what separates the
+///   admitted sources from the disjunction-heavy small terminologies (ORE
+///   11291, 12141, 4897, 5303 and 9024) whose CB arms are slower or do not
+///   terminate at all.
+///
+/// A source below a hundred logical axioms keeps its established route: every
+/// arm decides it in the same few tens of milliseconds, so there is nothing to
+/// win and no reason to perturb it.
+///
+/// The caller restricts this to the nominal-free `SriqCore` fragment, where
+/// `production_all` is the exact automatic fallback and remains reachable
+/// through [`automatic_atomic_fallback`] after a worker error or RSS trip.
+fn bounded_non_el_cb_terminology_candidate(profile: &OntologyProfile) -> bool {
+    // Roughly twice the largest measured member; the next larger ORE
+    // terminology of this shape is more than twice the bound and needs the
+    // portfolio.
+    const ATTEMPT_AXIOM_LIMIT: u64 = 2_000;
+    const ATTEMPT_BUDGET_BYTES: u64 = 512 * 1024;
+    // Below this every arm is equal and the established route stands.
+    const TRIVIAL_SOURCE_AXIOMS: u64 = 100;
+    // The established certified-EL bound: one disjunct per hundred axioms is a
+    // rounding error, one in four is the terminology.
+    const DISJUNCTION_AXIOM_SHARE: u64 = 100;
+
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    let outside_el_class_fragment = source.universals > 0
+        || source.min_cardinalities > 0
+        || source.max_cardinalities > 0
+        || source.exact_cardinalities > 0
+        || source.functional_role_axioms > 0
+        || source.inverse_functional_role_axioms > 0;
+
+    source.abox_axioms == 0
+        && outside_el_class_fragment
+        && source.logical_axioms >= TRIVIAL_SOURCE_AXIOMS
+        && source.logical_axioms <= ATTEMPT_AXIOM_LIMIT
+        && source.file_bytes <= ATTEMPT_BUDGET_BYTES
+        && source.unions.saturating_mul(DISJUNCTION_AXIOM_SHARE) <= source.logical_axioms
+        && source.complements.saturating_mul(DISJUNCTION_AXIOM_SHARE) <= source.logical_axioms
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.bottom_role_occurrences == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && count("NegativeObjectPropertyAssertion") == 0
+        && count("NegativeDataPropertyAssertion") == 0
+        && !profile.expressivity.nominal
+        && !profile.expressivity.universal_role
+}
+
+/// Isolated CB bundle for a source admitted by
+/// [`bounded_non_el_cb_terminology_candidate`]. Every branch runs the same
+/// complete CB mechanism on the same retained terminology; only clausification
+/// and the worker count differ, so this choice cannot change the published
+/// answer.
+fn bounded_non_el_cb_terminology_route(profile: &OntologyProfile) -> Route {
+    // Sixteen CB workers cannot amortize their per-worker arenas over fewer
+    // than two class queries each.
+    const SINGLE_WORKER_CLASS_LIMIT: u64 = 32;
+
+    let source = &profile.source;
+    if source.complements > 0 {
+        // An explicit complement is what clausifies into the excluded-middle
+        // clauses that polarity absorption (`KM_ABSORB`) shrinks, and this is
+        // the clausification the production bundle already feeds its CB arm.
+        Route::CbAbsorb8
+    } else if source.distinct_classes <= SINGLE_WORKER_CLASS_LIMIT {
+        // Neither absorption has anything to shrink, and the query set fits
+        // one worker at the lowest peak.
+        Route::CbPlain1
+    } else {
+        // Trigger absorption distributes the few union antecedents into clause
+        // bodies, which is what the production bundle applies here too.
+        Route::CbTrigger16
+    }
+}
+
 /// Large ABoxes without number restrictions try the certified native bridge
 /// before eagerly materializing every nominal in the CB root context. The
 /// certified-nominals bundle retains the exact singleton-aware fallback even
@@ -1973,6 +2146,27 @@ pub fn select(profile: &OntologyProfile) -> Route {
         {
             Route::CertifiedElProduction
         }
+        // A certified positive ABox over a Horn, non-EL terminology. Both
+        // remaining portfolio arms are inert here: the EL arm must refuse a
+        // source carrying a universal restriction, and the certified bridge is
+        // only ever scheduled against the CB engine that decides the ontology.
+        // The isolated CB bundle consumes the same polarity-absorbed clause set
+        // the production bundle feeds its CB arm, and `production_all` stays
+        // the exact fallback after a worker error or RSS trip.
+        SemanticFragment::PositiveAbox if positive_abox_horn_cb_candidate(profile) => {
+            Route::CbAbsorb8
+        }
+        // A small nominal-free terminology outside the EL class fragment with
+        // bounded disjunction. The same argument applies, and the bundle is
+        // chosen from the source constructors that decide whether either
+        // absorption or a sixteen-worker partition can pay for itself. The
+        // established one-worker production refinement keeps priority.
+        SemanticFragment::SriqCore
+            if bounded_non_el_cb_terminology_candidate(profile)
+                && !one_thread_small_production_candidate(profile) =>
+        {
+            bounded_non_el_cb_terminology_route(profile)
+        }
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore => {
             let learned = routing_tree_generated::select(profile);
             if sriq_policy_eligible(learned) {
@@ -2007,6 +2201,15 @@ pub(crate) fn automatic_atomic_fallback(
             | Route::HtBridge
             | Route::CertifiedCardNominals
             | Route::NominalNiTbox
+            // The isolated CB bundles the source-feature screens select are
+            // total procedures, not complete-answer-or-defer specialists, but
+            // they drop the portfolio's single-threaded retry. A worker error,
+            // a non-fixpoint exit, or an RSS trip must therefore return to the
+            // exact route the screen displaced instead of failing the
+            // classification.
+            | Route::CbAbsorb8
+            | Route::CbPlain1
+            | Route::CbTrigger16
     );
     if !specialist {
         return None;
@@ -2966,6 +3169,509 @@ mod tests {
         assert!(bounded_near_el_certified_candidate(&profile));
         assert!(one_thread_small_production_candidate(&profile));
         assert_eq!(select(&profile), Route::ProductionAll1);
+    }
+
+    /// The certified positive-ABox Horn SHIF family (ORE 10127 shape): a large
+    /// asserted graph over a small terminology whose only class constructors
+    /// are intersection, existential and universal restriction.
+    fn positive_abox_horn_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.schema_version = 2;
+        profile.positive_abox_tbox_separable = true;
+        profile.disjoint_union_abox_candidate = true;
+        profile.source.file_bytes = 17_845_208;
+        profile.source.logical_axioms = 106_790;
+        profile.source.tbox_axioms = 1_227;
+        profile.source.rbox_axioms = 15;
+        profile.source.abox_axioms = 105_548;
+        profile.source.declarations = 710;
+        profile.source.declared_classes = 688;
+        profile.source.declared_object_properties = 21;
+        profile.source.declared_data_properties = 1;
+        profile.source.distinct_classes = 688;
+        profile.source.distinct_object_properties = 21;
+        profile.source.distinct_data_properties = 1;
+        profile.source.distinct_individuals = 20_902;
+        profile.source.subclass_axioms = 696;
+        profile.source.equivalent_class_axioms = 531;
+        profile.source.role_inclusion_axioms = 1;
+        profile.source.transitive_role_axioms = 3;
+        profile.source.functional_role_axioms = 1;
+        profile.source.domain_axioms = 4;
+        profile.source.range_axioms = 4;
+        profile.source.class_assertions = 65_792;
+        profile.source.role_assertions = 39_756;
+        profile.source.concept_expressions = 70_477;
+        profile.source.intersections = 481;
+        profile.source.existentials = 969;
+        profile.source.universals = 292;
+        profile.source.max_concept_depth = 10;
+        profile.source.max_concept_arity = 2;
+        for (name, count) in [
+            ("ClassAssertion", 65_792),
+            ("DataPropertyAssertion", 529),
+            ("Declaration", 710),
+            ("EquivalentClasses", 531),
+            ("FunctionalObjectProperty", 1),
+            ("InverseObjectProperties", 2),
+            ("ObjectPropertyAssertion", 39_227),
+            ("ObjectPropertyDomain", 4),
+            ("ObjectPropertyRange", 4),
+            ("SubClassOf", 696),
+            ("SubObjectPropertyOf", 1),
+            ("TransitiveObjectProperty", 3),
+        ] {
+            profile.source.axiom_types.insert(name.into(), count);
+        }
+        profile.expressivity.negation_disjunction = true;
+        profile.expressivity.existential = true;
+        profile.expressivity.functionality = true;
+        profile.expressivity.role_hierarchy = true;
+        profile
+    }
+
+    /// A 19-class complete disjointness clique over a large role schema with
+    /// functional data properties (ORE 2195 shape). No class constructor at
+    /// all, so neither absorption changes its clause set.
+    fn disjointness_clique_schema_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.schema_version = 2;
+        profile.source.file_bytes = 186_295;
+        profile.source.logical_axioms = 1_118;
+        profile.source.tbox_axioms = 171;
+        profile.source.rbox_axioms = 947;
+        profile.source.declarations = 449;
+        profile.source.declared_classes = 19;
+        profile.source.declared_object_properties = 342;
+        profile.source.declared_data_properties = 88;
+        profile.source.distinct_classes = 19;
+        profile.source.distinct_object_properties = 342;
+        profile.source.distinct_data_properties = 88;
+        profile.source.disjoint_class_axioms = 171;
+        profile.source.functional_role_axioms = 87;
+        profile.source.domain_axioms = 430;
+        profile.source.range_axioms = 430;
+        profile.source.concept_expressions = 1_114;
+        profile.source.max_concept_depth = 1;
+        for (name, count) in [
+            ("DataPropertyDomain", 88),
+            ("DataPropertyRange", 88),
+            ("Declaration", 449),
+            ("DisjointClasses", 171),
+            ("FunctionalDataProperty", 87),
+            ("ObjectPropertyDomain", 342),
+            ("ObjectPropertyRange", 342),
+        ] {
+            profile.source.axiom_types.insert(name.into(), count);
+        }
+        profile.expressivity.negation_disjunction = true;
+        profile.expressivity.functionality = true;
+        profile.expressivity.datatype = true;
+        profile
+    }
+
+    /// A self-restriction SHIF terminology with a handful of complements and
+    /// unqualified cardinalities (ORE 4827 shape). The explicit complements
+    /// are what polarity absorption shrinks.
+    fn complement_bearing_terminology_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.schema_version = 2;
+        profile.source.file_bytes = 191_942;
+        profile.source.logical_axioms = 1_125;
+        profile.source.tbox_axioms = 1_006;
+        profile.source.rbox_axioms = 119;
+        profile.source.declarations = 921;
+        profile.source.declared_classes = 865;
+        profile.source.declared_object_properties = 50;
+        profile.source.declared_data_properties = 6;
+        profile.source.distinct_classes = 865;
+        profile.source.distinct_object_properties = 50;
+        profile.source.distinct_data_properties = 6;
+        profile.source.subclass_axioms = 964;
+        profile.source.equivalent_class_axioms = 41;
+        profile.source.disjoint_class_axioms = 1;
+        profile.source.role_inclusion_axioms = 51;
+        profile.source.domain_axioms = 23;
+        profile.source.range_axioms = 45;
+        profile.source.concept_expressions = 2_223;
+        profile.source.intersections = 39;
+        profile.source.unions = 11;
+        profile.source.complements = 2;
+        profile.source.existentials = 28;
+        profile.source.min_cardinalities = 2;
+        profile.source.exact_cardinalities = 4;
+        profile.source.unqualified_cardinalities = 6;
+        profile.source.has_self = 30;
+        profile.source.max_concept_depth = 3;
+        profile.source.max_concept_arity = 7;
+        profile.source.max_cardinality = 1;
+        for (name, count) in [
+            ("DataPropertyDomain", 2),
+            ("Declaration", 921),
+            ("DisjointClasses", 1),
+            ("EquivalentClasses", 41),
+            ("ObjectPropertyDomain", 21),
+            ("ObjectPropertyRange", 45),
+            ("SubClassOf", 964),
+            ("SubDataPropertyOf", 4),
+            ("SubObjectPropertyOf", 47),
+        ] {
+            profile.source.axiom_types.insert(name.into(), count);
+        }
+        profile.expressivity.negation_disjunction = true;
+        profile.expressivity.existential = true;
+        profile.expressivity.cardinality = true;
+        profile.expressivity.role_hierarchy = true;
+        profile
+    }
+
+    /// A disjointness-heavy SHIF(D) terminology with one union, a few
+    /// universals and unqualified cardinalities (ORE 7901 shape).
+    fn union_free_disjointness_terminology_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.schema_version = 2;
+        profile.source.file_bytes = 81_109;
+        profile.source.logical_axioms = 489;
+        profile.source.tbox_axioms = 287;
+        profile.source.rbox_axioms = 202;
+        profile.source.declarations = 211;
+        profile.source.declared_classes = 104;
+        profile.source.declared_object_properties = 33;
+        profile.source.declared_data_properties = 74;
+        profile.source.distinct_classes = 104;
+        profile.source.distinct_object_properties = 33;
+        profile.source.distinct_data_properties = 74;
+        profile.source.subclass_axioms = 117;
+        profile.source.disjoint_class_axioms = 170;
+        profile.source.role_inclusion_axioms = 14;
+        profile.source.transitive_role_axioms = 15;
+        profile.source.functional_role_axioms = 43;
+        profile.source.domain_axioms = 39;
+        profile.source.range_axioms = 80;
+        profile.source.concept_expressions = 634;
+        profile.source.unions = 1;
+        profile.source.existentials = 7;
+        profile.source.universals = 3;
+        profile.source.exact_cardinalities = 5;
+        profile.source.unqualified_cardinalities = 5;
+        profile.source.max_concept_depth = 3;
+        profile.source.max_concept_arity = 2;
+        profile.source.max_cardinality = 1;
+        for (name, count) in [
+            ("DataPropertyDomain", 33),
+            ("DataPropertyRange", 71),
+            ("Declaration", 211),
+            ("DisjointClasses", 170),
+            ("FunctionalDataProperty", 41),
+            ("FunctionalObjectProperty", 2),
+            ("InverseObjectProperties", 10),
+            ("ObjectPropertyDomain", 6),
+            ("ObjectPropertyRange", 9),
+            ("SubClassOf", 117),
+            ("SubDataPropertyOf", 2),
+            ("SubObjectPropertyOf", 12),
+            ("SymmetricObjectProperty", 1),
+            ("TransitiveObjectProperty", 15),
+        ] {
+            profile.source.axiom_types.insert(name.into(), count);
+        }
+        profile.expressivity.negation_disjunction = true;
+        profile.expressivity.existential = true;
+        profile.expressivity.cardinality = true;
+        profile.expressivity.functionality = true;
+        profile.expressivity.role_hierarchy = true;
+        profile.expressivity.datatype = true;
+        profile
+    }
+
+    #[test]
+    fn automatic_route_runs_bare_cb_on_the_positive_abox_horn_family() {
+        let profile = positive_abox_horn_profile();
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
+        assert!(positive_abox_horn_cb_candidate(&profile));
+        assert_eq!(select(&profile), Route::CbAbsorb8);
+        // The bundle must be the isolated CB mechanism on the same
+        // polarity-absorbed clause set the production bundle feeds its CB arm.
+        let settings = Route::CbAbsorb8.settings();
+        assert!(settings.contains(&("KM_MECHANISM", "cb")));
+        assert!(settings.contains(&("KM_ABSORB", "1")));
+        assert!(settings.contains(&("KM_THREADS", "8")));
+
+        // The family scales from the smallest to the largest measured member
+        // without leaving the screen.
+        let mut small = positive_abox_horn_profile();
+        small.source.file_bytes = 1_253_294;
+        small.source.logical_axioms = 7_465;
+        small.source.abox_axioms = 7_169;
+        small.source.class_assertions = 4_676;
+        small.source.role_assertions = 2_493;
+        small.source.distinct_classes = 167;
+        small.source.universals = 55;
+        small.source.existentials = 179;
+        assert_eq!(select(&small), Route::CbAbsorb8);
+    }
+
+    #[test]
+    fn positive_abox_horn_cb_gate_fails_closed_outside_its_fragment() {
+        let cases: [(&str, fn(&mut OntologyProfile)); 14] = [
+            ("union", |p| p.source.unions = 1),
+            ("complement", |p| p.source.complements = 1),
+            ("disjointness", |p| p.source.disjoint_class_axioms = 1),
+            ("min cardinality", |p| p.source.min_cardinalities = 1),
+            ("max cardinality", |p| p.source.max_cardinalities = 1),
+            ("exact cardinality", |p| p.source.exact_cardinalities = 1),
+            ("class bottom", |p| p.source.bottom_occurrences = 1),
+            ("nominal", |p| p.source.nominals = 1),
+            ("hasValue", |p| p.source.has_values = 1),
+            ("hasSelf", |p| p.source.has_self = 1),
+            ("bottom role", |p| p.source.bottom_role_occurrences = 1),
+            ("import", |p| p.source.imports = 1),
+            ("rule", |p| p.source.rule_axioms = 1),
+            ("unsupported rule", |p| p.source.unsupported_rule_axioms = 1),
+        ];
+        for (label, mutate) in cases {
+            let mut profile = positive_abox_horn_profile();
+            mutate(&mut profile);
+            assert!(
+                !positive_abox_horn_cb_candidate(&profile),
+                "{label} must fail the positive-ABox Horn screen closed"
+            );
+            assert_ne!(
+                select(&profile),
+                Route::CbAbsorb8,
+                "{label} must not reach the isolated CB bundle"
+            );
+        }
+
+        for name in [
+            "NegativeObjectPropertyAssertion",
+            "NegativeDataPropertyAssertion",
+            "SameIndividual",
+            "DifferentIndividuals",
+        ] {
+            let mut profile = positive_abox_horn_profile();
+            profile.source.axiom_types.insert(name.into(), 1);
+            assert!(
+                !positive_abox_horn_cb_candidate(&profile),
+                "{name} must fail the positive-ABox Horn screen closed"
+            );
+        }
+
+        // Inside the EL class fragment the portfolio's EL arm can answer, so
+        // the source keeps its established route.
+        let mut profile = positive_abox_horn_profile();
+        profile.source.universals = 0;
+        assert!(!positive_abox_horn_cb_candidate(&profile));
+
+        // A flat identity ABox is the independent-ABox family, not this one.
+        let mut profile = positive_abox_horn_profile();
+        profile.source.role_assertions = 0;
+        assert!(!positive_abox_horn_cb_candidate(&profile));
+
+        // Beyond the attempt budget the un-retried CB bundle must not run.
+        let mut profile = positive_abox_horn_profile();
+        profile.source.file_bytes = 128 * 1024 * 1024 + 1;
+        assert!(!positive_abox_horn_cb_candidate(&profile));
+        profile.source.file_bytes = 128 * 1024 * 1024;
+        assert!(positive_abox_horn_cb_candidate(&profile));
+    }
+
+    #[test]
+    fn positive_abox_horn_cb_gate_never_preempts_an_exact_fragment_route() {
+        // Without the positive separation certificate this is an ordinary
+        // nominal ABox. The source shape still passes the screen, but the
+        // nominal branch is reached first and keeps a route that carries the
+        // exact singleton-aware CB fallback.
+        let mut profile = positive_abox_horn_profile();
+        profile.positive_abox_tbox_separable = false;
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(positive_abox_horn_cb_candidate(&profile));
+        assert_eq!(select(&profile), Route::CertifiedNominals);
+        assert!(Route::CertifiedNominals
+            .settings()
+            .contains(&("KM_NOMINALS", "1")));
+
+        // DL-safe rules keep the validated rule stage.
+        let mut profile = positive_abox_horn_profile();
+        profile.source.rule_axioms = 1;
+        assert_eq!(select(&profile), Route::HtRules);
+
+        // The scoped inverse+cardinality certificate still wins.
+        let mut profile = positive_abox_horn_profile();
+        profile.inverse_cardinality_role_separable = true;
+        assert_eq!(select(&profile), Route::ProductionAll);
+    }
+
+    #[test]
+    fn automatic_route_runs_bare_cb_on_bounded_non_el_terminologies() {
+        for (profile, expected) in [
+            (disjointness_clique_schema_profile(), Route::CbPlain1),
+            (complement_bearing_terminology_profile(), Route::CbAbsorb8),
+            (
+                union_free_disjointness_terminology_profile(),
+                Route::CbTrigger16,
+            ),
+        ] {
+            assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
+            assert!(
+                bounded_non_el_cb_terminology_candidate(&profile),
+                "the bounded non-EL screen must admit this terminology"
+            );
+            assert!(
+                !bounded_near_el_certified_candidate(&profile),
+                "the certified EL screen must not already cover it"
+            );
+            assert_eq!(bounded_non_el_cb_terminology_route(&profile), expected);
+            assert_eq!(select(&profile), expected);
+            assert!(expected.settings().contains(&("KM_MECHANISM", "cb")));
+        }
+    }
+
+    #[test]
+    fn bounded_non_el_cb_gate_requires_a_construct_outside_the_el_class_fragment() {
+        // Named disjointness alone is an EL constraint (`elc` represents it as
+        // an NF5 empty-head clause), so the portfolio's EL arm can decide this
+        // terminology and must keep the chance to.
+        let mut profile = disjointness_clique_schema_profile();
+        profile.source.functional_role_axioms = 0;
+        profile.source.axiom_types.remove("FunctionalDataProperty");
+        assert!(!bounded_non_el_cb_terminology_candidate(&profile));
+        assert_ne!(select(&profile), Route::CbPlain1);
+
+        // Any one of the constructors that is outside EL in every position
+        // re-admits it.
+        let outside: [(&str, fn(&mut OntologyProfile)); 5] = [
+            ("universal", |p| p.source.universals = 1),
+            ("min cardinality", |p| p.source.min_cardinalities = 1),
+            ("max cardinality", |p| p.source.max_cardinalities = 1),
+            ("exact cardinality", |p| p.source.exact_cardinalities = 1),
+            ("inverse functionality", |p| {
+                p.source.inverse_functional_role_axioms = 1
+            }),
+        ];
+        for (label, mutate) in outside {
+            let mut readmitted = profile.clone();
+            mutate(&mut readmitted);
+            assert!(
+                bounded_non_el_cb_terminology_candidate(&readmitted),
+                "{label} places the source outside the EL class fragment"
+            );
+        }
+    }
+
+    #[test]
+    fn bounded_non_el_cb_gate_fails_closed_on_density_size_and_nominals() {
+        // More than one union per hundred logical axioms is live disjunction,
+        // which is exactly what the isolated CB bundles lose on.
+        let mut profile = complement_bearing_terminology_profile();
+        profile.source.unions = 12;
+        assert!(!bounded_non_el_cb_terminology_candidate(&profile));
+        profile.source.unions = 11;
+        assert!(bounded_non_el_cb_terminology_candidate(&profile));
+
+        let mut profile = complement_bearing_terminology_profile();
+        profile.source.complements = 12;
+        assert!(!bounded_non_el_cb_terminology_candidate(&profile));
+
+        // Above the attempt bounds the portfolio's other arms start deciding
+        // terminologies the CB engine alone cannot.
+        let mut profile = complement_bearing_terminology_profile();
+        profile.source.logical_axioms = 2_001;
+        assert!(!bounded_non_el_cb_terminology_candidate(&profile));
+        profile.source.logical_axioms = 2_000;
+        assert!(bounded_non_el_cb_terminology_candidate(&profile));
+
+        let mut profile = complement_bearing_terminology_profile();
+        profile.source.file_bytes = 512 * 1024 + 1;
+        assert!(!bounded_non_el_cb_terminology_candidate(&profile));
+        profile.source.file_bytes = 512 * 1024;
+        assert!(bounded_non_el_cb_terminology_candidate(&profile));
+
+        // The trivial band keeps its established route.
+        let mut profile = union_free_disjointness_terminology_profile();
+        profile.source.logical_axioms = 99;
+        assert!(!bounded_non_el_cb_terminology_candidate(&profile));
+
+        let cases: [(&str, fn(&mut OntologyProfile)); 6] = [
+            ("nominal", |p| p.source.nominals = 1),
+            ("hasValue", |p| p.source.has_values = 1),
+            ("bottom role", |p| p.source.bottom_role_occurrences = 1),
+            ("import", |p| p.source.imports = 1),
+            ("rule", |p| p.source.rule_axioms = 1),
+            ("unsupported rule", |p| p.source.unsupported_rule_axioms = 1),
+        ];
+        for (label, mutate) in cases {
+            let mut profile = union_free_disjointness_terminology_profile();
+            mutate(&mut profile);
+            assert!(
+                !bounded_non_el_cb_terminology_candidate(&profile),
+                "{label} must fail the bounded non-EL screen closed"
+            );
+            assert_ne!(select(&profile), Route::CbTrigger16, "{label}");
+        }
+
+        for name in [
+            "NegativeObjectPropertyAssertion",
+            "NegativeDataPropertyAssertion",
+        ] {
+            let mut profile = union_free_disjointness_terminology_profile();
+            profile.source.axiom_types.insert(name.into(), 1);
+            assert!(!bounded_non_el_cb_terminology_candidate(&profile));
+        }
+    }
+
+    #[test]
+    fn bounded_non_el_cb_gate_never_preempts_an_exact_fragment_route() {
+        // Any ABox leaves the nominal-free fragment this screen is scoped to.
+        let mut profile = union_free_disjointness_terminology_profile();
+        profile.source.abox_axioms = 1;
+        profile.source.class_assertions = 1;
+        assert!(!bounded_non_el_cb_terminology_candidate(&profile));
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert_eq!(select(&profile), Route::Nominals);
+
+        // DL-safe rules keep the validated rule stage.
+        let mut profile = union_free_disjointness_terminology_profile();
+        profile.source.rule_axioms = 1;
+        assert_eq!(select(&profile), Route::HtRules);
+
+        // The scoped inverse+cardinality certificate still wins.
+        let mut profile = union_free_disjointness_terminology_profile();
+        profile.inverse_cardinality_role_separable = true;
+        assert_eq!(select(&profile), Route::ProductionAll);
+
+        // The established one-worker production refinement keeps priority.
+        let mut profile = complement_bearing_terminology_profile();
+        profile.source.logical_axioms = 1_900;
+        profile.source.distinct_classes = 2_500;
+        profile.expressivity.functionality = true;
+        profile.expressivity.cardinality = false;
+        assert!(bounded_non_el_cb_terminology_candidate(&profile));
+        assert!(one_thread_small_production_candidate(&profile));
+        assert_eq!(select(&profile), Route::ProductionAll1);
+    }
+
+    #[test]
+    fn bare_cb_routes_keep_the_exact_production_fallback() {
+        // These bundles set `KM_NO_RETRY=1`, so a worker error, a non-fixpoint
+        // exit, or an RSS trip has to return to the route the screen displaced.
+        for route in [Route::CbAbsorb8, Route::CbPlain1, Route::CbTrigger16] {
+            assert!(route.settings().contains(&("KM_NO_RETRY", "1")));
+            assert_eq!(
+                automatic_atomic_fallback(route, &union_free_disjointness_terminology_profile()),
+                Some(Route::ProductionAll)
+            );
+            assert_eq!(
+                automatic_atomic_fallback(route, &positive_abox_horn_profile()),
+                Some(Route::ProductionAll)
+            );
+            let mut nominal = positive_abox_horn_profile();
+            nominal.positive_abox_tbox_separable = false;
+            assert_eq!(
+                automatic_atomic_fallback(route, &nominal),
+                Some(Route::Nominals)
+            );
+        }
     }
 
     fn source_profile(text: &str) -> OntologyProfile {

@@ -71,11 +71,11 @@ normalization.
 
 Three bounds keep the screen inside the family it was measured on:
 
-* `logical_axioms <= 2_000` and `file_bytes <= 512 KiB`. Above them the
-  certified bridge and the EL arm start deciding terminologies the CB engine
-  alone cannot: ORE 7127, 7581, 9663, 9724 and 14817 are exactly this source
-  shape at 4,500 axioms and above, and no isolated CB arm in the 2026-07-27
-  sweep solves any of them.
+* `logical_axioms <= 2_000` and `file_bytes <= 512 KiB`. The next larger ORE
+  terminologies this screen would otherwise admit are 11623 and 1016 at 4,529
+  and 5,771 source axioms, where every isolated CB arm in the 2026-07-27 sweep
+  is slower than the portfolio, and then 7127, 7581, 9663, 9724 and 14817,
+  where no isolated CB arm in that sweep produces a result at all.
 * Disjunction density, reusing the bound the established certified-EL screens
   already use: at most one union and at most one complement per hundred logical
   axioms. This is what separates the admitted sources from the
@@ -161,9 +161,9 @@ verdict is at risk. On wall time and peak memory:
 
 * the seven rerouted profiles that pass the strict gate today (10212, 10951,
   14375, 15536, 1618, 3640, 5103) keep passing under the pessimistic absolute
-  sweep number on the new arm, with at least a 1.5x margin on both dimensions,
-  and every one of them is equal to or faster than `production_all` in that
-  sweep;
+  sweep number on the new arm, with at least a 1.5x margin on both dimensions;
+  six of them are faster than `production_all` in that sweep and ore_ont_10951
+  is 2.7 ms slower;
 * the five measured recoveries pass on the current binary;
 * the remaining six (10697, 15725, 3164, 3658, 4187, 9958) fail the strict gate
   today and still fail it, but every one strictly improves on both wall and
