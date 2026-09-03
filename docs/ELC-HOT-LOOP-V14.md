@@ -547,10 +547,10 @@ order, and `context_parallel_plan` still declines the mode for them
 independently. A failed thread spawn still reverts to the serial engine.
 
 Over all 592 retained source profiles the selector changes no route and arms
-exactly nine ontologies, all measured in the paired panel and all on the bare
-EL route.  It projects four strict recoveries (795, 2828, 5612, 15929) with no
-regression and no unmeasured activation.  The confirmation panel establishes
-the four wins with wall margins of 4.15--21.28%.
+exactly ten ontologies, all measured in paired panels and all on the bare EL
+route. The integrated sweep established 4802 as a fifth recovery in addition
+to 795, 2828, 5612, and 15929. Section 11 records the tenth activation and
+sixth recovery.
 
 ### 10.3 Tests
 
@@ -563,8 +563,32 @@ the four wins with wall margins of 4.15--21.28%.
 * `routing::tests::context_parallel_gate_is_deterministic_for_one_profile` and
   `context_parallel_gate_carries_no_ontology_identity`.
 * `routing::tests::context_parallel_projection_over_the_retained_profiles`: the
-  592-profile ledger, asserting exactly nine activations and that nothing off
+  592-profile ledger, asserting exactly ten activations and that nothing off
   `Route::Elc` is ever armed.
 * `orchestrate::tests::context_parallel_schedule_is_armed_only_on_the_bare_el_route`,
   `an_explicit_context_parallel_request_survives_route_selection`, and
   `context_parallel_schedule_follows_the_available_parallelism`.
+
+## 11. Wide-role chain-free EL band (2026-09-03)
+
+The strict residual audit identified 7567 as a wall-only EL miss: 2.1664 s
+against a 2.0761 s target, with 238.75 MiB peak against 764.39 MiB. Its 29
+object properties put it outside section 10's measured 8--12-property family,
+although it is otherwise an ABox-free EL terminology with no role chains.
+
+IBEX array `51254506` first compared automatic scheduling with an explicit
+eight-worker context schedule over five repetitions. Confirmation array
+`51254640` added ten repetitions per arm. Across the combined fifteen
+observations per arm, every run returned `status=ok`, matched gold, and retained
+the `elc` route. Automatic median wall was 1.9504 s; context-eight median wall
+was 1.8505 s, a 5.1% reduction and a 10.9% margin below the target. Median peak
+was unchanged (238.43 versus 238.46 MiB).
+
+The selector therefore admits a second, tightly bounded measured family:
+150--200k logical axioms, 60--75k classes, 90--100k existential restrictions,
+20--32 object properties, at most 40 MiB of source, and no role chains. The
+common exact-EL and ABox-free checks remain mandatory. The retained 592-profile
+projection adds exactly one activation, 7567, and no profile off `Route::Elc`.
+The change is scheduling-only: worker count does not alter the monotone EL
+completion fixpoint, and the existing cross-worker-count differential tests
+remain the semantic gate.

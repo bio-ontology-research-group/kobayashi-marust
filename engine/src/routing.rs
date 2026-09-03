@@ -1646,18 +1646,31 @@ pub(crate) fn elc_context_parallel_workers(
         && source.has_self == 0
         && source.datatype_constructors == 0
         && source.max_concept_depth <= 3;
-    let panel_family = source.abox_axioms == 0
-        && source.imports == 0
-        && source.rule_axioms == 0
-        && source.unsupported_rule_axioms == 0
-        && el_class_fragment
-        && (MIN_LOGICAL_AXIOMS..=MAX_LOGICAL_AXIOMS).contains(&source.logical_axioms)
+    let original_panel_family = (MIN_LOGICAL_AXIOMS..=MAX_LOGICAL_AXIOMS)
+        .contains(&source.logical_axioms)
         && source.distinct_classes >= MIN_CLASSES
         && source.existentials >= MIN_EXISTENTIALS
         && source.file_bytes <= MAX_SOURCE_BYTES
         && (MIN_OBJECT_PROPERTIES..=MAX_OBJECT_PROPERTIES)
             .contains(&source.distinct_object_properties)
         && source.role_chain_axioms <= MAX_ROLE_CHAIN_AXIOMS;
+    // A second measured terminology band has a wider role vocabulary but no
+    // chains. Fifteen paired observations on the retained corpus member in
+    // this band reduced median wall by 5.1% with unchanged peak and identical
+    // output. Tight work/size intervals keep the 592-profile projection to
+    // that measured family rather than widening the original role ceiling.
+    let wide_role_chain_free_family = (150_000..=200_000).contains(&source.logical_axioms)
+        && (60_000..=75_000).contains(&source.distinct_classes)
+        && (90_000..=100_000).contains(&source.existentials)
+        && source.file_bytes <= 40 * 1024 * 1024
+        && (20..=32).contains(&source.distinct_object_properties)
+        && source.role_chain_axioms == 0;
+    let panel_family = source.abox_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && el_class_fragment
+        && (original_panel_family || wide_role_chain_free_family);
     if !panel_family {
         return None;
     }
@@ -5525,6 +5538,41 @@ mod tests {
     }
 
     #[test]
+    fn context_parallel_gate_arms_the_measured_wide_role_chain_free_family() {
+        let mut profile = context_parallel_panel_profile();
+        profile.source.logical_axioms = 175_170;
+        profile.source.tbox_axioms = 175_147;
+        profile.source.rbox_axioms = 23;
+        profile.source.distinct_classes = 68_820;
+        profile.source.declared_classes = 68_820;
+        profile.source.existentials = 94_834;
+        profile.source.distinct_object_properties = 29;
+        profile.source.declared_object_properties = 29;
+        profile.source.role_chain_axioms = 0;
+        profile.source.file_bytes = 31_242_537;
+        assert_eq!(select(&profile), Route::Elc);
+        assert_eq!(elc_context_parallel_workers(&profile, 16), Some("8"));
+        assert_eq!(elc_context_parallel_workers(&profile, 4), Some("4"));
+        assert_eq!(elc_context_parallel_workers(&profile, 3), None);
+
+        // Crossing each tight measured-band boundary fails closed instead of
+        // admitting the unmeasured role-rich EL population.
+        for mutate in [
+            (|p: &mut OntologyProfile| p.source.logical_axioms = 149_999)
+                as fn(&mut OntologyProfile),
+            |p: &mut OntologyProfile| p.source.distinct_classes = 59_999,
+            |p: &mut OntologyProfile| p.source.existentials = 89_999,
+            |p: &mut OntologyProfile| p.source.distinct_object_properties = 19,
+            |p: &mut OntologyProfile| p.source.role_chain_axioms = 1,
+            |p: &mut OntologyProfile| p.source.file_bytes = 40 * 1024 * 1024 + 1,
+        ] {
+            let mut outside = profile.clone();
+            mutate(&mut outside);
+            assert_eq!(elc_context_parallel_workers(&outside, 16), None);
+        }
+    }
+
+    #[test]
     fn context_parallel_gate_is_deterministic_for_one_profile() {
         let profile = context_parallel_panel_profile();
         let first = elc_context_parallel_workers(&profile, 16);
@@ -5670,8 +5718,8 @@ mod tests {
         }
         assert_eq!(entries.len(), 592, "the retained corpus has 592 profiles");
         assert_eq!(
-            armed, 9,
-            "the retained projection must arm exactly the nine measured profiles"
+            armed, 10,
+            "the retained projection must arm exactly the ten measured profiles"
         );
         if let Some(out) = std::env::var_os("KM_ELC_CTX_PROJECTION_OUT") {
             std::fs::write(out, rows.join("\n") + "\n").expect("ledger written");
