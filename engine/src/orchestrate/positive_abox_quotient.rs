@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use super::tmpfile::TempPath;
@@ -18,6 +18,37 @@ use super::OrchestrateError;
 
 const MIN_SOURCE_BYTES: u64 = 30_000_000;
 const MERGED: &str = "<urn:km:positive-abox-quotient>";
+const SAMPLE_BYTES: usize = 1 << 20;
+const ABOX_TOKENS: &[&[u8]] = &[
+    b"ClassAssertion(",
+    b"ObjectPropertyAssertion(",
+    b"SameIndividual(",
+    b"DifferentIndividuals(",
+];
+
+/// Cheap source-feature gate.  Reading and rewriting every large ontology
+/// would penalize unrelated routes, so require a dense ABox in a fixed middle
+/// sample before the strict whole-source pass.  A false rejection merely keeps
+/// the established complete path.
+fn looks_like_dense_abox(path: &Path, bytes: u64) -> std::io::Result<bool> {
+    let mut file = File::open(path)?;
+    let sample_len = SAMPLE_BYTES.min(bytes as usize);
+    let start = bytes.saturating_sub(sample_len as u64) / 2;
+    file.seek(SeekFrom::Start(start))?;
+    let mut sample = vec![0; sample_len];
+    file.read_exact(&mut sample)?;
+    let lines = sample.iter().filter(|&&byte| byte == b'\n').count();
+    let abox = ABOX_TOKENS
+        .iter()
+        .map(|token| {
+            sample
+                .windows(token.len())
+                .filter(|window| *window == *token)
+                .count()
+        })
+        .sum::<usize>();
+    Ok(abox >= 256 && abox * 2 >= lines.max(1))
+}
 
 #[derive(Default)]
 struct Identities {
@@ -122,7 +153,10 @@ fn rewrite_role_assertion(line: &str) -> Option<String> {
 /// ordinary path.  Input must have exactly one complete top-level axiom per
 /// line; this is deliberately stricter than the OWL functional-syntax parser.
 pub(super) fn try_build(path: &Path) -> Result<Option<TempPath>, OrchestrateError> {
-    if !cfg!(test) && path.metadata()?.len() < MIN_SOURCE_BYTES {
+    let source_bytes = path.metadata()?.len();
+    if !cfg!(test)
+        && (source_bytes < MIN_SOURCE_BYTES || !looks_like_dense_abox(path, source_bytes)?)
+    {
         return Ok(None);
     }
     let input = BufReader::with_capacity(1 << 20, File::open(path)?);
@@ -233,6 +267,20 @@ mod tests {
                 .is_none()
         );
         assert!(rewrite_class_assertion("ClassAssertion(<A>)").is_none());
+    }
+
+    #[test]
+    fn dense_abox_sample_gate_separates_tbox_text() {
+        let dense = TempPath::new(".dense.ofn");
+        let tbox = TempPath::new(".tbox.ofn");
+        fs::write(dense.path(), "ClassAssertion(<A> <a>)\n".repeat(300)).unwrap();
+        fs::write(tbox.path(), "SubClassOf(<A> <B>)\n".repeat(300)).unwrap();
+        assert!(
+            looks_like_dense_abox(dense.path(), dense.path().metadata().unwrap().len()).unwrap()
+        );
+        assert!(
+            !looks_like_dense_abox(tbox.path(), tbox.path().metadata().unwrap().len()).unwrap()
+        );
     }
 
     #[test]
