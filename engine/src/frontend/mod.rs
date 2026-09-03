@@ -25,7 +25,7 @@ pub mod top_role;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
-use clauses::{clause, clause_to_json, Atom, DLClause, Term};
+use clauses::{clause, clause_into_json, Atom, DLClause, Term};
 use iri::IriRegistry;
 
 /// Result of `ofn_to_clauses`: the JSON clause set plus the output-mapping
@@ -418,7 +418,7 @@ fn seed_missing_declarations(clauses: &mut Vec<crate::json_io::JClause>, declare
         let name = &declared[index];
         let atom = Atom::Concept(name.clone(), Term::Var("x".to_string()));
         let self_cl: DLClause = clause([atom.clone()], [atom]);
-        clauses.push(clause_to_json(&self_cl));
+        clauses.push(clause_into_json(self_cl));
     }
 }
 
@@ -1424,7 +1424,7 @@ fn ofn_to_clauses_requested(
     // Consume `tbox` while converting, so the DLClause set is freed as the JSON
     // clause set is built (rather than holding both in full at once).
     let mut jclauses: Vec<crate::json_io::JClause> =
-        tbox.into_iter().map(|c| clause_to_json(&c)).collect();
+        tbox.into_iter().map(clause_into_json).collect();
     t.lap("clause_to_json");
 
     // ELC is the only learned leaf whose exact semantic domain is known only

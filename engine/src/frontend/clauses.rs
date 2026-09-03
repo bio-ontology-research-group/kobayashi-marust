@@ -345,11 +345,51 @@ fn atom_to_json(a: &Atom) -> JAtom {
     }
 }
 
+fn term_into_json(t: Term) -> JTerm {
+    match t {
+        Term::Var(name) => JTerm::Var { name },
+        Term::Ind(name) => JTerm::Ind { name },
+        Term::Aux(root, label) => JTerm::Aux { root, label },
+        Term::Fun(function, arg) => JTerm::Fun {
+            function,
+            arg: Box::new(term_into_json(*arg)),
+        },
+    }
+}
+
+fn atom_into_json(a: Atom) -> JAtom {
+    match a {
+        Atom::Concept(concept, term) => JAtom::Concept {
+            concept,
+            term: term_into_json(term),
+        },
+        Atom::Role(role, source, target) => JAtom::Role {
+            role,
+            source: term_into_json(source),
+            target: term_into_json(target),
+        },
+        Atom::Eq(left, right) => JAtom::Eq {
+            left: term_into_json(left),
+            right: term_into_json(right),
+        },
+    }
+}
+
 /// Port of `rust_context._clause_to_json`.
 pub fn clause_to_json(c: &DLClause) -> JClause {
     JClause {
         body: c.body.iter().map(atom_to_json).collect(),
         head: c.head.iter().map(atom_to_json).collect(),
+    }
+}
+
+/// Convert an owned canonical clause without cloning its strings or nested
+/// terms. This is wire-identical to [`clause_to_json`]; it only transfers
+/// ownership from the frontend normal form into the worker representation.
+pub fn clause_into_json(c: DLClause) -> JClause {
+    JClause {
+        body: c.body.into_iter().map(atom_into_json).collect(),
+        head: c.head.into_iter().map(atom_into_json).collect(),
     }
 }
 
@@ -359,6 +399,25 @@ mod tests {
 
     fn conc(name: &str) -> Atom {
         Atom::Concept(name.to_string(), var_x())
+    }
+
+    #[test]
+    fn owned_json_conversion_matches_borrowed_conversion_for_every_term_shape() {
+        let clause = clause(
+            [
+                Atom::Concept("A".into(), Term::Var("x".into())),
+                Atom::Role(
+                    "R".into(),
+                    Term::Ind("a".into()),
+                    Term::Fun("f".into(), Box::new(Term::Var("x".into()))),
+                ),
+            ],
+            [Atom::Eq(
+                Term::Aux("root".into(), vec![("label".into(), 3)]),
+                Term::Ind("b".into()),
+            )],
+        );
+        assert!(clause_to_json(&clause) == clause_into_json(clause));
     }
 
     #[test]
