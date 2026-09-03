@@ -1580,7 +1580,7 @@ fn classify_with_evidence_mode(
     // Only HT/tableau and the historical portfolio consume an owned query set.
     // Atomic EL/CB return before those branches and use the borrowed `named`
     // lookup below for output mapping, so cloning every class here is dead work.
-    let named_set: HashSet<String> = if matches!(
+    let mut named_set: HashSet<String> = if matches!(
         &cfg.mechanism,
         Mechanism::Ht | Mechanism::Tableau | Mechanism::Portfolio
     ) {
@@ -1588,6 +1588,15 @@ fn classify_with_evidence_mode(
     } else {
         HashSet::new()
     };
+    // The inert-role ABox certificate replaces each individual's complete
+    // named-type conjunction by one private satisfiability probe. Production
+    // must classify those probes as well as public names, otherwise an
+    // asserted conjunction such as A(a), B(a), A ⊓ B ⊑ ⊥ is never queried and
+    // the projected consistency check below cannot observe its clash. Probe
+    // names remain private and are filtered from the published taxonomy.
+    if meta.profile.inert_role_abox_probe_candidate {
+        named_set.extend(meta.asserted_classes.iter().cloned());
+    }
     // EL fast path (elc) when the RBox is EL-safe, else the CB engine. The
     // certified-elc portfolio (KM_ELC_PORTFOLIO) skips the bare elc and the
     // forced attempt — it races a certified elc against the engine below.

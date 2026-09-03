@@ -19,6 +19,7 @@ fn classify(source: &str) -> (serde_json::Value, String) {
     }
     command.env("KM_ABOX_PRODUCTION_TRACE", "1");
     command.env("KM_NOMINAL_HT_PROBE_TRACE", "1");
+    command.env("KM_DEBUG_INERT_ABOX", "1");
     let output = command.output().expect("run automatic classification");
     let _ = std::fs::remove_file(path);
     assert!(
@@ -56,7 +57,7 @@ Ontology(
 }
 
 #[test]
-fn certified_abox_completion_restores_absorbed_tbox_schedule() {
+fn inert_role_abox_probe_restores_absorbed_tbox_schedule() {
     let (result, stderr) = classify(
         r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -79,13 +80,13 @@ Ontology(
         .iter()
         .any(|pair| pair[0] == ":A" && pair[1] == ":B"));
     assert!(
-        stderr.contains("KM_ABOX_PRODUCTION result=accepted"),
-        "automatic route did not publish through the certified production probe: {stderr}"
+        stderr.contains("KM_DEBUG_INERT_ABOX accept probes="),
+        "automatic route did not publish through the inert-role ABox probe: {stderr}"
     );
 }
 
 #[test]
-fn certified_abox_completion_detects_joint_class_clash() {
+fn inert_role_abox_probe_detects_joint_class_clash() {
     let (result, stderr) = classify(
         r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -101,7 +102,7 @@ Ontology(
 )"#,
     );
     assert_eq!(result["consistent"], false);
-    assert!(stderr.contains("KM_ABOX_PRODUCTION result=accepted"));
+    assert!(stderr.contains("KM_DEBUG_INERT_ABOX accept probes="));
 }
 
 #[test]
