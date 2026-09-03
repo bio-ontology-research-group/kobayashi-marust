@@ -6690,8 +6690,16 @@ pub enum PositiveAboxPreparation {
 /// taxonomy is the ordinary TBox taxonomy as well as the consistency
 /// certificate.
 pub fn prepare_positive_abox(
+    clauses: Vec<JClause>,
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<PositiveAboxPreparation> {
+    prepare_positive_abox_mode(clauses, meta, false)
+}
+
+fn prepare_positive_abox_mode(
     mut clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
+    merge_all: bool,
 ) -> Option<PositiveAboxPreparation> {
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
     // This helper rewrites the retained ABox into fresh completion concepts.
@@ -6771,7 +6779,13 @@ pub fn prepare_positive_abox(
         }
     }
 
-    let node = |root: usize| format!("__km_abox_node_{root}");
+    let node = |root: usize| {
+        if merge_all {
+            "__km_abox_merged".to_string()
+        } else {
+            format!("__km_abox_node_{root}")
+        }
+    };
     let var = || JTerm::Var {
         name: "x".to_string(),
     };
@@ -6780,6 +6794,7 @@ pub fn prepare_positive_abox(
         term,
     };
 
+    let mut merged_markers = std::collections::HashSet::new();
     for (index, entry) in meta.individuals.iter().enumerate() {
         if entry.assertions.len() != entry.assertion_markers.len() {
             if debug {
@@ -6792,17 +6807,28 @@ pub fn prepare_positive_abox(
         }
         let root = find(&mut parent, index);
         for marker in &entry.assertion_markers {
+            if merge_all && !merged_markers.insert(marker.as_str()) {
+                continue;
+            }
             clauses.push(JClause {
                 body: vec![concept(node(root), var())],
                 head: vec![concept(marker.clone(), var())],
             });
         }
     }
+    let mut merged_roles = std::collections::HashSet::new();
     for (edge_index, edge) in meta.role_assertions.iter().enumerate() {
+        if merge_all && !merged_roles.insert(edge.role.as_str()) {
+            continue;
+        }
         let source = find(&mut parent, ids[edge.source.as_str()]);
         let target = find(&mut parent, ids[edge.target.as_str()]);
         let fun = JTerm::Fun {
-            function: format!("__km_abox_edge_{edge_index}"),
+            function: if merge_all {
+                format!("__km_abox_role_{}", edge.role)
+            } else {
+                format!("__km_abox_edge_{edge_index}")
+            },
             arg: Box::new(var()),
         };
         clauses.push(JClause {
@@ -6819,17 +6845,30 @@ pub fn prepare_positive_abox(
         });
     }
     // Keep identity-only representatives in the completion signature.
-    for index in 0..parent.len() {
-        let root = find(&mut parent, index);
+    let identity_roots: Box<dyn Iterator<Item = usize>> = if merge_all {
+        Box::new(std::iter::once(0))
+    } else {
+        Box::new(0..parent.len())
+    };
+    for index in identity_roots {
+        let root = if merge_all {
+            0
+        } else {
+            find(&mut parent, index)
+        };
         clauses.push(JClause {
             body: vec![concept(node(root), var())],
             head: vec![concept(node(root), var())],
         });
     }
 
-    let roots: std::collections::HashSet<String> = (0..parent.len())
-        .map(|i| node(find(&mut parent, i)))
-        .collect();
+    let roots: std::collections::HashSet<String> = if merge_all {
+        std::iter::once(node(0)).collect()
+    } else {
+        (0..parent.len())
+            .map(|i| node(find(&mut parent, i)))
+            .collect()
+    };
     Some(PositiveAboxPreparation::Clauses { clauses, roots })
 }
 
@@ -6837,7 +6876,7 @@ pub fn positive_abox_classify(
     clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
 ) -> Option<PositiveAboxResult> {
-    positive_abox_classify_mode(clauses, meta, false)
+    positive_abox_classify_mode(clauses, meta, false, false)
 }
 
 /// Orchestrator-specialized positive-ABox completion. It computes the same
@@ -6847,15 +6886,28 @@ pub(crate) fn positive_abox_classify_compact(
     clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
 ) -> Option<PositiveAboxResult> {
-    positive_abox_classify_mode(clauses, meta, true)
+    positive_abox_classify_mode(clauses, meta, true, false)
+}
+
+/// Fast consistency certificate obtained by homomorphically merging every
+/// named ABox individual into one completion root. Any derivation in the real
+/// ABox maps to this over-approximation, so absence of bottom proves the real
+/// ABox consistent. A merged-root clash declines and lets the caller reload
+/// the unchanged input for exact per-individual materialization.
+pub(crate) fn positive_abox_classify_compact_merged(
+    clauses: Vec<JClause>,
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<PositiveAboxResult> {
+    positive_abox_classify_mode(clauses, meta, true, true)
 }
 
 fn positive_abox_classify_mode(
     clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
     compact: bool,
+    merged_overapprox: bool,
 ) -> Option<PositiveAboxResult> {
-    let prepared = prepare_positive_abox(clauses, meta)?;
+    let prepared = prepare_positive_abox_mode(clauses, meta, merged_overapprox)?;
     let PositiveAboxPreparation::Clauses { clauses, roots } = prepared else {
         return Some(PositiveAboxResult {
             consistent: false,
@@ -6877,7 +6929,10 @@ fn positive_abox_classify_mode(
         }
     };
     let node_unsat = if let Some(encoded) = &result.compact {
-        let bottom = encoded.names.iter().position(|name| name == "owl:Nothing");
+        let bottom = encoded
+            .names
+            .iter()
+            .position(|name| matches!(name.as_str(), "owl:Nothing" | "⊥"));
         bottom.is_some_and(|bottom| {
             encoded.rows.iter().any(|(subject, supers)| {
                 roots.contains(&encoded.names[*subject as usize])
@@ -6892,6 +6947,9 @@ fn positive_abox_classify_mode(
                 .is_some_and(|supers| supers.iter().any(|sup| sup == "owl:Nothing"))
         })
     };
+    if merged_overapprox && node_unsat && !result.inconsistent {
+        return None;
+    }
     Some(PositiveAboxResult {
         consistent: !result.inconsistent && !node_unsat,
         classification: Some(result),
@@ -8593,6 +8651,79 @@ mod tests {
                     }
                     assert_eq!(row, expected, "named taxonomy changed for {subject}");
                 }
+            },
+        )
+        .expect("ontology parses");
+    }
+
+    #[test]
+    fn merged_positive_abox_proves_safe_separated_individuals() {
+        let ofn = r#"Ontology(
+            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
+            ClassAssertion(<A> <a>)
+            ClassAssertion(<A> <b>)
+            DifferentIndividuals(<a> <b>)
+        )"#;
+        crate::frontend::with_ofn_to_clauses_requested_route(
+            ofn,
+            crate::routing::Route::ProductionAll,
+            |frontend| {
+                let merged = positive_abox_classify_compact_merged(
+                    frontend.clauses.clone(),
+                    &frontend.nominal_abox,
+                )
+                .expect("merged abstraction proves consistency");
+                let exact =
+                    positive_abox_classify_compact(frontend.clauses, &frontend.nominal_abox)
+                        .expect("exact completion");
+                assert!(merged.consistent);
+                assert_eq!(merged.consistent, exact.consistent);
+            },
+        )
+        .expect("ontology parses");
+    }
+
+    #[test]
+    fn merged_positive_abox_declines_a_spurious_cross_individual_clash() {
+        let ofn = r#"Ontology(
+            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
+            ClassAssertion(<A> <a>)
+            ClassAssertion(<B> <b>)
+            DifferentIndividuals(<a> <b>)
+        )"#;
+        crate::frontend::with_ofn_to_clauses_requested_route(
+            ofn,
+            crate::routing::Route::ProductionAll,
+            |frontend| {
+                let merged = positive_abox_classify_compact_merged(
+                    frontend.clauses.clone(),
+                    &frontend.nominal_abox,
+                );
+                assert!(merged.is_none(), "merged abstraction must decline");
+                let exact =
+                    positive_abox_classify_compact(frontend.clauses, &frontend.nominal_abox)
+                        .expect("exact fallback");
+                assert!(exact.consistent);
+            },
+        )
+        .expect("ontology parses");
+    }
+
+    #[test]
+    fn compact_positive_abox_detects_node_local_bottom() {
+        let ofn = r#"Ontology(
+            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
+            ClassAssertion(<A> <a>)
+            ClassAssertion(<B> <a>)
+        )"#;
+        crate::frontend::with_ofn_to_clauses_requested_route(
+            ofn,
+            crate::routing::Route::ProductionAll,
+            |frontend| {
+                let result =
+                    positive_abox_classify_compact(frontend.clauses, &frontend.nominal_abox)
+                        .expect("compact exact completion");
+                assert!(!result.consistent);
             },
         )
         .expect("ontology parses");

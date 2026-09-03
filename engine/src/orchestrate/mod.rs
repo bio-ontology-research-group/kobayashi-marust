@@ -1426,12 +1426,37 @@ fn classify_with_evidence_mode(
     if meta.profile.positive_el_abox_materializable
         || std::env::var_os("KM_EL_ABOX_CHECK").is_some()
     {
-        let input: crate::json_io::JInput = match cached_input.take() {
-            Some(input) => input,
-            None => serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?,
+        let (input, reloadable): (crate::json_io::JInput, bool) = match cached_input.take() {
+            Some(input) => (input, false),
+            None => (
+                serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?,
+                true,
+            ),
         };
-        match crate::elcomplete::positive_abox_classify_compact(input.clauses, &input.nominal_abox)
-        {
+        let result = if reloadable {
+            match crate::elcomplete::positive_abox_classify_compact_merged(
+                input.clauses,
+                &input.nominal_abox,
+            ) {
+                Some(result) => Some(result),
+                None => {
+                    if std::env::var_os("KM_ELC_DEBUG").is_some() {
+                        eprintln!(
+                            "KM_EL_ABOX merged over-approximation declined; retrying exact ABox"
+                        );
+                    }
+                    let exact: crate::json_io::JInput =
+                        serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?;
+                    crate::elcomplete::positive_abox_classify_compact(
+                        exact.clauses,
+                        &exact.nominal_abox,
+                    )
+                }
+            }
+        } else {
+            crate::elcomplete::positive_abox_classify_compact(input.clauses, &input.nominal_abox)
+        };
+        match result {
             Some(result) if !result.consistent => {
                 return Ok(ClassificationEvidence {
                     classification: Classification {
