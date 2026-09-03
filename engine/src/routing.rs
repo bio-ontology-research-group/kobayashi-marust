@@ -609,6 +609,30 @@ pub(crate) fn four_worker_compact_expressive_ht_candidate(profile: &OntologyProf
         && !profile.expressivity.universal_role
 }
 
+/// Compact datatype/has-value ABoxes whose complete general-HT probe needs a
+/// third worker to meet both the latency and allocator-arena RSS envelope.
+/// The worker count changes only scheduling of independent classification
+/// jobs; converted-input coverage and result publication remain unchanged.
+pub(crate) fn three_worker_compact_datatype_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    typed_object_abox_bridge_candidate(profile)
+        && (100..=250).contains(&source.logical_axioms)
+        && (1..=10).contains(&source.abox_axioms)
+        && (64..=128).contains(&source.distinct_classes)
+        && (16..=32).contains(&source.distinct_object_properties)
+        && (1..=10).contains(&source.distinct_data_properties)
+        && (2..=3).contains(&source.max_concept_depth)
+        && (300..=600).contains(&profile.clauses.clauses)
+        && source.has_values > 0
+        && source.role_assertions > 0
+        && profile.expressivity.datatype
+        && profile.expressivity.inverse
+        && profile.expressivity.transitivity
+        && profile.expressivity.cardinality
+        && !profile.expressivity.nominal
+        && !profile.expressivity.qualified_cardinality
+}
+
 /// ABox layouts for which the complete clause-level hypertableau is much
 /// smaller than eager nominal root-context materialisation.
 ///
@@ -4697,6 +4721,37 @@ mod tests {
         assert!(four_worker_compact_expressive_ht_candidate(&profile));
         profile.source.max_concept_depth = 5;
         assert!(!four_worker_compact_expressive_ht_candidate(&profile));
+    }
+
+    #[test]
+    fn compact_datatype_has_value_abox_uses_three_ht_workers() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 171;
+        profile.source.abox_axioms = 6;
+        profile.source.class_assertions = 5;
+        profile.source.role_assertions = 1;
+        profile.source.distinct_classes = 96;
+        profile.source.distinct_object_properties = 21;
+        profile.source.distinct_data_properties = 6;
+        profile.source.max_concept_depth = 3;
+        profile.source.has_values = 3;
+        profile.clauses.clauses = 435;
+        profile
+            .source
+            .axiom_types
+            .insert("ClassAssertion".into(), 5);
+        profile
+            .source
+            .axiom_types
+            .insert("ObjectPropertyAssertion".into(), 1);
+        profile.expressivity.datatype = true;
+        profile.expressivity.inverse = true;
+        profile.expressivity.transitivity = true;
+        profile.expressivity.cardinality = true;
+
+        assert!(three_worker_compact_datatype_ht_candidate(&profile));
+        profile.source.distinct_data_properties = 0;
+        assert!(!three_worker_compact_datatype_ht_candidate(&profile));
     }
 
     #[test]

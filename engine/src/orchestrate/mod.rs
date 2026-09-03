@@ -1035,6 +1035,8 @@ fn classify_with_evidence_mode(
             crate::routing::Route::HtGeneral.apply_environment();
             if let Some(workers) = ht_par_request.as_deref() {
                 std::env::set_var("KM_HT_PAR", workers);
+            } else if crate::routing::three_worker_compact_datatype_ht_candidate(&meta.profile) {
+                std::env::set_var("KM_HT_PAR", "3");
             } else if crate::routing::four_worker_compact_expressive_ht_candidate(&meta.profile) {
                 std::env::set_var("KM_HT_PAR", "4");
             }
@@ -1310,6 +1312,11 @@ fn classify_with_evidence_mode(
             // peak RSS depend on the Slurm cpuset. A serial worker derives the
             // same independently checked complete taxonomy deterministically.
             std::env::set_var("KM_HT_PAR", "1");
+        } else if selected_route == crate::routing::Route::HtGeneral
+            && ht_par_request.is_none()
+            && crate::routing::three_worker_compact_datatype_ht_candidate(&meta.profile)
+        {
+            std::env::set_var("KM_HT_PAR", "3");
         } else if selected_route == crate::routing::Route::HtGeneral
             && ht_par_request.is_none()
             && crate::routing::four_worker_compact_expressive_ht_candidate(&meta.profile)
