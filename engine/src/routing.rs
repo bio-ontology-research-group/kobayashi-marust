@@ -872,6 +872,25 @@ pub(crate) fn small_nominal_heap_trim_candidate(profile: &OntologyProfile) -> bo
         && !profile.expressivity.datatype
 }
 
+/// Compact, assertion-bearing nominal inputs whose exact singleton-aware CB
+/// classification cannot amortize the default sixteen worker arenas.
+///
+/// This predicate changes only the worker count of [`Route::Nominals`]. The
+/// same nominal clauses, rules, ordering, and complete fixpoint are retained.
+/// Bounds are the envelope of the repeated Gold-6248 panel; projection over
+/// the retained ORE profiles admits four measured inputs and no controls.
+pub(crate) fn one_thread_compact_nominal_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    (50_000..=170_000).contains(&source.file_bytes)
+        && (300..=900).contains(&source.logical_axioms)
+        && (100..=320).contains(&source.abox_axioms)
+        && (2..=3).contains(&source.max_concept_depth)
+        && (35..=300).contains(&source.distinct_classes)
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
 /// Large role-chain/cardinality TBoxes whose completion workload loses a small
 /// amount of throughput to the default 16-way orchestration. The automatic
 /// pipeline also runs their complete-answer-or-defer bridge before allocating
@@ -4533,6 +4552,81 @@ mod tests {
         profile.source.logical_axioms = 2_171;
         profile.source.rule_axioms = 1;
         assert!(!small_nominal_heap_trim_candidate(&profile));
+    }
+
+    #[test]
+    fn compact_nominal_worker_schedule_is_bounded_by_source_shape() {
+        let mut profile = OntologyProfile::default();
+        profile.source.file_bytes = 96_360;
+        profile.source.logical_axioms = 530;
+        profile.source.abox_axioms = 298;
+        profile.source.max_concept_depth = 2;
+        profile.source.distinct_classes = 35;
+        assert!(one_thread_compact_nominal_candidate(&profile));
+
+        let invalidators: [fn(&mut OntologyProfile); 6] = [
+            |p: &mut OntologyProfile| p.source.file_bytes = 170_001,
+            |p: &mut OntologyProfile| p.source.logical_axioms = 299,
+            |p: &mut OntologyProfile| p.source.abox_axioms = 321,
+            |p: &mut OntologyProfile| p.source.max_concept_depth = 4,
+            |p: &mut OntologyProfile| p.source.distinct_classes = 301,
+            |p: &mut OntologyProfile| p.source.rule_axioms = 1,
+        ];
+        for mutate in invalidators {
+            let mut rejected = profile.clone();
+            mutate(&mut rejected);
+            assert!(!one_thread_compact_nominal_candidate(&rejected));
+        }
+    }
+
+    #[test]
+    fn compact_nominal_worker_gate_carries_no_ontology_identity() {
+        let source = include_str!("routing.rs");
+        let start = source
+            .find("pub(crate) fn one_thread_compact_nominal_candidate")
+            .expect("the compact nominal worker gate is present");
+        let body = &source[start..];
+        let end = body.find("\n}\n").expect("the gate has a body");
+        assert!(!body[..end].contains("ore_ont_"));
+    }
+
+    /// Corpus projection for the compact exact-nominal worker schedule.
+    /// Ordinary tests remain artifact-independent; release validation supplies
+    /// the retained 592-profile directory explicitly.
+    #[test]
+    fn compact_nominal_worker_projection_over_retained_profiles() {
+        #[derive(serde::Deserialize)]
+        struct Record {
+            ont: String,
+            profile: OntologyProfile,
+        }
+
+        let Some(dir) = std::env::var_os("KM_NOMINAL_WORKER_PROFILE_DIR") else {
+            return;
+        };
+        let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+            .expect("profile directory")
+            .map(|entry| entry.expect("profile entry").path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .collect();
+        entries.sort();
+        let mut armed = Vec::new();
+        for path in &entries {
+            let record: Record =
+                serde_json::from_str(&std::fs::read_to_string(path).expect("profile record"))
+                    .expect("profile record shape");
+            if select(&record.profile) == Route::Nominals
+                && one_thread_compact_nominal_candidate(&record.profile)
+            {
+                armed.push(record.ont);
+            }
+        }
+        assert_eq!(entries.len(), 592, "the retained corpus has 592 profiles");
+        assert_eq!(
+            armed.len(),
+            4,
+            "unexpected compact nominal projection: {armed:?}"
+        );
     }
 
     #[test]

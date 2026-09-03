@@ -1317,6 +1317,15 @@ fn classify_with_evidence_mode(
         {
             std::env::set_var("KM_HEAP_TRIM", "1");
         }
+        if automatic_requested
+            && selected_route == crate::routing::Route::Nominals
+            && crate::routing::one_thread_compact_nominal_candidate(&meta.profile)
+        {
+            // Worker scheduling only: retain the exact singleton-aware nominal
+            // encoding and its complete fixpoint while avoiding fifteen idle
+            // worker arenas on compact assertion-bearing inputs.
+            std::env::set_var("KM_THREADS", "1");
+        }
         if selected_route == crate::routing::Route::HtGeneral
             && crate::routing::compact_role_assertion_general_ht_candidate(&meta.profile)
         {
