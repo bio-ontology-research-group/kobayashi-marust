@@ -935,7 +935,10 @@ fn classify_with_evidence_mode(
     // positive-EL-ABox fragment before its answer can escape.  A refusal,
     // quotient clash, or worker error leaves the unchanged ontology as the
     // authoritative fallback.
-    if automatic_requested && !quotient_active {
+    if automatic_requested
+        && !quotient_active
+        && std::env::var_os("KM_NO_POSITIVE_ABOX_QUOTIENT").is_none()
+    {
         if let Some(quotient) = positive_abox_quotient::try_build(ont)? {
             let attempt = {
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
