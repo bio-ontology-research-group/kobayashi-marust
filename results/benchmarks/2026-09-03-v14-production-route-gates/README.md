@@ -148,6 +148,42 @@ external targets. The projected measurement is:
 Recovered: 10127, 11207, 2195, 4827, 7901, each of them measured on the current
 binary in `51250847`.
 
+### Integrated automatic-route confirmation
+
+The projection above was superseded by an end-to-end confirmation of the
+integrated selector at commit `88d3ffd42d9c13aa5b14f050f9180c668c691b72`.
+IBEX build job `51252616` produced binary SHA-256
+`f7ccb74550d04a31fb2c35442d401d62e8105edb072a166474f7d78f971bbffa`.
+Array `51252619`, with failed infrastructure-only tasks repeated as array
+`51252836` off node `cn603-25-l`, ran all 18 affected ontologies through the
+automatic and explicitly selected routes with five repetitions per arm.
+
+All 180 result files are present and parseable. Every run returned `status=ok`,
+matched the Konclude gold signature, recorded its checkpoint, used the pinned
+binary, and reported the expected selected route. There are 180 checkpoints
+and 180 completion markers. The three original attempts on `cn603-25-l` exited
+before producing reasoner output; their exact replacements completed normally.
+
+Every affected ontology is strictly below both its exclusive wall-time and
+peak-memory target on the automatic-route median. Thus the selector recovers
+all eleven affected strict failures, not only the five conservative projection
+recoveries. The production change alone moves the measurement basis from
+497/589 to 508/589. Together with the four disjoint context-parallel EL
+recoveries, the integrated candidate is expected to score 512/589; the full
+592-ontology sweep remains the authority for that combined score.
+
+The larger gain is explained by automatic-only separable-ABox elision. Forced
+route measurements normalize the full asserted graph, while the automatic
+selector proves that these positive ABoxes cannot change named-class
+subsumption and sends only their terminology to CB. This behavior is part of
+the production pipeline and was exercised end to end in the confirmation.
+
+Exact medians and targets are in `integrated-automatic-medians.tsv`. The raw
+archive is retained under
+`.work/artifacts/v14-production-auto-integration/results-complete.tar.gz` with
+SHA-256
+`6b13f89ab79a5a96cb625b702eb74beed43c2a1213d52d2b8379cbba6d699cdc`.
+
 Projected aggregate over the 592 rows: wall mean 1.4759 -> 1.4705 s, wall median
 unchanged at 0.1275 s, peak mean 211.48 -> 210.17 MiB, peak median unchanged at
 22.80 MiB.
