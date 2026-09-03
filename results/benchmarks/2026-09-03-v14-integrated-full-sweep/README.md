@@ -55,6 +55,13 @@ preserving the existing strict win on its collateral member ORE 13383. Its
 score is therefore **524/589**, with 65 comparable residuals. Correctness
 coverage remains 592/592.
 
+A streaming positive-EL ABox quotient subsequently recovered ORE 1579,
+raising the evidence-composite score to **525/589**, with 64 comparable
+residuals. The later move-only normalized-clause handoff improves seven exact-EL
+residuals by 0.4--3.3% in median wall time without changing correctness, but
+does not add another strict joint win. Its paired evidence is recorded in
+`../2026-09-03-v14-owned-clause-handoff/`.
+
 `per-ontology.tsv` records the complete one-shot comparison against the frozen
 v1.4 external target ledger. Raw results and Slurm logs are retained in
 `.work/artifacts/v14-production-auto-integration/full-sweep-complete.tar.gz`,

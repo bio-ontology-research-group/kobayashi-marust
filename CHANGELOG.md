@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Move-only normalized-clause handoff
+
+- Convert owned normalized frontend clauses into worker clauses by moving atom
+  names and nested terms instead of cloning them. The borrowed conversion
+  remains available for callers that retain their normalized clauses, and a
+  differential regression covers every term shape. This changes neither the
+  normalized clause set nor any calculus rule.
+- On IBEX, a 48-run interleaved panel compared the parent and candidate over
+  all eight exact-EL performance residuals, with three repetitions per arm.
+  Every run completed through `elc` and matched its retained gold signature.
+  Candidate median wall time improved by 0.4--3.3% on the seven inputs that use
+  the move-only handoff; ORE 6722 takes a different frontend path and remained
+  neutral. Median peak RSS remained within 0.4% on every input. This is a
+  general aggregate improvement, but it does not add a strict joint win, so
+  the evidence-composite score remains 525/589.
+
 ### Streaming positive-EL ABox quotient
 
 - Add a fail-closed streaming quotient for large, dense positive EL ABoxes.
