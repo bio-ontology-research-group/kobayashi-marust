@@ -920,6 +920,9 @@ fn classify_with_evidence_mode(
     // worker subprocesses share the established environment contract. Restore
     // them on every return path so repeated library calls route independently.
     let _environment_guard = crate::routing::EnvironmentGuard::capture();
+    // Preserve an explicit HT worker-count measurement across both the outer
+    // route selection and any complete HT probe selected by that route.
+    let ht_par_request = std::env::var_os("KM_HT_PAR");
     let t_start = std::time::Instant::now();
     let timing = std::env::var_os("KM_TIMING").is_some();
     // The normal JSON CLI can retain grouped taxonomy rows. For a large source
@@ -1030,6 +1033,11 @@ fn classify_with_evidence_mode(
         let ht_attempt = {
             let _probe_environment = crate::routing::EnvironmentGuard::capture();
             crate::routing::Route::HtGeneral.apply_environment();
+            if let Some(workers) = ht_par_request.as_deref() {
+                std::env::set_var("KM_HT_PAR", workers);
+            } else if crate::routing::four_worker_compact_expressive_ht_candidate(&meta.profile) {
+                std::env::set_var("KM_HT_PAR", "4");
+            }
             std::env::set_var("KM_ROUTE", crate::routing::Route::HtGeneral.as_str());
             let ht_cfg = Config::from_env();
             classify_with_evidence_mode(&ht_cfg, ont, retain_grouped_output)
@@ -1162,9 +1170,9 @@ fn classify_with_evidence_mode(
         }
     }
 
-    // An explicit context-parallel EL request is an A/B measurement arm, not a
-    // route setting. Capture it before `apply_environment` clears the route
-    // keys so the caller's own worker count always survives route selection.
+    // Explicit worker requests are A/B measurement arms, not route settings.
+    // Capture them before `apply_environment` clears the route keys so the
+    // caller's own worker count always survives route selection.
     let elc_par_ctx_request = std::env::var_os("KM_ELC_PAR_CTX");
     let routed_cfg = if matches!(
         selected_route,
@@ -1177,6 +1185,9 @@ fn classify_with_evidence_mode(
         // manual mode so the absorption portfolio can explicitly request its
         // plain/absorbed pass without the tree overriding it.
         selected_route.apply_environment();
+        if let Some(workers) = ht_par_request.as_deref() {
+            std::env::set_var("KM_HT_PAR", workers);
+        }
         let subject_worker_override = std::env::var("KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE")
             .ok()
             .and_then(|value| value.parse::<usize>().ok())
@@ -1299,6 +1310,11 @@ fn classify_with_evidence_mode(
             // peak RSS depend on the Slurm cpuset. A serial worker derives the
             // same independently checked complete taxonomy deterministically.
             std::env::set_var("KM_HT_PAR", "1");
+        } else if selected_route == crate::routing::Route::HtGeneral
+            && ht_par_request.is_none()
+            && crate::routing::four_worker_compact_expressive_ht_candidate(&meta.profile)
+        {
+            std::env::set_var("KM_HT_PAR", "4");
         }
         if selected_route == crate::routing::Route::ProductionAll
             && (crate::routing::eight_thread_large_sriq_candidate(&meta.profile)

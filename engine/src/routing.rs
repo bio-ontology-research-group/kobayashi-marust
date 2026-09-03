@@ -586,6 +586,31 @@ pub(crate) fn compact_role_assertion_general_ht_candidate(profile: &OntologyProf
         && profile.clauses.clauses <= 2_000
 }
 
+/// Compact expressive object ABoxes whose complete general-HT probe has too
+/// little independent classification work to amortize the default fan-out.
+/// This changes worker scheduling only; the probe still validates lossless
+/// normalized TBox and ABox coverage before publishing an answer.
+pub(crate) fn four_worker_compact_expressive_ht_candidate(
+    profile: &OntologyProfile,
+) -> bool {
+    let source = &profile.source;
+    typed_object_abox_bridge_candidate(profile)
+        && (300..=1_000).contains(&source.logical_axioms)
+        && (50..=500).contains(&source.abox_axioms)
+        && (100..=500).contains(&source.distinct_classes)
+        && (32..=100).contains(&source.distinct_object_properties)
+        && (2..=4).contains(&source.max_concept_depth)
+        && profile.clauses.clauses <= 2_000
+        && profile.expressivity.inverse
+        && profile.expressivity.transitivity
+        && profile.expressivity.cardinality
+        && profile.expressivity.nominal
+        && !profile.expressivity.qualified_cardinality
+        && !profile.expressivity.datatype
+        && !profile.expressivity.complex_subrole
+        && !profile.expressivity.universal_role
+}
+
 /// ABox layouts for which the complete clause-level hypertableau is much
 /// smaller than eager nominal root-context materialisation.
 ///
@@ -4645,6 +4670,35 @@ mod tests {
         profile.source.role_chain_axioms = 0;
         profile.source.max_concept_depth = 2;
         assert!(!compact_role_assertion_general_ht_candidate(&profile));
+    }
+
+    #[test]
+    fn compact_expressive_object_abox_uses_four_ht_workers() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 487;
+        profile.source.abox_axioms = 93;
+        profile.source.class_assertions = 17;
+        profile.source.role_assertions = 76;
+        profile.source.distinct_classes = 161;
+        profile.source.distinct_object_properties = 57;
+        profile.source.max_concept_depth = 4;
+        profile.clauses.clauses = 825;
+        profile
+            .source
+            .axiom_types
+            .insert("ClassAssertion".into(), 17);
+        profile
+            .source
+            .axiom_types
+            .insert("ObjectPropertyAssertion".into(), 76);
+        profile.expressivity.inverse = true;
+        profile.expressivity.transitivity = true;
+        profile.expressivity.cardinality = true;
+        profile.expressivity.nominal = true;
+
+        assert!(four_worker_compact_expressive_ht_candidate(&profile));
+        profile.source.max_concept_depth = 5;
+        assert!(!four_worker_compact_expressive_ht_candidate(&profile));
     }
 
     #[test]
