@@ -16,6 +16,20 @@
   Median wall fell from 9.30 to 8.71 seconds on ORE 1579 and from 3.56 to 3.27
   seconds on ORE 6722. Peak RSS stayed effectively flat. Neither reaches its
   fastest-baseline wall target, so the strict score remains 524/589.
+- Add a homomorphic merged-node consistency certificate for positive EL
+  ABoxes. Every source individual maps to one abstract completion root, class
+  assertions are unioned, and each asserted role becomes an abstract self
+  edge. If this over-approximation does not derive bottom, the original ABox
+  cannot derive bottom. An abstract clash reloads the unchanged clauses and
+  runs exact per-individual materialization.
+- Recognize both `owl:Nothing` and the compact interner spelling `⊥` at this
+  boundary. Focused tests cover a genuine node-local clash and a spurious
+  cross-individual abstract clash that must take the exact fallback.
+- The merged certificate reduced ORE 1579 median peak RSS from 820.36 to
+  472.41 MiB and median wall from 8.58 to 5.68 seconds over five paired runs.
+  It therefore clears 1579's memory target but not its 2.4938-second wall
+  target. ORE 6722 improved from 3.59 to 3.42 seconds. The strict score remains
+  524/589.
 
 ## [1.3.0] - 2026-08-30
 
