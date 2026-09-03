@@ -590,9 +590,7 @@ pub(crate) fn compact_role_assertion_general_ht_candidate(profile: &OntologyProf
 /// little independent classification work to amortize the default fan-out.
 /// This changes worker scheduling only; the probe still validates lossless
 /// normalized TBox and ABox coverage before publishing an answer.
-pub(crate) fn four_worker_compact_expressive_ht_candidate(
-    profile: &OntologyProfile,
-) -> bool {
+pub(crate) fn four_worker_compact_expressive_ht_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     typed_object_abox_bridge_candidate(profile)
         && (300..=1_000).contains(&source.logical_axioms)
