@@ -558,6 +558,7 @@ pub(crate) fn certified_nominal_general_ht_probe_candidate(profile: &OntologyPro
         || (typed_object_abox_bridge_candidate(profile)
             && (profile.source.nominals > 0 || profile.source.has_values > 0))
         || compact_abox_general_ht_candidate(profile)
+        || one_worker_source_nominal_free_ht_candidate(profile)
 }
 
 /// Small, flat, role-rich ABoxes for which complete clause-level HT avoids the
@@ -886,6 +887,30 @@ pub(crate) fn one_thread_compact_nominal_candidate(profile: &OntologyProfile) ->
         && (100..=320).contains(&source.abox_axioms)
         && (2..=3).contains(&source.max_concept_depth)
         && (35..=300).contains(&source.distinct_classes)
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
+/// Small source-nominal-free ABoxes for which complete general HT avoids the
+/// fixed cost of exact nominal-aware CB saturation.
+///
+/// The surrounding dispatcher invokes this predicate only after automatic
+/// routing selected an exact nominal route.  It schedules a one-worker
+/// `ht_general` probe; converted-input coverage remains the publication gate,
+/// and any refusal restores the unchanged exact nominal fallback.  The final
+/// exclusion keeps the separately measured exact-CB worker envelope on that
+/// route.  Projection over the retained ORE profiles admits four measured
+/// inputs and no controls.
+pub(crate) fn one_worker_source_nominal_free_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    !one_thread_compact_nominal_candidate(profile)
+        && (50_000..=170_000).contains(&source.file_bytes)
+        && (300..=900).contains(&source.logical_axioms)
+        && (100..=320).contains(&source.abox_axioms)
+        && (2..=4).contains(&source.max_concept_depth)
+        && (25..=400).contains(&source.distinct_classes)
+        && source.nominals == 0
         && source.imports == 0
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
@@ -4626,6 +4651,99 @@ mod tests {
             armed.len(),
             4,
             "unexpected compact nominal projection: {armed:?}"
+        );
+    }
+
+    #[test]
+    fn source_nominal_free_ht_schedule_is_bounded_by_source_shape() {
+        let mut profile = OntologyProfile::default();
+        profile.source.file_bytes = 147_634;
+        profile.source.logical_axioms = 702;
+        profile.source.abox_axioms = 258;
+        profile.source.max_concept_depth = 4;
+        profile.source.distinct_classes = 112;
+        assert!(one_worker_source_nominal_free_ht_candidate(&profile));
+
+        let invalidators: [fn(&mut OntologyProfile); 9] = [
+            |p: &mut OntologyProfile| p.source.file_bytes = 170_001,
+            |p: &mut OntologyProfile| p.source.logical_axioms = 299,
+            |p: &mut OntologyProfile| p.source.abox_axioms = 321,
+            |p: &mut OntologyProfile| p.source.max_concept_depth = 5,
+            |p: &mut OntologyProfile| p.source.distinct_classes = 401,
+            |p: &mut OntologyProfile| p.source.nominals = 1,
+            |p: &mut OntologyProfile| p.source.imports = 1,
+            |p: &mut OntologyProfile| p.source.rule_axioms = 1,
+            |p: &mut OntologyProfile| p.source.unsupported_rule_axioms = 1,
+        ];
+        for mutate in invalidators {
+            let mut rejected = profile.clone();
+            mutate(&mut rejected);
+            assert!(!one_worker_source_nominal_free_ht_candidate(&rejected));
+        }
+
+        let mut exact_cb_envelope = profile;
+        exact_cb_envelope.source.max_concept_depth = 3;
+        exact_cb_envelope.source.distinct_classes = 100;
+        assert!(one_thread_compact_nominal_candidate(&exact_cb_envelope));
+        assert!(!one_worker_source_nominal_free_ht_candidate(
+            &exact_cb_envelope
+        ));
+    }
+
+    #[test]
+    fn source_nominal_free_ht_gate_carries_no_ontology_identity() {
+        let source = include_str!("routing.rs");
+        let start = source
+            .find("pub(crate) fn one_worker_source_nominal_free_ht_candidate")
+            .expect("the source-nominal-free HT gate is present");
+        let body = &source[start..];
+        let end = body.find("\n}\n").expect("the gate has a body");
+        assert!(!body[..end].contains("ore_ont_"));
+    }
+
+    /// Corpus projection for the one-worker complete-HT nominal probe.
+    /// Release validation supplies the retained 592-profile directory.
+    #[test]
+    fn source_nominal_free_ht_projection_over_retained_profiles() {
+        #[derive(serde::Deserialize)]
+        struct Record {
+            ont: String,
+            profile: OntologyProfile,
+        }
+
+        let Some(dir) = std::env::var_os("KM_NOMINAL_WORKER_PROFILE_DIR") else {
+            return;
+        };
+        let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+            .expect("profile directory")
+            .map(|entry| entry.expect("profile entry").path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .collect();
+        entries.sort();
+        let mut armed = Vec::new();
+        for path in &entries {
+            let record: Record =
+                serde_json::from_str(&std::fs::read_to_string(path).expect("profile record"))
+                    .expect("profile record shape");
+            if matches!(
+                select(&record.profile),
+                Route::Nominals | Route::CertifiedNominals
+            ) && one_worker_source_nominal_free_ht_candidate(&record.profile)
+            {
+                armed.push(record.ont);
+            }
+        }
+        assert_eq!(entries.len(), 592, "the retained corpus has 592 profiles");
+        armed.sort();
+        assert_eq!(
+            armed,
+            [
+                "ore_ont_13383.owl",
+                "ore_ont_2860.owl",
+                "ore_ont_5564.owl",
+                "ore_ont_9557.owl",
+            ],
+            "unexpected source-nominal-free HT projection"
         );
     }
 

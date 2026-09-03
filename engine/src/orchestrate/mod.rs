@@ -1031,7 +1031,8 @@ fn classify_with_evidence_mode(
         )
     {
         eprintln!(
-            "KM_TIMING nominal HT schedule: workers3={} workers4={}",
+            "KM_TIMING nominal HT schedule: workers1={} workers3={} workers4={}",
+            crate::routing::one_worker_source_nominal_free_ht_candidate(&meta.profile),
             crate::routing::three_worker_compact_datatype_ht_candidate(&meta.profile),
             crate::routing::four_worker_compact_expressive_ht_candidate(&meta.profile),
         );
@@ -1048,6 +1049,8 @@ fn classify_with_evidence_mode(
             crate::routing::Route::HtGeneral.apply_environment();
             if let Some(workers) = ht_par_request.as_deref() {
                 std::env::set_var("KM_HT_PAR", workers);
+            } else if crate::routing::one_worker_source_nominal_free_ht_candidate(&meta.profile) {
+                std::env::set_var("KM_HT_PAR", "1");
             } else if crate::routing::three_worker_compact_datatype_ht_candidate(&meta.profile) {
                 std::env::set_var("KM_HT_PAR", "3");
             } else if crate::routing::four_worker_compact_expressive_ht_candidate(&meta.profile) {
