@@ -25,6 +25,37 @@ const ABOX_TOKENS: &[&[u8]] = &[
     b"SameIndividual(",
     b"DifferentIndividuals(",
 ];
+const UNSAFE_SOURCE_TOKENS: &[&str] = &[
+    "ObjectUnionOf(",
+    "ObjectComplementOf(",
+    "ObjectAllValuesFrom(",
+    "ObjectMinCardinality(",
+    "ObjectMaxCardinality(",
+    "ObjectExactCardinality(",
+    "ObjectOneOf(",
+    "ObjectHasValue(",
+    "ObjectHasSelf(",
+    "FunctionalObjectProperty(",
+    "InverseFunctionalObjectProperty(",
+    "AsymmetricObjectProperty(",
+    "IrreflexiveObjectProperty(",
+    "ReflexiveObjectProperty(",
+    "DisjointObjectProperties(",
+    "DisjointClasses(",
+    "EquivalentClasses(",
+    "NegativeObjectPropertyAssertion(",
+    "DataPropertyAssertion(",
+    "NegativeDataPropertyAssertion(",
+    "DataSomeValuesFrom(",
+    "DataAllValuesFrom(",
+    "DataHasValue(",
+    "DataMinCardinality(",
+    "DataMaxCardinality(",
+    "DataExactCardinality(",
+    "HasKey(",
+    "DLSafeRule(",
+    "Import(",
+];
 
 /// Cheap source-feature gate.  Reading and rewriting every large ontology
 /// would penalize unrelated routes, so require a dense ABox in a fixed middle
@@ -48,6 +79,26 @@ fn looks_like_dense_abox(path: &Path, bytes: u64) -> std::io::Result<bool> {
         })
         .sum::<usize>();
     Ok(abox >= 256 && abox * 2 >= lines.max(1))
+}
+
+/// First pass that rejects constructors outside the deliberately narrow
+/// positive-EL source contract before allocating assertion dictionaries or
+/// invoking the full frontend on a quotient. The ordinary pipeline supports
+/// many of these constructors; rejection here means only that this shortcut
+/// does not apply.
+fn source_could_be_positive_el(path: &Path) -> std::io::Result<bool> {
+    let mut reader = BufReader::with_capacity(1 << 20, File::open(path)?);
+    let mut line = String::new();
+    while reader.read_line(&mut line)? != 0 {
+        if UNSAFE_SOURCE_TOKENS
+            .iter()
+            .any(|token| line.contains(token))
+        {
+            return Ok(false);
+        }
+        line.clear();
+    }
+    Ok(true)
 }
 
 #[derive(Default)]
@@ -155,7 +206,9 @@ fn rewrite_role_assertion(line: &str) -> Option<String> {
 pub(super) fn try_build(path: &Path) -> Result<Option<TempPath>, OrchestrateError> {
     let source_bytes = path.metadata()?.len();
     if !cfg!(test)
-        && (source_bytes < MIN_SOURCE_BYTES || !looks_like_dense_abox(path, source_bytes)?)
+        && (source_bytes < MIN_SOURCE_BYTES
+            || !looks_like_dense_abox(path, source_bytes)?
+            || !source_could_be_positive_el(path)?)
     {
         return Ok(None);
     }
@@ -281,6 +334,23 @@ mod tests {
         assert!(
             !looks_like_dense_abox(tbox.path(), tbox.path().metadata().unwrap().len()).unwrap()
         );
+    }
+
+    #[test]
+    fn source_precheck_rejects_expressive_and_data_axioms() {
+        for axiom in [
+            "SubClassOf(<A> ObjectAllValuesFrom(<r> <B>))",
+            "EquivalentClasses(<A> <B>)",
+            "FunctionalObjectProperty(<r>)",
+            "DataPropertyAssertion(<p> <a> \"x\")",
+        ] {
+            let source = TempPath::new(".unsafe.ofn");
+            fs::write(source.path(), format!("Ontology(\n{axiom}\n)\n")).unwrap();
+            assert!(
+                !source_could_be_positive_el(source.path()).unwrap(),
+                "{axiom}"
+            );
+        }
     }
 
     #[test]
