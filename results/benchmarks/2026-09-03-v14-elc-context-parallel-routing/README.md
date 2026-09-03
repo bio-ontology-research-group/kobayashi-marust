@@ -158,11 +158,33 @@ frontend and output laps, not more EL workers. 1579 and 6722 are not armed.
   gate whose closure concentrates in a few hub contexts would gain less than
   the panel members; it cannot lose correctness, only the expected speedup.
 
+## Integrated automatic-route confirmation
+
+After integration at source commit `c806533837b8e27e5100ef3bb34574cb756826e7`,
+IBEX build job `51251895` produced binary SHA-256
+`6dacf48a554fe15663b695887cbfc232dd7f55262b5e0f54a0b62be5fba3d3cb`.
+Array `51252332` ran the nine selected ontologies, automatic versus explicitly
+serial, five times per arm on Intel Xeon Gold 6248 nodes.  All 90 tasks produced
+a result, checkpoint, scheduler output and completion marker; every result was
+`status=ok`, matched gold, and recorded route `elc`.  There were no failure
+artifacts.
+
+The automatic medians confirm the four projected recoveries.  ORE 4802 also
+crossed its 1.8379-second target at 1.8226 seconds, but the 0.8% margin is too
+narrow to promote before the full default-route sweep.  Therefore the retained
+projection remains 501/589 and treats 4802 as an additional candidate rather
+than a settled recovery.  `integrated-automatic-medians.tsv` records all nine
+paired medians and targets.  The archived raw results are
+`.work/artifacts/v14-elc-auto-integration/results-51252332.tar.gz`, SHA-256
+`a5e9cd9eea30de895edce615e39b36bc3eaf615c92c9e02ba6c48e842663d21f`.
+
 ## Files
 
 * `context-parallel-panel-medians.tsv` - the 18-ontology, 4-arm, 216-run panel.
 * `context-parallel-confirmation-medians.tsv` - ten-observation confirmation
   medians for the four recoveries.
+* `integrated-automatic-medians.tsv` - five automatic and five forced-serial
+  observations for every selected profile after integration.
 * `context-parallel-projection.tsv` - the complete 592-row projection ledger.
 * `build_panel_medians.py`, `build_projection_ledger.py` - the two joins above,
   from the retained artifacts.

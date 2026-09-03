@@ -1,0 +1,10 @@
+ontology	repetitions	automatic_wall_s	automatic_peak_mib	forced_serial_wall_s	forced_serial_peak_mib	wall_target_s	peak_target_mib	automatic_strict
+ore_ont_10248.owl	5	1.6239	271.32	1.6031	270.63	2.0251	587.90	pass
+ore_ont_11293.owl	5	1.6068	267.03	1.5932	266.25	2.0295	580.33	pass
+ore_ont_12387.owl	5	3.6117	406.33	3.6322	405.80	3.2375	966.44	fail
+ore_ont_15929.owl	5	1.5857	265.80	1.5887	265.66	1.6922	581.16	pass
+ore_ont_2803.owl	5	1.5112	240.14	1.4684	241.69	1.8544	583.56	pass
+ore_ont_2828.owl	5	2.5817	432.20	2.6242	431.77	2.7197	818.41	pass
+ore_ont_4802.owl	5	1.8226	286.10	1.8252	283.72	1.8379	704.02	pass
+ore_ont_5612.owl	5	1.6092	270.54	1.6059	271.58	1.8041	591.73	pass
+ore_ont_795.owl	5	1.4989	253.54	1.5184	253.22	1.8461	624.48	pass
