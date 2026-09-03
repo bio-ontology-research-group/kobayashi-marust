@@ -97,6 +97,13 @@ The complete task outputs and checkpoints are retained under
 `.work/artifacts/v14-bounded-near-el-panel/panel/`; the source archive and
 Slurm scripts are in `.work/artifacts/v14-bounded-near-el-panel/`.
 
+After removing these eight measured recoveries from the preceding strict
+audit, 92 failures remain. Joining those ontology identifiers to the retained
+default-sweep route traces gives 36 on the production CB family, 24 on nominal
+routes, 15 on ELC, 10 on general hypertableau, and 7 on bridge or specialized
+routes. `remaining-strict-route-families.tsv` records the complete partition;
+it is the routing basis for the next optimization panels.
+
 ### Pre-run projection
 
 The projection runs the real selector. All 592 recorded source profiles
@@ -162,3 +169,5 @@ a missing threshold:
 * `strict-failures-with-a-winning-route.tsv` - the 37-row candidate ledger.
 * `gate-projection.tsv` - the before/after selected route, the executed-path
   change, and the strict projection for all 592 profiles.
+* `remaining-strict-route-families.tsv` - all 92 residual strict failures,
+  partitioned by the route family selected in the default sweep.
