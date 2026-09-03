@@ -738,3 +738,21 @@ fn large_source_prefilter_requires_a_mirror_scale_complement_family() {
         MIRROR_PREFILTER_MIN_COMPLEMENTS
     ));
 }
+
+#[test]
+fn streaming_prefilter_counts_tokens_across_read_boundaries() {
+    let path = TempPath::new(".mirror-prefilter-test.ofn");
+    let mut bytes = vec![b' '; 64 * 1024 - 7];
+    for _ in 0..MIRROR_PREFILTER_MIN_COMPLEMENTS {
+        bytes.extend_from_slice(b"ObjectComplementOf(");
+    }
+    std::fs::write(path.path(), bytes).unwrap();
+    assert!(has_mirror_scale_complements(path.path()).unwrap());
+
+    std::fs::write(
+        path.path(),
+        "ObjectComplementOf(".repeat(MIRROR_PREFILTER_MIN_COMPLEMENTS - 1),
+    )
+    .unwrap();
+    assert!(!has_mirror_scale_complements(path.path()).unwrap());
+}
