@@ -11,16 +11,24 @@
   role assertions. The normal frontend must independently recover the existing
   positive-EL-ABox certificate before the quotient answer can be published; a
   refusal or quotient clash runs the unchanged complete path.
-- Gate the full source pass with a fixed 1 MiB middle sample so unrelated large
-  ontologies do not pay to rewrite their input. A false rejection affects only
-  route selection. Six focused tests cover nested class expressions, role
+- Gate the full source pass with a fixed 1 MiB middle sample and reject
+  expressive or data-bearing source constructors in a streaming prepass before
+  allocating quotient dictionaries. A false rejection affects only route
+  selection. Seven focused tests cover nested class expressions, role
   assertions, deduplication, n-ary identity contradiction, malformed input,
-  and the density gate.
+  the density gate, and expressive-source refusal.
 - On IBEX, five interleaved repetitions preserved one byte-identical normalized
   taxonomy for ORE 1579. Median wall time fell from 6.24 to 2.20 seconds and
   median peak RSS from 473.88 to 219.77 MiB. This clears the 2.4938-second and
   596.66-MiB strict targets, provisionally raising the joint score from 524 to
   525 of 589 pending the integrated sweep.
+- Reject the first broad integrated candidate after its 592-input sweep exposed
+  a costly quotient decline on expressive ORE 15846 and a timeout on ORE 9654.
+  The source prepass restores both established routes. A same-binary 18-run
+  ablation preserved exact output on 1579, 15846, and 9654, and a fresh
+  corrected sweep returned 592/592 `ok` results with zero semantic differences
+  from the prior accepted sweep. ORE 1579 completed that sweep in 1.8762
+  seconds at 220.2 MiB. The evidence-composite strict score is 525/589.
 
 ### Compact positive-EL ABox taxonomy output
 

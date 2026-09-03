@@ -37,3 +37,53 @@ An initial panel submission (`51269291`) failed before reasoner execution
 because its hard-coded control digest contained a transcription error. The
 digest guard rejected every attempted task and no output was accepted. The
 corrected job above used the control binary's directly verified digest.
+
+## Integrated regression and correction
+
+The first density-gated integrated source, commit `ec70703`, was deliberately
+rejected after full sweep `51269428`. It produced 591 `ok` rows and one timeout:
+the quotient frontend was expensive before it could reject expressive ORE
+15846, and ORE 9654 timed out after the same inappropriate attempt. The retained
+rejected-sweep archive records all 592 terminal rows; no result from it is used
+as release evidence.
+
+Commit `53ab180` adds a streaming source-contract prepass that rejects unions,
+complements, universal restrictions, number restrictions, nominals,
+functionality, disjoint/equivalent class constructors, negative assertions,
+data constructors, keys, rules, and imports before quotient allocation. Commit
+`ea34aad` adds the explicit `KM_NO_POSITIVE_ABOX_QUOTIENT` ablation switch.
+
+Build job `51274343` produced the corrected binary at commit `ea34aad` with
+SHA-256
+`f5b2c52785c8fe28c0ba2932f8dcd9e05bc0b2b6a53e335c98731a71aa884591`.
+Same-binary panel `51274344` ran three repetitions per arm:
+
+| Ontology | Arm | Median wall (s) | Median peak RSS (MiB) | Quotient accepted |
+|---|---|---:|---:|---:|
+| 1579 | disabled | 5.05 | 473.48 | 0/3 |
+| 1579 | enabled | 1.83 | 219.75 | 3/3 |
+| 15846 | disabled | 9.66 | 513.61 | 0/3 |
+| 15846 | enabled | 9.78 | 514.48 | 0/3 |
+| 9654 | disabled | 18.09 | 996.05 | 0/3 |
+| 9654 | enabled | 14.28 | 1001.89 | 0/3 |
+
+Each ontology had one normalized hash across both arms. The expressive-source
+prepass therefore restores 15846 and 9654 without disabling the 1579 quotient.
+
+Corrected full sweep `51274570` produced 592 results, 592 checkpoints, 592
+Slurm logs, 592 `TASK_COMPLETE` markers, and no temporary files. All rows have
+`status=ok`, the exact binary digest, and a selected-route trace. The verdict
+population is 588 retained-gold matches, two independently adjudicated
+consistency mismatches, and two no-gold certified cases. Every semantic field
+matches the prior accepted 592/592 sweep. ORE 1579 completed in 1.8762 seconds
+at 220.2 MiB.
+
+The corrected sweep's one-shot strict joint count is 490/589. As elsewhere in
+the v1.4 evidence, narrow boundary claims use repeated medians rather than
+substituting one noisy sweep sample. Adding the repeated 1579 closure to the
+preceding evidence composite gives 525/589 strict joint wins and 64 residuals.
+
+The complete corrected build, panel, and full-sweep evidence occupies 138 MiB
+under `.work/artifacts/v14-positive-abox-quotient-final2`. Its verified
+1,890-entry `SHA256SUMS` file has SHA-256
+`0ff8802f8669ed7a4d8d0aded8c74dbb5bb0450897a473af1f2a347cd63a9126`.
