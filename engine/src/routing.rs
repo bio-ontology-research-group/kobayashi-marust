@@ -1457,6 +1457,107 @@ fn certified_el_production_candidate(profile: &OntologyProfile) -> bool {
     positive_abox || large_extended_tbox || small_identity_abox
 }
 
+/// Bounded near-EL source screen for the certified EL completion.
+///
+/// [`certified_el_production_candidate`] only recognizes the very large
+/// near-EL shapes (100k/400k source axioms). Below those floors the automatic
+/// router hands every remaining nominal-free terminology to the absorbed
+/// production portfolio, even when the source carries no construct outside the
+/// EL class fragment and the only reason it misses [`source_el_shape`] is a
+/// role-level feature (inverse/symmetric/transitive declarations, role
+/// domains and ranges, data-property declarations) or the absence of an
+/// existential restriction. Those inputs pay for the absorbed frontend plus a
+/// CB classifier when plain normalization and the canonical-model certificate
+/// decide them directly.
+///
+/// This predicate screens the source constructors only. It admits exactly the
+/// EL class constructors (named subclass/equivalence, intersection,
+/// existential restriction, named disjointness and class bottom, which `elc`
+/// represents as NF5 empty-head clauses) and leaves every role-level feature
+/// to the normalized certificate. Universal restriction, complement, number
+/// restriction, nominal, `hasValue`, `hasSelf`, a bottom role, a negative
+/// assertion, and the asymmetric/irreflexive constraints all fail closed here.
+///
+/// A source below 100 logical axioms keeps its established route: the absorbed
+/// production frontend has nothing to save there, and the screen should not
+/// perturb the clausification of trivial inputs.
+///
+/// Three bounds keep a refused attempt cheap, because the exact fallback runs
+/// serially after it:
+///
+/// * `disjoint_class_axioms <= distinct_classes` rejects the near-complete
+///   disjointness clique, whose pairwise bottom expansion is quadratic in the
+///   class count and carries no positive EL structure to complete.
+/// * `max_concept_depth <= 3` bounds the definer chains normalization
+///   introduces, which is what the certificate has to discharge.
+/// * `file_bytes <= 16 MiB` bounds the parse and normalization cost of an
+///   attempt that the certificate then refuses.
+///
+/// Disjunction follows the bound the established certified-EL gates already
+/// use, up to 100 unions that normalization absorbs, and only alongside a
+/// genuine existential restriction and at most one union per hundred logical
+/// axioms. A source whose only compound constructor is disjunction, or whose
+/// disjunctions are a material part of the terminology, carries no EL
+/// structure to complete, so the certificate can only refuse it.
+///
+/// The route this selects is [`Route::CertifiedElProduction`]: the normalized
+/// EL worker publishes only on a passing canonical-model certificate, and any
+/// refusal, residue, or worker failure reruns the established absorbed
+/// production portfolio. The gate therefore changes scheduling only. Its
+/// caller restricts it to the nominal-free `SriqCore`/`PositiveAbox`
+/// fragments, where `production_all` is the exact automatic fallback and the
+/// source is already ELC-publication-safe.
+fn bounded_near_el_certified_candidate(profile: &OntologyProfile) -> bool {
+    // Above this the refused attempt costs more than the scheduling win.
+    // `certified_el_production_candidate` covers the large shapes it can
+    // certify from the source alone.
+    const REFUSAL_BUDGET_BYTES: u64 = 16 * 1024 * 1024;
+
+    // The established certified-EL gates admit up to this many disjunctions
+    // because normalization absorbs them; a source that carries nothing but
+    // disjunction has no EL structure for the completion to work on.
+    const ABSORBABLE_UNIONS: u64 = 100;
+    // A disjunction is absorbable only relative to the terminology carrying
+    // it. One union in four axioms is the terminology; one in twenty-six
+    // thousand is a rounding error.
+    const UNION_AXIOM_SHARE: u64 = 100;
+    // Below this the absorbed production frontend has nothing to save, so the
+    // established route keeps the trivial band and its clausification.
+    const TRIVIAL_SOURCE_AXIOMS: u64 = 100;
+
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    let el_shaped_disjunction = source.unions == 0
+        || (source.existentials > 0
+            && source.unions <= ABSORBABLE_UNIONS
+            && source
+                .unions
+                .saturating_mul(UNION_AXIOM_SHARE)
+                <= source.logical_axioms);
+
+    source.logical_axioms >= TRIVIAL_SOURCE_AXIOMS
+        && source.file_bytes <= REFUSAL_BUDGET_BYTES
+        && source.max_concept_depth <= 3
+        && source.disjoint_class_axioms <= source.distinct_classes
+        && el_shaped_disjunction
+        && source.complements == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.bottom_role_occurrences == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && count("NegativeObjectPropertyAssertion") == 0
+        && count("NegativeDataPropertyAssertion") == 0
+        && count("AsymmetricObjectProperty") == 0
+        && count("IrreflexiveObjectProperty") == 0
+}
+
 /// Large ABoxes without number restrictions try the certified native bridge
 /// before eagerly materializing every nominal in the CB root context. The
 /// certified-nominals bundle retains the exact singleton-aware fallback even
@@ -1747,6 +1848,20 @@ pub fn select(profile: &OntologyProfile) -> Route {
             if profile.inverse_cardinality_role_separable =>
         {
             Route::ProductionAll
+        }
+        // A nominal-free source whose class constructors stay inside EL and
+        // whose size bounds a refused attempt. The canonical-model certificate
+        // decides whether the EL answer may be published; a refusal reruns the
+        // exact absorbed production portfolio this arm would otherwise have
+        // selected, so the source screen changes scheduling only. The
+        // established one-worker production refinement below keeps priority:
+        // it carries its own corpus measurement, and no ontology it recognizes
+        // needs this schedule.
+        SemanticFragment::PositiveAbox | SemanticFragment::SriqCore
+            if bounded_near_el_certified_candidate(profile)
+                && !one_thread_small_production_candidate(profile) =>
+        {
+            Route::CertifiedElProduction
         }
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore => {
             let learned = routing_tree_generated::select(profile);
@@ -2523,6 +2638,223 @@ mod tests {
         let mut profile = large_el_tbox_with_small_identity_abox_profile();
         profile.source.complements = 1;
         assert!(!certified_el_production_candidate(&profile));
+    }
+
+    /// Existential SI terminology with named disjointness and one union: the
+    /// broad source-EL screen rejects it for the union, the flat/intersection
+    /// taxonomy screens for the existentials, and the large certified screen
+    /// for its size.
+    fn bounded_near_el_terminology_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.schema_version = 2;
+        profile.source.file_bytes = 5_503_375;
+        profile.source.logical_axioms = 26_455;
+        profile.source.tbox_axioms = 26_449;
+        profile.source.rbox_axioms = 6;
+        profile.source.subclass_axioms = 21_391;
+        profile.source.equivalent_class_axioms = 4_381;
+        profile.source.disjoint_class_axioms = 677;
+        profile.source.distinct_classes = 25_648;
+        profile.source.distinct_object_properties = 8;
+        profile.source.transitive_role_axioms = 6;
+        profile.source.intersections = 4_380;
+        profile.source.existentials = 5_209;
+        profile.source.unions = 1;
+        profile.source.concept_expressions = 60_000;
+        profile.source.max_concept_depth = 3;
+        profile.expressivity.negation_disjunction = true;
+        profile.expressivity.existential = true;
+        profile
+    }
+
+    /// Equivalence-only terminology: no existential at all, so the source-EL
+    /// screen (which requires one) never fires and the router hands it to the
+    /// absorbed production portfolio.
+    fn equivalence_only_near_el_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.schema_version = 2;
+        profile.source.file_bytes = 5_200_473;
+        profile.source.logical_axioms = 20_963;
+        profile.source.tbox_axioms = 20_963;
+        profile.source.equivalent_class_axioms = 20_963;
+        profile.source.distinct_classes = 39_430;
+        profile.source.concept_expressions = 41_926;
+        profile.source.max_concept_depth = 1;
+        profile
+    }
+
+    /// Role domain/range schema with a separable positive class-assertion
+    /// ABox. The source-EL screens reject domain/range axioms outright.
+    fn domain_range_near_el_positive_abox_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.schema_version = 2;
+        profile.positive_abox_tbox_separable = true;
+        profile.source.file_bytes = 134_959;
+        profile.source.logical_axioms = 767;
+        profile.source.tbox_axioms = 99;
+        profile.source.abox_axioms = 478;
+        profile.source.rbox_axioms = 190;
+        profile.source.subclass_axioms = 99;
+        profile.source.range_axioms = 190;
+        profile.source.class_assertions = 478;
+        profile.source.distinct_individuals = 478;
+        profile.source.distinct_classes = 98;
+        profile.source.distinct_object_properties = 180;
+        profile.source.concept_expressions = 866;
+        profile.source.max_concept_depth = 1;
+        profile
+    }
+
+    #[test]
+    fn automatic_route_certifies_bounded_near_el_sources() {
+        for profile in [
+            bounded_near_el_terminology_profile(),
+            equivalence_only_near_el_profile(),
+            domain_range_near_el_positive_abox_profile(),
+        ] {
+            assert!(
+                bounded_near_el_certified_candidate(&profile),
+                "source screen must admit the bounded near-EL shape"
+            );
+            assert!(
+                !certified_el_production_candidate(&profile),
+                "the large certified screen must not already cover it"
+            );
+            assert_eq!(
+                select(&profile),
+                Route::CertifiedElProduction,
+                "bounded near-EL sources must schedule the certificate before production"
+            );
+        }
+        assert_eq!(
+            semantic_fragment(&domain_range_near_el_positive_abox_profile()),
+            SemanticFragment::PositiveAbox
+        );
+        assert_eq!(
+            semantic_fragment(&bounded_near_el_terminology_profile()),
+            SemanticFragment::SriqCore
+        );
+    }
+
+    #[test]
+    fn bounded_near_el_route_keeps_the_certificate_and_exact_fallback() {
+        // The route publishes only on a passing canonical-model certificate
+        // (`KM_ELC_CERT`), and it is deliberately not atomic: the orchestrator
+        // reruns the absorbed production portfolio on any refusal.
+        let settings = Route::CertifiedElProduction.settings();
+        assert!(settings.iter().any(|(key, _)| *key == "KM_ELC_CERT"));
+        assert!(settings.iter().any(|(key, _)| *key == "KM_ELC_FORCE"));
+        assert!(!Route::CertifiedElProduction.is_atomic());
+    }
+
+    #[test]
+    fn bounded_near_el_gate_fails_closed_outside_the_el_class_fragment() {
+        // Every construct outside the admitted EL class fragment must fall
+        // back to the unchanged production route.
+        let cases: [(&str, fn(&mut OntologyProfile)); 12] = [
+            ("universal", |p| p.source.universals = 1),
+            ("complement", |p| p.source.complements = 1),
+            ("min cardinality", |p| p.source.min_cardinalities = 1),
+            ("max cardinality", |p| p.source.max_cardinalities = 1),
+            ("exact cardinality", |p| p.source.exact_cardinalities = 1),
+            ("nominal", |p| p.source.nominals = 1),
+            ("hasValue", |p| p.source.has_values = 1),
+            ("hasSelf", |p| p.source.has_self = 1),
+            ("bottom role", |p| p.source.bottom_role_occurrences = 1),
+            ("import", |p| p.source.imports = 1),
+            ("rule", |p| p.source.rule_axioms = 1),
+            ("unsupported rule", |p| p.source.unsupported_rule_axioms = 1),
+        ];
+        for (label, mutate) in cases {
+            let mut profile = bounded_near_el_terminology_profile();
+            mutate(&mut profile);
+            assert!(
+                !bounded_near_el_certified_candidate(&profile),
+                "{label} must fail the bounded near-EL screen closed"
+            );
+            assert_ne!(
+                select(&profile),
+                Route::CertifiedElProduction,
+                "{label} must not reach the certified EL route"
+            );
+        }
+
+        for name in [
+            "NegativeObjectPropertyAssertion",
+            "NegativeDataPropertyAssertion",
+            "AsymmetricObjectProperty",
+            "IrreflexiveObjectProperty",
+        ] {
+            let mut profile = bounded_near_el_terminology_profile();
+            profile.source.axiom_types.insert(name.into(), 1);
+            assert!(
+                !bounded_near_el_certified_candidate(&profile),
+                "{name} must fail the bounded near-EL screen closed"
+            );
+        }
+    }
+
+    #[test]
+    fn bounded_near_el_gate_declines_expensive_refusals() {
+        // A near-complete disjointness clique carries no positive EL structure
+        // to complete and expands quadratically in the class count.
+        let mut profile = bounded_near_el_terminology_profile();
+        profile.source.disjoint_class_axioms = profile.source.distinct_classes + 1;
+        assert!(!bounded_near_el_certified_candidate(&profile));
+        profile.source.disjoint_class_axioms = profile.source.distinct_classes;
+        assert!(bounded_near_el_certified_candidate(&profile));
+
+        // Deep nesting means long definer chains for the certificate.
+        let mut profile = bounded_near_el_terminology_profile();
+        profile.source.max_concept_depth = 4;
+        assert!(!bounded_near_el_certified_candidate(&profile));
+        profile.source.max_concept_depth = 3;
+        assert!(bounded_near_el_certified_candidate(&profile));
+
+        // Beyond the refusal budget the exact fallback must not run second.
+        let mut profile = bounded_near_el_terminology_profile();
+        profile.source.file_bytes = 16 * 1024 * 1024 + 1;
+        assert!(!bounded_near_el_certified_candidate(&profile));
+        profile.source.file_bytes = 16 * 1024 * 1024;
+        assert!(bounded_near_el_certified_candidate(&profile));
+    }
+
+    #[test]
+    fn bounded_near_el_gate_never_preempts_an_exact_fragment_route() {
+        // A non-separable ABox is a nominal source: the EL worker sees clauses,
+        // not singleton identity, so it must keep the exact nominal calculus.
+        let mut profile = domain_range_near_el_positive_abox_profile();
+        profile.positive_abox_tbox_separable = false;
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(bounded_near_el_certified_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+
+        // DL-safe rules keep the validated rule stage.
+        let mut profile = bounded_near_el_terminology_profile();
+        profile.source.rule_axioms = 1;
+        assert_eq!(select(&profile), Route::HtRules);
+
+        // The already-recognized source-EL terminology keeps the bare atomic
+        // EL route rather than the certificate-plus-production bundle.
+        let mut profile = bounded_near_el_terminology_profile();
+        profile.source.unions = 0;
+        assert!(source_el_terminology_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        // The scoped inverse+cardinality certificate still wins.
+        let mut profile = bounded_near_el_terminology_profile();
+        profile.inverse_cardinality_role_separable = true;
+        assert_eq!(select(&profile), Route::ProductionAll);
+
+        // The established one-worker production refinement keeps priority.
+        let mut profile = bounded_near_el_terminology_profile();
+        profile.source.file_bytes = 1_000_000;
+        profile.source.logical_axioms = 5_000;
+        profile.source.distinct_classes = 3_000;
+        profile.expressivity.functionality = true;
+        assert!(bounded_near_el_certified_candidate(&profile));
+        assert!(one_thread_small_production_candidate(&profile));
+        assert_eq!(select(&profile), Route::ProductionAll1);
     }
 
     fn source_profile(text: &str) -> OntologyProfile {
