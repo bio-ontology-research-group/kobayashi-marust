@@ -76,6 +76,29 @@ This is a scheduling change only:
 
 ## Result
 
+### Checksum-pinned IBEX validation
+
+IBEX array `51248960` ran every one of the 119 profiles whose selected route
+changes. It used the candidate binary with SHA-256
+`65f289c182564acc062fe50d728e54f2d0a873d32b7635dca58e25d257de68f1`
+on Intel Xeon Gold 6248 nodes, with a 480 s timeout and 20 GiB reasoner
+memcap. All 119 tasks produced a result, checkpoint, route trace, and
+`TASK_COMPLETE` marker. All 119 returned `status=ok`, and all 119 signatures
+matched the Konclude gold. No failure artifact was produced.
+
+The measured panel confirms 115 strict passes among the 119 changed profiles,
+up from 107 on the preceding default sweep: **eight recoveries and zero
+regressions**. The recovered ontologies are 1272, 1793, 2627, 6423, 7300,
+10314, 13071, and 13887. Measurement noise moved one boundary result in each
+direction relative to the projection: 14312 narrowly missed its wall target,
+while 1272 passed both targets. The net result remains the projected eight.
+
+The complete task outputs and checkpoints are retained under
+`.work/artifacts/v14-bounded-near-el-panel/panel/`; the source archive and
+Slurm scripts are in `.work/artifacts/v14-bounded-near-el-panel/`.
+
+### Pre-run projection
+
 The projection runs the real selector. All 592 recorded source profiles
 (`.work/artifacts/v14-final-candidate-sweep-job51195701/profiles/`) were
 deserialized into `OntologyProfile` and passed through `routing::select`
