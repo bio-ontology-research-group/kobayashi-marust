@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Compact positive-EL ABox taxonomy output
+
+- Reuse the positive-ABox completion as a dictionary-coded taxonomy instead of
+  allocating one superclass string per pair. The compact and string paths run
+  the same EL rules and fixpoint; a regression compares their consistency
+  verdict and complete named-class taxonomy.
+- Keep the positive-ABox frontend in its isolated subprocess. A measured typed
+  in-process handoff reduced frontend time but retained parser allocation and a
+  less local clause layout, increasing EL indexing time and peak RSS on ORE
+  1579. The production change preserves the established lower-memory boundary.
+- On IBEX, five paired repetitions preserved byte-identical normalized output.
+  Median wall fell from 9.30 to 8.71 seconds on ORE 1579 and from 3.56 to 3.27
+  seconds on ORE 6722. Peak RSS stayed effectively flat. Neither reaches its
+  fastest-baseline wall target, so the strict score remains 524/589.
+
 ## [1.3.0] - 2026-08-30
 
 ### Incremental reasoning and explanations
