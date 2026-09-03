@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Streaming positive-EL ABox quotient
+
+- Add a fail-closed streaming quotient for large, dense positive EL ABoxes.
+  The scanner verifies complete one-axiom-per-line functional syntax, checks
+  `SameIndividual`/`DifferentIndividuals` consistency exactly, maps every
+  positive class assertion to one representative, and deduplicates class and
+  role assertions. The normal frontend must independently recover the existing
+  positive-EL-ABox certificate before the quotient answer can be published; a
+  refusal or quotient clash runs the unchanged complete path.
+- Gate the full source pass with a fixed 1 MiB middle sample so unrelated large
+  ontologies do not pay to rewrite their input. A false rejection affects only
+  route selection. Six focused tests cover nested class expressions, role
+  assertions, deduplication, n-ary identity contradiction, malformed input,
+  and the density gate.
+- On IBEX, five interleaved repetitions preserved one byte-identical normalized
+  taxonomy for ORE 1579. Median wall time fell from 6.24 to 2.20 seconds and
+  median peak RSS from 473.88 to 219.77 MiB. This clears the 2.4938-second and
+  596.66-MiB strict targets, provisionally raising the joint score from 524 to
+  525 of 589 pending the integrated sweep.
+
 ### Compact positive-EL ABox taxonomy output
 
 - Reuse the positive-ABox completion as a dictionary-coded taxonomy instead of
