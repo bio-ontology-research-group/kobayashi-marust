@@ -61,7 +61,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use crate::frontend::sexpr::{Node, Parser};
@@ -100,36 +100,6 @@ const MIRROR_PREFILTER_MIN_COMPLEMENTS: usize = 1_000;
 fn mirror_parse_worthwhile(file_bytes: usize, complement_candidates: usize) -> bool {
     file_bytes < MIRROR_PREFILTER_LARGE_BYTES
         || complement_candidates >= MIRROR_PREFILTER_MIN_COMPLEMENTS
-}
-
-/// Count only far enough to decide whether a large source merits the mirror
-/// parser.  Keeping at most `needle.len() - 1` bytes between reads detects a
-/// token split across buffer boundaries without retaining the ontology.
-fn has_mirror_scale_complements(path: &Path) -> Result<bool, std::io::Error> {
-    const NEEDLE: &[u8] = b"ObjectComplementOf(";
-    let mut reader = BufReader::new(File::open(path)?);
-    let mut chunk = [0u8; 64 * 1024];
-    let mut pending = Vec::with_capacity(chunk.len() + NEEDLE.len() - 1);
-    let mut count = 0usize;
-
-    loop {
-        let read = reader.read(&mut chunk)?;
-        if read == 0 {
-            return Ok(false);
-        }
-        pending.extend_from_slice(&chunk[..read]);
-        count += pending
-            .windows(NEEDLE.len())
-            .filter(|window| *window == NEEDLE)
-            .count();
-        if count >= MIRROR_PREFILTER_MIN_COMPLEMENTS {
-            return Ok(true);
-        }
-        let keep = pending.len().min(NEEDLE.len() - 1);
-        let tail_start = pending.len() - keep;
-        pending.copy_within(tail_start.., 0);
-        pending.truncate(keep);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1667,15 +1637,6 @@ pub fn try_classify(cfg: &Config, ont: &Path) -> Result<Option<Classification>, 
         return Ok(None);
     }
     let prepared = super::input::prepare(ont)?;
-    let source_bytes = std::fs::metadata(prepared.path())?.len() as usize;
-    if source_bytes >= MIRROR_PREFILTER_LARGE_BYTES
-        && !has_mirror_scale_complements(prepared.path())?
-    {
-        timing(format_args!(
-            "declined by streaming lexical prefilter: bytes={source_bytes} complements_below={MIRROR_PREFILTER_MIN_COMPLEMENTS}"
-        ));
-        return Ok(None);
-    }
     let text = std::fs::read_to_string(prepared.path())?;
     let complement_candidates = text
         .match_indices("ObjectComplementOf(")
