@@ -19,6 +19,7 @@ mod flat_nf1;
 pub mod frontend_run;
 pub mod input;
 pub mod mirror;
+mod positive_abox_quotient;
 pub mod race;
 pub mod tmpfile;
 
@@ -916,6 +917,7 @@ fn classify_with_evidence_mode(
     let automatic_requested = std::env::var("KM_ROUTE")
         .map(|route| route == crate::routing::Route::Auto.as_str())
         .unwrap_or(false);
+    let quotient_active = std::env::var_os("KM_POSITIVE_ABOX_QUOTIENT_ACTIVE").is_some();
     // Route selection changes process-wide KM_* keys because the frontend and
     // worker subprocesses share the established environment contract. Restore
     // them on every return path so repeated library calls route independently.
@@ -925,6 +927,40 @@ fn classify_with_evidence_mode(
     let ht_par_request = std::env::var_os("KM_HT_PAR");
     let t_start = std::time::Instant::now();
     let timing = std::env::var_os("KM_TIMING").is_some();
+    // Large positive ABoxes can spend more time parsing repeated assertions
+    // than classifying their TBox.  A strict source transformer identifies all
+    // individuals, checks equality/difference consistency, and maps the
+    // positive ABox homomorphically to one representative.  The ordinary
+    // frontend below must independently certify the transformed source as the
+    // positive-EL-ABox fragment before its answer can escape.  A refusal,
+    // quotient clash, or worker error leaves the unchanged ontology as the
+    // authoritative fallback.
+    if automatic_requested && !quotient_active {
+        if let Some(quotient) = positive_abox_quotient::try_build(ont)? {
+            let attempt = {
+                let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                std::env::set_var("KM_POSITIVE_ABOX_QUOTIENT_ACTIVE", "1");
+                classify_with_evidence_mode(initial_cfg, quotient.path(), retain_grouped_output)
+            };
+            if let Ok(evidence) = attempt {
+                if evidence.classification.consistent {
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING positive ABox quotient accepted @ {:.2}s",
+                            t_start.elapsed().as_secs_f64()
+                        );
+                    }
+                    return Ok(evidence);
+                }
+            }
+            if timing {
+                eprintln!(
+                    "KM_TIMING positive ABox quotient declined @ {:.2}s",
+                    t_start.elapsed().as_secs_f64()
+                );
+            }
+        }
+    }
     // The normal JSON CLI can retain grouped taxonomy rows. For a large source
     // whose class-producing projection is an acyclic graph of named NF1 edges,
     // scan and close that graph directly. The strict source contract may also
@@ -984,6 +1020,11 @@ fn classify_with_evidence_mode(
         .route
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
+    if quotient_active && !meta.profile.positive_el_abox_materializable {
+        return Err(OrchestrateError::OutOfFragment(
+            "positive ABox quotient lost its frontend certificate".into(),
+        ));
+    }
 
     // Compact expressive object-ABoxes benefit from the exact typed bridge,
     // whose source-definition hierarchy can reuse negative witnesses across
