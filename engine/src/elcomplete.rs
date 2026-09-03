@@ -3464,10 +3464,24 @@ impl ParShared {
     }
 }
 
-/// Messages buffered for one destination before the batch is published. Larger
-/// batches amortize the receiver's mutex and the credit atomics; smaller ones
-/// keep a receiver from idling while the sender is in a long burst.
+/// Messages a worker buffers before it publishes what it has. Larger batches
+/// amortize the receiver's mutex and the credit atomics; smaller ones keep a
+/// receiver from idling while the sender is in a long burst.
 const PAR_FLUSH_MESSAGES: usize = 1024;
+
+/// Emptied inbox buffers a worker keeps to refill its own outgoing buffers.
+/// Uncapped, a worker that receives more than it sends would hold every batch
+/// buffer that ever reached it.
+const PAR_SPARE_BUFFERS: usize = 8;
+
+/// Items a worker processes before it looks at its inbox again. A context's
+/// chain can run for millions of items without emptying the queue, and the
+/// conclusions the other workers send meanwhile are mostly facts the receiver
+/// already has (the serial engine rejects them at `HashSet::insert`; a sender
+/// cannot know). Polling bounds the backlog by the arrival rate over this many
+/// items instead of by the whole run: applying a message is one hash probe and
+/// turns a stream of duplicates into at most one queued item per derived fact.
+const PAR_INBOX_POLL: usize = 256;
 
 /// Conclusion sink over the pieces of a [`Shard`] a rule may extend while it
 /// scans another of the shard's tables (its backward links, its propagations,
@@ -4029,8 +4043,10 @@ impl Shard<'_> {
                 self.apply(batch[i]);
                 self.drain_self_links();
             }
-            batch.clear();
-            self.spare.push(batch);
+            if self.spare.len() < PAR_SPARE_BUFFERS {
+                batch.clear();
+                self.spare.push(batch);
+            }
         }
         true
     }
@@ -4070,6 +4086,7 @@ impl Shard<'_> {
     /// whole worker set is quiescent.
     fn saturate(&mut self) {
         loop {
+            let mut since_poll = 0usize;
             while let Some(item) = self.queue.pop() {
                 match item {
                     PItem::Sub(c, d) => self.process_sub(c, d),
@@ -4080,11 +4097,23 @@ impl Shard<'_> {
                 if self.pending >= PAR_FLUSH_MESSAGES {
                     self.flush();
                 }
+                since_poll += 1;
+                if since_poll >= PAR_INBOX_POLL {
+                    since_poll = 0;
+                    self.take_inbox();
+                }
             }
-            self.flush();
+            // Consume before publishing: a worker whose own conclusions keep
+            // coming back to it would otherwise publish a batch per drained
+            // queue, which is one mutex and one buffer per handful of
+            // messages. What is still buffered when it runs out of work is
+            // published below, before it can go idle.
             if self.take_inbox() {
                 continue;
             }
+            self.flush();
+            // Nothing is produced between here and the credit release, so a
+            // worker never goes idle holding an unpublished conclusion.
             if self.wait() {
                 break;
             }
