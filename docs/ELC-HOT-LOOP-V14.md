@@ -478,10 +478,11 @@ serial engine.
   `shard_queue_drains_one_activated_context_at_a_time`: the policy and the
   shard-local activation queue.
 
-### 9.5 Not measured
+### 9.5 Not measured (superseded by section 10)
 
-Nothing here was benchmarked. The mode is off by default and the A/B has to
-run before it is armed anywhere: arms baseline (default) and
+At the time this section was written nothing here had been benchmarked. The
+A/B below ran as IBEX array `51251013`; section 10 records it and the selector
+it justifies. The arms were baseline (default) and
 `KM_ELC_PAR_CTX` at 2, 4 and 8 on the 18 residuals of section 8.1 plus the
 elc controls, three replicates, every signature checked against gold, with
 `KM_ELC_PROFILE` showing identical `sub_items`, `edge_items`, `nf1_scan` and
@@ -492,3 +493,78 @@ nothing per foreign one, but the message buffers and the label rebuild at the
 end of the run are new work; and the static `c % n` ownership does not
 rebalance, so a run whose closure concentrates in a few hub contexts will not
 scale.
+
+## 10. Automatic selection of the context-parallel mode (agent/v14-elc-routing-gates, 2026-09-03)
+
+Section 9 left the mode opt-in and unmeasured. This section records the
+measurement and arms it from the source profile. No rule, route, or published
+answer changes; the selector only chooses a worker count for the completion
+that section 9.2 proved fixpoint- and output-identical at every count.
+
+### 10.1 The measurement
+
+IBEX array `51251013`, binary SHA-256 `06215e49...d745661`, Intel Xeon Gold
+6248, 16 CPUs, 480 s timeout, 20 GiB memcap: four arms (serial, and
+`KM_ELC_PAR_CTX` at 2, 4, 8) times three replicates over the eighteen
+elc-routed residuals of section 8.1. All 216 runs returned `status=ok` with a
+gold-matching signature, and the twelve runs of each ontology share one
+signature SHA-256, which is the determinism claim of section 9.2 confirmed on
+real input.
+
+Eight workers cut the median wall of every one of the eighteen, from 0.3%
+(5566) to 22% (795); the largest gains land on the members whose saturate lap
+dominates (13224 20.8%, 7868 21.1%, 11293 20.1%). Two workers were slower than
+the serial engine on five members, so the two-worker arm is never selected.
+Peak rises by 0-38% on the terminology-only members and by 1.34x and 1.97x on
+the two with an ABox (1579, 6722), and no member on any arm came near its
+external peak target.  Confirmation array `51251710` increased the four
+prospective recoveries to ten observations per serial/context-eight arm.  All
+four remained strict wins; the narrowest wall margin increased to 4.15%.
+
+The medians, and the complete 592-profile projection of the selector below,
+are in `results/benchmarks/2026-09-03-v14-elc-context-parallel-routing/`.
+
+### 10.2 The selector
+
+`routing::elc_context_parallel_workers` returns the worker count for a source
+profile: eight where the machine has eight or more CPUs, four from four to
+seven, and `None` below that (never the measured-regressing two-worker arm).
+It admits the family the panel measured, keyed on source features only:
+the same EL source certificate the bare route selects on, the EL class
+fragment with `max_concept_depth <= 3`, work floors at the smallest measured
+member (100k logical axioms, 20k classes, 20k existentials), ceilings at the
+widest (400k logical axioms, 64 MiB and 32 role chains), plus a measured-family
+object-property interval of 8--12,
+and no ABox, whose two measured members hold the two largest peak increases
+and recover nothing.
+
+`orchestrate::elc_context_parallel_setting` applies it: an explicit
+`KM_ELC_PAR_CTX` always wins (the key is now route-managed, so the request is
+captured before route selection clears it and the A/B arms stay reproducible
+under `KM_ROUTE=auto`), and without one only `Route::Elc` is armed. The
+certificate routes and the giant's NF4 frontier batch keep their construction
+order, and `context_parallel_plan` still declines the mode for them
+independently. A failed thread spawn still reverts to the serial engine.
+
+Over all 592 retained source profiles the selector changes no route and arms
+exactly nine ontologies, all measured in the paired panel and all on the bare
+EL route.  It projects four strict recoveries (795, 2828, 5612, 15929) with no
+regression and no unmeasured activation.  The confirmation panel establishes
+the four wins with wall margins of 4.15--21.28%.
+
+### 10.3 Tests
+
+* `routing::tests::context_parallel_gate_arms_the_measured_el_terminology_family`:
+  the panel's smallest member routes to `Route::Elc` and arms eight workers at
+  8-16 CPUs, four at 4-7, and nothing below four.
+* `routing::tests::context_parallel_gate_declines_outside_the_measured_family`:
+  an ABox, every non-EL class constructor, deeper concepts, imports, rules, and
+  each floor and ceiling, one at a time.
+* `routing::tests::context_parallel_gate_is_deterministic_for_one_profile` and
+  `context_parallel_gate_carries_no_ontology_identity`.
+* `routing::tests::context_parallel_projection_over_the_retained_profiles`: the
+  592-profile ledger, asserting exactly nine activations and that nothing off
+  `Route::Elc` is ever armed.
+* `orchestrate::tests::context_parallel_schedule_is_armed_only_on_the_bare_el_route`,
+  `an_explicit_context_parallel_request_survives_route_selection`, and
+  `context_parallel_schedule_follows_the_available_parallelism`.

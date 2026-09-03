@@ -1530,10 +1530,7 @@ fn bounded_near_el_certified_candidate(profile: &OntologyProfile) -> bool {
     let el_shaped_disjunction = source.unions == 0
         || (source.existentials > 0
             && source.unions <= ABSORBABLE_UNIONS
-            && source
-                .unions
-                .saturating_mul(UNION_AXIOM_SHARE)
-                <= source.logical_axioms);
+            && source.unions.saturating_mul(UNION_AXIOM_SHARE) <= source.logical_axioms);
 
     source.logical_axioms >= TRIVIAL_SOURCE_AXIOMS
         && source.file_bytes <= REFUSAL_BUDGET_BYTES
@@ -1556,6 +1553,119 @@ fn bounded_near_el_certified_candidate(profile: &OntologyProfile) -> bool {
         && count("NegativeDataPropertyAssertion") == 0
         && count("AsymmetricObjectProperty") == 0
         && count("IrreflexiveObjectProperty") == 0
+}
+
+/// Worker count for the context-parallel EL completion, or `None` for the
+/// established serial engine.
+///
+/// `elcomplete`'s context-parallel saturation owns context `c` on worker
+/// `c % n`, exchanges every cross-context conclusion as a batched message, and
+/// rebuilds each label from a sorted vector before it exits. It reaches the
+/// same least fixpoint as the serial engine and writes byte-identical output
+/// for every worker count, so this predicate is a scheduling choice only: it
+/// changes no rule, no route, and no published answer. The worker itself is
+/// the authority on whether the mode may run at all; it declines and stays
+/// serial for the order-sensitive disciplines (`KM_ELC_PAR_NF4`,
+/// `KM_ELC_FIFO`) and for every certificate mode, and it falls back to the
+/// serial engine when a worker thread cannot start.
+///
+/// The measured basis is the paired IBEX panel of 2026-09-03 (array
+/// `51251013`, Intel Xeon Gold 6248, 16 CPUs, three replicates of each of
+/// four arms over the eighteen `elc`-routed strict residuals; 216 of 216 runs
+/// returned `status=ok` with a gold-matching signature). Every one of the
+/// eighteen improved its median wall at eight workers and none approached its
+/// external peak target, while two workers were slower than the serial engine
+/// on five of them. So the gate arms eight workers where the panel measured
+/// eight, four where the machine cannot supply eight (four workers also
+/// improved all eighteen), and declines below that rather than selecting the
+/// two-worker arm the panel measured as a regression.
+///
+/// The source bounds admit the shape the panel covers and nothing else:
+///
+/// * `abox_axioms == 0` keeps the terminology-only family. The panel's two
+///   ABox members hold its two largest peak increases (`ore_ont_6722` 314 ->
+///   618 MiB, a factor of 1.97, and `ore_ont_1579` 819 -> 1101 MiB, 1.34,
+///   against at most 302 -> 415 MiB and 1.38 for a terminology-only member),
+///   and neither recovers a strict gate, so the individual layer stays on the
+///   serial engine.
+/// * The EL class fragment (no union, complement, universal restriction,
+///   number restriction, nominal, `hasValue`, `hasSelf`, or datatype
+///   constructor, `max_concept_depth <= 3`) is the fragment the panel
+///   measured; anything else routed to `elc` reaches the completion through a
+///   different normalization and carries no measurement here. Most of it is
+///   already implied by the EL source certificate above; it is restated here
+///   because it is this gate's own contract, not that gate's.
+/// * The work floors (`100_000` logical axioms, `20_000` classes, `20_000`
+///   existential restrictions) are the smallest panel member (`ore_ont_795`:
+///   106,608 axioms, 47,144 classes, 24,595 existentials). Below them the
+///   saturation lap is too small to repay eight thread starts and the message
+///   buffers they allocate.
+/// * The ceilings (`400_000` logical axioms, 64 MiB of source, 12 object
+///   properties, 32 role chain axioms) and the eight-object-property floor
+///   delimit the measured high-payoff family.  The complete 592-profile
+///   projection admits nine sources, all present in the paired panel, while
+///   excluding ten otherwise-matching sources for which no context-parallel
+///   measurement exists.  They also keep the
+///   ORE giants, whose completions run in gigabytes, on the serial engine,
+///   where the 0-38% peak increase measured here has no evidence.
+pub(crate) fn elc_context_parallel_workers(
+    profile: &OntologyProfile,
+    available: usize,
+) -> Option<&'static str> {
+    // The smallest measured member of the panel family.
+    const MIN_LOGICAL_AXIOMS: u64 = 100_000;
+    const MIN_CLASSES: u64 = 20_000;
+    const MIN_EXISTENTIALS: u64 = 20_000;
+    // Bounds that retain every measured strict recovery while admitting no
+    // unmeasured member of the retained 592-profile corpus.
+    const MAX_LOGICAL_AXIOMS: u64 = 400_000;
+    const MAX_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
+    const MIN_OBJECT_PROPERTIES: u64 = 8;
+    const MAX_OBJECT_PROPERTIES: u64 = 12;
+    const MAX_ROLE_CHAIN_AXIOMS: u64 = 32;
+
+    // The same source certificate the bare EL route selects on: no data
+    // property, role domain or range, inverse declaration, or bottom role, and
+    // an ABox-free terminology. Without it a profile of the right size can
+    // carry source features the panel never measured, and the schedule would
+    // be armed for a route that never runs the completion.
+    if !source_el_terminology_candidate(profile) {
+        return None;
+    }
+
+    let source = &profile.source;
+    let el_class_fragment = source.unions == 0
+        && source.complements == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.qualified_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && source.max_concept_depth <= 3;
+    let panel_family = source.abox_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && el_class_fragment
+        && (MIN_LOGICAL_AXIOMS..=MAX_LOGICAL_AXIOMS).contains(&source.logical_axioms)
+        && source.distinct_classes >= MIN_CLASSES
+        && source.existentials >= MIN_EXISTENTIALS
+        && source.file_bytes <= MAX_SOURCE_BYTES
+        && (MIN_OBJECT_PROPERTIES..=MAX_OBJECT_PROPERTIES)
+            .contains(&source.distinct_object_properties)
+        && source.role_chain_axioms <= MAX_ROLE_CHAIN_AXIOMS;
+    if !panel_family {
+        return None;
+    }
+    match available {
+        8.. => Some("8"),
+        4..=7 => Some("4"),
+        _ => None,
+    }
 }
 
 /// Large ABoxes without number restrictions try the certified native bridge
@@ -2420,6 +2530,7 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_ELC_FORCE",
     "KM_ELC_CERT",
     "KM_ELC_PAR_NF4",
+    "KM_ELC_PAR_CTX",
     "KM_HEAP_TRIM",
     "KM_NO_HEAP_TRIM",
     "KM_NO_HT_RACE",
@@ -4657,5 +4768,207 @@ mod tests {
     fn generated_tree_has_no_ontology_identity() {
         let source = include_str!("routing/routing_tree_generated.rs");
         assert!(!source.contains("ore_ont_"));
+    }
+
+    /// The smallest terminology of the measured context-parallel panel
+    /// (`ore_ont_795`: 106,608 logical axioms, 47,144 classes, 10 object
+    /// properties, 24,595 existential restrictions, 15.2 MiB of source).
+    fn context_parallel_panel_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.code = "SHI".into();
+        profile.source.logical_axioms = 106_608;
+        profile.source.tbox_axioms = 106_598;
+        profile.source.rbox_axioms = 10;
+        profile.source.declarations = 47_154;
+        profile.source.declared_classes = 47_144;
+        profile.source.declared_object_properties = 10;
+        profile.source.distinct_classes = 47_144;
+        profile.source.distinct_object_properties = 10;
+        profile.source.subclass_axioms = 106_598;
+        profile.source.role_inclusion_axioms = 10;
+        profile.source.role_chain_axioms = 3;
+        profile.source.intersections = 9_165;
+        profile.source.existentials = 24_595;
+        profile.source.bottom_occurrences = 2;
+        profile.source.concept_expressions = 256_160;
+        profile.source.max_concept_depth = 2;
+        profile.source.max_concept_arity = 2;
+        profile.source.file_bytes = 15_944_277;
+        profile
+            .source
+            .axiom_types
+            .insert("SubClassOf".into(), 106_598);
+        profile
+    }
+
+    #[test]
+    fn context_parallel_gate_arms_the_measured_el_terminology_family() {
+        let profile = context_parallel_panel_profile();
+        // The gate only ever schedules the bare EL route it was measured on.
+        assert_eq!(select(&profile), Route::Elc);
+        assert_eq!(elc_context_parallel_workers(&profile, 16), Some("8"));
+        assert_eq!(elc_context_parallel_workers(&profile, 8), Some("8"));
+        // Four workers improved every panel member as well; two did not, so a
+        // machine that cannot supply four keeps the serial engine.
+        assert_eq!(elc_context_parallel_workers(&profile, 7), Some("4"));
+        assert_eq!(elc_context_parallel_workers(&profile, 4), Some("4"));
+        assert_eq!(elc_context_parallel_workers(&profile, 3), None);
+        assert_eq!(elc_context_parallel_workers(&profile, 2), None);
+        assert_eq!(elc_context_parallel_workers(&profile, 1), None);
+        assert_eq!(elc_context_parallel_workers(&profile, 0), None);
+    }
+
+    #[test]
+    fn context_parallel_gate_is_deterministic_for_one_profile() {
+        let profile = context_parallel_panel_profile();
+        let first = elc_context_parallel_workers(&profile, 16);
+        for _ in 0..64 {
+            assert_eq!(elc_context_parallel_workers(&profile, 16), first);
+        }
+        // The predicate reads the profile only; equal profiles decide equally.
+        let copy = profile.clone();
+        assert_eq!(copy, profile);
+        assert_eq!(elc_context_parallel_workers(&copy, 16), first);
+    }
+
+    #[test]
+    fn context_parallel_gate_declines_outside_the_measured_family() {
+        // Individuals: the two ABox members of the panel hold its two largest
+        // peak increases and neither recovers a gate.
+        let mut abox = context_parallel_panel_profile();
+        abox.source.abox_axioms = 1;
+        abox.source.class_assertions = 1;
+        abox.source.logical_axioms += 1;
+        assert_eq!(elc_context_parallel_workers(&abox, 16), None);
+
+        // Everything outside the EL class fragment the panel measured.
+        for mutate in [
+            (|p: &mut OntologyProfile| p.source.unions = 1) as fn(&mut OntologyProfile),
+            |p: &mut OntologyProfile| p.source.complements = 1,
+            |p: &mut OntologyProfile| p.source.universals = 1,
+            |p: &mut OntologyProfile| p.source.min_cardinalities = 1,
+            |p: &mut OntologyProfile| p.source.max_cardinalities = 1,
+            |p: &mut OntologyProfile| p.source.exact_cardinalities = 1,
+            |p: &mut OntologyProfile| p.source.qualified_cardinalities = 1,
+            |p: &mut OntologyProfile| p.source.nominals = 1,
+            |p: &mut OntologyProfile| p.source.has_values = 1,
+            |p: &mut OntologyProfile| p.source.has_self = 1,
+            |p: &mut OntologyProfile| p.source.datatype_constructors = 1,
+            |p: &mut OntologyProfile| p.source.max_concept_depth = 4,
+            |p: &mut OntologyProfile| p.source.imports = 1,
+            |p: &mut OntologyProfile| p.source.rule_axioms = 1,
+            |p: &mut OntologyProfile| p.source.unsupported_rule_axioms = 1,
+        ] {
+            let mut profile = context_parallel_panel_profile();
+            mutate(&mut profile);
+            assert_eq!(elc_context_parallel_workers(&profile, 16), None);
+        }
+
+        // Below the panel floors the saturation lap cannot repay the workers.
+        let mut small = context_parallel_panel_profile();
+        small.source.logical_axioms = 99_999;
+        assert_eq!(elc_context_parallel_workers(&small, 16), None);
+        let mut few_classes = context_parallel_panel_profile();
+        few_classes.source.distinct_classes = 19_999;
+        assert_eq!(elc_context_parallel_workers(&few_classes, 16), None);
+        let mut few_existentials = context_parallel_panel_profile();
+        few_existentials.source.existentials = 19_999;
+        assert_eq!(elc_context_parallel_workers(&few_existentials, 16), None);
+
+        // Above the panel ceilings the measured peak increase has no evidence.
+        let mut large = context_parallel_panel_profile();
+        large.source.logical_axioms = 400_001;
+        assert_eq!(elc_context_parallel_workers(&large, 16), None);
+        let mut wide_source = context_parallel_panel_profile();
+        wide_source.source.file_bytes = 64 * 1024 * 1024 + 1;
+        assert_eq!(elc_context_parallel_workers(&wide_source, 16), None);
+        let mut role_sparse = context_parallel_panel_profile();
+        role_sparse.source.distinct_object_properties = 7;
+        assert_eq!(elc_context_parallel_workers(&role_sparse, 16), None);
+        let mut role_rich = context_parallel_panel_profile();
+        role_rich.source.distinct_object_properties = 13;
+        assert_eq!(elc_context_parallel_workers(&role_rich, 16), None);
+        let mut chain_rich = context_parallel_panel_profile();
+        chain_rich.source.role_chain_axioms = 33;
+        assert_eq!(elc_context_parallel_workers(&chain_rich, 16), None);
+    }
+
+    #[test]
+    fn context_parallel_gate_carries_no_ontology_identity() {
+        let source = include_str!("routing.rs");
+        let start = source
+            .find("pub(crate) fn elc_context_parallel_workers")
+            .expect("the context-parallel gate is present");
+        let body = &source[start..];
+        let end = body.find("\n}\n").expect("the gate has a body");
+        assert!(!body[..end].contains("ore_ont_"));
+    }
+
+    /// Projection ledger over the retained 592-ontology source profiles.
+    ///
+    /// `KM_ELC_CTX_PROFILE_DIR` points at the retained `*.owl.json` profile
+    /// records; `KM_ELC_CTX_PROJECTION_OUT` optionally receives the ledger.
+    /// Without the directory the test is inert, so the ordinary suite does not
+    /// depend on corpus artifacts.
+    #[test]
+    fn context_parallel_projection_over_the_retained_profiles() {
+        #[derive(serde::Deserialize)]
+        struct Record {
+            ont: String,
+            profile: OntologyProfile,
+        }
+
+        let Some(dir) = std::env::var_os("KM_ELC_CTX_PROFILE_DIR") else {
+            return;
+        };
+        let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+            .expect("profile directory")
+            .map(|entry| entry.expect("profile entry").path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .collect();
+        entries.sort();
+        let mut rows = vec![
+            "ontology\troute\tarmed_workers\tlogical_axioms\tdistinct_classes\tobject_properties\texistentials\tfile_bytes".to_string(),
+        ];
+        let mut armed = 0usize;
+        for path in &entries {
+            let text = std::fs::read_to_string(path).expect("profile record");
+            let record: Record = serde_json::from_str(&text).expect("profile record shape");
+            let route = select(&record.profile);
+            let workers = elc_context_parallel_workers(&record.profile, 16);
+            // The schedule is armed only on the bare EL route, and only there.
+            if workers.is_some() && route == Route::Elc {
+                armed += 1;
+            }
+            if let Some(workers) = workers {
+                assert_eq!(
+                    route,
+                    Route::Elc,
+                    "{} armed {} workers off the bare EL route",
+                    record.ont,
+                    workers
+                );
+            }
+            let source = &record.profile.source;
+            rows.push(format!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                record.ont,
+                route.as_str(),
+                workers.unwrap_or("serial"),
+                source.logical_axioms,
+                source.distinct_classes,
+                source.distinct_object_properties,
+                source.existentials,
+                source.file_bytes,
+            ));
+        }
+        assert_eq!(entries.len(), 592, "the retained corpus has 592 profiles");
+        assert_eq!(
+            armed, 9,
+            "the retained projection must arm exactly the nine measured profiles"
+        );
+        if let Some(out) = std::env::var_os("KM_ELC_CTX_PROJECTION_OUT") {
+            std::fs::write(out, rows.join("\n") + "\n").expect("ledger written");
+        }
     }
 }

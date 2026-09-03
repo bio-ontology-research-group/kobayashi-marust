@@ -1,0 +1,5 @@
+ontology	observations	ctx8_wall_s	ctx8_peak_mib	wall_target_s	peak_target_mib	strict_margin_wall_pct	verdict
+ore_ont_15929.owl	10	1.5757	265.57	1.6922	581.16	7.39	pass
+ore_ont_2828.owl	10	2.6113	431.23	2.7197	818.41	4.15	pass
+ore_ont_5612.owl	10	1.6365	271.42	1.8041	591.73	10.24	pass
+ore_ont_795.owl	10	1.5222	253.53	1.8461	624.48	21.28	pass

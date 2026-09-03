@@ -580,6 +580,37 @@ fn use_atomic_inproc_elc(
     structured || flat_small
 }
 
+/// Context-parallel EL saturation for one classification, or `None` to keep the
+/// serial engine.
+///
+/// The completion reaches the same least fixpoint and writes byte-identical
+/// output at every worker count, so this is a schedule and never an answer.
+/// Three rules keep it inside its measured basis:
+///
+/// * An explicit `KM_ELC_PAR_CTX` is the caller's A/B arm and always wins. It
+///   is captured before route selection clears the route keys, so a requested
+///   worker count (including `0`, the serial baseline) survives on every route.
+/// * Without a request, only the bare EL route is scheduled. The certified
+///   routes construct a repair fork in derivation order, and the EL worker
+///   itself declines the parallel engine under any certificate, `KM_ELC_FIFO`
+///   or `KM_ELC_PAR_NF4`; arming them here would be inert at best.
+/// * The worker count comes from the source profile alone, through
+///   [`crate::routing::elc_context_parallel_workers`].
+fn elc_context_parallel_setting(
+    selected_route: crate::routing::Route,
+    profile: &crate::frontend::profile::OntologyProfile,
+    request: Option<&std::ffi::OsStr>,
+    available: usize,
+) -> Option<std::ffi::OsString> {
+    if let Some(request) = request {
+        return Some(request.to_os_string());
+    }
+    if selected_route != crate::routing::Route::Elc {
+        return None;
+    }
+    crate::routing::elc_context_parallel_workers(profile, available).map(std::ffi::OsString::from)
+}
+
 /// ELC sees normalized TBox clauses, not arbitrary singleton/ABox identity
 /// metadata.  An ABox may authorize ELC publication only after one of the
 /// frontend's positive-ABox separation certificates has proved that this view
@@ -1131,6 +1162,10 @@ fn classify_with_evidence_mode(
         }
     }
 
+    // An explicit context-parallel EL request is an A/B measurement arm, not a
+    // route setting. Capture it before `apply_environment` clears the route
+    // keys so the caller's own worker count always survives route selection.
+    let elc_par_ctx_request = std::env::var_os("KM_ELC_PAR_CTX");
     let routed_cfg = if matches!(
         selected_route,
         crate::routing::Route::Auto | crate::routing::Route::Manual
@@ -1242,6 +1277,14 @@ fn classify_with_evidence_mode(
             && crate::routing::parallel_nf4_frontier_candidate(&meta.profile)
         {
             std::env::set_var("KM_ELC_PAR_NF4", "1");
+        }
+        if let Some(workers) = elc_context_parallel_setting(
+            selected_route,
+            &meta.profile,
+            elc_par_ctx_request.as_deref(),
+            std::thread::available_parallelism().map_or(1, |parallelism| parallelism.get()),
+        ) {
+            std::env::set_var("KM_ELC_PAR_CTX", workers);
         }
         if selected_route == crate::routing::Route::Nominals
             && crate::routing::small_nominal_heap_trim_candidate(&meta.profile)
@@ -2150,10 +2193,100 @@ impl Classification {
 #[cfg(test)]
 mod tests {
     use super::{
-        composite_layout, flatten_grouped_subsumptions, inproc_engine_out, is_bottom,
-        production_saturation_rss_override, use_atomic_inproc_elc, use_elc_portfolio,
+        composite_layout, elc_context_parallel_setting, flatten_grouped_subsumptions,
+        inproc_engine_out, is_bottom, production_saturation_rss_override, use_atomic_inproc_elc,
+        use_elc_portfolio,
     };
     use crate::reasoner::Reasoner;
+
+    /// The smallest terminology of the measured context-parallel EL panel.
+    fn context_parallel_panel_profile() -> crate::frontend::profile::OntologyProfile {
+        let mut profile = crate::frontend::profile::OntologyProfile::default();
+        profile.source.logical_axioms = 106_608;
+        profile.source.tbox_axioms = 106_598;
+        profile.source.rbox_axioms = 10;
+        profile.source.declared_classes = 47_144;
+        profile.source.declared_object_properties = 10;
+        profile.source.distinct_classes = 47_144;
+        profile.source.distinct_object_properties = 10;
+        profile.source.subclass_axioms = 106_598;
+        profile.source.role_inclusion_axioms = 10;
+        profile.source.role_chain_axioms = 3;
+        profile.source.intersections = 9_165;
+        profile.source.existentials = 24_595;
+        profile.source.max_concept_depth = 2;
+        profile.source.file_bytes = 15_944_277;
+        profile
+    }
+
+    #[test]
+    fn context_parallel_schedule_is_armed_only_on_the_bare_el_route() {
+        let profile = context_parallel_panel_profile();
+        assert_eq!(
+            elc_context_parallel_setting(crate::routing::Route::Elc, &profile, None, 16).as_deref(),
+            Some(std::ffi::OsStr::new("8"))
+        );
+        // The certificate routes keep their construction order, and every
+        // other mechanism never reaches the EL completion at all.
+        for route in [
+            crate::routing::Route::ElcCert,
+            crate::routing::Route::CertifiedElProduction,
+            crate::routing::Route::ProductionAll,
+            crate::routing::Route::Nominals,
+            crate::routing::Route::HtGeneral,
+            crate::routing::Route::Auto,
+            crate::routing::Route::Manual,
+        ] {
+            assert_eq!(
+                elc_context_parallel_setting(route, &profile, None, 16),
+                None,
+                "{route} armed the context-parallel EL schedule"
+            );
+        }
+        // A profile outside the measured family keeps the serial engine.
+        let mut small = context_parallel_panel_profile();
+        small.source.logical_axioms = 1_000;
+        assert_eq!(
+            elc_context_parallel_setting(crate::routing::Route::Elc, &small, None, 16),
+            None
+        );
+    }
+
+    #[test]
+    fn an_explicit_context_parallel_request_survives_route_selection() {
+        let profile = context_parallel_panel_profile();
+        for (route, requested) in [
+            (crate::routing::Route::Elc, "0"),
+            (crate::routing::Route::Elc, "2"),
+            (crate::routing::Route::ElcCert, "4"),
+            (crate::routing::Route::ProductionAll, "auto"),
+        ] {
+            assert_eq!(
+                elc_context_parallel_setting(
+                    route,
+                    &profile,
+                    Some(std::ffi::OsStr::new(requested)),
+                    16
+                )
+                .as_deref(),
+                Some(std::ffi::OsStr::new(requested)),
+                "{route} dropped an explicit KM_ELC_PAR_CTX={requested}"
+            );
+        }
+    }
+
+    #[test]
+    fn context_parallel_schedule_follows_the_available_parallelism() {
+        let profile = context_parallel_panel_profile();
+        let workers = |available| {
+            elc_context_parallel_setting(crate::routing::Route::Elc, &profile, None, available)
+        };
+        assert_eq!(workers(16).as_deref(), Some(std::ffi::OsStr::new("8")));
+        assert_eq!(workers(8).as_deref(), Some(std::ffi::OsStr::new("8")));
+        assert_eq!(workers(4).as_deref(), Some(std::ffi::OsStr::new("4")));
+        assert_eq!(workers(2), None);
+        assert_eq!(workers(1), None);
+    }
 
     #[test]
     fn streamed_classification_json_matches_allocating_api() {
