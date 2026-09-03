@@ -6837,6 +6837,24 @@ pub fn positive_abox_classify(
     clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
 ) -> Option<PositiveAboxResult> {
+    positive_abox_classify_mode(clauses, meta, false)
+}
+
+/// Orchestrator-specialized positive-ABox completion. It computes the same
+/// fixpoint and consistency verdict as [`positive_abox_classify`] while
+/// retaining dictionary-coded taxonomy rows for the public-output mapper.
+pub(crate) fn positive_abox_classify_compact(
+    clauses: Vec<JClause>,
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<PositiveAboxResult> {
+    positive_abox_classify_mode(clauses, meta, true)
+}
+
+fn positive_abox_classify_mode(
+    clauses: Vec<JClause>,
+    meta: &crate::json_io::NominalAboxMeta,
+    compact: bool,
+) -> Option<PositiveAboxResult> {
     let prepared = prepare_positive_abox(clauses, meta)?;
     let PositiveAboxPreparation::Clauses { clauses, roots } = prepared else {
         return Some(PositiveAboxResult {
@@ -6845,7 +6863,11 @@ pub fn positive_abox_classify(
         });
     };
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
-    let result = match classify(clauses) {
+    let result = match if compact {
+        classify_compact(clauses)
+    } else {
+        classify(clauses)
+    } {
         Some(result) => result,
         None => {
             if debug {
@@ -6854,12 +6876,22 @@ pub fn positive_abox_classify(
             return None;
         }
     };
-    let node_unsat = roots.iter().any(|root| {
-        result
-            .subsumptions
-            .get(root)
-            .is_some_and(|supers| supers.iter().any(|sup| sup == "owl:Nothing"))
-    });
+    let node_unsat = if let Some(encoded) = &result.compact {
+        let bottom = encoded.names.iter().position(|name| name == "owl:Nothing");
+        bottom.is_some_and(|bottom| {
+            encoded.rows.iter().any(|(subject, supers)| {
+                roots.contains(&encoded.names[*subject as usize])
+                    && supers.iter().any(|&sup| sup as usize == bottom)
+            })
+        })
+    } else {
+        roots.iter().any(|root| {
+            result
+                .subsumptions
+                .get(root)
+                .is_some_and(|supers| supers.iter().any(|sup| sup == "owl:Nothing"))
+        })
+    };
     Some(PositiveAboxResult {
         consistent: !result.inconsistent && !node_unsat,
         classification: Some(result),
@@ -7497,7 +7529,9 @@ pub(crate) fn classify_worker(clauses: Vec<JClause>) -> Option<ElResult> {
 pub(crate) fn classify_compact(clauses: Vec<JClause>) -> Option<ElResult> {
     let cert = configured_cert_mode();
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
-    classify_inner_mode(clauses, cert, debug, false, true)
+    // Both output-producing branches must retain dictionary coding: acyclic
+    // NF1 returns before the general fixpoint-output branch is reached.
+    classify_inner_mode(clauses, cert, debug, true, true)
 }
 
 /// `KM_ELC_TIMING` phase laps inside the completion itself (the worker's
@@ -7711,6 +7745,7 @@ fn acyclic_nf1_taxonomy(
     it: &Interner,
     lean_cert_requested: bool,
     compact_output: bool,
+    force_compact_output: bool,
 ) -> Option<ElResult> {
     if !residual_is_empty
         || lean_cert_requested
@@ -7796,7 +7831,7 @@ fn acyclic_nf1_taxonomy(
     drop(outgoing);
     drop(indegree);
 
-    if compact_output && expected >= 1_000 {
+    if compact_output && (force_compact_output || expected >= 1_000) {
         let mut rows = Vec::new();
         for &concept in &nfs.concept_names {
             if concept == TOP || concept == BOTTOM {
@@ -7894,6 +7929,7 @@ fn classify_inner_mode(
         &it,
         lean_cert_requested,
         compact_nf1_output,
+        compact_fixpoint_output,
     ) {
         return Some(result);
     }
@@ -8511,6 +8547,56 @@ mod tests {
         )
         .expect("ontology parses");
     }
+
+    #[test]
+    fn compact_positive_abox_completion_matches_string_result() {
+        let ofn = r#"Ontology(
+            Declaration(Class(<A>))
+            Declaration(Class(<B>))
+            Declaration(Class(<C>))
+            SubClassOf(<A> <B>)
+            SubClassOf(<B> <C>)
+            ClassAssertion(<A> <a>)
+            SameIndividual(<a> <b>)
+            DifferentIndividuals(<a> <c>)
+        )"#;
+        crate::frontend::with_ofn_to_clauses_requested_route(
+            ofn,
+            crate::routing::Route::ProductionAll,
+            |frontend| {
+                let string =
+                    positive_abox_classify(frontend.clauses.clone(), &frontend.nominal_abox)
+                        .expect("string completion");
+                let compact =
+                    positive_abox_classify_compact(frontend.clauses, &frontend.nominal_abox)
+                        .expect("compact completion");
+                assert_eq!(compact.consistent, string.consistent);
+                let string = string.classification.expect("string taxonomy");
+                let compact = compact.classification.expect("compact taxonomy");
+                let encoded = compact.compact.expect("dictionary-coded taxonomy");
+                for subject in &frontend.named {
+                    let row = encoded
+                        .rows
+                        .iter()
+                        .find(|(id, _)| encoded.names[*id as usize] == *subject)
+                        .map(|(_, supers)| {
+                            let mut names: Vec<_> = supers
+                                .iter()
+                                .map(|id| encoded.names[*id as usize].clone())
+                                .collect();
+                            names.sort();
+                            names
+                        });
+                    let mut expected = string.subsumptions.get(subject).cloned();
+                    if let Some(expected) = &mut expected {
+                        expected.sort();
+                    }
+                    assert_eq!(row, expected, "named taxonomy changed for {subject}");
+                }
+            },
+        )
+        .expect("ontology parses");
+    }
     fn cf(name: &str, f: &str, t: &str) -> String {
         format!(
             "{{\"kind\":\"concept\",\"concept\":\"{}\",\"term\":{{\"kind\":\"fun\",\"function\":\"{}\",\"arg\":{}}}}}",
@@ -8691,8 +8777,9 @@ mod tests {
         let mut interner = Interner::new();
         let (mut nfs, residual, _) = to_nf(&cs, &mut interner).expect("normal forms");
         nfs.concept_names.insert(TOP);
-        let result = acyclic_nf1_taxonomy(&nfs, residual.is_empty(), &interner, false, false)
-            .expect("acyclic NF1 path");
+        let result =
+            acyclic_nf1_taxonomy(&nfs, residual.is_empty(), &interner, false, false, false)
+                .expect("acyclic NF1 path");
         assert_eq!(subs_of(&result, "A"), vec!["B", "C", "D"]);
         assert_eq!(subs_of(&result, "B"), vec!["D"]);
         assert_eq!(subs_of(&result, "C"), vec!["D"]);
@@ -8713,9 +8800,15 @@ mod tests {
             let mut interner = Interner::new();
             let (mut nfs, residual, _) = to_nf(&cs, &mut interner).expect("normal forms");
             nfs.concept_names.insert(TOP);
-            assert!(
-                acyclic_nf1_taxonomy(&nfs, residual.is_empty(), &interner, false, false).is_none()
-            );
+            assert!(acyclic_nf1_taxonomy(
+                &nfs,
+                residual.is_empty(),
+                &interner,
+                false,
+                false,
+                false
+            )
+            .is_none());
         }
     }
 
@@ -8747,8 +8840,8 @@ mod tests {
             role_names: HashSet::default(),
             conjunction_origins: HashMap::default(),
         };
-        let result =
-            acyclic_nf1_taxonomy(&nfs, true, &interner, false, true).expect("compact NF1 result");
+        let result = acyclic_nf1_taxonomy(&nfs, true, &interner, false, true, false)
+            .expect("compact NF1 result");
         assert!(result.subsumptions.is_empty());
         let compact = result.compact.expect("dictionary-coded worker result");
         assert_eq!(compact.names[ids[0] as usize], "C0");

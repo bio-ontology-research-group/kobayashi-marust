@@ -1426,9 +1426,12 @@ fn classify_with_evidence_mode(
     if meta.profile.positive_el_abox_materializable
         || std::env::var_os("KM_EL_ABOX_CHECK").is_some()
     {
-        let input: crate::json_io::JInput =
-            serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?;
-        match crate::elcomplete::positive_abox_classify(input.clauses, &input.nominal_abox) {
+        let input: crate::json_io::JInput = match cached_input.take() {
+            Some(input) => input,
+            None => serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?,
+        };
+        match crate::elcomplete::positive_abox_classify_compact(input.clauses, &input.nominal_abox)
+        {
             Some(result) if !result.consistent => {
                 return Ok(ClassificationEvidence {
                     classification: Classification {
@@ -1448,7 +1451,7 @@ fn classify_with_evidence_mode(
                         if classification.unresolved.is_empty() {
                             certified_el_out = Some(EngineOut {
                                 subsumptions: classification.subsumptions,
-                                compact_subsumptions: None,
+                                compact_subsumptions: classification.compact,
                                 inconsistent: classification.inconsistent,
                                 dropped: 0,
                                 unresolved: Vec::new(),

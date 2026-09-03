@@ -114,6 +114,19 @@ const NON_EL_CONSTRUCTORS: &[&str] = &[
 /// output through that established path, so a false rejection costs only the
 /// worker boundaries it would have removed.
 fn source_looks_exact_el(text: &str) -> bool {
+    source_looks_el_with_identity(text, false)
+}
+
+/// Broader process-boundary screen for the certified positive-EL ABox family.
+/// `SameIndividual` and `DifferentIndividuals` are retained by the typed
+/// frontend and checked exactly by `positive_abox_classify`; every other
+/// non-EL constructor still fails closed here. The parsed profile, not this
+/// lexical hint, remains the authority for selecting and publishing ELC.
+fn source_looks_positive_el_abox(text: &str) -> bool {
+    source_looks_el_with_identity(text, true)
+}
+
+fn source_looks_el_with_identity(text: &str, allow_identity: bool) -> bool {
     let bytes = text.as_bytes();
     let mut cursor = 0usize;
     while let Some(offset) = text[cursor..].find('(') {
@@ -127,9 +140,11 @@ fn source_looks_exact_el(text: &str) -> bool {
         let identifier = &bytes[start..paren];
         if !identifier.is_empty()
             && (identifier.starts_with(b"Data")
-                || NON_EL_CONSTRUCTORS
-                    .iter()
-                    .any(|token| token.as_bytes() == identifier))
+                || NON_EL_CONSTRUCTORS.iter().any(|token| {
+                    token.as_bytes() == identifier
+                        && !(allow_identity
+                            && matches!(*token, "SameIndividual" | "DifferentIndividuals"))
+                }))
         {
             return false;
         }
@@ -247,7 +262,6 @@ fn run_ofn_in_process(
     let cacheable_el = std::env::var_os("KM_NO_INPROC_ELC").is_none()
         && std::env::var_os("KM_EL_ABOX_CHECK").is_none()
         && meta.el_rbox_safe
-        && !meta.profile.positive_el_abox_materializable
         && selected_route.is_some_and(|route| super::use_atomic_inproc_elc(route, &meta.profile));
     let cacheable_ht = std::env::var_os("KM_NO_INPROC_HT").is_none()
         && ht_typed_handoff_candidate(selected_route, text.len());
@@ -337,7 +351,9 @@ pub fn run_ofn_split_cached(
         if let Ok(text) = std::fs::read_to_string(ont) {
             let read_s = t_read.elapsed().as_secs_f64();
             let t_screen = std::time::Instant::now();
-            let admitted = !screened_el_band || source_looks_exact_el(&text);
+            let admitted = !screened_el_band
+                || source_looks_exact_el(&text)
+                || source_looks_positive_el_abox(&text);
             let screen_s = t_screen.elapsed().as_secs_f64();
             if admitted {
                 let t_parse = std::time::Instant::now();
@@ -454,8 +470,9 @@ pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath>
 mod tests {
     use super::{
         giant_source_uses_certified_rbox, ht_typed_handoff_candidate, in_process_el_band,
-        run_ofn_in_process, source_looks_exact_el, use_in_process_ofn, TempPath,
-        IN_PROCESS_GENERAL_HT_MAX, IN_PROCESS_OFN_MAX, MEASURED_IN_PROCESS_EL_OFN_MAX,
+        run_ofn_in_process, source_looks_exact_el, source_looks_positive_el_abox,
+        use_in_process_ofn, TempPath, IN_PROCESS_GENERAL_HT_MAX, IN_PROCESS_OFN_MAX,
+        MEASURED_IN_PROCESS_EL_OFN_MAX,
     };
 
     #[test]
@@ -522,6 +539,23 @@ mod tests {
     }
 
     #[test]
+    fn positive_el_abox_screen_admits_identity_but_no_other_non_el_constructor() {
+        assert!(source_looks_positive_el_abox(
+            "Ontology(ClassAssertion(<A> <a>) SameIndividual(<a> <b>) \
+             DifferentIndividuals(<a> <c>))"
+        ));
+        for source in [
+            "Ontology(SubClassOf(<A> ObjectUnionOf(<B> <C>)) SameIndividual(<a> <b>))",
+            "Ontology(SubClassOf(<A> ObjectAllValuesFrom(<r> <B>)) SameIndividual(<a> <b>))",
+            "Ontology(Declaration(DataProperty(<p>)) SameIndividual(<a> <b>))",
+            "Ontology(NegativeObjectPropertyAssertion(<r> <a> <b>))",
+            "Ontology(Import(<http://example.org/o>))",
+        ] {
+            assert!(!source_looks_positive_el_abox(source), "{source}");
+        }
+    }
+
+    #[test]
     fn in_process_el_band_sits_between_the_small_and_giant_bounds() {
         assert!(!in_process_el_band(IN_PROCESS_OFN_MAX - 1));
         assert!(in_process_el_band(IN_PROCESS_OFN_MAX));
@@ -564,6 +598,28 @@ mod tests {
             .unwrap()
             .expect("compact EL handoff header");
         assert!(!decoded.is_empty());
+    }
+
+    #[test]
+    fn in_process_frontend_retains_certified_positive_el_abox_input() {
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "elc");
+        std::env::remove_var("KM_EL_ABOX_CHECK");
+        std::env::remove_var("KM_NO_INPROC_ELC");
+        let source = "Ontology(SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing) \
+                      ClassAssertion(<A> <a>) ClassAssertion(<A> <b>) \
+                      SameIndividual(<a> <aa>) DifferentIndividuals(<aa> <b> <c>))";
+        let clauses = TempPath::new(".clauses.json");
+        let (meta, cached, sidecar) =
+            run_ofn_in_process(source, clauses.path()).expect("frontend parses");
+        assert_eq!(meta.route, "elc");
+        assert!(meta.profile.positive_el_abox_materializable);
+        assert!(
+            cached.is_some(),
+            "certified EL ABox must cross typed handoff"
+        );
+        assert!(sidecar.is_none());
+        assert!(!clauses.path().exists());
     }
 
     #[test]
