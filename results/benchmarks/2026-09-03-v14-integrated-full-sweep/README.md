@@ -47,6 +47,14 @@ recorded in `../2026-09-03-v14-elc-wide-role-routing/`,
 medians for every claimed narrow recovery and this full sweep as the coverage
 and regression gate.
 
+A subsequent fail-closed, one-worker general-HT probe for a four-member
+source-nominal-free profile envelope recovered ORE 2860, 5564, and 9557 while
+preserving the existing strict win on its collateral member ORE 13383. Its
+40-run automatic confirmation is recorded in
+`../2026-09-03-v14-source-nominal-free-ht/`. The current evidence-composite
+score is therefore **524/589**, with 65 comparable residuals. Correctness
+coverage remains 592/592.
+
 `per-ontology.tsv` records the complete one-shot comparison against the frozen
 v1.4 external target ledger. Raw results and Slurm logs are retained in
 `.work/artifacts/v14-production-auto-integration/full-sweep-complete.tar.gz`,
