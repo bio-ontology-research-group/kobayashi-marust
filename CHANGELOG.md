@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Packed EL rule index
+
+- Store each concept trigger's NF1, NF2, NF3, NF4, and NF5 rule record in one
+  contiguous offset-indexed `u32` pool instead of four independently allocated
+  boxed slices. The new layout preserves NF1/NF3 input order, duplicate rules,
+  the NF5 flag, and the sorted NF2/NF4 join order. Direct-construction tests
+  compare every pooled record, and all 106 focused EL completion tests pass,
+  including randomized naive-fixpoint and serial/parallel equivalence checks.
+- IBEX job 51342464 ran parent and candidate in alternating order five times on
+  all six remaining ELC performance residuals. All 60 runs completed, matched
+  retained gold, and recorded checkpoints. Candidate median wall improved on
+  five inputs: 16596 by 2.6%, 15976 by 6.9%, 6722 by 2.6%, 7868 by 5.9%, and
+  13224 by 4.7%; 12087 was neutral within noise (+0.5%). Median RSS improved or
+  remained effectively flat throughout, including 396.80 to 387.72 MiB on
+  13224. No input crosses its external time target yet, so the repeated-evidence
+  composite remains 529/589 and 60 comparable residuals remain.
+
 ### Allocation-light OWL frontend
 
 - Avoid repeated IRI ownership, deep copies of concepts already in negation
