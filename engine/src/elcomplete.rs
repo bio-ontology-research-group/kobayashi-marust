@@ -1685,52 +1685,60 @@ impl Worklist {
     }
 }
 
-/// Every completion rule triggered by one newly derived subsumer `d`, packed
-/// in a single record: the NF1 conclusions, the NF2 candidates, the NF3
-/// existentials, the NF4 axioms whose filler is `d`, and the NF5 flag. The Sub
-/// arm of `run` reaches the record through one dense index (`Idx::rules_of`)
-/// where it previously paid four hash probes on `d` per item (`sub_rules`,
-/// `nf5_subs`, `nf3_by_sub`, `nf4_by_filler`). The slices are immutable after
-/// construction, so the hot path iterates them in place. Boxed slices keep
-/// each record to two words per rule family instead of three-word `Vec`
-/// headers.
-#[derive(Default)]
-struct ConceptRules {
-    /// NF1 `d ⊑ E`: the conclusions `E`.
-    nf1_sups: Box<[u32]>,
-    /// NF2 `d ⊓ X ⊑ E`, with `d` in either operand position, as `(X, E)`,
+/// Every completion rule triggered by one newly derived subsumer `d`: the NF1
+/// conclusions, the NF2 candidates, the NF3 existentials, the NF4 axioms whose
+/// filler is `d`, and the NF5 flag. A borrowed view of one record of
+/// `Idx::pool`, where the four lists of a trigger sit back to back behind a
+/// header of [`RULE_HEADER_WORDS`] words. The Sub arm of `run` reaches a
+/// record through one dense slot (`Idx::rules_of`) and then reads one
+/// contiguous run of memory per item, where a record used to be a 72-byte
+/// struct of four separately allocated boxed slices (up to five cache lines
+/// scattered over the heap, and four allocations to build and free per
+/// rule-bearing symbol).
+#[derive(Clone, Copy)]
+struct ConceptRules<'a> {
+    /// NF1 `d ⊑ E`: the conclusions `E`, in axiom order.
+    nf1_sups: &'a [u32],
+    /// NF2 `d ⊓ X ⊑ E`, with `d` in either operand position, as `[X, E]`,
     /// SORTED by `X` so the label-side join can binary-search a partner.
-    nf2_cand: Box<[(u32, u32)]>,
-    /// NF3 `d ⊑ ∃R.F` as `(R, F)`.
-    nf3_edges: Box<[(u32, u32)]>,
-    /// NF4 `∃R.d ⊑ E` as `(R, E)`, SORTED by role so the sub-side join visits
+    nf2_cand: &'a [[u32; 2]],
+    /// NF3 `d ⊑ ∃R.F` as `[R, F]`, in axiom order.
+    nf3_edges: &'a [[u32; 2]],
+    /// NF4 `∃R.d ⊑ E` as `[R, E]`, SORTED by role so the sub-side join visits
     /// one contiguous exact-role group per backward-link bucket.
-    nf4_axioms: Box<[(u32, u32)]>,
+    nf4_axioms: &'a [[u32; 2]],
     /// NF5 `d ⊑ ⊥`.
-    bottom: bool,
-}
-
-#[derive(Default)]
-struct ConceptRulesBuilder {
-    nf1_sups: Vec<u32>,
-    nf2_cand: Vec<(u32, u32)>,
-    nf3_edges: Vec<(u32, u32)>,
-    nf4_axioms: Vec<(u32, u32)>,
     bottom: bool,
 }
 
 /// `Idx::rule_slot` entry of a symbol that triggers no rule.
 const NO_RULES: u32 = u32::MAX;
+/// Words of a record header in `Idx::pool`: the NF1, NF2, NF3 and NF4 list
+/// lengths in entries (pairs count once), with the NF5 flag in the top bit of
+/// the NF1 word.
+const RULE_HEADER_WORDS: usize = 4;
+const RULE_BOTTOM_FLAG: u32 = 1 << 31;
+
+/// An even-length run of pool words read as pairs.
+#[inline]
+fn pool_pairs(words: &[u32]) -> &[[u32; 2]] {
+    let (pairs, rest) = words.as_chunks::<2>();
+    debug_assert!(rest.is_empty(), "pool pair run has odd length");
+    pairs
+}
 
 /// Read-only indexes over the normal forms; built once, never mutated during the
 /// loop, so the hot path can iterate their slices directly (no per-item clone).
 struct Idx {
-    /// Symbol id -> position in `rules`, or `NO_RULES`. Dense (four bytes per
-    /// interned symbol) so the per-item lookup of the Sub arm stays in cache,
-    /// while the records themselves exist only for symbols that trigger a
-    /// rule.
+    /// Symbol id -> offset of its record in `pool`, or `NO_RULES`. Dense (four
+    /// bytes per interned symbol) so the per-item lookup of the Sub arm stays
+    /// in cache, while records exist only for symbols that trigger a rule.
     rule_slot: Vec<u32>,
-    rules: Vec<ConceptRules>,
+    /// Every rule record back to back, in ascending trigger order: a header of
+    /// `RULE_HEADER_WORDS` words, then the trigger's NF1 conclusions, NF2
+    /// candidate pairs, NF3 pairs and NF4 pairs. One allocation for the whole
+    /// terminology; a typical trigger's record spans a cache line or two.
+    pool: Vec<u32>,
     /// Whether any NF4 axiom exists: the edge-side join and its frontier batch
     /// are skipped entirely otherwise.
     has_nf4: bool,
@@ -1742,6 +1750,15 @@ struct Idx {
 }
 
 impl Idx {
+    /// Number of records in `pool` (symbols that trigger at least one rule).
+    #[cfg(test)]
+    fn rule_count(&self) -> usize {
+        self.rule_slot
+            .iter()
+            .filter(|&&slot| slot != NO_RULES)
+            .count()
+    }
+
     /// Super-roles of `r` (always includes `r`, since every role in the signature
     /// is pre-seeded with itself and every edge role lies in that signature).
     fn role_supers(&self, r: u32) -> &HashSet<u32> {
@@ -1752,10 +1769,33 @@ impl Idx {
     /// outside the index (never produced by `to_nf`, but harmless) triggers
     /// nothing.
     #[inline]
-    fn rules_of(&self, d: u32) -> Option<&ConceptRules> {
+    fn rules_of(&self, d: u32) -> Option<ConceptRules<'_>> {
         match self.rule_slot.get(d as usize) {
-            Some(&slot) if slot != NO_RULES => Some(&self.rules[slot as usize]),
+            Some(&slot) if slot != NO_RULES => Some(self.record_at(slot as usize)),
             _ => None,
+        }
+    }
+
+    /// The record whose header starts at `offset` in `pool`.
+    #[inline]
+    fn record_at(&self, offset: usize) -> ConceptRules<'_> {
+        let pool = &self.pool;
+        let head = pool[offset];
+        let n1 = (head & !RULE_BOTTOM_FLAG) as usize;
+        let n2 = pool[offset + 1] as usize;
+        let n3 = pool[offset + 2] as usize;
+        let n4 = pool[offset + 3] as usize;
+        let start = offset + RULE_HEADER_WORDS;
+        let body = &pool[start..start + n1 + 2 * (n2 + n3 + n4)];
+        let (nf1_sups, rest) = body.split_at(n1);
+        let (nf2, rest) = rest.split_at(2 * n2);
+        let (nf3, nf4) = rest.split_at(2 * n3);
+        ConceptRules {
+            nf1_sups,
+            nf2_cand: pool_pairs(nf2),
+            nf3_edges: pool_pairs(nf3),
+            nf4_axioms: pool_pairs(nf4),
+            bottom: head & RULE_BOTTOM_FLAG != 0,
         }
     }
 }
@@ -2641,11 +2681,39 @@ impl State {
 }
 
 /// Build the read-only rule indexes (including the role-hierarchy closure).
+/// Append one pair at a record list's write cursor.
+#[inline]
+fn pool_push_pair(pool: &mut [u32], at: &mut u32, first: u32, second: u32) {
+    let p = *at as usize;
+    pool[p] = first;
+    pool[p + 1] = second;
+    *at += 2;
+}
+
+/// Build the read-only rule indexes (including the role-hierarchy closure).
 fn build_idx(nfs: &Nfs, n: usize) -> Idx {
-    // ----- per-trigger rule records -----
-    let mut builders: HashMap<u32, ConceptRulesBuilder> = HashMap::default();
+    // ----- per-trigger rule records, back to back in one pool -----
+    // Two linear passes over the normal forms: count the entries of every
+    // trigger's four lists, then place each record at its offset and fill
+    // the lists in axiom order. Each per-trigger sequence is exactly the one
+    // the previous construction pushed into four growing vectors per trigger
+    // inside a hash map and then boxed (about four allocations per
+    // rule-bearing symbol plus their growth steps, and as many frees at
+    // release); here the whole index is one allocation.
+    let width = nfs
+        .nf1
+        .iter()
+        .map(|a| a.sub)
+        .chain(nfs.nf2.iter().flat_map(|a| [a.sub1, a.sub2]))
+        .chain(nfs.nf3.iter().map(|a| a.sub))
+        .chain(nfs.nf4.iter().map(|a| a.filler))
+        .chain(nfs.nf5.iter().copied())
+        .map(|trigger| trigger as usize + 1)
+        .max()
+        .map_or(n, |last| n.max(last));
+    let mut counts = vec![[0u32; 4]; width];
     for a in &nfs.nf1 {
-        builders.entry(a.sub).or_default().nf1_sups.push(a.sup);
+        counts[a.sub as usize][0] += 1;
     }
     for a in &nfs.nf2 {
         // Indexed under both operands; each entry stores the OTHER operand and
@@ -2654,61 +2722,102 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
         // (`fire_nf2`) enumerates the smaller of the two sides, so a hub
         // operand shared by thousands of conjunctions costs one label scan
         // per arrival rather than a rescan of every incident axiom.
-        builders
-            .entry(a.sub1)
-            .or_default()
-            .nf2_cand
-            .push((a.sub2, a.sup));
-        builders
-            .entry(a.sub2)
-            .or_default()
-            .nf2_cand
-            .push((a.sub1, a.sup));
+        counts[a.sub1 as usize][1] += 1;
+        counts[a.sub2 as usize][1] += 1;
     }
     for a in &nfs.nf3 {
-        builders
-            .entry(a.sub)
-            .or_default()
-            .nf3_edges
-            .push((a.role, a.filler));
+        counts[a.sub as usize][2] += 1;
     }
     // NF4 (∃R.D⊑E) indexed by filler D -> [(role R, sup E)]. The Sub rule reads
     // it to register propagations; the Edge rule consults the `prop` store the
     // Sub rule fills, so no `(role,filler)` index is needed.
     for a in &nfs.nf4 {
-        builders
-            .entry(a.filler)
-            .or_default()
-            .nf4_axioms
-            .push((a.role, a.sup));
+        counts[a.filler as usize][3] += 1;
     }
+    let mut bottom = vec![false; width];
     for &sub in &nfs.nf5 {
-        builders.entry(sub).or_default().bottom = true;
+        bottom[sub as usize] = true;
     }
     let has_nf4 = !nfs.nf4.is_empty();
     // Records are laid out in ascending symbol order (a deterministic layout
-    // that keeps neighbouring triggers adjacent). Sorting the candidate lists
-    // changes index order, not the set of axioms or conclusions: NF2 by
-    // partner for the label-side binary search, NF4 by role so the sub-side
-    // join visits only the exact-role range of a backward-link bucket instead
-    // of scanning and rejecting every axiom attached to the filler.
-    let mut triggers: Vec<u32> = builders.keys().copied().collect();
-    triggers.sort_unstable();
-    let width = triggers.last().map_or(n, |&last| n.max(last as usize + 1));
+    // that keeps neighbouring triggers adjacent).
     let mut rule_slot = vec![NO_RULES; width];
-    let mut rules = Vec::with_capacity(triggers.len());
-    for trigger in triggers {
-        let mut b = builders.remove(&trigger).expect("collected trigger");
-        b.nf2_cand.sort_unstable();
-        b.nf4_axioms.sort_unstable();
-        rule_slot[trigger as usize] = rules.len() as u32;
-        rules.push(ConceptRules {
-            nf1_sups: b.nf1_sups.into_boxed_slice(),
-            nf2_cand: b.nf2_cand.into_boxed_slice(),
-            nf3_edges: b.nf3_edges.into_boxed_slice(),
-            nf4_axioms: b.nf4_axioms.into_boxed_slice(),
-            bottom: b.bottom,
-        });
+    let mut total = 0usize;
+    for (d, &[n1, n2, n3, n4]) in counts.iter().enumerate() {
+        if n1 | n2 | n3 | n4 == 0 && !bottom[d] {
+            continue;
+        }
+        debug_assert!(
+            n1 & RULE_BOTTOM_FLAG == 0,
+            "NF1 list length collides with the NF5 flag"
+        );
+        rule_slot[d] = total as u32;
+        total += RULE_HEADER_WORDS + n1 as usize + 2 * (n2 as usize + n3 as usize + n4 as usize);
+    }
+    assert!(
+        total < NO_RULES as usize,
+        "EL rule pool of {total} words exceeds the u32 offset range"
+    );
+    let mut pool = vec![0u32; total];
+    // Write the headers and turn the counters into write cursors: the absolute
+    // pool position of the next free entry of each of the trigger's lists.
+    let mut cursor = counts;
+    for (d, &slot) in rule_slot.iter().enumerate() {
+        if slot == NO_RULES {
+            continue;
+        }
+        let o = slot as usize;
+        let [n1, n2, n3, n4] = cursor[d];
+        pool[o] = n1 | if bottom[d] { RULE_BOTTOM_FLAG } else { 0 };
+        pool[o + 1] = n2;
+        pool[o + 2] = n3;
+        pool[o + 3] = n4;
+        let nf1 = o + RULE_HEADER_WORDS;
+        let nf2 = nf1 + n1 as usize;
+        let nf3 = nf2 + 2 * n2 as usize;
+        let nf4 = nf3 + 2 * n3 as usize;
+        cursor[d] = [nf1 as u32, nf2 as u32, nf3 as u32, nf4 as u32];
+    }
+    drop(bottom);
+    // Fill in axiom order.
+    for a in &nfs.nf1 {
+        let at = &mut cursor[a.sub as usize][0];
+        pool[*at as usize] = a.sup;
+        *at += 1;
+    }
+    for a in &nfs.nf2 {
+        pool_push_pair(&mut pool, &mut cursor[a.sub1 as usize][1], a.sub2, a.sup);
+        pool_push_pair(&mut pool, &mut cursor[a.sub2 as usize][1], a.sub1, a.sup);
+    }
+    for a in &nfs.nf3 {
+        pool_push_pair(&mut pool, &mut cursor[a.sub as usize][2], a.role, a.filler);
+    }
+    for a in &nfs.nf4 {
+        pool_push_pair(&mut pool, &mut cursor[a.filler as usize][3], a.role, a.sup);
+    }
+    drop(cursor);
+    // Sorting the candidate lists changes index order, not the set of axioms
+    // or conclusions: NF2 by partner for the label-side binary search, NF4 by
+    // role so the sub-side join visits only the exact-role range of a
+    // backward-link bucket instead of scanning and rejecting every axiom
+    // attached to the filler.
+    for &slot in &rule_slot {
+        if slot == NO_RULES {
+            continue;
+        }
+        let o = slot as usize;
+        let n1 = (pool[o] & !RULE_BOTTOM_FLAG) as usize;
+        let n2 = pool[o + 1] as usize;
+        let n3 = pool[o + 2] as usize;
+        let n4 = pool[o + 3] as usize;
+        let nf2 = o + RULE_HEADER_WORDS + n1;
+        let nf3 = nf2 + 2 * n2;
+        let nf4 = nf3 + 2 * n3;
+        pool[nf2..nf3].as_chunks_mut::<2>().0.sort_unstable();
+        pool[nf4..nf4 + 2 * n4]
+            .as_chunks_mut::<2>()
+            .0
+            .sort_unstable();
     }
     let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
     for a in &nfs.nf7 {
@@ -2754,7 +2863,7 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
 
     Idx {
         rule_slot,
-        rules,
+        pool,
         has_nf4,
         nf7_by_pair,
         role_sub,
@@ -2973,11 +3082,11 @@ const NF2_LABEL_SIDE_RATIO: usize = 8;
 /// see. The label side collects into `scratch` while the label is borrowed
 /// and applies the conclusions afterwards.
 #[inline]
-fn fire_nf2(cands: &[(u32, u32)], st: &mut State, scratch: &mut Vec<u32>, prof: &mut Prof, c: u32) {
+fn fire_nf2(cands: &[[u32; 2]], st: &mut State, scratch: &mut Vec<u32>, prof: &mut Prof, c: u32) {
     let label_len = st.sub_super[c as usize].len();
     if cands.len() <= label_len.saturating_mul(NF2_LABEL_SIDE_RATIO) {
         prof.nf2_scan += cands.len() as u64;
-        for &(other, sup) in cands {
+        for &[other, sup] in cands {
             if st.sub_super[c as usize].contains(&other) {
                 st.add_sub(c, sup);
             }
@@ -2988,8 +3097,8 @@ fn fire_nf2(cands: &[(u32, u32)], st: &mut State, scratch: &mut Vec<u32>, prof: 
     prof.nf2_label_side += 1;
     debug_assert!(scratch.is_empty());
     for &present in st.sub_super[c as usize].iter() {
-        let from = cands.partition_point(|&(other, _)| other < present);
-        for &(other, sup) in &cands[from..] {
+        let from = cands.partition_point(|&[other, _]| other < present);
+        for &[other, sup] in &cands[from..] {
             if other != present {
                 break;
             }
@@ -3065,7 +3174,7 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                     }
                     // R⊓ : C ⊑ D, C ⊑ D', D ⊓ D' ⊑ E ⟹ C ⊑ E  (NF2)
                     if !rules.nf2_cand.is_empty() {
-                        fire_nf2(&rules.nf2_cand, st, &mut nf2_scratch, prof, c);
+                        fire_nf2(rules.nf2_cand, st, &mut nf2_scratch, prof, c);
                     }
                     // R⊥ : D ⊑ ⊥ axiomatically (NF5) ⟹ C ⊑ ⊥
                     if rules.bottom {
@@ -3073,7 +3182,7 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                     }
                     // R∃ : C ⊑ D, D ⊑ ∃R.E ⟹ edge (C,R,E)  (NF3)
                     prof.nf3_scan += rules.nf3_edges.len() as u64;
-                    for &(role, filler) in rules.nf3_edges.iter() {
+                    for &[role, filler] in rules.nf3_edges {
                         st.add_edge(c, role, filler);
                     }
                 }
@@ -3120,9 +3229,9 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                 // per Sub item. `add_sub_parts` never mutates `in_by_role`, so
                 // the parent slices are iterated in place, self-edges included.
                 if let Some(rules) = rules {
-                    let axs: &[(u32, u32)] = &rules.nf4_axioms;
+                    let axs: &[[u32; 2]] = rules.nf4_axioms;
                     if !axs.is_empty() {
-                        for &(s, e) in axs {
+                        for &[s, e] in axs {
                             // No dedup: each (c,s,e) propagation is pushed ~once in EL
                             // (measured bucket-duplication on the 8737 giant is <0.5%),
                             // so ELK's `propagatedSubsumers_` Set buys nothing here and
@@ -3147,12 +3256,12 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                             // handles one contiguous exact-role group [lo..hi).
                             let mut lo = 0;
                             while lo < axs.len() {
-                                let role = axs[lo].0;
-                                let hi = axs.partition_point(|&(s, _)| s <= role);
+                                let role = axs[lo][0];
+                                let hi = axs.partition_point(|&[s, _]| s <= role);
                                 if let Some(parents) = in_by_role.get(&(c, role)) {
                                     prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
                                     for &parent in parents {
-                                        for &(_, e) in &axs[lo..hi] {
+                                        for &[_, e] in &axs[lo..hi] {
                                             State::add_sub_parts(
                                                 sub_super,
                                                 worklist,
@@ -3577,12 +3686,12 @@ impl Sink<'_> {
     /// R⊓ (NF2) for the new subsumer of `c`, the shard-local mirror of
     /// [`fire_nf2`]: enumerate the smaller of the candidate list and the label,
     /// firing exactly the conclusions whose partner is already in the label.
-    fn nf2(&mut self, c: u32, cands: &[(u32, u32)], scratch: &mut Vec<u32>, prof: &mut Prof) {
+    fn nf2(&mut self, c: u32, cands: &[[u32; 2]], scratch: &mut Vec<u32>, prof: &mut Prof) {
         let slot = self.slot(c);
         let label_len = self.sub_super[slot].len();
         if cands.len() <= label_len.saturating_mul(NF2_LABEL_SIDE_RATIO) {
             prof.nf2_scan += cands.len() as u64;
-            for &(other, sup) in cands {
+            for &[other, sup] in cands {
                 if self.sub_super[slot].contains(&other) {
                     self.sub(c, sup);
                 }
@@ -3593,8 +3702,8 @@ impl Sink<'_> {
         prof.nf2_label_side += 1;
         debug_assert!(scratch.is_empty());
         for &present in self.sub_super[slot].iter() {
-            let from = cands.partition_point(|&(other, _)| other < present);
-            for &(other, sup) in &cands[from..] {
+            let from = cands.partition_point(|&[other, _]| other < present);
+            for &[other, sup] in &cands[from..] {
                 if other != present {
                     break;
                 }
@@ -3820,7 +3929,7 @@ impl<'a> Shard<'a> {
             }
             // R⊓ (NF2)
             if !rules.nf2_cand.is_empty() {
-                sink.nf2(c, &rules.nf2_cand, nf2_scratch, prof);
+                sink.nf2(c, rules.nf2_cand, nf2_scratch, prof);
             }
             // R⊥ (NF5)
             if rules.bottom {
@@ -3828,7 +3937,7 @@ impl<'a> Shard<'a> {
             }
             // R∃ (NF3)
             prof.nf3_scan += rules.nf3_edges.len() as u64;
-            for &(role, filler) in rules.nf3_edges.iter() {
+            for &[role, filler] in rules.nf3_edges {
                 sink.edge(c, role, filler);
             }
         }
@@ -3847,11 +3956,11 @@ impl<'a> Shard<'a> {
         // R∃⁻ (NF4): register the propagations of the new filler `d` at `c` for
         // future backward links, and join them with the links already there.
         if let Some(rules) = rules {
-            let axs: &[(u32, u32)] = &rules.nf4_axioms;
+            let axs: &[[u32; 2]] = rules.nf4_axioms;
             if axs.is_empty() {
                 return;
             }
-            for &(s, e) in axs {
+            for &[s, e] in axs {
                 prop.entry((c, s)).or_default().push(e);
             }
             if in_roles[slot].is_empty() {
@@ -3859,12 +3968,12 @@ impl<'a> Shard<'a> {
             }
             let mut lo = 0;
             while lo < axs.len() {
-                let role = axs[lo].0;
-                let hi = axs.partition_point(|&(s, _)| s <= role);
+                let role = axs[lo][0];
+                let hi = axs.partition_point(|&[s, _]| s <= role);
                 if let Some(parents) = in_by_role.get(&(c, role)) {
                     prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
                     for &parent in parents {
-                        for &(_, e) in &axs[lo..hi] {
+                        for &[_, e] in &axs[lo..hi] {
                             sink.sub(parent, e);
                         }
                     }
@@ -8092,12 +8201,16 @@ fn classify_inner_mode(
     // saturation state. On a pure-EL ont (`residual` empty) this is the whole
     // input freed; the saturation then peaks on the interned state alone.
     let background_release = std::env::var_os("KM_ELC_BG_DROP").is_some();
+    // Finer laps inside `index+init` (that lap itself is unchanged): the drop
+    // of the parsed clause set, the rule index, and the seeded state.
+    let mut elc_sub = std::time::Instant::now();
     let certificate_clauses = if lean_cert_requested {
         Some(clauses)
     } else {
         release(clauses, background_release);
         None
     };
+    elc_timing_lap(elc_timing, &mut elc_sub, "index+init/drop_clauses");
     let (rcs, residual_skolem_witnesses) = if residual.is_empty() {
         (Vec::new(), HashMap::default())
     } else {
@@ -8128,7 +8241,9 @@ fn classify_inner_mode(
         }
     };
     let n = it.len();
+    elc_sub = std::time::Instant::now();
     let idx = build_idx(&nfs, n);
+    elc_timing_lap(elc_timing, &mut elc_sub, "index+init/build_idx");
     // Context-parallel saturation when it is asked for and nothing depends on
     // the serial construction order (see `context_parallel_plan`); it seeds its
     // own shards, so the serial state is not built at all on that path.
@@ -8149,6 +8264,7 @@ fn classify_inner_mode(
             Some(st)
         }
     };
+    elc_timing_lap(elc_timing, &mut elc_sub, "index+init/init_state");
     // build_idx owns copies of every normal form used by the fixpoint. On the
     // pure-EL path there is no residual certificate, so only concept_names is
     // read after this point. Release the duplicate normal forms before the
@@ -10756,10 +10872,10 @@ mod tests {
             conjunction_origins: HashMap::default(),
         };
         let idx = build_idx(&nfs, 8);
-        assert_eq!(idx.rules.len(), 3);
+        assert_eq!(idx.rule_count(), 3);
         let a_rules = idx.rules_of(A).expect("A triggers NF1 and NF2");
-        assert_eq!(&*a_rules.nf1_sups, &[B]);
-        assert_eq!(&*a_rules.nf2_cand, &[(B, E)]);
+        assert_eq!(a_rules.nf1_sups, &[B]);
+        assert_eq!(a_rules.nf2_cand, &[[B, E]]);
         assert!(idx.rules_of(ROOT).is_none());
         assert!(!idx.has_nf4);
 
@@ -10810,8 +10926,8 @@ mod tests {
         let idx = build_idx(&nfs, n);
         assert_eq!(idx.rules_of(H).map(|r| r.nf2_cand.len()), Some(64));
         assert_eq!(
-            idx.rules_of(FIRST_X + 3).map(|r| &*r.nf2_cand),
-            Some(&[(H, FIRST_E + 3)][..])
+            idx.rules_of(FIRST_X + 3).map(|r| r.nf2_cand),
+            Some(&[[H, FIRST_E + 3]][..])
         );
 
         // Direct scan, both arrival orders.
@@ -10851,6 +10967,156 @@ mod tests {
         assert!(st.sub_super[ROOT as usize].contains(&(FIRST_E + 3)));
         assert_eq!(prof.nf2_label_side, 0);
         assert_eq!(st.sub_super[ROOT as usize].len(), 3);
+    }
+
+    /// The record a direct filter of the normal forms gives for `d`: NF1
+    /// conclusions and NF3 pairs in axiom order, NF2 candidates (from both
+    /// operand positions) and NF4 axioms sorted, and the NF5 flag; `None`
+    /// when `d` triggers nothing.
+    #[allow(clippy::type_complexity)]
+    fn direct_rules(
+        nfs: &Nfs,
+        d: u32,
+    ) -> Option<(Vec<u32>, Vec<[u32; 2]>, Vec<[u32; 2]>, Vec<[u32; 2]>, bool)> {
+        let nf1: Vec<u32> = nfs
+            .nf1
+            .iter()
+            .filter(|a| a.sub == d)
+            .map(|a| a.sup)
+            .collect();
+        let mut nf2: Vec<[u32; 2]> = Vec::new();
+        for a in &nfs.nf2 {
+            if a.sub1 == d {
+                nf2.push([a.sub2, a.sup]);
+            }
+            if a.sub2 == d {
+                nf2.push([a.sub1, a.sup]);
+            }
+        }
+        nf2.sort_unstable();
+        let nf3: Vec<[u32; 2]> = nfs
+            .nf3
+            .iter()
+            .filter(|a| a.sub == d)
+            .map(|a| [a.role, a.filler])
+            .collect();
+        let mut nf4: Vec<[u32; 2]> = nfs
+            .nf4
+            .iter()
+            .filter(|a| a.filler == d)
+            .map(|a| [a.role, a.sup])
+            .collect();
+        nf4.sort_unstable();
+        let bottom = nfs.nf5.contains(&d);
+        if nf1.is_empty() && nf2.is_empty() && nf3.is_empty() && nf4.is_empty() && !bottom {
+            None
+        } else {
+            Some((nf1, nf2, nf3, nf4, bottom))
+        }
+    }
+
+    /// Every record of the pooled index equals the direct construction, entry
+    /// for entry and in the same order; records are packed back to back in
+    /// ascending trigger order and account for the whole pool.
+    fn assert_pool_matches_direct(nfs: &Nfs, n: usize) {
+        let idx = build_idx(nfs, n);
+        let width = idx.rule_slot.len();
+        assert!(width >= n);
+        let mut records = 0usize;
+        let mut next = 0usize;
+        for d in 0..width as u32 {
+            match (direct_rules(nfs, d), idx.rules_of(d)) {
+                (None, None) => {}
+                (Some((nf1, nf2, nf3, nf4, bottom)), Some(rules)) => {
+                    assert_eq!(rules.nf1_sups, &nf1[..], "NF1 of {d}");
+                    assert_eq!(rules.nf2_cand, &nf2[..], "NF2 of {d}");
+                    assert_eq!(rules.nf3_edges, &nf3[..], "NF3 of {d}");
+                    assert_eq!(rules.nf4_axioms, &nf4[..], "NF4 of {d}");
+                    assert_eq!(rules.bottom, bottom, "NF5 of {d}");
+                    let slot = idx.rule_slot[d as usize] as usize;
+                    assert_eq!(slot, next, "record of {d} is not packed");
+                    next = slot
+                        + RULE_HEADER_WORDS
+                        + nf1.len()
+                        + 2 * (nf2.len() + nf3.len() + nf4.len());
+                    records += 1;
+                }
+                (direct, pooled) => panic!(
+                    "trigger {d}: direct record {} but pooled record {}",
+                    direct.is_some(),
+                    pooled.is_some()
+                ),
+            }
+        }
+        assert_eq!(records, idx.rule_count());
+        assert_eq!(next, idx.pool.len());
+        assert!(idx.rules_of(width as u32).is_none());
+        assert!(idx.rules_of(u32::MAX).is_none());
+        assert_eq!(idx.has_nf4, !nfs.nf4.is_empty());
+    }
+
+    #[test]
+    fn pooled_rule_index_matches_a_direct_per_trigger_construction() {
+        for seed in 0..32 {
+            let (nfs, n) = random_terminology(seed);
+            assert_pool_matches_direct(&nfs, n);
+        }
+        for seed in 0..4 {
+            let (nfs, n) = stress_terminology(seed, 96);
+            assert_pool_matches_direct(&nfs, n);
+        }
+        // An empty terminology has no records and an `n`-wide slot table.
+        let idx = build_idx(&empty_nfs(), 5);
+        assert_eq!(idx.rule_count(), 0);
+        assert!(idx.pool.is_empty());
+        assert_eq!(idx.rule_slot.len(), 5);
+    }
+
+    #[test]
+    fn pooled_rule_index_keeps_flag_only_and_duplicate_records() {
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const E: u32 = 4;
+        const F: u32 = 5;
+        const R: u32 = 6;
+        const WIDE: u32 = 12;
+        let mut nfs = empty_nfs();
+        nfs.role_names.insert(R);
+        // A ⊑ ⊥ alone: a header-only record carrying the NF5 flag.
+        nfs.nf5.push(A);
+        // B ⊓ B ⊑ E registers under B from both operand positions.
+        nfs.nf2.push(Nf2 {
+            sub1: B,
+            sub2: B,
+            sup: E,
+        });
+        // A repeated NF3 axiom keeps both entries, in axiom order.
+        for _ in 0..2 {
+            nfs.nf3.push(Nf3 {
+                sub: A,
+                role: R,
+                filler: F,
+            });
+        }
+        // A trigger beyond `n` widens the slot table, as before.
+        nfs.nf1.push(Nf1 { sub: WIDE, sup: A });
+        let n = (R + 1) as usize;
+        let idx = build_idx(&nfs, n);
+        let a = idx.rules_of(A).expect("A triggers NF5 and NF3");
+        assert!(a.bottom);
+        assert!(a.nf1_sups.is_empty());
+        assert!(a.nf2_cand.is_empty());
+        assert_eq!(a.nf3_edges, &[[R, F], [R, F]]);
+        assert!(a.nf4_axioms.is_empty());
+        let b = idx.rules_of(B).expect("B triggers NF2");
+        assert!(!b.bottom);
+        assert_eq!(b.nf2_cand, &[[B, E], [B, E]]);
+        assert_eq!(idx.rules_of(WIDE).map(|r| r.nf1_sups), Some(&[A][..]));
+        assert_eq!(idx.rule_slot.len(), WIDE as usize + 1);
+        assert_eq!(idx.rule_count(), 3);
+        assert!(idx.rules_of(E).is_none());
+        assert!(idx.rules_of(F).is_none());
+        assert_pool_matches_direct(&nfs, n);
     }
 
     #[test]
