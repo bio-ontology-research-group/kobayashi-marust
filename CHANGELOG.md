@@ -16,8 +16,11 @@
 - On the normalized current Uberon main component, a same-node sequential
   comparison at exactly two million messages reduced wall time from 88.50 to
   54.62 seconds and forward-subsumption time from 49.74 to 20.25 seconds.
-  Peak RSS increased from 817,564 to 877,428 KiB. A full unrestricted Uberon
-  run and the integrated ORE regression remain in progress.
+  Peak RSS increased from 817,564 to 877,428 KiB.
+- The exact integrated automatic-route sweep completed all 592 ORE inputs with
+  592 checkpoints and no new semantic disagreement. Its one-shot strict joint
+  score remains 493/589, so the repeated-evidence composite remains 525/589.
+  The unrestricted Uberon runs remain in progress.
 
 ### Move-only normalized-clause handoff
 
