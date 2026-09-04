@@ -6,3 +6,6 @@ job_or_array	stage	tasks	max_simultaneous	terminal_state	finding
 51298706	explanation corrected rerun	3	2	success	three bounded explanation tasks published JSON and receipts
 51298713	ELK and HermiT controlled baselines	12	4	success	all twelve result records completed
 51298728	Uberon diagnostic routes	2	2	failure	both diagnostic routes timed out at 3600 seconds without output
+51319644	Uberon TInput capture during diagnostic classification	1	1	partial	the source classification timed out, but the wrapper captured the exact hash-bound TInput used by the guarded consistency run
+51321084	guarded Uberon KM build	1	1	success	built the guarded development artifact and recorded source-archive, binary, toolchain, host, and job identities
+51321154	guarded Uberon direct TInput consistency	1	1	success	guarded KM reported consistent=true in 4.46 s at 157544 KiB peak RSS; no taxonomy was requested or established

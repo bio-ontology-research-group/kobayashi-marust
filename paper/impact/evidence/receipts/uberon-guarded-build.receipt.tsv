@@ -1,0 +1,6 @@
+source_archive_sha256	1806580bd9595a6ad0aa779e29eae2217255d04bb7dafb84ad5d12e9ccedfec8
+binary_sha256	c9be93d3c3c0701a175658c8ba935db0a29df420493e8ed7c1b32f85f5eb2805
+host	dgpu609-14
+slurm_job_id	51321084
+rustc 1.96.0 (ac68faa20 2026-05-25)
+ldd (GNU libc) 2.34

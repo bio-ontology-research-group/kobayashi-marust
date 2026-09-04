@@ -17,6 +17,12 @@ SOURCE_COMMIT = "301d37426cdf3dea249d9609037a2f1e47e89314"
 BINARY = "c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d"
 ELK = "7ffc442f2966667a488479a748502276136445c8e44ffd9e8498873a401cb3d4"
 HERMIT = "59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c"
+UBERON = "13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93"
+GUARDED_CAPTURE_BINARY = "2eb8f5619737812b9651765db1648fa401218716ec144f62369aefd09e59a362"
+GUARDED_SOURCE_ARCHIVE = "1806580bd9595a6ad0aa779e29eae2217255d04bb7dafb84ad5d12e9ccedfec8"
+GUARDED_BINARY = "c9be93d3c3c0701a175658c8ba935db0a29df420493e8ed7c1b32f85f5eb2805"
+GUARDED_TINPUT = "01dca21c579745be5e8e5eca9d8b752d7811070a69475f73441b9150ae0853c6"
+GUARDED_OUTPUT = "d9e29cb6ed8c1a516ae4cbdf8d17f70d518fbe789860e365cdb3d5f26b52a6b4"
 EMPTY = hashlib.sha256(b"").hexdigest()
 
 
@@ -186,12 +192,11 @@ def validate_uberon_failures() -> None:
         "uberon-production_all1": ("124", "577736"),
         "uberon-certified_nominals": ("124", "3146808"),
     }
-    uberon_sha = "13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93"
     for name, (exit_code, peak_kib) in expected.items():
         row = receipt(receipt_dir / f"{name}.receipt.tsv")
         if row.get("status") != "error" or row.get("exit_code") != exit_code:
             raise ValueError(f"Uberon failure unexpectedly changed: {name}")
-        if row.get("binary_sha256") != BINARY or row.get("ontology_sha256") != uberon_sha:
+        if row.get("binary_sha256") != BINARY or row.get("ontology_sha256") != UBERON:
             raise ValueError(f"Uberon failure binding changed: {name}")
         text = (receipt_dir / f"{name}.receipt.tsv").read_text(encoding="utf-8")
         if f"Maximum resident set size (kbytes): {peak_kib}" not in text:
@@ -200,6 +205,75 @@ def validate_uberon_failures() -> None:
             raise ValueError(f"failed automatic Uberon run has nonempty output digest: {name}")
         if (EVIDENCE / "fingerprints" / f"{name}.fingerprint.json").exists():
             raise ValueError(f"failed Uberon run must not have a fingerprint: {name}")
+
+
+def validate_uberon_guarded_consistency() -> None:
+    receipt_dir = EVIDENCE / "receipts"
+    capture = receipt(receipt_dir / "uberon-guarded-tinput-capture.receipt.tsv")
+    expected_capture = {
+        "job_id": "51319644",
+        "exit_code": "124",
+        "host": "dgpu609-14",
+        "cpu_model": "Intel(R) Xeon(R) CPU E5-2699 v3 @ 2.30GHz",
+        "binary_sha256": GUARDED_CAPTURE_BINARY,
+        "ontology_sha256": UBERON,
+        "output_bytes": "0",
+    }
+    if capture != expected_capture:
+        raise ValueError("guarded Uberon source-to-TInput capture binding changed")
+
+    capture_script = (EVIDENCE / "scripts" / "uberon-guarded-tinput-capture.sbatch").read_text(encoding="utf-8")
+    capture_wrapper = (EVIDENCE / "scripts" / "uberon-guarded-tinput-wrapper.sh").read_text(encoding="utf-8")
+    if GUARDED_CAPTURE_BINARY not in capture_script or "uberon.ofn" not in capture_script:
+        raise ValueError("guarded Uberon capture command changed")
+    if "tee /ibex/scratch/hohndor/km/v14-uberon-rules-tin-v2-20260904/uberon.tin.json" not in capture_wrapper:
+        raise ValueError("guarded Uberon TInput capture path changed")
+
+    build = receipt(receipt_dir / "uberon-guarded-build.receipt.tsv")
+    expected_build = {
+        "source_archive_sha256": GUARDED_SOURCE_ARCHIVE,
+        "binary_sha256": GUARDED_BINARY,
+        "host": "dgpu609-14",
+        "slurm_job_id": "51321084",
+    }
+    if build != expected_build:
+        raise ValueError("guarded Uberon build receipt changed")
+
+    direct = receipt(receipt_dir / "uberon-guarded-consistency.receipt.tsv")
+    expected_direct = {
+        "binary_sha256": GUARDED_BINARY,
+        "tinput_sha256": GUARDED_TINPUT,
+        "output_sha256": GUARDED_OUTPUT,
+        "slurm_job_id": "51321154",
+        "host": "dgpu609-14",
+    }
+    if direct != expected_direct:
+        raise ValueError("guarded Uberon consistency receipt changed")
+    receipt_text = (receipt_dir / "uberon-guarded-consistency.receipt.tsv").read_text(encoding="utf-8")
+    if "Elapsed (wall clock) time (h:mm:ss or m:ss): 0:04.46" not in receipt_text:
+        raise ValueError("guarded Uberon elapsed time changed")
+    if "Maximum resident set size (kbytes): 157544" not in receipt_text:
+        raise ValueError("guarded Uberon peak RSS changed")
+
+    output_path = EVIDENCE / "outputs" / "uberon-guarded-consistency.output.json"
+    if sha256(output_path) != GUARDED_OUTPUT:
+        raise ValueError("guarded Uberon output digest changed")
+    output = json.loads(output_path.read_text(encoding="utf-8"))
+    if output != {"consistent": True, "unsatisfiable": [], "subsumptions": []}:
+        raise ValueError("guarded Uberon consistency result changed")
+
+    timing = (EVIDENCE / "timing" / "uberon-guarded-consistency.time.txt").read_text(encoding="utf-8")
+    required_timing = {
+        "Elapsed (wall clock) time (h:mm:ss or m:ss): 0:04.46",
+        "Maximum resident set size (kbytes): 157544",
+        "Exit status: 0",
+    }
+    if not all(item in timing for item in required_timing):
+        raise ValueError("guarded Uberon timing evidence changed")
+    direct_script = (EVIDENCE / "scripts" / "uberon-guarded-consistency.sbatch").read_text(encoding="utf-8")
+    for binding in (GUARDED_BINARY, GUARDED_TINPUT, GUARDED_OUTPUT, "KM_RULES_CONSISTENCY=1"):
+        if binding not in direct_script:
+            raise ValueError(f"guarded Uberon direct command lost binding: {binding}")
 
 
 def validate_explanations(case_hashes: dict[str, str]) -> None:
@@ -301,7 +375,7 @@ def validate_baselines(case_hashes: dict[str, str]) -> None:
 def validate_ledgers() -> None:
     ledger = rows(IMPACT / "ledger.tsv")
     expected_states = {
-        "BIO-UBERON": "failed",
+        "BIO-UBERON": "partial",
         "BIO-GALEN-ORE": "executed",
         "BIO-GALEN-CURRENT-BIOPORTAL": "blocked",
         "BIO-UNMIREOT-CONTROL": "executed",
@@ -315,6 +389,13 @@ def validate_ledgers() -> None:
     actual_states = {row["id"]: row["evidence_state"] for row in ledger}
     if actual_states != expected_states:
         raise ValueError(f"impact ledger states changed: {actual_states}")
+    uberon = next(row for row in ledger if row["id"] == "BIO-UBERON")
+    if "consistent=true" not in uberon["demonstrated_now"] or "4.46 s" not in uberon["demonstrated_now"]:
+        raise ValueError("guarded Uberon consistency result is missing from the impact ledger")
+    if "Full named-class taxonomy" not in uberon["not_demonstrated_or_remaining"]:
+        raise ValueError("guarded Uberon taxonomy boundary is missing")
+    if "empty unsatisfiable and subsumption arrays are not taxonomy outputs" not in uberon["not_demonstrated_or_remaining"]:
+        raise ValueError("guarded Uberon empty-array boundary is missing")
     snomed = next(row for row in ledger if row["id"] == "BIO-SNOMED-SYNTH")
     if "does not directly publish a TBox-only" not in snomed["not_demonstrated_or_remaining"]:
         raise ValueError("SNOMED-style TBox/ABox evidence boundary is missing")
@@ -333,6 +414,7 @@ def validate_ledgers() -> None:
         "KM-UBERON-AUTO-2": ("failure", "NA", "NA", "NA"),
         "KM-UBERON-PROD1": ("failure", "NA", "NA", "NA"),
         "KM-UBERON-NOMINALS": ("failure", "NA", "NA", "NA"),
+        "KM-UBERON-GUARDED-CONSISTENCY": ("success", "true", "NA", "NA"),
         "KM-HIDDEN-EXPLAIN": ("success", "NA", "NA", "NA"),
         "KM-SNOMED-EXPLAIN": ("success", "NA", "NA", "NA"),
         "KM-ACCESS-EXPLAIN": ("success", "NA", "NA", "NA"),
@@ -371,6 +453,9 @@ def validate_ledgers() -> None:
         "51298706": ("explanation corrected rerun", "3", "2", "success"),
         "51298713": ("ELK and HermiT controlled baselines", "12", "4", "success"),
         "51298728": ("Uberon diagnostic routes", "2", "2", "failure"),
+        "51319644": ("Uberon TInput capture during diagnostic classification", "1", "1", "partial"),
+        "51321084": ("guarded Uberon KM build", "1", "1", "success"),
+        "51321154": ("guarded Uberon direct TInput consistency", "1", "1", "success"),
     }
     require_exact_set(set(jobs), set(expected_jobs), "job ledger")
     for job_id, expected in expected_jobs.items():
@@ -389,6 +474,8 @@ def validate_sources() -> None:
         "unmireot": ("2020-12-04", "e579133d34b6e579da2b673f9cd0ffe0c8427fec"),
         "uberon-source": ("VersionIRI 2026-06-19; retrieved 2026-08-30", "938f51e7c3fc9fcbe5a2863eb346da8033737e568af5836958891c4c6bfb1192"),
         "uberon-merged": ("2026-08-30 paper snapshot", "13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93"),
+        "uberon-guarded-tinput": ("captured 2026-09-04", GUARDED_TINPUT),
+        "km-uberon-guarded-binary": ("built 2026-09-04", GUARDED_BINARY),
         "galen-ore9724": ("ORE 2015 frozen corpus", "00c80e07aa57578c168d15a1755b62fde41c53dd69a2f04cc5d88c888c8baf19"),
         "galen-current": ("planned 2026-08-30 snapshot", "NOT_ACQUIRED"),
         "snomed-required": ("user-supplied licensed release", "INPUT_REQUIRED"),
@@ -435,6 +522,8 @@ def main() -> None:
         "access-control-positive.explain", "uberon-2026-06-23",
         "uberon-2026-06-23-repeat", "uberon-production_all1",
         "uberon-certified_nominals",
+        "uberon-guarded-build", "uberon-guarded-tinput-capture",
+        "uberon-guarded-consistency",
     }
     require_exact_set(
         {
@@ -458,12 +547,13 @@ def main() -> None:
     case_hashes = validate_cases()
     validate_km_classifications(case_hashes)
     validate_uberon_failures()
+    validate_uberon_guarded_consistency()
     validate_explanations(case_hashes)
     validate_baselines(case_hashes)
     validate_ledgers()
     validate_sources()
     validate_manifest()
-    print("IMPACT_EVIDENCE_OK\t8 KM classifications\t4 KM failures\t3 explanations\t12 baselines")
+    print("IMPACT_EVIDENCE_OK\t8 KM classifications\t1 guarded KM consistency\t4 KM failures\t3 explanations\t12 baselines")
 
 
 if __name__ == "__main__":

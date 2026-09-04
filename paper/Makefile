@@ -1,7 +1,7 @@
 LATEX = pdflatex
 REPO_COMMON = $(shell dirname "$$(git rev-parse --path-format=absolute --git-common-dir)")
 
-.PHONY: all clean history milestones agent-evidence agent-usage laptop-evidence incremental disagreement-witnesses stato-adjudication uo-witness ore current-tables km-causes route-glossary citation-occurrences impact-evidence manuscript-contract checks submission-audit
+.PHONY: all clean history milestones agent-evidence agent-usage laptop-evidence incremental disagreement-witnesses stato-adjudication uo-witness ore current-tables km-causes route-glossary citation-occurrences impact-evidence impact-plan manuscript-contract checks submission-audit
 
 all: main.pdf
 
@@ -74,7 +74,11 @@ impact-evidence:
 	bash -n benchmark/impact/*.sbatch
 	python3 -B -m py_compile benchmark/impact/validate_evidence.py
 
-checks: milestones agent-evidence agent-usage laptop-evidence incremental disagreement-witnesses stato-adjudication uo-witness ore current-tables km-causes route-glossary citation-occurrences impact-evidence manuscript-contract main.pdf
+impact-plan:
+	python3 scripts/validate_impact_manifest.py
+	python3 -B -m py_compile scripts/validate_impact_manifest.py
+
+checks: milestones agent-evidence agent-usage laptop-evidence incremental disagreement-witnesses stato-adjudication uo-witness ore current-tables km-causes route-glossary citation-occurrences impact-evidence impact-plan manuscript-contract main.pdf
 	bash -n scripts/collect_laptop_history.sh
 	bash -n scripts/collect_laptop_agentsview.sh
 	bash -n benchmark/*.sbatch

@@ -23,6 +23,8 @@
             <include>FreezeImports.java</include>
             <include>ProfileOntology.java</include>
             <include>ConvertSyntax.java</include>
+            <include>MakeELProjection.java</include>
+            <include>MergeOntologies.java</include>
           </includes>
         </configuration>
       </plugin>

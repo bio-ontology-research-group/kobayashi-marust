@@ -1,0 +1,8 @@
+id	title_or_artifact	version_or_date	url_or_repository_path	sha256_or_identity	notes
+w3c-owl2-profiles	OWL 2 Web Ontology Language Profiles (Second Edition)	2012-12-11	https://www.w3.org/TR/owl2-profiles/	W3C Recommendation	Normative profile boundary used by the generated EL-drop controls
+fma-source	Foundational Model of Anatomy official OWL	v5.1.0 resolved 2026-08-30	http://purl.obolibrary.org/obo/fma.owl	beb3dc47979ad5434ef70fd02af4307f147f2023f7d8c2c57103b995191194c3	Frozen merged SHA-256 aff1dfb7cdcd153ce6fb2f0e4899e29f60a7eec04940a48acbef7e9bd3fb4bb6
+ncit-source	NCI Thesaurus OBO Edition	VersionIRI 2026-03-19	http://purl.obolibrary.org/obo/ncit.owl	1f89a02063ff807183dcdc8eac43ef88f65d5eb525cc88709ee8c57fa5f9e780	Frozen merged SHA-256 2bd711eaf0f0df861ec417fe263aa2d492130f6be3fe05218ab6ff3e712b5ce6
+chebi-source	ChEBI FULL	VersionIRI 254	http://purl.obolibrary.org/obo/chebi.owl	4557df5b668394b371e6e75158ec9f7728424852ffdaa2e6a6975cfc31e461ba	Frozen merged SHA-256 ecac31adf0df48020379d85f7c8f9aefc76eb10981d23b2e0d79c8e8d3dd86d6
+galen-bioportal	GALEN BioPortal submission	v1.1 released 2007-01-09	https://bioportal.bioontology.org/ontologies/GALEN	NOT_ACQUIRED	Metadata verified; payload, checksum, and licence decision remain blocked
+snomed-owl-spec	SNOMED CT OWL Reference Set Specification	current documentation accessed 2026-09-04	https://docs.snomed.org/snomed-ct-specifications/snomed-ct-owl-reference-set-specification	DOCUMENTATION_ONLY	No licensed SNOMED CT content acquired
+fibo-q2-2026	Financial Industry Business Ontology production TBox	master_2026Q2	https://github.com/edmcouncil/fibo	f59157fe156e3d91b1c045222d0a7dc06b7d78a2	Proposed public non-biomedical experiment; closure must resolve only through pinned catalog

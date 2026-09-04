@@ -5,6 +5,12 @@ an OWL 2 EL classifier cannot establish after unsupported axioms are omitted.
 It separates executed results, failed executions, proposed experiments, and
 work blocked on a restricted input. The binding claim boundary is
 `ledger.tsv`; `evidence/results.tsv` summarizes every copied execution record.
+The broader forward experiment plan, including full-versus-EL controls for all
+named hard cases and two additional non-biomedical domains, is in
+[`../IMPACT-USE-CASE-LEDGER.md`](../IMPACT-USE-CASE-LEDGER.md); its
+scheduler-facing rows are
+[`../IMPACT-USE-CASE-MANIFEST.tsv`](../IMPACT-USE-CASE-MANIFEST.tsv). Proposed
+rows in that plan do not change the binding evidence states in this directory.
 
 ## Demonstrated now
 
@@ -54,7 +60,17 @@ classes, and 457,090 non-self subsumptions with identical taxonomy and relation
 digests. This ORE input is distinct from the planned current BioPortal GALEN
 hard case, which was not acquired because no BioPortal API key was available.
 
-## Failed or blocked now
+A newer guarded KM development artifact directly establishes consistency of
+the frozen current Uberon input. The exact captured internal TInput returned
+`consistent=true` in 4.46 s at 157,544 KiB peak RSS on Slurm job 51321154.
+The capture receipt binds that TInput to normalized Uberon SHA-256
+`13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93`;
+the direct-run receipt binds the TInput, guarded binary, output, host, job,
+elapsed time, and peak RSS. This operation requested consistency only. The
+empty `unsatisfiable` and `subsumptions` arrays in its output are not taxonomy
+results and do not establish coherence or any named-class relation count.
+
+## Partial, failed, or blocked now
 
 The frozen current Uberon input is OWL 2 DL but not OWL 2 EL. Its source
 VersionIRI is 2026-06-19; the `uberon-2026-06-23` receipt stem is a legacy job
@@ -64,8 +80,11 @@ and 12:34 at 17,604,952 KiB. Two route diagnostics also failed: the
 single-thread `production_all1` portfolio and `certified_nominals` portfolio
 each timed out at 3,600 seconds without output, at 577,736 and 3,146,808 KiB
 peak RSS respectively. None is a successful full-DL Uberon classification.
-The historical v1.3 current-OBO matrix likewise contains no completing
-expressive reasoner for this Uberon input; ELK and Whelk outputs are
+The guarded consistency result supersedes the earlier absence of a consistency
+verdict, but it does not supersede those taxonomy failures. Full taxonomy job
+51320320 remained running when checked on 2026-09-04 and is not yet
+established. The historical v1.3 current-OBO matrix likewise contains no
+completing expressive reasoner for this Uberon input; ELK and Whelk outputs are
 out-of-profile observations only.
 
 The first explanation array, job 51298402, failed before invoking KM because
@@ -91,9 +110,10 @@ from an inconsistent ontology after an individual instantiates an
 unsatisfiable class, and it can provide bounded source-axiom supports for
 review.
 
-This artifact establishes those points only for the controlled cases and the
-frozen ORE 2015 GALEN input. It does not establish full-DL classification of
-current Uberon, current BioPortal GALEN, or SNOMED CT. It also does not
+This artifact establishes those points for the controlled cases, the frozen
+ORE 2015 GALEN input, and the consistency-only guarded Uberon operation. It
+does not establish the full named-class taxonomy of current Uberon or full-DL
+classification of current BioPortal GALEN or SNOMED CT. It also does not
 reproduce the full iterative UNMIREOT repair workflow. Logical findings locate
 conflicting axioms; they do not determine which axiom, if any, is
 scientifically wrong.
@@ -128,5 +148,7 @@ python3 paper/benchmark/impact/validate_evidence.py
 ```
 
 The validator fails closed on missing or extra records, digest mismatches,
-unexpected successful Uberon routes, changed controlled-case axioms, stale
-ledger states, baseline outcome changes, or weakened explanation supports.
+changes to the guarded Uberon result or its source-to-TInput binding,
+confusion between its consistency-only output and taxonomy, changed
+controlled-case axioms, stale ledger states, baseline outcome changes, or
+weakened explanation supports.

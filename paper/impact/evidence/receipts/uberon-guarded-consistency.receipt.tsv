@@ -1,0 +1,7 @@
+binary_sha256	c9be93d3c3c0701a175658c8ba935db0a29df420493e8ed7c1b32f85f5eb2805
+tinput_sha256	01dca21c579745be5e8e5eca9d8b752d7811070a69475f73441b9150ae0853c6
+output_sha256	d9e29cb6ed8c1a516ae4cbdf8d17f70d518fbe789860e365cdb3d5f26b52a6b4
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:04.46
+	Maximum resident set size (kbytes): 157544
+slurm_job_id	51321154
+host	dgpu609-14

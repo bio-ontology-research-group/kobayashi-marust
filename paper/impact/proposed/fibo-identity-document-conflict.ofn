@@ -1,0 +1,12 @@
+Prefix(:=<http://example.org/km-impact/fibo#>)
+Ontology(<http://example.org/km-impact/fibo-identity-document-conflict>
+ Declaration(NamedIndividual(:document))
+ Declaration(NamedIndividual(:address-one))
+ Declaration(NamedIndividual(:address-two))
+ ClassAssertion(<https://spec.edmcouncil.org/fibo/ontology/FND/AgentsAndPeople/People/IdentityDocument> :document)
+ ClassAssertion(<https://spec.edmcouncil.org/fibo/ontology/FND/Places/Addresses/PhysicalAddress> :address-one)
+ ClassAssertion(<https://spec.edmcouncil.org/fibo/ontology/FND/Places/Addresses/PhysicalAddress> :address-two)
+ ObjectPropertyAssertion(<https://spec.edmcouncil.org/fibo/ontology/FND/Agreements/Contracts/isEvidenceFor> :document :address-one)
+ ObjectPropertyAssertion(<https://spec.edmcouncil.org/fibo/ontology/FND/Agreements/Contracts/isEvidenceFor> :document :address-two)
+ DifferentIndividuals(:address-one :address-two)
+)

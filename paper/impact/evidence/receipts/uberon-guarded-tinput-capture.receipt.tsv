@@ -1,0 +1,7 @@
+job_id	51319644
+exit_code	124
+host	dgpu609-14
+cpu_model	Intel(R) Xeon(R) CPU E5-2699 v3 @ 2.30GHz
+binary_sha256	2eb8f5619737812b9651765db1648fa401218716ec144f62369aefd09e59a362
+ontology_sha256	13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93
+output_bytes	0
