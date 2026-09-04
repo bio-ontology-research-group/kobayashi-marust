@@ -4,7 +4,7 @@
 //! `local_name` and the `_short_iri` / `_short_owner` maps. The registry is
 //! reset per ontology (`reset_short` in Python; a fresh `IriRegistry` here).
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap;
 
 const OWL_THING_IRI: &str = "http://www.w3.org/2002/07/owl#Thing";
 const OWL_NOTHING_IRI: &str = "http://www.w3.org/2002/07/owl#Nothing";
@@ -62,9 +62,9 @@ pub fn short_base(name: &str) -> String {
 #[derive(Default)]
 pub struct IriRegistry {
     /// full IRI -> assigned unique short name
-    short_iri: HashMap<String, String>,
+    short_iri: FxHashMap<String, String>,
     /// short name -> full IRI that owns it
-    short_owner: HashMap<String, String>,
+    short_owner: FxHashMap<String, String>,
 }
 
 impl IriRegistry {
@@ -76,14 +76,17 @@ impl IriRegistry {
     /// unique local names are returned unchanged.
     pub fn short(&mut self, name: &str) -> String {
         let raw = name.trim();
-        let full = if raw.starts_with('<') && raw.ends_with('>') {
-            raw[1..raw.len() - 1].to_string()
+        let full: &str = if raw.starts_with('<') && raw.ends_with('>') {
+            &raw[1..raw.len() - 1]
         } else {
-            raw.to_string()
+            raw
         };
-        if let Some(cached) = self.short_iri.get(&full) {
+        // Every occurrence of an already registered symbol takes this path.
+        // Probe with the borrowed spelling; only a first sighting owns a copy.
+        if let Some(cached) = self.short_iri.get(full) {
             return cached.clone();
         }
+        let full = full.to_string();
         if let Some(builtin) = owl_builtin_class(name) {
             // Builtins are semantic constants rather than source-owned named
             // classes. Canonicalise both abbreviated and full spellings.
@@ -238,5 +241,132 @@ mod tests {
             assert_eq!(reg.full_iri(&internal), full);
             assert!(reg.is_named_iri(&internal));
         }
+    }
+}
+
+#[cfg(test)]
+mod borrowed_lookup_tests {
+    use super::*;
+
+    /// The pre-optimisation registry: an owned copy of every spelling on every
+    /// probe, over the standard hasher. Kept verbatim as the oracle for the
+    /// borrowed lookup path.
+    #[derive(Default)]
+    struct ReferenceRegistry {
+        short_iri: std::collections::HashMap<String, String>,
+        short_owner: std::collections::HashMap<String, String>,
+    }
+
+    impl ReferenceRegistry {
+        fn short(&mut self, name: &str) -> String {
+            let raw = name.trim();
+            let full = if raw.starts_with('<') && raw.ends_with('>') {
+                raw[1..raw.len() - 1].to_string()
+            } else {
+                raw.to_string()
+            };
+            if let Some(cached) = self.short_iri.get(&full) {
+                return cached.clone();
+            }
+            if let Some(builtin) = owl_builtin_class(name) {
+                self.short_iri.insert(full, builtin.to_string());
+                return builtin.to_string();
+            }
+            let raw_base = short_base(name);
+            let base = if reserved_internal_prefix(&raw_base) {
+                format!("km_src_{raw_base}")
+            } else {
+                raw_base.clone()
+            };
+            let mut cand = base.clone();
+            if let Some(owner) = self.short_owner.get(&cand) {
+                if owner != &full {
+                    let ns: &str = full[..full.len().saturating_sub(raw_base.len())]
+                        .trim_end_matches(['#', '/', ':']);
+                    let tag = {
+                        let t = short_base(ns);
+                        if t.is_empty() {
+                            "ns".to_string()
+                        } else {
+                            t
+                        }
+                    };
+                    cand = format!("{}__{}", base, tag);
+                    let mut i = 2;
+                    while self
+                        .short_owner
+                        .get(&cand)
+                        .map(|s| s.as_str())
+                        .unwrap_or(full.as_str())
+                        != full.as_str()
+                    {
+                        cand = format!("{}__{}{}", base, tag, i);
+                        i += 1;
+                    }
+                }
+            }
+            self.short_owner.insert(cand.clone(), full.clone());
+            self.short_iri.insert(full, cand.clone());
+            cand
+        }
+    }
+
+    #[test]
+    fn borrowed_probe_matches_the_owned_reference_on_every_spelling() {
+        let spellings = [
+            "<http://a.example/onto#Cell>",
+            "<http://b.example/onto#Cell>",
+            "<http://c.example/onto/Cell>",
+            "<http://a.example/onto#Cell>",
+            " <http://a.example/onto#Cell> ",
+            "ex:Cell",
+            ":Cell",
+            "Cell",
+            "<Cell>",
+            "<>",
+            "",
+            "owl:Thing",
+            "<http://www.w3.org/2002/07/owl#Thing>",
+            "owl:Nothing",
+            "<http://www.w3.org/2002/07/owl#Nothing>",
+            "<http://x.example#Thing>",
+            "<http://x.example#__A>",
+            "<http://y.example#__A>",
+            "<http://x.example#Q_1>",
+            "<http://x.example#def_A>",
+            "<http://x.example#aux_A>",
+            "<http://z.example#Cell>",
+            "<http://z.example/#Cell>",
+            "<http://z.example/Cell#>",
+            "<http://a.example/onto#Cell__ns>",
+            "<http://q.example#Cell__ns>",
+            "<http://q.example#Cell>",
+            "<urn:isbn:123>",
+            "<http://a.example/onto#>",
+        ];
+        let mut reference = ReferenceRegistry::default();
+        let mut registry = IriRegistry::new();
+        // Repeat the whole sequence so every spelling is also probed as a hit.
+        for spelling in spellings.iter().chain(spellings.iter().rev()) {
+            assert_eq!(
+                registry.short(spelling),
+                reference.short(spelling),
+                "{spelling:?}"
+            );
+        }
+        let mut entries: Vec<_> = registry.owned_entries().collect();
+        entries.sort_unstable();
+        let mut expected: Vec<_> = reference
+            .short_owner
+            .iter()
+            .map(|(name, iri)| (name.as_str(), iri.as_str()))
+            .collect();
+        expected.sort_unstable();
+        assert_eq!(entries, expected);
+        for (internal, iri) in entries {
+            assert!(registry.is_named_iri(internal));
+            assert_eq!(registry.full_iri(internal), iri);
+        }
+        assert!(!registry.is_named_iri("owl:Thing"));
     }
 }

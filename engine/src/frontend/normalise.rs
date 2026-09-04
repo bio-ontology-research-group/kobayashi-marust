@@ -12,10 +12,12 @@
 //! cache and `needs_forall_intro` set are keyed on structural concept equality,
 //! exactly like Python's frozen dataclasses.
 
-use std::collections::{HashMap, HashSet};
+use std::borrow::Cow;
+use std::collections::HashMap;
 
 use super::clauses::{clause, constraint, fact, var_x, var_y, Atom, DLClause, Term};
 use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role};
+use crate::fxhash::{FxHashMap, FxHashSet};
 use crate::json_io::DefinerKind;
 
 /// Side-channel hooks (nominal -> individual, role inverses). We only need the
@@ -72,6 +74,58 @@ pub fn nnf(c: &Concept) -> Concept {
     }
 }
 
+/// Whether `nnf(c)` returns a concept structurally equal to `c`.
+///
+/// This is decided syntactically, mirroring the constructors `nnf` and
+/// `mk_and`/`mk_or` apply: leaves are fixed; a negation is fixed only over a
+/// name, nominal, or self restriction (every other operand is pushed
+/// through); a conjunction or disjunction is fixed when it has at least two
+/// operands, none of which is the absorbing or neutral constant or a nested
+/// operator of the same kind, and all of which are fixed themselves; a
+/// restriction is fixed when its filler is. Concepts built by the parser
+/// through `mk_and`/`mk_or` satisfy every set condition by construction, so
+/// negation-free source axioms (every EL ontology) take the copy-free path.
+fn nnf_fixed(c: &Concept) -> bool {
+    match c {
+        Concept::Name(_)
+        | Concept::Top
+        | Concept::Bottom
+        | Concept::Nominal(_)
+        | Concept::HasSelf(_) => true,
+        Concept::Not(inner) => matches!(
+            inner.as_ref(),
+            Concept::Name(_) | Concept::Nominal(_) | Concept::HasSelf(_)
+        ),
+        Concept::And(cs) => {
+            cs.len() >= 2
+                && cs.iter().all(|d| {
+                    !matches!(d, Concept::Top | Concept::Bottom | Concept::And(_)) && nnf_fixed(d)
+                })
+        }
+        Concept::Or(cs) => {
+            cs.len() >= 2
+                && cs.iter().all(|d| {
+                    !matches!(d, Concept::Top | Concept::Bottom | Concept::Or(_)) && nnf_fixed(d)
+                })
+        }
+        Concept::Exists(_, f)
+        | Concept::Forall(_, f)
+        | Concept::AtLeast(_, _, f)
+        | Concept::AtMost(_, _, f) => nnf_fixed(f),
+    }
+}
+
+/// `nnf` without the deep copy when the input already is its own negation
+/// normal form. The value is always equal to `nnf(c)`; only the ownership
+/// differs, so every consumer sees the identical concept.
+pub fn nnf_cow(c: &Concept) -> Cow<'_, Concept> {
+    if nnf_fixed(c) {
+        Cow::Borrowed(c)
+    } else {
+        Cow::Owned(nnf(c))
+    }
+}
+
 fn nnf_not(b: &Concept) -> Concept {
     match b {
         Concept::Top => Concept::Bottom,
@@ -108,24 +162,24 @@ pub struct Clausifier {
     counter: u64,
     role_counter: u64,
     prefix: String,
-    reified: HashMap<Concept, String>,
+    reified: FxHashMap<Concept, String>,
     pub clauses: Vec<DLClause>,
     pub hooks: GroundHooks,
     universal_role_emitted: bool,
-    pub needs_forall_intro: HashSet<Concept>,
+    pub needs_forall_intro: FxHashSet<Concept>,
     /// Polarities at which each `AtLeast` concept occurs (from the pre-pass).
     /// The n ≥ 2 recognition clause is expensive (multi-variable body, all-
     /// pairs equality head), so it is emitted only when the concept may occur
     /// negatively: seen negative, or not seen by the pre-pass at all (the
     /// conservative default — only a pre-pass-PROVEN positive-only occurrence
     /// skips it, so unseen occurrences keep the complete behaviour).
-    pub atleast_pos: HashSet<Concept>,
-    pub atleast_neg: HashSet<Concept>,
+    pub atleast_pos: FxHashSet<Concept>,
+    pub atleast_neg: FxHashSet<Concept>,
     /// Same for `AtMost`: the recognition direction (`≤n r.F ⊑ Q` via
     /// excluded middle + n+1 distinct witnesses) is emitted only when the
     /// concept may occur negatively.
-    pub atmost_pos: HashSet<Concept>,
-    pub atmost_neg: HashSet<Concept>,
+    pub atmost_pos: FxHashSet<Concept>,
+    pub atmost_neg: FxHashSet<Concept>,
     /// Polarity-gated definitional clausification (KM_ABSORB, default off).
     /// For a reified And/Or/Not concept, emit the definition direction `Q → C`
     /// only when C occurs positively and the recognition direction `C → Q` only
@@ -136,8 +190,8 @@ pub struct Clausifier {
     /// Verdict-preserving (equisatisfiable), validated by classification result
     /// vs gold, not byte-identical output.
     absorb: bool,
-    def_pos: HashSet<Concept>,
-    def_neg: HashSet<Concept>,
+    def_pos: FxHashSet<Concept>,
+    def_neg: FxHashSet<Concept>,
     /// KM_HT_CARD: when set, `define` records each `≥n`/`≤n` restriction (and the
     /// `≥(n+1)` recognition proxy) into `hooks.cardinalities` as a first-class
     /// `CardMeta`. The clausal expansion is still emitted unchanged (the CB engine
@@ -169,20 +223,20 @@ impl Clausifier {
             counter: 0,
             role_counter: 0,
             prefix: "Q_".to_string(),
-            reified: HashMap::new(),
+            reified: FxHashMap::default(),
             clauses: Vec::new(),
             hooks: GroundHooks::default(),
             universal_role_emitted: false,
-            needs_forall_intro: HashSet::new(),
-            atleast_pos: HashSet::new(),
-            atleast_neg: HashSet::new(),
-            atmost_pos: HashSet::new(),
-            atmost_neg: HashSet::new(),
+            needs_forall_intro: FxHashSet::default(),
+            atleast_pos: FxHashSet::default(),
+            atleast_neg: FxHashSet::default(),
+            atmost_pos: FxHashSet::default(),
+            atmost_neg: FxHashSet::default(),
             absorb: std::env::var("KM_ABSORB")
                 .map(|s| s != "0")
                 .unwrap_or(false),
-            def_pos: HashSet::new(),
-            def_neg: HashSet::new(),
+            def_pos: FxHashSet::default(),
+            def_neg: FxHashSet::default(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             native_cardinality_only,
             trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
@@ -967,6 +1021,7 @@ impl Default for Clausifier {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     /// `≥n r.F` (n ≥ 2) must get a recognition clause
     /// `r(x,y0) ∧ F(y0) ∧ ... ∧ r(x,y_{n-1}) ∧ F(y_{n-1}) → Q ∨ ⋁ yi≈yj`,
@@ -1317,17 +1372,19 @@ pub fn normalise_with_native_cardinality(
     let x = var_x();
     let y = var_y();
 
-    // Polarity pre-pass.
+    // Polarity pre-pass. `nnf_cow` borrows every axiom side that already is
+    // in negation normal form (all of them on an EL ontology), so the two
+    // passes below no longer deep-copy each source concept twice.
     for ax in ontology.tbox() {
         match ax {
             Axiom::SubClassOf(sub, sup) => {
-                let s = nnf(sub);
-                let p = nnf(sup);
+                let s = nnf_cow(sub);
+                let p = nnf_cow(sup);
                 clausifier.mark_subclass_polarity(&s, &p);
             }
             Axiom::EquivalentClasses(l, r) => {
-                let nl = nnf(l);
-                let nr = nnf(r);
+                let nl = nnf_cow(l);
+                let nr = nnf_cow(r);
                 clausifier.mark_subclass_polarity(&nl, &nr);
                 clausifier.mark_subclass_polarity(&nr, &nl);
             }
@@ -1343,31 +1400,31 @@ pub fn normalise_with_native_cardinality(
     for ax in ontology.tbox() {
         match ax {
             Axiom::SubClassOf(sub, sup) => {
-                let s = nnf(sub);
-                let p = nnf(sup);
+                let s = nnf_cow(sub);
+                let p = nnf_cow(sup);
                 if clausifier.trigger_absorb {
                     clausifier
                         .hooks
                         .source_axioms
                         .push(crate::json_io::SourceAxiomMeta {
                             kind: crate::json_io::SourceAxiomKind::SubClass,
-                            left: s.clone(),
-                            right: p.clone(),
+                            left: s.clone().into_owned(),
+                            right: p.clone().into_owned(),
                         });
                 }
                 clausifier.subclass_clauses(&s, &p);
             }
             Axiom::EquivalentClasses(l, r) => {
-                let nl = nnf(l);
-                let nr = nnf(r);
+                let nl = nnf_cow(l);
+                let nr = nnf_cow(r);
                 if clausifier.trigger_absorb {
                     clausifier
                         .hooks
                         .source_axioms
                         .push(crate::json_io::SourceAxiomMeta {
                             kind: crate::json_io::SourceAxiomKind::Equivalent,
-                            left: nl.clone(),
-                            right: nr.clone(),
+                            left: nl.clone().into_owned(),
+                            right: nr.clone().into_owned(),
                         });
                 }
                 clausifier.subclass_clauses(&nl, &nr);
@@ -1531,7 +1588,7 @@ pub fn normalise_with_native_cardinality(
             Axiom::ConceptAssertion(concept, individual) => {
                 clausifier.register_abox_individual(individual);
                 let ind = Term::Ind(individual.clone());
-                let nc = nnf(concept);
+                let nc = nnf_cow(concept);
                 let q = clausifier.q(&nc);
                 abox_clauses.push(fact([Atom::Concept(q, ind)]));
             }
@@ -1628,5 +1685,207 @@ mod chain_compilation_tests {
             })
             .count();
         assert_eq!(retained, 3, "preprocessing filtered a certified chain rule");
+    }
+}
+
+#[cfg(test)]
+mod nnf_cow_tests {
+    use super::*;
+    use crate::frontend::iri::IriRegistry;
+    use crate::frontend::parse;
+
+    fn name(n: &str) -> Concept {
+        Concept::Name(n.to_string())
+    }
+    fn role(r: &str) -> Role {
+        Role::Name(r.to_string())
+    }
+    fn not(c: Concept) -> Concept {
+        Concept::Not(Box::new(c))
+    }
+    fn some(r: &str, c: Concept) -> Concept {
+        Concept::Exists(role(r), Box::new(c))
+    }
+    fn all(r: &str, c: Concept) -> Concept {
+        Concept::Forall(role(r), Box::new(c))
+    }
+    fn at_least(n: i64, r: &str, c: Concept) -> Concept {
+        Concept::AtLeast(n, role(r), Box::new(c))
+    }
+    fn at_most(n: i64, r: &str, c: Concept) -> Concept {
+        Concept::AtMost(n, role(r), Box::new(c))
+    }
+    /// Raw set constructors bypass `mk_and`/`mk_or`, so they can build the
+    /// degenerate shapes (constants, singletons, same-kind nesting) whose
+    /// normal form differs from the input.
+    fn raw_and(cs: impl IntoIterator<Item = Concept>) -> Concept {
+        Concept::And(cs.into_iter().collect())
+    }
+    fn raw_or(cs: impl IntoIterator<Item = Concept>) -> Concept {
+        Concept::Or(cs.into_iter().collect())
+    }
+
+    /// Every constructor at both polarities plus the degenerate set shapes.
+    fn family() -> Vec<Concept> {
+        let a = || name("A");
+        let b = || name("B");
+        let leaves = vec![
+            a(),
+            Concept::Top,
+            Concept::Bottom,
+            Concept::Nominal("i".into()),
+            Concept::HasSelf(role("r")),
+        ];
+        let mut out = leaves.clone();
+        for leaf in &leaves {
+            out.push(not(leaf.clone()));
+            out.push(not(not(leaf.clone())));
+            out.push(some("r", leaf.clone()));
+            out.push(all("r", leaf.clone()));
+            out.push(not(some("r", leaf.clone())));
+            out.push(not(all("r", leaf.clone())));
+        }
+        out.extend([
+            mk_and([a(), b()]),
+            mk_or([a(), b()]),
+            not(mk_and([a(), b()])),
+            not(mk_or([a(), not(b())])),
+            mk_and([a(), some("r", mk_or([b(), not(a())]))]),
+            mk_and([a(), mk_or([b(), mk_and([a(), name("C")])])]),
+            some("r", mk_and([a(), some("s", b())])),
+            all("r", not(mk_and([a(), b()]))),
+            at_least(0, "r", a()),
+            at_least(2, "r", a()),
+            at_most(1, "r", not(a())),
+            not(at_least(0, "r", a())),
+            not(at_least(3, "r", a())),
+            not(at_most(2, "r", mk_and([a(), b()]))),
+            Concept::Exists(Role::Inverse("r".into()), Box::new(a())),
+            Concept::Forall(Role::Universal, Box::new(not(a()))),
+            // Degenerate sets: `nnf` re-normalises them through `mk_and`/`mk_or`.
+            raw_and([a(), Concept::Top]),
+            raw_and([a(), Concept::Bottom]),
+            raw_and([a()]),
+            raw_and([]),
+            raw_or([a(), Concept::Bottom]),
+            raw_or([a(), Concept::Top]),
+            raw_or([b()]),
+            raw_or([]),
+            raw_and([raw_and([a(), b()]), name("C")]),
+            raw_or([raw_or([a(), b()]), name("C")]),
+            raw_and([raw_or([a()]), b()]),
+            raw_and([a(), raw_and([b(), Concept::Top])]),
+            some("r", raw_and([a()])),
+            not(raw_and([a(), Concept::Top])),
+        ]);
+        out
+    }
+
+    #[test]
+    fn nnf_cow_is_nnf_on_every_family_member() {
+        for c in family() {
+            let cow = nnf_cow(&c);
+            assert_eq!(*cow, nnf(&c), "{c:?}");
+            if let Cow::Borrowed(borrowed) = &cow {
+                assert_eq!(*borrowed, &c);
+            }
+        }
+    }
+
+    #[test]
+    fn a_negation_normal_form_is_always_its_own_fixpoint() {
+        // Structural induction witness: the output of `nnf` never needs a copy.
+        for c in family() {
+            let normal = nnf(&c);
+            assert!(
+                matches!(nnf_cow(&normal), Cow::Borrowed(_)),
+                "nnf output must be borrowed: {normal:?}"
+            );
+            assert!(matches!(nnf_cow(&nnf(&normal)), Cow::Borrowed(_)));
+        }
+    }
+
+    #[test]
+    fn transformed_shapes_are_owned() {
+        let a = || name("A");
+        for c in [
+            not(not(a())),
+            not(mk_and([a(), name("B")])),
+            not(some("r", a())),
+            not(at_least(2, "r", a())),
+            raw_and([a(), Concept::Top]),
+            raw_or([a()]),
+            raw_and([raw_and([a(), name("B")]), name("C")]),
+            some("r", raw_and([a()])),
+        ] {
+            assert!(matches!(nnf_cow(&c), Cow::Owned(_)), "{c:?}");
+            assert_ne!(*nnf_cow(&c), c);
+        }
+    }
+
+    #[test]
+    fn parser_built_el_axioms_take_the_borrowed_path() {
+        let text = "Ontology(\
+            SubClassOf(<http://e#A> ObjectSomeValuesFrom(<http://e#r> <http://e#B>)) \
+            SubClassOf(ObjectIntersectionOf(<http://e#A> <http://e#B>) <http://e#C>) \
+            EquivalentClasses(<http://e#D> ObjectIntersectionOf(<http://e#A> \
+                ObjectSomeValuesFrom(<http://e#r> ObjectIntersectionOf(<http://e#B> <http://e#C>)))) \
+            DisjointClasses(<http://e#A> <http://e#C>) \
+            SubClassOf(<http://e#E> ObjectComplementOf(ObjectSomeValuesFrom(<http://e#r> <http://e#A>))))";
+        let mut reg = IriRegistry::new();
+        let ontology = parse::parse_axioms(&mut reg, text).expect("parse");
+        let mut borrowed = 0;
+        let mut owned = 0;
+        for axiom in ontology.tbox() {
+            let sides = match axiom {
+                Axiom::SubClassOf(l, r)
+                | Axiom::EquivalentClasses(l, r)
+                | Axiom::DisjointClasses(l, r) => [l, r],
+                _ => unreachable!(),
+            };
+            for side in sides {
+                match nnf_cow(side) {
+                    Cow::Borrowed(_) => borrowed += 1,
+                    Cow::Owned(_) => owned += 1,
+                }
+            }
+        }
+        // Only the negated existential is rewritten; every EL side is shared.
+        assert_eq!((borrowed, owned), (9, 1));
+    }
+
+    #[test]
+    fn normalisation_output_is_unchanged_by_the_shared_path() {
+        // The driver must emit the same clause set whether or not its inputs
+        // are shared: compare against a run over pre-normalised (owned) copies.
+        let text = "Ontology(\
+            SubClassOf(<http://e#A> ObjectSomeValuesFrom(<http://e#r> <http://e#B>)) \
+            SubClassOf(ObjectSomeValuesFrom(<http://e#r> <http://e#B>) <http://e#C>) \
+            EquivalentClasses(<http://e#D> ObjectIntersectionOf(<http://e#A> <http://e#C>)) \
+            DisjointClasses(<http://e#A> <http://e#C>) \
+            SubClassOf(<http://e#E> ObjectComplementOf(ObjectAllValuesFrom(<http://e#r> <http://e#A>))) \
+            SubClassOf(<http://e#F> ObjectMaxCardinality(1 <http://e#r> <http://e#A>)) \
+            ClassAssertion(ObjectComplementOf(<http://e#A>) <http://e#i>))";
+        let mut reg = IriRegistry::new();
+        let ontology = parse::parse_axioms(&mut reg, text).expect("parse");
+        let mut normalised = Ontology::new();
+        for axiom in ontology
+            .tbox()
+            .chain(ontology.rbox())
+            .chain(ontology.abox())
+        {
+            normalised.add(match axiom {
+                Axiom::SubClassOf(l, r) => Axiom::SubClassOf(nnf(l), nnf(r)),
+                Axiom::EquivalentClasses(l, r) => Axiom::EquivalentClasses(nnf(l), nnf(r)),
+                Axiom::DisjointClasses(l, r) => Axiom::DisjointClasses(nnf(l), nnf(r)),
+                Axiom::ConceptAssertion(c, i) => Axiom::ConceptAssertion(nnf(c), i.clone()),
+                other => other.clone(),
+            });
+        }
+        let (tbox, abox, _) = normalise(&ontology);
+        let (tbox_ref, abox_ref, _) = normalise(&normalised);
+        assert_eq!(tbox, tbox_ref);
+        assert_eq!(abox, abox_ref);
+        assert!(tbox.len() > 10);
     }
 }

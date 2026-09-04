@@ -1144,8 +1144,14 @@ fn classify_with_evidence_mode(
     {
         let production_attempt = {
             let _probe_environment = crate::routing::EnvironmentGuard::capture();
-            crate::routing::Route::ProductionAll.apply_environment();
-            std::env::set_var("KM_ROUTE", crate::routing::Route::ProductionAll.as_str());
+            let production_route =
+                if crate::routing::small_horn_abox_plain_cb_candidate(&meta.profile) {
+                    crate::routing::Route::CbPortfolio16
+                } else {
+                    crate::routing::Route::ProductionAll
+                };
+            production_route.apply_environment();
+            std::env::set_var("KM_ROUTE", production_route.as_str());
             std::env::set_var("KM_EL_ABOX_CHECK", "1");
             let production_cfg = Config::from_env();
             classify_with_evidence_mode(&production_cfg, ont, retain_grouped_output)
@@ -1236,6 +1242,7 @@ fn classify_with_evidence_mode(
     // Capture them before `apply_environment` clears the route keys so the
     // caller's own worker count always survives route selection.
     let elc_par_ctx_request = std::env::var_os("KM_ELC_PAR_CTX");
+    let sequential_elc_request = std::env::var_os("KM_ELC_SEQUENTIAL");
     let routed_cfg = if matches!(
         selected_route,
         crate::routing::Route::Auto | crate::routing::Route::Manual
@@ -1247,6 +1254,13 @@ fn classify_with_evidence_mode(
         // manual mode so the absorption portfolio can explicitly request its
         // plain/absorbed pass without the tree overriding it.
         selected_route.apply_environment();
+        // Like explicit worker counts, this is a caller-selected scheduling
+        // mode rather than a route-bundle setting. Preserve it across the
+        // route environment reset so the fail-closed sequential certificate
+        // portfolio is actually reached.
+        if let Some(value) = sequential_elc_request.as_deref() {
+            std::env::set_var("KM_ELC_SEQUENTIAL", value);
+        }
         if let Some(workers) = ht_par_request.as_deref() {
             std::env::set_var("KM_HT_PAR", workers);
         }
@@ -1684,12 +1698,20 @@ fn classify_with_evidence_mode(
             // Suppress that outer EL race when tableau racing is requested; the
             // normal bare-EL fast path still gets first refusal, and a non-EL input
             // reaches the documented absorbed-CB-vs-tableau procedure below.
-            let portfolio_on = use_elc_portfolio(
-                cfg.elc && elc_source_publication_safe(&meta.profile),
-                cfg.elc_portfolio,
-                is_giant,
-                cfg.tab_race,
-            );
+            // An explicitly selected sequential certificate route is itself
+            // fail-closed: ELC may answer only after certifying completeness,
+            // and every residue is discharged by exact CB.  Publication-safe
+            // and giant-file gates are scheduling hints for the concurrent
+            // default race, not semantic prerequisites for this memory-first
+            // route.
+            let sequential_elc = cfg.elc && std::env::var_os("KM_ELC_SEQUENTIAL").is_some();
+            let portfolio_on = sequential_elc
+                || use_elc_portfolio(
+                    cfg.elc && elc_source_publication_safe(&meta.profile),
+                    cfg.elc_portfolio,
+                    is_giant,
+                    cfg.tab_race,
+                );
             let mut out: Option<EngineOut> = None;
             let (elc_prog, elc_pre) = cfg.elc_cmd();
 

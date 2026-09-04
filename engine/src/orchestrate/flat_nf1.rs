@@ -46,6 +46,90 @@ fn input_format_allows_direct(value: Option<&str>) -> bool {
     })
 }
 
+/// Line prefixes that at least one screen in this module accepts (each screen
+/// matches an exact line shape, and every shape starts with one of these).
+/// Any other non-empty trimmed line makes every screen decline.
+const SCREEN_ACCEPTED_LINE_PREFIXES: &[&str] = &[
+    ")",
+    "Prefix(",
+    "Ontology(",
+    "Declaration(Class(<",
+    "Declaration(ObjectProperty(<",
+    "SubClassOf(",
+    "EquivalentClasses(<",
+    "DisjointClasses(<",
+    "ClassAssertion(",
+    "DifferentIndividuals(<",
+    "TransitiveObjectProperty(<",
+    "SymmetricObjectProperty(<",
+    "ReflexiveObjectProperty(<",
+    "SubObjectPropertyOf(",
+    "InverseObjectProperties(<",
+    "EquivalentObjectProperties(<",
+];
+
+/// Decide from line shapes alone that every screen below must decline.
+///
+/// Each screen reads the source line by line and returns its negative verdict
+/// at the first line it does not accept, while a positive verdict needs the
+/// whole document. One line that no screen accepts therefore settles the
+/// probe, and finding it first skips the work the screens spend on the
+/// accepted lines before it: the sparse Horn reader interns every class and
+/// edge it passes, and on a 40 MB EL taxonomy reached its first equivalence
+/// axiom only after two thirds of the file. Three shapes are certain:
+///
+/// 1. a line starting with none of [`SCREEN_ACCEPTED_LINE_PREFIXES`];
+/// 2. an `EquivalentClasses(` line below the mixed-definition size: the
+///    sparse reader admits equivalences only with mixed definitions, and no
+///    other screen has an equivalence arm;
+/// 3. an existential-left subclass axiom together with a binary role axiom
+///    other than the tautological `⊑ owl:topObjectProperty`: only the sparse
+///    reader accepts the former, and it declines after its loop whenever it
+///    has recorded such a role axiom (or per line if either fails its exact
+///    parse).
+///
+/// The scan uses the screens' own `read_line` + `trim` view of the document,
+/// so it raises the same error they would on invalid UTF-8.
+fn source_certainly_declines<R: BufRead>(
+    mut reader: R,
+    allow_mixed_definitions: bool,
+) -> io::Result<bool> {
+    let mut line = String::new();
+    let mut existential_lhs = false;
+    let mut nf4_rbox = false;
+    loop {
+        line.clear();
+        if reader.read_line(&mut line)? == 0 {
+            return Ok(false);
+        }
+        let text = line.trim();
+        if text.is_empty() {
+            continue;
+        }
+        if !SCREEN_ACCEPTED_LINE_PREFIXES
+            .iter()
+            .any(|prefix| text.starts_with(prefix))
+        {
+            return Ok(true);
+        }
+        if !allow_mixed_definitions && text.starts_with("EquivalentClasses(") {
+            return Ok(true);
+        }
+        if text.starts_with("SubClassOf(ObjectSomeValuesFrom(<") {
+            existential_lhs = true;
+        } else if text.starts_with("InverseObjectProperties(<")
+            || text.starts_with("EquivalentObjectProperties(<")
+            || (text.starts_with("SubObjectPropertyOf(<")
+                && !text.ends_with("> owl:topObjectProperty)"))
+        {
+            nf4_rbox = true;
+        }
+        if existential_lhs && nf4_rbox {
+            return Ok(true);
+        }
+    }
+}
+
 fn source_has_class_assertion<R: BufRead>(mut reader: R) -> io::Result<bool> {
     let mut line = String::new();
     loop {
@@ -435,13 +519,26 @@ pub(super) fn try_classify(path: &Path) -> io::Result<Option<GroupedJsonTaxonomy
     let sparse_horn_candidate = source_bytes >= MIN_SPARSE_HORN_SOURCE_BYTES
         || (source_bytes >= MIN_SPARSE_HORN_ABOX_SOURCE_BYTES
             && source_has_class_assertion(BufReader::with_capacity(1 << 20, File::open(path)?))?);
+    // The readers below intern the whole prefix of the document they accept
+    // before a later line can decline them. In the band where an expensive
+    // reader runs but mixed definitions are not yet admitted, one prefix scan
+    // finds a certainly declining line first; sources above that size keep
+    // their unchanged readers.
+    let allow_mixed_definitions = source_bytes >= MIN_MIXED_SPARSE_SOURCE_BYTES;
+    if (sparse_horn_candidate || source_bytes >= MIN_DIRECT_SOURCE_BYTES)
+        && !allow_mixed_definitions
+        && source_certainly_declines(
+            BufReader::with_capacity(1 << 20, File::open(path)?),
+            allow_mixed_definitions,
+        )?
+    {
+        return Ok(None);
+    }
     if sparse_horn_candidate {
         let reader = BufReader::with_capacity(1 << 20, File::open(path)?);
-        if let Some(result) = classify_sparse_horn_reader(
-            reader,
-            MIN_SPARSE_HORN_NAMES,
-            source_bytes >= MIN_MIXED_SPARSE_SOURCE_BYTES,
-        )? {
+        if let Some(result) =
+            classify_sparse_horn_reader(reader, MIN_SPARSE_HORN_NAMES, allow_mixed_definitions)?
+        {
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("KM_TIMING source certificate route=sparse_horn_taxonomy");
             }
@@ -2494,5 +2591,147 @@ ClassAssertion(<http://e/A> <http://e/a>)\n)\n",
                 .unwrap()
                 .is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod certain_decline_tests {
+    use super::*;
+
+    fn declarations(count: usize) -> String {
+        let mut text = String::from("Ontology(<http://example.org/o>\n");
+        for index in 0..count {
+            text.push_str(&format!("Declaration(Class(<http://e/C{index:04}>))\n"));
+        }
+        text.push_str("Declaration(ObjectProperty(<http://e/r>))\n");
+        text.push_str("Declaration(ObjectProperty(<http://e/s>))\n");
+        text
+    }
+
+    /// A source every screen family can accept: named edges, existential
+    /// leaves, one transitive role, and a tautological top-role inclusion.
+    fn accepted_body() -> &'static str {
+        "SubClassOf(<http://e/C0001> <http://e/C0002>)\n\
+         SubClassOf(<http://e/C0002> <http://e/C0003>)\n\
+         SubClassOf(<http://e/C0003> ObjectSomeValuesFrom(<http://e/r> <http://e/C0004>))\n\
+         TransitiveObjectProperty(<http://e/r>)\n\
+         SubObjectPropertyOf(<http://e/r> owl:topObjectProperty)\n"
+    }
+
+    fn source(extra: &str) -> String {
+        let mut text = declarations(1_200);
+        text.push_str(accepted_body());
+        text.push_str(extra);
+        text.push_str(")\n");
+        text
+    }
+
+    fn every_screen_declines(text: &str) -> bool {
+        classify_sparse_horn_reader(text.as_bytes(), 1, false)
+            .unwrap()
+            .is_none()
+            && !positive_abox_empty_taxonomy_screen(text.as_bytes()).unwrap()
+            && !pure_leaf_source_screen(text.as_bytes()).unwrap()
+            && !flat_source_screen(text.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn prescan_never_declines_a_source_some_screen_accepts() {
+        let accepted = source("");
+        assert!(!source_certainly_declines(accepted.as_bytes(), false).unwrap());
+        assert!(classify_sparse_horn_reader(accepted.as_bytes(), 1, false)
+            .unwrap()
+            .is_some());
+        // Shapes the prescan must leave to the readers: an unrecognised
+        // SubClassOf form, a class assertion, and a lone existential left
+        // side or a lone binary role axiom (each alone is not certain).
+        for extra in [
+            "SubClassOf(<http://e/C0001> ObjectIntersectionOf(<http://e/C0002> <http://e/C0003>))\n",
+            "ClassAssertion(<http://e/C0001> <http://e/i>)\n",
+            "SubClassOf(ObjectSomeValuesFrom(<http://e/r> <http://e/C0001>) <http://e/C0002>)\n",
+            "SubObjectPropertyOf(<http://e/r> <http://e/s>)\n",
+            "InverseObjectProperties(<http://e/r> <http://e/s>)\n",
+            "SubClassOf(ObjectIntersectionOf(<http://e/C0001> <http://e/C0002>) <http://e/C0003>)\n",
+            "DisjointClasses(<http://e/C0001> <http://e/C0002>)\n",
+            "DifferentIndividuals(<http://e/i> <http://e/j>)\n",
+            "  SubClassOf(<http://e/C0001> <http://e/C0002>)  \r\n",
+        ] {
+            let text = source(extra);
+            assert!(
+                !source_certainly_declines(text.as_bytes(), false).unwrap(),
+                "{extra}"
+            );
+        }
+        // With mixed definitions admitted, equivalences are not certain either.
+        let mixed = source(
+            "EquivalentClasses(<http://e/C0001> ObjectIntersectionOf(<http://e/C0002> <http://e/C0003>))\n",
+        );
+        assert!(!source_certainly_declines(mixed.as_bytes(), true).unwrap());
+    }
+
+    #[test]
+    fn prescan_verdicts_are_confirmed_by_every_screen() {
+        let certain = [
+            // 2. equivalences below the mixed-definition size, in every form
+            "EquivalentClasses(<http://e/C0001> ObjectIntersectionOf(<http://e/C0002> <http://e/C0003>))\n",
+            "EquivalentClasses(<http://e/C0001> ObjectUnionOf(<http://e/C0002> <http://e/C0003>))\n",
+            "EquivalentClasses(<http://e/C0001> ObjectOneOf(<http://e/i>))\n",
+            "EquivalentClasses(<http://e/C0001> <http://e/C0002>)\n",
+            "EquivalentClasses(ObjectIntersectionOf(<http://e/C0002> <http://e/C0003>) <http://e/C0001>)\n",
+            "   EquivalentClasses(<http://e/C0001> <http://e/C0002>)\n",
+            // 1. lines no screen has an arm for
+            "AnnotationAssertion(rdfs:label <http://e/C0001> \"cell\")\n",
+            "ObjectPropertyDomain(<http://e/r> <http://e/C0001>)\n",
+            "ObjectPropertyRange(<http://e/r> <http://e/C0001>)\n",
+            "FunctionalObjectProperty(<http://e/r>)\n",
+            "Declaration(NamedIndividual(<http://e/i>))\n",
+            "Declaration(AnnotationProperty(<http://e/p>))\n",
+            "Declaration(DataProperty(<http://e/p>))\n",
+            "DisjointUnion(<http://e/C0001> <http://e/C0002> <http://e/C0003>)\n",
+            "ObjectPropertyAssertion(<http://e/r> <http://e/i> <http://e/j>)\n",
+            "SameIndividual(<http://e/i> <http://e/j>)\n",
+            "DLSafeRule(Body() Head())\n",
+            "# a comment line\n",
+            // 3. an existential left side with a real binary role axiom
+            "SubClassOf(ObjectSomeValuesFrom(<http://e/r> <http://e/C0001>) <http://e/C0002>)\n\
+             SubObjectPropertyOf(<http://e/r> <http://e/s>)\n",
+            "SubObjectPropertyOf(<http://e/s> <http://e/r>)\n\
+             SubClassOf(ObjectSomeValuesFrom(<http://e/r> <http://e/C0001>) <http://e/C0002>)\n",
+            "SubClassOf(ObjectSomeValuesFrom(<http://e/r> <http://e/C0001>) <http://e/C0002>)\n\
+             InverseObjectProperties(<http://e/r> <http://e/s>)\n",
+            "SubClassOf(ObjectSomeValuesFrom(<http://e/r> <http://e/C0001>) <http://e/C0002>)\n\
+             EquivalentObjectProperties(<http://e/r> <http://e/s>)\n",
+        ];
+        for extra in certain {
+            let text = source(extra);
+            assert!(
+                source_certainly_declines(text.as_bytes(), false).unwrap(),
+                "prescan must decline: {extra}"
+            );
+            assert!(
+                every_screen_declines(&text),
+                "screens must decline: {extra}"
+            );
+        }
+        // The offending line is found wherever it sits, including before the
+        // ontology header or after the closing parenthesis.
+        let early = format!("AnnotationAssertion(x y z)\n{}", source(""));
+        assert!(source_certainly_declines(early.as_bytes(), false).unwrap());
+        assert!(every_screen_declines(&early));
+        let late = format!(
+            "{}EquivalentClasses(<http://e/C0001> <http://e/C0002>)\n",
+            source("")
+        );
+        assert!(source_certainly_declines(late.as_bytes(), false).unwrap());
+        assert!(every_screen_declines(&late));
+    }
+
+    #[test]
+    fn prescan_reports_invalid_utf8_like_the_screens() {
+        let mut bytes = source("").into_bytes();
+        bytes.extend_from_slice(b"SubClassOf(<http://e/C\xff> <http://e/C0002>)\n");
+        let prescan = source_certainly_declines(bytes.as_slice(), false).unwrap_err();
+        let screen = flat_source_screen(bytes.as_slice()).unwrap_err();
+        assert_eq!(prescan.kind(), screen.kind());
     }
 }

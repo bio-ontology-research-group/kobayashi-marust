@@ -116,15 +116,21 @@ pub struct ChainInfo {
     chains: Vec<(String, String, String)>,
 }
 
+/// The `R(x,y) ∧ S(y,z) → T(x,z)` shape: exactly two body atoms, both roles,
+/// and one role head. Returned in body order, without allocating.
+fn binary_role_composition(c: &DLClause) -> Option<(&Atom, &Atom, &Atom)> {
+    match (c.body.as_slice(), c.head.as_slice()) {
+        ([r0, r1], [h]) if is_role(r0) && is_role(r1) && is_role(h) => Some((r0, r1, h)),
+        _ => None,
+    }
+}
+
 /// Port of `detect_role_chains`.
 fn detect_role_chains(tbox: &[DLClause]) -> ChainInfo {
     let mut trans: Vec<String> = Vec::new();
     let mut chains: Vec<(String, String, String)> = Vec::new();
     for c in tbox {
-        let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
-        let heads: Vec<&Atom> = c.head.iter().collect();
-        if roles.len() == 2 && c.body.len() == 2 && heads.len() == 1 && is_role(heads[0]) {
-            let (r0, r1, h) = (roles[0], roles[1], heads[0]);
+        if let Some((r0, r1, h)) = binary_role_composition(c) {
             let (r0r, r0s, r0t) = role_parts(r0);
             let (r1r, r1s, r1t) = role_parts(r1);
             let (hr, hs, ht) = role_parts(h);
@@ -161,7 +167,19 @@ fn role_parts(a: &Atom) -> (&str, &Term, &Term) {
 
 /// Port of `transitivity_clauses`.
 pub fn transitivity_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
-    let info = detect_role_chains(tbox);
+    transitivity_clauses_with(tbox, &detect_role_chains(tbox))
+}
+
+/// The single role atom of a clause body, if the body has exactly one.
+fn single_body_role(c: &DLClause) -> Option<&Atom> {
+    let mut roles = c.body.iter().filter(|a| is_role(a));
+    let role = roles.next()?;
+    roles.next().is_none().then_some(role)
+}
+
+/// [`transitivity_clauses`] over an already detected [`ChainInfo`] for the
+/// same clause set, so one detection pass serves every derived family.
+fn transitivity_clauses_with(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClause> {
     if info.trans.is_empty() {
         return Vec::new();
     }
@@ -171,11 +189,10 @@ pub fn transitivity_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     // seen: (role, sorted concepts-on-y) -> P name
     let mut seen: HashMap<(String, Vec<String>), String> = HashMap::new();
     for c in tbox {
-        let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
-        if roles.len() != 1 {
+        let Some(role) = single_body_role(c) else {
             continue;
-        }
-        let (rrole, rsource, rtarget) = role_parts(roles[0]);
+        };
+        let (rrole, rsource, rtarget) = role_parts(role);
         if !trans.contains(rrole) || *rsource != x {
             continue;
         }
@@ -389,7 +406,12 @@ fn transitive_chain_compose_impl(tbox: &[DLClause]) -> Vec<DLClause> {
 
 /// Port of `chain_clauses`.
 pub fn chain_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
-    let info = detect_role_chains(tbox);
+    chain_clauses_with(tbox, &detect_role_chains(tbox))
+}
+
+/// [`chain_clauses`] over an already detected [`ChainInfo`] for the same
+/// clause set.
+fn chain_clauses_with(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClause> {
     if info.chains.is_empty() {
         return Vec::new();
     }
@@ -405,11 +427,10 @@ pub fn chain_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     // seen: (S, sorted concepts-on-y) -> Q name
     let mut seen: HashMap<(String, Vec<String>), String> = HashMap::new();
     for c in tbox {
-        let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
-        if roles.len() != 1 {
+        let Some(role) = single_body_role(c) else {
             continue;
-        }
-        let (trole, tsource, ttarget) = role_parts(roles[0]);
+        };
+        let (trole, tsource, ttarget) = role_parts(role);
         if *tsource != x || *ttarget == x || !by_t.contains_key(trole) {
             continue;
         }
@@ -1001,12 +1022,7 @@ pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
 
 /// Port of `_is_chain_axiom`.
 fn is_chain_axiom(c: &DLClause) -> bool {
-    let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
-    let heads: Vec<&Atom> = c.head.iter().collect();
-    if roles.len() == 2 && c.body.len() == 2 && heads.len() == 1 && is_role(heads[0]) {
-        let r0 = roles[0];
-        let r1 = roles[1];
-        let h = heads[0];
+    if let Some((r0, r1, h)) = binary_role_composition(c) {
         let (_r0r, r0s, r0t) = role_parts(r0);
         let (_r1r, r1s, r1t) = role_parts(r1);
         let (_hr, hs, ht) = role_parts(h);
@@ -1063,11 +1079,13 @@ pub fn augment_with_chains(
     // Consolidate additions immediately. Keeping four independently grown
     // vectors alive at once retains all four spare capacities and can exceed
     // the clone this path removes on transitivity-heavy ontologies.
-    let mut derived = transitivity_clauses(&tbox);
-    derived.extend(chain_clauses(&tbox));
+    // One chain/transitivity detection pass serves both derived families and
+    // the returned `ChainInfo`; each used to rescan the whole clause set.
+    let chain_info = detect_role_chains(&tbox);
+    let mut derived = transitivity_clauses_with(&tbox, &chain_info);
+    derived.extend(chain_clauses_with(&tbox, &chain_info));
     derived.extend(transitive_chain_compose_clauses(&tbox));
     derived.extend(role_automaton_reachability_clauses(&tbox));
-    let chain_info = detect_role_chains(&tbox);
     // Do not use `filter().collect()` here. `Vec`'s in-place collection may
     // retain the normaliser's substantially over-allocated source buffer even
     // after most of the parse-time working set is dead. Move the clauses into
@@ -1620,5 +1638,222 @@ mod tests {
         let relevant = HashSet::new();
         prune_inert_role_bridges(&mut tbox, &[], &[pair("R", "S")], &relevant);
         assert_eq!(tbox, vec![producer]);
+    }
+}
+
+#[cfg(test)]
+mod chain_detection_tests {
+    use super::super::clauses::{constraint, fact};
+    use super::*;
+
+    /// The pre-optimisation detector: per-clause atom vectors, rescanned by
+    /// every derived family. Kept as the oracle for the shared detection.
+    fn detect_role_chains_reference(tbox: &[DLClause]) -> ChainInfo {
+        let mut trans: Vec<String> = Vec::new();
+        let mut chains: Vec<(String, String, String)> = Vec::new();
+        for c in tbox {
+            let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
+            let heads: Vec<&Atom> = c.head.iter().collect();
+            if roles.len() == 2 && c.body.len() == 2 && heads.len() == 1 && is_role(heads[0]) {
+                let (r0, r1, h) = (roles[0], roles[1], heads[0]);
+                let (r0r, r0s, r0t) = role_parts(r0);
+                let (r1r, r1s, r1t) = role_parts(r1);
+                let (hr, hs, ht) = role_parts(h);
+                let pair: Option<((&str, &Term, &Term), (&str, &Term, &Term))> = if r0t == r1s {
+                    Some(((r0r, r0s, r0t), (r1r, r1s, r1t)))
+                } else if r1t == r0s {
+                    Some(((r1r, r1s, r1t), (r0r, r0s, r0t)))
+                } else {
+                    None
+                };
+                if let Some(((fr, fs, _ft), (sr, _ss, st))) = pair {
+                    if hs == fs && ht == st && fs != st {
+                        if fr == sr && sr == hr {
+                            if !trans.iter().any(|t| t == hr) {
+                                trans.push(hr.to_string());
+                            }
+                        } else {
+                            chains.push((fr.to_string(), sr.to_string(), hr.to_string()));
+                        }
+                    }
+                }
+            }
+        }
+        ChainInfo { trans, chains }
+    }
+
+    fn is_chain_axiom_reference(c: &DLClause) -> bool {
+        let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
+        let heads: Vec<&Atom> = c.head.iter().collect();
+        if roles.len() == 2 && c.body.len() == 2 && heads.len() == 1 && is_role(heads[0]) {
+            let (_r0r, r0s, r0t) = role_parts(roles[0]);
+            let (_r1r, r1s, r1t) = role_parts(roles[1]);
+            let (_hr, hs, ht) = role_parts(heads[0]);
+            let pair: Option<((&Term, &Term), (&Term, &Term))> = if r0t == r1s {
+                Some(((r0s, r0t), (r1s, r1t)))
+            } else if r1t == r0s {
+                Some(((r1s, r1t), (r0s, r0t)))
+            } else {
+                None
+            };
+            if let Some(((fs, _ft), (_ss, st))) = pair {
+                if hs == fs && ht == st && fs != st {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn v(n: &str) -> Term {
+        Term::Var(n.to_string())
+    }
+    fn r(name: &str, s: Term, t: Term) -> Atom {
+        Atom::Role(name.to_string(), s, t)
+    }
+    fn c(name: &str, t: Term) -> Atom {
+        Atom::Concept(name.to_string(), t)
+    }
+
+    /// Every body/head shape the detector distinguishes, in both orientations.
+    fn shapes() -> Vec<DLClause> {
+        vec![
+            // transitivity R(x,y) ∧ R(y,z) → R(x,z), both atom orders
+            clause(
+                [r("R", v("x"), v("y")), r("R", v("y"), v("z"))],
+                [r("R", v("x"), v("z"))],
+            ),
+            clause(
+                [r("R", v("y"), v("z")), r("R", v("x"), v("y"))],
+                [r("R", v("x"), v("z"))],
+            ),
+            // chains R∘S ⊑ T, S∘R ⊑ T, and a repeated transitivity
+            clause(
+                [r("R", v("x"), v("y")), r("S", v("y"), v("z"))],
+                [r("T", v("x"), v("z"))],
+            ),
+            clause(
+                [r("S", v("x"), v("y")), r("R", v("y"), v("z"))],
+                [r("T", v("x"), v("z"))],
+            ),
+            clause(
+                [r("R", v("x"), v("y")), r("R", v("y"), v("z"))],
+                [r("R", v("x"), v("z"))],
+            ),
+            // wrong wiring: head on the middle variable, or reflexive endpoints
+            clause(
+                [r("R", v("x"), v("y")), r("S", v("y"), v("z"))],
+                [r("T", v("x"), v("y"))],
+            ),
+            clause(
+                [r("R", v("x"), v("x")), r("S", v("x"), v("z"))],
+                [r("T", v("x"), v("z"))],
+            ),
+            clause(
+                [r("R", v("x"), v("y")), r("S", v("y"), v("x"))],
+                [r("T", v("x"), v("x"))],
+            ),
+            // not a composition: a concept in the body, a concept head, a
+            // disjunctive head, three body atoms, one body atom
+            clause(
+                [r("R", v("x"), v("y")), c("A", v("y"))],
+                [r("T", v("x"), v("y"))],
+            ),
+            clause(
+                [r("R", v("x"), v("y")), r("S", v("y"), v("z"))],
+                [c("A", v("x"))],
+            ),
+            clause(
+                [r("R", v("x"), v("y")), r("S", v("y"), v("z"))],
+                [r("T", v("x"), v("z")), r("U", v("x"), v("z"))],
+            ),
+            clause(
+                [
+                    r("R", v("x"), v("y")),
+                    r("S", v("y"), v("z")),
+                    r("U", v("z"), v("w")),
+                ],
+                [r("T", v("x"), v("w"))],
+            ),
+            clause([r("R", v("x"), v("y"))], [r("T", v("x"), v("y"))]),
+            clause([c("A", v("x"))], [c("B", v("x"))]),
+            constraint([r("R", v("x"), v("y")), r("S", v("y"), v("z"))]),
+            fact([r("R", v("x"), v("y"))]),
+            // an equality atom in the head is not a role head
+            clause(
+                [r("R", v("x"), v("y")), r("R", v("x"), v("z"))],
+                [Atom::Eq(v("y"), v("z"))],
+            ),
+        ]
+    }
+
+    #[test]
+    fn allocation_free_detection_matches_the_reference() {
+        let tbox = shapes();
+        let detected = detect_role_chains(&tbox);
+        let reference = detect_role_chains_reference(&tbox);
+        assert_eq!(detected.trans, reference.trans);
+        assert_eq!(detected.chains, reference.chains);
+        assert_eq!(detected.trans, vec!["R".to_string()]);
+        // Both orientations of `R∘S ⊑ T`, plus the reflexive-first-edge
+        // composition, which the wiring check admits (it only requires the
+        // head to span from the first source to the second target).
+        let chain = |a: &str, b: &str, c: &str| (a.to_string(), b.to_string(), c.to_string());
+        assert_eq!(
+            detected.chains,
+            vec![
+                chain("R", "S", "T"),
+                chain("S", "R", "T"),
+                chain("R", "S", "T")
+            ]
+        );
+        for clause in &tbox {
+            assert_eq!(
+                is_chain_axiom(clause),
+                is_chain_axiom_reference(clause),
+                "{clause:?}"
+            );
+        }
+        assert_eq!(tbox.iter().filter(|c| is_chain_axiom(c)).count(), 6);
+        // Every shape appears once in each orientation of the body.
+        let mut flipped: Vec<DLClause> = tbox
+            .iter()
+            .map(|c| {
+                let mut body = c.body.clone();
+                body.reverse();
+                DLClause {
+                    body,
+                    head: c.head.clone(),
+                }
+            })
+            .collect();
+        flipped.extend(tbox.iter().cloned());
+        let detected = detect_role_chains(&flipped);
+        let reference = detect_role_chains_reference(&flipped);
+        assert_eq!(detected.trans, reference.trans);
+        assert_eq!(detected.chains, reference.chains);
+    }
+
+    #[test]
+    fn shared_detection_reproduces_the_independent_derivations() {
+        let mut tbox = shapes();
+        // Consumers that the transitivity/chain recognitions rewrite.
+        tbox.push(clause(
+            [r("R", v("x"), v("y")), c("A", v("y"))],
+            [c("B", v("x"))],
+        ));
+        tbox.push(clause(
+            [r("T", v("x"), v("y")), c("A", v("y"))],
+            [c("C", v("x"))],
+        ));
+        tbox.push(clause([r("T", v("x"), v("y"))], [c("D", v("x"))]));
+        let info = detect_role_chains(&tbox);
+        assert_eq!(
+            transitivity_clauses_with(&tbox, &info),
+            transitivity_clauses(&tbox)
+        );
+        assert_eq!(chain_clauses_with(&tbox, &info), chain_clauses(&tbox));
+        assert!(!transitivity_clauses(&tbox).is_empty());
+        assert!(!chain_clauses(&tbox).is_empty());
     }
 }

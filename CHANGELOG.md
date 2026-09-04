@@ -2,6 +2,84 @@
 
 ## Unreleased
 
+### Allocation-light OWL frontend
+
+- Avoid repeated IRI ownership, deep copies of concepts already in negation
+  normal form, duplicate role-chain detection, heap allocation for the common
+  annotation-free operand list, and eager construction of an ABox hierarchy
+  that no consistency check will read. Frontend hash tables use an independent
+  process-random seed, retaining collision resistance for untrusted ontology
+  symbols. Source-route screens now share a conservative fail-fast pass.
+- A pinned 592-input IBEX differential run compared the candidate frontend with
+  the preceding accepted binary. It produced exactly 592 result files and 592
+  completion markers, and every serialized clause stream and metadata file was
+  byte-identical, including the three giant inputs 8737, 15059, and 16744.
+- A 40-run panel then completed all eight EL performance residuals five times
+  each through `elc`, with exact retained-gold signatures. ORE 7340 had medians
+  of 2.4082 seconds and 275.68 MiB, below targets of 2.5354 seconds and
+  759.47 MiB. ORE 12387 had medians of 2.8338 seconds and 368.60 MiB, below
+  targets of 3.2375 seconds and 729.74 MiB. This raises the repeated-evidence
+  composite from 527/589 to 529/589 strict joint wins, leaving 60 comparable
+  residuals.
+- The first identity-array submission exposed that this IBEX partition did not
+  define `SLURM_TMPDIR`; every task failed before producing a result. The
+  corrected harness uses a unique persistent-scratch fallback, and acceptance
+  counts result files, checkpoints, completion markers, mismatches, and errors
+  separately so an empty or partial run cannot pass.
+- The pinned integrated build retained all four affected wins in repeated
+  panels. Its full automatic sweep produced 592 results, 592 checkpoints, and
+  592 completion markers, with all statuses `ok` and no status or signature
+  difference from the preceding accepted sweep. The conservative source route
+  also moved giant inputs 8737, 15059, and 16744 onto exact `flat_nf1`, where
+  they completed in 10.2619, 3.9179, and 12.0602 seconds at 59.61, 69.80, and
+  67.39 MiB respectively.
+- The final exact-source replay disables the irrelevant rules precheck inside
+  `cb_portfolio16`, whose source fence already requires zero rule axioms. Its
+  20-run panel matched gold throughout; ORE 11316 selected the route five times
+  with medians of 0.1696 seconds and 36.31 MiB. Full job 51341068 produced 592
+  results, checkpoints, and completion markers, all `ok`, with no status or
+  signature difference from integrated sweep 51340008. The pinned binary is
+  `151bf5dece8b61829dcff7a63f7d0ed9b07c8a9aa030b161a04dc55c9385db4c`.
+
+### Small Horn-ABox CB scheduling
+
+- Add the named `cb_portfolio16` route: the exact absorbed/plain CB portfolio
+  with speculative EL and hypertableau conductors disabled. The automatic
+  router selects it only inside the existing certified-ABox production probe
+  for a narrow, source-checked small Horn-ABox envelope. This changes worker
+  scheduling, not clauses, calculus rules, or the accepted answer.
+- On ORE 11316, five exact IBEX runs selected `cb_portfolio16`, matched the
+  retained canonical signature, and had medians of 0.1893 seconds and 39.67 MiB.
+  Both are below the fastest correct external targets, 0.2201 seconds and
+  42.43 MiB. The route therefore raises the repeated-evidence composite from
+  525/589 to 526/589 strict joint wins.
+- Full automatic-route job 51335892 produced exactly 592 results, 592
+  checkpoints, and 592 completion markers from one pinned binary. All 592
+  status values are `ok`; 588 match retained Konclude signatures directly,
+  the two independently adjudicated consistency cases retain their accepted
+  results, and the two no-gold cases retain their established signatures.
+  Every output signature is identical to the preceding accepted 592-input
+  sweep.
+
+### Copy-free clean EL certificate
+
+- Run the complete residual-clause check over the unchanged EL canonical model
+  before copying that model for repair. A clean check is exactly the existing
+  first repair pass's `Pristine` outcome. If the check finds a violation, its
+  enumeration index is handed to the first fork and refreshed against an empty
+  journal, which tests confirm is identical to rebuilding the index there.
+- This is an allocation and scheduling optimization. It changes no completion
+  rule, residual clause, repair choice, model criterion, or fail-closed
+  fallback.
+- A 55-run affected-route panel completed all eleven tested ontologies five
+  times each with exact retained-gold signatures. ORE 14312 had medians of
+  1.3680 seconds and 201.58 MiB, below its 1.4472-second and 279.24-MiB external
+  targets. A pinned combined build retained both the ORE 11316 and 14312 wins,
+  and its full 592-input automatic-route sweep produced 592 exact completions
+  with no status or signature difference from the preceding accepted sweep.
+  This raises the repeated-evidence composite to 527/589 strict joint wins,
+  leaving 62 comparable residuals.
+
 ### Minimum-head forward-subsumption index
 
 - Index every active nonempty-head clause once by its least sorted head

@@ -7,6 +7,8 @@
 //! (it used to be built in full AND deep-cloned for the rbox/declared scans,
 //! which dominated peak memory on 500 MB ontologies).
 
+use smallvec::SmallVec;
+
 use super::iri::IriRegistry;
 use super::sexpr::{Node, Parser};
 use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm};
@@ -243,7 +245,11 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
     }
 }
 
-pub(super) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> Vec<&'n Node<'a>> {
+/// The logical operands of an axiom node, with `Annotation(...)` arguments
+/// removed. Almost every axiom has at most four operands, so the filtered
+/// view lives on the stack: this runs once per source axiom in the parser and
+/// once more in the ABox observer, and used to be two heap vectors per axiom.
+pub(super) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> SmallVec<[&'n Node<'a>; 4]> {
     args.iter()
         .filter(|a| a.head() != Some("Annotation"))
         .collect()

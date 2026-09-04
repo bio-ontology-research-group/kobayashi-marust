@@ -1,0 +1,58 @@
+{
+  "binary_sha256": "339511404d1ac015c61ab7b6a03687aeb0db72a6104a0aff9961983597c320e1",
+  "execution_routes": {
+    "cb_plain16": 1,
+    "certified_card_nominals": 1,
+    "certified_el_production": 1,
+    "certified_nominals": 15,
+    "elc": 250,
+    "flat_nf1": 64,
+    "ht_bridge": 2,
+    "ht_general": 37,
+    "ht_rules": 3,
+    "mirror_private": 1,
+    "nominal_ni_abox": 2,
+    "nominal_ni_tbox": 1,
+    "nominals": 33,
+    "production_all": 176,
+    "production_all1": 5
+  },
+  "execution_trace_differences_from_baseline": [],
+  "metrics": {
+    "correct_completions": 592,
+    "mean_peak_mb": 227.64412162162162,
+    "mean_wall_s": 1.7798130067567568,
+    "median_peak_mb": 27.305,
+    "median_wall_s": 0.15875
+  },
+  "owner_job": "51171933",
+  "records": {
+    "checkpoints": 592,
+    "profiles": 592,
+    "results": 592
+  },
+  "release": "v1.4.0-candidate",
+  "routes": {
+    "certified_card_nominals": 1,
+    "certified_el_production": 5,
+    "certified_nominals": 32,
+    "elc": 287,
+    "ht_bridge": 2,
+    "ht_general": 22,
+    "ht_rules": 3,
+    "nominal_ni_tbox": 1,
+    "nominals": 36,
+    "production_all": 198,
+    "production_all1": 5
+  },
+  "schema": 1,
+  "semantic_differences_from_baseline": [],
+  "status": {
+    "ok": 592
+  },
+  "verdict": {
+    "consistency_mismatch": 2,
+    "match": 588,
+    "nogold": 2
+  }
+}

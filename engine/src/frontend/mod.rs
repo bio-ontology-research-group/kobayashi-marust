@@ -390,9 +390,9 @@ fn collect_nominal_abox(
 /// Borrowed concept names appearing in a list of JSON clauses. Declaration
 /// seeding needs membership only; owning a second copy of every name made this
 /// temporary set both allocation-heavy and needlessly ordered.
-fn concept_names_in(clauses: &[crate::json_io::JClause]) -> HashSet<&str> {
+fn concept_names_in(clauses: &[crate::json_io::JClause]) -> crate::fxhash::FxHashSet<&str> {
     use crate::json_io::JAtom;
-    let mut names = HashSet::new();
+    let mut names = crate::fxhash::FxHashSet::default();
     for c in clauses {
         for atom in c.body.iter().chain(c.head.iter()) {
             if let JAtom::Concept { concept, .. } = atom {

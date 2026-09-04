@@ -6013,6 +6013,31 @@ fn blame_choice(
         .or_else(|| chrono.iter().rev().find(|t| !banned.contains(*t)).copied())
 }
 
+/// Human-readable residual clause for certificate-search diagnostics. This is
+/// deliberately constructed only under `KM_ELC_DEBUG`: residual atoms store
+/// compact ids in the hot path, while a failed search needs the original names
+/// to make repeated conflict patterns actionable.
+fn describe_residual_clause(rc: &RClause, it: &Interner) -> String {
+    fn atom(a: &RAtom, it: &Interner) -> String {
+        match *a {
+            RAtom::C { cid, v } => format!("{}(v{v})", it.name(cid)),
+            RAtom::R { rid, s, t } => format!("{}(v{s},v{t})", it.name(rid)),
+            RAtom::Eq { s, t } => format!("v{s}=v{t}"),
+        }
+    }
+    let side = |xs: &[RAtom], separator: &str| {
+        if xs.is_empty() {
+            "⊤".to_owned()
+        } else {
+            xs.iter()
+                .map(|a| atom(a, it))
+                .collect::<Vec<_>>()
+                .join(separator)
+        }
+    };
+    format!("{} -> {}", side(&rc.body, " ∧ "), side(&rc.head, " ∨ "))
+}
+
 /// Certificate verdict: `Pass` answers everything; `Partial(subjects)`
 /// answers every named subject EXCEPT the listed ones (their truth could not
 /// be pinned between the EL lower bound and the model upper bounds — the
@@ -6033,6 +6058,7 @@ fn repair_certify(
     debug: bool,
 ) -> CertOutcome {
     const MAX_ROUNDS: usize = 64;
+    const PASS_BUDGET: u64 = 400_000_000;
     let n = base.sub_super.len();
     let mut is_named = vec![false; n];
     for &c in &nfs.concept_names {
@@ -6095,15 +6121,25 @@ fn repair_certify(
     let run_pass = |polv: &[bool],
                     pass_label: usize,
                     banned: &HashSet<(u32, usize, u32)>,
-                    tolerate_deaths: bool|
+                    tolerate_deaths: bool,
+                    prebuilt: Option<CertIdx>|
      -> PassOut {
         let mut st = base.fork();
         // Journal label additions and reuse one enumeration index for the whole
         // pass: every round would otherwise rescan the entire structure to
         // rebuild an index a round changes only marginally (see [`CertIdx`]).
         st.start_journal();
-        let mut cidx = CertIdx::default();
-        let mut budget: u64 = 400_000_000;
+        let mut cidx = prebuilt.unwrap_or_default();
+        // The default bounds ordinary certificate attempts. Large biomedical
+        // terminologies can have a compact residual but hundreds of thousands
+        // of violating canonical-model instances per round. Permit a routed
+        // high-budget attempt without changing the default or weakening the
+        // fail-closed contract: exhaustion still returns `Fail`, and every
+        // successful model receives the same complete residual recheck.
+        let mut budget: u64 = std::env::var("KM_ELC_REPAIR_BUDGET")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(PASS_BUDGET);
         let mut adds: u64 = 0;
         let mut repr: Vec<u32> = (0..n as u32).collect();
         let mut merged: Vec<u32> = Vec::new();
@@ -6447,11 +6483,12 @@ fn repair_certify(
                             if debug {
                                 eprintln!(
                                     "KM_ELC_CERT repair pass {pass_label}: witness {} died, \
-                                     banning choice {:?} (node={}, concept={})",
+                                     banning choice {:?} (node={}, concept={}); choice_clause={}",
                                     c,
                                     triple,
                                     it.name(triple.0),
                                     it.name(triple.2),
+                                    describe_residual_clause(&rcs[triple.1], it),
                                 );
                             }
                             return PassOut::Conflict(triple);
@@ -6478,6 +6515,41 @@ fn repair_certify(
         PassOut::Fail
     };
 
+    // Check the unchanged EL structure before cloning it for a repair pass.
+    // A clean full round is exactly the `Pristine` result that the first pass
+    // would return after `State::fork`. If it is not clean, hand the complete
+    // enumeration index to the first fork; refreshing it with that fork's
+    // empty journal produces the same index as rebuilding it from scratch.
+    let mut base_idx = CertIdx::default();
+    {
+        let mut budget: u64 = std::env::var("KM_ELC_REPAIR_BUDGET")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(PASS_BUDGET);
+        let clean = cert_round(
+            rcs,
+            &nfs.concept_names,
+            &base.sub_super,
+            &base.edges,
+            None,
+            &mut budget,
+            None,
+            false,
+            Some(CertReuse {
+                idx: &mut base_idx,
+                delta: None,
+                edge_epoch: base.edge_epoch,
+            }),
+        );
+        if clean {
+            if debug {
+                eprintln!("KM_ELC_CERT repair: base model already complete");
+            }
+            return CertOutcome::Pass;
+        }
+    }
+    let mut base_idx = Some(base_idx);
+
     const RESTART_CAP: usize = REPAIR_RESTART_CAP;
     let mut pass_states: Vec<(State, HashMap<(u32, u32), usize>)> = Vec::new();
     let polv0 = vec![false; rcs.len()];
@@ -6488,7 +6560,7 @@ fn repair_certify(
         let mut restarts = 0usize;
         let mut got_model = false;
         loop {
-            match run_pass(&polv, seed, &banned, false) {
+            match run_pass(&polv, seed, &banned, false, base_idx.take()) {
                 PassOut::Pristine => {
                     if debug {
                         eprintln!("KM_ELC_CERT repair: base model already complete");
@@ -6521,7 +6593,7 @@ fn repair_certify(
         if !got_model {
             // strict passes kept dying: accept a model that lets witnesses
             // die — their subjects become unresolved residue for the engine
-            if let PassOut::Model(st, prov) = run_pass(&polv, seed + 10, &banned, true) {
+            if let PassOut::Model(st, prov) = run_pass(&polv, seed + 10, &banned, true, None) {
                 if debug {
                     eprintln!("KM_ELC_CERT repair pass {seed}: death-tolerant model accepted");
                 }
@@ -6630,7 +6702,7 @@ fn repair_certify(
         }
         let mut restarts = 0usize;
         loop {
-            match run_pass(&polv0, 20 + refine, &banned0, true) {
+            match run_pass(&polv0, 20 + refine, &banned0, true, None) {
                 PassOut::Pristine => return CertOutcome::Pass,
                 PassOut::Model(st, prov) => {
                     pass_states.push((st, prov));
@@ -8265,6 +8337,7 @@ fn classify_inner_mode(
             CertOutcome::Fail => return None,
         }
     }
+    elc_timing_lap(elc_timing, &mut elc_lap, "certificate");
 
     // KM_ELC_HOIST (P1): recover subsumptions hidden in parked disjunctions via
     // the ⊔-distribution lemma over the completed relation. Sound (adds only
@@ -8313,6 +8386,7 @@ fn classify_inner_mode(
         ),
         background_release,
     );
+    elc_timing_lap(elc_timing, &mut elc_lap, "release");
 
     // Dictionary-coded rows for the in-process orchestrator. The interned ids
     // and the single name table replace one owned superclass string per pair
@@ -9976,6 +10050,31 @@ mod tests {
         ));
         let res = classify_inner(cs, CertMode::Repair, false).expect("base model complete");
         assert!(subs_of(&res, "A").contains(&"B".to_string()));
+    }
+
+    #[test]
+    fn repair_after_failed_base_check_uses_handed_off_index() {
+        // The base check rejects the live cover. Its prebuilt enumeration
+        // index is then reused by the first repair pass, which must still
+        // produce the same exact range consequence without leaking a choice.
+        let cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            cl(&[c("P", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("P", "x")], &[cf("Q", "f", "x")]),
+            cl(&[c("Q", "x")], &[c("S", "x")]),
+            cl(&[r("R", "x", "y")], &[c("S", "y")]),
+            cl(&[], &[c("A", "x"), c("B", "x")]),
+        ));
+        assert!(classify_inner(cs.clone(), CertMode::Check, false).is_none());
+        let res = classify_inner(cs, CertMode::Repair, false).expect("repair certifies");
+        assert!(!res.inconsistent);
+        assert!(res.unresolved.is_empty());
+        assert!(subs_of(&res, "Q").contains(&"S".to_string()));
+        for subject in ["P", "Q", "S"] {
+            let sups = subs_of(&res, subject);
+            assert!(!sups.contains(&"A".to_string()));
+            assert!(!sups.contains(&"B".to_string()));
+        }
     }
 
     // ----- cardinality-aware partition assignment -----
@@ -11920,6 +12019,31 @@ mod tests {
             st.edge_epoch,
         );
         assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
+    }
+
+    #[test]
+    fn base_check_index_refreshed_over_fork_matches_fresh_build() {
+        let (rcs, names, mut st) = idx_fixture();
+        const A: u32 = 2;
+        const P: u32 = 4;
+        st.sub_super[P as usize].insert(A);
+
+        let mut base_idx = CertIdx::default();
+        base_idx.refresh(&rcs, &names, &st.sub_super, &st.edges, None, st.edge_epoch);
+        let mut fork = st.fork();
+        fork.start_journal();
+        let delta = fork.drain_journal();
+        assert_eq!(delta.as_deref(), Some(&[][..]));
+        base_idx.refresh(
+            &rcs,
+            &names,
+            &fork.sub_super,
+            &fork.edges,
+            delta.as_deref(),
+            fork.edge_epoch,
+        );
+        assert_same_idx(&base_idx, &rebuilt_idx(&rcs, &names, &fork));
+        assert_same_idx(&base_idx, &rebuilt_idx(&rcs, &names, &st));
     }
 
     #[test]

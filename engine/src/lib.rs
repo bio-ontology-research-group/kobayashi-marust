@@ -13,6 +13,7 @@ pub mod cli;
 pub mod elcomplete;
 pub mod engine;
 pub mod frontend;
+pub mod fxhash;
 pub mod incremental;
 mod incremental_ht;
 mod incremental_positive_abox;

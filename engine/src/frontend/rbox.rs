@@ -165,7 +165,7 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                     // certified binary clauses by the normalizer. Fall back to
                     // a fence only when a chain role is not plain.
                     let chain_args: Vec<&Node> = match sub {
-                        Node::List(_, ca) => strip_annotations(ca),
+                        Node::List(_, ca) => strip_annotations(ca).to_vec(),
                         _ => Vec::new(),
                     };
                     let roles: Option<Vec<String>> = chain_args

@@ -185,7 +185,7 @@ impl Axiom {
 #[derive(Default)]
 pub struct Ontology {
     axioms: Vec<std::rc::Rc<Axiom>>,
-    seen: std::collections::HashSet<std::rc::Rc<Axiom>>,
+    seen: crate::fxhash::FxHashSet<std::rc::Rc<Axiom>>,
 }
 
 impl Ontology {

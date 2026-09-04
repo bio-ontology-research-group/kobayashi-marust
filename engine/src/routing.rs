@@ -34,6 +34,9 @@ pub enum Route {
     CbTrigger8,
     CbTrigger1,
     CbAbsorbPortfolio16,
+    /// Exact absorbed/plain CB portfolio without speculative EL, HT, or
+    /// tableau arms and without trigger-absorption bridge preprocessing.
+    CbPortfolio16,
     Elc,
     ElcCert,
     /// Plain certified EL first, with the exact absorbed production portfolio
@@ -67,7 +70,7 @@ pub enum Route {
 }
 
 impl Route {
-    pub const NAMED: [Route; 39] = [
+    pub const NAMED: [Route; 40] = [
         Route::Default,
         Route::Default8,
         Route::Default1,
@@ -86,6 +89,7 @@ impl Route {
         Route::CbTrigger8,
         Route::CbTrigger1,
         Route::CbAbsorbPortfolio16,
+        Route::CbPortfolio16,
         Route::Elc,
         Route::ElcCert,
         Route::CertifiedElProduction,
@@ -131,6 +135,7 @@ impl Route {
             Route::CbTrigger8 => "cb_trigger8",
             Route::CbTrigger1 => "cb_trigger1",
             Route::CbAbsorbPortfolio16 => "cb_absorb_portfolio16",
+            Route::CbPortfolio16 => "cb_portfolio16",
             Route::Elc => "elc",
             Route::ElcCert => "elc_cert",
             Route::CertifiedElProduction => "certified_el_production",
@@ -178,6 +183,7 @@ impl Route {
             Route::CbTrigger8 => CB_TRIGGER_8,
             Route::CbTrigger1 => CB_TRIGGER_1,
             Route::CbAbsorbPortfolio16 => CB_ABSORB_PORTFOLIO,
+            Route::CbPortfolio16 => CB_PORTFOLIO,
             Route::Elc => ELC,
             Route::ElcCert => ELC_CERT,
             Route::CertifiedElProduction => ELC_CERT,
@@ -301,6 +307,7 @@ impl FromStr for Route {
             "cb_trigger8" => Route::CbTrigger8,
             "cb_trigger1" => Route::CbTrigger1,
             "cb_absorb_portfolio16" | "absorb_portfolio" => Route::CbAbsorbPortfolio16,
+            "cb_portfolio16" | "cb_portfolio" => Route::CbPortfolio16,
             "elc" => Route::Elc,
             "elc_cert" => Route::ElcCert,
             "certified_el_production" | "elc_cert_production" => Route::CertifiedElProduction,
@@ -976,6 +983,39 @@ pub(crate) fn one_thread_medium_shi_candidate(profile: &OntologyProfile) -> bool
         && !profile.expressivity.nominal
         && !profile.expressivity.cardinality
         && !profile.expressivity.datatype
+}
+
+/// Small Horn-like terminologies with a tiny class-only ABox for which the
+/// exact absorbed/plain CB stack finishes before either speculative portfolio
+/// arm can contribute.  Suppressing those arms changes scheduling only: both
+/// CB variants still compute the established complete fixpoint, while avoiding
+/// the process and allocator high-water mark of the EL/HT conductors.
+///
+/// The transitive-role and role-hierarchy fences distinguish this measured SHI
+/// family from the much larger flat biomedical ABoxes that use dedicated EL
+/// routes.  Source constructs excluded below are precisely those that could
+/// make a certified specialist useful before CB completes.
+pub(crate) fn small_horn_abox_plain_cb_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    profile.disjoint_union_abox_candidate
+        && (1_000..=5_000).contains(&source.logical_axioms)
+        && (1..=32).contains(&source.abox_axioms)
+        && source.class_assertions == source.abox_axioms
+        && source.role_assertions == 0
+        && source.transitive_role_axioms > 0
+        && source.role_inclusion_axioms > 0
+        && source.unions == 0
+        && source.complements == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.datatype_constructors == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.role_chain_axioms == 0
 }
 
 /// Measured nominal-free production shapes for which additional CB workers add
@@ -2751,6 +2791,12 @@ const TAB_RACE: &[(&str, &str)] = &[
     ("KM_TAB_FEAT", "1"),
     ("KM_NO_ELC_PORTFOLIO", "1"),
     ("KM_NO_HT_RACE", "1"),
+];
+const CB_PORTFOLIO: &[(&str, &str)] = &[
+    ("KM_MECHANISM", "portfolio"),
+    ("KM_NO_ELC_PORTFOLIO", "1"),
+    ("KM_NO_HT_RACE", "1"),
+    ("KM_NO_HT_RULES", "1"),
 ];
 const CARD_FN: &[(&str, &str)] = &[
     ("KM_MECHANISM", "ht"),
@@ -4801,6 +4847,25 @@ mod tests {
         profile.source.role_chain_axioms = 0;
         profile.source.logical_axioms = 100_000;
         assert!(!one_thread_medium_shi_candidate(&profile));
+    }
+
+    #[test]
+    fn small_horn_class_abox_uses_plain_cb_schedule() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 2_464;
+        profile.source.tbox_axioms = 2_434;
+        profile.source.abox_axioms = 11;
+        profile.source.class_assertions = 11;
+        profile.source.transitive_role_axioms = 7;
+        profile.source.role_inclusion_axioms = 8;
+        profile.disjoint_union_abox_candidate = true;
+        assert!(small_horn_abox_plain_cb_candidate(&profile));
+
+        profile.source.role_assertions = 1;
+        assert!(!small_horn_abox_plain_cb_candidate(&profile));
+        profile.source.role_assertions = 0;
+        profile.source.unions = 1;
+        assert!(!small_horn_abox_plain_cb_candidate(&profile));
     }
 
     #[test]

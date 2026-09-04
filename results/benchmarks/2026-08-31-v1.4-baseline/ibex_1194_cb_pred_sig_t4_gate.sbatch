@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH --job-name=km-v14-1194-pred-sig-t4
+#SBATCH --account=pi-hohndor
+#SBATCH --partition=batch
+#SBATCH --constraint=cpu_intel_gold_6248
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=20G
+#SBATCH --time=00:06:00
+#SBATCH --export=NONE
+#SBATCH --output=/ibex/scratch/hohndor/km/v1.4-pred-sig-20260901/gate-t4/slurm-%j.out
+set -euo pipefail
+
+root=/ibex/scratch/hohndor/km/v1.4-pred-sig-20260901
+out=$root/gate-t4
+binary=$root/km
+expected=c6f60a47c696eb508cf850bfff3e42541c6a7639ae10036b6994b66a03a8f09a
+clauses=/ibex/scratch/hohndor/km/v1.4.0-batched-candidate-20260901/cb-profile-direct/clauses.json
+mkdir -p "$out"
+[[ $(sha256sum "$binary" | cut -d' ' -f1) == "$expected" ]]
+[[ $(stat -c %s "$clauses") -gt 200000000 ]]
+rm -f "$out/classification.json" "$out/classification.json.tmp"
+
+set +e
+/usr/bin/time -v -o "$out/time.txt.tmp" \
+  timeout --signal=TERM --kill-after=5 240 \
+  env KM_ABSORB=1 KM_THREADS=4 KM_QUERIES=CL_0000071 \
+      KM_FWD_HEAD_SUBSET_MAX=8 KM_PRED_TRIE_MIN_LIVE=1000000 \
+      KM_PROF=1 KM_PROF_TIME=1 KM_CTXSPLIT=1 \
+  "$binary" engine < "$clauses" \
+  > "$out/classification.json.tmp" 2> "$out/stderr.txt.tmp"
+rc=$?
+set -e
+mv "$out/stderr.txt.tmp" "$out/stderr.txt"
+mv "$out/time.txt.tmp" "$out/time.txt"
+if [[ $rc -eq 0 ]]; then
+  [[ -s "$out/classification.json.tmp" ]]
+  grep -q 'CL_0000071' "$out/classification.json.tmp"
+  mv "$out/classification.json.tmp" "$out/classification.json"
+else
+  rm -f "$out/classification.json.tmp"
+fi
+echo "threads=4 threshold=1000000 rc=$rc"
+if [[ $rc -eq 0 ]]; then sha256sum "$out/classification.json"; wc -c "$out/classification.json"; fi
+grep -E 'KM_CTXSPLIT|KM_PROF msgloop|KM_PROF\[time-ms\] msgloop' "$out/stderr.txt" | tail -8 || true
+grep -E 'Elapsed|Maximum resident|Exit status' "$out/time.txt" || true
+exit "$rc"

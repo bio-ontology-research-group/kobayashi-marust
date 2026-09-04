@@ -624,6 +624,11 @@ struct ClauseInfo {
 
 pub struct Tableau {
     clauses: Vec<ClauseInfo>,
+    /// Clause ids with genuinely disjunctive heads. Branch selection used to
+    /// walk every Horn clause on every DFS node; large rule-aware inputs can
+    /// contain hundreds of thousands of Horn clauses but only hundreds of
+    /// choices. This index changes only enumeration cost.
+    disjunctive_indices: Vec<usize>,
     /// Semi-naive saturation index (non-disjunctive clauses only). Maps a body
     /// concept literal to the `(clause, body-variable)` pairs it can seed: when a
     /// fact `lit@node` is newly derived, only these clauses can fire a new
@@ -632,6 +637,9 @@ pub struct Tableau {
     lit_index: HashMap<CLit, Vec<(usize, Var)>>,
     /// Likewise for role body atoms: role → `(clause, source-var, target-var)`.
     role_index: HashMap<R, Vec<(usize, Var, Var)>>,
+    /// All clause-body concept uses, including disjunctive clauses. Used only by
+    /// the fail-closed delayed-choice relevance certificate.
+    body_lit_index_all: HashMap<CLit, Vec<(usize, Var)>>,
     /// Non-disjunctive clauses with a head variable not bound by the body (e.g.
     /// `⊤ ⊑ C`): they must fire afresh on every new node. `(clause, the unbound
     /// head variable to bind to the node)`.
@@ -793,9 +801,17 @@ impl Tableau {
         // Build the semi-naive index over non-disjunctive clauses.
         let mut lit_index: HashMap<CLit, Vec<(usize, Var)>> = HashMap::new();
         let mut role_index: HashMap<R, Vec<(usize, Var, Var)>> = HashMap::new();
+        let mut body_lit_index_all: HashMap<CLit, Vec<(usize, Var)>> = HashMap::new();
         let mut node_triggered: Vec<(usize, Var)> = Vec::new();
+        let mut disjunctive_indices = Vec::new();
         for (ci, info) in infos.iter().enumerate() {
+            for atom in &info.cl.body {
+                if let Atom::Concept { lit, t } = atom {
+                    body_lit_index_all.entry(*lit).or_default().push((ci, *t));
+                }
+            }
             if info.disjunctive {
+                disjunctive_indices.push(ci);
                 continue;
             }
             let mut body_vars: Vec<Var> = Vec::new();
@@ -824,8 +840,10 @@ impl Tableau {
         }
         Tableau {
             clauses: infos,
+            disjunctive_indices,
             lit_index,
             role_index,
+            body_lit_index_all,
             node_triggered,
             pairwise: false,
             number: false,
@@ -1015,8 +1033,11 @@ impl Tableau {
     /// covers the deterministic saturation `g` accumulates before branching, so a
     /// `false` return leaves `g` mutated; the caller restores it.
     fn expand(&self, g: &mut Graph) -> bool {
+        if self.careful() {
+            return self.expand_careful(g, CarefulStart::Full);
+        }
         stat_expand();
-        if !self.careful() {
+        {
             // Inverse-free, number-free, nominal-free path: saturate Horn + the deterministic ∃
             // round in one pass (∃ never needs backtracking here), then branch on
             // a disjunction. Fast; unchanged from the indexed-saturation work.
@@ -1038,19 +1059,37 @@ impl Tableau {
             }
             return true;
         }
+    }
+
+    fn expand_careful(&self, g: &mut Graph, start: CarefulStart) -> bool {
+        stat_expand();
+        let incremental = std::env::var_os("KM_TAB_CAREFUL_INC").is_some();
+        let ordered = std::env::var_os("KM_TAB_CAREFUL_ORDER").is_some();
         // Careful path (number restrictions and/or inverse roles): saturate Horn
         // *including deterministic ≈-merges* (a single-eq head is a forced
         // merge), then take ONE branching decision. The Hyp-rule branch covers
         // disjunctions, including a ≤n head with several ≈ disjuncts (each branch
         // merges a different pair).
-        if !self.horn_saturate(g) {
+        let saturated = match start {
+            CarefulStart::Delta(queue) if incremental => self.horn_saturate_careful_delta(g, queue),
+            CarefulStart::Full | CarefulStart::Delta(_) => self.horn_saturate(g),
+        };
+        if !saturated {
             return false;
         }
-        if let Some((head, subst, _)) = self.find_disjunctive(g) {
+        if let Some((mut head, subst, _)) = self.find_disjunctive(g) {
+            if ordered {
+                head.sort_by_key(|atom| self.immediate_existential_cost(atom));
+            }
             for v in &head {
                 let cp = g.checkpoint();
-                self.add_head_atom(g, v, &subst);
-                if self.expand(g) {
+                let next = if incremental {
+                    self.add_head_atom_careful(g, v, &subst)
+                } else {
+                    self.add_head_atom(g, v, &subst);
+                    CarefulStart::Full
+                };
+                if self.expand_careful(g, next) {
                     return true;
                 }
                 g.rollback_to(cp);
@@ -1082,7 +1121,7 @@ impl Tableau {
                 }
             }
             if changed {
-                return self.expand(g);
+                return self.expand_careful(g, CarefulStart::Full);
             }
             return true;
         }
@@ -1093,26 +1132,12 @@ impl Tableau {
         // pure equality blocking, while the fresh-successor fallback keeps the
         // search complete (no model is pruned) and saturation keeps it sound (a
         // loop-back that violates a constraint just clashes and is abandoned).
-        if !self.horn_saturate(g) {
-            return false;
-        }
-        if let Some((head, subst, _)) = self.find_disjunctive(g) {
-            for v in &head {
-                let cp = g.checkpoint();
-                self.add_head_atom(g, v, &subst);
-                if self.expand(g) {
-                    return true;
-                }
-                g.rollback_to(cp);
-            }
-            return false;
-        }
         if let Some((s, r, fil)) = self.first_unsat_exists(g) {
             // 1. loop-back branches: reuse a matching ancestor as the successor.
             for t in self.loopback_targets(g, s, r, fil) {
                 let cp = g.checkpoint();
                 g.add_edge(r, s, t);
-                if self.expand(g) {
+                if self.expand_careful(g, CarefulStart::Full) {
                     return true;
                 }
                 g.rollback_to(cp);
@@ -1122,13 +1147,148 @@ impl Tableau {
             let t = g.new_node(Some(s), true);
             g.add_edge(r, s, t);
             g.add_concept(t, fil);
-            if self.expand(g) {
+            if self.expand_careful(g, CarefulStart::Full) {
                 return true;
             }
             g.rollback_to(cp);
             return false;
         }
         true
+    }
+
+    /// Cheap branch-order estimate: how many directly indexed Horn rules turn a
+    /// chosen concept into an existential obligation. Trying the least generative
+    /// alternative first changes neither the branch set nor any derived fact.
+    fn immediate_existential_cost(&self, atom: &Atom) -> usize {
+        let Atom::Concept { lit, .. } = atom else {
+            return 0;
+        };
+        self.lit_index
+            .get(lit)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter(|(ci, _)| {
+                        matches!(self.clauses[*ci].cl.head.as_slice(), [Atom::Exists { .. }])
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
+    /// Apply one branch head and describe exactly which Horn predicates became
+    /// new. Existential obligations never occur in clause bodies, while equality
+    /// rewrites the graph and therefore requires a conservative full rescan.
+    fn add_head_atom_careful(&self, g: &mut Graph, v: &Atom, subst: &Subst) -> CarefulStart {
+        let mut queue = VecDeque::new();
+        match v {
+            Atom::Concept { lit, t } => {
+                let n = g.find(subst.lookup(*t));
+                if g.add_concept(n, *lit) {
+                    queue.push_back(NewFact::Concept(n, *lit));
+                }
+            }
+            Atom::Role { r, s, t } => {
+                let (a, b) = (g.find(subst.lookup(*s)), g.find(subst.lookup(*t)));
+                if g.add_edge(*r, a, b) {
+                    queue.push_back(NewFact::Edge(*r, a, b));
+                }
+            }
+            Atom::Exists { r, fil, t } => {
+                let n = g.find(subst.lookup(*t));
+                g.add_exobl(n, *r, *fil);
+            }
+            Atom::Eq { s, t } => {
+                g.merge(subst.lookup(*s), subst.lookup(*t));
+                return CarefulStart::Full;
+            }
+        }
+        CarefulStart::Delta(queue)
+    }
+
+    /// Semi-naive Horn closure for a merge-capable graph whose parent was
+    /// already saturated. Every newly true body must contain at least one newly
+    /// added concept/role fact, so the existing indexes enumerate all and only
+    /// candidate clauses. A forced equality or nominal merge invalidates that
+    /// premise and deliberately falls back to the historical full fixpoint.
+    fn horn_saturate_careful_delta(&self, g: &mut Graph, mut queue: VecDeque<NewFact>) -> bool {
+        while let Some(fact) = queue.pop_front() {
+            let mut seeds: Vec<(usize, Subst)> = Vec::new();
+            match fact {
+                NewFact::Concept(node, lit) => {
+                    if let Some(entries) = self.lit_index.get(&lit) {
+                        seeds.reserve(entries.len());
+                        for &(ci, var) in entries {
+                            let mut seed = Subst::new();
+                            seed.insert(var, node);
+                            seeds.push((ci, seed));
+                        }
+                    }
+                }
+                NewFact::Edge(role, source, target) => {
+                    if let Some(entries) = self.role_index.get(&role) {
+                        seeds.reserve(entries.len());
+                        for &(ci, source_var, target_var) in entries {
+                            let mut seed = Subst::new();
+                            seed.insert(source_var, source);
+                            seed.insert(target_var, target);
+                            seeds.push((ci, seed));
+                        }
+                    }
+                }
+            }
+
+            for (ci, seed) in seeds {
+                let info = &self.clauses[ci];
+                let mut clash = false;
+                let mut derived: Vec<(Atom, Subst)> = Vec::new();
+                self.match_visit_from(&info.cl, g, seed, &mut |subst| {
+                    if info.cl.head.is_empty() {
+                        clash = true;
+                        return false;
+                    }
+                    let head = &info.cl.head[0];
+                    if !self.head_atom_present(g, head, subst) {
+                        derived.push((head.clone(), subst.clone()));
+                    }
+                    true
+                });
+                if clash {
+                    return false;
+                }
+                for (head, subst) in derived {
+                    match head {
+                        Atom::Concept { lit, t } => {
+                            let n = g.find(subst.lookup(t));
+                            if g.add_concept(n, lit) {
+                                queue.push_back(NewFact::Concept(n, lit));
+                            }
+                        }
+                        Atom::Role { r, s, t } => {
+                            let (a, b) = (g.find(subst.lookup(s)), g.find(subst.lookup(t)));
+                            if g.add_edge(r, a, b) {
+                                queue.push_back(NewFact::Edge(r, a, b));
+                            }
+                        }
+                        Atom::Exists { r, fil, t } => {
+                            let n = g.find(subst.lookup(t));
+                            g.add_exobl(n, r, fil);
+                        }
+                        Atom::Eq { s, t } => {
+                            g.merge(subst.lookup(s), subst.lookup(t));
+                            return self.horn_saturate(g);
+                        }
+                    }
+                }
+                if g.clash() {
+                    return false;
+                }
+            }
+        }
+        if !self.nominals.is_empty() && self.apply_nominal_merges(g) {
+            return self.horn_saturate(g);
+        }
+        !g.clash()
     }
 
     /// Saturate Horn Hyp to a clash-free fixpoint (no ∃), interleaving the
@@ -1139,6 +1299,14 @@ impl Tableau {
         let mut hs_iter = 0u64;
         loop {
             hs_iter += 1;
+            if prog && hs_iter == 1 {
+                eprintln!(
+                    "KM_TAB_STATS horn_saturate begin iter={} nodes={} clauses={}",
+                    hs_iter,
+                    g.n(),
+                    self.clauses.len(),
+                );
+            }
             if prog && hs_iter % 200 == 0 {
                 eprintln!(
                     "KM_TAB_STATS horn_saturate iter={} nodes={}",
@@ -1147,11 +1315,22 @@ impl Tableau {
                 );
             }
             let mut changed = false;
-            for info in &self.clauses {
+            for (ci, info) in self.clauses.iter().enumerate() {
                 if info.disjunctive || !self.matchable(info, g) {
                     continue;
                 }
-                for subst in self.match_body(&info.cl, g) {
+                let matches = self.match_body(&info.cl, g);
+                if prog && matches.len() >= 10_000 {
+                    eprintln!(
+                        "KM_TAB_STATS horn_saturate broad-match iter={} clause={} matches={} body={} head={}",
+                        hs_iter,
+                        ci,
+                        matches.len(),
+                        info.cl.body.len(),
+                        info.cl.head.len(),
+                    );
+                }
+                for subst in matches {
                     if info.cl.head.is_empty() {
                         return false; // body matched, empty head ⇒ ⊥
                     }
@@ -1314,8 +1493,11 @@ impl Tableau {
         blockskip: bool,
         guarded: Option<bool>,
     ) -> Option<(Vec<Atom>, Subst, DepSet)> {
-        for info in &self.clauses {
-            if !info.disjunctive || !self.matchable(info, g) {
+        let lazy_choices = self.careful() && std::env::var_os("KM_TAB_CAREFUL_LAZY").is_some();
+        let trace_stats = std::env::var_os("KM_TAB_STATS").is_some();
+        for &ci in &self.disjunctive_indices {
+            let info = &self.clauses[ci];
+            if !self.matchable(info, g) {
                 continue;
             }
             if let Some(want) = guarded {
@@ -1331,6 +1513,20 @@ impl Tableau {
                     .iter()
                     .all(|v| !self.head_atom_present(g, v, subst))
                 {
+                    // A concept choice whose every downstream use is blocked by
+                    // an absent incident role edge can be postponed. Expansion
+                    // revisits all disjunctions after any edge/successor change;
+                    // at a completed graph the unused predicate can be assigned
+                    // this alternative without affecting another clause.
+                    if lazy_choices
+                        && info
+                            .cl
+                            .head
+                            .iter()
+                            .any(|v| self.role_blocked_choice(g, v, subst))
+                    {
+                        return true;
+                    }
                     if blockskip && self.disj_all_blocked(g, &info.cl.head, subst) {
                         return true; // every target node blocked: skip, keep searching
                     }
@@ -1341,11 +1537,87 @@ impl Tableau {
                 }
             });
             if let Some(subst) = found {
+                if trace_stats {
+                    eprintln!(
+                        "KM_TAB_STATS branch clause={} nodes={} body={} head={}",
+                        ci,
+                        g.n(),
+                        info.cl.body.len(),
+                        info.cl.head.len(),
+                    );
+                }
                 let bdep = self.body_dep(g, &info.cl, &subst);
                 return Some((info.cl.head.clone(), subst, bdep));
             }
         }
         None
+    }
+
+    /// Prove that choosing this concept literal has no consequence until the
+    /// graph gains a particular incident role edge. The literal index contains
+    /// every non-disjunctive downstream use. A use is blocked when at least one
+    /// role atom tied to the literal's body variable has no matching edge at the
+    /// concrete node. Any concept-only/global use makes the choice relevant and
+    /// fails closed. A refuted alternative is never considered inert.
+    fn role_blocked_choice(&self, g: &Graph, atom: &Atom, subst: &Subst) -> bool {
+        let Atom::Concept { lit, t } = atom else {
+            return false;
+        };
+        // Concept labels are part of every blocking test. Materializing a
+        // postponed choice after a completion graph has acquired blockable
+        // successors can therefore invalidate an earlier block even when no
+        // DL-clause body observes the predicate. Restrict this certificate to
+        // root-only graphs; successor creation recursively revisits the skipped
+        // disjunctions under the ordinary branch search.
+        if g.blockable
+            .iter()
+            .enumerate()
+            .any(|(node, &blockable)| blockable && g.alive(node))
+        {
+            return false;
+        }
+        // Positive nominal labels also participate in the external o-rule
+        // rather than an indexed clause body. Conservatively retain ordinary
+        // branching for either polarity of a nominal predicate.
+        if self.nominals.contains(&lit.c) {
+            return false;
+        }
+        let node = g.find(subst.lookup(*t));
+        if g.concepts[node].contains(&lit.complement()) {
+            return false;
+        }
+        let Some(entries) = self.body_lit_index_all.get(lit) else {
+            return true;
+        };
+        for &(ci, var) in entries {
+            let mut tied_role = false;
+            let mut blocked = false;
+            for body in &self.clauses[ci].cl.body {
+                let Atom::Role { r, s, t } = body else {
+                    continue;
+                };
+                if *s == var {
+                    tied_role = true;
+                    if !g.out_edges[node].iter().any(|&(rr, _)| rr == *r) {
+                        blocked = true;
+                    }
+                }
+                if *t == var {
+                    tied_role = true;
+                    if !g
+                        .edges
+                        .iter()
+                        .any(|&(rr, _, target)| rr == *r && target == node)
+                    {
+                        blocked = true;
+                    }
+                }
+            }
+            if !tied_role || !blocked {
+                return false;
+            }
+        }
+        true
     }
 
     /// True iff every head atom of a disjunction targets a blocked node (so the
@@ -2256,6 +2528,13 @@ impl SearchState {
 enum NewFact {
     Concept(Node, CLit),
     Edge(R, Node, Node),
+}
+
+/// Entry condition for one merge-capable DFS node. `Delta` is valid only when
+/// the parent graph was already at a Horn fixpoint.
+enum CarefulStart {
+    Full,
+    Delta(VecDeque<NewFact>),
 }
 
 /// A head atom resolved to concrete nodes and tagged with its dependency set,
@@ -10298,6 +10577,151 @@ mod tests {
         ];
         let t = Tableau::new(cls);
         assert!(t.consistent(&[CLit::pos(A)]));
+    }
+
+    #[test]
+    fn careful_delta_closure_propagates_and_falls_back_on_merge() {
+        // A branch fact drives a concept rule, a role rule, and a second concept
+        // rule without rescanning unrelated clauses.
+        let mut t = Tableau::new(vec![
+            Clause::new(vec![con(false, B, X)], vec![role(R0, X, X)]),
+            Clause::new(vec![role(R0, X, 1)], vec![con(false, E, 1)]),
+            Clause::new(vec![con(false, E, X)], vec![con(false, F, X)]),
+        ]);
+        t.set_number(true);
+        let mut g = Graph::new();
+        let root = g.new_node(None, false);
+        assert!(t.horn_saturate(&mut g));
+        assert!(g.add_concept(root, CLit::pos(B)));
+        let mut queue = VecDeque::new();
+        queue.push_back(NewFact::Concept(root, CLit::pos(B)));
+        assert!(t.horn_saturate_careful_delta(&mut g, queue));
+        assert!(g.edges.contains(&(R0, root, root)));
+        assert!(g.concepts[root].contains(&CLit::pos(E)));
+        assert!(g.concepts[root].contains(&CLit::pos(F)));
+
+        // A forced equality can expose arbitrary old matches. The delta engine
+        // applies the merge and delegates to the full closure before returning.
+        let mut eqt = Tableau::new(vec![Clause::new(vec![con(false, B, X)], vec![eq(X, 1)])]);
+        eqt.set_number(true);
+        let mut eg = Graph::new();
+        let left = eg.new_node(None, false);
+        let right = eg.new_node(None, false);
+        assert!(eqt.horn_saturate(&mut eg));
+        assert!(eg.add_concept(left, CLit::pos(B)));
+        let mut queue = VecDeque::new();
+        queue.push_back(NewFact::Concept(left, CLit::pos(B)));
+        assert!(eqt.horn_saturate_careful_delta(&mut eg, queue));
+        assert_eq!(eg.find(left), eg.find(right));
+
+        // Nominal singleton merging is likewise retained after delta closure.
+        let mut nt = Tableau::new(Vec::new());
+        nt.set_nominals(vec![D]);
+        let mut ng = Graph::new();
+        let named = ng.new_node(None, false);
+        let other = ng.new_node(None, false);
+        ng.add_concept(named, CLit::pos(D));
+        assert!(nt.horn_saturate(&mut ng));
+        assert!(ng.add_concept(other, CLit::pos(D)));
+        let mut queue = VecDeque::new();
+        queue.push_back(NewFact::Concept(other, CLit::pos(D)));
+        assert!(nt.horn_saturate_careful_delta(&mut ng, queue));
+        assert_eq!(ng.find(named), ng.find(other));
+    }
+
+    #[test]
+    fn careful_delta_closure_detects_a_new_clash() {
+        let mut t = Tableau::new(vec![
+            Clause::new(vec![con(false, B, X)], vec![con(false, E, X)]),
+            Clause::new(vec![con(false, B, X)], vec![con(true, E, X)]),
+        ]);
+        t.set_number(true);
+        let mut g = Graph::new();
+        let root = g.new_node(None, false);
+        assert!(t.horn_saturate(&mut g));
+        assert!(g.add_concept(root, CLit::pos(B)));
+        let mut queue = VecDeque::new();
+        queue.push_back(NewFact::Concept(root, CLit::pos(B)));
+        assert!(!t.horn_saturate_careful_delta(&mut g, queue));
+    }
+
+    #[test]
+    fn careful_branch_cost_prefers_the_non_generative_alternative() {
+        let t = Tableau::new(vec![
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, E, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, F, X)]),
+        ]);
+        let min = con(false, B, X);
+        let max = con(false, D, X);
+        assert_eq!(t.immediate_existential_cost(&min), 2);
+        assert_eq!(t.immediate_existential_cost(&max), 0);
+        let mut alternatives = [min, max];
+        alternatives.sort_by_key(|atom| t.immediate_existential_cost(atom));
+        assert!(matches!(
+            alternatives[0],
+            Atom::Concept {
+                lit: CLit { c: D, neg: false },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn careful_lazy_choice_requires_every_use_to_be_role_blocked() {
+        let mut subst = Subst::new();
+        subst.insert(X, 0);
+        let choice = con(false, B, X);
+
+        let t = Tableau::new(vec![Clause::new(
+            vec![con(false, B, X), role(R0, X, 1)],
+            vec![con(false, E, 1)],
+        )]);
+        let mut g = Graph::new();
+        let root = g.new_node(None, false);
+        let target = g.new_node(None, false);
+        assert!(t.role_blocked_choice(&g, &choice, &subst));
+        g.add_edge(R0, root, target);
+        assert!(!t.role_blocked_choice(&g, &choice, &subst));
+
+        // A concept-only use, including a disjunctive one, makes the certificate
+        // fail closed even though another use is role guarded.
+        let concept_use = Tableau::new(vec![
+            Clause::new(
+                vec![con(false, B, X), role(R0, X, 1)],
+                vec![con(false, E, 1)],
+            ),
+            Clause::new(
+                vec![con(false, B, X)],
+                vec![con(false, E, X), con(false, F, X)],
+            ),
+        ]);
+        let mut empty = Graph::new();
+        empty.new_node(None, false);
+        assert!(!concept_use.role_blocked_choice(&empty, &choice, &subst));
+
+        // A refuted alternative cannot witness satisfiability of its parent
+        // disjunction and therefore must remain in the ordinary branch search.
+        empty.add_concept(0, CLit::neg(B));
+        assert!(!t.role_blocked_choice(&empty, &choice, &subst));
+
+        // A deferred label could invalidate completion-graph blocking even if
+        // all of its DL-clause uses are currently role-blocked.
+        let mut with_successor = Graph::new();
+        with_successor.new_node(None, false);
+        let child = with_successor.new_node(Some(0), true);
+        assert!(with_successor.alive(child));
+        assert!(!t.role_blocked_choice(&with_successor, &choice, &subst));
+
+        // Nominal singleton merging is an external rule and therefore is not
+        // represented in the body-literal index.
+        let mut nominal = Tableau::new(vec![Clause::new(
+            vec![con(false, B, X), role(R0, X, 1)],
+            vec![con(false, E, 1)],
+        )]);
+        nominal.set_nominals(vec![B]);
+        let mut root_only = Graph::new();
+        root_only.new_node(None, false);
+        assert!(!nominal.role_blocked_choice(&root_only, &choice, &subst));
     }
 
     #[test]

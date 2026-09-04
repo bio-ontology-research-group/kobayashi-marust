@@ -154,13 +154,9 @@ pub struct AboxData {
 /// (the common case) when there is no named-class disjointness, since then no
 /// clash of this shape is possible and nothing further need be collected.
 pub fn collect(ont: &Ontology) -> Option<AboxData> {
-    let mut sup: HashMap<String, Vec<String>> = HashMap::new();
     let mut disjoint: Vec<(String, String)> = Vec::new();
     for ax in ont.tbox() {
         match ax {
-            Axiom::SubClassOf(Concept::Name(a), Concept::Name(b)) => {
-                sup.entry(a.clone()).or_default().push(b.clone());
-            }
             // OWL's `A ⊑ ¬B` is exactly the named disjointness constraint
             // `A ⊓ B ⊑ ⊥`.  Several ORE ontologies use this source form
             // instead of `DisjointClasses(A B)`, so retain it in the same
@@ -177,10 +173,6 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
             Axiom::SubClassOf(Concept::Name(a), Concept::Bottom) => {
                 disjoint.push((a.clone(), a.clone()));
             }
-            Axiom::EquivalentClasses(Concept::Name(a), Concept::Name(b)) => {
-                sup.entry(a.clone()).or_default().push(b.clone());
-                sup.entry(b.clone()).or_default().push(a.clone());
-            }
             Axiom::DisjointClasses(Concept::Name(a), Concept::Name(b)) => {
                 disjoint.push((a.clone(), b.clone()));
             }
@@ -194,6 +186,23 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
         .any(|ax| matches!(ax, Axiom::NegativeRoleAssertion(..)));
     if disjoint.is_empty() && !has_negative {
         return None;
+    }
+    // The named subclass/equivalence hierarchy is read only by the clash check
+    // below. Project it after the gate: a disjointness-free TBox (the common
+    // case, including the large EL taxonomies) previously copied every named
+    // subclass edge into a table that was discarded on the next line.
+    let mut sup: HashMap<String, Vec<String>> = HashMap::new();
+    for ax in ont.tbox() {
+        match ax {
+            Axiom::SubClassOf(Concept::Name(a), Concept::Name(b)) => {
+                sup.entry(a.clone()).or_default().push(b.clone());
+            }
+            Axiom::EquivalentClasses(Concept::Name(a), Concept::Name(b)) => {
+                sup.entry(a.clone()).or_default().push(b.clone());
+                sup.entry(b.clone()).or_default().push(a.clone());
+            }
+            _ => {}
+        }
     }
     let mut mem: HashMap<String, HashSet<String>> = HashMap::new();
     let mut roles: Vec<(String, String, String)> = Vec::new();
@@ -583,5 +592,176 @@ mod tests {
             Axiom::DifferentIndividuals("a".into(), "b".into()),
         ]);
         assert!(!nominal_enumeration_inconsistent(&ontology));
+    }
+}
+
+#[cfg(test)]
+mod gated_projection_tests {
+    use super::*;
+    use crate::frontend::syntax::Role;
+
+    /// The pre-optimisation projection: the named hierarchy was built before
+    /// the disjointness gate. Kept as the oracle for the gated version.
+    fn collect_reference(ont: &Ontology) -> Option<AboxData> {
+        let mut sup: HashMap<String, Vec<String>> = HashMap::new();
+        let mut disjoint: Vec<(String, String)> = Vec::new();
+        for ax in ont.tbox() {
+            match ax {
+                Axiom::SubClassOf(Concept::Name(a), Concept::Name(b)) => {
+                    sup.entry(a.clone()).or_default().push(b.clone());
+                }
+                Axiom::SubClassOf(Concept::Name(a), Concept::Not(inner)) => {
+                    if let Concept::Name(b) = inner.as_ref() {
+                        disjoint.push((a.clone(), b.clone()));
+                    }
+                }
+                Axiom::SubClassOf(Concept::Name(a), Concept::Bottom) => {
+                    disjoint.push((a.clone(), a.clone()));
+                }
+                Axiom::EquivalentClasses(Concept::Name(a), Concept::Name(b)) => {
+                    sup.entry(a.clone()).or_default().push(b.clone());
+                    sup.entry(b.clone()).or_default().push(a.clone());
+                }
+                Axiom::DisjointClasses(Concept::Name(a), Concept::Name(b)) => {
+                    disjoint.push((a.clone(), b.clone()));
+                }
+                _ => {}
+            }
+        }
+        let has_negative = ont
+            .abox()
+            .any(|ax| matches!(ax, Axiom::NegativeRoleAssertion(..)));
+        if disjoint.is_empty() && !has_negative {
+            return None;
+        }
+        let mut mem: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut roles: Vec<(String, String, String)> = Vec::new();
+        let mut neg_roles: Vec<(String, String, String)> = Vec::new();
+        let mut same: Vec<(String, String)> = Vec::new();
+        for ax in ont.abox() {
+            match ax {
+                Axiom::ConceptAssertion(Concept::Name(c), i) => {
+                    mem.entry(i.clone()).or_default().insert(c.clone());
+                }
+                Axiom::RoleAssertion(p, a, b) => roles.push((p.clone(), a.clone(), b.clone())),
+                Axiom::NegativeRoleAssertion(p, a, b) => {
+                    neg_roles.push((p.clone(), a.clone(), b.clone()))
+                }
+                Axiom::SameIndividual(a, b) => same.push((a.clone(), b.clone())),
+                _ => {}
+            }
+        }
+        Some(AboxData {
+            sup,
+            disjoint,
+            mem,
+            roles,
+            neg_roles,
+            same,
+        })
+    }
+
+    fn name(n: &str) -> Concept {
+        Concept::Name(n.to_string())
+    }
+
+    fn ont(axioms: Vec<Axiom>) -> Ontology {
+        let mut o = Ontology::new();
+        for ax in axioms {
+            o.add(ax);
+        }
+        o
+    }
+
+    fn hierarchy() -> Vec<Axiom> {
+        vec![
+            Axiom::SubClassOf(name("A"), name("B")),
+            Axiom::SubClassOf(name("B"), name("C")),
+            Axiom::SubClassOf(name("A"), name("D")),
+            Axiom::EquivalentClasses(name("D"), name("E")),
+            Axiom::SubClassOf(
+                name("F"),
+                Concept::Exists(Role::Name("r".into()), Box::new(name("A"))),
+            ),
+            Axiom::EquivalentClasses(
+                name("G"),
+                Concept::And([name("A"), name("B")].into_iter().collect()),
+            ),
+            Axiom::RoleInclusion("r".into(), "s".into()),
+            Axiom::ConceptAssertion(name("A"), "i".into()),
+            Axiom::ConceptAssertion(name("C"), "j".into()),
+            Axiom::RoleAssertion("r".into(), "i".into(), "j".into()),
+            Axiom::SameIndividual("i".into(), "k".into()),
+        ]
+    }
+
+    fn same_projection(left: Option<AboxData>, right: Option<AboxData>) {
+        match (left, right) {
+            (None, None) => {}
+            (Some(l), Some(r)) => {
+                assert_eq!(l.sup, r.sup);
+                assert_eq!(l.disjoint, r.disjoint);
+                assert_eq!(l.mem, r.mem);
+                assert_eq!(l.roles, r.roles);
+                assert_eq!(l.neg_roles, r.neg_roles);
+                assert_eq!(l.same, r.same);
+            }
+            (l, r) => panic!("gate verdicts differ: {} vs {}", l.is_some(), r.is_some()),
+        }
+    }
+
+    #[test]
+    fn gated_projection_matches_the_reference_on_every_gate_shape() {
+        let variants: Vec<Vec<Axiom>> = vec![
+            hierarchy(),
+            hierarchy()
+                .into_iter()
+                .chain([Axiom::DisjointClasses(name("B"), name("C"))])
+                .collect(),
+            hierarchy()
+                .into_iter()
+                .chain([Axiom::SubClassOf(
+                    name("C"),
+                    Concept::Not(Box::new(name("D"))),
+                )])
+                .collect(),
+            hierarchy()
+                .into_iter()
+                .chain([Axiom::SubClassOf(name("E"), Concept::Bottom)])
+                .collect(),
+            hierarchy()
+                .into_iter()
+                .chain([Axiom::NegativeRoleAssertion(
+                    "s".into(),
+                    "i".into(),
+                    "j".into(),
+                )])
+                .collect(),
+            // Complex disjointness operands are skipped by both projections.
+            hierarchy()
+                .into_iter()
+                .chain([Axiom::DisjointClasses(
+                    name("A"),
+                    Concept::Exists(Role::Name("r".into()), Box::new(name("B"))),
+                )])
+                .collect(),
+            Vec::new(),
+        ];
+        for (index, axioms) in variants.into_iter().enumerate() {
+            let o = ont(axioms);
+            let gated = collect(&o);
+            let reference = collect_reference(&o);
+            assert_eq!(gated.is_some(), reference.is_some(), "variant {index}");
+            let verdict = gated.as_ref().map(|_| ());
+            same_projection(gated, reference);
+            if verdict.is_some() {
+                let rbox = [RboxRecord::Domain("r".into(), "B".into())];
+                assert_eq!(
+                    collect(&o).unwrap().is_inconsistent(&rbox),
+                    collect_reference(&o).unwrap().is_inconsistent(&rbox),
+                    "variant {index}"
+                );
+            }
+        }
     }
 }

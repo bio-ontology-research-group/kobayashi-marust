@@ -388,7 +388,7 @@ fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tm
 /// loser is killed. A PARTIAL certificate (elc exit 4) spawns a THIRD racer — a
 /// query-restricted engine run under the elc RSS cap — so the partial progress
 /// is not forfeited. Port of `_race_adaptive_vs_elc`.
-pub fn race_adaptive_vs_elc(
+fn run_elc_portfolio_cb(
     cfg: &Config,
     ont: &Path,
     clauses_path: &Path,
@@ -402,31 +402,132 @@ pub fn race_adaptive_vs_elc(
     // the elc process, is why the portfolio path lost speed/memory vs cb_stack.
     // Both paths are the same sound+complete engine on output-preserving clause
     // encodings, so the CB answer is unchanged.
-    let cb_run = move || -> Result<EngineOut, OrchestrateError> {
-        if cfg.absorb_portfolio && cfg.absorb_on {
-            race_absorbed_plain(cfg, ont, clauses_path, engine_threads)
-        } else {
-            let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
-            if res.code == 4 {
-                return Err(OrchestrateError::OutOfFragment(
-                    "selected CB mechanism did not reach its complete fixpoint".into(),
-                ));
-            }
-            if res.code != 0 {
-                return Err(OrchestrateError::Worker {
-                    bin: "engine".into(),
-                    code: res.code,
-                    stderr: res.stderr,
-                });
-            }
-            parse_out(&res)
+    if cfg.absorb_portfolio && cfg.absorb_on {
+        race_absorbed_plain(cfg, ont, clauses_path, engine_threads)
+    } else {
+        let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
+        if res.code == 4 {
+            return Err(OrchestrateError::OutOfFragment(
+                "selected CB mechanism did not reach its complete fixpoint".into(),
+            ));
         }
-    };
+        if res.code != 0 {
+            return Err(OrchestrateError::Worker {
+                bin: "engine".into(),
+                code: res.code,
+                stderr: res.stderr,
+            });
+        }
+        parse_out(&res)
+    }
+}
 
+/// Memory-first certified-ELC portfolio. This is useful for large near-EL
+/// inputs where starting unrestricted CB during certificate construction can
+/// consume the process-tree budget before a small exact residue is known.
+///
+/// Every return path remains complete: an exit-0 ELC certificate is complete;
+/// an exit-4 certificate is merged with exact CB answers for every unresolved
+/// subject; and any refusal or worker failure starts the ordinary complete CB
+/// stack. Unlike the racing schedule, this path needs no cancellation state.
+fn sequential_elc_then_residue(
+    cfg: &Config,
+    ont: &Path,
+    clauses_path: &Path,
+    engine_threads: Option<usize>,
+) -> Result<EngineOut, OrchestrateError> {
+    let Some((mut elc, elc_out)) = spawn_elc_cert(cfg, clauses_path) else {
+        return run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads);
+    };
+    let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
+    let status = loop {
+        if let Some(status) = elc.try_wait()? {
+            break status;
+        }
+        if engine_run::read_rss(elc.id()).is_some_and(|rss| rss > cap_bytes) {
+            let _ = elc.kill();
+            break elc.wait()?;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let rc = status.code().unwrap_or(-1);
+    let trace = std::env::var_os("KM_ROUTE_TRACE").is_some();
+    if trace {
+        eprintln!(
+            "KM_ROUTE_TRACE sequential_elc rc={rc} bytes={}",
+            std::fs::metadata(elc_out.path()).map_or(0, |m| m.len())
+        );
+    }
+    if rc == 0 {
+        match super::parse_out_path(elc_out.path()) {
+            Ok(answer) => return Ok(answer),
+            Err(err) if trace => eprintln!("KM_ROUTE_TRACE sequential_elc parse_error={err}"),
+            Err(_) => {}
+        }
+    } else if rc == 4 {
+        match super::parse_out_path(elc_out.path()) {
+            Ok(mut partial) => {
+                let names = std::mem::take(&mut partial.unresolved);
+                if trace {
+                    eprintln!("KM_ROUTE_TRACE sequential_elc unresolved={}", names.len());
+                }
+                if names.is_empty() {
+                    return Ok(partial);
+                }
+                let queries = names.join(",");
+                let threads = engine_threads.map(|t| t.to_string());
+                let (engine_prog, engine_pre) = cfg.engine_cmd();
+                let residue = engine_run::run_engine(
+                    &engine_prog,
+                    &engine_pre,
+                    clauses_path,
+                    threads.as_deref(),
+                    Some(cfg.elc_port_mem_gb),
+                    None,
+                    &[("KM_QUERIES", queries.as_str())],
+                    false,
+                )?;
+                if trace {
+                    eprintln!(
+                        "KM_ROUTE_TRACE sequential_elc residue_rc={} residue_bytes={}",
+                        residue.code,
+                        std::fs::metadata(residue.stdout.path()).map_or(0, |m| m.len())
+                    );
+                }
+                if residue.code == 0 {
+                    let exact = parse_out(&residue)?;
+                    for (subject, supers) in exact.subsumptions {
+                        partial.subsumptions.insert(subject, supers);
+                    }
+                    partial.inconsistent = partial.inconsistent || exact.inconsistent;
+                    return Ok(partial);
+                }
+            }
+            Err(err) if trace => {
+                eprintln!("KM_ROUTE_TRACE sequential_elc partial_parse_error={err}");
+            }
+            Err(_) => {}
+        }
+    }
+    if trace {
+        eprintln!("KM_ROUTE_TRACE sequential_elc falling_back=cb");
+    }
+    run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads)
+}
+
+pub fn race_adaptive_vs_elc(
+    cfg: &Config,
+    ont: &Path,
+    clauses_path: &Path,
+    engine_threads: Option<usize>,
+) -> Result<EngineOut, OrchestrateError> {
+    if std::env::var_os("KM_ELC_SEQUENTIAL").is_some() {
+        return sequential_elc_then_residue(cfg, ont, clauses_path, engine_threads);
+    }
     let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path) {
         Some(x) => x,
         // elc could not start: the engine answers alone.
-        None => return cb_run(),
+        None => return run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads),
     };
     let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
 
@@ -441,7 +542,7 @@ pub fn race_adaptive_vs_elc(
         let cd = cb_done.clone();
         let cb_event = event.clone();
         let cb = s.spawn(move || {
-            let r = cb_run();
+            let r = run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads);
             cd.store(true, Ordering::SeqCst);
             cb_event.notify();
             r
