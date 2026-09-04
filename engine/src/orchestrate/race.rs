@@ -29,6 +29,80 @@ use super::{cb_to_ht, engine_run, frontend_run, parse_out, Config, EngineOut, Or
 use crate::mem::release_transient_heap;
 
 // ---------------------------------------------------------------------------
+// deferred engine thread count
+// ---------------------------------------------------------------------------
+/// Engine thread count for a CB stack that may start before the count is
+/// known. `race_cb_vs_ht` starts the CB stack first and only then reads,
+/// converts, and serialises the HT worker's input; the stack's engine thread
+/// count depends on that converted input (a large synchronous bridge limits its
+/// concurrent CB fallback to one thread), but the stack needs the count only
+/// when it spawns its first engine, after its own plain-frontend probe. The
+/// cell resolves once; `get` blocks until it has. Fixed callers use `ready`.
+#[derive(Clone)]
+pub struct ThreadBudget {
+    inner: Arc<(Mutex<Option<Option<usize>>>, std::sync::Condvar)>,
+}
+
+impl ThreadBudget {
+    pub fn ready(threads: Option<usize>) -> Self {
+        ThreadBudget {
+            inner: Arc::new((Mutex::new(Some(threads)), std::sync::Condvar::new())),
+        }
+    }
+
+    pub fn pending() -> Self {
+        ThreadBudget {
+            inner: Arc::new((Mutex::new(None), std::sync::Condvar::new())),
+        }
+    }
+
+    /// Resolve the count. The first resolution wins; later ones are ignored.
+    pub fn resolve(&self, threads: Option<usize>) {
+        let (slot, ready) = &*self.inner;
+        let mut guard = slot.lock().unwrap();
+        if guard.is_none() {
+            *guard = Some(threads);
+        }
+        ready.notify_all();
+    }
+
+    /// The resolved count, blocking until `resolve` has run.
+    pub fn get(&self) -> Option<usize> {
+        let (slot, ready) = &*self.inner;
+        let mut guard = slot.lock().unwrap();
+        while guard.is_none() {
+            guard = ready.wait(guard).unwrap();
+        }
+        guard.unwrap()
+    }
+
+    pub fn is_resolved(&self) -> bool {
+        self.inner.0.lock().unwrap().is_some()
+    }
+
+    /// A guard that resolves the cell to `fallback` when dropped unless it
+    /// was resolved explicitly first, so a racer blocked in `get` can never
+    /// outlive the thread that owed it a count (including on unwinding).
+    pub fn resolve_on_drop(&self, fallback: Option<usize>) -> ThreadBudgetGuard {
+        ThreadBudgetGuard {
+            budget: self.clone(),
+            fallback,
+        }
+    }
+}
+
+pub struct ThreadBudgetGuard {
+    budget: ThreadBudget,
+    fallback: Option<usize>,
+}
+
+impl Drop for ThreadBudgetGuard {
+    fn drop(&mut self) {
+        self.budget.resolve(self.fallback);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // tableau output -> engine `out` shape
 // ---------------------------------------------------------------------------
 /// All three fields are REQUIRED: every tableau/HT worker serialises the full
@@ -300,10 +374,10 @@ pub fn race_absorbed_plain(
     cfg: &Config,
     ont: &Path,
     absorbed_path: &Path,
-    engine_threads: Option<usize>,
+    engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
     if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
-        let threads = engine_threads.map(|t| t.to_string());
+        let threads = engine_threads.get().map(|t| t.to_string());
         let (engine_prog, engine_pre) = cfg.engine_cmd();
         let res = engine_run::run_engine(
             &engine_prog,
@@ -320,7 +394,7 @@ pub fn race_absorbed_plain(
         }
     }
     // plain absent or did not finish fast: run the absorbed set with full budget
-    let res = engine_run::run_engine_adaptive(cfg, absorbed_path, None, engine_threads)?;
+    let res = engine_run::run_engine_adaptive(cfg, absorbed_path, None, engine_threads.get())?;
     if res.code == 4 {
         return Err(OrchestrateError::OutOfFragment(
             "selected CB mechanism did not reach its complete fixpoint".into(),
@@ -392,7 +466,7 @@ fn run_elc_portfolio_cb(
     cfg: &Config,
     ont: &Path,
     clauses_path: &Path,
-    engine_threads: Option<usize>,
+    engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
     // The CB arm must run through the SAME absorbed-plain path `cb_stack` uses
     // (an 8s plain probe, then the absorbed set), NOT `run_engine_adaptive` on
@@ -405,7 +479,7 @@ fn run_elc_portfolio_cb(
     if cfg.absorb_portfolio && cfg.absorb_on {
         race_absorbed_plain(cfg, ont, clauses_path, engine_threads)
     } else {
-        let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
+        let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads.get())?;
         if res.code == 4 {
             return Err(OrchestrateError::OutOfFragment(
                 "selected CB mechanism did not reach its complete fixpoint".into(),
@@ -434,7 +508,7 @@ fn sequential_elc_then_residue(
     cfg: &Config,
     ont: &Path,
     clauses_path: &Path,
-    engine_threads: Option<usize>,
+    engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
     let Some((mut elc, elc_out)) = spawn_elc_cert(cfg, clauses_path) else {
         return run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads);
@@ -475,7 +549,7 @@ fn sequential_elc_then_residue(
                     return Ok(partial);
                 }
                 let queries = names.join(",");
-                let threads = engine_threads.map(|t| t.to_string());
+                let threads = engine_threads.get().map(|t| t.to_string());
                 let (engine_prog, engine_pre) = cfg.engine_cmd();
                 let residue = engine_run::run_engine(
                     &engine_prog,
@@ -519,15 +593,15 @@ pub fn race_adaptive_vs_elc(
     cfg: &Config,
     ont: &Path,
     clauses_path: &Path,
-    engine_threads: Option<usize>,
+    engine_threads: ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
     if std::env::var_os("KM_ELC_SEQUENTIAL").is_some() {
-        return sequential_elc_then_residue(cfg, ont, clauses_path, engine_threads);
+        return sequential_elc_then_residue(cfg, ont, clauses_path, &engine_threads);
     }
     let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path) {
         Some(x) => x,
         // elc could not start: the engine answers alone.
-        None => return run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads),
+        None => return run_elc_portfolio_cb(cfg, ont, clauses_path, &engine_threads),
     };
     let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
 
@@ -541,8 +615,9 @@ pub fn race_adaptive_vs_elc(
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
         let cd = cb_done.clone();
         let cb_event = event.clone();
+        let cb_budget = engine_threads.clone();
         let cb = s.spawn(move || {
-            let r = run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads);
+            let r = run_elc_portfolio_cb(cfg, ont, clauses_path, &cb_budget);
             cd.store(true, Ordering::SeqCst);
             cb_event.notify();
             r
@@ -583,10 +658,11 @@ pub fn race_adaptive_vs_elc(
                             }
                             let q = names.join(",");
                             let residue_event = event.clone();
+                            let residue_budget = engine_threads.clone();
                             tgt = Some(s.spawn(move || {
                                 // Python inherits the (possibly reserved) global
                                 // KM_THREADS; we pass it explicitly for the same effect.
-                                let ts = engine_threads.map(|t| t.to_string());
+                                let ts = residue_budget.get().map(|t| t.to_string());
                                 let (engine_prog, engine_pre) = cfg.engine_cmd();
                                 let r = engine_run::run_engine(
                                     &engine_prog,
@@ -2993,8 +3069,9 @@ fn ht_acceptance_budget(
 ///     `KM_HT_BUDGET_S`.
 ///   - "race" (speed): the first VALID finisher wins.
 /// On a non-routable ontology HT never spawns and CB runs alone (no reservation).
-/// `engine_run(threads)` runs the CB stack with the given thread count. Port of
-/// `_race_cb_vs_ht`.
+/// `engine_run(budget)` runs the CB stack; it starts before the HT input is
+/// prepared and reads its engine thread count from the `ThreadBudget` when it
+/// spawns its first engine. Port of `_race_cb_vs_ht`.
 pub fn race_cb_vs_ht<F>(
     cfg: &Config,
     clauses_path: &Path,
@@ -3003,7 +3080,7 @@ pub fn race_cb_vs_ht<F>(
     engine_run: F,
 ) -> Result<EngineOut, OrchestrateError>
 where
-    F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
+    F: FnOnce(ThreadBudget) -> Result<EngineOut, OrchestrateError> + Send,
 {
     // The completion bridge is complete-answer-or-defer. Certified portfolios
     // can therefore run it before allocating their exact CB fallback, avoiding
@@ -3029,70 +3106,22 @@ where
                         started.elapsed().as_secs_f64()
                     );
                 }
-                return engine_run(cfg.threads);
+                return engine_run(ThreadBudget::ready(cfg.threads));
             }
         }
     }
-    let (
-        mut ht,
-        ht_out,
-        fast_certify,
-        bridge_class_count,
-        bridge_exclusive,
-        typed_nominal_exclusive,
-        proxy_abox_certificate,
-    ) = match spawn_ht(cfg, clauses_path, named) {
-        Some(x) => x,
-        None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
-    };
-    release_transient_heap();
-    let reserved = limit_synchronous_bridge_competitor(
-        ht_reserved_threads(cfg),
-        bridge_class_count,
-        typed_nominal_exclusive,
-    );
-    if std::env::var_os("KM_TIMING").is_some()
-        && (typed_nominal_exclusive
-            || bridge_class_count
-                .is_some_and(|count| count >= LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT))
-    {
-        eprintln!(
-            "KM_TIMING race: synchronous bridge classes={} typed_nominal={} cb_threads={}",
-            bridge_class_count.unwrap_or_default(),
-            typed_nominal_exclusive,
-            reserved.unwrap_or(1),
-        );
-    }
-    // Fast certify-or-defer arms (SHOQ fast-Ht, QO hybrid): sound+complete on their
-    // fragment and decide quickly (SHOQ <1-3s, QO certify ~tens of s), so take the
-    // answer after a SHORT budget instead of waiting out the doomed CB for the full
-    // ht_budget_s. CB still wins when it finishes first (preserves CB-preference /
-    // monotone-safety on CB-solvable onts). The budget is only the "start accepting
-    // HT" threshold: past it, the certified answer is harvested the moment it is
-    // ready, so a QO arm that certifies later than the SHOQ default is still taken.
-    let budget = ht_acceptance_budget(
-        std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
-        bridge_exclusive,
-        fast_certify,
-        cfg.shoq_budget_s,
-        cfg.ht_budget_s,
-    );
-
-    let read_tout = |p: &Path| -> Option<EngineOut> {
-        let f = File::open(p).ok()?;
-        let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
-        if proxy_abox_certificate
-            .as_ref()
-            .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &output))
-        {
-            return None;
-        }
-        if let Some(certificate) = &proxy_abox_certificate {
-            proxy_abox_filter_output(certificate, &mut output);
-        }
-        Some(tableau_to_out(output))
-    };
-
+    // The CB stack starts now, before this thread reads, converts, and
+    // serialises the HT worker's input. That preparation was on the critical
+    // path of every CB-stack answer (about 1.1 s of parent-only work between
+    // the frontend and the first racer on ORE 10032, about 2 s on ORE 4604).
+    // The stack's engine thread count is resolved once the HT input is known:
+    // a non-routable input keeps the ambient count, a routable one keeps the
+    // reservation, and a large synchronous bridge still limits its concurrent
+    // CB fallback to one thread. The stack reads the count only when it spawns
+    // its first engine, so the racers it starts before that point (the EL
+    // certificate worker and the plain frontend probe) no longer wait. Worker
+    // set, inputs, answers, and the winner rule are unchanged.
+    let budget_cell = ThreadBudget::pending();
     // the CB result, written by the CB thread when it finishes — the analogue of
     // Python's `done` dict (Ok = `done["out"]`, Err = `done["exc"]`). Inspecting
     // it each iteration lets the loop distinguish "CB succeeded" (always prefer)
@@ -3103,20 +3132,107 @@ where
     // Completion event shared by the CB thread and the HT worker: the
     // scheduler wakes when either finishes instead of at its next quantum.
     let event = engine_run::ArmEvent::new();
-    engine_run::notify_on_exit(ht.id(), event.clone());
+    let timing = std::env::var_os("KM_TIMING").is_some();
+    let cb_started = Instant::now();
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
         let slot = cb_slot.clone();
         let cb_event = event.clone();
+        let cb_budget = budget_cell.clone();
         s.spawn(move || {
-            let r = engine_run(reserved);
+            let r = engine_run(cb_budget);
             *slot.lock().unwrap() = Some(r);
             cb_event.notify();
         });
+        // Whatever happens below, the CB thread must receive its count.
+        let budget_guard = budget_cell.resolve_on_drop(cfg.threads);
+        let spawned = spawn_ht(cfg, clauses_path, named);
+        release_transient_heap();
+        let Some((
+            mut ht,
+            ht_out,
+            fast_certify,
+            bridge_class_count,
+            bridge_exclusive,
+            typed_nominal_exclusive,
+            proxy_abox_certificate,
+        )) = spawned
+        else {
+            // HT not routable: CB alone, no reservation.
+            budget_cell.resolve(cfg.threads);
+            drop(budget_guard);
+            if timing {
+                eprintln!(
+                    "KM_TIMING race: HT not routable @ {:.2}s after the CB stack started",
+                    cb_started.elapsed().as_secs_f64()
+                );
+            }
+            loop {
+                let seen = event.epoch();
+                if let Some(r) = cb_slot.lock().unwrap().take() {
+                    return r;
+                }
+                event.wait_past(seen, Duration::from_millis(50));
+            }
+        };
+        let reserved = limit_synchronous_bridge_competitor(
+            ht_reserved_threads(cfg),
+            bridge_class_count,
+            typed_nominal_exclusive,
+        );
+        budget_cell.resolve(reserved);
+        drop(budget_guard);
+        if timing
+            && (typed_nominal_exclusive
+                || bridge_class_count
+                    .is_some_and(|count| count >= LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT))
+        {
+            eprintln!(
+                "KM_TIMING race: synchronous bridge classes={} typed_nominal={} cb_threads={}",
+                bridge_class_count.unwrap_or_default(),
+                typed_nominal_exclusive,
+                reserved.unwrap_or(1),
+            );
+        }
+        if timing {
+            eprintln!(
+                "KM_TIMING race: HT worker spawned @ {:.2}s after the CB stack started",
+                cb_started.elapsed().as_secs_f64()
+            );
+        }
+        // Fast certify-or-defer arms (SHOQ fast-Ht, QO hybrid): sound+complete on their
+        // fragment and decide quickly (SHOQ <1-3s, QO certify ~tens of s), so take the
+        // answer after a SHORT budget instead of waiting out the doomed CB for the full
+        // ht_budget_s. CB still wins when it finishes first (preserves CB-preference /
+        // monotone-safety on CB-solvable onts). The budget is only the "start accepting
+        // HT" threshold: past it, the certified answer is harvested the moment it is
+        // ready, so a QO arm that certifies later than the SHOQ default is still taken.
+        let budget = ht_acceptance_budget(
+            std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
+            bridge_exclusive,
+            fast_certify,
+            cfg.shoq_budget_s,
+            cfg.ht_budget_s,
+        );
+
+        let read_tout = |p: &Path| -> Option<EngineOut> {
+            let f = File::open(p).ok()?;
+            let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
+            if proxy_abox_certificate
+                .as_ref()
+                .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &output))
+            {
+                return None;
+            }
+            if let Some(certificate) = &proxy_abox_certificate {
+                proxy_abox_filter_output(certificate, &mut output);
+            }
+            Some(tableau_to_out(output))
+        };
+        engine_run::notify_on_exit(ht.id(), event.clone());
 
         let mut ht_res: Option<EngineOut> = None;
         let mut ht_polled = false;
         let t0 = Instant::now();
-        let timing = std::env::var_os("KM_TIMING").is_some();
         let mut cb_logged = false;
 
         // RSS cap on the HT racer (KM_HT_MEM_GB, default 12): the HT arm is a
@@ -3238,6 +3354,67 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ready_thread_budget_answers_without_blocking() {
+        assert_eq!(ThreadBudget::ready(Some(8)).get(), Some(8));
+        assert_eq!(ThreadBudget::ready(None).get(), None);
+        assert!(ThreadBudget::ready(None).is_resolved());
+        assert!(!ThreadBudget::pending().is_resolved());
+    }
+
+    #[test]
+    fn pending_thread_budget_blocks_a_racer_until_the_ht_input_resolves_it() {
+        // A CB stack that reaches its first engine spawn before the HT input
+        // is converted must wait for the reservation, not guess one.
+        let budget = ThreadBudget::pending();
+        let racer_budget = budget.clone();
+        let racer = thread::spawn(move || racer_budget.get());
+        thread::sleep(Duration::from_millis(30));
+        assert!(!racer.is_finished());
+        budget.resolve(Some(1));
+        assert_eq!(racer.join().unwrap(), Some(1));
+        assert!(budget.is_resolved());
+    }
+
+    #[test]
+    fn first_thread_budget_resolution_wins() {
+        let budget = ThreadBudget::pending();
+        budget.resolve(Some(15));
+        budget.resolve(Some(1));
+        budget.resolve(None);
+        assert_eq!(budget.get(), Some(15));
+    }
+
+    #[test]
+    fn thread_budget_guard_resolves_the_fallback_only_when_still_pending() {
+        // The main thread failing between starting the CB stack and
+        // resolving the count must not leave the stack blocked forever.
+        let budget = ThreadBudget::pending();
+        {
+            let _guard = budget.resolve_on_drop(Some(16));
+        }
+        assert_eq!(budget.get(), Some(16));
+
+        let explicit = ThreadBudget::pending();
+        {
+            let _guard = explicit.resolve_on_drop(Some(16));
+            explicit.resolve(Some(1));
+        }
+        assert_eq!(explicit.get(), Some(1));
+
+        let unwound = ThreadBudget::pending();
+        let waiter_budget = unwound.clone();
+        let waiter = thread::spawn(move || waiter_budget.get());
+        let guarded = unwound.clone();
+        let panicked = thread::spawn(move || {
+            let _guard = guarded.resolve_on_drop(None);
+            panic!("main thread failed before resolving");
+        })
+        .join();
+        assert!(panicked.is_err());
+        assert_eq!(waiter.join().unwrap(), None);
+    }
 
     #[test]
     fn very_large_ht_inputs_cap_replication_at_eight_workers() {

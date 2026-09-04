@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Deferred engine thread budget in the production race
+
+- Start the CB stack of `race_cb_vs_ht` before the supervisor reads, converts,
+  and serialises the completion-bridge worker's input. That preparation ran
+  first and delayed every CB-stack racer by the whole parent-only phase: on
+  the workstation it is about 1.1 seconds on ORE 10032 and about 2 seconds on
+  ORE 4604 between the frontend finishing and the first racer starting. The
+  stack's engine thread count now arrives through a `ThreadBudget` cell that
+  the supervisor resolves once the bridge input is known, so a non-routable
+  input keeps the ambient count, a routable one keeps the reservation, and a
+  large synchronous bridge still limits its concurrent CB fallback to one
+  thread. The stack reads the count only when it spawns its first engine,
+  after its plain-frontend probe, so the EL certificate worker and that probe
+  no longer wait. A drop guard resolves the cell if the supervisor thread
+  fails first. Worker set, worker inputs, the CB-preference winner rule, and
+  every answer are unchanged; this is scheduling only.
+- Evidence comes from the 23 production-CB residuals of the v1.4 panel, whose
+  production answers do not come from the context engine: on ORE 3215, 9663,
+  11460, 14817, 9724, 16444, 7127, and 7956 the completion bridge answers and
+  the CB fallback is killed, while on ORE 10032 and 4604 the EL certificate
+  racer answers within 0.9 and 4.2 seconds of starting. Alternating
+  workstation pairs of the pinned parent and candidate on the production route
+  gave byte-identical JSON output on every pair and exact retained-gold
+  signatures. ORE 10032 wall fell from 5.12/5.15/5.23 to 4.24/4.27/4.16
+  seconds; ORE 4604 from 10.58/11.09/11.10 to 8.90/9.21/8.67 seconds. Sampled
+  process-tree peaks did not rise (394 versus 394 MiB and 2349 versus
+  1718 MiB maxima). Bridge-answered residuals gain nothing from this change;
+  their wall is the bridge saturation and completion phases plus the JSON
+  hand-offs around the worker, which remain the next lever.
+
 ### Packed EL rule index
 
 - Store each concept trigger's NF1, NF2, NF3, NF4, and NF5 rule record in one

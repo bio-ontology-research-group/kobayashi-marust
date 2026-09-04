@@ -1,0 +1,13 @@
+ontology	arm	run	wall_s	tree_peak_mib	output_identical_to_base
+ore_ont_10032.owl	base	1	5.12	394	yes
+ore_ont_10032.owl	patched	1	4.24	354	yes
+ore_ont_10032.owl	base	2	5.15	391	yes
+ore_ont_10032.owl	patched	2	4.27	343	yes
+ore_ont_10032.owl	base	3	5.23	393	yes
+ore_ont_10032.owl	patched	3	4.16	394	yes
+ore_ont_4604.owl	base	1	10.58	2349	yes
+ore_ont_4604.owl	patched	1	8.90	1666	yes
+ore_ont_4604.owl	base	2	11.09	1698	yes
+ore_ont_4604.owl	patched	2	9.21	887	yes
+ore_ont_4604.owl	base	3	11.10	1698	yes
+ore_ont_4604.owl	patched	3	8.67	1718	yes
