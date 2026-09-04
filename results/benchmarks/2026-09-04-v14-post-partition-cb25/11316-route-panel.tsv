@@ -1,0 +1,4 @@
+route	runs	status_ok	gold_matches	median_wall_s	median_peak_mib	wall_target_s	memory_target_mib	strict_joint_win
+production_all	3	3	3	0.1824	65.41	0.2201	42.43	no
+production_all1	3	3	3	0.2421	64.05	0.2201	42.43	no
+tab_race	3	3	3	0.1435	35.70	0.2201	42.43	yes
