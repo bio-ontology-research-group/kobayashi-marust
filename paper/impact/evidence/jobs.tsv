@@ -9,3 +9,7 @@ job_or_array	stage	tasks	max_simultaneous	terminal_state	finding
 51319644	Uberon TInput capture during diagnostic classification	1	1	partial	the source classification timed out, but the wrapper captured the exact hash-bound TInput used by the guarded consistency run
 51321084	guarded Uberon KM build	1	1	success	built the guarded development artifact and recorded source-archive, binary, toolchain, host, and job identities
 51321154	guarded Uberon direct TInput consistency	1	1	success	guarded KM reported consistent=true in 4.46 s at 157544 KiB peak RSS; no taxonomy was requested or established
+51326535	enablement extension preparation	1	1	success	compiled the SHA-bound projection tool and generated three OWLAPI-verified OWL 2 EL axiom subsets
+51326536	enablement extension reasoners	11	2	success	all KM, HermiT, ELK, and explanation tasks completed with terminal outputs and receipts
+51326537	enablement extension first validation	1	1	failure	validator compared equivalent default-prefixed and expanded product IRIs without canonicalizing; no ontology task failed or reran
+51326594	enablement extension corrected validation	1	1	success	canonicalized equivalent identifiers; verified product outcomes, GALEN exact projection agreement, and projection-subset-of-full gate

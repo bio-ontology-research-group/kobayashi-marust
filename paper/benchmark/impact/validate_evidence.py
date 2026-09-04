@@ -383,7 +383,7 @@ def validate_ledgers() -> None:
         "BIO-SNOMED-SYNTH": "executed",
         "BIO-SNOMED-LICENSED": "blocked",
         "NONBIO-ACCESS": "executed",
-        "NONBIO-CONFIG": "proposed",
+        "NONBIO-CONFIG": "executed",
         "NONBIO-DATA-GOV": "proposed",
     }
     actual_states = {row["id"]: row["evidence_state"] for row in ledger}
@@ -430,6 +430,17 @@ def validate_ledgers() -> None:
         "HERMIT-SNOMED-ABOX": ("success", "false", "0", "0"),
         "HERMIT-ACCESS-CONTROL": ("success", "true", "0", "1"),
         "HERMIT-ACCESS-CONFLICT": ("success", "true", "1", "0"),
+        "KM-PRODUCT-CONTROL": ("success", "true", "0", "3"),
+        "KM-PRODUCT-CONFLICT": ("success", "true", "1", "2"),
+        "HERMIT-PRODUCT-CONTROL": ("success", "true", "0", "3"),
+        "HERMIT-PRODUCT-CONFLICT": ("success", "true", "1", "2"),
+        "KM-PRODUCT-EL-CONTROL": ("success", "true", "0", "3"),
+        "KM-PRODUCT-EL-CONFLICT": ("success", "true", "0", "3"),
+        "ELK-PRODUCT-EL-CONTROL": ("success", "true", "0", "3"),
+        "ELK-PRODUCT-EL-CONFLICT": ("success", "true", "0", "3"),
+        "KM-PRODUCT-EXPLAIN": ("success", "NA", "NA", "NA"),
+        "KM-GALEN-EL": ("success", "true", "0", "453710"),
+        "ELK-GALEN-EL": ("success", "true", "0", "453710"),
     }
     require_exact_set(set(indexed), set(summary_expectations), "results ledger")
     for evidence_id, expected in summary_expectations.items():
@@ -456,6 +467,10 @@ def validate_ledgers() -> None:
         "51319644": ("Uberon TInput capture during diagnostic classification", "1", "1", "partial"),
         "51321084": ("guarded Uberon KM build", "1", "1", "success"),
         "51321154": ("guarded Uberon direct TInput consistency", "1", "1", "success"),
+        "51326535": ("enablement extension preparation", "1", "1", "success"),
+        "51326536": ("enablement extension reasoners", "11", "2", "success"),
+        "51326537": ("enablement extension first validation", "1", "1", "failure"),
+        "51326594": ("enablement extension corrected validation", "1", "1", "success"),
     }
     require_exact_set(set(jobs), set(expected_jobs), "job ledger")
     for job_id, expected in expected_jobs.items():
@@ -465,6 +480,46 @@ def validate_ledgers() -> None:
             raise ValueError(f"job summary changed: {job_id}: {actual}")
     if max(int(row["max_simultaneous"]) for row in jobs.values()) > 4:
         raise ValueError("impact job ledger exceeds four simultaneous tasks")
+
+    enablement = rows(IMPACT / "enablement-ledger.tsv")
+    required_columns = {
+        "domain", "ontology_version_hash", "scientific_question",
+        "added_axioms_or_intervention", "required_expressivity",
+        "el_projection_behavior", "comparator_behavior",
+        "km_route_config_version", "resource_cap", "job_receipt", "result",
+        "interpretation", "reproducibility_status", "citation",
+    }
+    if not enablement or not required_columns <= set(enablement[0]):
+        raise ValueError("enablement ledger is missing required columns")
+    indexed_enablement = {row["id"]: row for row in enablement}
+    if len(indexed_enablement) != 19:
+        raise ValueError("enablement ledger must contain exactly 19 unique cases")
+    if "3,380 full-only" not in indexed_enablement["BIO-GALEN-ORE-EL-DIFFERENTIAL"]["result"]:
+        raise ValueError("GALEN differential result is missing from enablement ledger")
+    if "Successful" not in indexed_enablement["NONBIO-PRODUCT-CONFIG"]["result"]:
+        raise ValueError("product result is missing from enablement ledger")
+    if "no taxonomy" not in indexed_enablement["BIO-UBERON-CONSISTENCY"]["result"]:
+        raise ValueError("Uberon consistency-only boundary is missing from enablement ledger")
+
+    extension = EVIDENCE / "extension-20260904"
+    summary = json.loads((extension / "summary.json").read_text(encoding="utf-8"))
+    if summary.get("status") != "validated":
+        raise ValueError("enablement extension is not validated")
+    galen = summary["galen"]
+    if (galen["full_subsumptions"], galen["projection_subsumptions"],
+            galen["full_only_subsumptions"], galen["projection_only_subsumptions"]) != (
+            457090, 453710, 3380, 0):
+        raise ValueError("GALEN differential counts changed")
+    if not galen["projection_km_elk_exact"] or not galen["projection_subset_of_full"]:
+        raise ValueError("GALEN differential gate changed")
+    product = summary["product_configuration"]
+    if not product["hermit_agreement"] or not product["el_projection_km_elk_exact"]:
+        raise ValueError("product comparator gate changed")
+    final = receipt(extension / "FINAL_RECEIPT.tsv")
+    if final.get("status") != "validated" or final.get("terminal_marker") != "VALIDATION_COMPLETE":
+        raise ValueError("enablement extension final receipt is not terminal")
+    if final.get("summary_sha256") != sha256(extension / "summary.json"):
+        raise ValueError("enablement summary binding changed")
 
 
 def validate_sources() -> None:
@@ -503,12 +558,37 @@ def validate_manifest() -> None:
             raise ValueError(f"manifest mismatch: {relative}")
     expected = {
         path for path in EVIDENCE.rglob("*")
-        if path.is_file() and path != manifest and "__pycache__" not in path.parts
+        if path.is_file()
+        and path != manifest
+        and "__pycache__" not in path.parts
+        and "extension-20260904" not in path.parts
     }
     if listed != expected:
         raise ValueError(
             f"manifest coverage mismatch: missing={sorted(map(str, expected - listed))}, "
             f"extra={sorted(map(str, listed - expected))}"
+        )
+
+    extension = EVIDENCE / "extension-20260904"
+    extension_manifest = extension / "SHA256SUMS"
+    extension_listed: set[Path] = set()
+    for line in extension_manifest.read_text(encoding="utf-8").splitlines():
+        digest, relative = line.split("  ", 1)
+        path = extension / relative.removeprefix("./")
+        if path in extension_listed:
+            raise ValueError(f"duplicate extension manifest path: {relative}")
+        extension_listed.add(path)
+        if not path.is_file() or sha256(path) != digest:
+            raise ValueError(f"extension manifest mismatch: {relative}")
+    extension_expected = {
+        path for path in extension.rglob("*")
+        if path.is_file() and path.name not in {"SHA256SUMS", "verify_compact.py"}
+    }
+    if extension_listed != extension_expected:
+        raise ValueError(
+            "extension manifest coverage mismatch: "
+            f"missing={sorted(map(str, extension_expected - extension_listed))}, "
+            f"extra={sorted(map(str, extension_listed - extension_expected))}"
         )
 
 
@@ -553,7 +633,7 @@ def main() -> None:
     validate_ledgers()
     validate_sources()
     validate_manifest()
-    print("IMPACT_EVIDENCE_OK\t8 KM classifications\t1 guarded KM consistency\t4 KM failures\t3 explanations\t12 baselines")
+    print("IMPACT_EVIDENCE_OK\t13 KM classifications\t1 guarded KM consistency\t4 KM failures\t4 explanations\t17 baseline runs")
 
 
 if __name__ == "__main__":

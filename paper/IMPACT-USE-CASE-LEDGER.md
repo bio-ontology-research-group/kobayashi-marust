@@ -6,7 +6,9 @@ extends that baseline rather than replacing it. It is an experiment plan, not
 a novelty claim. The machine-readable, scheduler-facing form is
 [`IMPACT-USE-CASE-MANIFEST.tsv`](IMPACT-USE-CASE-MANIFEST.tsv). That TSV is
 binding for proposed execution details when a detail here is abbreviated, but
-it does not override the established-evidence ledger.
+it does not override the established-evidence ledger. Its `evidence_status`
+cells preserve the pre-execution state for preregistration; current outcomes
+are in [`impact/enablement-ledger.tsv`](impact/enablement-ledger.tsv).
 
 ## Claim boundary
 
@@ -119,7 +121,7 @@ projection.
 | BIO-UBERON-FULL-EL | anatomy | running externally; not established | Consistency is established separately; full taxonomy and full-versus-EL effect remain unknown |
 | BIO-UBERON-FMA-BRIDGE | anatomy integration | proposed, source gate | No merged result |
 | BIO-GALEN-ORE-FULL | clinical terminology | verified existing | Two identical KM full classifications; historical Konclude equality |
-| BIO-GALEN-FULL-EL | clinical terminology | proposed differential | Full taxonomy exists; EL delta unknown |
+| BIO-GALEN-FULL-EL | clinical terminology | verified differential | Full taxonomy has 3,380 relations absent from the verified EL axiom subset |
 | BIO-GALEN-BIOPORTAL | clinical terminology | blocked | Metadata only; payload not acquired |
 | BIO-FMA-FULL-EL | anatomy | proposed; v1.3 KM failed | Konclude full result exists; current KM and EL delta unknown |
 | BIO-NCIT-FULL-EL | cancer terminology | verified base; proposed differential | Four expressive systems agree on full base; EL delta unknown |
@@ -131,7 +133,7 @@ projection.
 | BIO-UNMIREOT-2026 | ontology interoperability | proposed new-data study | Frozen inputs exist; merge experiment not run |
 | BIO-MERGE-CONTROL | ontology interoperability | verified existing | Synthetic full-DL incoherence distinguished from control |
 | NONBIO-ACCESS-CONTROL | access policy | verified existing | Synthetic full-DL policy incoherence distinguished from control |
-| NONBIO-PRODUCT-CONFIG | engineering configuration | proposed exact pair | Direct-semantics expectation only |
+| NONBIO-PRODUCT-CONFIG | engineering configuration | verified controlled pair | Full DL finds the intended unsatisfiable class; EL controls are identical |
 | NONBIO-FIBO-IDENTITY | finance/data quality | proposed public-ontology pair | Direct-semantics expectation; FIBO closure not frozen here |
 
 ## Biomedical cases
@@ -230,12 +232,15 @@ projection.
   with functional/cardinality structure outside EL.
 - **Question:** can the full historical artifact be classified reproducibly,
   and which of its named consequences need non-EL axioms?
-- **Transformation/query:** the full run is identity. The proposed differential
-  applies the common EL-drop protocol.
-- **Expected/observed:** demonstrated full result: two KM runs report
-  consistency, no named-unsatisfiable classes, and 457,090 subsumptions with
-  identical semantic digests. Historical KM and Konclude canonical relations
-  match. The EL delta is unmeasured.
+- **Transformation/query:** the full run is identity. The completed
+  differential applies the common EL-drop protocol and removes 1,149 whole
+  source axioms tied to OWLAPI EL-profile violations.
+- **Expected/observed:** two full KM runs report consistency, no
+  named-unsatisfiable classes, and 457,090 subsumptions with identical semantic
+  digests. Historical KM and Konclude canonical relations match. KM and ELK
+  agree exactly on the independently verified EL subset's 453,710
+  subsumptions. All projection relations occur in full, leaving 3,380
+  full-only and zero projection-only relations.
 - **Comparators/command/oracle:** existing exact KM repeats and historical
   Konclude for full; add KM and ELK on projection and enforce the subset gate.
 - **Risks/confounders:** no result about a current GALEN release follows. The
@@ -431,9 +436,11 @@ oracle ([Slater, Gkoutos, and Hoehndorf 2020](https://link.springer.com/article/
 - **Transformation/query:** the conflict differs from the control only by
   `ObjectMaxCardinality(1 hasPayload Payload)`. Classify both and explain
   `DualSensorSurveyDrone`; also compare generated EL views.
-- **Expected observation:** under OWL Direct Semantics the conflict class is
-  unsatisfiable while the control class is satisfiable; both ontologies remain
-  consistent. This is a logical expectation, not an executed KM result.
+- **Observed result:** KM and HermiT report both ontologies consistent and only
+  the conflict class unsatisfiable. The EL projection removes the one
+  maximum-cardinality axiom; the projected conflict and control have identical
+  semantics, and KM and ELK agree exactly. KM returns the predeclared
+  seven-axiom subset-minimal oracle support.
 - **Comparators/command/oracle:** KM and HermiT full; KM and ELK projection;
   exact one-axiom diff and independently checked explanation. See manifest.
 - **Risks/confounders:** OWL may identify the two fillers because it has no
@@ -470,24 +477,20 @@ oracle ([Slater, Gkoutos, and Hoehndorf 2020](https://link.springer.com/article/
 
 ## Highest-value execution order
 
-1. Run the small product-configuration pair first as a syntax, cardinality,
-   explanation, and projection smoke gate. It should finish in minutes and
-   catches a broken harness before any large allocation.
-2. Finish and ingest current Uberon full classification, then run its EL
+1. Finish and ingest current Uberon full classification, then run its EL
    projection and differential. Guarded KM has already established consistency,
    but that result contains no named-class taxonomy and cannot answer the
    differential question.
-3. Run FMA full plus projection. Konclude's existing successful full result
+2. Run FMA full plus projection. Konclude's existing successful full result
    makes this the best large-ontology correctness oracle.
-4. Run NCIt and ChEBI differentials. Their existing four-way full agreement
+3. Run NCIt and ChEBI differentials. Their existing four-way full agreement
    isolates the scientific question from base-classification uncertainty;
    ChEBI is the required null control.
-5. Run the GALEN EL differential against the already repeated full taxonomy.
-6. Freeze and run FIBO. This supplies a public, non-biomedical, natural-ontology
+4. Freeze and run FIBO. This supplies a public, non-biomedical, natural-ontology
    data-quality example rather than another standalone toy.
-7. Run detection-only UNMIREOT-2026 after its core-set preregistration. Do not
+5. Run detection-only UNMIREOT-2026 after its core-set preregistration. Do not
    start the repair loop until detection results are immutable.
-8. Defer the Uberon-FMA bridge, exact-2018 UNMIREOT replication, current
+6. Defer the Uberon-FMA bridge, exact-2018 UNMIREOT replication, current
    BioPortal GALEN, NCIt negation-product arm, and real SNOMED CT experiment
    until their source/licence/version gates pass.
 
@@ -495,14 +498,13 @@ oracle ([Slater, Gkoutos, and Hoehndorf 2020](https://link.springer.com/article/
 
 - A successful full current-Uberon taxonomy, in addition to the demonstrated
   guarded consistency verdict, with repeated digest and comparison gates.
-- A compiled SHA-bound `MakeELProjection`/`MergeOntologies` runner artifact for
-  IBEX. Maven is unavailable on this workstation, but both classes compiled
-  with `javac` against the pinned ELK classifier jar. A tiny projection smoke
-  removed the one cardinality axiom from the product conflict and emitted an
-  independently profile-valid EL document; a tiny merge smoke also completed.
-  These local transformation checks did not invoke an ontology reasoner.
+- A compiled SHA-bound `MergeOntologies` runner artifact for IBEX. The
+  projection runner is now SHA-bound and exercised on IBEX by the GALEN and
+  product-configuration experiments.
 - A copied FMA OWLAPI profile receipt with exact violation classes.
-- Full and projection output receipts for Uberon, FMA, NCIt, ChEBI, and GALEN.
+- Full and projection output receipts for Uberon, FMA, NCIt, and ChEBI. GALEN
+  projection receipts and compact validated results are now retained under
+  `impact/evidence/extension-20260904/`.
 - Release-matched bridge, GALEN payload, and NCIt negation-product checksums.
 - A pinned FIBO import map proving no dependency came from a moving network IRI.
 - An authorized SNOMED CT release and domain-reviewed perturbation. No licensed

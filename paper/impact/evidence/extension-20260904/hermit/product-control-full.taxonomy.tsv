@@ -1,0 +1,11 @@
+M	schema	1
+M	factory	org.semanticweb.HermiT.ReasonerFactory
+M	reasoner	HermiT
+C	true
+S	http://example.org/km-impact/configuration#DualSensorSurveyDrone	http://example.org/km-impact/configuration#ConfiguredDrone
+S	http://example.org/km-impact/configuration#OpticalCamera	http://example.org/km-impact/configuration#Payload
+S	http://example.org/km-impact/configuration#ThermalCamera	http://example.org/km-impact/configuration#Payload
+M	classes	5
+M	unsatisfiable	0
+M	subsumptions	3
+Z	complete

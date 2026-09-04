@@ -1,0 +1,15 @@
+M	schema	1
+M	transformation	owl2el-whole-violating-axiom-deletion-v1
+M	source	/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/staged/product-configuration-control.ofn
+M	source_sha256	baad9238c8bcbf1519d3b006299334a52cf489a5f4b57292de32ffec69e0d2f3
+M	source_axioms	12
+M	source_logical_axioms	6
+M	initial_el_violations	0
+M	projection_rounds	0
+M	removed_axioms	0
+M	removed_axioms_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+M	output_axioms	12
+M	output_logical_axioms	6
+M	output_sha256	bccd78db0f207baae0f34d08c9de023a1685bd353760fb4bca41143e3ea0ff4e
+P	OWL2EL	true	0
+Z	complete

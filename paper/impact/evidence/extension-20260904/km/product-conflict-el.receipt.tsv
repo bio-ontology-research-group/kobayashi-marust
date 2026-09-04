@@ -1,0 +1,22 @@
+schema	1
+case	product-conflict-el
+status	ok
+exit_code	0
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+route	auto
+threads	4
+parallel_mem_gb	14
+ht_mem_gb	14
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/inputs/product-conflict-el.ofn
+ontology_sha256	b8fce4ce401da33968ba1265a6eb440c40548e98a8e0e01dd9014be21edba4cd
+output_sha256	bad866b51b626bf5655a31449b9b1fb530b20789ee0b2abfd33c8b17c26f46bc
+output_bytes	186
+stderr_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+slurm_job_id	51326547
+slurm_array_task_id	5
+host	dgpu609-14
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.00
+	Maximum resident set size (kbytes): 6912
+	Exit status: 0
+terminal_marker	TASK_COMPLETE

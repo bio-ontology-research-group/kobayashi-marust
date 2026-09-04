@@ -1,0 +1,15 @@
+schema	1
+case	product-conflict-explain
+status	ok
+exit_code	0
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_sha256	a92e020a6957504fc4ee1d206389288e65a8c8637d874d42aaacc31899e0fde6
+output_sha256	2a6d47ac69fb301f1f5a0e701099c5120171b6f3eb8ed62e94737dc43c9c387d
+output_bytes	2420
+slurm_job_id	51326536
+slurm_array_task_id	10
+host	dgpu609-14
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.06
+	Maximum resident set size (kbytes): 9572
+	Exit status: 0
+terminal_marker	TASK_COMPLETE

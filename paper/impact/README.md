@@ -11,6 +11,11 @@ named hard cases and two additional non-biomedical domains, is in
 scheduler-facing rows are
 [`../IMPACT-USE-CASE-MANIFEST.tsv`](../IMPACT-USE-CASE-MANIFEST.tsv). Proposed
 rows in that plan do not change the binding evidence states in this directory.
+The current cross-case claim boundary, including the completed GALEN
+differential and product-configuration control, is
+[`enablement-ledger.tsv`](enablement-ledger.tsv). Its concise methods and
+interpretation are in
+[`ENABLEMENT-METHODS-STATUS.md`](ENABLEMENT-METHODS-STATUS.md).
 
 ## Demonstrated now
 
@@ -60,6 +65,21 @@ classes, and 457,090 non-self subsumptions with identical taxonomy and relation
 digests. This ORE input is distinct from the planned current BioPortal GALEN
 hard case, which was not acquired because no BioPortal API key was available.
 
+A bounded extension generated an independently profile-valid OWL 2 EL axiom
+subset from that exact GALEN input. It removed 1,149 whole violating axioms.
+KM and ELK 0.6.0 agree exactly on its 453,710 subsumptions, and all occur in the
+full result. The full source contains 3,380 additional subsumptions. Historical
+Konclude agrees with KM on the full result, so this establishes a material
+full-DL effect but not a KM-exclusive capability over Konclude.
+
+The same extension executed the synthetic product-configuration pair. KM and
+HermiT agree that both ontologies are consistent and only the cardinality
+conflict makes `DualSensorSurveyDrone` unsatisfiable. Deleting the one
+out-of-profile maximum-cardinality axiom makes the two EL controls semantically
+identical; KM and ELK agree exactly on both. KM also returned the predeclared
+seven-axiom subset-minimal oracle support. The compact evidence is under
+`evidence/extension-20260904/`.
+
 A newer guarded KM development artifact directly establishes consistency of
 the frozen current Uberon input. The exact captured internal TInput returned
 `consistent=true` in 4.46 s at 157,544 KiB peak RSS on Slurm job 51321154.
@@ -96,8 +116,9 @@ explanation result.
 The synthetic SNOMED-style files contain no SNOMED CT content and establish no
 finding about SNOMED CT. A licensed SNOMED CT experiment remains blocked until
 an authorized release, exact checksum, pinned conversion where needed, and a
-domain-reviewed perturbation are supplied. Product-configuration and
-data-governance rows are experiment designs, not executed demonstrations.
+domain-reviewed perturbation are supplied. The product-configuration control
+is now executed; the public FIBO and data-governance rows remain experiment
+designs.
 
 ## Enabled in principle versus established here
 

@@ -1,0 +1,19 @@
+{
+  "algorithm": "full-iri-common-stream-fingerprint-v1",
+  "consistent": "true",
+  "input": "/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/results/elk/galen-ore9724-el.taxonomy.tsv",
+  "input_sha256": "21c450929f1859ca04871e1aaf4fa0f3618f0beb2aadedc8d7c6ca1d058be878",
+  "node_fingerprints": "/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/results/elk/galen-ore9724-el.fingerprint.nodes.tsv.gz",
+  "node_fingerprints_sha256": "e8ebf221c9aea519a6ca417aa8e0d528f048762e5028a89552a3dbea54651738",
+  "nonempty_lefts": 23115,
+  "peak_mb": 26.43,
+  "relation_sha256": "d131a9d6731fc084bcfca5a4b009808cd557930fc6493983514bee81a81a2bf8",
+  "schema_version": 1,
+  "status": "ok",
+  "subsumptions": 453710,
+  "taxonomy_sha256": "bebe7368e02bf86cca5493e3ebb5bc87ac292aa2a1731351c28b5e195420b56d",
+  "unsatisfiable": 0,
+  "unsatisfiable_names": "/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/results/elk/galen-ore9724-el.fingerprint.unsat.txt.gz",
+  "unsatisfiable_names_sha256": "28783a586f700eb35ab53571e713cddf4eb39feb3eb0061b7bd861e126be3519",
+  "wall_s": 1.7019
+}

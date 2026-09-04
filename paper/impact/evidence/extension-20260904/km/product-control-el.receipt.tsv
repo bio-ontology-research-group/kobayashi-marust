@@ -1,0 +1,22 @@
+schema	1
+case	product-control-el
+status	ok
+exit_code	0
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+route	auto
+threads	4
+parallel_mem_gb	14
+ht_mem_gb	14
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/inputs/product-control-el.ofn
+ontology_sha256	bccd78db0f207baae0f34d08c9de023a1685bd353760fb4bca41143e3ea0ff4e
+output_sha256	bad866b51b626bf5655a31449b9b1fb530b20789ee0b2abfd33c8b17c26f46bc
+output_bytes	186
+stderr_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+slurm_job_id	51326546
+slurm_array_task_id	4
+host	dgpu609-14
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.00
+	Maximum resident set size (kbytes): 7200
+	Exit status: 0
+terminal_marker	TASK_COMPLETE

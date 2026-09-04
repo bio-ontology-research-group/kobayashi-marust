@@ -1,0 +1,13 @@
+schema	1
+status	validated
+slurm_job_id	51326594
+host	dgpu609-14
+summary_sha256	50f00d565a97e467c2686466647bc57343c1c18140fb672030d52b0f8a133c76
+validator_sha256	de2140f434fafc34fac4113f3262c71237f6b3d7dabcb600698b8379f41bc549
+prepare_script_sha256	8d4999713fd4e6315b7996fe031eb34e549e8c5adbf9cff419f4c852f2a23608
+run_script_sha256	5de8cb3dd55db368e503da96db11b7ca00ee26db45a1c212c1894b7961ba0189
+finalize_script_sha256	bdab015ffe36e8844b1166d146e47679401535c2ffd631a349cf2a72fec084d0
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:05.66
+	Maximum resident set size (kbytes): 521620
+	Exit status: 0
+terminal_marker	VALIDATION_COMPLETE

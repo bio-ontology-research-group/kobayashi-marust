@@ -1,0 +1,22 @@
+schema	1
+case	galen-ore9724-el
+status	ok
+exit_code	0
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+route	auto
+threads	4
+parallel_mem_gb	14
+ht_mem_gb	14
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/inputs/galen-ore9724-el.ofn
+ontology_sha256	e4a1ef350907432a7af8b857c784f4a53ec7e7bbcfaad961dd4114baf1fc9a71
+output_sha256	6b7de313c33e56ba92a93a2bbab566d510a302abe1755ad435ccdaa2bd13311a
+output_bytes	56185735
+stderr_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+slurm_job_id	51326550
+slurm_array_task_id	8
+host	dgpu609-14
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:02.59
+	Maximum resident set size (kbytes): 215948
+	Exit status: 0
+terminal_marker	TASK_COMPLETE

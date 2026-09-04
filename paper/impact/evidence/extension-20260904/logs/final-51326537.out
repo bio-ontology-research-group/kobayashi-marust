@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/staged/validate_enablement_extension.py", line 257, in <module>
+    main()
+  File "/ibex/scratch/hohndor/km/v14-paper-impact-extension-20260904/staged/validate_enablement_extension.py", line 158, in main
+    raise ValueError("KM product conflict/control outcome is not the predeclared one")
+ValueError: KM product conflict/control outcome is not the predeclared one

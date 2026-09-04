@@ -27,3 +27,14 @@ HERMIT-SNOMED-CONTROL	HermiT 1.4.5.519	snomed-style-negative	classify	success	tr
 HERMIT-SNOMED-ABOX	HermiT 1.4.5.519	snomed-style-positive	classify	success	false	0	0	0.8826 s	118.88 MiB	agrees with KM ABox inconsistency outcome	baselines/hermit/snomed-style-positive.result.json
 HERMIT-ACCESS-CONTROL	HermiT 1.4.5.519	access-control-negative	classify	success	true	0	1	0.8831 s	121.85 MiB	agrees with KM outcome	baselines/hermit/access-control-negative.result.json
 HERMIT-ACCESS-CONFLICT	HermiT 1.4.5.519	access-control-positive	classify	success	true	1	0	0.9215 s	120.58 MiB	agrees with KM outcome	baselines/hermit/access-control-positive.result.json
+KM-PRODUCT-CONTROL	KM	product-configuration-control	classify	success	true	0	3	0:00.00	7200 KiB	coherent control without maximum cardinality	extension-20260904/km/product-control-full.receipt.tsv
+KM-PRODUCT-CONFLICT	KM	product-configuration-conflict	classify	success	true	1	2	0:00.01	9572 KiB	DualSensorSurveyDrone is unsatisfiable while ontology remains consistent	extension-20260904/km/product-conflict-full.receipt.tsv
+HERMIT-PRODUCT-CONTROL	HermiT 1.4.5.519	product-configuration-control	classify	success	true	0	3	0.8624 s	119.42 MiB	agrees with KM outcome	extension-20260904/hermit/product-control-full.result.json
+HERMIT-PRODUCT-CONFLICT	HermiT 1.4.5.519	product-configuration-conflict	classify	success	true	1	2	0.9086 s	119.01 MiB	agrees with KM outcome	extension-20260904/hermit/product-conflict-full.result.json
+KM-PRODUCT-EL-CONTROL	KM	product-control-el	classify verified EL	success	true	0	3	0:00.00	7200 KiB	semantically identical to projected conflict	extension-20260904/km/product-control-el.receipt.tsv
+KM-PRODUCT-EL-CONFLICT	KM	product-conflict-el	classify verified EL	success	true	0	3	0:00.00	6912 KiB	maximum-cardinality conflict removed by projection	extension-20260904/km/product-conflict-el.receipt.tsv
+ELK-PRODUCT-EL-CONTROL	ELK 0.6.0	product-control-el	classify verified EL	success	true	0	3	1.0461 s	135.52 MiB	exactly agrees with KM projection	extension-20260904/elk/product-control-el.result.json
+ELK-PRODUCT-EL-CONFLICT	ELK 0.6.0	product-conflict-el	classify verified EL	success	true	0	3	1.0259 s	134.08 MiB	exactly agrees with KM projection	extension-20260904/elk/product-conflict-el.result.json
+KM-PRODUCT-EXPLAIN	KM	product-configuration-conflict	explain named unsatisfiability	success	NA	NA	NA	0:00.06	9572 KiB	one seven-axiom subset-minimal KM-oracle support; enumeration incomplete	extension-20260904/km/product-conflict-explain.json
+KM-GALEN-EL	KM	galen-ore9724-el	classify verified EL	success	true	0	453710	0:02.59	215948 KiB	exactly agrees with ELK; strict semantic subset of full	extension-20260904/km/galen-ore9724-el.receipt.tsv
+ELK-GALEN-EL	ELK 0.6.0	galen-ore9724-el	classify verified EL	success	true	0	453710	7.8778 s	1166.89 MiB	exactly agrees with KM projection	extension-20260904/elk/galen-ore9724-el.result.json

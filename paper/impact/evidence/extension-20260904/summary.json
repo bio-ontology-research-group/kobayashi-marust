@@ -1,0 +1,137 @@
+{
+  "galen": {
+    "full_only_sample": [
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalBurningPain",
+        "http://www.co-ode.org/ontologies/galen#Anonymous-403"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalBurningPain",
+        "http://www.co-ode.org/ontologies/galen#IntrinsicallyPathologicalBodyProcess"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalBurningPain",
+        "http://www.co-ode.org/ontologies/galen#Neuropathy"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#Anonymous-403"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#Anonymous-455"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#BodyStructure"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#BodyStructureByAbstractStatus"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#BodyStructureByFeature"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#BodyStructureByShape"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#BodyStructureCausedByProcess"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#DiscreteStructure"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#GeneralisedStructure"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#IntrinsicallyPathologicalBodyProcess"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#IntrinsicallyPathologicalBodyStructure"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#IntrinsicallyPhysiologicalBodyStructure"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#Neuropathy"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#NonNormalBodyStructure"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#NonNormalStructure"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#OrganicSolidStructure"
+      ],
+      [
+        "http://www.co-ode.org/ontologies/galen#AbdominalColic",
+        "http://www.co-ode.org/ontologies/galen#PathologicalBodyStructure"
+      ]
+    ],
+    "full_only_subsumptions": 3380,
+    "full_semantic_sha256": "c756d585b781e4c4b6cee084162998d1fdda191169c36bf87979c033c4853b3d",
+    "full_subsumptions": 457090,
+    "jobs": [
+      "51326550",
+      "51326551"
+    ],
+    "projection_km_elk_exact": true,
+    "projection_only_subsumptions": 0,
+    "projection_semantic_sha256": "ab8a20bb6c206c9f2cf5952c7ea99d0c4ba78a7ab66717da6c42504512a9783a",
+    "projection_sha256": "e4a1ef350907432a7af8b857c784f4a53ec7e7bbcfaad961dd4114baf1fc9a71",
+    "projection_subset_of_full": true,
+    "projection_subsumptions": 453710,
+    "removed_axioms": 1149,
+    "source_axioms": 61782,
+    "source_sha256": "00c80e07aa57578c168d15a1755b62fde41c53dd69a2f04cc5d88c888c8baf19"
+  },
+  "product_configuration": {
+    "conflict_removed_axioms": 1,
+    "control_and_conflict_el_semantics_equal": true,
+    "control_removed_axioms": 0,
+    "el_projection_km_elk_exact": true,
+    "explanation_feature_gate": true,
+    "full_conflict": {
+      "consistent": true,
+      "semantic_sha256": "0417f2832a58068279ad27283ce5a463bb9dd66c46a40b91e5e5d102f634c24e",
+      "unsatisfiable": [
+        "http://example.org/km-impact/configuration#DualSensorSurveyDrone"
+      ]
+    },
+    "full_control": {
+      "consistent": true,
+      "semantic_sha256": "45267c72baf6a1eb3241fbc92219d60f6d9149e2ca583253a54397120de0a504",
+      "unsatisfiable": []
+    },
+    "hermit_agreement": true,
+    "jobs": [
+      "51326536",
+      "51326538",
+      "51326539",
+      "51326543",
+      "51326545"
+    ],
+    "km_hybrid_development_binary_sha256": "c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d"
+  },
+  "schema": 1,
+  "status": "validated",
+  "validation": {
+    "host": "dgpu609-14",
+    "slurm_job_id": "51326594",
+    "validator_sha256": "de2140f434fafc34fac4113f3262c71237f6b3d7dabcb600698b8379f41bc549"
+  }
+}

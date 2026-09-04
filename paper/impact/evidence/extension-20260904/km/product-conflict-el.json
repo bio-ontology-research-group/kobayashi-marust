@@ -1,0 +1,1 @@
+{"consistent": true, "subsumptions": [[":DualSensorSurveyDrone", ":ConfiguredDrone"], [":OpticalCamera", ":Payload"], [":ThermalCamera", ":Payload"]], "unsatisfiable": [], "dropped": 0}
