@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Minimum-head forward-subsumption index
+
+- Index every active nonempty-head clause once by its least sorted head
+  literal. A clause whose head subsumes an incoming head must have that least
+  literal in the incoming head, so forward subsumption visits every possible
+  candidate exactly once while avoiding repeated traversal of all-literal
+  postings. The existing all-literal index remains unchanged for backward
+  subsumption.
+- Release-mode randomized linear-scan equivalence and base-plus-delta tests
+  pass. This is a candidate-enumeration optimization and does not change the
+  calculus or its fixpoint.
+- On the normalized current Uberon main component, a same-node sequential
+  comparison at exactly two million messages reduced wall time from 88.50 to
+  54.62 seconds and forward-subsumption time from 49.74 to 20.25 seconds.
+  Peak RSS increased from 817,564 to 877,428 KiB. A full unrestricted Uberon
+  run and the integrated ORE regression remain in progress.
+
 ### Move-only normalized-clause handoff
 
 - Convert owned normalized frontend clauses into worker clauses by moving atom

@@ -1792,6 +1792,12 @@ struct ClauseLayer {
     /// The rarest posting is verified with exact set inclusion, avoiding the
     /// exponential subset walk of a generic Rust trie on long nominal clauses.
     active_head_lit_index: HashMap<Lit, Posting>,
+    /// Every non-empty active clause indexed exactly once by its least head
+    /// literal. If `candidate.head` is a subset of an incoming head, this key
+    /// must occur in the incoming head. Forward subsumption can therefore scan
+    /// these postings for all incoming literals and visit every possible
+    /// candidate exactly once, without a generation-stamp side table.
+    active_min_head_lit_index: HashMap<Lit, Posting>,
     /// Active clauses with an empty head. Such a clause can subsume a
     /// non-empty-head clause without sharing a literal, so it has a dedicated
     /// posting list.
@@ -1854,6 +1860,11 @@ fn layer_redundancy_bytes(layer: &ClauseLayer) -> usize {
     layer.active_empty_head.capacity() * 4
         + layer
             .active_head_lit_index
+            .values()
+            .map(|v| 16 + std::mem::size_of::<Lit>() + v.heap_capacity() * 4)
+            .sum::<usize>()
+        + layer
+            .active_min_head_lit_index
             .values()
             .map(|v| 16 + std::mem::size_of::<Lit>() + v.heap_capacity() * 4)
             .sum::<usize>()
@@ -2354,6 +2365,10 @@ impl ClauseLayer {
         if clause.head.is_empty() {
             self.active_empty_head.push(cid);
         } else {
+            self.active_min_head_lit_index
+                .entry(clause.head[0])
+                .or_default()
+                .push(cid);
             for &literal in &clause.head {
                 self.active_head_lit_index
                     .entry(literal)
@@ -2369,6 +2384,7 @@ impl ClauseLayer {
         if clause.head.is_empty() {
             self.active_empty_head.retain(|&candidate| candidate != cid);
         } else {
+            posting_remove(&mut self.active_min_head_lit_index, clause.head[0], cid);
             let mut empty = Vec::new();
             for &literal in &clause.head {
                 if let Some(posting) = self.active_head_lit_index.get_mut(&literal) {
@@ -2423,6 +2439,7 @@ impl Context {
     posting_accessor!(max_head_pred, max_head_pred_index, Pred);
     posting_accessor!(max_head_term, max_head_term_index, Term);
     posting_accessor!(active_head_lit, active_head_lit_index, Lit);
+    posting_accessor!(active_min_head_lit, active_min_head_lit_index, Lit);
     posting_accessor!(ground_body, ground_body_index, Pred);
     posting_accessor!(bridge, bridge_index, Term);
 
@@ -2662,7 +2679,7 @@ impl Context {
             }
         }
         for literal in &clause.head {
-            for ci in self.active_head_lit(*literal).iter() {
+            for ci in self.active_min_head_lit(*literal).iter() {
                 if Some(ci) == exclude {
                     continue;
                 }
@@ -7812,6 +7829,12 @@ impl Engine {
                             .active_head_lit_index
                             .values()
                             .map(|posting| posting.len())
+                            .sum::<usize>()
+                        + ctx
+                            .delta
+                            .active_min_head_lit_index
+                            .values()
+                            .map(|posting| posting.len())
                             .sum::<usize>(),
                     layer_redundancy_bytes(&ctx.delta),
                 );
@@ -11607,6 +11630,7 @@ mod base_delta_tests {
         max_head_pred: HashMap<Pred, Vec<u32>>,
         max_head_term: HashMap<Term, Vec<u32>>,
         active_head_lit: HashMap<Lit, Vec<u32>>,
+        active_min_head_lit: HashMap<Lit, Vec<u32>>,
         ground_body: HashMap<Pred, Vec<u32>>,
         bridge: HashMap<Term, Vec<u32>>,
         active_empty_head: Vec<u32>,
@@ -11631,6 +11655,11 @@ mod base_delta_tests {
             max_head_pred: index_snapshot!(ctx, max_head_pred_index, max_head_pred),
             max_head_term: index_snapshot!(ctx, max_head_term_index, max_head_term),
             active_head_lit: index_snapshot!(ctx, active_head_lit_index, active_head_lit),
+            active_min_head_lit: index_snapshot!(
+                ctx,
+                active_min_head_lit_index,
+                active_min_head_lit
+            ),
             ground_body: index_snapshot!(ctx, ground_body_index, ground_body),
             bridge: index_snapshot!(ctx, bridge_index, bridge),
             active_empty_head: ctx.active_empty_head().iter().collect(),
