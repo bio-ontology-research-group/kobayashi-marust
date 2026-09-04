@@ -1918,7 +1918,7 @@ fn classify_with_evidence_mode(
         for (subject, super_ids) in &compact.rows {
             let a = &compact.names[*subject as usize];
             if is_internal(a) {
-                if asserted.contains(a.as_str())
+                if asserted.contains(a.as_ref())
                     && super_ids
                         .iter()
                         .any(|superclass| is_bottom(&compact.names[*superclass as usize]))
@@ -1946,7 +1946,7 @@ fn classify_with_evidence_mode(
                     }
                     if verdict == NAME_BOTTOM {
                         if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
-                            unsat_asserted |= asserted.contains(a.as_str());
+                            unsat_asserted |= asserted.contains(a.as_ref());
                         }
                     } else if verdict != NAME_INTERNAL && superclass != subject {
                         mapped_supers.push(verdict);
@@ -1965,7 +1965,7 @@ fn classify_with_evidence_mode(
                     let s = &compact.names[*superclass as usize];
                     if is_bottom(s) {
                         if unsat_set.insert(fa.to_string()) {
-                            unsat_asserted |= asserted.contains(a.as_str());
+                            unsat_asserted |= asserted.contains(a.as_ref());
                         }
                     } else if !is_internal(s) && s != a {
                         mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());

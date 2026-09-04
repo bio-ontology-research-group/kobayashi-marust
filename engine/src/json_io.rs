@@ -32,6 +32,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::io::{self, Write};
+use std::sync::Arc;
 
 const ELC_BINARY_MAGIC: &[u8; 8] = b"KMELC\0\x01\0";
 const ELC_OUTPUT_BINARY_MAGIC: &[u8; 8] = b"KMELCO\x01\0";
@@ -283,7 +284,7 @@ pub struct JOutput {
 /// carry integer endpoints, avoiding one allocated `String` per taxonomy pair.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompactElcOutput {
-    pub names: Vec<String>,
+    pub names: Vec<Arc<str>>,
     pub rows: Vec<(u32, Vec<u32>)>,
     pub inconsistent: bool,
     pub dropped: usize,
@@ -386,7 +387,7 @@ pub fn decode_elc_output_binary(bytes: &[u8]) -> io::Result<Option<CompactElcOut
     let name_count = cursor.len()?;
     let mut names = Vec::with_capacity(name_count);
     for _ in 0..name_count {
-        names.push(cursor.string()?);
+        names.push(cursor.arc_str()?);
     }
     let row_count = cursor.len()?;
     let mut rows = Vec::with_capacity(row_count);
@@ -593,6 +594,13 @@ impl<'a> BinaryCursor<'a> {
         String::from_utf8(bytes.to_vec()).map_err(|_| invalid_binary("invalid UTF-8"))
     }
 
+    fn arc_str(&mut self) -> io::Result<Arc<str>> {
+        let len = self.len()?;
+        let bytes = self.take(len)?;
+        let value = std::str::from_utf8(bytes).map_err(|_| invalid_binary("invalid UTF-8"))?;
+        Ok(Arc::from(value))
+    }
+
     fn term(&mut self) -> io::Result<JTerm> {
         match self.byte()? {
             0 => Ok(JTerm::Var {
@@ -695,7 +703,10 @@ mod elc_binary_tests {
         let mut bytes = Vec::new();
         write_elc_output_binary(&mut bytes, &subsumptions, true, 7).unwrap();
         let decoded = decode_elc_output_binary(&bytes).unwrap().unwrap();
-        assert_eq!(decoded.names, vec!["A", "B", "Top"]);
+        assert_eq!(
+            decoded.names.iter().map(AsRef::as_ref).collect::<Vec<_>>(),
+            vec!["A", "B", "Top"]
+        );
         assert_eq!(decoded.rows, vec![(0, vec![0, 2]), (1, vec![2])]);
         assert!(decoded.inconsistent);
         assert_eq!(decoded.dropped, 7);

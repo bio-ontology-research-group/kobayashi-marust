@@ -145,18 +145,20 @@ impl Interner {
         self.names.len()
     }
 
-    /// Materialise the external string table after saturation has finished.
-    /// Dropping the forward map first releases its `Arc` references, and each
-    /// shared symbol is then replaced by the owned `String` required by the
-    /// stable JSON/result contract.
-    fn into_names(self) -> Vec<String> {
+    /// Transfer the shared symbol table after saturation has finished. Dropping
+    /// the forward map leaves one `Arc` per symbol without copying every IRI.
+    fn into_names(self) -> Vec<Arc<str>> {
         let Interner { map, names } = self;
         drop(map);
-        names.into_iter().map(|name| name.to_string()).collect()
+        names
     }
 
     fn cloned_names(&self) -> Vec<String> {
         self.names.iter().map(|name| name.to_string()).collect()
+    }
+
+    fn cloned_shared_names(&self) -> Vec<Arc<str>> {
+        self.names.clone()
     }
 }
 
@@ -6951,10 +6953,10 @@ fn positive_abox_classify_mode(
         let bottom = encoded
             .names
             .iter()
-            .position(|name| matches!(name.as_str(), "owl:Nothing" | "⊥"));
+            .position(|name| matches!(name.as_ref(), "owl:Nothing" | "⊥"));
         bottom.is_some_and(|bottom| {
             encoded.rows.iter().any(|(subject, supers)| {
-                roots.contains(&encoded.names[*subject as usize])
+                roots.contains(encoded.names[*subject as usize].as_ref())
                     && supers.iter().any(|&sup| sup as usize == bottom)
             })
         })
@@ -7924,7 +7926,7 @@ fn acyclic_nf1_taxonomy(
             subsumptions: std::collections::BTreeMap::new(),
             inconsistent: false,
             compact: Some(crate::json_io::CompactElcOutput {
-                names: it.cloned_names(),
+                names: it.cloned_shared_names(),
                 rows,
                 inconsistent: false,
                 dropped: 0,
@@ -8522,7 +8524,7 @@ mod tests {
         let mut rebuilt: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let mut previous: Option<&str> = None;
         for (subject, supers) in &compact.rows {
-            let name = compact.names[*subject as usize].as_str();
+            let name = compact.names[*subject as usize].as_ref();
             assert!(
                 previous.map_or(true, |p| p < name),
                 "rows follow the string map's name order"
@@ -8534,7 +8536,7 @@ mod tests {
                     if d == BOTTOM {
                         "owl:Nothing".to_string()
                     } else {
-                        compact.names[d as usize].clone()
+                        compact.names[d as usize].to_string()
                     }
                 })
                 .collect();
@@ -8655,11 +8657,11 @@ mod tests {
                     let row = encoded
                         .rows
                         .iter()
-                        .find(|(id, _)| encoded.names[*id as usize] == *subject)
+                        .find(|(id, _)| encoded.names[*id as usize].as_ref() == subject)
                         .map(|(_, supers)| {
                             let mut names: Vec<_> = supers
                                 .iter()
-                                .map(|id| encoded.names[*id as usize].clone())
+                                .map(|id| encoded.names[*id as usize].to_string())
                                 .collect();
                             names.sort();
                             names
@@ -8994,7 +8996,7 @@ mod tests {
             .expect("compact NF1 result");
         assert!(result.subsumptions.is_empty());
         let compact = result.compact.expect("dictionary-coded worker result");
-        assert_eq!(compact.names[ids[0] as usize], "C0");
+        assert_eq!(compact.names[ids[0] as usize].as_ref(), "C0");
         assert!(compact.rows.contains(&(ids[0], vec![ids[1]])));
     }
 
@@ -10792,9 +10794,9 @@ mod tests {
         assert!(Arc::ptr_eq(forward_name, &it.names[id as usize]));
 
         let names = it.into_names();
-        assert_eq!(names[TOP as usize], "⊤");
-        assert_eq!(names[BOTTOM as usize], "⊥");
-        assert_eq!(names[id as usize], iri);
+        assert_eq!(names[TOP as usize].as_ref(), "⊤");
+        assert_eq!(names[BOTTOM as usize].as_ref(), "⊥");
+        assert_eq!(names[id as usize].as_ref(), iri);
     }
 
     /// Deterministic xorshift64* stream for the random differential fixtures.
