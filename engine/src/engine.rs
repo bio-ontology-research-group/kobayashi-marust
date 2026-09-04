@@ -1787,10 +1787,11 @@ struct ClauseLayer {
     /// individuals as well as `f(x)` terms.
     max_head_term_index: HashMap<Term, Posting>,
     /// Every active clause (`worked_off` plus `todo`) indexed by each head
-    /// literal. This is Sequoia's active context redundancy index: pending
-    /// clauses participate in Elim without a linear scan of the pending queue.
-    /// The rarest posting is verified with exact set inclusion, avoiding the
-    /// exponential subset walk of a generic Rust trie on long nominal clauses.
+    /// literal other than its least one. Together with
+    /// `active_min_head_lit_index` this is Sequoia's active context redundancy
+    /// index: pending clauses participate in Elim without a linear scan of the
+    /// pending queue. Partitioning the postings avoids storing any clause id
+    /// twice while retaining an all-literal view for backward subsumption.
     active_head_lit_index: HashMap<Lit, Posting>,
     /// Every non-empty active clause indexed exactly once by its least head
     /// literal. If `candidate.head` is a subset of an incoming head, this key
@@ -1893,6 +1894,29 @@ struct PostingView<'a> {
     base: &'a [u32],
     delta: &'a [u32],
     removed: &'a HashSet<u32>,
+}
+
+/// Union of the disjoint least-literal and remaining-literal postings for one
+/// head literal. Clauses are stored in exactly one of the two views, so no
+/// candidate deduplication is required.
+#[derive(Clone, Copy)]
+struct ActiveHeadPostingView<'a> {
+    minimum: PostingView<'a>,
+    remaining: PostingView<'a>,
+}
+
+impl<'a> ActiveHeadPostingView<'a> {
+    fn iter(self) -> impl Iterator<Item = u32> + 'a {
+        self.minimum.iter().chain(self.remaining.iter())
+    }
+
+    fn len(self) -> usize {
+        self.minimum.len() + self.remaining.len()
+    }
+
+    fn is_empty(self) -> bool {
+        self.minimum.is_empty() && self.remaining.is_empty()
+    }
 }
 
 impl<'a> PostingView<'a> {
@@ -2369,7 +2393,7 @@ impl ClauseLayer {
                 .entry(clause.head[0])
                 .or_default()
                 .push(cid);
-            for &literal in &clause.head {
+            for &literal in clause.head.iter().skip(1) {
                 self.active_head_lit_index
                     .entry(literal)
                     .or_default()
@@ -2386,7 +2410,7 @@ impl ClauseLayer {
         } else {
             posting_remove(&mut self.active_min_head_lit_index, clause.head[0], cid);
             let mut empty = Vec::new();
-            for &literal in &clause.head {
+            for &literal in clause.head.iter().skip(1) {
                 if let Some(posting) = self.active_head_lit_index.get_mut(&literal) {
                     posting.retain(|candidate| *candidate != cid);
                     if posting.is_empty() {
@@ -2438,10 +2462,28 @@ impl Context {
     posting_accessor!(ground_role_target, ground_role_target_index, (Iri, Term));
     posting_accessor!(max_head_pred, max_head_pred_index, Pred);
     posting_accessor!(max_head_term, max_head_term_index, Term);
-    posting_accessor!(active_head_lit, active_head_lit_index, Lit);
     posting_accessor!(active_min_head_lit, active_min_head_lit_index, Lit);
     posting_accessor!(ground_body, ground_body_index, Pred);
     posting_accessor!(bridge, bridge_index, Term);
+
+    fn active_head_lit(&self, key: Lit) -> ActiveHeadPostingView<'_> {
+        ActiveHeadPostingView {
+            minimum: self.active_min_head_lit(key),
+            remaining: PostingView {
+                base: self
+                    .base
+                    .as_deref()
+                    .and_then(|b| b.active_head_lit_index.get(&key))
+                    .map_or(&[][..], |posting| &posting[..]),
+                delta: self
+                    .delta
+                    .active_head_lit_index
+                    .get(&key)
+                    .map_or(&[][..], |posting| &posting[..]),
+                removed: &self.base_removed,
+            },
+        }
+    }
 
     /// `true` if `cid` is a base-layer clause that has not been masked out of
     /// this context.  `base_removed` only ever holds base ids, so this is the
@@ -2719,7 +2761,7 @@ impl Context {
             // absent-or-empty in exactly the same situations, and an empty view
             // is minimal, so it becomes `rarest` and yields no candidate — the
             // same "no removal" outcome, reached one iteration later.
-            let mut rarest: Option<PostingView<'_>> = None;
+            let mut rarest: Option<ActiveHeadPostingView<'_>> = None;
             for literal in &clause.head {
                 let posting = self.active_head_lit(*literal);
                 if posting.is_empty() {
@@ -11654,7 +11696,25 @@ mod base_delta_tests {
             ground_role_target: index_snapshot!(ctx, ground_role_target_index, ground_role_target),
             max_head_pred: index_snapshot!(ctx, max_head_pred_index, max_head_pred),
             max_head_term: index_snapshot!(ctx, max_head_term_index, max_head_term),
-            active_head_lit: index_snapshot!(ctx, active_head_lit_index, active_head_lit),
+            active_head_lit: {
+                let mut keys: HashSet<_> = ctx
+                    .delta
+                    .active_head_lit_index
+                    .keys()
+                    .chain(ctx.delta.active_min_head_lit_index.keys())
+                    .copied()
+                    .collect();
+                if let Some(b) = ctx.base.as_deref() {
+                    keys.extend(b.active_head_lit_index.keys().copied());
+                    keys.extend(b.active_min_head_lit_index.keys().copied());
+                }
+                keys.into_iter()
+                    .filter_map(|key| {
+                        let posting: Vec<u32> = ctx.active_head_lit(key).iter().collect();
+                        (!posting.is_empty()).then_some((key, posting))
+                    })
+                    .collect()
+            },
             active_min_head_lit: index_snapshot!(
                 ctx,
                 active_min_head_lit_index,

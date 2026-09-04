@@ -21,6 +21,12 @@
   592 checkpoints and no new semantic disagreement. Its one-shot strict joint
   score remains 493/589, so the repeated-evidence composite remains 525/589.
   The unrestricted Uberon runs remain in progress.
+- Partition the all-head and minimum-head postings so each active clause ID is
+  stored exactly once. At the same two-million-message Uberon stopping point,
+  this preserved wall time (53.98 versus 53.74 seconds) while reducing peak
+  RSS from 877,788 to 814,544 KiB, slightly below the 817,564-KiB pre-index
+  engine. Forward linear-scan, backward removal-set, and base/delta
+  equivalence tests pass.
 
 ### Move-only normalized-clause handoff
 
