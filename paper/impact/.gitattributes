@@ -1,0 +1,2 @@
+# Preserve byte-exact, receipt-bound controlled inputs.
+cases/*.ofn whitespace=-blank-at-eof

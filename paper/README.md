@@ -21,6 +21,19 @@ Run the complete currently available manuscript and evidence gate with:
 make -C paper checks
 ```
 
+The practical-impact supplement under `impact/` separates executed controlled
+examples and ORE 2015 GALEN evidence from failed current-Uberon runs, blocked
+licensed SNOMED CT work, and proposed experiments. Its compact receipts,
+fingerprints, explanations, baselines, and machine-readable claim ledger are
+checked by:
+
+```sh
+python3 paper/benchmark/impact/validate_evidence.py
+```
+
+This validator is part of `make -C paper checks` and fails if a terminal
+failure is relabelled as success or an evidence binding changes.
+
 This includes a venue-facing manuscript contract that enforces a 150--250-word
 abstract, 3--7 keywords, the system/evaluation/Methods/related-work structure,
 all eight requested baseline families across the two evaluations, required

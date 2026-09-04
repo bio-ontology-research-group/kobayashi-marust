@@ -1,0 +1,20 @@
+case	hidden-full-dl-negative
+status	ok
+exit_code	0
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/v1.4-paper-impact-20260903/paper/paper/impact/cases/hidden-full-dl-negative.ofn
+ontology_sha256	5f5ff4e146aa806173be68ccb91f6ba3117c9c8b09ae00304591480d69095d2f
+output_sha256	c5ad5e22b106f9d0d670c2e59a05f0c4bc0e73a8745ee9da1d4bacff0ed9bad6
+stderr_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fingerprint_sha256	51c01d3c5ff10e02f97b40644069b37fffcc70249c736f4fed367cca17ea2a32
+consistent	True
+unsatisfiable	0
+subsumptions	1
+taxonomy_sha256	2d9f21ce4ce6fc1be82d292129be42baffbf50cba6524a7846f17601f38b91c1
+relation_sha256	410de65185fae2698841dc5d177270b876f86926beee437cbe06f8fbc87a3f82
+host	dgpu609-14
+slurm_job_id	51298372
+slurm_array_task_id	0
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.01
+	Maximum resident set size (kbytes): 8124

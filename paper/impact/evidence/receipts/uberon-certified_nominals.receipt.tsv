@@ -1,0 +1,11 @@
+case	uberon-certified_nominals
+route	certified_nominals
+status	error
+exit_code	124
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_sha256	13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93
+host	dgpu609-14
+slurm_job_id	51298728
+slurm_array_task_id	1
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:00:00
+	Maximum resident set size (kbytes): 3146808

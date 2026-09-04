@@ -1,0 +1,7 @@
+case	snomed-style-positive
+exit_code	0
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_sha256	ab3838cfcc5412077e770dec74b73743dc4d255a077f3cee55f7835b827a6afc
+output_sha256	94ac8923387b59ad22d32e67a3c93bdd7cba19ece2ef61111c01acfe0fa990a8
+slurm_job_id	51298709
+slurm_array_task_id	1

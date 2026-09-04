@@ -1,0 +1,20 @@
+case	galen-ore9724
+status	ok
+exit_code	0
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/corpus/ore_ont_9724.owl
+ontology_sha256	00c80e07aa57578c168d15a1755b62fde41c53dd69a2f04cc5d88c888c8baf19
+output_sha256	b3c327cfac62bb9bf12374f8bca693491138324dd892ec862ce565efe5b3d7f1
+stderr_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fingerprint_sha256	4c07ca142b838e39d077bc8254cdfee322336460007d9f1b78cc429615b67a33
+consistent	True
+unsatisfiable	0
+subsumptions	457090
+taxonomy_sha256	f263a1e716702f4b3b370be3d74e722d9b9aa662af88b9eb594088ec434ca5fa
+relation_sha256	d9517ccc37c86110d6adb32f78141f75081342aab250060cbffba9df6c797a9e
+host	dgpu609-14
+slurm_job_id	51298377
+slurm_array_task_id	6
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:42.61
+	Maximum resident set size (kbytes): 13859032

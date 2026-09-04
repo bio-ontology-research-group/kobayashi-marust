@@ -1,0 +1,20 @@
+case	snomed-style-positive
+status	ok
+exit_code	0
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/v1.4-paper-impact-20260903/paper/paper/impact/cases/snomed-style-positive.ofn
+ontology_sha256	ab3838cfcc5412077e770dec74b73743dc4d255a077f3cee55f7835b827a6afc
+output_sha256	c29efaef64e5cad4f587843501fd02366c5597516d2df1f8178386c9e7f29e0f
+stderr_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fingerprint_sha256	33ee4226fc27d16cebba4bb8786944b32c55e7f332b1af7a8d0011429831eae5
+consistent	False
+unsatisfiable	0
+subsumptions	0
+taxonomy_sha256	0e2fb3906b7aebb20e6273c24afe842809d8709fbc5a4809e3a1fd0856ab2b9e
+relation_sha256	a25513c7e0f6eaa80a3337ee18081b9e2ed09e00af8531c8f7bb2542764027e7
+host	dgpu609-14
+slurm_job_id	51298375
+slurm_array_task_id	3
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.00
+	Maximum resident set size (kbytes): 9048

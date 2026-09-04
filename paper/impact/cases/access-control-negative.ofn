@@ -1,0 +1,12 @@
+Prefix(:=<http://example.org/impact#>)
+Ontology(<http://example.org/impact/access-control-negative>
+ Declaration(Class(:Contractor))
+ Declaration(Class(:PrivilegedContractor))
+ Declaration(Class(:LowClearance))
+ Declaration(Class(:HighClearance))
+ Declaration(ObjectProperty(:hasClearance))
+ DisjointClasses(:LowClearance :HighClearance)
+ SubClassOf(:Contractor ObjectAllValuesFrom(:hasClearance :LowClearance))
+ SubClassOf(:PrivilegedContractor :Contractor)
+ SubClassOf(:PrivilegedContractor ObjectSomeValuesFrom(:hasClearance :LowClearance))
+)

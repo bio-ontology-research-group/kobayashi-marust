@@ -1,0 +1,20 @@
+case	access-control-negative
+status	ok
+exit_code	0
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/v1.4-paper-impact-20260903/paper/paper/impact/cases/access-control-negative.ofn
+ontology_sha256	ec8f45a9374f81201ecbb93da9ed604bf6d74ce95ae67ed450d14db6bc85075f
+output_sha256	779e259d597b74fae57076f09b311f8099fa97e2ef51f1a4b27a38a0aa725110
+stderr_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fingerprint_sha256	092a65b6188849d04b417a62ba78a74d2ea962a6a313be35af5edac4a8b753df
+consistent	True
+unsatisfiable	0
+subsumptions	1
+taxonomy_sha256	fddca6c8be3e7aaa46f55212b6d0669672aac2f5deb9482dfdd08305c6157461
+relation_sha256	8c5b809351c0f2970e2500364865f580c1a888595a29620dcac47c9b470d7ca5
+host	dgpu609-14
+slurm_job_id	51298376
+slurm_array_task_id	4
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.00
+	Maximum resident set size (kbytes): 8412

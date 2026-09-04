@@ -1411,6 +1411,63 @@ execution observations.
 
 \input{generated/fma-results.tex}
 
+\subsection{Practical consequences of complete OWL 2 DL reasoning}
+\label{sec:practical-impact}
+
+An EL classifier's completeness guarantee applies only when the ontology is
+within its supported profile.  If the source also contains universal restrictions,
+negation, disjunction, inverse roles, nominals, or number restrictions, an EL
+result cannot establish that those omitted constructs leave consistency,
+named-class satisfiability, and the taxonomy unchanged
+\cite{w3c2012profiles}.  A complete OWL~2~DL reasoner can make that stronger
+check when it terminates within the resource contract.  This matters for
+ontology integration and release validation: a merged TBox can remain
+consistent but become incoherent because a named class is forced empty, while
+asserting an individual in that class makes the merged ontology inconsistent.
+
+Slater, Gkoutos, and Hoehndorf combined nine OBO Foundry ontologies and found
+636 unsatisfiable classes, then combined a repaired meta-ontology with the
+wider 2018 OBO collection and reported 312,398 distinct unsatisfiable classes
+\cite{slater2020semantic}.  Their UNMIREOT workflow used ELK 0.5.0-SNAPSHOT as
+the classification and satisfiability oracle, selected the most general
+unsatisfiable classes under asserted subclass links, generated justifications
+for at most 25 selected classes per iteration, removed a frequently occurring
+axiom, and reclassified.  The authors note that ELK lacks negation and
+universal quantification and that a terminating expressive reasoner could
+reveal further contradictions.  KM could supply a complete oracle for those
+classification and explanation calls, but we have not reproduced the full
+merge, greedy removal, and reclassification loop.  The 2018 ontology payloads
+must also be reacquired before an exact replication; the frozen 2026 OBO panel
+would constitute a new-data study instead.
+
+The supplementary impact artifact executes three controlled pairs on the
+post-v1.3 development commit \texttt{301d374}, so these runs do not enter the
+tagged v1.3 performance aggregates.  KM and HermiT agree that universal and
+existential restrictions into disjoint fillers make a biomedical merge class
+and an access-policy class unsatisfiable while each ontology remains
+consistent; their one-axiom repaired controls are satisfiable.  For each pair,
+ELK's out-of-profile runs have the same consistency field and relation digest.
+A third,
+entirely synthetic SNOMED-style input contains no SNOMED~CT content.  Its TBox
+requires disjoint left and right laterality fillers but permits at most one
+filler, which makes \texttt{BilateralProcedure} unsatisfiable; the executed
+ABox additionally asserts an instance of that class, and KM and HermiT report
+the resulting ontology inconsistency.  The copied KM run does not separately
+report a TBox-only classification.  Each adverse case has one bounded,
+KM-oracle-verified subset-minimal source support, not an exhaustive or
+independently checked explanation set.
+
+The same artifact classified the frozen ORE~2015 GALEN input twice, publishing
+457,090 subsumptions with identical taxonomy and relation digests.  This is
+not the current BioPortal GALEN hard case, which was not acquired.  Conversely,
+both current-Uberon automatic attempts failed after 11--13 minutes near
+17~GiB peak RSS, and two explicit route diagnostics timed out after one hour.
+None published a taxonomy.  Complete reasoning defines what could be
+established without an EL projection; it does not guarantee practical
+termination, and this artifact does not establish a full-DL result for current
+Uberon or licensed SNOMED~CT.  Exact inputs, commands, receipts, controls, and
+the fail-closed validator are retained in the supplement.
+
 \subsection{Incremental and explanation validation}
 
 We add an exact-v1.3 scale check for the two retained saturation backends.

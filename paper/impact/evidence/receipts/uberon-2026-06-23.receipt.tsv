@@ -1,0 +1,14 @@
+case	uberon-2026-06-23
+status	error
+exit_code	1
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/uberon.ofn
+ontology_sha256	13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93
+output_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+stderr_sha256	395eb264a36e588cbdb90ab4e88be1140ac4ac4c5d5c317e8fa8862666b4b55d
+host	dgpu609-14
+slurm_job_id	51298404
+slurm_array_task_id	8
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 11:40.33
+	Maximum resident set size (kbytes): 17724884

@@ -1,0 +1,20 @@
+case	snomed-style-negative
+status	ok
+exit_code	0
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_path	/ibex/scratch/hohndor/km/v1.4-paper-impact-20260903/paper/paper/impact/cases/snomed-style-negative.ofn
+ontology_sha256	116e6ef80409473305b640ea5fe8d5307af4277fb2e36e3d65390a0e5ad96133
+output_sha256	f7dcdaec62fa771a645b1443754bb2d56fb17f3a9a3d1f8c5d4335ecf7c66fdd
+stderr_sha256	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+fingerprint_sha256	6d78157f62b42bad7351dae5a06c8a4079080eb37951f4145ccddbcbde7a318f
+consistent	True
+unsatisfiable	0
+subsumptions	1
+taxonomy_sha256	8a1d33151fcc12d8790c10a39aa844a6e656562829a24ea242302d1b38a61bb0
+relation_sha256	6130e1bf1344d8e8175a20678de0ae6d6583a2203c7fb4572f899c7b7fe128bd
+host	dgpu609-14
+slurm_job_id	51298374
+slurm_array_task_id	2
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.00
+	Maximum resident set size (kbytes): 6624

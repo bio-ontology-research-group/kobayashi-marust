@@ -1,0 +1,28 @@
+evidence_id	system	subject	operation	terminal_status	consistent	unsatisfiable_named	subsumptions	wall_time	peak_rss	finding	evidence_file
+KM-HIDDEN-CONTROL	KM	hidden-full-dl-negative	classify	success	true	0	1	0:00.01	8124 KiB	repaired control is consistent and IntegratedFinding is not reported unsatisfiable	receipts/hidden-full-dl-negative.receipt.tsv
+KM-HIDDEN-CONFLICT	KM	hidden-full-dl-positive	classify	success	true	1	0	0:00.01	8704 KiB	IntegratedFinding is unsatisfiable while ontology is consistent	receipts/hidden-full-dl-positive.receipt.tsv
+KM-SNOMED-CONTROL	KM	snomed-style-negative	classify	success	true	0	1	0:00.00	6624 KiB	no-cardinality control is consistent	receipts/snomed-style-negative.receipt.tsv
+KM-SNOMED-ABOX	KM	snomed-style-positive	classify	success	false	0	0	0:00.00	9048 KiB	asserted instance of TBox-unsatisfiable BilateralProcedure makes ontology inconsistent	receipts/snomed-style-positive.receipt.tsv
+KM-ACCESS-CONTROL	KM	access-control-negative	classify	success	true	0	1	0:00.00	8412 KiB	repaired control is consistent and PrivilegedContractor is not reported unsatisfiable	receipts/access-control-negative.receipt.tsv
+KM-ACCESS-CONFLICT	KM	access-control-positive	classify	success	true	1	0	0:00.00	8416 KiB	PrivilegedContractor is unsatisfiable while ontology is consistent	receipts/access-control-positive.receipt.tsv
+KM-GALEN-1	KM	galen-ore9724	classify	success	true	0	457090	0:42.61	13859032 KiB	published full taxonomy	receipts/galen-ore9724.receipt.tsv
+KM-GALEN-2	KM	galen-ore9724-repeat	classify	success	true	0	457090	0:44.32	13692648 KiB	repeat taxonomy and relation digests equal first run	receipts/galen-ore9724-repeat.receipt.tsv
+KM-UBERON-AUTO-1	KM	uberon-2026-06-23	automatic classify	failure	NA	NA	NA	11:40.33	17724884 KiB	exit 1, empty output, worker engine exited -1	receipts/uberon-2026-06-23.receipt.tsv
+KM-UBERON-AUTO-2	KM	uberon-2026-06-23-repeat	automatic classify	failure	NA	NA	NA	12:33.78	17604952 KiB	exit 1, empty output, worker engine exited -1	receipts/uberon-2026-06-23-repeat.receipt.tsv
+KM-UBERON-PROD1	KM	uberon-production_all1	diagnostic route classify	failure	NA	NA	NA	1:00:00	577736 KiB	exit 124 timeout with no published output	receipts/uberon-production_all1.receipt.tsv
+KM-UBERON-NOMINALS	KM	uberon-certified_nominals	diagnostic route classify	failure	NA	NA	NA	1:00:00	3146808 KiB	exit 124 timeout with no published output	receipts/uberon-certified_nominals.receipt.tsv
+KM-HIDDEN-EXPLAIN	KM	hidden-full-dl-positive	explain named unsatisfiability	success	NA	NA	NA	NA	NA	one oracle-verified subset-minimal four-axiom support; enumeration incomplete	explanations/hidden-full-dl-positive.explain.json
+KM-SNOMED-EXPLAIN	KM	snomed-style-positive	explain inconsistency	success	NA	NA	NA	NA	NA	one oracle-verified subset-minimal five-axiom support including ClassAssertion; enumeration incomplete	explanations/snomed-style-positive.explain.json
+KM-ACCESS-EXPLAIN	KM	access-control-positive	explain named unsatisfiability	success	NA	NA	NA	NA	NA	one oracle-verified subset-minimal four-axiom support; enumeration incomplete	explanations/access-control-positive.explain.json
+ELK-HIDDEN-CONTROL	ELK 0.6.0	hidden-full-dl-negative	classify unsupported input	success-out-of-profile	true	0	1	1.0538 s	137.26 MiB	out-of-profile output	baselines/elk/hidden-full-dl-negative.result.json
+ELK-HIDDEN-CONFLICT	ELK 0.6.0	hidden-full-dl-positive	classify unsupported input	success-out-of-profile	true	0	1	1.0173 s	137.00 MiB	same relation digest as repaired control	baselines/elk/hidden-full-dl-positive.result.json
+ELK-SNOMED-CONTROL	ELK 0.6.0	snomed-style-negative	classify unsupported input	success-out-of-profile	true	0	1	1.0373 s	136.61 MiB	out-of-profile output	baselines/elk/snomed-style-negative.result.json
+ELK-SNOMED-ABOX	ELK 0.6.0	snomed-style-positive	classify unsupported input	success-out-of-profile	true	0	1	1.0566 s	138.02 MiB	same relation digest as repaired control and does not establish inconsistency	baselines/elk/snomed-style-positive.result.json
+ELK-ACCESS-CONTROL	ELK 0.6.0	access-control-negative	classify unsupported input	success-out-of-profile	true	0	1	1.0804 s	136.56 MiB	out-of-profile output	baselines/elk/access-control-negative.result.json
+ELK-ACCESS-CONFLICT	ELK 0.6.0	access-control-positive	classify unsupported input	success-out-of-profile	true	0	1	1.0629 s	136.07 MiB	same relation digest as repaired control	baselines/elk/access-control-positive.result.json
+HERMIT-HIDDEN-CONTROL	HermiT 1.4.5.519	hidden-full-dl-negative	classify	success	true	0	1	0.9055 s	122.57 MiB	agrees with KM outcome	baselines/hermit/hidden-full-dl-negative.result.json
+HERMIT-HIDDEN-CONFLICT	HermiT 1.4.5.519	hidden-full-dl-positive	classify	success	true	1	0	0.8678 s	121.44 MiB	agrees with KM outcome	baselines/hermit/hidden-full-dl-positive.result.json
+HERMIT-SNOMED-CONTROL	HermiT 1.4.5.519	snomed-style-negative	classify	success	true	0	1	0.8839 s	123.38 MiB	agrees with KM outcome	baselines/hermit/snomed-style-negative.result.json
+HERMIT-SNOMED-ABOX	HermiT 1.4.5.519	snomed-style-positive	classify	success	false	0	0	0.8826 s	118.88 MiB	agrees with KM ABox inconsistency outcome	baselines/hermit/snomed-style-positive.result.json
+HERMIT-ACCESS-CONTROL	HermiT 1.4.5.519	access-control-negative	classify	success	true	0	1	0.8831 s	121.85 MiB	agrees with KM outcome	baselines/hermit/access-control-negative.result.json
+HERMIT-ACCESS-CONFLICT	HermiT 1.4.5.519	access-control-positive	classify	success	true	1	0	0.9215 s	120.58 MiB	agrees with KM outcome	baselines/hermit/access-control-positive.result.json

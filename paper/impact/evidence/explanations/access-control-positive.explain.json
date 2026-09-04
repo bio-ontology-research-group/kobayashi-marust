@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 2,
+  "status": "entailed",
+  "query": {
+    "type": "unsatisfiable",
+    "class": "http://example.org/impact#PrivilegedContractor"
+  },
+  "method": "black-box-hitting-set-source-axiom-deletion",
+  "requestedRoute": "auto",
+  "reasonerVersion": "1.3.0",
+  "sourceAxiomCount": 9,
+  "classificationChecks": 11,
+  "classificationCheckLimit": 256,
+  "justificationLimit": 1,
+  "oracleSubsetMinimal": true,
+  "enumerationComplete": false,
+  "limitReached": true,
+  "checkLimitReached": false,
+  "justificationLimitReached": true,
+  "prefixDeclarations": [
+    "Prefix(:=<http://example.org/impact#>)"
+  ],
+  "justifications": [
+    {
+      "axiomCount": 4,
+      "verified": true,
+      "subsetMinimal": true,
+      "axioms": [
+        {
+          "id": "ax000007",
+          "ordinal": 7,
+          "functionalSyntax": "DisjointClasses(:LowClearance :HighClearance)"
+        },
+        {
+          "id": "ax000008",
+          "ordinal": 8,
+          "functionalSyntax": "SubClassOf(:Contractor ObjectAllValuesFrom(:hasClearance :LowClearance))"
+        },
+        {
+          "id": "ax000009",
+          "ordinal": 9,
+          "functionalSyntax": "SubClassOf(:PrivilegedContractor :Contractor)"
+        },
+        {
+          "id": "ax000010",
+          "ordinal": 10,
+          "functionalSyntax": "SubClassOf(:PrivilegedContractor ObjectSomeValuesFrom(:hasClearance :HighClearance))"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "The justification is validated by KM's classification oracle, not by an independent proof checker.",
+    "Every returned support was minimized and then reclassified as an exact source subset.",
+    "Subset minimality and enumeration are relative to source axiom occurrences and KM's automatic production policy.",
+    "Only self-contained OWL functional syntax and named-class subclass, unsatisfiability, or inconsistency queries are supported."
+  ]
+}

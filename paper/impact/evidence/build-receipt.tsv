@@ -1,0 +1,6 @@
+source_commit	301d37426cdf3dea249d9609037a2f1e47e89314
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+rustc	rustc 1.96.0 (ac68faa20 2026-05-25)
+cargo	cargo 1.96.0 (30a34c682 2026-05-25)
+host	cn512-26-r
+slurm_job_id	51298212

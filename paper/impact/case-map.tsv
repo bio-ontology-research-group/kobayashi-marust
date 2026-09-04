@@ -1,0 +1,7 @@
+legacy_id	publication_label	domain	adverse_consequence	control_change
+hidden-full-dl-positive	biomedical merge conflict	biomedical interoperability	IntegratedFinding is unsatisfiable while ontology is consistent	change existential filler from PathologicalProcess to AnatomicalStructure
+hidden-full-dl-negative	biomedical merge repaired control	biomedical interoperability	absent	uses AnatomicalStructure as both universal and existential filler
+snomed-style-positive	SNOMED-style inconsistent ABox	synthetic clinical terminology	BilateralProcedure TBox pattern is incoherent and asserted exampleCase makes ontology inconsistent	remove maximum-cardinality-one axiom
+snomed-style-negative	SNOMED-style consistent control	synthetic clinical terminology	absent	omits maximum-cardinality-one axiom
+access-control-positive	access-policy conflict	non-biomedical access control	PrivilegedContractor is unsatisfiable while ontology is consistent	change required filler from HighClearance to LowClearance
+access-control-negative	access-policy repaired control	non-biomedical access control	absent	uses LowClearance as both universal and existential filler

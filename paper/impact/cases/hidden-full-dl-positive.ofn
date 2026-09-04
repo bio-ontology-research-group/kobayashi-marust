@@ -1,0 +1,13 @@
+Prefix(:=<http://example.org/impact#>)
+Ontology(<http://example.org/impact/hidden-full-dl-positive>
+ Declaration(Class(:ExternalFinding))
+ Declaration(Class(:IntegratedFinding))
+ Declaration(Class(:AnatomicalStructure))
+ Declaration(Class(:PathologicalProcess))
+ Declaration(ObjectProperty(:hasParticipant))
+ DisjointClasses(:AnatomicalStructure :PathologicalProcess)
+ SubClassOf(:ExternalFinding ObjectAllValuesFrom(:hasParticipant :AnatomicalStructure))
+ SubClassOf(:IntegratedFinding :ExternalFinding)
+ SubClassOf(:IntegratedFinding ObjectSomeValuesFrom(:hasParticipant :PathologicalProcess))
+)
+

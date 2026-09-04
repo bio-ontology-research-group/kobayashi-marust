@@ -1,0 +1,7 @@
+case	hidden-full-dl-positive
+exit_code	0
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_sha256	8fd5edecf594143e058b16af4bb3b534a30bbbe03253570010e4d0574cf6c8bd
+output_sha256	b6f34dd6d24f68975d324d0d60054d71eb77fcf4ea2ada6138a318678662fb2a
+slurm_job_id	51298708
+slurm_array_task_id	0

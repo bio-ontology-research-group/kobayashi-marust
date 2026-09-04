@@ -1,0 +1,7 @@
+case	access-control-positive
+exit_code	0
+binary_sha256	c8688f6b286db2b422f1ec1df0874eadbbce0cc9e2899f35dbe143ccad70639d
+ontology_sha256	47929faf01d0e8e0de87d380bd5b1efcbe0ccf3a9bb13dd09e8dbc339bf2deff
+output_sha256	5bd4dd2c73b1a558228d799beaa84cd1b735646efab5a3baf431da8e5d41ebdc
+slurm_job_id	51298706
+slurm_array_task_id	2

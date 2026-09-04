@@ -1,0 +1,8 @@
+job_or_array	stage	tasks	max_simultaneous	terminal_state	finding
+51298212	build	1	1	success	built exact source commit and recorded binary and toolchain digests
+51298364	controlled KM classification	6	4	success	all six controlled classification tasks published valid JSON and receipts
+51298365	GALEN and Uberon KM classification	4	4	mixed	both GALEN tasks succeeded; both automatic Uberon tasks failed with empty output
+51298402	explanation first attempt	3	2	failure	batch script reached a shell syntax error before running KM; no result from this attempt is used
+51298706	explanation corrected rerun	3	2	success	three bounded explanation tasks published JSON and receipts
+51298713	ELK and HermiT controlled baselines	12	4	success	all twelve result records completed
+51298728	Uberon diagnostic routes	2	2	failure	both diagnostic routes timed out at 3600 seconds without output
