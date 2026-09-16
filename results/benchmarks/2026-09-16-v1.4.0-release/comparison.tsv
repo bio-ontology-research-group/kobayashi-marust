@@ -1,0 +1,6 @@
+reasoner	version_or_commit	completions	corpus_size	mean_wall_s	median_wall_s	mean_peak_rss_mib	median_peak_rss_mib	population
+KM	v1.4.0;edb1721;ddc30d2f9013b371b5c4ec19c0623c91ecc1b2dbdc172ded9002fd238903d09a	592	592	1.4764648648648648	0.1046	206.29119932432434	22.59	all completed runs; 588 gold matches, 2 adjudicated consistency disagreements, 2 without retained full-taxonomy gold
+ELK	0.6.0	531	592	1.5208	0.7520	493.33	234.30	retained correct completions
+Konclude	v0.7.0-1138;0002e8063540	587	592	3.2765	0.2814	559.90	76.87	retained correct completions
+Sequoia	0.6.1-alpha;c5248ec7be30	339	592	7.3704	2.5371	2207.35	536.15	retained correct completions
+HermiT	1.4.6.519-SNAPSHOT	557	592	13.1172	1.8782	1331.72	714.22	retained correct completions

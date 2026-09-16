@@ -1,0 +1,5 @@
+source_archive_sha256	211852a77a8b90a0e710910500cabe4f7b1bd1ced7f35a28d79c846eee91077d
+binary_sha256	ddc30d2f9013b371b5c4ec19c0623c91ecc1b2dbdc172ded9002fd238903d09a
+host	gpu510-32
+slurm_job_id	51947351
+Z	complete

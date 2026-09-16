@@ -1,0 +1,25 @@
+{
+  "runtime_source_commit": "edb1721",
+  "release_runtime_source_identical_to_tested_commit": true,
+  "production_certification_gates": {
+    "elc": "passed",
+    "ht": "passed",
+    "cb": "passed",
+    "routing": "passed"
+  },
+  "axioms": ["Classical.choice", "Quot.sound", "propext"],
+  "sorryAx": false,
+  "general_rust_library": {"passed": 2405, "failed": 0, "ignored": 8, "filtered": 22},
+  "remaining_integration_targets": 13,
+  "remaining_integration_tests": {"passed": 59, "failed": 0},
+  "native_checker_tests": "executed with matching checkers by the four certification gates",
+  "protege_tests": {"passed": 31, "failed": 0, "skipped": 0},
+  "protege_bundle_verification": "passed",
+  "protege_5_6_6_installation_smoke": "passed with the exact IBEX binary",
+  "benchmark_job": "51947388",
+  "benchmark_results": 592,
+  "benchmark_checkpoints": 592,
+  "benchmark_completion_markers": 592,
+  "benchmark_semantic_differences": 0,
+  "local_resource_limits": {"cpus": 4, "gate_memory_gib": 32, "gate_swap_gib": 0}
+}

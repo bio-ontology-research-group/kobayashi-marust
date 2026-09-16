@@ -1,6 +1,61 @@
 # Changelog
 
-## Unreleased
+## [1.4.0] - 2026-09-16
+
+### Release summary
+
+- Preserve typed ABox individuals and assertions in incremental source
+  sessions. Batch-only ABox elision had forced these sessions to rebuild after
+  an update. The retained positive-EL adapter now handles inconsistent
+  insertions and their removal while restoring the caller's environment.
+- Extend automatic classification to ORE1194 and retain the full 592-input
+  completion result. ORE1194 has no authoritative external full-taxonomy gold;
+  operational completion and external agreement are reported separately.
+- Reduce frontend allocation, pack EL rule indexes, improve CB subsumption
+  indexing, and avoid unnecessary worker preparation and data copies.
+- Include source-profile routing improvements and the source-bound Lean
+  publication boundaries for ELC, HT, CB, incremental reasoning, and explanations.
+- Publish time and peak process-tree memory with exact tested artifact identities
+  and per-ontology evidence. Full contemporary Uberon classification remains
+  an open task and is not implied by completing the ORE 2015 corpus.
+
+Release validation and the comparison table are recorded in
+`results/benchmarks/2026-09-16-v1.4.0-release/README.md`.
+
+### ORE 2015 comparison
+
+Fresh IBEX job `51947388` completes all 592 inputs within 240 seconds and
+20 GiB each. The audit verifies 592 results, matching checkpoints, completion
+markers, binary identities, and unchanged semantic outputs. Of these, 588 match
+retained gold, two retain adjudicated consistency disagreements, and two have
+no retained external full-taxonomy gold. ORE1194 completes in 127.7150 seconds
+at 16,840.31 MiB.
+
+| Reasoner | Tested version / commit | Completions used | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
+|---|---|---:|---:|---:|---:|---:|
+| KM | v1.4.0; `edb1721`; binary `ddc30d2f…8903d09a` | 592/592 | 1.4765 | 0.1046 | 206.29 | 22.59 |
+| ELK | 0.6.0 | 531/592 | 1.5208 | 0.7520 | 493.33 | 234.30 |
+| Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 3.2765 | 0.2814 | 559.90 | 76.87 |
+| Sequoia | 0.6.1-alpha; `c5248ec7be30` | 339/592 | 7.3704 | 2.5371 | 2207.35 | 536.15 |
+| HermiT | 1.4.6.519-SNAPSHOT | 557/592 | 13.1172 | 1.8782 | 1331.72 | 714.22 |
+
+KM includes all completed inputs, with the gold limitations above. Baselines
+use their retained correct-completion subsets. These aggregates use different
+populations and are not paired per-ontology speedup measurements. Times are
+wall seconds; memory is peak process-tree RSS in MiB on Intel Xeon Gold 6248.
+
+### Release validation
+
+- Pass all four production Lean certification gates on the final production
+  source, including incremental and explanation publication. The axiom audits
+  reject `sorryAx` and report only `propext`, `Classical.choice`, and `Quot.sound`.
+- Pass 2,405 general Rust library tests and all 13 remaining integration
+  targets, with native-checker tests executed separately by certification gates.
+- Pass all 31 plugin tests, packaged-bundle verification, and native
+  classification, incremental update, and explanation in Protégé 5.6.6 using
+  the exact benchmark binary.
+- Ship the measured Linux x86-64 binary, Protégé JAR, comparison and per-ontology
+  TSVs, benchmark evidence, validation logs, and SHA-256 checksums.
 
 ### Deferred engine thread budget in the production race
 
