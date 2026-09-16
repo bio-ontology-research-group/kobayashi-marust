@@ -1374,6 +1374,9 @@ fn generic_ht_adapter_allowed(route: &str) -> bool {
 fn normalize_automatic(source: &str) -> Result<FrontendResult, String> {
     let _guard = crate::routing::EnvironmentGuard::capture();
     std::env::set_var("KM_ROUTE", "auto");
+    // Batch classification can discard a certified separable ABox. A retained
+    // session needs its typed individuals and assertions to apply later edits.
+    std::env::set_var("KM_NO_SEPARABLE_ABOX_ELISION", "1");
     crate::frontend::ofn_to_clauses(source).map_err(|error| error.0)
 }
 
@@ -1384,6 +1387,7 @@ fn normalize_selected(source: &str, route: &str) -> Result<FrontendResult, Strin
         .map_err(|error| format!("invalid selected incremental route {route:?}: {error}"))?;
     selected.apply_environment();
     std::env::set_var("KM_ROUTE", route);
+    std::env::set_var("KM_NO_SEPARABLE_ABOX_ELISION", "1");
     crate::frontend::ofn_to_clauses(source).map_err(|error| error.0)
 }
 
@@ -1996,6 +2000,7 @@ Ontology(
     #[test]
     fn positive_el_abox_updates_reuse_typed_completion_state() {
         let _environment = lock_environment();
+        let prior_elision = std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION");
         let terminology = (0..1_000)
             .map(|index| {
                 format!("SubClassOf(<Seed{index}> ObjectSomeValuesFrom(<r> <Leaf{index}>))")
@@ -2023,8 +2028,11 @@ Ontology(
 )"#
         );
         let mut session = SourceIncrementalClassifier::new(&consistent).unwrap();
+        assert_eq!(std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION"), prior_elision);
         assert_eq!(session.route(), "elc");
         assert!(session.retained_backend());
+        assert!(matches!(session.backend, super::SourceBackend::PositiveAbox(_)));
+        assert!(!session.frontend.nominal_abox.individuals.is_empty());
         assert!(session.classification().consistent);
         let initial = session.classification().clone();
 
@@ -2037,6 +2045,7 @@ Ontology(
         assert_eq!(removal.strategy, ChangeStrategy::ElDelta);
         assert!(removal.meaningful_incremental_update);
         assert_eq!(session.classification(), &initial);
+        assert_eq!(std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION"), prior_elision);
     }
 
     #[test]

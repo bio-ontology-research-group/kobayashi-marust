@@ -2388,6 +2388,7 @@ impl EnvironmentGuard {
         let values = std::iter::once("KM_ROUTE")
             .chain(std::iter::once("KM_COMP_IND_BITS"))
             .chain(std::iter::once("KM_EL_ABOX_CHECK"))
+            .chain(std::iter::once("KM_NO_SEPARABLE_ABOX_ELISION"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
             .chain(ROUTE_KEYS.iter().copied())
