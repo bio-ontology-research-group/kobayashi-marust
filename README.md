@@ -39,6 +39,12 @@ without access to the expected answer.
 
 ## Dynamic reasoning benchmarks
 
+v1.4.2 adds the [entailment-justification comparison](results/benchmarks/2026-09-17-dynamic-baseline/justification-final-comparison/README.md),
+with 7,650 measured attempts across native, library and common-extractor services.
+Support validity and minimality are checked independently; bounded enumeration
+is not a claim of completeness. The report retains preparation failures,
+timeouts, errors and separate full/module tracks.
+
 v1.4.1 adds the [incremental benchmark comparison](results/benchmarks/2026-09-17-dynamic-baseline/incremental-final-comparison/README.md),
 following 250-revision histories from the literature. It reports failures,
 independent correctness, time, memory and retained work separately. KM sessions
@@ -48,7 +54,7 @@ before Lean certification. See [CHANGELOG.md](CHANGELOG.md) for validation and l
 
 ## Install
 
-The [v1.4.1 release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.1)
+The [v1.4.2 release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.2)
 provides a Linux x86-64 binary (glibc 2.34 or newer), a Protégé JAR, and benchmark
 tables. Building from source requires a recent stable Rust toolchain.
 

@@ -1,5 +1,79 @@
 # Changelog
 
+## [1.4.2] - 2026-09-18
+
+Both releases contain the same minor ABox correctness fixes. Incremental source
+sessions now preserve a frontend inconsistency verdict, suppress taxonomy rows
+while inconsistent, and restore consistent output after the conflicting
+assertion is removed. The batch atomic-ABox shortcut now checks its independent
+witness premise; inputs outside that premise use the existing complete path.
+
+The fixes were tested experimentally before the new Lean publication proof.
+All four source certification gates pass for each exact version, as do 2,407
+library tests and 59 integration tests. The 22 native-checker tests excluded
+from the general invocation pass within the gates. Eight ignored tests remain
+explicitly excluded. The proof assumes the documented parser, identity,
+fragment-admission, detector and worker boundaries; it is not extracted from the
+Rust implementation.
+
+Each version also completes the 592-input ORE regression with unchanged semantic
+outputs: 588 match retained gold, two retain known consistency disagreements,
+and two have no retained external gold. These runs are regression evidence,
+not new paired performance comparisons against other reasoners.
+
+The Protégé plugin reports the matching version and passes 31 Maven tests,
+bundle checks and a real Protégé installation smoke test.
+
+## Entailment-justification comparison
+
+The literature-based protocol uses five independently confirmed queries per
+prepared ontology, full ontologies and STAR modules, extraction bounds 1/10/100,
+one warmup and five measured repetitions. Five ontologies reached measurement:
+MMO, HAO, VTO, MFOMD and ZFA. Preparation failures for TO, Uberon and MRO remain
+reported. Each returned support was checked independently for source membership,
+entailment and deletion minimality, with logical normalization to detect duplicates.
+
+The selected final comparison contains 7,650 measured attempts. Counts below
+summarize coverage across tracks and bounds; they do not establish a speed ranking.
+
+| Service | Correct / measured | Timeout | Error |
+|---|---:|---:|---:|
+| KM native | 675 / 750 | 0 | 75 |
+| KM common extractor | 373 / 750 | 362 | 15 |
+| HermiT library | 710 / 750 | 40 | 0 |
+| JFact library | 710 / 750 | 40 | 0 |
+| Openllet library | 668 / 750 | 82 | 0 |
+| HermiT common extractor | 517 / 750 | 233 | 0 |
+| JFact common extractor | 450 / 750 | 299 | 1 |
+| Openllet common extractor | 450 / 750 | 300 | 0 |
+| Konclude common extractor | 431 / 750 | 287 | 32 |
+| ELK common extractor, EL only | 300 / 450 | 150 | 0 |
+| Whelk common extractor, EL only | 290 / 450 | 160 | 0 |
+
+Correct means the returned supports passed the audit, not that enumeration is
+complete. Native, library and common-extractor mechanisms remain separate in
+performance comparisons. Full/module tracks and each bound also remain separate.
+The report provides per-case wall-time dispersion, measured process-tree memory,
+all failures and compatible paired timing ratios requiring five valid repetitions.
+
+A Java adapter stream-close defect required complete reruns of affected KM and
+Konclude common-extractor cohorts. Original attempts remain archived and cannot
+replace failed corrected attempts. These later cohorts and recorded scheduling
+changes introduce cache and contention caveats. Raw worker errors remain errors;
+they are not silently recoded as timeouts. No overall performance winner is claimed.
+
+The report and parent checks are under
+`results/benchmarks/2026-09-17-dynamic-baseline/justification-final-comparison/`.
+The checks cover all 1,500 frozen tasks, ten audit/normalization/driver input sets,
+selected-cohort identity and all 12,300 paired rows. The archive includes warmups,
+baseline KM and superseded attempts; its total is not the selected denominator.
+
+The release attaches the tested binary, matching Protégé plugin, benchmark
+evidence, validation archive, source attestation and SHA-256 checksums.
+
+See the [complete justification comparison](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/v1.4.2/results/benchmarks/2026-09-17-dynamic-baseline/justification-final-comparison/README.md)
+and the [literature-based methodology](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/v1.4.2/benchmarks/dynamic-v1.4/METHODOLOGY.md).
+
 ## [1.4.1] - 2026-09-18
 
 Both releases contain the same minor ABox correctness fixes. Incremental source
