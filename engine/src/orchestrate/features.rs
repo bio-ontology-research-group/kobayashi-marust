@@ -283,7 +283,7 @@ fn run_ofn(cfg: &Config, ont: &Path, absorb: bool, meta: Option<&Path>) -> (Opti
         .env("KM_ABSORB", if absorb { "1" } else { "0" });
     match cmd.status() {
         Ok(st) => {
-            let code = st.code().unwrap_or(-1);
+            let code = crate::orchestrate::engine_run::exit_status_code(&st);
             (Some(clauses), code)
         }
         Err(_) => (None, -1),

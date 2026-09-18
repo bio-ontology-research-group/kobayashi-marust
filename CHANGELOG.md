@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.3] - unreleased
+
+Fix misleading worker `-1` errors by preserving timeout, memory-watchdog and
+signal outcomes. Respect the available CPU budget for small nominal query
+sets while retaining bounded partitions for large inputs. Avoid allocating
+Hyper provenance when certificate recording is disabled.
+
+Preserve the owner inequalities implied by functional string data assertions
+so the checked native bridge can handle those inputs without dropping their
+data constraints. Domain admission follows asserted named subclass links.
+
+The [Michel harness validation](docs/HARNESS-v1.4.3.md) records the full
+1,920-input reproduction and separates completion from semantic agreement.
+Release validation is in progress.
+
 ## [1.4.2] - 2026-09-18
 
 Both releases contain the same minor ABox correctness fixes. Incremental source

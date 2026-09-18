@@ -1220,7 +1220,45 @@ fn ofn_to_clauses_requested(
         || nominal_enumeration_inconsistent
         || data_abox.is_inconsistent()
         || rule_abox_inconsistent;
-    if !abox_inconsistent && data_abox.positive_assertions_redundant() {
+    // Functional string values can be projected only together with their
+    // entailed owner inequalities. Keep those inequalities in both the typed
+    // payload and the exact nominal clause view, so later object-side merges
+    // cannot erase a datatype clash.
+    let functional_data_projected = if !abox_inconsistent {
+        data_abox.functional_string_projection().and_then(|pairs| {
+            let mut normalized = Vec::new();
+            for (left, right) in pairs {
+                let lookup = |raw: &str| {
+                    let full = raw.trim_start_matches('<').trim_end_matches('>');
+                    nominal_abox
+                        .individuals
+                        .iter()
+                        .find(|entry| reg.full_iri(&entry.individual) == full)
+                        .map(|entry| entry.individual.clone())
+                };
+                normalized.push((lookup(left)?, lookup(right)?));
+            }
+            Some(normalized)
+        })
+    } else {
+        None
+    };
+    if let Some(pairs) = &functional_data_projected {
+        for (left, right) in pairs {
+            if nominals_mode {
+                tbox.push(clause(
+                    [Atom::Eq(Term::Ind(left.clone()), Term::Ind(right.clone()))],
+                    [],
+                ));
+            }
+            nominal_abox.different.push((left.clone(), right.clone()));
+        }
+        nominal_abox.different.sort();
+        nominal_abox.different.dedup();
+    }
+    if !abox_inconsistent
+        && (data_abox.positive_assertions_redundant() || functional_data_projected.is_some())
+    {
         let source_data_assertions = profile
             .source
             .axiom_types
@@ -2450,6 +2488,29 @@ mod nominal_abox_contract_tests {
     use super::*;
 
     const PREFIX: &str = "Prefix(:=<http://example.org/>)\nOntology(";
+
+    #[test]
+    fn functional_data_projection_keeps_entailed_different_individuals() {
+        let result = ofn_to_clauses(
+            "Ontology(Declaration(Class(<http://e#A>))
+             ClassAssertion(<http://e#A> <http://e#a>)
+             ClassAssertion(<http://e#A> <http://e#b>)
+             FunctionalDataProperty(<http://e#p>)
+             DataPropertyRange(<http://e#p> <http://www.w3.org/2001/XMLSchema#string>)
+             DataPropertyAssertion(<http://e#p> <http://e#a> \"left\")
+             DataPropertyAssertion(<http://e#p> <http://e#b> \"right\"))",
+        )
+        .unwrap();
+        assert!(
+            result.nominal_abox.complete,
+            "{:?}",
+            result.nominal_abox.unsupported
+        );
+        assert_eq!(
+            result.nominal_abox.different,
+            vec![("a".into(), "b".into())]
+        );
+    }
 
     #[test]
     fn nary_different_individuals_is_certified_as_exact_pairs() {

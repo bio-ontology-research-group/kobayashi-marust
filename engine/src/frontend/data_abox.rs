@@ -1045,6 +1045,106 @@ impl<'a> DataAbox<'a> {
         true
     }
 
+    /// Exact object-side projection of a bounded, string-valued functional
+    /// data ABox. Different values of one functional property force different
+    /// owners. Conversely, retaining all those inequalities permits extending
+    /// any object model with exactly the asserted strings. Range and domain
+    /// obligations must already hold; every other data interaction defers.
+    /// This certificate must never be used to simply discard the assertions:
+    /// the caller must install every returned inequality in the native ABox.
+    pub fn functional_string_projection(&self) -> Option<Vec<(&'a str, &'a str)>> {
+        if self.overflow
+            || self.global_omission_unsafe
+            || self.functional.is_empty()
+            || self.assertions.is_empty()
+            || self.assertions.len() > 256
+            || !self.supers.is_empty()
+            || !self.dmax1.is_empty()
+            || self.functional.iter()
+                .chain(self.ranges.keys())
+                .chain(self.domains.keys())
+                .chain(self.unsupported_properties.iter())
+                .any(|p| p.contains("topDataProperty") || p.contains("bottomDataProperty"))
+        {
+            return None;
+        }
+        let mut values: HashMap<&str, Vec<(&str, String)>> = HashMap::new();
+        for &(property, individual, token, suffix) in &self.assertions {
+            let literal = parse_lit(token, suffix)?;
+            if !is_plain_string(&literal)
+                || self.unsupported_properties.contains(property)
+                || property == "owl:topDataProperty"
+                || property == "owl:bottomDataProperty"
+                || property == "<http://www.w3.org/2002/07/owl#topDataProperty>"
+                || property == "<http://www.w3.org/2002/07/owl#bottomDataProperty>"
+            {
+                return None;
+            }
+            if !self.ranges.get(property).is_none_or(|ranges| {
+                ranges
+                    .iter()
+                    .all(|range| provably_in_datatype(&literal, range))
+            }) || !self.domains.get(property).is_none_or(|domains| {
+                domains
+                    .iter()
+                    .all(|domain| self.named_type_entailed(individual, domain))
+            }) {
+                return None;
+            }
+            if self.functional.contains(property) {
+                let lexical = match literal {
+                    Lit::Plain(value) | Lit::Typed(value, _) => value,
+                    Lit::Lang(..) => return None,
+                };
+                if lexical.contains('\\') {
+                    return None;
+                }
+                values
+                    .entry(property)
+                    .or_default()
+                    .push((individual, unescape(lexical)));
+            }
+        }
+        let mut different = std::collections::BTreeSet::new();
+        for group in values.values() {
+            for (index, (left, value)) in group.iter().enumerate() {
+                for (right, other) in &group[index + 1..] {
+                    if value != other {
+                        if left == right {
+                            return None;
+                        }
+                        different.insert(if left < right {
+                            (*left, *right)
+                        } else {
+                            (*right, *left)
+                        });
+                    }
+                }
+            }
+        }
+        Some(different.into_iter().collect())
+    }
+
+    // Follow only asserted named-class inclusion edges. Cycles terminate and
+    // complex class expressions never contribute an unproved membership.
+    fn named_type_entailed(&self, individual: &str, target: &str) -> bool {
+        let mut pending: Vec<&str> = self.cassert.iter()
+            .filter_map(|(class, owner)| (*owner == individual).then_some(*class))
+            .collect();
+        let mut seen = std::collections::HashSet::new();
+        while let Some(class) = pending.pop() {
+            if class == target {
+                return true;
+            }
+            if seen.insert(class) {
+                if let Some(supers) = self.csupers.get(class) {
+                    pending.extend(supers.iter().copied());
+                }
+            }
+        }
+        false
+    }
+
     /// `true` iff the asserted ABox provably contradicts the declared data
     /// ranges, at-most-1 constraints, or `DifferentIndividuals`. Sound: every
     /// reported clash is an OWL 2 entailment; caps degrade to "not detected".
@@ -1146,6 +1246,65 @@ mod tests {
             da.observe(&node);
         }
         da
+    }
+
+    #[test]
+    fn functional_strings_preserve_owner_inequalities_and_equal_values() {
+        let da = build(&[
+            "FunctionalDataProperty(<http://x#p>)",
+            "DataPropertyRange(<http://x#p> xsd:string)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"same\")",
+            "DataPropertyAssertion(<http://x#p> <http://x#b> \"same\"^^xsd:string)",
+            "DataPropertyAssertion(<http://x#p> <http://x#c> \"different\")",
+        ]);
+        assert!(!da.positive_assertions_redundant());
+        assert_eq!(
+            da.functional_string_projection(),
+            Some(vec![
+                ("<http://x#a>", "<http://x#c>"),
+                ("<http://x#b>", "<http://x#c>"),
+            ])
+        );
+    }
+
+    #[test]
+    fn functional_strings_accept_inherited_domains_without_assuming_membership() {
+        let facts = [
+            "FunctionalDataProperty(<p>)",
+            "DataPropertyDomain(<p> <D>)",
+            "SubClassOf(<C> <B>)",
+            "SubClassOf(<B> <D>)",
+            "SubClassOf(<D> <B>)",
+            "ClassAssertion(<C> <a>)",
+            "DataPropertyAssertion(<p> <a> \"value\")",
+        ];
+        assert!(build(&facts).functional_string_projection().is_some());
+        let mut missing = facts;
+        missing[5] = "ClassAssertion(<Unrelated> <a>)";
+        assert!(build(&missing).functional_string_projection().is_none());
+    }
+
+    #[test]
+    fn functional_string_projection_declines_unrepresented_interactions() {
+        for extra in [
+            "DataPropertyDomain(<http://x#p> <http://x#Unasserted>)",
+            "SubClassOf(<http://x#C> DataHasValue(<http://x#p> \"x\"))",
+            "NegativeDataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
+            "SubDataPropertyOf(<http://x#p> <http://x#q>)",
+            "DatatypeDefinition(<http://x#D> xsd:string)",
+            "DataPropertyDomain(owl:topDataProperty <http://x#C>)",
+            "DataPropertyRange(owl:topDataProperty xsd:string)",
+        ] {
+            let items = [
+                "FunctionalDataProperty(<http://x#p>)",
+                "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
+                extra,
+            ];
+            assert!(
+                build(&items).functional_string_projection().is_none(),
+                "{extra}"
+            );
+        }
     }
 
     #[test]

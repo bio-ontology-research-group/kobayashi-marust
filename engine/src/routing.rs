@@ -524,6 +524,22 @@ pub(crate) fn compact_typed_bridge_first_candidate(profile: &OntologyProfile) ->
         && profile.expressivity.nominal
 }
 
+/// Schedule a checked native bridge attempt for small functional-data ABoxes.
+/// The frontend must independently prove its string-value projection and
+/// retain all entailed owner inequalities; unsupported interactions leave the
+/// native payload incomplete and the bridge declines to the exact CB route.
+pub(crate) fn functional_data_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |kind: &str| source.axiom_types.get(kind).copied().unwrap_or(0);
+    count("FunctionalDataProperty") > 0
+        && (1..=256).contains(&count("DataPropertyAssertion"))
+        && source.logical_axioms <= 4_000
+        && source.distinct_individuals <= 256
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
 /// Automatic nominal routes that replaced the historical TBox-only production
 /// schedule because its CB fallback did not carry singleton/ABox semantics.
 ///

@@ -49,7 +49,7 @@ mvn package
 The OSGi plugin bundle is:
 
 ```text
-protege/target/kobayashi-marust-protege-1.4.2.jar
+protege/target/kobayashi-marust-protege-1.4.3.jar
 ```
 
 Set `KM_BIN` while testing if `km` is not on `PATH`:
@@ -62,7 +62,7 @@ KM_BIN=/absolute/path/to/km mvn test
 
 1. Download and unpack Protégé Desktop 5.6.x from the
    [Protégé website](https://protege.stanford.edu/software/).
-2. Copy `kobayashi-marust-protege-1.4.2.jar` into the `plugins` directory
+2. Copy `kobayashi-marust-protege-1.4.3.jar` into the `plugins` directory
    inside the Protégé installation.
 3. Put the `km` executable on the process `PATH`, or configure its absolute
    path as described below.
@@ -200,7 +200,7 @@ distribution before releasing:
 ```sh
 protege/run-installation-smoke.sh \
   /absolute/path/to/Protege-5.6.6 \
-  "$PWD/protege/target/kobayashi-marust-protege-1.4.2.jar" \
+  "$PWD/protege/target/kobayashi-marust-protege-1.4.3.jar" \
   "$PWD/.work/target/release/km"
 ```
 

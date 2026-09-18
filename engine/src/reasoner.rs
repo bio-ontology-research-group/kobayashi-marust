@@ -418,17 +418,31 @@ impl Reasoner {
         }
     }
 
-    /// Desired worker count: `KM_THREADS` env if set (clamped >=1), else the
-    /// machine's available parallelism.
+    fn requested_threads() -> usize {
+        std::env::var("KM_THREADS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(1)
+            })
+            .max(1)
+    }
+
+    /// Independent saturation tasks needed for the available CPU budget.
+    /// Rayon bounds active threads already, but scheduling sixteen separate
+    /// engines on one worker repeats the same nominal ground saturation.
     fn want_threads() -> usize {
-        if let Ok(v) = std::env::var("KM_THREADS") {
-            if let Ok(n) = v.trim().parse::<usize>() {
-                return n.max(1);
-            }
-        }
-        std::thread::available_parallelism()
+        let available = std::thread::available_parallelism()
             .map(|n| n.get())
-            .unwrap_or(1)
+            .unwrap_or(1);
+        let budget = std::env::var("RAYON_NUM_THREADS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(available);
+        Self::requested_threads().min(available).min(budget)
     }
 
     /// Finalize the ontology once per classification.  Every engine built from
@@ -923,10 +937,20 @@ impl Reasoner {
         }
         let retain_certificate_engine = std::env::var_os("KM_CB_LIVE_STATE").is_some()
             || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some();
+        let nominal_static = std::env::var_os("KM_NOMINALS").is_some()
+            && std::env::var_os("KM_NOMINAL_DYNAMIC").is_none();
         let threads = if retain_certificate_engine {
             1
         } else {
-            Self::want_threads().min(queries.len().max(1))
+            // A giant's query partitions also bound the conditional labels
+            // that coexist in its ground context. Preserve that partitioning
+            // even on one CPU; Rayon still bounds simultaneous execution.
+            let tasks = if nominal_static && queries.len() > 4_096 {
+                Self::requested_threads()
+            } else {
+                Self::want_threads()
+            };
+            tasks.min(queries.len().max(1))
         };
         // Sequential path: one engine over all queries (preserves cross-query
         // context sharing -- fastest when single-threaded).
@@ -959,8 +983,6 @@ impl Reasoner {
         // KM_STATIC_SCHED selects this schedule for any mechanism.  The nominal
         // route selects it automatically; KM_NOMINAL_DYNAMIC restores the
         // general work-stealing scheduler for direct A/B measurements.
-        let nominal_static = std::env::var_os("KM_NOMINALS").is_some()
-            && std::env::var_os("KM_NOMINAL_DYNAMIC").is_none();
         if std::env::var_os("KM_STATIC_SCHED").is_some() || nominal_static {
             let chunk_len = queries.len().div_ceil(threads);
             let chunks: Vec<&[Iri]> = queries.chunks(chunk_len).collect();

@@ -173,6 +173,16 @@ fn mapped_iri<'a>(map: &'a BTreeMap<String, String>, iri: &'a str) -> &'a str {
 pub enum OrchestrateError {
     /// ofn exit 3: ontology outside the supported fragment (datatypes)
     OutOfFragment(String),
+    /// The supervisor stopped a worker at its configured wall-clock deadline.
+    WorkerTimeout {
+        bin: String,
+        stderr: String,
+    },
+    /// The supervisor observed a worker exceeding its configured RSS limit.
+    WorkerMemoryLimit {
+        bin: String,
+        stderr: String,
+    },
     /// a worker exited non-zero (other than the modelled elc 3/4 codes)
     Worker {
         bin: String,
@@ -192,8 +202,18 @@ impl std::fmt::Display for OrchestrateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OrchestrateError::OutOfFragment(m) => write!(f, "out of fragment: {m}"),
+            OrchestrateError::WorkerTimeout { bin, stderr } => {
+                write!(f, "worker {bin} exceeded its time limit: {stderr}")
+            }
+            OrchestrateError::WorkerMemoryLimit { bin, stderr } => {
+                write!(f, "worker {bin} exceeded its RSS limit: {stderr}")
+            }
             OrchestrateError::Worker { bin, code, stderr } => {
-                write!(f, "worker {bin} exited {code}: {stderr}")
+                if *code < 0 {
+                    write!(f, "worker {bin} terminated by signal {}: {stderr}", -code)
+                } else {
+                    write!(f, "worker {bin} exited {code}: {stderr}")
+                }
             }
             OrchestrateError::Spawn { bin, source } => write!(f, "spawn {bin}: {source}"),
             OrchestrateError::Io(e) => write!(f, "io: {e}"),
@@ -202,6 +222,16 @@ impl std::fmt::Display for OrchestrateError {
     }
 }
 impl std::error::Error for OrchestrateError {}
+impl OrchestrateError {
+    /// Preserve an observed timeout in the command-line resource contract.
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            Self::OutOfFragment(_) => 3,
+            Self::WorkerTimeout { .. } => 124,
+            _ => 1,
+        }
+    }
+}
 impl From<std::io::Error> for OrchestrateError {
     fn from(e: std::io::Error) -> Self {
         OrchestrateError::Io(e)
@@ -324,11 +354,7 @@ fn run_adaptive(
         ));
     }
     if res.code != 0 {
-        return Err(OrchestrateError::Worker {
-            bin: "engine".into(),
-            code: res.code,
-            stderr: res.stderr,
-        });
+        return Err(res.worker_error("engine"));
     }
     parse_out(&res)
 }
@@ -345,11 +371,7 @@ fn handle_elc_result(
         3 => Ok(None),
         4 => Ok(Some(resolve_residue(cfg, parse_out(&res)?, clauses_path)?)),
         0 => Ok(Some(parse_out(&res)?)),
-        c => Err(OrchestrateError::Worker {
-            bin: "elc".into(),
-            code: c,
-            stderr: res.stderr,
-        }),
+        _ => Err(res.worker_error("elc")),
     }
 }
 
@@ -419,11 +441,7 @@ fn run_atomic_elc(
         4 => Err(OrchestrateError::OutOfFragment(
             "EL completeness certificate left an unresolved residue".into(),
         )),
-        code => Err(OrchestrateError::Worker {
-            bin: "elc".into(),
-            code,
-            stderr: res.stderr,
-        }),
+        _ => Err(res.worker_error("elc")),
     }
 }
 
@@ -455,11 +473,7 @@ fn run_atomic_cb(cfg: &Config, clauses_path: &Path) -> Result<EngineOut, Orchest
         ));
     }
     if res.code != 0 {
-        return Err(OrchestrateError::Worker {
-            bin: "engine".into(),
-            code: res.code,
-            stderr: res.stderr,
-        });
+        return Err(res.worker_error("engine"));
     }
     parse_out(&res)
 }
@@ -1035,11 +1049,16 @@ fn classify_with_evidence_mode(
     // broader general HT probe. Any refusal restores this call's environment
     // and leaves the unchanged certified-nominal fallback authoritative.
     if automatic_requested
-        && matches!(
+        && ((matches!(
             selected_route,
             crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
-        )
-        && crate::routing::compact_typed_bridge_first_candidate(&meta.profile)
+        ) && crate::routing::compact_typed_bridge_first_candidate(&meta.profile))
+            || (matches!(
+                selected_route,
+                crate::routing::Route::CertifiedNominals
+                    | crate::routing::Route::Nominals
+                    | crate::routing::Route::NominalNiAbox
+            ) && crate::routing::functional_data_abox_bridge_candidate(&meta.profile)))
     {
         let bridge_attempt = {
             let _probe_environment = crate::routing::EnvironmentGuard::capture();
@@ -2241,7 +2260,7 @@ fn rules_consistency(
     if !status.success() {
         return Err(OrchestrateError::Worker {
             bin: "tableau".into(),
-            code: status.code().unwrap_or(-1),
+            code: crate::orchestrate::engine_run::exit_status_code(&status),
             stderr: String::new(),
         });
     }
@@ -2279,11 +2298,7 @@ fn resolve_residue(
         ));
     }
     if res.code != 0 {
-        return Err(OrchestrateError::Worker {
-            bin: "engine".into(),
-            code: res.code,
-            stderr: res.stderr,
-        });
+        return Err(res.worker_error("engine"));
     }
     let eng = parse_out(&res)?;
     for (k, v) in eng.subsumptions {

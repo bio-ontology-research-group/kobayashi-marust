@@ -3517,6 +3517,51 @@ mod cb_live_snapshot_tests {
     use super::*;
 
     #[test]
+    fn optional_hyper_evidence_preserves_terminal_state() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let pred = |iri| Pred::Concept { iri, t: X };
+        let clauses = vec![
+            OntologyClause::new(vec![pred(a)], vec![Lit::P(pred(b))]),
+            OntologyClause::new(vec![pred(a)], vec![Lit::P(pred(c))]),
+            OntologyClause::new(vec![pred(b), pred(c)], vec![Lit::P(pred(d))]),
+        ];
+        let mut ordinary = Engine::new(sig, clauses, 0);
+        ordinary.certificate_history = None;
+        let mut certified = ordinary.clone();
+        certified.certificate_history = Some(Vec::new());
+        ordinary.run_for(&[a]);
+        certified.run_for(&[a]);
+        let plain = ordinary.live_terminal_snapshot();
+        let mut recorded = certified.live_terminal_snapshot();
+        let hyper = recorded
+            .insertion_history
+            .iter()
+            .filter_map(|event| match event.rule_evidence.as_ref() {
+                Some(CbLiveRuleEvidence::Hyper {
+                    instantiated_source,
+                    context_clause_ids,
+                    matched_predicates,
+                    ..
+                }) => Some((instantiated_source, context_clause_ids, matched_predicates)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(!hyper.is_empty());
+        assert!(hyper.iter().any(|(source, _, _)| source.body.len() == 2));
+        for (source, premises, matches) in hyper {
+            assert_eq!(source.body.len(), premises.len());
+            assert_eq!(source.body.len(), matches.len());
+        }
+        recorded.insertion_history.clear();
+        assert_eq!(plain, recorded);
+        assert_eq!(ordinary.subsumptions(), certified.subsumptions());
+    }
+
+    #[test]
     fn terminal_snapshot_is_exact_stable_and_complete() {
         let mut sig = Sig::default();
         let query = sig.concept("A");
@@ -3981,7 +4026,7 @@ impl Engine {
                 let maxima: Vec<Pred> = side.max_head_predicates().map(|(p, _)| p).collect();
                 for max in maxima {
                     for (result, evidence) in self.hyper_with_evidence(id, cid, &side, max, root) {
-                        self.add_clause_with_rule(id, result, Some("hyper"), Some(evidence));
+                        self.add_clause_with_rule(id, result, Some("hyper"), evidence);
                     }
                 }
             }
@@ -4549,9 +4594,7 @@ impl Engine {
                             nhyper += results.len() as u64;
                         }
                         for (r, evidence) in results {
-                            if self.add_clause_with_rule(id, r, Some("hyper"), Some(evidence))
-                                && prof
-                            {
+                            if self.add_clause_with_rule(id, r, Some("hyper"), evidence) && prof {
                                 nadded += 1;
                             }
                         }
@@ -4786,7 +4829,7 @@ impl Engine {
         side: &ContextClause,
         max: Pred,
         root: bool,
-    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
+    ) -> Vec<(ContextClause, Option<CbLiveRuleEvidence>)> {
         if !self.prof_time {
             return self.hyper_results(id, Some(side_id), side, max, root);
         }
@@ -4803,7 +4846,7 @@ impl Engine {
         side: &ContextClause,
         max: Pred,
         root: bool,
-    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
+    ) -> Vec<(ContextClause, Option<CbLiveRuleEvidence>)> {
         HYPER_CALLS.with(|c| c.set(c.get() + 1));
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
@@ -5082,58 +5125,65 @@ impl Engine {
         chosen: &mut Vec<usize>,
         root: bool,
         determined: &mut DeterminedIndex,
-        out: &mut Vec<(ContextClause, CbLiveRuleEvidence)>,
+        out: &mut Vec<(ContextClause, Option<CbLiveRuleEvidence>)>,
     ) {
         if depth == order.len() {
             if let Some(c) =
                 self.build_hyper_resolvent(id, side, oc, sigma, candidates, chosen, root)
             {
-                let context_clause_ids = candidates
-                    .iter()
-                    .enumerate()
-                    .map(|(position, choices)| {
-                        let selected = choices[chosen[position]].0;
-                        if selected == usize::MAX {
-                            side_id.unwrap_or(u32::MAX)
-                        } else {
-                            selected as u32
-                        }
-                    })
-                    .collect();
-                let matched_predicates = candidates
-                    .iter()
-                    .enumerate()
-                    .map(|(position, choices)| choices[chosen[position]].1.into())
-                    .collect();
-                let substitution = sigma
-                    .map
-                    .iter()
-                    .map(|&(variable_id, value)| CbLiveSubstitution { variable_id, value })
-                    .collect();
-                let instantiated_source = CbLiveClause {
-                    body: oc
-                        .body
+                // Ordinary runs do not retain certificate history. Constructing
+                // several owned provenance vectors for every prospective
+                // resolvent only to discard them adds allocations to nominal joins.
+                // The resolvent and enumeration order are identical; certified
+                // runs retain the exact same evidence as before.
+                let evidence = self.certificate_history.as_ref().map(|_| {
+                    let context_clause_ids = candidates
                         .iter()
-                        .map(|predicate| {
-                            CbLiveLit::from(predicate.apply(&|term| sigma.apply(term)))
+                        .enumerate()
+                        .map(|(position, choices)| {
+                            let selected = choices[chosen[position]].0;
+                            if selected == usize::MAX {
+                                side_id.unwrap_or(u32::MAX)
+                            } else {
+                                selected as u32
+                            }
                         })
-                        .collect(),
-                    head: oc
-                        .head
+                        .collect();
+                    let matched_predicates = candidates
                         .iter()
-                        .map(|literal| CbLiveLit::from(literal.apply(&|term| sigma.apply(term))))
-                        .collect(),
-                };
-                out.push((
-                    c,
+                        .enumerate()
+                        .map(|(position, choices)| choices[chosen[position]].1.into())
+                        .collect();
+                    let substitution = sigma
+                        .map
+                        .iter()
+                        .map(|&(variable_id, value)| CbLiveSubstitution { variable_id, value })
+                        .collect();
+                    let instantiated_source = CbLiveClause {
+                        body: oc
+                            .body
+                            .iter()
+                            .map(|predicate| {
+                                CbLiveLit::from(predicate.apply(&|term| sigma.apply(term)))
+                            })
+                            .collect(),
+                        head: oc
+                            .head
+                            .iter()
+                            .map(|literal| {
+                                CbLiveLit::from(literal.apply(&|term| sigma.apply(term)))
+                            })
+                            .collect(),
+                    };
                     CbLiveRuleEvidence::Hyper {
                         ontology_index,
                         instantiated_source,
                         context_clause_ids,
                         matched_predicates,
                         substitution,
-                    },
-                ));
+                    }
+                });
+                out.push((c, evidence));
             }
             return;
         }

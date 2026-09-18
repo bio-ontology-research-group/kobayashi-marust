@@ -393,7 +393,7 @@ pub fn run_ofn_split_cached(
             source: e,
         })?;
 
-    let code = status.code().unwrap_or(-1);
+    let code = crate::orchestrate::engine_run::exit_status_code(&status);
     if code == 3 {
         let msg = std::fs::read_to_string(stderr.path()).unwrap_or_default();
         let msg = msg.trim();

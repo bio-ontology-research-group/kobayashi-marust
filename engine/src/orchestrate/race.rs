@@ -401,11 +401,7 @@ pub fn race_absorbed_plain(
         ));
     }
     if res.code != 0 {
-        return Err(OrchestrateError::Worker {
-            bin: "engine".into(),
-            code: res.code,
-            stderr: res.stderr,
-        });
+        return Err(res.worker_error("engine"));
     }
     parse_out(&res)
 }
@@ -486,11 +482,7 @@ fn run_elc_portfolio_cb(
             ));
         }
         if res.code != 0 {
-            return Err(OrchestrateError::Worker {
-                bin: "engine".into(),
-                code: res.code,
-                stderr: res.stderr,
-            });
+            return Err(res.worker_error("engine"));
         }
         parse_out(&res)
     }
@@ -524,7 +516,7 @@ fn sequential_elc_then_residue(
         }
         std::thread::sleep(Duration::from_millis(50));
     };
-    let rc = status.code().unwrap_or(-1);
+    let rc = crate::orchestrate::engine_run::exit_status_code(&status);
     let trace = std::env::var_os("KM_ROUTE_TRACE").is_some();
     if trace {
         eprintln!(
@@ -637,7 +629,7 @@ pub fn race_adaptive_vs_elc(
             // --- poll the certified-elc process ---
             if !elc_lost {
                 if let Ok(Some(st)) = elc.try_wait() {
-                    let rc = st.code().unwrap_or(-1);
+                    let rc = crate::orchestrate::engine_run::exit_status_code(&st);
                     if rc == 0 {
                         winner = read_tout(elc_out.path());
                         elc_lost = true;
@@ -2613,7 +2605,7 @@ pub fn run_ht_only(
     if !status.success() {
         return Err(OrchestrateError::OutOfFragment(format!(
             "selected HT mechanism deferred (worker exit {})",
-            status.code().unwrap_or(-1)
+            crate::orchestrate::engine_run::exit_status_code(&status)
         )));
     }
     let output = File::open(out_path.path())?;
@@ -2977,7 +2969,7 @@ pub fn run_tableau_only(
     if !status.success() {
         return Err(OrchestrateError::Worker {
             bin: "tableau".into(),
-            code: status.code().unwrap_or(-1),
+            code: crate::orchestrate::engine_run::exit_status_code(&status),
             stderr: String::new(),
         });
     }
