@@ -37,6 +37,16 @@ without access to the expected answer.
   results for ELK, HermiT, Konclude, and Sequoia. The populations and tested
   versions are listed below.
 
+## Harness bugfixes
+
+v1.4.3 fixes misleading worker `-1` errors, redundant saturation work on small
+nominal inputs, and handling of bounded functional string assertions. The
+[Michel-harness report](results/benchmarks/2026-09-18-v1.4.3-harness/README.md)
+compares the full 1,920-input ORE sample with v1.4.2 and rustdl using the same
+resource limits. It separates completion counts, source-coverage flags and
+independent answer checks. The previous 592-input regression retains every
+output signature. See the [fix rationale](docs/HARNESS-v1.4.3.md).
+
 ## Dynamic reasoning benchmarks
 
 v1.4.2 adds the [entailment-justification comparison](results/benchmarks/2026-09-17-dynamic-baseline/justification-final-comparison/README.md),
@@ -54,7 +64,7 @@ before Lean certification. See [CHANGELOG.md](CHANGELOG.md) for validation and l
 
 ## Install
 
-The [v1.4.2 release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.2)
+The [v1.4.3 release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.3)
 provides a Linux x86-64 binary (glibc 2.34 or newer), a Protégé JAR, and benchmark
 tables. Building from source requires a recent stable Rust toolchain.
 

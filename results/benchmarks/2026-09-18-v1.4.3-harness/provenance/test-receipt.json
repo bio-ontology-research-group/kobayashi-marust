@@ -1,0 +1,47 @@
+{
+  "status": "passed",
+  "library_passed": 2413,
+  "integration_passed": 59,
+  "ignored": 8,
+  "native_checker_tests": 22,
+  "native_checker_test_names": [
+    "source_exact_taxonomy_uses_real_production_traces_and_models",
+    "cardinality_decision_blocks_and_checks_a_cyclic_minimum",
+    "cardinality_decision_emits_sat_or_unsat_checker_ready_evidence",
+    "cardinality_frontier_distinguishes_minimum_siblings_and_lean_checks_it",
+    "certified_unsat_refutation_deepens_past_the_historical_node_cap",
+    "equality_and_cardinality_folds_copy_incoming_blocker_edges",
+    "equality_decision_emits_sat_or_unsat_checker_ready_evidence",
+    "equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle",
+    "equality_free_decision_emits_sat_or_unsat_checker_ready_evidence",
+    "global_decision_wraps_regular_evidence_for_the_main_lean_checker",
+    "lean_preprocessing_wire_certifies_trigger_and_contrapositives",
+    "lean_taxonomy_wire_covers_every_concept_and_ordered_pair",
+    "lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head",
+    "native_abox_cardinality_global_decision_uses_joint_wire",
+    "native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident",
+    "native_abox_global_decision_uses_joint_sat_wire",
+    "native_abox_taxonomy_cells_use_one_joint_checked_state",
+    "native_abox_taxonomy_matrix_is_complete_and_tamper_evident",
+    "regular_decision_envelope_carries_finite_unsat_and_lean_checks_it",
+    "regular_decision_prefers_a_checked_finite_sat_model",
+    "joint_native_abox_classification_carries_one_source_and_abox",
+    "joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes"
+  ],
+  "gates": [
+    "cb",
+    "ht",
+    "routing",
+    "elc"
+  ],
+  "full_sequence_exit_code": 0,
+  "source_commit": "de10b64",
+  "log_sha256": {
+    "v143-rc2-final-cb-gate.log": "df4058b2f7954edc6cda35d5bce67b2f7626d4dee2745bae8e48b4267ff855a0",
+    "v143-rc2-final-routing-gate.log": "48075f70e924aeea54a3f06a0dde036da1c400aaebdd58cee2cb482014ee94d3",
+    "v143-rc2-final-tests.log": "fd765145eba2bc557a55491973a30c6b0be53e1a6fdff273c856fed5b62bf542",
+    "v143-rc2-final-ht-gate.log": "2d9653e10490c463538d2e6ef0cc81ff3b75ce4ecf62cf70bfc66ffccc1dbcf5",
+    "v143-rc2-final-elc-gate.log": "36ea19626935251084b138efc4aa486f357a51672be2ab1ac535326cb25dc4ec",
+    "v143-rc2-final-tests.exit-code": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  }
+}

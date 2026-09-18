@@ -1,0 +1,9 @@
+M	schema	1
+M	factory	org.semanticweb.HermiT.Reasoner$ReasonerFactory
+M	reasoner	HermiT
+C	true
+S	http://www.ontologydesignpatterns.org/ont/ofn/ofntb.owl#CoreFrameElement	http://www.ontologydesignpatterns.org/ont/ofn/ofntb.owl#FrameElement
+M	classes	13
+M	unsatisfiable	0
+M	subsumptions	1
+Z	complete

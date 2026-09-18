@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-09-18T13:29:40.200402+00:00",
+  "jobs": [
+    52048239,
+    52048558
+  ],
+  "old_array_throttle": 8,
+  "new_array_throttle": 16,
+  "matching_gold6248_nodes": 105,
+  "matching_idle_cpus": 804,
+  "reason": "Use available cluster capacity while completing coverage validation; Slurm reported array task limit while only two full-sweep tasks remained visibly running.",
+  "unchanged": [
+    "one allocated CPU per ontology",
+    "Gold 6248 constraint",
+    "20 GiB address-space limit",
+    "240 second external deadline",
+    "binary",
+    "inputs",
+    "wrapper"
+  ],
+  "interpretation": "The run validates coverage and output preservation. It is not a repeated timing comparison or speed-ranking claim.",
+  "gold_regression": {
+    "job": 52049890,
+    "chunk_inputs": 32,
+    "chunks": 19,
+    "workers_per_ontology": 16,
+    "initial_slurm_limit_minutes": 180,
+    "updated_slurm_limit_minutes": 20,
+    "reason": "Allow backfill for a short regression replay; the slowest complete chunk in v1.4.2 totaled 141.15 seconds. Each ontology retains its independent 240-second deadline. An unfinished chunk is not a completed regression result."
+  },
+  "rc2_3215_replay": {
+    "initial_target_job": 52050984,
+    "initial_outcome": "dnf at 240.1335 seconds",
+    "paired_job": 52051708,
+    "sequence": [
+      "v142",
+      "rc2",
+      "rc2-repeat",
+      "v142-repeat"
+    ],
+    "reason": "The initial candidate replay timed out, but the same-allocation comparison also timed out on the released baseline while RC2 completed with the exact baseline taxonomy hash. Retain all observations; do not replace primary panel rows with replay successes.",
+    "full_sweep_job": 52050985,
+    "dependency_amendment": "Run after completion of paired diagnostic instead of failed initial target. Release still requires complete primary panel and documented regression review."
+  },
+  "rc2_array_throttle": {
+    "timestamp": "2026-09-18T14:31:26.992072+00:00",
+    "job": 52050985,
+    "old": 16,
+    "new": 32,
+    "matching_nodes": 105,
+    "idle_cpus": 906,
+    "reason": "Complete independent coverage chunks using idle capacity; no per-input resource or binary changes. Not a timing-ranking experiment.",
+    "verification": "squeue showed pending 36-59%32 and scontrol ArrayTaskThrottle=32. The update returned nonzero for already-completed members 4,11,15-16; pending and active members were updated."
+  }
+}

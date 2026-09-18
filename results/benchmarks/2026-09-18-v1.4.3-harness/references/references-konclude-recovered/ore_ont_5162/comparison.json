@@ -1,0 +1,9 @@
+{
+  "status": "agree",
+  "missing": [],
+  "extra": [],
+  "relations": 1184675,
+  "unsat": [],
+  "thing_equiv": [],
+  "canonicalizer": "pinned harness scripts/normalise.py, closure; special-class groups checked separately"
+}

@@ -1,7 +1,7 @@
 # Michel harness bugfix validation
 
-This is the working validation record for v1.4.3. Release validation is still
-running; candidate results below are not release claims.
+This records the fixes and validation for v1.4.3. The [complete evidence report](../results/benchmarks/2026-09-18-v1.4.3-harness/README.md)
+contains all process outcomes, recovered-answer checks and remaining failures.
 
 ## Reproduction
 
@@ -18,9 +18,13 @@ wrapper with `KM140_BIN` explicitly identifying v1.4.2. The wrapper selects
 
 The completed v1.4.2 baseline has 1,816 `ok`, 61 `err_reject`, 33 `dnf` and
 10 `declined` outcomes. These are process outcomes, not correctness verdicts.
-The full rustdl and patched-KM panels remain in progress. Candidate arrays
+The rustdl panel completed with 1,806 `ok`, 106 `dnf` and eight errors.
+The final KM panel completes 1,829 inputs,
+recovering 13 baseline failures with no lost baseline completion
+and no changed jointly completed output hash. Candidate arrays
 started with eight concurrent tasks and increased to sixteen after the
-scheduler left capacity idle. The per-ontology allocation and limits did not
+scheduler left capacity idle. The final candidate increased from sixteen to
+thirty-two after 906 matching CPUs were reported idle. The per-ontology allocation and limits did not
 change; `scheduling-amendment.json` records the transition. These runs test
 coverage and answer preservation, not repeated performance or speed ranking.
 
@@ -45,10 +49,20 @@ available CPU/Rayon budget. Non-nominal inputs and large nominal query sets
 retain their original partition count, which bounds the conditional labels accumulated in each
 ground context. Reducing all query sets to a single partition regressed a
 large ontology by reaching the per-engine message backstop; that experiment
-is not the final scheduling policy. A subsequent full sweep also found that
-capping non-nominal engines regressed `ore_ont_3215` from 169 seconds to a
-240-second timeout. The final policy limits the optimization to its intended
-small static nominal inputs and preserves the established schedule elsewhere.
+is not the final scheduling policy. A subsequent sweep observed a timeout on `ore_ont_3215`, whose baseline
+completed in 169 seconds. The final policy limits the optimization to its
+intended small static nominal inputs and preserves the established schedule
+elsewhere. The narrowed candidate also timed out in an initial replay, so
+the scheduling change alone cannot explain that observation. A repeated
+comparison in one Slurm allocation is retained separately from the primary
+panel to distinguish timing variability from reproducible regression. In that
+ABBA replay, v1.4.2 timed out once and completed once in 221.47 seconds;
+the candidate completed twice in 216.04 and 216.45 seconds. Every completed
+answer has the same output hash. Timing traces show the existing sequential
+bridge handled the case, rather than the modified CB task path. These
+observations do not establish a speed ranking. The final primary sweep also
+completes 3215 in 162.56 seconds with the same output hash; this original
+primary observation is retained rather than replaced by a replay.
 
 Hyper previously allocated owned provenance vectors for every prospective
 resolvent even when certificate history was disabled. The patch constructs
@@ -83,14 +97,11 @@ interactions. Consequently consistency and named object-class subsumption are pr
 The bridge independently checks the resulting native input and may still defer.
 
 The motivating ontology is `ore_ont_11895`: thirteen functional string facts
-produce 78 owner inequalities. A controlled source transformation finishes
-through the existing checked bridge in about 0.02 seconds and matches HermiT
-and JFact's 256 subsumption pairs, consistency verdict and unsatisfiable set.
-The implementation also completes the original, unmodified input in a local
-debug-build diagnostic, with the same exact agreement against both references.
-An intermediate release build with the inherited-domain check also completes
-the original input in 0.028 seconds on the matched Slurm allocation. The
-versioned release candidate full sweep remains in progress.
+produce 78 owner inequalities. In the final candidate's matched one-CPU run,
+the original, unmodified input completes in 0.038 seconds, versus the released
+baseline's internal deadline. Its 256 subsumption pairs, consistency verdict
+and unsatisfiable set agree exactly with both HermiT and JFact. This is a
+single coverage observation, not a repeated timing estimate.
 
 ## Rejected shortcut
 
@@ -102,10 +113,11 @@ expansion was removed. Those experimental completions are not recoveries.
 
 ## Comparison rules
 
-Keep completion, source coverage and semantic agreement separate. In an early
-matched subset of nineteen rustdl completions on KM failures, sixteen rustdl
-outputs reported dropped axioms and six reported incomplete reasoning. That
-subset is not a final aggregate. A process-level `ok` alone does not establish
+Keep completion, source coverage and semantic agreement separate. Of rustdl's 1,806 completed outputs, 99 report incomplete reasoning and 431
+report dropped source axioms; 480 have either flag. Of the 78 inputs rustdl
+completes that v1.4.2 does not, 65 carry either flag. These flags are not proof
+of an incorrect answer, and KM's worker clause count named `dropped` is not
+comparable to rustdl's dropped-source-axiom count. A process-level `ok` alone does not establish
 that the complete source ontology was classified.
 
 Compare full-IRI taxonomy relations, consistency and unsatisfiable classes.
@@ -113,7 +125,7 @@ For inconsistent inputs compare the verdict first: reasoners differ in whether
 they emit empty taxonomy sets or mark every class unsatisfiable. Preserve
 unsupported cases, timeouts and unverified results in the final ledger.
 
-## Recovered-answer checks in progress
+## Recovered-answer checks
 
 `ore_ont_10391` agrees exactly with both HermiT and JFact. `ore_ont_10754`
 agrees with HermiT and with the transitive closure of Konclude's classification

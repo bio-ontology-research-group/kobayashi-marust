@@ -7,7 +7,7 @@ consistency.
 
 The plugin is a TBox classifier. Property hierarchy, property assertion, and
 individual realization queries are not currently exposed through the OWL API.
-The 1.4.2 bundle also contains an OWL Explanation API 2.0.1
+The bundle also contains an OWL Explanation API 2.0.1
 `ExplanationGenerator` and `ExplanationGeneratorFactory`. It returns verified,
 source-axiom justifications for named-class entailments through KM's native
 schema-2 protocol. See

@@ -1,0 +1,1 @@
+unsupported: named role expected, got List("ObjectInverseOf", [Atom("<http://security.polito.it/ontology/virtual.owl#hasVirtualInterface>")])

@@ -1,0 +1,29 @@
+M	schema	1
+M	factory	uk.ac.manchester.cs.jfact.JFactFactory
+M	reasoner	JFact
+C	true
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#AlternateNames	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#Associated_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#AspectRatio	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#Associated_UAProf_Entity	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#Associated_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#Battery	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#BluetoothProfile	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#CPU	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#Camera	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#CharacterSet	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#Device	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeviceName	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#Display	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#ElectricCharge	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#ElectricChargeUnit	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#Length	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#LengthUnit	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#LengthUnitConversionFactor	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#PixelCount	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#PointingResolution	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#TactileInputType	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+S	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#TextInputType	http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#DeliveryContext_Entity
+M	classes	24
+M	unsatisfiable	0
+M	subsumptions	21
+Z	complete

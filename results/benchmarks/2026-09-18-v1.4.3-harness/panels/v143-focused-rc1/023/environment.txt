@@ -1,0 +1,4 @@
+SLURM_JOB_ID=52049058
+SLURM_ARRAY_JOB_ID=52048558
+SLURM_ARRAY_TASK_ID=23
+KM140_BIN=/ibex/scratch/hohndor/km/v143-harness-20260918/km-candidate-v143-rc1

@@ -1,0 +1,62 @@
+[
+  {
+    "ontology": "ore_ont_10754",
+    "reference": "references/references-konclude-recovered/ore_ont_10754",
+    "status": "agree",
+    "missing": [],
+    "extra": [],
+    "relations": 507,
+    "unsat": [],
+    "thing_equiv": []
+  },
+  {
+    "ontology": "ore_ont_16371",
+    "reference": "references/references-konclude-recovered/ore_ont_16371",
+    "status": "agree",
+    "missing": [],
+    "extra": [],
+    "relations": 4491,
+    "unsat": [],
+    "thing_equiv": []
+  },
+  {
+    "ontology": "ore_ont_16542",
+    "reference": "references/references-konclude-recovered/ore_ont_16542",
+    "status": "agree",
+    "missing": [],
+    "extra": [],
+    "relations": 2933,
+    "unsat": [],
+    "thing_equiv": []
+  },
+  {
+    "ontology": "ore_ont_3561",
+    "reference": "references/references-konclude-recovered/ore_ont_3561",
+    "status": "agree",
+    "missing": [],
+    "extra": [],
+    "relations": 456,
+    "unsat": [],
+    "thing_equiv": []
+  },
+  {
+    "ontology": "ore_ont_5162",
+    "reference": "references/references-konclude-recovered/ore_ont_5162",
+    "status": "agree",
+    "missing": [],
+    "extra": [],
+    "relations": 1184675,
+    "unsat": [],
+    "thing_equiv": []
+  },
+  {
+    "ontology": "ore_ont_9694",
+    "reference": "references/references-konclude-recovered/ore_ont_9694",
+    "status": "agree",
+    "missing": [],
+    "extra": [],
+    "relations": 14566,
+    "unsat": [],
+    "thing_equiv": []
+  }
+]

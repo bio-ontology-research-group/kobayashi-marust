@@ -1,0 +1,8 @@
+M	schema	1
+M	factory	org.semanticweb.HermiT.Reasoner$ReasonerFactory
+M	reasoner	HermiT
+C	true
+M	classes	12
+M	unsatisfiable	0
+M	subsumptions	0
+Z	complete

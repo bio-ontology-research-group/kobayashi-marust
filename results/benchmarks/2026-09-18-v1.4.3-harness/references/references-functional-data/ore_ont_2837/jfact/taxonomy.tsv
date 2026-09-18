@@ -1,0 +1,35 @@
+M	schema	1
+M	factory	uk.ac.manchester.cs.jfact.JFactFactory
+M	reasoner	JFact
+C	true
+S	http://question-modeling.googlecode.com/svn/trunk/criterion.owl#Criterion	http://question-modeling.googlecode.com/svn/trunk/description.owl#Description
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Answer	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#AnswerCriterion	http://question-modeling.googlecode.com/svn/trunk/criterion.owl#Criterion
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#AnswerCriterion	http://question-modeling.googlecode.com/svn/trunk/description.owl#Description
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Claiming_lack_of_knowledge_to_answer_a_question	http://question-modeling.googlecode.com/svn/trunk/question.owl#Restraining_answer
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Claiming_lack_of_knowledge_to_answer_a_question	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Determining_the_fact	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Propositional_question	http://question-modeling.googlecode.com/svn/trunk/question.owl#Question
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Propositional_question	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Question	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Question_for_indicating_an_object	http://question-modeling.googlecode.com/svn/trunk/question.owl#Question
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Question_for_indicating_an_object	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/question.owl#Restraining_answer	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#BacterialThroatInfection	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#Disease
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#ConfirmationOfHavingAFeature	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#Decision	http://question-modeling.googlecode.com/svn/trunk/question.owl#Answer
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#Decision	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFact	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFactOfHavingAFeature	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFact
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFactOfHavingAFeature	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFactOfHavingAllergy	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFact
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFactOfHavingAllergy	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFactOfHavingAFeature
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DeterminingAFactOfHavingAllergy	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#DiseaseTreatment	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#Patient	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#Role
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#confirmationOfBeingAllergic	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#ConfirmationOfHavingAFeature
+S	http://question-modeling.googlecode.com/svn/trunk/simple_decision_example.owl#confirmationOfBeingAllergic	http://www.ontologydesignpatterns.org/cp/owl/situation.owl#Situation
+M	classes	30
+M	unsatisfiable	0
+M	subsumptions	27
+Z	complete

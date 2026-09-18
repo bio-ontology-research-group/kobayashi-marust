@@ -1,0 +1,3 @@
+
+⚠  INCOMPLETE: 27 class pair(s) hit the 5 ms per-pair timeout and were recorded as 'not subsumed'.
+   The classification is SOUND (no false subsumptions) but may be missing real ones. Re-run with `--pair-timeout-ms 0 --global-timeout-ms 0` for the complete (unbounded) result.

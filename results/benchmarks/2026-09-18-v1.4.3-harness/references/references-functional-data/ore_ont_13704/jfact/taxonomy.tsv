@@ -1,0 +1,11 @@
+M	schema	1
+M	factory	uk.ac.manchester.cs.jfact.JFactFactory
+M	reasoner	JFact
+C	true
+S	http://edesign.ecs.umass.edu/pub/Justin/evaluation_methods/Multi_Attribute_Value_Function.owl#Additive_Value_Function	http://edesign.ecs.umass.edu/pub/Justin/evaluation_methods/Multi_Attribute_Value_Function.owl#evaluation_method
+S	http://edesign.ecs.umass.edu/pub/Justin/evaluation_methods/Multi_Attribute_Value_Function.owl#Exponential	http://edesign.ecs.umass.edu/pub/Justin/evaluation_methods/Multi_Attribute_Value_Function.owl#Individual_Value_Function
+S	http://edesign.ecs.umass.edu/pub/Justin/evaluation_methods/Multi_Attribute_Value_Function.owl#Piecewise_linear	http://edesign.ecs.umass.edu/pub/Justin/evaluation_methods/Multi_Attribute_Value_Function.owl#Individual_Value_Function
+M	classes	17
+M	unsatisfiable	0
+M	subsumptions	3
+Z	complete

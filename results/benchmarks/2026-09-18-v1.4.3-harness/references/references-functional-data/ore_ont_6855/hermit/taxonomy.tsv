@@ -1,0 +1,12 @@
+M	schema	1
+M	factory	org.semanticweb.HermiT.Reasoner$ReasonerFactory
+M	reasoner	HermiT
+C	true
+S	http://wwwis.win.tue.nl/~hera/Hera-S/movie.owl#Actor	http://wwwis.win.tue.nl/~hera/Hera-S/movie.owl#Person
+S	http://wwwis.win.tue.nl/~hera/Hera-S/movie.owl#Director	http://wwwis.win.tue.nl/~hera/Hera-S/movie.owl#Person
+S	http://wwwis.win.tue.nl/~hera/Hera-S/movie.owl#Producer	http://wwwis.win.tue.nl/~hera/Hera-S/movie.owl#Person
+S	http://wwwis.win.tue.nl/~hera/Hera-S/movie.owl#Writer	http://wwwis.win.tue.nl/~hera/Hera-S/movie.owl#Person
+M	classes	13
+M	unsatisfiable	0
+M	subsumptions	4
+Z	complete

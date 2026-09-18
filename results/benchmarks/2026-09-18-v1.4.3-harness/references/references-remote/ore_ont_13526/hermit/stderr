@@ -1,0 +1,20 @@
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+Exception in thread "main" org.semanticweb.HermiT.datatypes.MalformedLiteralException: Literal "http://dbpedia.org/resource/Gesine_L√∂tzsch"^^<http://www.w3.org/2001/XMLSchema#anyURI> is malformed
+	at org.semanticweb.HermiT.datatypes.anyuri.AnyURIDatatypeHandler.parseLiteral(AnyURIDatatypeHandler.java:49)
+	at org.semanticweb.HermiT.datatypes.DatatypeRegistry.parseLiteral(DatatypeRegistry.java:108)
+	at org.semanticweb.HermiT.model.Constant.create(Constant.java:111)
+	at org.semanticweb.HermiT.structural.OWLClausification$DataRangeConverter.visit(OWLClausification.java:825)
+	at org.semanticweb.owlapi.model.OWLLiteral.accept(OWLLiteral.java:249)
+	at org.semanticweb.HermiT.structural.OWLClausification$FactClausifier.visit(OWLClausification.java:902)
+	at org.semanticweb.owlapi.model.OWLDataPropertyAssertionAxiom.accept(OWLDataPropertyAssertionAxiom.java:46)
+	at org.semanticweb.HermiT.structural.OWLClausification.clausify(OWLClausification.java:176)
+	at org.semanticweb.HermiT.structural.OWLClausification.preprocessAndClausify(OWLClausification.java:91)
+	at org.semanticweb.HermiT.Reasoner.loadOntology(Reasoner.java:214)
+	at org.semanticweb.HermiT.Reasoner.<init>(Reasoner.java:205)
+	at org.semanticweb.HermiT.Reasoner.<init>(Reasoner.java:179)
+	at org.semanticweb.HermiT.ReasonerFactory.createHermiTOWLReasoner(ReasonerFactory.java:51)
+	at org.semanticweb.HermiT.ReasonerFactory.createReasoner(ReasonerFactory.java:19)
+	at org.semanticweb.HermiT.ReasonerFactory.createReasoner(ReasonerFactory.java:15)
+	at org.kmbenchmark.FullIriClassifier.main(FullIriClassifier.java:55)

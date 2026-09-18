@@ -1,0 +1,13 @@
+{
+  "observed": 592,
+  "complete_chunks": 19,
+  "status": {
+    "ok": 592
+  },
+  "verdict": {
+    "match": 588,
+    "nogold": 2,
+    "consistency_mismatch": 2
+  },
+  "semantic_differences": []
+}

@@ -5,6 +5,7 @@ Incomplete or failed reference runs are retained as unverified. Inconsistent
 verdicts are compared before taxonomy, whose representation differs by tool.
 """
 import argparse
+import gzip
 import json
 from pathlib import Path
 
@@ -14,7 +15,8 @@ parser.add_argument('references', nargs='+', type=Path)
 parser.add_argument('--output', type=Path, required=True)
 args = parser.parse_args()
 results = []
-for candidate in sorted(args.panel.glob('*/output/*.json')):
+for candidate in sorted(args.panel.glob('*/output/*.json*')):
+    ontology = candidate.name.removesuffix('.gz').removesuffix('.json')
     cases = candidate.parent.parent / 'results.jsonl'
     if cases.exists():
         completed = []
@@ -23,14 +25,13 @@ for candidate in sorted(args.panel.glob('*/output/*.json')):
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue  # A partial tail is not a completed observation.
-            if row.get('kind') == 'case' and row.get('ont') == candidate.stem:
+            if row.get('kind') == 'case' and row.get('ont') == ontology:
                 completed.append(row)
         if not completed or completed[-1]['outcome'] != 'ok':
             continue
-    km = json.loads(candidate.read_text())
+    km = json.loads(gzip.decompress(candidate.read_bytes()) if candidate.suffix == '.gz' else candidate.read_bytes())
     if not isinstance(km.get('consistent'), bool):
         continue
-    ontology = candidate.stem
     for root in args.references:
         for receipt in sorted((root / ontology).glob('*/receipt.json')):
             meta = json.loads(receipt.read_text())

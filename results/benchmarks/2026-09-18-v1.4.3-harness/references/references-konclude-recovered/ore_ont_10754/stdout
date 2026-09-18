@@ -1,0 +1,16 @@
+{info} 16:06:51:090 >> Starting Konclude ... 
+{info} 16:06:51:090 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 16:06:51:090 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 19 2021)
+
+{info} 16:06:51:091 >> Starting classification for '/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10754.owl'.
+{info} 16:06:51:093 >> Initializing reasoner. Creating calculation context.
+{error} 16:06:51:094 >> XML parsing error at 1:1: 'Start tag expected.'.
+{info} 16:06:51:094 >> Reasoner initialized with 1 processing unit(s).
+{info} 16:06:51:249 >> Preprocessing ontology 'http://konclude.com/test/kb'.
+{info} 16:06:51:272 >> Finished preprocessing in 22 ms for ontology 'http://konclude.com/test/kb'.
+{info} 16:06:51:273 >> Precomputing ontology 'http://konclude.com/test/kb', expressiveness 'SOIF(D)'.
+{info} 16:06:52:226 >> Finished precomputing in 953 ms for ontology 'http://konclude.com/test/kb'.
+{info} 16:06:52:226 >> Classifying ontology 'http://konclude.com/test/kb', expressiveness 'SOIF(D)'.
+{info} 16:06:52:229 >> Finished class classification in 3 ms for ontology 'http://konclude.com/test/kb'.
+{info} 16:06:52:229 >> Query 'UnnamedClassifyQuery' processed in '0' ms.
+{info} 16:06:52:231 >> Query 'UnnamedWriteClassHierarchyQuery' processed in '2' ms.

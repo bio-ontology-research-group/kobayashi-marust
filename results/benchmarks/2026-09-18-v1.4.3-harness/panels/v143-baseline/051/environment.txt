@@ -1,0 +1,4 @@
+SLURM_JOB_ID=52046892
+SLURM_ARRAY_JOB_ID=52045511
+SLURM_ARRAY_TASK_ID=51
+KM140_BIN=/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex

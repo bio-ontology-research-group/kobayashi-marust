@@ -1,0 +1,6 @@
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=20131064 complements_below=0
+KM_TIMING in-process frontend declined by the exact-EL screen: bytes=20131064 screen=0.00s
+KM_TIMING frontend done @ 3.24s route=production_all
+KM_TIMING spawn_ht: read+convert 384867 clauses (ht_view=384867) in 1.10s
+KM_TIMING sequential bridge accepted after 214.69s
+KM_TIMING engine block done @ 219.38s (subs_keys=54971)

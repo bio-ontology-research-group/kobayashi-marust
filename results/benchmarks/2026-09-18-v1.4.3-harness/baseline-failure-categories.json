@@ -1,0 +1,437 @@
+{
+  "counts": {
+    "external deadline": 33,
+    "signal termination near internal deadline": 58,
+    "explicit decline": 10,
+    "other worker error": 1,
+    "explicit memory failure": 2
+  },
+  "examples": {
+    "external deadline": [
+      {
+        "ontology": "ore_ont_12451",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_2950",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_3080",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_11553",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_10754",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_8666",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_11695",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_1194",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_12128",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_11196",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_2504",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_2574",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_3561",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_15167",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_15273",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_15695",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_9786",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_5162",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_7646",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_8273",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_15344",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_15526",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_9027",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_3914",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_10568",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_1066",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_6333",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_6437",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_12723",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_1707",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_7192",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_3794",
+        "stderr": ""
+      },
+      {
+        "ontology": "ore_ont_6712",
+        "stderr": ""
+      }
+    ],
+    "signal termination near internal deadline": [
+      {
+        "ontology": "ore_ont_3077",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_2792",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_2837",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_9864",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_9899",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_5764",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_586",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_5964",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_8475",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_11647",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_11895",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_12191",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_11378",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_2548",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_4567",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_4609",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_4719",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_7828",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_10230",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_16511",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_16542",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_16666",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_5548",
+        "stderr": "worker engine exited -1: WARNING: kobayashi-marust message fixpoint hit the 25000000 cap; classification may be incomplete (truncated). 0 pending messages dropped.\n\n"
+      },
+      {
+        "ontology": "ore_ont_16371",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_16372",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_16420",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_13700",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_13799",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_20",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_15680",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_15682",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_10080",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_1342",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_13526",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_13545",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_9662",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_9694",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_7517",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_7532",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_4903",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_8429",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_9151",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_3917",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_10391",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_10517",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_8148",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_12566",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_3843",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_9429",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_9577",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_6132",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_7342",
+        "stderr": "worker engine exited -1: WARNING: kobayashi-marust additional-nominal budget (4096) exhausted; further Nom conclusions dropped \u2014 classification may be incomplete.\n\n"
+      },
+      {
+        "ontology": "ore_ont_14379",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_14551",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_1833",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_1931",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_699",
+        "stderr": "worker engine exited -1: \n"
+      },
+      {
+        "ontology": "ore_ont_4410",
+        "stderr": "worker engine exited -1: \n"
+      }
+    ],
+    "explicit decline": [
+      {
+        "ontology": "ore_ont_2738",
+        "stderr": "unsupported: out of fragment: named role expected, got List(\"ObjectInverseOf\", [Atom(\"<http://purl.obolibrary.org/obo/BFO_0000066>\")])\n"
+      },
+      {
+        "ontology": "ore_ont_2874",
+        "stderr": "unsupported: out of fragment: named role expected, got List(\"ObjectInverseOf\", [Atom(\"<http://purl.obolibrary.org/obo/BFO_0000066>\")])\n"
+      },
+      {
+        "ontology": "ore_ont_10906",
+        "stderr": "unsupported: DL-safe rules: parsed 10 and certified 0 of 11; an atom or head shape is unsupported\n"
+      },
+      {
+        "ontology": "ore_ont_15993",
+        "stderr": "unsupported: DL-safe rules: parsed 11 and certified 0 of 19; an atom or head shape is unsupported\n"
+      },
+      {
+        "ontology": "ore_ont_15753",
+        "stderr": "unsupported: DL-safe rules: parsed 0 and certified 0 of 95; an atom or head shape is unsupported\n"
+      },
+      {
+        "ontology": "ore_ont_13129",
+        "stderr": "unsupported: DL-safe rules: parsed 0 and certified 0 of 2; an atom or head shape is unsupported\n"
+      },
+      {
+        "ontology": "ore_ont_8250",
+        "stderr": "unsupported: named role expected, got List(\"ObjectInverseOf\", [Atom(\"<http://security.polito.it/ontology/virtual.owl#hasVirtualInterface>\")])\n"
+      },
+      {
+        "ontology": "ore_ont_714",
+        "stderr": "unsupported: DL-safe rules: parsed 0 and certified 0 of 8; an atom or head shape is unsupported\n"
+      },
+      {
+        "ontology": "ore_ont_3726",
+        "stderr": "unsupported: DL-safe rules: parsed 0 and certified 0 of 4; an atom or head shape is unsupported\n"
+      },
+      {
+        "ontology": "ore_ont_7278",
+        "stderr": "unsupported: DL-safe rules: parsed 0 and certified 0 of 4; an atom or head shape is unsupported\n"
+      }
+    ],
+    "other worker error": [
+      {
+        "ontology": "ore_ont_9890",
+        "stderr": "worker engine exited -1: \n"
+      }
+    ],
+    "explicit memory failure": [
+      {
+        "ontology": "ore_ont_10929",
+        "stderr": "worker engine exited -1: memory allocation of 9848948920 bytes failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n"
+      },
+      {
+        "ontology": "ore_ont_15687",
+        "stderr": "worker ofn exited -1: memory allocation of 16106127360 bytes failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n"
+      }
+    ]
+  }
+}

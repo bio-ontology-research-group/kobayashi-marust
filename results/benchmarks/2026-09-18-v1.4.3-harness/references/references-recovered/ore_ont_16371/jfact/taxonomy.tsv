@@ -1,0 +1,8 @@
+M	schema	1
+M	factory	uk.ac.manchester.cs.jfact.JFactFactory
+M	reasoner	JFact
+C	false
+M	classes	805
+M	unsatisfiable	0
+M	subsumptions	0
+Z	complete

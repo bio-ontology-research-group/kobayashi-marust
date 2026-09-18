@@ -1,0 +1,274 @@
+[
+  {
+    "ontology": "ore_ont_10391",
+    "reference": "references/references-remote/ore_ont_10391/hermit",
+    "candidate": "panels/v143-final-rc2/002/output/ore_ont_10391.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_10391",
+    "reference": "references/references-remote/ore_ont_10391/jfact",
+    "candidate": "panels/v143-final-rc2/002/output/ore_ont_10391.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_10754",
+    "reference": "references/references-extra/ore_ont_10754/hermit",
+    "candidate": "panels/v143-final-rc2/003/output/ore_ont_10754.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_10754",
+    "reference": "references/references-extra/ore_ont_10754/jfact",
+    "candidate": "panels/v143-final-rc2/003/output/ore_ont_10754.json.gz",
+    "reference_rc": 0,
+    "status": "consistency_disagreement"
+  },
+  {
+    "ontology": "ore_ont_11895",
+    "reference": "references/references-remote/ore_ont_11895/hermit",
+    "candidate": "panels/v143-final-rc2/007/output/ore_ont_11895.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_11895",
+    "reference": "references/references-remote/ore_ont_11895/jfact",
+    "candidate": "panels/v143-final-rc2/007/output/ore_ont_11895.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_11895",
+    "reference": "references/references-functional-data/ore_ont_11895/hermit",
+    "candidate": "panels/v143-final-rc2/007/output/ore_ont_11895.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_11895",
+    "reference": "references/references-functional-data/ore_ont_11895/jfact",
+    "candidate": "panels/v143-final-rc2/007/output/ore_ont_11895.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_13526",
+    "reference": "references/references-remote/ore_ont_13526/hermit",
+    "candidate": "panels/v143-final-rc2/013/output/ore_ont_13526.json.gz",
+    "reference_rc": 1,
+    "status": "unverified"
+  },
+  {
+    "ontology": "ore_ont_13526",
+    "reference": "references/references-remote/ore_ont_13526/jfact",
+    "candidate": "panels/v143-final-rc2/013/output/ore_ont_13526.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_16371",
+    "reference": "references/references-recovered/ore_ont_16371/hermit",
+    "candidate": "panels/v143-final-rc2/024/output/ore_ont_16371.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_16371",
+    "reference": "references/references-recovered/ore_ont_16371/jfact",
+    "candidate": "panels/v143-final-rc2/024/output/ore_ont_16371.json.gz",
+    "reference_rc": 0,
+    "status": "consistency_disagreement"
+  },
+  {
+    "ontology": "ore_ont_16542",
+    "reference": "references/references-recovered/ore_ont_16542/hermit",
+    "candidate": "panels/v143-final-rc2/025/output/ore_ont_16542.json.gz",
+    "reference_rc": 124,
+    "status": "unverified"
+  },
+  {
+    "ontology": "ore_ont_16542",
+    "reference": "references/references-recovered/ore_ont_16542/jfact",
+    "candidate": "panels/v143-final-rc2/025/output/ore_ont_16542.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_1931",
+    "reference": "references/references-functional-data/ore_ont_1931/hermit",
+    "candidate": "panels/v143-final-rc2/027/output/ore_ont_1931.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_1931",
+    "reference": "references/references-functional-data/ore_ont_1931/jfact",
+    "candidate": "panels/v143-final-rc2/027/output/ore_ont_1931.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_2837",
+    "reference": "references/references-functional-data/ore_ont_2837/hermit",
+    "candidate": "panels/v143-final-rc2/031/output/ore_ont_2837.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_2837",
+    "reference": "references/references-functional-data/ore_ont_2837/jfact",
+    "candidate": "panels/v143-final-rc2/031/output/ore_ont_2837.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_3561",
+    "reference": "references/references-recovered/ore_ont_3561/hermit",
+    "candidate": "panels/v143-final-rc2/034/output/ore_ont_3561.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_3561",
+    "reference": "references/references-recovered/ore_ont_3561/jfact",
+    "candidate": "panels/v143-final-rc2/034/output/ore_ont_3561.json.gz",
+    "reference_rc": 0,
+    "status": "consistency_disagreement"
+  },
+  {
+    "ontology": "ore_ont_4410",
+    "reference": "references/references-recovered/ore_ont_4410/hermit",
+    "candidate": "panels/v143-final-rc2/037/output/ore_ont_4410.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_4410",
+    "reference": "references/references-recovered/ore_ont_4410/jfact",
+    "candidate": "panels/v143-final-rc2/037/output/ore_ont_4410.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_5162",
+    "reference": "references/references-recovered/ore_ont_5162/hermit",
+    "candidate": "panels/v143-final-rc2/040/output/ore_ont_5162.json.gz",
+    "reference_rc": 124,
+    "status": "unverified"
+  },
+  {
+    "ontology": "ore_ont_5162",
+    "reference": "references/references-recovered/ore_ont_5162/jfact",
+    "candidate": "panels/v143-final-rc2/040/output/ore_ont_5162.json.gz",
+    "reference_rc": 1,
+    "status": "unverified"
+  },
+  {
+    "ontology": "ore_ont_7517",
+    "reference": "references/references-recovered/ore_ont_7517/hermit",
+    "candidate": "panels/v143-final-rc2/050/output/ore_ont_7517.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_7517",
+    "reference": "references/references-recovered/ore_ont_7517/jfact",
+    "candidate": "panels/v143-final-rc2/050/output/ore_ont_7517.json.gz",
+    "reference_rc": 0,
+    "missing": [],
+    "extra": [],
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "status": "agree"
+  },
+  {
+    "ontology": "ore_ont_9694",
+    "reference": "references/references-recovered/ore_ont_9694/hermit",
+    "candidate": "panels/v143-final-rc2/058/output/ore_ont_9694.json.gz",
+    "reference_rc": 124,
+    "status": "unverified"
+  },
+  {
+    "ontology": "ore_ont_9694",
+    "reference": "references/references-recovered/ore_ont_9694/jfact",
+    "candidate": "panels/v143-final-rc2/058/output/ore_ont_9694.json.gz",
+    "reference_rc": 124,
+    "status": "unverified"
+  }
+]

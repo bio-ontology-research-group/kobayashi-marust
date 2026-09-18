@@ -1,0 +1,825 @@
+{
+  "panels": {
+    "v143-baseline": {
+      "observed": 1920,
+      "complete_chunks": 60,
+      "outcomes": {
+        "ok": 1816,
+        "err_reject": 61,
+        "dnf": 33,
+        "declined": 10
+      },
+      "not_ok": [
+        {
+          "ont": "ore_ont_10080",
+          "outcome": "err_reject",
+          "wall_s": 190.716016651,
+          "peak_rss_kb": 309644,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_10230",
+          "outcome": "err_reject",
+          "wall_s": 190.1440135,
+          "peak_rss_kb": 86632,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_10391",
+          "outcome": "err_reject",
+          "wall_s": 190.492941825,
+          "peak_rss_kb": 1865240,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_10517",
+          "outcome": "err_reject",
+          "wall_s": 190.14985543,
+          "peak_rss_kb": 24472,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_10568",
+          "outcome": "dnf",
+          "wall_s": 240.08849437,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_1066",
+          "outcome": "dnf",
+          "wall_s": 240.016792096,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_10754",
+          "outcome": "dnf",
+          "wall_s": 240.006856263,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_10906",
+          "outcome": "declined",
+          "wall_s": 0.084610437,
+          "peak_rss_kb": 25600,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_10929",
+          "outcome": "err_reject",
+          "wall_s": 172.500428248,
+          "peak_rss_kb": 18056184,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_11196",
+          "outcome": "dnf",
+          "wall_s": 240.035140797,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_11378",
+          "outcome": "err_reject",
+          "wall_s": 190.621494856,
+          "peak_rss_kb": 140324,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_11553",
+          "outcome": "dnf",
+          "wall_s": 240.030965333,
+          "peak_rss_kb": 3200,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_11647",
+          "outcome": "err_reject",
+          "wall_s": 190.363351228,
+          "peak_rss_kb": 350756,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_11695",
+          "outcome": "dnf",
+          "wall_s": 240.012909515,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_11895",
+          "outcome": "err_reject",
+          "wall_s": 190.136411007,
+          "peak_rss_kb": 24548,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_1194",
+          "outcome": "dnf",
+          "wall_s": 240.197667352,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_12128",
+          "outcome": "dnf",
+          "wall_s": 240.240641835,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_12191",
+          "outcome": "err_reject",
+          "wall_s": 190.648763619,
+          "peak_rss_kb": 160536,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_12451",
+          "outcome": "dnf",
+          "wall_s": 240.007669538,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_12566",
+          "outcome": "err_reject",
+          "wall_s": 190.175346383,
+          "peak_rss_kb": 36324,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_12723",
+          "outcome": "dnf",
+          "wall_s": 240.005172944,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_13129",
+          "outcome": "declined",
+          "wall_s": 0.031189169,
+          "peak_rss_kb": 6400,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_1342",
+          "outcome": "err_reject",
+          "wall_s": 190.174023113,
+          "peak_rss_kb": 347976,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_13526",
+          "outcome": "err_reject",
+          "wall_s": 190.461446082,
+          "peak_rss_kb": 1941924,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_13545",
+          "outcome": "err_reject",
+          "wall_s": 190.176220365,
+          "peak_rss_kb": 491424,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_13700",
+          "outcome": "err_reject",
+          "wall_s": 190.185367637,
+          "peak_rss_kb": 32380,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_13799",
+          "outcome": "err_reject",
+          "wall_s": 190.267906778,
+          "peak_rss_kb": 3826904,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_14379",
+          "outcome": "err_reject",
+          "wall_s": 190.174155959,
+          "peak_rss_kb": 508232,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_14551",
+          "outcome": "err_reject",
+          "wall_s": 190.255905315,
+          "peak_rss_kb": 79776,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15167",
+          "outcome": "dnf",
+          "wall_s": 240.004514412,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15273",
+          "outcome": "dnf",
+          "wall_s": 240.005627843,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15344",
+          "outcome": "dnf",
+          "wall_s": 240.012649016,
+          "peak_rss_kb": 3200,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15526",
+          "outcome": "dnf",
+          "wall_s": 240.005466698,
+          "peak_rss_kb": 3200,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15680",
+          "outcome": "err_reject",
+          "wall_s": 190.272640745,
+          "peak_rss_kb": 46740,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15682",
+          "outcome": "err_reject",
+          "wall_s": 190.149710265,
+          "peak_rss_kb": 473688,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15687",
+          "outcome": "err_reject",
+          "wall_s": 8.522347889,
+          "peak_rss_kb": 13114492,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15695",
+          "outcome": "dnf",
+          "wall_s": 240.039744645,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15753",
+          "outcome": "declined",
+          "wall_s": 0.028328669,
+          "peak_rss_kb": 6720,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15993",
+          "outcome": "declined",
+          "wall_s": 0.159510036,
+          "peak_rss_kb": 6400,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_16371",
+          "outcome": "err_reject",
+          "wall_s": 190.052922309,
+          "peak_rss_kb": 74548,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_16372",
+          "outcome": "err_reject",
+          "wall_s": 190.076794899,
+          "peak_rss_kb": 39384,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_16420",
+          "outcome": "err_reject",
+          "wall_s": 194.986278492,
+          "peak_rss_kb": 186044,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_16511",
+          "outcome": "err_reject",
+          "wall_s": 190.985516227,
+          "peak_rss_kb": 880764,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_16542",
+          "outcome": "err_reject",
+          "wall_s": 190.500459517,
+          "peak_rss_kb": 480796,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_16666",
+          "outcome": "err_reject",
+          "wall_s": 190.270490933,
+          "peak_rss_kb": 79584,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_1707",
+          "outcome": "dnf",
+          "wall_s": 240.005446335,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_1833",
+          "outcome": "err_reject",
+          "wall_s": 190.500339133,
+          "peak_rss_kb": 269400,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_1931",
+          "outcome": "err_reject",
+          "wall_s": 190.184916577,
+          "peak_rss_kb": 726416,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_20",
+          "outcome": "err_reject",
+          "wall_s": 191.799123648,
+          "peak_rss_kb": 261472,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_2504",
+          "outcome": "dnf",
+          "wall_s": 240.005055211,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_2548",
+          "outcome": "err_reject",
+          "wall_s": 190.147515742,
+          "peak_rss_kb": 30908,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_2574",
+          "outcome": "dnf",
+          "wall_s": 240.05450507,
+          "peak_rss_kb": 3200,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_2738",
+          "outcome": "declined",
+          "wall_s": 0.532818222,
+          "peak_rss_kb": 101172,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_2792",
+          "outcome": "err_reject",
+          "wall_s": 190.277062098,
+          "peak_rss_kb": 70052,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_2837",
+          "outcome": "err_reject",
+          "wall_s": 190.118873269,
+          "peak_rss_kb": 31804,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_2874",
+          "outcome": "declined",
+          "wall_s": 0.657810388,
+          "peak_rss_kb": 121784,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_2950",
+          "outcome": "dnf",
+          "wall_s": 240.005305614,
+          "peak_rss_kb": 3200,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_3077",
+          "outcome": "err_reject",
+          "wall_s": 190.489143259,
+          "peak_rss_kb": 144224,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_3080",
+          "outcome": "dnf",
+          "wall_s": 240.013493578,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_3561",
+          "outcome": "dnf",
+          "wall_s": 240.005172111,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_3726",
+          "outcome": "declined",
+          "wall_s": 0.034283019,
+          "peak_rss_kb": 7680,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_3794",
+          "outcome": "dnf",
+          "wall_s": 240.046851837,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_3843",
+          "outcome": "err_reject",
+          "wall_s": 190.112614207,
+          "peak_rss_kb": 592148,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_3914",
+          "outcome": "dnf",
+          "wall_s": 240.064668475,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_3917",
+          "outcome": "err_reject",
+          "wall_s": 190.446615428,
+          "peak_rss_kb": 174484,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_4410",
+          "outcome": "err_reject",
+          "wall_s": 191.876109172,
+          "peak_rss_kb": 654028,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_4567",
+          "outcome": "err_reject",
+          "wall_s": 190.285842839,
+          "peak_rss_kb": 126596,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_4609",
+          "outcome": "err_reject",
+          "wall_s": 190.240849026,
+          "peak_rss_kb": 46256,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_4719",
+          "outcome": "err_reject",
+          "wall_s": 190.122148907,
+          "peak_rss_kb": 28376,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_4903",
+          "outcome": "err_reject",
+          "wall_s": 190.146372275,
+          "peak_rss_kb": 154956,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_5162",
+          "outcome": "dnf",
+          "wall_s": 240.069242724,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_5548",
+          "outcome": "err_reject",
+          "wall_s": 190.469961049,
+          "peak_rss_kb": 12366320,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_5764",
+          "outcome": "err_reject",
+          "wall_s": 190.141893653,
+          "peak_rss_kb": 210324,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_586",
+          "outcome": "err_reject",
+          "wall_s": 190.134596073,
+          "peak_rss_kb": 61724,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_5964",
+          "outcome": "err_reject",
+          "wall_s": 190.155710682,
+          "peak_rss_kb": 56572,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_6132",
+          "outcome": "err_reject",
+          "wall_s": 192.332180503,
+          "peak_rss_kb": 829804,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_6333",
+          "outcome": "dnf",
+          "wall_s": 240.006682549,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_6437",
+          "outcome": "dnf",
+          "wall_s": 240.005819247,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_6712",
+          "outcome": "dnf",
+          "wall_s": 240.101390726,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_699",
+          "outcome": "err_reject",
+          "wall_s": 190.349124293,
+          "peak_rss_kb": 143252,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_714",
+          "outcome": "declined",
+          "wall_s": 0.029144893,
+          "peak_rss_kb": 6080,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_7192",
+          "outcome": "dnf",
+          "wall_s": 240.086466007,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_7278",
+          "outcome": "declined",
+          "wall_s": 0.038642352,
+          "peak_rss_kb": 8320,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_7342",
+          "outcome": "err_reject",
+          "wall_s": 190.144254738,
+          "peak_rss_kb": 289644,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_7517",
+          "outcome": "err_reject",
+          "wall_s": 190.13644019,
+          "peak_rss_kb": 64988,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_7532",
+          "outcome": "err_reject",
+          "wall_s": 190.257128798,
+          "peak_rss_kb": 2334352,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_7646",
+          "outcome": "dnf",
+          "wall_s": 240.269553999,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_7828",
+          "outcome": "err_reject",
+          "wall_s": 190.446805362,
+          "peak_rss_kb": 7377212,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_8148",
+          "outcome": "err_reject",
+          "wall_s": 190.218600284,
+          "peak_rss_kb": 79464,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_8250",
+          "outcome": "declined",
+          "wall_s": 0.032608519,
+          "peak_rss_kb": 6400,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_8273",
+          "outcome": "dnf",
+          "wall_s": 240.007298624,
+          "peak_rss_kb": 3200,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_8429",
+          "outcome": "err_reject",
+          "wall_s": 190.264736497,
+          "peak_rss_kb": 7375528,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_8475",
+          "outcome": "err_reject",
+          "wall_s": 194.605727928,
+          "peak_rss_kb": 6171108,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_8666",
+          "outcome": "dnf",
+          "wall_s": 240.006823637,
+          "peak_rss_kb": 3200,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9027",
+          "outcome": "dnf",
+          "wall_s": 240.066688504,
+          "peak_rss_kb": 3200,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9151",
+          "outcome": "err_reject",
+          "wall_s": 194.268904728,
+          "peak_rss_kb": 190724,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9429",
+          "outcome": "err_reject",
+          "wall_s": 190.296110583,
+          "peak_rss_kb": 77488,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9577",
+          "outcome": "err_reject",
+          "wall_s": 194.753571235,
+          "peak_rss_kb": 183540,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9662",
+          "outcome": "err_reject",
+          "wall_s": 190.185624259,
+          "peak_rss_kb": 437336,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9694",
+          "outcome": "err_reject",
+          "wall_s": 190.535536391,
+          "peak_rss_kb": 509000,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9786",
+          "outcome": "dnf",
+          "wall_s": 240.005527579,
+          "peak_rss_kb": 3520,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9864",
+          "outcome": "err_reject",
+          "wall_s": 190.151303403,
+          "peak_rss_kb": 807916,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9890",
+          "outcome": "err_reject",
+          "wall_s": 133.044255862,
+          "peak_rss_kb": 18887444,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_9899",
+          "outcome": "err_reject",
+          "wall_s": 192.292086059,
+          "peak_rss_kb": 835016,
+          "skip_reason": null
+        }
+      ]
+    },
+    "v143-focused-rc1": {
+      "observed": 38,
+      "complete_chunks": 38,
+      "outcomes": {
+        "ok": 32,
+        "dnf": 6
+      },
+      "not_ok": [
+        {
+          "ont": "ore_ont_13799",
+          "outcome": "dnf",
+          "wall_s": 190.191883175,
+          "peak_rss_kb": 1922080,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_14379",
+          "outcome": "dnf",
+          "wall_s": 190.235195582,
+          "peak_rss_kb": 1941104,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_15682",
+          "outcome": "dnf",
+          "wall_s": 190.155754989,
+          "peak_rss_kb": 915888,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_4719",
+          "outcome": "dnf",
+          "wall_s": 190.123719499,
+          "peak_rss_kb": 27800,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_5964",
+          "outcome": "dnf",
+          "wall_s": 190.168231476,
+          "peak_rss_kb": 53724,
+          "skip_reason": null
+        },
+        {
+          "ont": "ore_ont_7342",
+          "outcome": "dnf",
+          "wall_s": 190.152380167,
+          "peak_rss_kb": 292988,
+          "skip_reason": null
+        }
+      ]
+    }
+  },
+  "paired": {
+    "v143-focused-rc1": {
+      "common": 38,
+      "outcomes": [
+        {
+          "baseline": "err_reject",
+          "other": "dnf",
+          "count": 6
+        },
+        {
+          "baseline": "err_reject",
+          "other": "ok",
+          "count": 3
+        },
+        {
+          "baseline": "ok",
+          "other": "ok",
+          "count": 29
+        }
+      ],
+      "new_completions": [
+        "ore_ont_11895",
+        "ore_ont_1931",
+        "ore_ont_2837"
+      ],
+      "lost_completions": [],
+      "changed_output_hashes": []
+    }
+  }
+}

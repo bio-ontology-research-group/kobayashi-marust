@@ -1,0 +1,2 @@
+harness: --only mode: 1 requested, 1 resolved, 0 missing, cap 240s, threads Some(1), sha256 b235cd3cce42
+harness: wrote 1 records to /ibex/scratch/hohndor/km/v143-harness-20260918/paired-3215-52051708/v142/results.jsonl

@@ -1,0 +1,43 @@
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+WARNING: An illegal reflective access operation has occurred
+WARNING: Illegal reflective access by com.google.inject.internal.cglib.core.$ReflectUtils$1 (file:/ibex/user/hohndor/km/v143-harness-20260918/classifier-jfact.jar) to method java.lang.ClassLoader.defineClass(java.lang.String,byte[],int,int,java.security.ProtectionDomain)
+WARNING: Please consider reporting this to the maintainers of com.google.inject.internal.cglib.core.$ReflectUtils$1
+WARNING: Use --illegal-access=warn to enable warnings of further illegal reflective access operations
+WARNING: All illegal access operations will be denied in a future release
+Exception in thread "main" java.util.NoSuchElementException
+	at java.base/java.util.LinkedList.removeFirst(LinkedList.java:274)
+	at java.base/java.util.LinkedList.pop(LinkedList.java:805)
+	at uk.ac.manchester.cs.jfact.helpers.SaveStack.pop(SaveStack.java:56)
+	at uk.ac.manchester.cs.jfact.helpers.SaveStack.pop(SaveStack.java:35)
+	at uk.ac.manchester.cs.jfact.kernel.DlCompletionGraph.restore(DlCompletionGraph.java:849)
+	at uk.ac.manchester.cs.jfact.kernel.DlSatTester.restore(DlSatTester.java:1878)
+	at uk.ac.manchester.cs.jfact.kernel.NominalReasoner.prepareReasoner(NominalReasoner.java:97)
+	at uk.ac.manchester.cs.jfact.kernel.DlSatTester.runSat(DlSatTester.java:1232)
+	at uk.ac.manchester.cs.jfact.kernel.DlSatTester.buildCache(DlSatTester.java:1179)
+	at uk.ac.manchester.cs.jfact.kernel.DlSatTester.createCache(DlSatTester.java:1111)
+	at uk.ac.manchester.cs.jfact.kernel.TBox.initCache(TBox.java:3069)
+	at uk.ac.manchester.cs.jfact.kernel.DLConceptTaxonomy.immediatelyClassified(DLConceptTaxonomy.java:170)
+	at uk.ac.manchester.cs.jfact.kernel.TaxonomyCreator.performClassification(TaxonomyCreator.java:175)
+	at uk.ac.manchester.cs.jfact.kernel.TaxonomyCreator.classifyTop(TaxonomyCreator.java:245)
+	at uk.ac.manchester.cs.jfact.kernel.TaxonomyCreator.prepareTS(TaxonomyCreator.java:416)
+	at uk.ac.manchester.cs.jfact.kernel.TaxonomyCreator.classifyEntry(TaxonomyCreator.java:350)
+	at uk.ac.manchester.cs.jfact.kernel.TBox.classifyEntry(TBox.java:1546)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:195)
+	at java.base/java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:177)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1655)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:913)
+	at java.base/java.util.stream.ReduceOps$5.evaluateSequential(ReduceOps.java:257)
+	at java.base/java.util.stream.ReduceOps$5.evaluateSequential(ReduceOps.java:248)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.count(ReferencePipeline.java:605)
+	at uk.ac.manchester.cs.jfact.kernel.TBox.classifyConcepts(TBox.java:1528)
+	at uk.ac.manchester.cs.jfact.kernel.TBox.createTaxonomy(TBox.java:1493)
+	at uk.ac.manchester.cs.jfact.kernel.TBox.performRealisation(TBox.java:1013)
+	at uk.ac.manchester.cs.jfact.kernel.ReasoningKernel.processKB(ReasoningKernel.java:1912)
+	at uk.ac.manchester.cs.jfact.kernel.ReasoningKernel.realiseKB(ReasoningKernel.java:805)
+	at uk.ac.manchester.cs.jfact.JFactReasoner.precomputeInferences(JFactReasoner.java:402)
+	at org.kmbenchmark.FullIriClassifier.main(FullIriClassifier.java:62)

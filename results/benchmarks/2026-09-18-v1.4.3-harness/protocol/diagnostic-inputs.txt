@@ -1,0 +1,15 @@
+ore_ont_10080
+ore_ont_10230
+ore_ont_10391
+ore_ont_10517
+ore_ont_10929
+ore_ont_11378
+ore_ont_11647
+ore_ont_11895
+ore_ont_12191
+ore_ont_12566
+ore_ont_1342
+ore_ont_13526
+ore_ont_13700
+ore_ont_13799
+ore_ont_14379

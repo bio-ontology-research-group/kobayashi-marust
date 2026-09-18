@@ -1,0 +1,8 @@
+{
+  "harness_commit": "7559c4543b270eb3a26cc88a6d4e837cffa0b84f",
+  "corpus_files": 1920,
+  "archive_sha256": "775064eb6dfee404d8f0b0e8500974eb420006b656f5cf413e05a9b33c2252e7",
+  "manifest_sha256": "45cd9d01fc5d380f37c54b08a289a85202cd83829026ff6b4496a0e235f0141b",
+  "baseline_km_sha256": "705cac1500018d18018ca4d5482a7451e836091b26648453824afa4b36d16fdb",
+  "slurm_job": "52045499"
+}

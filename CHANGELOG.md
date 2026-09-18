@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.4.3] - unreleased
+## [1.4.3] - 2026-09-18
 
 Fix misleading worker `-1` errors by preserving timeout, memory-watchdog and
 signal outcomes. Respect the available CPU budget for small nominal query
@@ -13,7 +13,18 @@ data constraints. Domain admission follows asserted named subclass links.
 
 The [Michel harness validation](docs/HARNESS-v1.4.3.md) records the full
 1,920-input reproduction and separates completion from semantic agreement.
-Release validation is in progress.
+The final candidate completes 1,829/1,920 inputs, compared with 1,816 for
+v1.4.2 and 1,806 for rustdl v0.4.28 under the matched one-CPU limits. It recovers
+13 baseline failures, loses no baseline completion, and preserves every
+jointly completed output hash. Each recovery has independent reference agreement;
+reference disagreements, source-coverage flags and failures remain visible.
+These are coverage observations, not a repeated speed ranking.
+
+All 592 signatures in the separate previous-release regression are unchanged.
+Validation passes 2,413 library tests, 59 integration tests and all four source
+certification gates, including the 22 native-checker tests. Eight tests remain
+explicitly ignored. The versioned plugin passes 31 tests and a real installed
+Protégé smoke test using the shipped binary.
 
 ## [1.4.2] - 2026-09-18
 

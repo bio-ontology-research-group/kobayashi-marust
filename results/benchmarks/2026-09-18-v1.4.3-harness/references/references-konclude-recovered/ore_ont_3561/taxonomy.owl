@@ -1,0 +1,792 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Ontology xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://www.w3.org/2002/07/owl#" xmlns:xml="http://www.w3.org/XML/1998/namespace" xmlns:xsd="http://www.w3.org/2001/XMLSchema#">
+    <Prefix name="" IRI="http://www.w3.org/2002/07/owl#"/>
+    <Prefix name="owl" IRI="http://www.w3.org/2002/07/owl#"/>
+    <Prefix name="rdf" IRI="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>
+    <Prefix name="xml" IRI="http://www.w3.org/XML/1998/namespace"/>
+    <Prefix name="xsd" IRI="http://www.w3.org/2001/XMLSchema#"/>
+    <Prefix name="rdfs" IRI="http://www.w3.org/2000/01/rdf-schema#"/>
+    <Declaration>
+        <Class IRI="http://www.w3.org/2002/07/owl#Nothing"/>
+    </Declaration>
+    <Declaration>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </Declaration>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QualitativeModelIngredient"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QualitativeModelIngredient"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Aggregate"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Aggregate"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QualitativeModelIngredient"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BuildingBlock"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BuildingBlock"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QualitativeModelIngredient"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Scenario"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Scenario"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Aggregate"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ModelFragment"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ModelFragment"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Aggregate"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Identity"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Identity"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Assumption"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Assumption"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StructuralBuildingBlock"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StructuralBuildingBlock"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_A_forest"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_A_forest"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Scenario"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_A_forest_with_deer"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_A_forest_with_deer"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Scenario"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_A_forest_with_two_tree_species"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_A_forest_with_two_tree_species"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Scenario"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Building_a_resource"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Building_a_resource"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Scenario"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ModelFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ProcessFragment"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ProcessFragment"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ModelFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#AgentFragment"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#AgentFragment"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ModelFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Not_active"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Not_active"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Assumption"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Simplying_assumption"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Simplying_assumption"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Assumption"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Dependency"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Dependency"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantitySpace"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantitySpace"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QualitativeValue"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QualitativeValue"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Magnitude"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Magnitude"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantityAssumption"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantityAssumption"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Derivative"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Derivative"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#BehaviouralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Configuration"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Configuration"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StructuralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Agent"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Agent"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StructuralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Entity"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Entity"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StructuralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#AttributeValue"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#AttributeValue"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StructuralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Attribute"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Attribute"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StructuralBuildingBlock"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Assume_seedbank_present"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Assume_seedbank_present"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Try_different_inequalities_of_mortality_and_production"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Try_different_inequalities_of_mortality_and_production"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Assume_constant_resource_inflow"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Assume_constant_resource_inflow"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Assume_full_corresp_available_resource_and_prod_per_captia"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Assume_full_corresp_available_resource_and_prod_per_captia"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Assume_constant_mort_per_capita"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Assume_constant_mort_per_capita"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Population"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Population"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Environment"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Environment"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#StaticFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Growth_for_nonexisting_population"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Growth_for_nonexisting_population"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ProcessFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Germination"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Germination"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ProcessFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Growth_for_existing_population"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Growth_for_existing_population"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ProcessFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Production"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Production"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ProcessFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Resource_supply"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Resource_supply"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ProcessFragment"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Full_correspondence_available_resource_and_production_per_capita"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Full_correspondence_available_resource_and_production_per_capita"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Simplying_assumption"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Seed_bank_exists"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Seed_bank_exists"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Simplying_assumption"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Full_correspondence_biomass_to_gross_production"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Full_correspondence_biomass_to_gross_production"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Simplying_assumption"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#MathematicalDependency"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#MathematicalDependency"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Dependency"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Correspondence"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Correspondence"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Dependency"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#CausalDependency"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#CausalDependency"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Dependency"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qs_Zp"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qs_Zp"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantitySpace"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qs_Mzp"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qs_Mzp"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantitySpace"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qs_Zlmh"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qs_Zlmh"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantitySpace"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qs_Zlmhm"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qs_Zlmhm"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantitySpace"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Interval"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Interval"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QualitativeValue"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Point"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Point"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QualitativeValue"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Consumption_rate"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Consumption_rate"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Resource_available"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Resource_available"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Mort_gross"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Mort_gross"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Prod_gross"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Prod_gross"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Net_growth"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Net_growth"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Waste_rate"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Waste_rate"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Resource_inflow"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Resource_inflow"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Mort_per_capita"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Mort_per_capita"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Prod_per_capita"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Prod_per_capita"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Seed_bank"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Seed_bank"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Biomass"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_q_Biomass"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Quantity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_c_Lives_in"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_c_Lives_in"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Configuration"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_c_Consumes"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_c_Consumes"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Configuration"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Environment"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Environment"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Entity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Population"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Population"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Entity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Seed_bank"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Seed_bank"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Entity"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_gt_mort"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_gt_mort"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Try_different_inequalities_of_mortality_and_production"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_lt_mort"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_lt_mort"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Try_different_inequalities_of_mortality_and_production"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_eq_mort"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_eq_mort"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Try_different_inequalities_of_mortality_and_production"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Population_exists"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Population_exists"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Population"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Population_none_existing"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Population_none_existing"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Population"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_sm_mort_for_none_existing"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_sm_mort_for_none_existing"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Growth_for_nonexisting_population"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_gr_mort_for_none_existing"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_gr_mort_for_none_existing"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Growth_for_nonexisting_population"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_eq_mort_for_none_existing"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Prod_eq_mort_for_none_existing"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Growth_for_nonexisting_population"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Resource_avial_gt_zero"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Resource_avial_gt_zero"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ag_Production"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Inequality"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Inequality"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#MathematicalDependency"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PlusMin"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PlusMin"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#MathematicalDependency"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ValueCorrespondence"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#ValueCorrespondence"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Correspondence"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#FullCorrespondence"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#FullCorrespondence"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Correspondence"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantitySpaceCorrespondence"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#QuantitySpaceCorrespondence"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Correspondence"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Influence"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Influence"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#CausalDependency"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Proportionality"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Proportionality"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#CausalDependency"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Min"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Min"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Interval"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Low"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Low"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Interval"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Plus"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Plus"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Interval"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_High"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_High"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Interval"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PointBelongingToMagnitude"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PointBelongingToMagnitude"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Point"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Zero"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Zero"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Point"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PointBelongingToDerivative"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PointBelongingToDerivative"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Point"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Max"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Max"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Point"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Med"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_qv_Med"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Point"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Plant"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Plant"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Population"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Animal"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Animal"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Population"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#SmallerThan"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#SmallerThan"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Inequality"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#hasValue"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#hasValue"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Inequality"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#GreaterThan"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#GreaterThan"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Inequality"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#GreaterOrEqualTo"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#GreaterOrEqualTo"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Inequality"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#EqualTo"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#EqualTo"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Inequality"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#SmallerOrEqualTo"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#SmallerOrEqualTo"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Inequality"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Min"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Min"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PlusMin"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Plus"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Plus"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PlusMin"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#NegativeInfluence"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#NegativeInfluence"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Influence"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PositiveInfluence"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PositiveInfluence"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Influence"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#NegativeProportionality"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#NegativeProportionality"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Proportionality"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PositiveProportionality"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#PositiveProportionality"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/QRvocabulary.owl#Proportionality"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Herbivore"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Herbivore"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Animal"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Carnivore"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Carnivore"/>
+        <Class IRI="http://www.science.uva.nl/~jliem/ontologies/model.owl#owl_ae_Animal"/>
+    </SubClassOf>
+</Ontology>

@@ -1,0 +1,27 @@
+{
+  "total": 1920,
+  "completed": 1806,
+  "flagged_incomplete": 99,
+  "reported_dropped_axioms": 431,
+  "either_flag": 480,
+  "neither_flag": 1326,
+  "rustdl_only_vs_v142": {
+    "count": 78,
+    "either_flag": 65,
+    "neither_flag": [
+      "ore_ont_10568",
+      "ore_ont_10754",
+      "ore_ont_11895",
+      "ore_ont_15680",
+      "ore_ont_16372",
+      "ore_ont_2574",
+      "ore_ont_3561",
+      "ore_ont_3914",
+      "ore_ont_4410",
+      "ore_ont_4609",
+      "ore_ont_7192",
+      "ore_ont_7342",
+      "ore_ont_7517"
+    ]
+  }
+}

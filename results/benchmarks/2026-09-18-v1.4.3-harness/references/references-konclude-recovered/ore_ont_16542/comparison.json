@@ -1,0 +1,7 @@
+{
+  "status": "agree",
+  "missing": [],
+  "extra": [],
+  "relations": 2933,
+  "canonicalizer": "pinned harness scripts/normalise.py, closure; no special-class groups present"
+}

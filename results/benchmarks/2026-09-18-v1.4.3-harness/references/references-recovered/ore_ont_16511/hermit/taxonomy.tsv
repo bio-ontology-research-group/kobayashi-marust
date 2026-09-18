@@ -1,0 +1,16 @@
+M	schema	1
+M	factory	org.semanticweb.HermiT.Reasoner$ReasonerFactory
+M	reasoner	HermiT
+C	true
+S	http://www.loa-cnr.it/ontologies/FrameNet/ofn.owl#CoreType	http://www.loa-cnr.it/ontologies/ExtendedDnS.owl#concept
+S	http://www.loa-cnr.it/ontologies/FrameNet/ofn.owl#Frame	http://www.loa-cnr.it/ontologies/ExtendedDnS.owl#description
+S	http://www.loa-cnr.it/ontologies/FrameNet/ofn.owl#FrameCollection	http://www.loa-cnr.it/ontologies/ExtendedDnS.owl#collection
+S	http://www.loa-cnr.it/ontologies/FrameNet/ofn.owl#FrameElement	http://www.loa-cnr.it/ontologies/ExtendedDnS.owl#concept
+S	http://www.loa-cnr.it/ontologies/FrameNet/ofn.owl#Lexeme	http://www.loa-cnr.it/ontologies/ExtendedDnS.owl#information-object
+S	http://www.loa-cnr.it/ontologies/FrameNet/ofn.owl#LexicalUnit	http://www.loa-cnr.it/ontologies/ExtendedDnS.owl#information-object
+S	http://www.loa-cnr.it/ontologies/FrameNet/ofn.owl#PartOfSpeech	http://www.loa-cnr.it/ontologies/ExtendedDnS.owl#concept
+S	http://www.loa-cnr.it/ontologies/FrameNet/ofn.owl#SemanticType	http://www.loa-cnr.it/ontologies/ExtendedDnS.owl#concept
+M	classes	14
+M	unsatisfiable	0
+M	subsumptions	8
+Z	complete

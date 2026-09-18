@@ -1,0 +1,31 @@
+M	schema	1
+M	factory	org.semanticweb.HermiT.Reasoner$ReasonerFactory
+M	reasoner	HermiT
+C	true
+S	http://ontorule-project.eu/resources/steel-30#Clinching	http://ontorule-project.eu/resources/steel-30#ProductType
+S	http://ontorule-project.eu/resources/steel-30#DualPhase	http://ontorule-project.eu/resources/steel-30#ProductType
+S	http://ontorule-project.eu/resources/steel-30#HSLA	http://ontorule-project.eu/resources/steel-30#ProductType
+S	http://ontorule-project.eu/resources/steel-30#InterstitialFree	http://ontorule-project.eu/resources/steel-30#ProductType
+S	http://ontorule-project.eu/resources/steel-30#MechanicalDefect	http://ontorule-project.eu/resources/steel-30#Defect
+S	http://ontorule-project.eu/resources/steel-30#MechanicalPhenomenon	http://ontorule-project.eu/resources/steel-30#Phenomenon
+S	http://ontorule-project.eu/resources/steel-30#ParameterDefect	http://ontorule-project.eu/resources/steel-30#Defect
+S	http://ontorule-project.eu/resources/steel-30#ParameterDefect	http://ontorule-project.eu/resources/steel-30#MechanicalDefect
+S	http://ontorule-project.eu/resources/steel-30#Rephosphorised	http://ontorule-project.eu/resources/steel-30#ProductType
+S	http://ontorule-project.eu/resources/steel-30#SkinPassElongationDefect	http://ontorule-project.eu/resources/steel-30#Defect
+S	http://ontorule-project.eu/resources/steel-30#SkinPassElongationDefect	http://ontorule-project.eu/resources/steel-30#MechanicalDefect
+S	http://ontorule-project.eu/resources/steel-30#SkinPassElongationPhenomenon	http://ontorule-project.eu/resources/steel-30#MechanicalPhenomenon
+S	http://ontorule-project.eu/resources/steel-30#SkinPassElongationPhenomenon	http://ontorule-project.eu/resources/steel-30#Phenomenon
+S	http://ontorule-project.eu/resources/steel-30#SurfaceAspectDefect	http://ontorule-project.eu/resources/steel-30#Defect
+S	http://ontorule-project.eu/resources/steel-30#SurfaceAspectPhenomenon	http://ontorule-project.eu/resources/steel-30#Phenomenon
+S	http://ontorule-project.eu/resources/steel-30#TemperatureDefect	http://ontorule-project.eu/resources/steel-30#Defect
+S	http://ontorule-project.eu/resources/steel-30#TemperatureDefect	http://ontorule-project.eu/resources/steel-30#MechanicalDefect
+S	http://ontorule-project.eu/resources/steel-30#TemperaturePhenomenon	http://ontorule-project.eu/resources/steel-30#MechanicalPhenomenon
+S	http://ontorule-project.eu/resources/steel-30#TemperaturePhenomenon	http://ontorule-project.eu/resources/steel-30#Phenomenon
+S	http://ontorule-project.eu/resources/steel-30#YieldStrengthDefect	http://ontorule-project.eu/resources/steel-30#Defect
+S	http://ontorule-project.eu/resources/steel-30#YieldStrengthDefect	http://ontorule-project.eu/resources/steel-30#MechanicalDefect
+S	http://ontorule-project.eu/resources/steel-30#YieldStrengthPhenomenon	http://ontorule-project.eu/resources/steel-30#MechanicalPhenomenon
+S	http://ontorule-project.eu/resources/steel-30#YieldStrengthPhenomenon	http://ontorule-project.eu/resources/steel-30#Phenomenon
+M	classes	24
+M	unsatisfiable	0
+M	subsumptions	23
+Z	complete
