@@ -1,0 +1,187 @@
+{
+  "scope": "bounded review of eight completed rep-0 histories; not fullmatrix audit",
+  "rows": [
+    {
+      "path": "incremental-driver-v3/mmo-n10/jfact/fresh",
+      "status": "ok",
+      "states": 251,
+      "manifest_sha256": "d08aea675c4e6e3835972924d3670f905582498a1722c8b9cc24902b59ec6ec6",
+      "runtime_sha256": "06f85fd8e6cc647f7436b8a13da13a4d0b03b2df1d1184394ebe885f29c65867",
+      "wall_s": 48.684517389163375,
+      "peak_mib": 855.63671875,
+      "intervals": [
+        "parse_s",
+        "update_inference_s",
+        "extract_s"
+      ],
+      "state_timeout_s": 240,
+      "history_timeout_s": 7200,
+      "memcap_mib": 20480,
+      "measurement_sha256": "de9099550a562dbb059d1b45182bd994693157aae83269cb1563050ea1d36ca3",
+      "host": "cn512-27-r",
+      "start_epoch": 1789617825.7586105,
+      "slurm_job": "51982337"
+    },
+    {
+      "path": "incremental-driver-v3/mmo-n10/jfact/session",
+      "status": "ok",
+      "states": 251,
+      "manifest_sha256": "d08aea675c4e6e3835972924d3670f905582498a1722c8b9cc24902b59ec6ec6",
+      "runtime_sha256": "06f85fd8e6cc647f7436b8a13da13a4d0b03b2df1d1184394ebe885f29c65867",
+      "wall_s": 51.835646683350205,
+      "peak_mib": 825.54296875,
+      "intervals": [
+        "parse_s",
+        "update_inference_s",
+        "extract_s"
+      ],
+      "state_timeout_s": 240,
+      "history_timeout_s": 7200,
+      "memcap_mib": 20480,
+      "measurement_sha256": "882b82a43776e585b5cfe4b362ebf4a93d3b1bab5889be64c42b5a464472faa6",
+      "host": "cn512-27-r",
+      "start_epoch": 1789617773.82336,
+      "slurm_job": "51982337"
+    },
+    {
+      "path": "incremental-driver-v3/mmo-n10/konclude/fresh",
+      "status": "ok",
+      "states": 251,
+      "manifest_sha256": "d08aea675c4e6e3835972924d3670f905582498a1722c8b9cc24902b59ec6ec6",
+      "runtime_sha256": "5484f16dcff71486a5deed9cf9cea8a0f7febf115aaa6915ad2e8c1cf16965e3",
+      "wall_s": 148.89582371339202,
+      "peak_mib": 54.83984375,
+      "intervals": [
+        "prepare_decompress_request_s",
+        "process_e2e_s",
+        "extract_write_s"
+      ],
+      "state_timeout_s": 240,
+      "history_timeout_s": 7200,
+      "memcap_mib": 20480,
+      "measurement_sha256": "1c56608950c6b93cb324e710841732ca003a26c71ca901289c94c395fb83c724",
+      "host": "cn512-27-r",
+      "start_epoch": 1789617831.1910102,
+      "slurm_job": "51982326"
+    },
+    {
+      "path": "incremental-pure-dl-supplement/zfa-n1/hermit/fresh",
+      "status": "ok",
+      "states": 251,
+      "manifest_sha256": "f4a91e382e7d247a0d2143c80dc68132c5587f7fdf674e8511c104ee0da59ace",
+      "runtime_sha256": "59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c",
+      "wall_s": 305.64152853004634,
+      "peak_mib": 712.4140625,
+      "intervals": [
+        "parse_s",
+        "update_inference_s",
+        "extract_s"
+      ],
+      "state_timeout_s": 240,
+      "history_timeout_s": 7200,
+      "memcap_mib": 20480,
+      "measurement_sha256": "21d7f38ee506aa1a9fabdf2f2f2910bc17deb0a565cef02525b16fa31380fdf2",
+      "host": "cn512-27-l",
+      "start_epoch": 1789619563.2255003,
+      "slurm_job": "51982645"
+    },
+    {
+      "path": "v141-incremental-final/mmo-n10/km/fresh",
+      "status": "ok",
+      "states": 251,
+      "manifest_sha256": "d08aea675c4e6e3835972924d3670f905582498a1722c8b9cc24902b59ec6ec6",
+      "runtime_sha256": "680d9002583468e7c68115bf67cb60b89e420339db4c6aa22b5ca802206c8629",
+      "wall_s": 15.582900932058692,
+      "peak_mib": 29.1015625,
+      "intervals": [
+        "request_response_s",
+        "canonicalize_s"
+      ],
+      "state_timeout_s": 240,
+      "history_timeout_s": 7200,
+      "memcap_mib": 20480,
+      "measurement_sha256": "53a80c27f9925cd32dcdc6f84e82d07d309a5c32b2552cc1b9e927a87e66432a",
+      "host": "cn512-26-l",
+      "start_epoch": 1789620128.642074,
+      "slurm_job": "51983831"
+    },
+    {
+      "path": "v141-incremental-final/mmo-n10/km/session",
+      "status": "ok",
+      "states": 251,
+      "manifest_sha256": "d08aea675c4e6e3835972924d3670f905582498a1722c8b9cc24902b59ec6ec6",
+      "runtime_sha256": "680d9002583468e7c68115bf67cb60b89e420339db4c6aa22b5ca802206c8629",
+      "wall_s": 17.851761808618903,
+      "peak_mib": 29.796875,
+      "intervals": [
+        "request_response_s",
+        "canonicalize_s"
+      ],
+      "state_timeout_s": 240,
+      "history_timeout_s": 7200,
+      "memcap_mib": 20480,
+      "measurement_sha256": "a6267c802f91182c975deb58ab55a1e9ef64255ee1f8849ab88017cf886cd2a5",
+      "host": "cn512-26-l",
+      "start_epoch": 1789620110.6419098,
+      "slurm_job": "51983831"
+    },
+    {
+      "path": "v141-incremental-final/mmo-n100/km/fresh",
+      "status": "ok",
+      "states": 251,
+      "manifest_sha256": "18e61b5e8fc6a555f045e31e7a82140f7cdb471ac848c80a46aa62a0358724cc",
+      "runtime_sha256": "680d9002583468e7c68115bf67cb60b89e420339db4c6aa22b5ca802206c8629",
+      "wall_s": 15.409183980897069,
+      "peak_mib": 29.15234375,
+      "intervals": [
+        "request_response_s",
+        "canonicalize_s"
+      ],
+      "state_timeout_s": 240,
+      "history_timeout_s": 7200,
+      "memcap_mib": 20480,
+      "measurement_sha256": "180778e4fe4488fd5d7a907c424f6b2ba90de34a99145c79aecb1399c01014dd",
+      "host": "cn512-26-l",
+      "start_epoch": 1789620116.7371337,
+      "slurm_job": "51983829"
+    },
+    {
+      "path": "v141-incremental-final/mmo-n100/km/session",
+      "status": "ok",
+      "states": 251,
+      "manifest_sha256": "18e61b5e8fc6a555f045e31e7a82140f7cdb471ac848c80a46aa62a0358724cc",
+      "runtime_sha256": "680d9002583468e7c68115bf67cb60b89e420339db4c6aa22b5ca802206c8629",
+      "wall_s": 17.824589289724827,
+      "peak_mib": 29.44140625,
+      "intervals": [
+        "request_response_s",
+        "canonicalize_s"
+      ],
+      "state_timeout_s": 240,
+      "history_timeout_s": 7200,
+      "memcap_mib": 20480,
+      "measurement_sha256": "3d5f4cf943f3fa0e1814a628b5038a4148cacacfd55f60cbefb413352da1bb23",
+      "host": "cn512-26-l",
+      "start_epoch": 1789620098.7648745,
+      "slurm_job": "51983829"
+    }
+  ],
+  "mmo_n10_all251states_equal": [
+    "incremental-driver-v3/mmo-n10/jfact/fresh",
+    "incremental-driver-v3/mmo-n10/jfact/session",
+    "incremental-driver-v3/mmo-n10/konclude/fresh",
+    "v141-incremental-final/mmo-n10/km/fresh",
+    "v141-incremental-final/mmo-n10/km/session"
+  ],
+  "mmo_n100_session_fresh_equal": true,
+  "independent_reference_note": "mmo-n10 candidate matches fresh JFact and Konclude; final preregistered HermiT/JFact validation waits for HermiT main output",
+  "time_budget": {
+    "per_history_s": 7200,
+    "arms_per_job": 12,
+    "worst_history_total_s": 86400,
+    "slurm_limit_s": 90000,
+    "headroom_s": 3600
+  },
+  "all_reviewed_manifest_hashes_match_frozen_deployment": true,
+  "disagreement_followup": "Any main digest mismatch requires a separate immutable full-output replay from revision zero through the first disagreeing revision for each session arm, plus fresh classification of that exact snapshot; preserve original failures and compare complete sorted canonical rows. The eight reviewed histories have no digest disagreements."
+}

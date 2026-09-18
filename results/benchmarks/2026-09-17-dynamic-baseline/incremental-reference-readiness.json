@@ -1,0 +1,56 @@
+{
+  "observed_utc": "2026-09-17T05:07:23.800160+00:00",
+  "scope": "bounded readiness check, not full correctness audit",
+  "final_km_array": 51983825,
+  "ready_for_requested_full_cross_reference_audit": false,
+  "cases": [
+    {
+      "case": "mmo-n1",
+      "final_km_task": "51983825_16",
+      "operationally_complete_arms": 12,
+      "expected_arms_including_warmup": 12,
+      "states_each": 251,
+      "measured_repetitions": 5,
+      "status_all": "ok",
+      "rc_all": 0,
+      "pending_references": {
+        "hermit": "51982318_50",
+        "jfact": "51982318_86"
+      }
+    },
+    {
+      "case": "mmo-n10",
+      "final_km_task": "51983825_2",
+      "operationally_complete_arms": 12,
+      "expected_arms_including_warmup": 12,
+      "states_each": 251,
+      "measured_repetitions": 5,
+      "status_all": "ok",
+      "rc_all": 0,
+      "completed_reference": {
+        "jfact": "51982318_8"
+      },
+      "pending_references": {
+        "hermit": "51982318_42"
+      }
+    },
+    {
+      "case": "mmo-n100",
+      "final_km_task": "51983825_0",
+      "operationally_complete_arms": 12,
+      "expected_arms_including_warmup": 12,
+      "states_each": 251,
+      "measured_repetitions": 5,
+      "status_all": "ok",
+      "rc_all": 0,
+      "pending_references": {
+        "hermit": "51982318_81",
+        "jfact": "51982318_106"
+      }
+    }
+  ],
+  "pending_state": "PENDING",
+  "pending_reason": "JobArrayTaskLimit",
+  "next_action": "When any listed references complete, run isolated same-auditor validation over all251states and allwarmup+five measured repetitions. Do not substitute Konclude for preregistered HermiT/JFact validation or infer correctness from statusok.",
+  "changes_to_live_jobs": false
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "label": "original",
+    "root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4b-original",
+    "tasks": 240,
+    "attempts": 720,
+    "driver_manifest_sha256": "9e7b15b518c52ab95da5495d264d31d25ddb2d152aeb59957327780544e24d6c"
+  },
+  {
+    "label": "pure-dl",
+    "root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4b-pure-dl",
+    "tasks": 60,
+    "attempts": 180,
+    "driver_manifest_sha256": "1a0691af3828a542c4511849c3e07bbd26badbc0070fdf526fedbec7feb8201b"
+  }
+]

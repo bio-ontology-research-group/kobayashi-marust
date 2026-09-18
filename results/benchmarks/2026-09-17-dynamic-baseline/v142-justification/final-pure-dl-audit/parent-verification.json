@@ -1,0 +1,31 @@
+{
+  "observed_utc": "2026-09-17T06:32:38.072111+00:00",
+  "array_job": 51984137,
+  "audit_job": 51984159,
+  "audit_exit": "COMPLETED 0:0",
+  "task_count": 60,
+  "expected_attempts": 360,
+  "observed_unique_attempts": 360,
+  "all_attempt_statuses": {
+    "correct": 270,
+    "timeout": 90
+  },
+  "measured_attempts": 300,
+  "measured_statuses": {
+    "correct": 225,
+    "timeout": 75
+  },
+  "remote_task_completion_and_source_driver_receipt_checks": {
+    "tasks": 60,
+    "problems": []
+  },
+  "manifest_coverage_exact": true,
+  "correct_support_normalization_counts_verified": true,
+  "auditor_sources_match": true,
+  "files": {
+    "normalized-supports.tsv": "38c770ad55a90d146d1f5ff8a9e147764b1441146266ed563e0b0488bbfdc348",
+    "audit-hashes.txt": "411b1366db2b3ade6040be8d0587df31b65395668460a4ab4b74401f69ad1004",
+    "audit.json": "aa9ed666be2263ee4d1b18af048a4af5e8e43c3f338fdb21185e24fa25e9e05e"
+  },
+  "scope": "Final KM supplementary ZFA panel only. Full comparator and original-panel audits remain pending. Operational completion includes declared timeouts."
+}

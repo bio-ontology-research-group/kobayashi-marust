@@ -1,0 +1,11 @@
+{
+  "renderer_and_validator_match": true,
+  "config_snapshot_match": true,
+  "verified_artifact_counts": {
+    "independent_audit": 10,
+    "logical_normalization": 10,
+    "driver_manifest": 10,
+    "frozen_task": 1500
+  },
+  "remaining_local_binding_checks": []
+}

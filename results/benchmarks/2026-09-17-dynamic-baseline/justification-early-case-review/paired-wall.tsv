@@ -1,0 +1,271 @@
+ontology	query_hash	track	repetition	limit	km_arm	peer_arm	km_source	peer_source	paired_eligible	reason	peer_over_km_wall_ratio
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.9232050337914111
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.5554894255584357
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0513653622798553
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.326879100282773
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1746135407922726
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.9934543251999923
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	27.542463804539597
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	46.405738306954504
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	31.365938633391558
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	39.585485623332765
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	35.04286669531182
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.638248050829315
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.14527461170138
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	44.91158786451036
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	1	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	32.659693927860985
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.9739651063731779
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.6231393842614505
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1050924444180819
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.4004135335534282
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1544031899506093
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.041812530372746
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	28.969379411843676
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	48.278260025220966
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	32.86959881624647
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	41.65355691032913
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	34.33628554564284
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	30.987416562351843
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	10	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.957915339225887
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.6605646775818066
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1027059604326324
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.449787328688452
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1245081476886052
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.007247281102608
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	28.49697808578542
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	49.40005999415282
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	32.804347422714784
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	43.12965461861319
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.452939659433454
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.96455168965549
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	1	100	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0500273971958403
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.678147141056551
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1774096972167132
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.348185786105776
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1754605824045978
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0865214267125367
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.557116486596314
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	47.23799651544326
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.14278814630948
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	37.94994724130014
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.08792270784445
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	30.584383283987414
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.35363318873476
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	45.99071310870141
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	1	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	31.853330748365387
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.9956516481380262
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.61330615971309
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.113207568622873
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.4433352332067375
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1760136714235958
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0754418788799212
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.916349757378452
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	48.47501777350449
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.44855305343297
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	43.36790054484422
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	35.335688319866854
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	32.313807195992105
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	10	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.9705129300577594
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.6267228791893615
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.102524322526421
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.4670358901355038
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1425607557837802
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0503414500458477
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.12941280595525
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	48.825194184665705
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.0916622796225
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	44.032276872772655
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	34.293333844742484
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	31.52542200933916
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	2	100	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.036551177387137
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.6940515178975912
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1881616025809636
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.3753434786371894
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.2589753371026984
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1163126071682345
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.224560757387735
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	47.76214873995805
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.49907047691657
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	38.776482947062185
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	35.49559542632101
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	31.47335734513519
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	31.36238098537851
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	45.92790834755381
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	1	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.24394868772526
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.9677747667984815
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.5880416552872445
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0996578910652353
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.4468593012627815
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1388957524267391
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.009778029349844
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	28.57187833668319
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	46.88418682226313
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	32.465499776800776
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	42.71602168625948
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.623929857305214
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.81195211059591
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	10	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0033216485108867
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.6933376476975226
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1383145877523162
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.555467348382642
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.2156216396566915
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0687950560462913
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.699698814207864
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	50.12512009684794
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.69567522263639
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	46.04396987831738
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	35.98407013685154
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	31.637801602109885
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	3	100	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.9855842988385229
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.5816281058422648
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0653785557589845
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.3058174606277515
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1393933849455065
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0730624335471695
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	27.64887468667111
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	44.369859940833415
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.887365511768298
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	36.63246601545048
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	31.96372441840384
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	30.102923505461572
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.684897362838033
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	43.15119354009773
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	1	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	32.475672844928624
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0153788137447444
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.6851232006547923
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.153474769708759
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.455941205190429
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.2390506325582613
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0911306566974026
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.137674790510655
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	48.356900043580325
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	33.1005258962219
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	41.78021126370231
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	35.55624156398349
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	31.311476858131172
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	10	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	0.9696226788941511
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.600202609476605
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.1271992040077166
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.450520326151024
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.2035878976591434
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.0212307802913791
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	28.37801594861904
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	46.83324365364411
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	32.98981932341292
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	42.45248161507101
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	35.22549265688598
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	29.888433925020728
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	4	100	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.5168969952425393
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	3.1759398664588216
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	2.178221701090341
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	3.579542829955094
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	2.2152233288831704
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	2.332069948079253
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	41.01556024743572
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	85.87461992707475
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	58.89719848713783
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	96.78768898663742
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	59.89768995013748
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	63.057119736324005
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	43.61129320086414
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	79.73756633252336
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	1	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	56.10134630475451
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.688936803811481
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	3.054462661779327
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	2.1618881935603826
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	4.2534290631268235
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.9072407189551321
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	2.078697541094654
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	50.266636542663925
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	90.9078208884464
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	64.34275564741964
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	126.5918134377185
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	56.763862213631846
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	61.86681085078496
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	10	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.7566560820499362
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	2.8148641585929965
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.8287901260802346
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	3.8046527874475786
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.643817839087282
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	1.8944653266613711
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-common	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	hermit-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	53.385322452685806
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	jfact-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	85.54459367574914
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	openllet-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	55.57749839408003
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	konclude-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	115.62457669083173
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	elk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	49.95613329772829
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	whelk-common	EARLY-REVIEW-final	EARLY-REVIEW-baseline	True	matched	57.57338808244598
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	hermit-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	jfact-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	
+mmo	000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9	module	5	100	km-native	openllet-library	EARLY-REVIEW-final	EARLY-REVIEW-baseline	False	incomplete, invalid, unequal support target, or protocol mismatch	

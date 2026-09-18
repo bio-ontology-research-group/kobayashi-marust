@@ -1,0 +1,21 @@
+{
+  "status": "pass",
+  "attempts": 1800,
+  "paired_rows": 1230,
+  "oracle_histories": 12,
+  "measured_verdicts": {
+    "v1.4.0:verified_correct": 630,
+    "v1.4.0:unverified": 115,
+    "v1.4.0:timeout": 423,
+    "v1.4.0:error": 62,
+    "v1.4.0:parse_error": 15,
+    "v1.4.0:memout": 15,
+    "v1.4.1:verified_correct": 90,
+    "v1.4.1:unverified": 30,
+    "v1.4.1:error": 60,
+    "v1.4.1:timeout": 60
+  },
+  "available_state_digest_mismatches": [],
+  "report_sha256": "773fda59baf9061dd25d6ebe8a1cfab14d35f4a927173b6f9713feb45f9a4061",
+  "verifier_sha256": "82424afd4ae80f17a8c9ab61199ef32d900c76b15f9d89c29a1cb77d6f7dfd2d"
+}

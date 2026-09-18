@@ -1,0 +1,26 @@
+[
+  {
+    "baseline_root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3",
+    "final_root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original",
+    "tasks": 240,
+    "attempts": 1440,
+    "binary_sha256": "705cac1500018d18018ca4d5482a7451e836091b26648453824afa4b36d16fdb",
+    "source_archive_sha256": "37bb4b1b184033ec249d3044a6a72c3460bbf3e78d443d94d5accfbd8b9631e1",
+    "driver_manifest_sha256": "48ac78980a602c0988d57317701c304e0d52a38d276dd40ad0c54db88e8e9250",
+    "proof_receipt_sha256": "c26ac4e96f53509f224fdad542077a0d6007aec31674761a2843636d4cd75861",
+    "public_gate_sha256": "21e7285e37af0b9f1668f0136a0339a4227dcdc5f70bdd90be25bfe87dd27953",
+    "explanation_controls_audit_sha256": "3cc3caed3f68ec6b31ed6d70da83f99a64b1fbd695b7eeb6ed30ab2a28bd5261"
+  },
+  {
+    "baseline_root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-pure-dl-v1",
+    "final_root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-pure-dl",
+    "tasks": 60,
+    "attempts": 360,
+    "binary_sha256": "705cac1500018d18018ca4d5482a7451e836091b26648453824afa4b36d16fdb",
+    "source_archive_sha256": "37bb4b1b184033ec249d3044a6a72c3460bbf3e78d443d94d5accfbd8b9631e1",
+    "driver_manifest_sha256": "bc50a3ba411cb731714e0b09fc2df3d78c6968d25994d6ff7139aceb29fb4ade",
+    "proof_receipt_sha256": "c26ac4e96f53509f224fdad542077a0d6007aec31674761a2843636d4cd75861",
+    "public_gate_sha256": "21e7285e37af0b9f1668f0136a0339a4227dcdc5f70bdd90be25bfe87dd27953",
+    "explanation_controls_audit_sha256": "3cc3caed3f68ec6b31ed6d70da83f99a64b1fbd695b7eeb6ed30ab2a28bd5261"
+  }
+]

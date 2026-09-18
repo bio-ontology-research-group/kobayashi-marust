@@ -1,0 +1,26 @@
+[
+  {
+    "label": "stream-v4-baseline-original",
+    "issues": []
+  },
+  {
+    "label": "stream-v4-baseline-pure-dl",
+    "issues": []
+  },
+  {
+    "label": "stream-v4-final-original",
+    "issues": []
+  },
+  {
+    "label": "stream-v4-final-pure-dl",
+    "issues": []
+  },
+  {
+    "label": "stream-v4-konclude-original",
+    "issues": []
+  },
+  {
+    "label": "stream-v4-konclude-pure-dl",
+    "issues": []
+  }
+]

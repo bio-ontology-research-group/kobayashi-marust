@@ -1,0 +1,7 @@
+target_axioms	id	profile	logical_axioms	classes	sha256	path
+1000	mmo	EL	982	869	534d04c694351cdbe380ded52dcec49f329d310c1d94203bca25ad0d9197075b	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/mmo.ofn
+10000	hao	EL	10483	2597	b008f6f7f87e89bd7e322176bb887799f80554835b9dd6cf7b291d37017b2c93	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/hao.ofn
+100000	vto	EL	107058	107254	dc7514e8f6bed336e01d058f9687f5b3cf4abc8ba0f22e181569e5adcf79a54a	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/vto.ofn
+1000	mfomd	DL	998	879	a30eaac0c819cf86aa124426356ade51166d54b37eb56a71f8bde6d4cf239ae0	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/mfomd.ofn
+10000	to	DL	9532	5050	afed8280938bb2ee9eaafffed115e08bb66429d274d10ff80db7f47bd698c231	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/to.ofn
+100000	uberon	DL	97737	26624	13579e2a9760969bb07beaf4701d019a90c5f63556bd593685ed876c44a8aa93	/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/uberon.ofn

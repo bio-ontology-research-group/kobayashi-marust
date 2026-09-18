@@ -1,0 +1,46 @@
+[
+  {
+    "label": "baseline-original",
+    "root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-stream-v4c-baseline-original",
+    "tasks": 240,
+    "attempts": 720,
+    "driver_manifest_sha256": "374671ed59e18fe6e6b54964afd4c1c1223d2487fc55eee74fe9da6b2db1d688",
+    "main_job": "51992862",
+    "audit_job": "51992863",
+    "submitted_utc": "2026-09-17T08:06:33.572599+00:00",
+    "max_concurrent": 16
+  },
+  {
+    "label": "baseline-pure-dl",
+    "root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-stream-v4c-baseline-pure-dl",
+    "tasks": 60,
+    "attempts": 180,
+    "driver_manifest_sha256": "69773347f46cd3575385c35976326d1d73c416fd08bd74928ac4cb9807622b63",
+    "main_job": "51992864",
+    "audit_job": "51992897",
+    "submitted_utc": "2026-09-17T08:06:35.582049+00:00",
+    "max_concurrent": 16
+  },
+  {
+    "label": "final-original",
+    "root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-stream-v4c-final-original",
+    "tasks": 240,
+    "attempts": 720,
+    "driver_manifest_sha256": "4403d0bf33cb4f7cdf720225b1b207a7d03ab802d63ee350b5c73ac55ccd1abf",
+    "main_job": "51992899",
+    "audit_job": "51992900",
+    "submitted_utc": "2026-09-17T08:06:40.724358+00:00",
+    "max_concurrent": 16
+  },
+  {
+    "label": "final-pure-dl",
+    "root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-stream-v4c-final-pure-dl",
+    "tasks": 60,
+    "attempts": 180,
+    "driver_manifest_sha256": "279e9ca18d7f5f446a3122b438d20048799220fdd732c339c57e34c453c1630b",
+    "main_job": "51992918",
+    "audit_job": "51992935",
+    "submitted_utc": "2026-09-17T08:06:42.763050+00:00",
+    "max_concurrent": 16
+  }
+]

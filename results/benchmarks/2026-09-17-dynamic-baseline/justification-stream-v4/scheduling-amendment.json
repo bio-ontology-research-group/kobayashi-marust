@@ -1,0 +1,678 @@
+{
+  "observed_utc": "2026-09-17T08:25:33.963479+00:00",
+  "nodes": [
+    {
+      "node": "cn509-03-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 54193,
+      "slots": 2
+    },
+    {
+      "node": "cn509-04-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 27291,
+      "slots": 1
+    },
+    {
+      "node": "cn509-04-r",
+      "free_cpu": 16,
+      "conservative_free_mib": 84213,
+      "slots": 3
+    },
+    {
+      "node": "cn509-05-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 98639,
+      "slots": 4
+    },
+    {
+      "node": "cn509-05-r",
+      "free_cpu": 10,
+      "conservative_free_mib": 4190,
+      "slots": 0
+    },
+    {
+      "node": "cn509-06-l",
+      "free_cpu": 16,
+      "conservative_free_mib": 84238,
+      "slots": 3
+    },
+    {
+      "node": "cn509-06-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 177104,
+      "slots": 7
+    },
+    {
+      "node": "cn509-07-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 41664,
+      "slots": 1
+    },
+    {
+      "node": "cn509-07-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 80525,
+      "slots": 3
+    },
+    {
+      "node": "cn509-08-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 41031,
+      "slots": 1
+    },
+    {
+      "node": "cn509-08-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 40449,
+      "slots": 1
+    },
+    {
+      "node": "cn509-09-l",
+      "free_cpu": 24,
+      "conservative_free_mib": 39262,
+      "slots": 1
+    },
+    {
+      "node": "cn509-09-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 14281,
+      "slots": 0
+    },
+    {
+      "node": "cn509-10-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 32960,
+      "slots": 1
+    },
+    {
+      "node": "cn509-10-r",
+      "free_cpu": 16,
+      "conservative_free_mib": 3394,
+      "slots": 0
+    },
+    {
+      "node": "cn509-11-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 23872,
+      "slots": 1
+    },
+    {
+      "node": "cn509-11-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 222077,
+      "slots": 9
+    },
+    {
+      "node": "cn509-12-l",
+      "free_cpu": 32,
+      "conservative_free_mib": 6137,
+      "slots": 0
+    },
+    {
+      "node": "cn509-12-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 121134,
+      "slots": 5
+    },
+    {
+      "node": "cn509-13-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 246005,
+      "slots": 10
+    },
+    {
+      "node": "cn509-13-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 237004,
+      "slots": 10
+    },
+    {
+      "node": "cn509-14-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 224906,
+      "slots": 9
+    },
+    {
+      "node": "cn509-14-r",
+      "free_cpu": 8,
+      "conservative_free_mib": 2626,
+      "slots": 0
+    },
+    {
+      "node": "cn509-15-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 236361,
+      "slots": 10
+    },
+    {
+      "node": "cn509-15-r",
+      "free_cpu": 10,
+      "conservative_free_mib": 29696,
+      "slots": 1
+    },
+    {
+      "node": "cn509-16-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 214459,
+      "slots": 9
+    },
+    {
+      "node": "cn509-16-r",
+      "free_cpu": 24,
+      "conservative_free_mib": 4570,
+      "slots": 0
+    },
+    {
+      "node": "cn509-17-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 0,
+      "slots": 0
+    },
+    {
+      "node": "cn509-17-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 6687,
+      "slots": 0
+    },
+    {
+      "node": "cn509-18-l",
+      "free_cpu": 16,
+      "conservative_free_mib": 45621,
+      "slots": 2
+    },
+    {
+      "node": "cn509-18-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 115511,
+      "slots": 5
+    },
+    {
+      "node": "cn509-19-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 120318,
+      "slots": 5
+    },
+    {
+      "node": "cn509-19-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 122693,
+      "slots": 5
+    },
+    {
+      "node": "cn509-20-l",
+      "free_cpu": 16,
+      "conservative_free_mib": 82380,
+      "slots": 3
+    },
+    {
+      "node": "cn509-20-r",
+      "free_cpu": 16,
+      "conservative_free_mib": 32773,
+      "slots": 1
+    },
+    {
+      "node": "cn509-21-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 107036,
+      "slots": 4
+    },
+    {
+      "node": "cn509-21-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 23059,
+      "slots": 1
+    },
+    {
+      "node": "cn509-22-l",
+      "free_cpu": 16,
+      "conservative_free_mib": 67204,
+      "slots": 2
+    },
+    {
+      "node": "cn509-22-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 109032,
+      "slots": 4
+    },
+    {
+      "node": "cn509-23-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 166791,
+      "slots": 7
+    },
+    {
+      "node": "cn509-23-r",
+      "free_cpu": 40,
+      "conservative_free_mib": 136889,
+      "slots": 6
+    },
+    {
+      "node": "cn509-24-l",
+      "free_cpu": 16,
+      "conservative_free_mib": 48347,
+      "slots": 2
+    },
+    {
+      "node": "cn509-24-r",
+      "free_cpu": 4,
+      "conservative_free_mib": 5112,
+      "slots": 0
+    },
+    {
+      "node": "cn509-25-l",
+      "free_cpu": 16,
+      "conservative_free_mib": 53062,
+      "slots": 2
+    },
+    {
+      "node": "cn509-25-r",
+      "free_cpu": 16,
+      "conservative_free_mib": 139099,
+      "slots": 6
+    },
+    {
+      "node": "cn509-26-l",
+      "free_cpu": 40,
+      "conservative_free_mib": 109303,
+      "slots": 4
+    },
+    {
+      "node": "cn509-26-r",
+      "free_cpu": 24,
+      "conservative_free_mib": 5333,
+      "slots": 0
+    },
+    {
+      "node": "cn509-27-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 38764,
+      "slots": 0
+    },
+    {
+      "node": "cn509-27-r",
+      "free_cpu": 4,
+      "conservative_free_mib": 2168,
+      "slots": 0
+    },
+    {
+      "node": "cn509-28-l",
+      "free_cpu": 4,
+      "conservative_free_mib": 3999,
+      "slots": 0
+    },
+    {
+      "node": "cn509-28-r",
+      "free_cpu": 16,
+      "conservative_free_mib": 17590,
+      "slots": 0
+    },
+    {
+      "node": "cn509-29-l",
+      "free_cpu": 10,
+      "conservative_free_mib": 29696,
+      "slots": 1
+    },
+    {
+      "node": "cn512-02-l",
+      "free_cpu": 24,
+      "conservative_free_mib": 29696,
+      "slots": 1
+    },
+    {
+      "node": "cn512-02-r",
+      "free_cpu": 16,
+      "conservative_free_mib": 81575,
+      "slots": 3
+    },
+    {
+      "node": "cn512-03-l",
+      "free_cpu": 4,
+      "conservative_free_mib": 2419,
+      "slots": 0
+    },
+    {
+      "node": "cn512-03-r",
+      "free_cpu": 4,
+      "conservative_free_mib": 3061,
+      "slots": 0
+    },
+    {
+      "node": "cn512-04-l",
+      "free_cpu": 4,
+      "conservative_free_mib": 3835,
+      "slots": 0
+    },
+    {
+      "node": "cn512-04-r",
+      "free_cpu": 24,
+      "conservative_free_mib": 29696,
+      "slots": 1
+    },
+    {
+      "node": "cn512-05-l",
+      "free_cpu": 4,
+      "conservative_free_mib": 4300,
+      "slots": 0
+    },
+    {
+      "node": "cn512-05-r",
+      "free_cpu": 24,
+      "conservative_free_mib": 29696,
+      "slots": 1
+    },
+    {
+      "node": "cn512-06-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 80896,
+      "slots": 0
+    },
+    {
+      "node": "cn512-06-r",
+      "free_cpu": 0,
+      "conservative_free_mib": 52820,
+      "slots": 0
+    },
+    {
+      "node": "cn512-07-l",
+      "free_cpu": 16,
+      "conservative_free_mib": 40924,
+      "slots": 1
+    },
+    {
+      "node": "cn512-07-r",
+      "free_cpu": 8,
+      "conservative_free_mib": 1273,
+      "slots": 0
+    },
+    {
+      "node": "cn512-08-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 80896,
+      "slots": 0
+    },
+    {
+      "node": "cn512-08-r",
+      "free_cpu": 0,
+      "conservative_free_mib": 80896,
+      "slots": 0
+    },
+    {
+      "node": "cn512-09-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 22336,
+      "slots": 0
+    },
+    {
+      "node": "cn512-09-r",
+      "free_cpu": 16,
+      "conservative_free_mib": 72872,
+      "slots": 3
+    },
+    {
+      "node": "cn512-10-l",
+      "free_cpu": 24,
+      "conservative_free_mib": 20039,
+      "slots": 0
+    },
+    {
+      "node": "cn512-10-r",
+      "free_cpu": 0,
+      "conservative_free_mib": 63813,
+      "slots": 0
+    },
+    {
+      "node": "cn512-11-l",
+      "free_cpu": 24,
+      "conservative_free_mib": 17106,
+      "slots": 0
+    },
+    {
+      "node": "cn512-11-r",
+      "free_cpu": 0,
+      "conservative_free_mib": 24812,
+      "slots": 0
+    },
+    {
+      "node": "cn512-12-l",
+      "free_cpu": 4,
+      "conservative_free_mib": 2462,
+      "slots": 0
+    },
+    {
+      "node": "cn512-12-r",
+      "free_cpu": 0,
+      "conservative_free_mib": 2583,
+      "slots": 0
+    },
+    {
+      "node": "cn512-13-l",
+      "free_cpu": 32,
+      "conservative_free_mib": 11638,
+      "slots": 0
+    },
+    {
+      "node": "cn512-13-r",
+      "free_cpu": 32,
+      "conservative_free_mib": 63894,
+      "slots": 2
+    },
+    {
+      "node": "cn512-14-l",
+      "free_cpu": 32,
+      "conservative_free_mib": 107437,
+      "slots": 4
+    },
+    {
+      "node": "cn512-14-r",
+      "free_cpu": 37,
+      "conservative_free_mib": 26610,
+      "slots": 1
+    },
+    {
+      "node": "cn512-15-l",
+      "free_cpu": 5,
+      "conservative_free_mib": 23552,
+      "slots": 1
+    },
+    {
+      "node": "cn512-15-r",
+      "free_cpu": 14,
+      "conservative_free_mib": 28696,
+      "slots": 1
+    },
+    {
+      "node": "cn512-16-l",
+      "free_cpu": 30,
+      "conservative_free_mib": 43343,
+      "slots": 1
+    },
+    {
+      "node": "cn512-16-r",
+      "free_cpu": 18,
+      "conservative_free_mib": 2631,
+      "slots": 0
+    },
+    {
+      "node": "cn512-17-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 0,
+      "slots": 0
+    },
+    {
+      "node": "cn512-17-r",
+      "free_cpu": 0,
+      "conservative_free_mib": 28570,
+      "slots": 0
+    },
+    {
+      "node": "cn512-18-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 0,
+      "slots": 0
+    },
+    {
+      "node": "cn512-18-r",
+      "free_cpu": 27,
+      "conservative_free_mib": 1870,
+      "slots": 0
+    },
+    {
+      "node": "cn512-19-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 59665,
+      "slots": 0
+    },
+    {
+      "node": "cn512-19-r",
+      "free_cpu": 0,
+      "conservative_free_mib": 2147,
+      "slots": 0
+    },
+    {
+      "node": "cn512-20-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 31883,
+      "slots": 0
+    },
+    {
+      "node": "cn512-20-r",
+      "free_cpu": 0,
+      "conservative_free_mib": 49050,
+      "slots": 0
+    },
+    {
+      "node": "cn512-21-l",
+      "free_cpu": 0,
+      "conservative_free_mib": 0,
+      "slots": 0
+    },
+    {
+      "node": "cn512-21-r",
+      "free_cpu": 26,
+      "conservative_free_mib": 2172,
+      "slots": 0
+    },
+    {
+      "node": "cn512-22-l",
+      "free_cpu": 26,
+      "conservative_free_mib": 1886,
+      "slots": 0
+    },
+    {
+      "node": "cn512-22-r",
+      "free_cpu": 8,
+      "conservative_free_mib": 3072,
+      "slots": 0
+    },
+    {
+      "node": "cn512-23-l",
+      "free_cpu": 8,
+      "conservative_free_mib": 3072,
+      "slots": 0
+    },
+    {
+      "node": "cn512-23-r",
+      "free_cpu": 1,
+      "conservative_free_mib": 15360,
+      "slots": 0
+    },
+    {
+      "node": "cn512-24-l",
+      "free_cpu": 32,
+      "conservative_free_mib": 1864,
+      "slots": 0
+    },
+    {
+      "node": "cn512-24-r",
+      "free_cpu": 8,
+      "conservative_free_mib": 3072,
+      "slots": 0
+    },
+    {
+      "node": "cn512-25-l",
+      "free_cpu": 34,
+      "conservative_free_mib": 2082,
+      "slots": 0
+    },
+    {
+      "node": "cn512-25-r",
+      "free_cpu": 35,
+      "conservative_free_mib": 11695,
+      "slots": 0
+    },
+    {
+      "node": "cn512-26-l",
+      "free_cpu": 33,
+      "conservative_free_mib": 60241,
+      "slots": 2
+    },
+    {
+      "node": "cn512-26-r",
+      "free_cpu": 34,
+      "conservative_free_mib": 2323,
+      "slots": 0
+    },
+    {
+      "node": "cn512-27-l",
+      "free_cpu": 28,
+      "conservative_free_mib": 1728,
+      "slots": 0
+    },
+    {
+      "node": "cn512-27-r",
+      "free_cpu": 27,
+      "conservative_free_mib": 43094,
+      "slots": 1
+    },
+    {
+      "node": "gpu510-32",
+      "free_cpu": 36,
+      "conservative_free_mib": 11007,
+      "slots": 0
+    }
+  ],
+  "total_slots": 175,
+  "per_task_mib": 22528,
+  "changes": [
+    {
+      "job": "51992862",
+      "old_cap": 16,
+      "new_cap": 64,
+      "update_returncode": 0,
+      "live_throttle_verified": true
+    },
+    {
+      "job": "51992864",
+      "old_cap": 16,
+      "new_cap": 32,
+      "update_returncode": 0,
+      "live_throttle_verified": true
+    },
+    {
+      "job": "51992899",
+      "old_cap": 16,
+      "new_cap": 64,
+      "update_returncode": 0,
+      "live_throttle_verified": true
+    },
+    {
+      "job": "51992918",
+      "old_cap": 16,
+      "new_cap": 32,
+      "update_returncode": 0,
+      "live_throttle_verified": true
+    }
+  ],
+  "maximum_additional_tasks": 128,
+  "reason": "Available matching-node CPU and conservative free memory support 128 extra tasks with 47 slots of headroom.",
+  "unchanged": [
+    "input hashes",
+    "source and runtime binaries",
+    "per-task CPU/memory limits",
+    "deadlines",
+    "repetition count",
+    "within-task order"
+  ],
+  "no_restart": true
+}

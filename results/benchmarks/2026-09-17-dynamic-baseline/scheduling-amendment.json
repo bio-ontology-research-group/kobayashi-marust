@@ -1,0 +1,56 @@
+{
+  "remote_utc_interval": [
+    "2026-09-17T04:51:16Z",
+    "2026-09-17T04:51:36Z"
+  ],
+  "reason": "Pending jobs limited by JobArrayTaskLimit; matching Gold6248 pool reported 2265 idle CPUs",
+  "verified_by": "scontrol show job ArrayTaskThrottle for every array",
+  "changes": [
+    {
+      "job": "51982318",
+      "old_cap": 8,
+      "new_cap": 16
+    },
+    {
+      "job": "51982375",
+      "old_cap": 4,
+      "new_cap": 8
+    },
+    {
+      "job": "51982389",
+      "old_cap": 12,
+      "new_cap": 24
+    },
+    {
+      "job": "51982752",
+      "old_cap": 6,
+      "new_cap": 12
+    },
+    {
+      "job": "51983825",
+      "old_cap": 6,
+      "new_cap": 12
+    },
+    {
+      "job": "51984134",
+      "old_cap": 8,
+      "new_cap": 16
+    },
+    {
+      "job": "51984137",
+      "old_cap": 4,
+      "new_cap": 8
+    }
+  ],
+  "unchanged": [
+    "per-job CPU and memory",
+    "CPU model constraint",
+    "inputs and query selection",
+    "repetitions and warmup",
+    "per-case deadlines",
+    "within-job arm order",
+    "raw completed observations"
+  ],
+  "caveat": "Shared-filesystem or memory-bandwidth contention may affect cross-phase wall times. Preserve per-repetition ranges and do not attribute scheduling-phase differences to engine changes.",
+  "scheduler_messages": "Some scontrol updates returned nonzero because completed array elements cannot be changed. All live array throttle fields were independently verified at the requested values."
+}

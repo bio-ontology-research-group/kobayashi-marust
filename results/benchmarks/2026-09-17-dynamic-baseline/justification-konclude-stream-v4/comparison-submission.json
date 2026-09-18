@@ -1,0 +1,18 @@
+{
+  "stage_failed": 51996783,
+  "stage_passed": 51997023,
+  "binding_job": 51997356,
+  "comparison_job": 51997357,
+  "remote_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-comparison-stream-v4-all-r2",
+  "tests": "11 correction-selection and integrity tests pass",
+  "sha256": {
+    "benchmarks/dynamic-v1.4/render_justification_comparison.py": "e935509f484da9405005db72f02255ded5fb647455825370096fb585e3974f89",
+    "benchmarks/dynamic-v1.4/justification_corrections.py": "bafdc056c41fae5ae8220ef3e0e68185c74dbabdcef999c46a5c0e61c51c2bae",
+    "benchmarks/dynamic-v1.4/test_justification_corrections.py": "159a63a273bc90e804b7f36e1ac85575d687f38c5d647a2b7e539597f5eca4ec",
+    "benchmarks/dynamic-v1.4/justification-comparison-stream-v4-all-config.json": "0d664cedfb421f7071251464d1cfde048b0e4ab6a4fb594b1b87e9bd46e6960b",
+    "benchmarks/dynamic-v1.4/ibex-justification-comparison-stream-v4-all.sbatch": "780d950b43621409c0d26cea1ab85e6e7eaffde95818deec80fd1220885278f7"
+  },
+  "superseded_binding_job": 51997309,
+  "cancelled_comparison_job": 51997310,
+  "reporter_revision_reason": "Legacy tasks omit arms and use frozen runner defaults; share identical arm expansion in validation and rendering."
+}

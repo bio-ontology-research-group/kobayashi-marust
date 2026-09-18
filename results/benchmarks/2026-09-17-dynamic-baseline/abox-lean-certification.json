@@ -1,0 +1,54 @@
+{
+  "recorded_utc": "2026-09-17T04:35:52.084954+00:00",
+  "proof_module": "ContextCalculus.KMAtomicABoxPublication",
+  "module_build_status": "passed",
+  "module_build_exit_code": 0,
+  "module_build_log": ".work/logs/dynamic-abox-lean-build.log",
+  "full_routing_gate_status": "passed",
+  "full_routing_gate_session": 25951,
+  "full_routing_gate_log": ".work/logs/dynamic-abox-routing-certification-gate.log",
+  "experimental_prerequisites": {
+    "source_incremental_release_tests": {
+      "passed": 19,
+      "failed": 0,
+      "log": ".work/logs/dynamic-abox-candidate-source-tests.log"
+    },
+    "frontend_dev_tests": {
+      "passed": 179,
+      "failed": 0,
+      "log": ".work/logs/dynamic-abox-candidate-frontend-debug-tests.log"
+    }
+  },
+  "proof_axioms": [
+    "propext",
+    "Quot.sound",
+    "Classical.choice"
+  ],
+  "boundaries_document": "lean/ATOMIC-ABOX-PUBLICATION.md",
+  "sha256": {
+    "lean/ContextCalculus/KMAtomicABoxPublication.lean": "b0d5b5946f14bf4cf5db3af5bb379b23c026bddc9b2e61539134391c1d1b3c5f",
+    "lean/run-routing-certification-gate.sh": "ec9111455b2e76a050e5f6eda4106486bcef80bfe07c6c649d02dc1ee750b98d",
+    "engine/src/source_incremental.rs": "98f1ef6c11ac4163a62ea87647074f9e2bc23eaf6761c2da6050d59a5ab64281",
+    "engine/src/frontend/data_abox.rs": "11734ac498f528639e6165e916a4827833e2ae17d2adf048db651e0db1a8f646",
+    "engine/src/frontend/mod.rs": "318a57389f5f77d9a1e1774dddb9696e2f6d819fc1b957ed42904c9cec4b4752",
+    "engine/Cargo.toml": "96bb8fe5cf3b0f9bfbfeeac770d50f0d1a5399cb72a07b2a58ec659e6f1206ad",
+    "engine/Cargo.lock": "c33cecd3342b36b0687352c3e14d0f6e8aa05e7d4d4a6baa51dbd547a7a33d0c"
+  },
+  "full_routing_gate_exit_code": 0,
+  "full_routing_gate_passed_test_executions": 77,
+  "full_routing_gate_native_checker": {
+    "valid_fixture": "accepted",
+    "forged_fixture": "rejected"
+  },
+  "source_hashes_unchanged_during_gate": true,
+  "evidence": {
+    "dynamic-abox-lean-build.log.gz": {
+      "uncompressed_sha256": "2dc8bedbc3bfdec93cc39e4b40b9682f604f49f24defcefe4151844983169e0f",
+      "archive_sha256": "a3eab3e7546dcdf48ef21914ba1ac9950f3fef57da8a730b68bd960623ece4f8"
+    },
+    "dynamic-abox-routing-certification-gate.log.gz": {
+      "uncompressed_sha256": "71474f6a65a5e85a966838b6b55eacc8c6393f809ccb8ea2173351ae1cf4ffe1",
+      "archive_sha256": "28b64e6a2fcbc2c2206f1058138dec05b358c1d9b14d030425beeb3a4daf6677"
+    }
+  }
+}

@@ -1,0 +1,1265 @@
+{
+  "scope": "existing completed MMO timing and receipt diagnosis; no new benchmarks or Rust edits",
+  "summary": {
+    "mmo-n1": {
+      "session": {
+        "repetitions": [
+          {
+            "rep": 0,
+            "wall_s": 20.065966702997684,
+            "request_response_s": 8.110979033634067,
+            "update_request_s": 8.051218813285232,
+            "canonicalize_s": 8.450202483683825,
+            "wall_minus_measured_intervals_s": 3.5047851856797934,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 218,
+              "median": 307.0,
+              "max": 5606,
+              "sum": 110954
+            },
+            "rederived": {
+              "min": 27,
+              "median": 5076.5,
+              "max": 5437,
+              "sum": 1246647
+            },
+            "added_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 363
+            },
+            "removed_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 359
+            },
+            "retention_ratio_median": 0.05618583114311554
+          },
+          {
+            "rep": 1,
+            "wall_s": 22.644668081775308,
+            "request_response_s": 9.98138459958136,
+            "update_request_s": 9.934722851961851,
+            "canonicalize_s": 9.393088327720761,
+            "wall_minus_measured_intervals_s": 3.2701951544731855,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 218,
+              "median": 307.0,
+              "max": 5606,
+              "sum": 110954
+            },
+            "rederived": {
+              "min": 27,
+              "median": 5076.5,
+              "max": 5437,
+              "sum": 1246647
+            },
+            "added_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 363
+            },
+            "removed_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 359
+            },
+            "retention_ratio_median": 0.05618583114311554
+          },
+          {
+            "rep": 2,
+            "wall_s": 22.35542686097324,
+            "request_response_s": 8.449821975082159,
+            "update_request_s": 8.40496258251369,
+            "canonicalize_s": 8.254935938864946,
+            "wall_minus_measured_intervals_s": 5.6506689470261335,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 218,
+              "median": 307.0,
+              "max": 5606,
+              "sum": 110954
+            },
+            "rederived": {
+              "min": 27,
+              "median": 5076.5,
+              "max": 5437,
+              "sum": 1246647
+            },
+            "added_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 363
+            },
+            "removed_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 359
+            },
+            "retention_ratio_median": 0.05618583114311554
+          },
+          {
+            "rep": 3,
+            "wall_s": 19.991872357204556,
+            "request_response_s": 8.096609249711037,
+            "update_request_s": 8.051982073113322,
+            "canonicalize_s": 8.300716495141387,
+            "wall_minus_measured_intervals_s": 3.594546612352133,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 218,
+              "median": 307.0,
+              "max": 5606,
+              "sum": 110954
+            },
+            "rederived": {
+              "min": 27,
+              "median": 5076.5,
+              "max": 5437,
+              "sum": 1246647
+            },
+            "added_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 363
+            },
+            "removed_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 359
+            },
+            "retention_ratio_median": 0.05618583114311554
+          },
+          {
+            "rep": 4,
+            "wall_s": 21.233850818127394,
+            "request_response_s": 7.026318812742829,
+            "update_request_s": 6.982575610280037,
+            "canonicalize_s": 8.575900010764599,
+            "wall_minus_measured_intervals_s": 5.6316319946199656,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 218,
+              "median": 307.0,
+              "max": 5606,
+              "sum": 110954
+            },
+            "rederived": {
+              "min": 27,
+              "median": 5076.5,
+              "max": 5437,
+              "sum": 1246647
+            },
+            "added_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 363
+            },
+            "removed_clauses": {
+              "min": 1,
+              "median": 1.0,
+              "max": 2,
+              "sum": 359
+            },
+            "retention_ratio_median": 0.05618583114311554
+          }
+        ],
+        "median_wall_s": 21.233850818127394,
+        "median_request_response_s": 8.110979033634067,
+        "median_canonicalize_s": 8.450202483683825,
+        "median_wall_minus_measured_s": 3.594546612352133
+      },
+      "fresh": {
+        "repetitions": [
+          {
+            "rep": 0,
+            "wall_s": 17.92969263717532,
+            "request_response_s": 5.546153675764799,
+            "update_request_s": 5.48760100454092,
+            "canonicalize_s": 8.43376057781279,
+            "wall_minus_measured_intervals_s": 3.9497783835977316,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 1,
+            "wall_s": 18.177749056369066,
+            "request_response_s": 5.706432892009616,
+            "update_request_s": 5.6613974422216415,
+            "canonicalize_s": 8.40146042779088,
+            "wall_minus_measured_intervals_s": 4.06985573656857,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 2,
+            "wall_s": 18.265580603852868,
+            "request_response_s": 5.666853995993733,
+            "update_request_s": 5.622388694435358,
+            "canonicalize_s": 8.489774074405432,
+            "wall_minus_measured_intervals_s": 4.108952533453703,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 3,
+            "wall_s": 19.48487058840692,
+            "request_response_s": 4.520553374662995,
+            "update_request_s": 4.470553757622838,
+            "canonicalize_s": 8.568794470280409,
+            "wall_minus_measured_intervals_s": 6.395522743463516,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 4,
+            "wall_s": 21.463935932144523,
+            "request_response_s": 6.356980662792921,
+            "update_request_s": 6.304382426664233,
+            "canonicalize_s": 9.9554738458246,
+            "wall_minus_measured_intervals_s": 5.151481423527002,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          }
+        ],
+        "median_wall_s": 18.265580603852868,
+        "median_request_response_s": 5.666853995993733,
+        "median_canonicalize_s": 8.489774074405432,
+        "median_wall_minus_measured_s": 4.108952533453703
+      }
+    },
+    "mmo-n10": {
+      "session": {
+        "repetitions": [
+          {
+            "rep": 0,
+            "wall_s": 17.851761808618903,
+            "request_response_s": 7.99389098957181,
+            "update_request_s": 7.968093866482377,
+            "canonicalize_s": 7.9634230472147465,
+            "wall_minus_measured_intervals_s": 1.894447771832347,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 169,
+              "median": 265.0,
+              "max": 439,
+              "sum": 68580
+            },
+            "rederived": {
+              "min": 4437,
+              "median": 5092.0,
+              "max": 5518,
+              "sum": 1260759
+            },
+            "added_clauses": {
+              "min": 10,
+              "median": 15.0,
+              "max": 20,
+              "sum": 3629
+            },
+            "removed_clauses": {
+              "min": 11,
+              "median": 15.0,
+              "max": 19,
+              "sum": 3630
+            },
+            "retention_ratio_median": 0.04998149518874907
+          },
+          {
+            "rep": 1,
+            "wall_s": 17.86017470061779,
+            "request_response_s": 8.001375038176775,
+            "update_request_s": 7.973118927329779,
+            "canonicalize_s": 7.899533312767744,
+            "wall_minus_measured_intervals_s": 1.9592663496732712,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 169,
+              "median": 265.0,
+              "max": 439,
+              "sum": 68580
+            },
+            "rederived": {
+              "min": 4437,
+              "median": 5092.0,
+              "max": 5518,
+              "sum": 1260759
+            },
+            "added_clauses": {
+              "min": 10,
+              "median": 15.0,
+              "max": 20,
+              "sum": 3629
+            },
+            "removed_clauses": {
+              "min": 11,
+              "median": 15.0,
+              "max": 19,
+              "sum": 3630
+            },
+            "retention_ratio_median": 0.04998149518874907
+          },
+          {
+            "rep": 2,
+            "wall_s": 17.874398313462734,
+            "request_response_s": 8.086649624630809,
+            "update_request_s": 8.070058543235064,
+            "canonicalize_s": 7.889862842857838,
+            "wall_minus_measured_intervals_s": 1.8978858459740877,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 169,
+              "median": 265.0,
+              "max": 439,
+              "sum": 68580
+            },
+            "rederived": {
+              "min": 4437,
+              "median": 5092.0,
+              "max": 5518,
+              "sum": 1260759
+            },
+            "added_clauses": {
+              "min": 10,
+              "median": 15.0,
+              "max": 20,
+              "sum": 3629
+            },
+            "removed_clauses": {
+              "min": 11,
+              "median": 15.0,
+              "max": 19,
+              "sum": 3630
+            },
+            "retention_ratio_median": 0.04998149518874907
+          },
+          {
+            "rep": 3,
+            "wall_s": 17.98126882314682,
+            "request_response_s": 8.124157389625907,
+            "update_request_s": 8.096386395394802,
+            "canonicalize_s": 7.931720381602645,
+            "wall_minus_measured_intervals_s": 1.9253910519182682,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 169,
+              "median": 265.0,
+              "max": 439,
+              "sum": 68580
+            },
+            "rederived": {
+              "min": 4437,
+              "median": 5092.0,
+              "max": 5518,
+              "sum": 1260759
+            },
+            "added_clauses": {
+              "min": 10,
+              "median": 15.0,
+              "max": 20,
+              "sum": 3629
+            },
+            "removed_clauses": {
+              "min": 11,
+              "median": 15.0,
+              "max": 19,
+              "sum": 3630
+            },
+            "retention_ratio_median": 0.04998149518874907
+          },
+          {
+            "rep": 4,
+            "wall_s": 17.903044506907463,
+            "request_response_s": 8.06832173652947,
+            "update_request_s": 8.054568901658058,
+            "canonicalize_s": 7.93477463722229,
+            "wall_minus_measured_intervals_s": 1.8999481331557035,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 169,
+              "median": 265.0,
+              "max": 439,
+              "sum": 68580
+            },
+            "rederived": {
+              "min": 4437,
+              "median": 5092.0,
+              "max": 5518,
+              "sum": 1260759
+            },
+            "added_clauses": {
+              "min": 10,
+              "median": 15.0,
+              "max": 20,
+              "sum": 3629
+            },
+            "removed_clauses": {
+              "min": 11,
+              "median": 15.0,
+              "max": 19,
+              "sum": 3630
+            },
+            "retention_ratio_median": 0.04998149518874907
+          }
+        ],
+        "median_wall_s": 17.874398313462734,
+        "median_request_response_s": 8.06832173652947,
+        "median_canonicalize_s": 7.931720381602645,
+        "median_wall_minus_measured_s": 1.8999481331557035
+      },
+      "fresh": {
+        "repetitions": [
+          {
+            "rep": 0,
+            "wall_s": 15.582900932058692,
+            "request_response_s": 5.376441564410925,
+            "update_request_s": 5.350476318970323,
+            "canonicalize_s": 7.569728320464492,
+            "wall_minus_measured_intervals_s": 2.6367310471832752,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 1,
+            "wall_s": 15.701403707265854,
+            "request_response_s": 5.425748486071825,
+            "update_request_s": 5.399295838549733,
+            "canonicalize_s": 7.6512703858315945,
+            "wall_minus_measured_intervals_s": 2.6243848353624344,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 2,
+            "wall_s": 15.5341193433851,
+            "request_response_s": 5.361179476603866,
+            "update_request_s": 5.335126543417573,
+            "canonicalize_s": 7.480375336483121,
+            "wall_minus_measured_intervals_s": 2.692564530298114,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 3,
+            "wall_s": 15.57013713568449,
+            "request_response_s": 5.48927802965045,
+            "update_request_s": 5.460697613656521,
+            "canonicalize_s": 7.591095546260476,
+            "wall_minus_measured_intervals_s": 2.4897635597735643,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 4,
+            "wall_s": 15.569062834605575,
+            "request_response_s": 5.409487383440137,
+            "update_request_s": 5.395935203880072,
+            "canonicalize_s": 7.7231268510222435,
+            "wall_minus_measured_intervals_s": 2.436448600143194,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          }
+        ],
+        "median_wall_s": 15.57013713568449,
+        "median_request_response_s": 5.409487383440137,
+        "median_canonicalize_s": 7.591095546260476,
+        "median_wall_minus_measured_s": 2.6243848353624344
+      }
+    },
+    "mmo-n100": {
+      "session": {
+        "repetitions": [
+          {
+            "rep": 0,
+            "wall_s": 17.824589289724827,
+            "request_response_s": 8.159205999225378,
+            "update_request_s": 8.146093087270856,
+            "canonicalize_s": 7.87397906370461,
+            "wall_minus_measured_intervals_s": 1.791404226794839,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 32,
+              "median": 32.0,
+              "max": 32,
+              "sum": 8000
+            },
+            "rederived": {
+              "min": 4545,
+              "median": 5324.5,
+              "max": 5656,
+              "sum": 1318069
+            },
+            "added_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35515
+            },
+            "removed_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35518
+            },
+            "retention_ratio_median": 0.0059740502714127645
+          },
+          {
+            "rep": 1,
+            "wall_s": 18.11159187182784,
+            "request_response_s": 8.176247702911496,
+            "update_request_s": 8.162939114496112,
+            "canonicalize_s": 8.006402999162674,
+            "wall_minus_measured_intervals_s": 1.9289411697536707,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 32,
+              "median": 32.0,
+              "max": 32,
+              "sum": 8000
+            },
+            "rederived": {
+              "min": 4545,
+              "median": 5324.5,
+              "max": 5656,
+              "sum": 1318069
+            },
+            "added_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35515
+            },
+            "removed_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35518
+            },
+            "retention_ratio_median": 0.0059740502714127645
+          },
+          {
+            "rep": 2,
+            "wall_s": 17.92878899537027,
+            "request_response_s": 8.007620027288795,
+            "update_request_s": 7.994418615475297,
+            "canonicalize_s": 7.897493693977594,
+            "wall_minus_measured_intervals_s": 2.02367527410388,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 32,
+              "median": 32.0,
+              "max": 32,
+              "sum": 8000
+            },
+            "rederived": {
+              "min": 4545,
+              "median": 5324.5,
+              "max": 5656,
+              "sum": 1318069
+            },
+            "added_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35515
+            },
+            "removed_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35518
+            },
+            "retention_ratio_median": 0.0059740502714127645
+          },
+          {
+            "rep": 3,
+            "wall_s": 18.08525370620191,
+            "request_response_s": 8.129483550786972,
+            "update_request_s": 8.11551059782505,
+            "canonicalize_s": 8.01630494184792,
+            "wall_minus_measured_intervals_s": 1.9394652135670185,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 32,
+              "median": 32.0,
+              "max": 32,
+              "sum": 8000
+            },
+            "rederived": {
+              "min": 4545,
+              "median": 5324.5,
+              "max": 5656,
+              "sum": 1318069
+            },
+            "added_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35515
+            },
+            "removed_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35518
+            },
+            "retention_ratio_median": 0.0059740502714127645
+          },
+          {
+            "rep": 4,
+            "wall_s": 18.145742820575833,
+            "request_response_s": 8.118752028793097,
+            "update_request_s": 8.091440923511982,
+            "canonicalize_s": 8.039641499519348,
+            "wall_minus_measured_intervals_s": 1.9873492922633886,
+            "strategies": {
+              "el_delta": 250
+            },
+            "retained": {
+              "min": 32,
+              "median": 32.0,
+              "max": 32,
+              "sum": 8000
+            },
+            "rederived": {
+              "min": 4545,
+              "median": 5324.5,
+              "max": 5656,
+              "sum": 1318069
+            },
+            "added_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35515
+            },
+            "removed_clauses": {
+              "min": 128,
+              "median": 142.0,
+              "max": 157,
+              "sum": 35518
+            },
+            "retention_ratio_median": 0.0059740502714127645
+          }
+        ],
+        "median_wall_s": 18.08525370620191,
+        "median_request_response_s": 8.129483550786972,
+        "median_canonicalize_s": 8.006402999162674,
+        "median_wall_minus_measured_s": 1.9394652135670185
+      },
+      "fresh": {
+        "repetitions": [
+          {
+            "rep": 0,
+            "wall_s": 15.409183980897069,
+            "request_response_s": 5.463531808927655,
+            "update_request_s": 5.437026061117649,
+            "canonicalize_s": 7.460605958476663,
+            "wall_minus_measured_intervals_s": 2.485046213492751,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 1,
+            "wall_s": 15.511639265343547,
+            "request_response_s": 5.521782238036394,
+            "update_request_s": 5.4939729776233435,
+            "canonicalize_s": 7.581889640539885,
+            "wall_minus_measured_intervals_s": 2.407967386767268,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 2,
+            "wall_s": 15.565873984247446,
+            "request_response_s": 5.5060514360666275,
+            "update_request_s": 5.492454459890723,
+            "canonicalize_s": 7.436037374660373,
+            "wall_minus_measured_intervals_s": 2.623785173520446,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 3,
+            "wall_s": 15.455721890553832,
+            "request_response_s": 5.395271945744753,
+            "update_request_s": 5.369798332452774,
+            "canonicalize_s": 7.453757459297776,
+            "wall_minus_measured_intervals_s": 2.606692485511303,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          },
+          {
+            "rep": 4,
+            "wall_s": 15.432790396735072,
+            "request_response_s": 5.401263767853379,
+            "update_request_s": 5.387789402157068,
+            "canonicalize_s": 7.711267326027155,
+            "wall_minus_measured_intervals_s": 2.320259302854538,
+            "strategies": {
+              "none": 250
+            },
+            "retained": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "rederived": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "added_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "removed_clauses": {
+              "min": 0,
+              "median": 0.0,
+              "max": 0,
+              "sum": 0
+            },
+            "retention_ratio_median": null
+          }
+        ],
+        "median_wall_s": 15.455721890553832,
+        "median_request_response_s": 5.463531808927655,
+        "median_canonicalize_s": 7.460605958476663,
+        "median_wall_minus_measured_s": 2.485046213492751
+      }
+    }
+  },
+  "paired": {
+    "mmo-n1": {
+      "pairs": [
+        {
+          "rep": 0,
+          "wall_session_minus_fresh_s": 2.136274065822363,
+          "request_session_minus_fresh_s": 2.5648253578692675,
+          "request_session_over_fresh": 1.4624511883031415
+        },
+        {
+          "rep": 1,
+          "wall_session_minus_fresh_s": 4.466919025406241,
+          "request_session_minus_fresh_s": 4.274951707571745,
+          "request_session_over_fresh": 1.7491460582245189
+        },
+        {
+          "rep": 2,
+          "wall_session_minus_fresh_s": 4.089846257120371,
+          "request_session_minus_fresh_s": 2.7829679790884256,
+          "request_session_over_fresh": 1.491095761608802
+        },
+        {
+          "rep": 3,
+          "wall_session_minus_fresh_s": 0.507001768797636,
+          "request_session_minus_fresh_s": 3.5760558750480413,
+          "request_session_over_fresh": 1.791065955573334
+        },
+        {
+          "rep": 4,
+          "wall_session_minus_fresh_s": -0.23008511401712894,
+          "request_session_minus_fresh_s": 0.6693381499499083,
+          "request_session_over_fresh": 1.1052918335692776
+        }
+      ],
+      "median_request_overhead_s": 2.7829679790884256,
+      "min_request_overhead_s": 0.6693381499499083,
+      "max_request_overhead_s": 4.274951707571745,
+      "median_wall_overhead_s": 2.136274065822363
+    },
+    "mmo-n10": {
+      "pairs": [
+        {
+          "rep": 0,
+          "wall_session_minus_fresh_s": 2.268860876560211,
+          "request_session_minus_fresh_s": 2.617449425160885,
+          "request_session_over_fresh": 1.486836766252042
+        },
+        {
+          "rep": 1,
+          "wall_session_minus_fresh_s": 2.1587709933519363,
+          "request_session_minus_fresh_s": 2.57562655210495,
+          "request_session_over_fresh": 1.47470437649602
+        },
+        {
+          "rep": 2,
+          "wall_session_minus_fresh_s": 2.340278970077634,
+          "request_session_minus_fresh_s": 2.725470148026943,
+          "request_session_over_fresh": 1.5083713686364852
+        },
+        {
+          "rep": 3,
+          "wall_session_minus_fresh_s": 2.41113168746233,
+          "request_session_minus_fresh_s": 2.634879359975457,
+          "request_session_over_fresh": 1.4800047193352388
+        },
+        {
+          "rep": 4,
+          "wall_session_minus_fresh_s": 2.3339816723018885,
+          "request_session_minus_fresh_s": 2.6588343530893326,
+          "request_session_over_fresh": 1.4915131813096973
+        }
+      ],
+      "median_request_overhead_s": 2.634879359975457,
+      "min_request_overhead_s": 2.57562655210495,
+      "max_request_overhead_s": 2.725470148026943,
+      "median_wall_overhead_s": 2.3339816723018885
+    },
+    "mmo-n100": {
+      "pairs": [
+        {
+          "rep": 0,
+          "wall_session_minus_fresh_s": 2.415405308827758,
+          "request_session_minus_fresh_s": 2.695674190297723,
+          "request_session_over_fresh": 1.493394068996335
+        },
+        {
+          "rep": 1,
+          "wall_session_minus_fresh_s": 2.599952606484294,
+          "request_session_minus_fresh_s": 2.654465464875102,
+          "request_session_over_fresh": 1.4807262131038075
+        },
+        {
+          "rep": 2,
+          "wall_session_minus_fresh_s": 2.3629150111228228,
+          "request_session_minus_fresh_s": 2.501568591222167,
+          "request_session_over_fresh": 1.454330770474825
+        },
+        {
+          "rep": 3,
+          "wall_session_minus_fresh_s": 2.629531815648079,
+          "request_session_minus_fresh_s": 2.734211605042219,
+          "request_session_over_fresh": 1.506779200851718
+        },
+        {
+          "rep": 4,
+          "wall_session_minus_fresh_s": 2.712952423840761,
+          "request_session_minus_fresh_s": 2.7174882609397173,
+          "request_session_over_fresh": 1.5031208209296039
+        }
+      ],
+      "median_request_overhead_s": 2.695674190297723,
+      "min_request_overhead_s": 2.501568591222167,
+      "max_request_overhead_s": 2.734211605042219,
+      "median_wall_overhead_s": 2.599952606484294
+    }
+  },
+  "independent_validation": {
+    "mmo-n10": "all24histories passed isolated HermiT/JFact audit51985480",
+    "mmo-n1": "timing/receipt evidence only in this diagnosis; independent fullmatrix audit not substituted",
+    "mmo-n100": "timing/receipt evidence only in this diagnosis; independent fullmatrix audit not substituted"
+  },
+  "source_sha256": {
+    "engine/src/source_incremental.rs": "98f1ef6c11ac4163a62ea87647074f9e2bc23eaf6761c2da6050d59a5ab64281",
+    "engine/src/incremental.rs": "3ff390ccdc1902440f387cd05ce604fe0db0c6421095c3c0f287bdedf0c132d7",
+    "engine/src/elcomplete.rs": "b9194635eb83d1880536ba88773fd2ad27ea367d6b5665fd6c200b29a8b27372"
+  }
+}

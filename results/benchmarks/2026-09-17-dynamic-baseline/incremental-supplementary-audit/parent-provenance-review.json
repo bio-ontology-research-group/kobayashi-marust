@@ -1,0 +1,10 @@
+{
+  "panel_and_auditor_match": true,
+  "six_manifest_hashes_match": true,
+  "all_324_measurement_source_hash_maps_match": true,
+  "provenance_archive_sha256": "6b45960c50b8accb4c55b5874766f6c10074d2b4ccbaa84622e0212a63dee112",
+  "limitations": [
+    "Input payload hashes and runtime binaries are not independently rehashed by this check.",
+    "Main taxonomy digests follow the frozen storage policy; full signatures retained in pilots, targeted full reruns required for disagreements."
+  ]
+}

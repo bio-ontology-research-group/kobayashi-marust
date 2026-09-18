@@ -1,0 +1,23 @@
+{
+  "binary_sha256": "680d9002583468e7c68115bf67cb60b89e420339db4c6aa22b5ca802206c8629",
+  "job": "51983366",
+  "results": 592,
+  "checkpoints": 592,
+  "completion_markers": 592,
+  "status": {
+    "ok": 592
+  },
+  "verdict": {
+    "match": 588,
+    "nogold": 2,
+    "consistency_mismatch": 2
+  },
+  "semantic_differences": [],
+  "metrics_population": "All 592 completed runs; includes two without retained external gold",
+  "metrics": {
+    "mean_wall_s": 1.4633064189189189,
+    "mean_peak_mb": 212.40447635135135,
+    "median_wall_s": 0.10494999999999999,
+    "median_peak_mb": 22.75
+  }
+}

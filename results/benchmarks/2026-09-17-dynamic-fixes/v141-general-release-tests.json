@@ -1,0 +1,22 @@
+{
+  "recorded_utc": "2026-09-17T04:41:56.363701+00:00",
+  "status": "passed",
+  "library": {
+    "passed": 2407,
+    "ignored": 8,
+    "filtered_native_checker_tests": 22
+  },
+  "integration_passed": 59,
+  "native_checker_validation": "Separate certification gates; not claimed by this receipt",
+  "completion_marker": "GENERAL_AND_INTEGRATION_RELEASE_TESTS_PASSED",
+  "log_sha256": "910149c4ff2dbbbb894661d54f94daa30a3cc8f5a35025e2a84a3f60572ceca3",
+  "compressed_log_sha256": "1f61132b7011670862538ed51e04da33444a5de089a01b15bc6ba3e192e57f43",
+  "current_source_sha256_matches_routing_certificate": {
+    "engine/Cargo.toml": "96bb8fe5cf3b0f9bfbfeeac770d50f0d1a5399cb72a07b2a58ec659e6f1206ad",
+    "engine/Cargo.lock": "c33cecd3342b36b0687352c3e14d0f6e8aa05e7d4d4a6baa51dbd547a7a33d0c",
+    "engine/src/source_incremental.rs": "98f1ef6c11ac4163a62ea87647074f9e2bc23eaf6761c2da6050d59a5ab64281",
+    "engine/src/frontend/data_abox.rs": "11734ac498f528639e6165e916a4827833e2ae17d2adf048db651e0db1a8f646",
+    "engine/src/frontend/mod.rs": "318a57389f5f77d9a1e1774dddb9696e2f6d819fc1b957ed42904c9cec4b4752"
+  },
+  "script_sha256": "1263455ae95822fd312dcf2da3a4ed7815cbaa9b92df9b04b36868612b906571"
+}

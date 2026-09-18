@@ -1,0 +1,142 @@
+{
+  "purpose": "Mechanism diagnosis only; not a benchmark replacement",
+  "task": {
+    "ontology": "mfomd",
+    "query_id": "q000",
+    "query_hash": "00ad80c85b69b651d45363a55219c1f0ea4d84c6271b5d95a42432590564908c",
+    "track": "module",
+    "input": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-panel-v2/mfomd/modules/q000.ofn",
+    "sha256": "253a657dc7cf3be9f77ba4c4e92108ca705a57f10e93522e439f7ba59e778e1f",
+    "sub": "http://purl.obolibrary.org/obo/GO_0044741",
+    "super": "http://purl.obolibrary.org/obo/OGMS_0000060",
+    "el": false,
+    "limits": [
+      1,
+      10,
+      100
+    ],
+    "library": true,
+    "repetition": 1,
+    "warmup": false,
+    "driver_manifest": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-main/driver-manifest.json",
+    "driver_manifest_sha256": "48ac78980a602c0988d57317701c304e0d52a38d276dd40ad0c54db88e8e9250",
+    "km": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex",
+    "konclude": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/konclude_oracle.py",
+    "runtime": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes",
+    "classes": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-main/classes",
+    "arms": [
+      "km-native",
+      "km-common"
+    ],
+    "baseline_task_sha256": "0a4f05fe417f476dd0f64f1ed1cb5ce8a4aa83c2fa289ed4dec84f6f81129fb3",
+    "baseline_driver_manifest_sha256": "48d87bd8bdbbc5f5e1db6ae50f09a2d0f703baa50ad85fcb9fa50ede68ab13ac",
+    "final_version": "1.4.2"
+  },
+  "binary_sha256": "705cac1500018d18018ca4d5482a7451e836091b26648453824afa4b36d16fdb",
+  "rows": [
+    {
+      "cap_s": 1,
+      "elapsed_s": 1.0471159908920527,
+      "exit_code": 1,
+      "stderr": "explanation failed: classification oracle: worker engine exited -1: \n",
+      "command": [
+        "timeout",
+        "-k",
+        "2",
+        "15",
+        "/ibex/user/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex",
+        "explain",
+        "--max-axioms",
+        "1000000",
+        "--max-source-bytes",
+        "1073741824",
+        "--max-checks",
+        "10000000",
+        "--max-justifications",
+        "1",
+        "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-panel-v2/mfomd/modules/q000.ofn",
+        "subclass",
+        "http://purl.obolibrary.org/obo/GO_0044741",
+        "http://purl.obolibrary.org/obo/OGMS_0000060"
+      ]
+    },
+    {
+      "cap_s": 2,
+      "elapsed_s": 2.0543292239308357,
+      "exit_code": 1,
+      "stderr": "explanation failed: classification oracle: worker engine exited -1: \n",
+      "command": [
+        "timeout",
+        "-k",
+        "2",
+        "15",
+        "/ibex/user/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex",
+        "explain",
+        "--max-axioms",
+        "1000000",
+        "--max-source-bytes",
+        "1073741824",
+        "--max-checks",
+        "10000000",
+        "--max-justifications",
+        "1",
+        "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-panel-v2/mfomd/modules/q000.ofn",
+        "subclass",
+        "http://purl.obolibrary.org/obo/GO_0044741",
+        "http://purl.obolibrary.org/obo/OGMS_0000060"
+      ]
+    },
+    {
+      "cap_s": 1,
+      "elapsed_s": 1.0508221313357353,
+      "exit_code": 1,
+      "stderr": "explanation failed: classification oracle: worker engine exited -1: \n",
+      "command": [
+        "timeout",
+        "-k",
+        "2",
+        "15",
+        "/ibex/user/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex",
+        "explain",
+        "--max-axioms",
+        "1000000",
+        "--max-source-bytes",
+        "1073741824",
+        "--max-checks",
+        "10000000",
+        "--max-justifications",
+        "1",
+        "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-panel-v2/mfomd/modules/q000.ofn",
+        "subclass",
+        "http://purl.obolibrary.org/obo/GO_0044741",
+        "http://purl.obolibrary.org/obo/OGMS_0000060"
+      ]
+    },
+    {
+      "cap_s": 2,
+      "elapsed_s": 2.0596030596643686,
+      "exit_code": 1,
+      "stderr": "explanation failed: classification oracle: worker engine exited -1: \n",
+      "command": [
+        "timeout",
+        "-k",
+        "2",
+        "15",
+        "/ibex/user/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex",
+        "explain",
+        "--max-axioms",
+        "1000000",
+        "--max-source-bytes",
+        "1073741824",
+        "--max-checks",
+        "10000000",
+        "--max-justifications",
+        "1",
+        "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-panel-v2/mfomd/modules/q000.ofn",
+        "subclass",
+        "http://purl.obolibrary.org/obo/GO_0044741",
+        "http://purl.obolibrary.org/obo/OGMS_0000060"
+      ]
+    }
+  ]
+}

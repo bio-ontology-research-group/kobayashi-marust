@@ -1,0 +1,8 @@
+{
+  "status": "pass",
+  "archive_sha256": "00cfce05ec71e67ff086247befc5ed9a1657e784df20fc53eedaa0fc79cf35f7",
+  "audit_sha256": "e7bd1b642fe11b00545f1f36d50384e7ecfed609a1e050480d553f8e2eb8316d",
+  "archived_files": 56,
+  "measurement_bindings": 288,
+  "input_hash_receipt_bindings": 6024
+}

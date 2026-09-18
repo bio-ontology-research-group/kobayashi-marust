@@ -1,0 +1,13 @@
+{
+  "job": 51984652,
+  "root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/incremental-final-report-v2",
+  "dependency_audits": [
+    51982323,
+    51982376,
+    51983839
+  ],
+  "previous_report_job_preserved": 51983962,
+  "scope": "post-run direct failure evidence sidecar and comparison; raw baseline/candidate records unchanged",
+  "local_tests_passed": 30,
+  "scheduling_receipt": "scheduling-amendment.json"
+}

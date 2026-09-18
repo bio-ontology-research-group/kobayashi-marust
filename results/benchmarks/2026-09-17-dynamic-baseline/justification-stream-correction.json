@@ -1,0 +1,9 @@
+{
+  "observed_utc": "2026-09-17T08:01:23.576632+00:00",
+  "old_source_sha256": "6f9479c31cea09763ff40b5130f136cbf9ad464d0ee4e4c018a86c4596d50d78",
+  "new_source_sha256": "cad158f080405b81eca6c5e562d53e1b36b76d242dab0f39ec31a5e7acf77901",
+  "runtime_sha256": "59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c",
+  "regression": "pinned Jackson closes live stream before EOF; readAllBytes drains first",
+  "scope": "Harness only; no KM semantic change. Frozen remote v3 untouched. Corrected measurements must use new driver manifests and separate report strata.",
+  "planned_rerun_scope": "All KM common-driver attempts for both baseline and final binaries on original and supplementary panels, all bounds and repetitions. Preserve original attempts; do not rerun only failures. Other arms unchanged."
+}

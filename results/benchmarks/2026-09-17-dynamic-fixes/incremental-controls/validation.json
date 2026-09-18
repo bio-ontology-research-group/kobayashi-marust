@@ -1,0 +1,3769 @@
+{
+  "candidate_build": {
+    "source_archive_sha256": "9a77671d75ed4d72e5cf4786610da1daeedb4054058e9b7c13177d10e691204d",
+    "binary_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+    "host": "cn506-11-l",
+    "slurm_job_id": "51982442",
+    "Z": "complete"
+  },
+  "build_receipt_sha256": "2877afdc1deedffc0bf5ab077c539b38f765de1b21c3e3a2abce8b8a0e59c1d9",
+  "validation_sha256": "482f97c9ee2f0f256572ef04377125a02a791a8fdc37504d43822dea18c05752",
+  "original_runner_sha256": "3625f8ea28a7ec5fc16940c83b3f95d01a3902e0fded87295525b6706f570197",
+  "pinned_runner_sha256": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+  "scope": "experimental controls before Lean certification",
+  "cases": {
+    "additions": {
+      "session": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/additions/km/rep-0/session",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "7cc131cfa17437b18f671c9ad5fc0432668107eceeba46ca0ae8ec05c63fcdf5",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "b896680bc435fb756cad9b711eaf820bc87def83625c0aa183c8dbc9244c332b",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 3
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "e175961762e13312c5e4de7bef97c8815f4340e1885de8d849d1d72d8e7bd1cd",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 6
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "dd0290390a482697fb3d0da6311b2482e2906fb12a8281640955cb7dcf47b62c",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 10
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "5": {
+              "sha256": "ad66ca61f983447003f682fa15a05649b83a2b4f6deec44361d99c3dba40fafa",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 15
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "6": {
+              "sha256": "b3b28566da44d4ae473475f422c4dd4e91aeece6a471325c2d338d7a8ee8ecb7",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 21
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "7": {
+              "sha256": "68ec439bf6fc99fd94be1cb1daca2817dbf15ce67facc3a7568278ce9940264f",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 28
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "8": {
+              "sha256": "499184cb3ec2d9864f3017c51969c606c969eb380ad7f1029daf68a96eee594e",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 36
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "9": {
+              "sha256": "bf66f3edd55afa74f7bfba5febfc63ea0f9fab10d8d7a7fe65abbdc69fca6ea0",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 45
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "10": {
+              "sha256": "10ca715bf187ccbd0f32474bcb4c48db3d03e2367c5411fbdedb6d916d054f6e",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 55
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "11": {
+              "sha256": "9fa6d76f7ecbc45f8abe521152394777c41bce403e235c44f16cc800e7fee983",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 66
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "12": {
+              "sha256": "491eb31559663e910f9b15ec85eeca209a995181b619b98f752427d86692a169",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 78
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "13": {
+              "sha256": "e42c15be54e25a959af24587f00c04d2d516b8ce5e004ee350df58ef71a4b7be",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 91
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "14": {
+              "sha256": "fef6aec62370890d230947051445bb2113806d848c69e82e8313728622f0a0eb",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 105
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "15": {
+              "sha256": "2d1921422d19f04fc9421d37f4c0007de2b09dad72db14dbb77628b54f61c5f7",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 120
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "16": {
+              "sha256": "267d2841e4c064be33ccbf43ad768ca81ee467c8dc905112e43b4654376c0017",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 136
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "17": {
+              "sha256": "e32afd305b3fec2d548084ef08d5676df00ad5553e1a88f19c8ff5fa5d169c0f",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 153
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "18": {
+              "sha256": "a6627e3012079b487bf09c2cdbc160a15202e4585a326a65491b132a231dd132",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 171
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "19": {
+              "sha256": "7d7758759a299976d1d13b55fa0e8fdcc76f908786ca940ab9e24cfbd2b86229",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 190
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "20": {
+              "sha256": "38ac903afa5759d4e34ccc93db5f61709d28257672d674070a40f913eeb7b3eb",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 210
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 5,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 2,
+              "removed_rules": 0,
+              "retained_states": 38,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 38,
+              "revision": 1,
+              "route_after": "elc",
+              "route_before": "production_all",
+              "route_migrated": true,
+              "strategy": "el_delta",
+              "sha256": "bd560dbbc8755b3d493e9ed8afc5a8cec08ff9ed589e0dfd70c49f19bce5ed85",
+              "retained_backend": true
+            },
+            "2": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 9,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 36,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 36,
+              "revision": 2,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "1d34b53292dea146d39ecd0357b31ea307f25e36340b89eae032a7a1b637662f",
+              "retained_backend": true
+            },
+            "3": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 14,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 34,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 34,
+              "revision": 3,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "5e793bd31d40848f34be209621a4e9dfa5ed7bebe49b438acd4cca9e5227fef1",
+              "retained_backend": true
+            },
+            "4": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 20,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 32,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 32,
+              "revision": 4,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "49f110e95dc70e6eeb663e9279815ccaa6c23a4adc8268fddbc0ec21d18f010d",
+              "retained_backend": true
+            },
+            "5": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 27,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 30,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 30,
+              "revision": 5,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "8a45da2ce69b0e0a1f85b62a3ae594962a25a0244c4d1e7951bb8d843a629df8",
+              "retained_backend": true
+            },
+            "6": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 35,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 28,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 28,
+              "revision": 6,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "1125d64cb2df315cddb15087d21754f04fc6205aa72cc7a829b5305d9ebb4bf8",
+              "retained_backend": true
+            },
+            "7": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 44,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 26,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 26,
+              "revision": 7,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "be0c53408f84c29617c7247420b326a13ff1092fca96a4da48a27ab878ed40cc",
+              "retained_backend": true
+            },
+            "8": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 54,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 24,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 24,
+              "revision": 8,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "5d2dd17ebe1ac362a4135e5faf90e4beff6f457a73896b822951d5dba61b0d9c",
+              "retained_backend": true
+            },
+            "9": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 65,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 22,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 22,
+              "revision": 9,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "410d8bb99748b36c18bcc369cc4c0c05ea156d6d471f46bd7c6c80393283577a",
+              "retained_backend": true
+            },
+            "10": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 77,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 20,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 20,
+              "revision": 10,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "e9aa7b85e85ffc1ce74695451198d55bbecc98e449f2a53459ae66caec4391d0",
+              "retained_backend": true
+            },
+            "11": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 90,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 18,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 18,
+              "revision": 11,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "6c818a7c3a1190062fce4dfb562a38a8d86012d5cdb12079bfe0f3bcf4e58ede",
+              "retained_backend": true
+            },
+            "12": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 104,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 16,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 16,
+              "revision": 12,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "19ed5b81d3602c653990479d32c58ae3fd4ba2605bdba308712bc9c7624d6038",
+              "retained_backend": true
+            },
+            "13": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 119,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 14,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 14,
+              "revision": 13,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "4a36a3bf563bc52d865734db585e7bd4e11bbf78535e3945114ccf91ab205b32",
+              "retained_backend": true
+            },
+            "14": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 135,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 12,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 12,
+              "revision": 14,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "54a2b119f5303cdd69e466641bcc734aa6e55a96493e3f15a27b28b63a478dc9",
+              "retained_backend": true
+            },
+            "15": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 152,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 10,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 10,
+              "revision": 15,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "e4514419cc72005fa3a4e5e186fa6d1edc840321c3dba3d9681b9e321728c05c",
+              "retained_backend": true
+            },
+            "16": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 170,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 8,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 8,
+              "revision": 16,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "22121d9e4030001e8a379f4784e30c2c87691912603f211d7d37c5de511ed2a0",
+              "retained_backend": true
+            },
+            "17": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 189,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 6,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 6,
+              "revision": 17,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "5c9f3cf68ccfd9ce2458a52f06606ac53b61bc3ca053ade4f297033fe6fd114a",
+              "retained_backend": true
+            },
+            "18": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 209,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 4,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 4,
+              "revision": 18,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "898d23bfa80ccd80689f9032b614d6f5148cbab5747755b9d06263bf600cd297",
+              "retained_backend": true
+            },
+            "19": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 230,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 2,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 2,
+              "revision": 19,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "b930b3e671d2606bec4b93ee4b7bb11e7721751a22dbfb01714d994446554083",
+              "retained_backend": true
+            },
+            "20": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 252,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 20,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "6e25f663e74bcc0fd009a201f95a086f19fccb7e068d134e1cbda7b15cc43521",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "session",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/additions/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/additions/km/rep-0/session",
+              "session"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "6ea521db654a73d91caf08b9cbe39457638e70586d856100011b728fae7bbd4c",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 21,
+            "start_epoch": 1789618606.8363738,
+            "rc": 0,
+            "wall_s": 0.24008078686892986,
+            "peak_mib": 18.75,
+            "completed_states": 21
+          },
+          "measurement_sha256": "dec0ea3d7123a3649b9f68b7f7b47673535dd19866ddd64b98a8e02d09cb98bf",
+          "status": "ok",
+          "timings": {
+            "sha256": "3dad1538f045d4dd79bde9c50d78389df926cd5dc427c85d192f102d604de059",
+            "rows": 21,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.017041271552443504,
+                "update_sum_s": 0.021501602604985237,
+                "total_s": 0.03854287415742874
+              },
+              "canonicalize_s": {
+                "initial_s": 0.0002928487956523895,
+                "update_sum_s": 0.007899969816207886,
+                "total_s": 0.008192818611860275
+              }
+            },
+            "issues": []
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 1,
+              "el_delta": 19,
+              "exact_rebuild": 1
+            },
+            "routes": {
+              "production_all": 1,
+              "elc": 20
+            },
+            "reuse": {
+              "meaningful_incremental_update": 19,
+              "reused_fixpoint": 19,
+              "route_migrated": 1,
+              "retained_states": 380,
+              "reused_edges": 0,
+              "reused_subsumptions": 380,
+              "invalidated_states": 2000
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "f381297aa622bf994c89787da6ea96b553504c877bdb7be005dbafb2d5104c2c",
+          "jfact": "9c364c66a73ad5b7aa47d2aaa59308e1f933044d0e34c21100b3124aae3c43f1"
+        }
+      },
+      "fresh": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/additions/km/rep-0/fresh",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "7cc131cfa17437b18f671c9ad5fc0432668107eceeba46ca0ae8ec05c63fcdf5",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "b896680bc435fb756cad9b711eaf820bc87def83625c0aa183c8dbc9244c332b",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 3
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "e175961762e13312c5e4de7bef97c8815f4340e1885de8d849d1d72d8e7bd1cd",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 6
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "dd0290390a482697fb3d0da6311b2482e2906fb12a8281640955cb7dcf47b62c",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 10
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "5": {
+              "sha256": "ad66ca61f983447003f682fa15a05649b83a2b4f6deec44361d99c3dba40fafa",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 15
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "6": {
+              "sha256": "b3b28566da44d4ae473475f422c4dd4e91aeece6a471325c2d338d7a8ee8ecb7",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 21
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "7": {
+              "sha256": "68ec439bf6fc99fd94be1cb1daca2817dbf15ce67facc3a7568278ce9940264f",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 28
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "8": {
+              "sha256": "499184cb3ec2d9864f3017c51969c606c969eb380ad7f1029daf68a96eee594e",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 36
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "9": {
+              "sha256": "bf66f3edd55afa74f7bfba5febfc63ea0f9fab10d8d7a7fe65abbdc69fca6ea0",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 45
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "10": {
+              "sha256": "10ca715bf187ccbd0f32474bcb4c48db3d03e2367c5411fbdedb6d916d054f6e",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 55
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "11": {
+              "sha256": "9fa6d76f7ecbc45f8abe521152394777c41bce403e235c44f16cc800e7fee983",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 66
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "12": {
+              "sha256": "491eb31559663e910f9b15ec85eeca209a995181b619b98f752427d86692a169",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 78
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "13": {
+              "sha256": "e42c15be54e25a959af24587f00c04d2d516b8ce5e004ee350df58ef71a4b7be",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 91
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "14": {
+              "sha256": "fef6aec62370890d230947051445bb2113806d848c69e82e8313728622f0a0eb",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 105
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "15": {
+              "sha256": "2d1921422d19f04fc9421d37f4c0007de2b09dad72db14dbb77628b54f61c5f7",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 120
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "16": {
+              "sha256": "267d2841e4c064be33ccbf43ad768ca81ee467c8dc905112e43b4654376c0017",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 136
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "17": {
+              "sha256": "e32afd305b3fec2d548084ef08d5676df00ad5553e1a88f19c8ff5fa5d169c0f",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 153
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "18": {
+              "sha256": "a6627e3012079b487bf09c2cdbc160a15202e4585a326a65491b132a231dd132",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 171
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "19": {
+              "sha256": "7d7758759a299976d1d13b55fa0e8fdcc76f908786ca940ab9e24cfbd2b86229",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 190
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "20": {
+              "sha256": "38ac903afa5759d4e34ccc93db5f61709d28257672d674070a40f913eeb7b3eb",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 210
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "2": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "3": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "4": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "5": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "6": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "7": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "8": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "9": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "10": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "11": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "12": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "13": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "14": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "15": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "16": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "17": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "18": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "19": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "20": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "fresh",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/additions/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/additions/km/rep-0/fresh",
+              "fresh"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "6ea521db654a73d91caf08b9cbe39457638e70586d856100011b728fae7bbd4c",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 21,
+            "start_epoch": 1789618607.2544343,
+            "rc": 0,
+            "wall_s": 0.22876704297959805,
+            "peak_mib": 17.5,
+            "completed_states": 21
+          },
+          "measurement_sha256": "38059d77384c952dc158bcd7faa44c5b145123ffe8a133da6dd3f1aba6ceb20e",
+          "status": "ok",
+          "timings": {
+            "sha256": "a20d7fcf53a2a27b5e616c7fbdf27b85036d5c480d5570c8932f0d0fa01e3d5d",
+            "rows": 21,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.003343965858221054,
+                "update_sum_s": 0.01264038123190403,
+                "total_s": 0.015984347090125084
+              },
+              "canonicalize_s": {
+                "initial_s": 0.00023915618658065796,
+                "update_sum_s": 0.00789758563041687,
+                "total_s": 0.008136741816997528
+              }
+            },
+            "issues": []
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 21
+            },
+            "routes": {
+              "production_all": 1,
+              "elc": 20
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 0
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "f381297aa622bf994c89787da6ea96b553504c877bdb7be005dbafb2d5104c2c",
+          "jfact": "9c364c66a73ad5b7aa47d2aaa59308e1f933044d0e34c21100b3124aae3c43f1"
+        }
+      }
+    },
+    "deletions": {
+      "session": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/deletions/km/rep-0/session",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "38ac903afa5759d4e34ccc93db5f61709d28257672d674070a40f913eeb7b3eb",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 210
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "7d7758759a299976d1d13b55fa0e8fdcc76f908786ca940ab9e24cfbd2b86229",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 190
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "a6627e3012079b487bf09c2cdbc160a15202e4585a326a65491b132a231dd132",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 171
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "e32afd305b3fec2d548084ef08d5676df00ad5553e1a88f19c8ff5fa5d169c0f",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 153
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "267d2841e4c064be33ccbf43ad768ca81ee467c8dc905112e43b4654376c0017",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 136
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "5": {
+              "sha256": "2d1921422d19f04fc9421d37f4c0007de2b09dad72db14dbb77628b54f61c5f7",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 120
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "6": {
+              "sha256": "fef6aec62370890d230947051445bb2113806d848c69e82e8313728622f0a0eb",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 105
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "7": {
+              "sha256": "e42c15be54e25a959af24587f00c04d2d516b8ce5e004ee350df58ef71a4b7be",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 91
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "8": {
+              "sha256": "491eb31559663e910f9b15ec85eeca209a995181b619b98f752427d86692a169",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 78
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "9": {
+              "sha256": "9fa6d76f7ecbc45f8abe521152394777c41bce403e235c44f16cc800e7fee983",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 66
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "10": {
+              "sha256": "10ca715bf187ccbd0f32474bcb4c48db3d03e2367c5411fbdedb6d916d054f6e",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 55
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "11": {
+              "sha256": "bf66f3edd55afa74f7bfba5febfc63ea0f9fab10d8d7a7fe65abbdc69fca6ea0",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 45
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "12": {
+              "sha256": "499184cb3ec2d9864f3017c51969c606c969eb380ad7f1029daf68a96eee594e",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 36
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "13": {
+              "sha256": "68ec439bf6fc99fd94be1cb1daca2817dbf15ce67facc3a7568278ce9940264f",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 28
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "14": {
+              "sha256": "b3b28566da44d4ae473475f422c4dd4e91aeece6a471325c2d338d7a8ee8ecb7",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 21
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "15": {
+              "sha256": "ad66ca61f983447003f682fa15a05649b83a2b4f6deec44361d99c3dba40fafa",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 15
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "16": {
+              "sha256": "dd0290390a482697fb3d0da6311b2482e2906fb12a8281640955cb7dcf47b62c",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 10
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "17": {
+              "sha256": "e175961762e13312c5e4de7bef97c8815f4340e1885de8d849d1d72d8e7bd1cd",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 6
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "18": {
+              "sha256": "b896680bc435fb756cad9b711eaf820bc87def83625c0aa183c8dbc9244c332b",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 3
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "19": {
+              "sha256": "7cc131cfa17437b18f671c9ad5fc0432668107eceeba46ca0ae8ec05c63fcdf5",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "20": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 232,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 1,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "c8d61a39acd3299c17683560c11c832b99fe41b8f58ea643ded9abc7c39347c3",
+              "retained_backend": true
+            },
+            "2": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 211,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 2,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 2,
+              "revision": 2,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "cb6bd7f8bf442914f94dce729bd1d7f2ff265cc6fbb8bb41e9360afd1834aa63",
+              "retained_backend": true
+            },
+            "3": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 191,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 4,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 4,
+              "revision": 3,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "2b8b316bb5ce539773adeb99ff3123b121b87efb77924408de9bb3befd2f11f0",
+              "retained_backend": true
+            },
+            "4": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 172,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 6,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 6,
+              "revision": 4,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "67e7b550c5dda961c00e997f2f7484cdb9ca27c668402c07f135e878f372b17d",
+              "retained_backend": true
+            },
+            "5": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 154,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 8,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 8,
+              "revision": 5,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "aa18f19a6a2276f225fd86084d0e118feafd9861df8329ec65f32371d0dd1aa5",
+              "retained_backend": true
+            },
+            "6": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 137,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 10,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 10,
+              "revision": 6,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "54dc5a269052854c7cef21e1e632d7d1050ffaaf729167120ca961d274b2ded6",
+              "retained_backend": true
+            },
+            "7": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 121,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 12,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 12,
+              "revision": 7,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "bc1b299c048748cf629467562df2b5fc27bbda7622fe5d0047628c90dbdf06ff",
+              "retained_backend": true
+            },
+            "8": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 106,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 14,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 14,
+              "revision": 8,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "28358a7643293b90f6e95a5a177b129f62c2ef01f10d8b24b95446772393ca25",
+              "retained_backend": true
+            },
+            "9": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 92,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 16,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 16,
+              "revision": 9,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "2f027969f1262efed157ce89937778fe47a1d26e018cbec61a6cf1480cf8febf",
+              "retained_backend": true
+            },
+            "10": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 79,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 18,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 18,
+              "revision": 10,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "8e51c0f8aeadf077b20deb1393763139d3d0ba8d80490931adee29fd74faba8b",
+              "retained_backend": true
+            },
+            "11": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 67,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 20,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 20,
+              "revision": 11,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "6f8b40aea5f23cbedcd9574228ee2e0d9726b5715b5b55e538870894b4c0cb68",
+              "retained_backend": true
+            },
+            "12": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 56,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 22,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 22,
+              "revision": 12,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "35913657235800f20c10222d5e989e27c07e115f02d0651bd5c23c551332715b",
+              "retained_backend": true
+            },
+            "13": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 46,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 24,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 24,
+              "revision": 13,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "736a0e80242933a11d05cd7689b8a37f4758eaa12119d145250305b6a89e2f29",
+              "retained_backend": true
+            },
+            "14": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 37,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 26,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 26,
+              "revision": 14,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "586dd85ff17593c646578de371a108144423c5d54dd672e7e7e5ef2d754b139d",
+              "retained_backend": true
+            },
+            "15": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 29,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 28,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 28,
+              "revision": 15,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "00f30937c51e6f893c2445cdfd8cbc950aaa22a4cbe6d43a6483eddffc4d6c11",
+              "retained_backend": true
+            },
+            "16": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 22,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 30,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 30,
+              "revision": 16,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "7cdd3b07acbbea0dfac7587853ee3419f6df31f1db4c0d62b2ae206a11ca0f78",
+              "retained_backend": true
+            },
+            "17": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 16,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 32,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 32,
+              "revision": 17,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "e0e6b51398447ac87c54c9765f47053f4db97c065a77bfccb6a9787e118e831d",
+              "retained_backend": true
+            },
+            "18": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 11,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 34,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 34,
+              "revision": 18,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "7246cb2290d7441d4fcb3fc2db9943f373ba7cb7328f4fbdfbaa4a897118b8be",
+              "retained_backend": true
+            },
+            "19": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 7,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 36,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 36,
+              "revision": 19,
+              "route_after": "elc",
+              "route_before": "elc",
+              "route_migrated": false,
+              "strategy": "el_delta",
+              "sha256": "a7589039b0fbab43124d7ce1bcdba56651a8690f6ad25a5e09b4646a1a92f4bb",
+              "retained_backend": true
+            },
+            "20": {
+              "added_normalized_clauses": 2,
+              "added_rules": 0,
+              "invalidated_states": 4,
+              "meaningful_incremental_update": true,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 38,
+              "reused_edges": 0,
+              "reused_fixpoint": true,
+              "reused_subsumptions": 38,
+              "revision": 20,
+              "route_after": "production_all",
+              "route_before": "elc",
+              "route_migrated": true,
+              "strategy": "el_delta",
+              "sha256": "5a2801cb7771aab0ab58ec2763c5b23d01f1d0514d50f454962c601b4d684cd8",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "session",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/deletions/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/deletions/km/rep-0/session",
+              "session"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "3281aca5d5cd0303add858dd9f6030872b539d5f29ee298b719885d8363bfb93",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 21,
+            "start_epoch": 1789618607.7182097,
+            "rc": 0,
+            "wall_s": 0.23629392869770527,
+            "peak_mib": 18.125,
+            "completed_states": 21
+          },
+          "measurement_sha256": "22869bc7774f0c0e4b7fa06ee85f878326dc9a514f1d80294d59f2e741f7cfac",
+          "status": "ok",
+          "timings": {
+            "sha256": "ad075cf8cc310402c8800b1d2ae06d0b40a7e4e72e5467b906c3e8e2c67e6a97",
+            "rows": 21,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.0035554151982069016,
+                "update_sum_s": 0.02029261365532875,
+                "total_s": 0.023848028853535652
+              },
+              "canonicalize_s": {
+                "initial_s": 0.0006922483444213867,
+                "update_sum_s": 0.007356397807598114,
+                "total_s": 0.0080486461520195
+              }
+            },
+            "issues": []
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 1,
+              "exact_rebuild": 1,
+              "el_delta": 19
+            },
+            "routes": {
+              "elc": 20,
+              "production_all": 1
+            },
+            "reuse": {
+              "meaningful_incremental_update": 19,
+              "reused_fixpoint": 19,
+              "route_migrated": 1,
+              "retained_states": 380,
+              "reused_edges": 0,
+              "reused_subsumptions": 380,
+              "invalidated_states": 1790
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "5526dd4a27be47d8b0f5acab83b7d74515e5e5248596518595d3c4f2f37adee0",
+          "jfact": "efbe86955c6f6d54a2b07082e10d676d2d1818331b1ecb888efed3a01ef24904"
+        }
+      },
+      "fresh": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/deletions/km/rep-0/fresh",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "38ac903afa5759d4e34ccc93db5f61709d28257672d674070a40f913eeb7b3eb",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 210
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "7d7758759a299976d1d13b55fa0e8fdcc76f908786ca940ab9e24cfbd2b86229",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 190
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "a6627e3012079b487bf09c2cdbc160a15202e4585a326a65491b132a231dd132",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 171
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "e32afd305b3fec2d548084ef08d5676df00ad5553e1a88f19c8ff5fa5d169c0f",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 153
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "267d2841e4c064be33ccbf43ad768ca81ee467c8dc905112e43b4654376c0017",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 136
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "5": {
+              "sha256": "2d1921422d19f04fc9421d37f4c0007de2b09dad72db14dbb77628b54f61c5f7",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 120
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "6": {
+              "sha256": "fef6aec62370890d230947051445bb2113806d848c69e82e8313728622f0a0eb",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 105
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "7": {
+              "sha256": "e42c15be54e25a959af24587f00c04d2d516b8ce5e004ee350df58ef71a4b7be",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 91
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "8": {
+              "sha256": "491eb31559663e910f9b15ec85eeca209a995181b619b98f752427d86692a169",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 78
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "9": {
+              "sha256": "9fa6d76f7ecbc45f8abe521152394777c41bce403e235c44f16cc800e7fee983",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 66
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "10": {
+              "sha256": "10ca715bf187ccbd0f32474bcb4c48db3d03e2367c5411fbdedb6d916d054f6e",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 55
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "11": {
+              "sha256": "bf66f3edd55afa74f7bfba5febfc63ea0f9fab10d8d7a7fe65abbdc69fca6ea0",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 45
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "12": {
+              "sha256": "499184cb3ec2d9864f3017c51969c606c969eb380ad7f1029daf68a96eee594e",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 36
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "13": {
+              "sha256": "68ec439bf6fc99fd94be1cb1daca2817dbf15ce67facc3a7568278ce9940264f",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 28
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "14": {
+              "sha256": "b3b28566da44d4ae473475f422c4dd4e91aeece6a471325c2d338d7a8ee8ecb7",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 21
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "15": {
+              "sha256": "ad66ca61f983447003f682fa15a05649b83a2b4f6deec44361d99c3dba40fafa",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 15
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "16": {
+              "sha256": "dd0290390a482697fb3d0da6311b2482e2906fb12a8281640955cb7dcf47b62c",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 10
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "17": {
+              "sha256": "e175961762e13312c5e4de7bef97c8815f4340e1885de8d849d1d72d8e7bd1cd",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 6
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "18": {
+              "sha256": "b896680bc435fb756cad9b711eaf820bc87def83625c0aa183c8dbc9244c332b",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 3
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "19": {
+              "sha256": "7cc131cfa17437b18f671c9ad5fc0432668107eceeba46ca0ae8ec05c63fcdf5",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "20": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "2": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "3": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "4": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "5": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "6": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "7": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "8": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "9": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "10": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "11": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "12": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "13": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "14": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "15": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "16": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "17": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "18": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "19": {
+              "sha256": "f3b074349436a10fca369b97572c0e268dcc49203fbae7f9b3d9ed6cb6733100",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "20": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "fresh",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/deletions/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/deletions/km/rep-0/fresh",
+              "fresh"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "3281aca5d5cd0303add858dd9f6030872b539d5f29ee298b719885d8363bfb93",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 21,
+            "start_epoch": 1789618608.125221,
+            "rc": 0,
+            "wall_s": 0.23175358772277832,
+            "peak_mib": 17.5,
+            "completed_states": 21
+          },
+          "measurement_sha256": "503bb519214c0eec68b7fce177b0c0d9b717c9851a270b39b830dffda61ccf6c",
+          "status": "ok",
+          "timings": {
+            "sha256": "f227a1aeb3ac5efee9dc9b1555e5f50a77ed90574ef5925cfadb5ddec0af8423",
+            "rows": 21,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.0032060407102108,
+                "update_sum_s": 0.02259676903486252,
+                "total_s": 0.02580280974507332
+              },
+              "canonicalize_s": {
+                "initial_s": 0.0006982479244470596,
+                "update_sum_s": 0.007414005696773529,
+                "total_s": 0.008112253621220589
+              }
+            },
+            "issues": []
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 21
+            },
+            "routes": {
+              "elc": 20,
+              "production_all": 1
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 0
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "5526dd4a27be47d8b0f5acab83b7d74515e5e5248596518595d3c4f2f37adee0",
+          "jfact": "efbe86955c6f6d54a2b07082e10d676d2d1818331b1ecb888efed3a01ef24904"
+        }
+      }
+    },
+    "rbox": {
+      "session": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/rbox/km/rep-0/session",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "dc529ca070eaf0a783e7fa6f91419cb4822ebb7b0150cbc7ca445adf6b5e2554",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "dc529ca070eaf0a783e7fa6f91419cb4822ebb7b0150cbc7ca445adf6b5e2554",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "added_normalized_clauses": 2,
+              "added_rules": 0,
+              "invalidated_states": 14,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 1,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "e3fb37210557edbb8913beedb3a785157472ac51d70d542912066f7c10e4670c",
+              "retained_backend": true
+            },
+            "2": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 4,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 2,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 2,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "bc4896986cd9e947fec8c28b7f577348fcc683f5830d8bedc30b195db4f2fd2b",
+              "retained_backend": true
+            },
+            "3": {
+              "added_normalized_clauses": 2,
+              "added_rules": 0,
+              "invalidated_states": 4,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 3,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "f70e18b5f1746c1a69c943176ac3dc5fb56a45d50d4db918850a91b92d907ef4",
+              "retained_backend": true
+            },
+            "4": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 4,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 2,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 4,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "75af880f05c31ce1f0057b0b616c97da0319c2e63eb6a2c55fc6bb93b0d3c1c8",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "session",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/rbox/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/rbox/km/rep-0/session",
+              "session"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "f9991462793cfb762523f6a31803276a61f62aacd90826ba690a446005d3f8fb",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 5,
+            "start_epoch": 1789618608.5540426,
+            "rc": 0,
+            "wall_s": 0.15561799705028534,
+            "peak_mib": 20.9375,
+            "completed_states": 5
+          },
+          "measurement_sha256": "810c2900a6ce0d7d1e8d054040d741f192c14c409595327c4a2d01cfac5845e6",
+          "status": "ok",
+          "timings": {
+            "sha256": "4826d37280e3ce38487468483c675c67b242d74d2b5e4a1b5a240e4e8870a9ae",
+            "rows": 5,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.0031407028436660767,
+                "update_sum_s": 0.004110995680093765,
+                "total_s": 0.007251698523759842
+              },
+              "canonicalize_s": {
+                "initial_s": 0.00011272542178630829,
+                "update_sum_s": 0.0003741644322872162,
+                "total_s": 0.0004868898540735245
+              }
+            },
+            "issues": []
+          },
+          "analytic_restoration": {
+            "2": true,
+            "4": true
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 1,
+              "exact_rebuild": 4
+            },
+            "routes": {
+              "production_all": 5
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 26
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "f33dc38d37c0967330e475569efd2b49bc722ff18e415196bc61175e542b077c",
+          "jfact": "6fa6e9db18f3e0d1bccd684f0367a6ab9da5f99de360507b46484594f4e45e72"
+        }
+      },
+      "fresh": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/rbox/km/rep-0/fresh",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "dc529ca070eaf0a783e7fa6f91419cb4822ebb7b0150cbc7ca445adf6b5e2554",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "dc529ca070eaf0a783e7fa6f91419cb4822ebb7b0150cbc7ca445adf6b5e2554",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "2": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "3": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "4": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "fresh",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/rbox/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/rbox/km/rep-0/fresh",
+              "fresh"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "f9991462793cfb762523f6a31803276a61f62aacd90826ba690a446005d3f8fb",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 5,
+            "start_epoch": 1789618608.8561072,
+            "rc": 0,
+            "wall_s": 0.15574592538177967,
+            "peak_mib": 20.625,
+            "completed_states": 5
+          },
+          "measurement_sha256": "847437bc56413371405318ba9b79bb441e91f86de5ecf242cea288b7dc1551d8",
+          "status": "ok",
+          "timings": {
+            "sha256": "154096f72dc39fd50675c36f5f7efd1495812d00ed82981f52e54e407545d70b",
+            "rows": 5,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.0033025071024894714,
+                "update_sum_s": 0.0038661956787109375,
+                "total_s": 0.007168702781200409
+              },
+              "canonicalize_s": {
+                "initial_s": 0.00011463835835456848,
+                "update_sum_s": 0.00035509467124938965,
+                "total_s": 0.00046973302960395813
+              }
+            },
+            "issues": []
+          },
+          "analytic_restoration": {
+            "2": true,
+            "4": true
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 5
+            },
+            "routes": {
+              "production_all": 5
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 0
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "f33dc38d37c0967330e475569efd2b49bc722ff18e415196bc61175e542b077c",
+          "jfact": "6fa6e9db18f3e0d1bccd684f0367a6ab9da5f99de360507b46484594f4e45e72"
+        }
+      }
+    },
+    "abox": {
+      "session": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/abox/km/rep-0/session",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "1667a059c26a2a1c9f3325f4b2f35339ced9fade45cf8883b70314bb88c8ff5f",
+              "consistent": false,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "1667a059c26a2a1c9f3325f4b2f35339ced9fade45cf8883b70314bb88c8ff5f",
+              "consistent": false,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 2,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 1,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "9fbb8e75356352eef3b71a871aedcf2ba6ffd6e32b702a8030f01e737caa2407",
+              "retained_backend": true
+            },
+            "2": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 2,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 2,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "7d70a19ed154199bd5160a2c8f0e4512538a1dbed905fe0f2e107b86858c1f67",
+              "retained_backend": true
+            },
+            "3": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 2,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 3,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "76c12e10a9036a4d4d9bbf6312f28d54f4c06f3100f280989e100e765f8c89a8",
+              "retained_backend": true
+            },
+            "4": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 2,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 4,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "80e51d84a726ff7c30fbe285b502dc7af8055f8adea1c7eaf19bbd05eff356ce",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "session",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/abox/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/abox/km/rep-0/session",
+              "session"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "bb028337b75bfeb0aee88dd7c96476f2443c631b53a6bdc880b0421cd7cabcf6",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 5,
+            "start_epoch": 1789618609.178901,
+            "rc": 0,
+            "wall_s": 0.1576058231294155,
+            "peak_mib": 20.3125,
+            "completed_states": 5
+          },
+          "measurement_sha256": "edbed74381601b69514c777c1db8159de0e513e0e1dd0e46fce55d8a18818b90",
+          "status": "ok",
+          "timings": {
+            "sha256": "63727c1a0c434daf7a75e6ce096826e42241e40d54defc8be61e0b6ef3108b14",
+            "rows": 5,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.0040911715477705,
+                "update_sum_s": 0.0021967552602291107,
+                "total_s": 0.006287926807999611
+              },
+              "canonicalize_s": {
+                "initial_s": 8.600763976573944e-05,
+                "update_sum_s": 0.00011824630200862885,
+                "total_s": 0.00020425394177436829
+              }
+            },
+            "issues": []
+          },
+          "analytic_restoration": {
+            "2": true,
+            "4": true
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 1,
+              "exact_rebuild": 4
+            },
+            "routes": {
+              "production_all": 5
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 8
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "c7633da0b53941f9b151704e668603eb30800271d304332c387034c123914198",
+          "jfact": "ad463521bf6f98632cf45ce03cf807eb1ef9e70f21486d8e7b0fa01b8d7ce7b9"
+        }
+      },
+      "fresh": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/abox/km/rep-0/fresh",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "1667a059c26a2a1c9f3325f4b2f35339ced9fade45cf8883b70314bb88c8ff5f",
+              "consistent": false,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "1667a059c26a2a1c9f3325f4b2f35339ced9fade45cf8883b70314bb88c8ff5f",
+              "consistent": false,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "2": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "3": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "4": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "fresh",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/abox/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/abox/km/rep-0/fresh",
+              "fresh"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "bb028337b75bfeb0aee88dd7c96476f2443c631b53a6bdc880b0421cd7cabcf6",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 5,
+            "start_epoch": 1789618609.485586,
+            "rc": 0,
+            "wall_s": 0.15620496310293674,
+            "peak_mib": 20.0,
+            "completed_states": 5
+          },
+          "measurement_sha256": "ad13bb27fea3bc4c82bb5d194420daa3a5a200c92345572afc6f41eef0aa1be6",
+          "status": "ok",
+          "timings": {
+            "sha256": "84260aee9911edce5a155f973f0fe66e99771b916b6fa0e40e67c2a8a8ddcb87",
+            "rows": 5,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.004066163673996925,
+                "update_sum_s": 0.011936265975236893,
+                "total_s": 0.016002429649233818
+              },
+              "canonicalize_s": {
+                "initial_s": 8.589029312133789e-05,
+                "update_sum_s": 0.00011940859258174896,
+                "total_s": 0.00020529888570308685
+              }
+            },
+            "issues": []
+          },
+          "analytic_restoration": {
+            "2": true,
+            "4": true
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 5
+            },
+            "routes": {
+              "production_all": 5
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 0
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "c7633da0b53941f9b151704e668603eb30800271d304332c387034c123914198",
+          "jfact": "ad463521bf6f98632cf45ce03cf807eb1ef9e70f21486d8e7b0fa01b8d7ce7b9"
+        }
+      }
+    },
+    "equality": {
+      "session": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/equality/km/rep-0/session",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "1667a059c26a2a1c9f3325f4b2f35339ced9fade45cf8883b70314bb88c8ff5f",
+              "consistent": false,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "1667a059c26a2a1c9f3325f4b2f35339ced9fade45cf8883b70314bb88c8ff5f",
+              "consistent": false,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "added_normalized_clauses": 4,
+              "added_rules": 0,
+              "invalidated_states": 4,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 1,
+              "route_after": "certified_nominals",
+              "route_before": "production_all",
+              "route_migrated": true,
+              "strategy": "exact_rebuild",
+              "sha256": "a9f28c79e21c7dbe346aa87c6281c468a4ecc8a42081f34549def8fd0d603fa4",
+              "retained_backend": true
+            },
+            "2": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 0,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 4,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 2,
+              "route_after": "production_all",
+              "route_before": "certified_nominals",
+              "route_migrated": true,
+              "strategy": "exact_rebuild",
+              "sha256": "e48938dbdd779f640d4c9269105ab814c0a2feb1a77f270f139bb1bfad4db11c",
+              "retained_backend": true
+            },
+            "3": {
+              "added_normalized_clauses": 4,
+              "added_rules": 0,
+              "invalidated_states": 4,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 3,
+              "route_after": "certified_nominals",
+              "route_before": "production_all",
+              "route_migrated": true,
+              "strategy": "exact_rebuild",
+              "sha256": "18493b16491902612213fed79cd9542e948f89badf03e643325661259c4285ca",
+              "retained_backend": true
+            },
+            "4": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 0,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 4,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 4,
+              "route_after": "production_all",
+              "route_before": "certified_nominals",
+              "route_migrated": true,
+              "strategy": "exact_rebuild",
+              "sha256": "eb555ec8ec8cb23173512aca2b3736402d7ecd56ae07c530f91b2e8f7a1d8acf",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "session",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/equality/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/equality/km/rep-0/session",
+              "session"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "10cca4924e63722819726c2a3c91cb2af56d5a9b00ca90d2634f581ce662d0b3",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 5,
+            "start_epoch": 1789618609.8149586,
+            "rc": 0,
+            "wall_s": 0.16356804035604,
+            "peak_mib": 19.0625,
+            "completed_states": 5
+          },
+          "measurement_sha256": "aa03df2ed8db50f860e6b437ce6e55d0e45a85fb9d7dba6f3031c487e59a0310",
+          "status": "ok",
+          "timings": {
+            "sha256": "6187296ee6a68b957de5ee1b04f488b9a6a3d53b5aa872529eb9a7d0d9c9d442",
+            "rows": 5,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.0035438314080238342,
+                "update_sum_s": 0.008232241496443748,
+                "total_s": 0.011776072904467583
+              },
+              "canonicalize_s": {
+                "initial_s": 9.86885279417038e-05,
+                "update_sum_s": 0.0001377686858177185,
+                "total_s": 0.0002364572137594223
+              }
+            },
+            "issues": []
+          },
+          "analytic_restoration": {
+            "2": true,
+            "4": true
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 1,
+              "exact_rebuild": 4
+            },
+            "routes": {
+              "production_all": 3,
+              "certified_nominals": 2
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 4,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 8
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "52581dbbe516ce3f6bf987945f179b1972d82831cbd7459cb41748997979a3c9",
+          "jfact": "2d888e0eb0c944fa33763cd662af57d62d2963a556163124d891cf15c44f9b8a"
+        }
+      },
+      "fresh": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/equality/km/rep-0/fresh",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "1667a059c26a2a1c9f3325f4b2f35339ced9fade45cf8883b70314bb88c8ff5f",
+              "consistent": false,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "1667a059c26a2a1c9f3325f4b2f35339ced9fade45cf8883b70314bb88c8ff5f",
+              "consistent": false,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "739b3167da2df1be999f586afa7f0b0182aa561d183ed92b2b03f64b6aa58fb6",
+              "consistent": true,
+              "rows": {
+                "C": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "sha256": "2f998792e48735782e593a63aa0347864d9b6376ab8145c8a378bb894a57504f",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "2": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "3": {
+              "sha256": "2f998792e48735782e593a63aa0347864d9b6376ab8145c8a378bb894a57504f",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "4": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "fresh",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/equality/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/equality/km/rep-0/fresh",
+              "fresh"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "10cca4924e63722819726c2a3c91cb2af56d5a9b00ca90d2634f581ce662d0b3",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 5,
+            "start_epoch": 1789618610.124952,
+            "rc": 0,
+            "wall_s": 0.15144237875938416,
+            "peak_mib": 19.0625,
+            "completed_states": 5
+          },
+          "measurement_sha256": "5f591b0874778a0bdf74f66c24274ef18d7ae97b1c334fe6ca0ed9a105ccf467",
+          "status": "ok",
+          "timings": {
+            "sha256": "cbbc62f3db120db5a2faa2e38aa8a219baf338918269a1e0f6c25ffb87d6d228",
+            "rows": 5,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.003547167405486107,
+                "update_sum_s": 0.004696294665336609,
+                "total_s": 0.008243462070822716
+              },
+              "canonicalize_s": {
+                "initial_s": 9.717047214508057e-05,
+                "update_sum_s": 0.00014049187302589417,
+                "total_s": 0.00023766234517097473
+              }
+            },
+            "issues": []
+          },
+          "analytic_restoration": {
+            "2": true,
+            "4": true
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 5
+            },
+            "routes": {
+              "production_all": 3,
+              "certified_nominals": 2
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 0
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "52581dbbe516ce3f6bf987945f179b1972d82831cbd7459cb41748997979a3c9",
+          "jfact": "2d888e0eb0c944fa33763cd662af57d62d2963a556163124d891cf15c44f9b8a"
+        }
+      }
+    },
+    "disjunction": {
+      "session": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/disjunction/km/rep-0/session",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "2f06ee9405ad765c0eb8de3b698a40d29c04e683e168f231108afe5af1148325",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "c2650eb9c206895665acfa6e977ab982adc2f6ab5dc9386e747e9dc6fc2ca92a",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 3
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "2f06ee9405ad765c0eb8de3b698a40d29c04e683e168f231108afe5af1148325",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "c2650eb9c206895665acfa6e977ab982adc2f6ab5dc9386e747e9dc6fc2ca92a",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 3
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "2f06ee9405ad765c0eb8de3b698a40d29c04e683e168f231108afe5af1148325",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 4,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 1,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "1424eb066ee1c84dfe293413f1bbc54e2889d0046373290370cf5eba3c4e33a1",
+              "retained_backend": true
+            },
+            "2": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 2,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 2,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "bfb6a48bdedcc19216dd7d99a2ad8f1dfff3d7e468d69dd2c45f6b3c2bb5a72c",
+              "retained_backend": true
+            },
+            "3": {
+              "added_normalized_clauses": 1,
+              "added_rules": 0,
+              "invalidated_states": 4,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 0,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 3,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "9db776b7776fb98ce3039751ed12c707c12549913b64889b1b63e38294513011",
+              "retained_backend": true
+            },
+            "4": {
+              "added_normalized_clauses": 0,
+              "added_rules": 0,
+              "invalidated_states": 2,
+              "meaningful_incremental_update": false,
+              "removed_normalized_clauses": 1,
+              "removed_rules": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_fixpoint": false,
+              "reused_subsumptions": 0,
+              "revision": 4,
+              "route_after": "production_all",
+              "route_before": "production_all",
+              "route_migrated": false,
+              "strategy": "exact_rebuild",
+              "sha256": "5ff4c3b69d8fe7509dad9718b0dea95ac413d0cf03437655511c4e916b420fe8",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "session",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/disjunction/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/disjunction/km/rep-0/session",
+              "session"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "c42d87b2c77a3edddc675bd0e1f74d9780aaedf99ef1ab3201d98f5e4c3549e8",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 5,
+            "start_epoch": 1789618610.456304,
+            "rc": 0,
+            "wall_s": 0.15464644134044647,
+            "peak_mib": 18.75,
+            "completed_states": 5
+          },
+          "measurement_sha256": "759b0f893bd947edc7e50a33dc00cd33b4361a97ef6a68830384892978e2d3a1",
+          "status": "ok",
+          "timings": {
+            "sha256": "ccde54559535296b4592df79ac6843cdaa3008d57caaa15bbf0b39c2ab99831f",
+            "rows": 5,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.003163697198033333,
+                "update_sum_s": 0.005810713395476341,
+                "total_s": 0.008974410593509674
+              },
+              "canonicalize_s": {
+                "initial_s": 0.00010204315185546875,
+                "update_sum_s": 0.00029371678829193115,
+                "total_s": 0.0003957599401473999
+              }
+            },
+            "issues": []
+          },
+          "analytic_restoration": {
+            "2": true,
+            "4": true
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 1,
+              "exact_rebuild": 4
+            },
+            "routes": {
+              "production_all": 5
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 12
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "f449fec48af210add5045f92849a471c5213d7273c3f2119133f16ee429ffb10",
+          "jfact": "4ad9dce12bc2242346a46338cb99bb8d0ff81fe940eb89f213a24893f79a46e9"
+        }
+      },
+      "fresh": {
+        "pass": true,
+        "mismatch_revisions": [],
+        "inspection": {
+          "path": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/disjunction/km/rep-0/fresh",
+          "issues": [],
+          "states": {
+            "0": {
+              "sha256": "2f06ee9405ad765c0eb8de3b698a40d29c04e683e168f231108afe5af1148325",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "1": {
+              "sha256": "c2650eb9c206895665acfa6e977ab982adc2f6ab5dc9386e747e9dc6fc2ca92a",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 3
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "2": {
+              "sha256": "2f06ee9405ad765c0eb8de3b698a40d29c04e683e168f231108afe5af1148325",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "3": {
+              "sha256": "c2650eb9c206895665acfa6e977ab982adc2f6ab5dc9386e747e9dc6fc2ca92a",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 3
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            },
+            "4": {
+              "sha256": "2f06ee9405ad765c0eb8de3b698a40d29c04e683e168f231108afe5af1148325",
+              "consistent": true,
+              "rows": {
+                "C": 1,
+                "S": 1
+              },
+              "evidence": "streamed_full_signature",
+              "issues": []
+            }
+          },
+          "receipts": {
+            "0": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "1": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "2": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "3": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            },
+            "4": {
+              "sha256": "4cacb4b8ac21d0f97d84c679f2609d7fa466240043738507b52ce22d88519f5c",
+              "strategy": "init",
+              "retained_backend": true
+            }
+          },
+          "measurement": {
+            "reasoner": "km",
+            "arm": "fresh",
+            "status": "ok",
+            "command": [
+              "python3",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/km_incremental.py",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-v1/km.ibex",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/inputs/disjunction/pilot-states.txt",
+              "/ibex/user/hohndor/km/dynamic-benchmark-20260917/abox-candidate-controls-v1/panel-pilot/disjunction/km/rep-0/fresh",
+              "fresh"
+            ],
+            "driver_build": null,
+            "runtime_sha256": "b51533172b0dfe0def6fb10a8ae15146d5ae95462002cd1ac1289d11cbbd4ac9",
+            "manifest_sha256": "c42d87b2c77a3edddc675bd0e1f74d9780aaedf99ef1ab3201d98f5e4c3549e8",
+            "source_sha256": {
+              "DynamicBenchmark.java": "6826fbe04adcdc86072edf7e896a07c2689164f9950eac22f0fc0ef83878fa74",
+              "km_incremental.py": "28f3f47d074f342361af88964835c0ce388cc7a77f9508777b0d0ba6b29a32a5",
+              "canonical_km.py": "5c0be9b0a4d6c1c8b18b070e216ec512faabe3ec2a2976e8eacbb5d54eee195b",
+              "konclude_incremental.py": "8689c57937879b2b59984947a517f54b070e0ecee5db8ee0047223c6ac4b243c",
+              "candidate_run_incremental.py": "1ad12defded17fdbc3d7d1da56085343f7c1049b4d9859b372c8785f764d8fd2",
+              "tree_watchdog.py": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126"
+            },
+            "slurm_job": "51982564",
+            "slurm_array_job": null,
+            "slurm_array_task": null,
+            "host": "cn512-27-l",
+            "history_timeout_s": 1800,
+            "state_timeout_s": 240,
+            "memcap_mib": 20480,
+            "expected_states": 5,
+            "start_epoch": 1789618610.760845,
+            "rc": 0,
+            "wall_s": 0.15164615958929062,
+            "peak_mib": 17.8125,
+            "completed_states": 5
+          },
+          "measurement_sha256": "b64c8e02f0f999eac5fda82da33074af76dd315e2ef9e9c16573b56f429fc215",
+          "status": "ok",
+          "timings": {
+            "sha256": "11f6926dc7efea5a929cb0ec79d1f780e0d2e576f755ab88e0ee549ab3386f8d",
+            "rows": 5,
+            "intervals": {
+              "request_response_s": {
+                "initial_s": 0.015998516231775284,
+                "update_sum_s": 0.0015107989311218262,
+                "total_s": 0.01750931516289711
+              },
+              "canonicalize_s": {
+                "initial_s": 0.00010460987687110901,
+                "update_sum_s": 0.0002898462116718292,
+                "total_s": 0.00039445608854293823
+              }
+            },
+            "issues": []
+          },
+          "analytic_restoration": {
+            "2": true,
+            "4": true
+          },
+          "km_receipt_summary": {
+            "strategies": {
+              "init": 5
+            },
+            "routes": {
+              "production_all": 5
+            },
+            "reuse": {
+              "meaningful_incremental_update": 0,
+              "reused_fixpoint": 0,
+              "route_migrated": 0,
+              "retained_states": 0,
+              "reused_edges": 0,
+              "reused_subsumptions": 0,
+              "invalidated_states": 0
+            }
+          },
+          "complete": true
+        },
+        "reference_measurement_sha256": {
+          "hermit": "f449fec48af210add5045f92849a471c5213d7273c3f2119133f16ee429ffb10",
+          "jfact": "4ad9dce12bc2242346a46338cb99bb8d0ff81fe940eb89f213a24893f79a46e9"
+        }
+      }
+    }
+  },
+  "pass": true
+}

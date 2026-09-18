@@ -1,0 +1,16 @@
+{
+  "ontology": "mmo",
+  "query_id": "q000",
+  "track": "module",
+  "repetition": 0,
+  "warmup": true,
+  "limit": 1,
+  "arm": "konclude-common",
+  "status": "correct",
+  "elapsed_s": 3.352755842730403,
+  "peak_rss_bytes": 165842944,
+  "first_s": 1.233427909,
+  "extraction_s": 1.233866316,
+  "supports": 1,
+  "enumeration_complete": "false"
+}

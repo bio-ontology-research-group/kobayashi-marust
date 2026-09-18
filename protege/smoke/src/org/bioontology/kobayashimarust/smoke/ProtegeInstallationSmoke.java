@@ -57,6 +57,10 @@ public final class ProtegeInstallationSmoke implements BundleActivator {
             manager.addAxiom(ontology, ab);
 
             reasoner = new KMReasonerFactory().createNonBufferingReasoner(ontology);
+            require(reasoner.getReasonerVersion().getMajor() == kmBundle.getVersion().getMajor()
+                            && reasoner.getReasonerVersion().getMinor() == kmBundle.getVersion().getMinor()
+                            && reasoner.getReasonerVersion().getPatch() == kmBundle.getVersion().getMicro(),
+                    "OWLAPI reasoner version differs from the installed bundle version");
             require(reasoner.getSuperClasses(a, false).containsEntity(b),
                     "packaged reasoner did not classify A subclass B");
 

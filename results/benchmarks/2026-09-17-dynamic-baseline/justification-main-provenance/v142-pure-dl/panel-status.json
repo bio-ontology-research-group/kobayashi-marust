@@ -1,0 +1,12 @@
+[
+  {
+    "ontology": "zfa",
+    "status": "prepared",
+    "queries": 5
+  },
+  {
+    "ontology": "mro",
+    "status": "preparation_unavailable",
+    "reason": "independent entailment confirmation or module preparation incomplete"
+  }
+]

@@ -977,8 +977,9 @@ fn ofn_to_clauses_requested(
             ));
         }
     }
-    // An ABox of atomic class assertions has a compact exact certificate: it
-    // is consistent iff every asserted class is satisfiable in the TBox. The
+    // An atomic ABox with at most one distinct class per individual has a
+    // compact certificate: it is consistent iff every asserted class is
+    // satisfiable in the TBox. The
     // source profile proves the surrounding positive EL fragment, while this
     // independent observer proves complete atomic-assertion coverage.
     let atomic_class_abox_raw = if profile.positive_el_abox_materializable
@@ -1700,6 +1701,34 @@ mod separable_abox_elision_tests {
     }
 
     #[test]
+    fn atomic_abox_projection_preserves_joint_membership() {
+        let _environment_lock = lock_environment();
+        for (second_individual, expect_projection, expect_clash) in [
+            ("<http://example.org/a>", false, true),
+            ("<http://example.org/b>", true, false),
+            (":a", false, false),
+        ] {
+            let source = format!(
+                "Prefix(:=<http://example.org/>) Ontology(\
+                 DisjointClasses(<http://example.org/A> <http://example.org/B>) \
+                 ClassAssertion(<http://example.org/A> <http://example.org/a>) \
+                 ClassAssertion(<http://example.org/B> {second_individual}))"
+            );
+            let result = with_ofn_to_clauses_requested_route(&source, Route::Auto, |r| r)
+                .expect("atomic ABox source");
+            assert_eq!(
+                result.profile.atomic_class_abox_candidate,
+                expect_projection
+            );
+            // The alias case tests conservative admission only; prefix
+            // normalization is outside this projection's contract.
+            if second_individual != ":a" {
+                assert_eq!(result.abox_inconsistent, expect_clash);
+            }
+        }
+    }
+
+    #[test]
     fn bottom_constrained_atomic_abox_is_projected_for_taxonomy_check() {
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
@@ -1932,12 +1961,14 @@ mod separable_abox_elision_tests {
 
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ABOX_DISJOINT_UNION_CHECK", "1");
+        // The atomic shortcut needs independent witnesses for different
+        // asserted classes. Same-individual conjunctions use the full path.
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(DisjointClasses(<A> <B>) \
-             ClassAssertion(<C> <a>) ClassAssertion(<D> <a>) \
-             ClassAssertion(<E> <a>) ClassAssertion(<F> <a>) \
-             ClassAssertion(<G> <a>) ClassAssertion(<H> <a>) \
-             ClassAssertion(<I> <a>) ClassAssertion(<J> <a>))",
+             ClassAssertion(<C> <http://example.org/a>) ClassAssertion(<D> <http://example.org/b>) \
+             ClassAssertion(<E> <http://example.org/c>) ClassAssertion(<F> <http://example.org/d>) \
+             ClassAssertion(<G> <http://example.org/e>) ClassAssertion(<H> <http://example.org/f>) \
+             ClassAssertion(<I> <http://example.org/g>) ClassAssertion(<J> <http://example.org/h>))",
             Route::Auto,
             |result| result,
         )

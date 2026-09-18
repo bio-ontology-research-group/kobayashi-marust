@@ -1,5 +1,101 @@
 # Changelog
 
+## [1.4.1] - 2026-09-18
+
+Both releases contain the same minor ABox correctness fixes. Incremental source
+sessions now preserve a frontend inconsistency verdict, suppress taxonomy rows
+while inconsistent, and restore consistent output after the conflicting
+assertion is removed. The batch atomic-ABox shortcut now checks its independent
+witness premise; inputs outside that premise use the existing complete path.
+
+The fixes were tested experimentally before the new Lean publication proof.
+All four source certification gates pass for each exact version, as do 2,407
+library tests and 59 integration tests. The 22 native-checker tests excluded
+from the general invocation pass within the gates. Eight ignored tests remain
+explicitly excluded. The proof assumes the documented parser, identity,
+fragment-admission, detector and worker boundaries; it is not extracted from the
+Rust implementation.
+
+Each version also completes the 592-input ORE regression with unchanged semantic
+outputs: 588 match retained gold, two retain known consistency disagreements,
+and two have no retained external gold. These runs are regression evidence,
+not new paired performance comparisons against other reasoners.
+
+The Protégé plugin reports the matching version and passes 31 Maven tests,
+bundle checks and a real Protégé installation smoke test.
+
+## Benchmark method
+
+The generated histories follow Kazakov and Klinov's ISWC 2013 method
+([Section 5.3](https://www.uni-ulm.de/fileadmin/website_uni_ulm/iui.inst.090/Publikationen/2013/KazKli13Incremental_ISWC.pdf)):
+250 revisions exchange 1, 10 or 100 active axioms with a seeded holdout.
+The benchmark extends this method to separately reported expressive-DL cases;
+it does not reproduce the paper's datasets or performance measurements.
+Each arm receives one warmup and five measured repetitions, one CPU, a
+20-GiB process-tree memory cap, a 240-second state deadline and a separate
+7,200-second history cap. Failed histories remain in the coverage denominator.
+
+Session arms retain a reasoner across updates. Fresh arms rebuild reasoning
+state for every version within a persistent runtime for Java and KM;
+Konclude is a separately labelled fresh-only comparator. ELK and Whelk apply
+only to the EL panel. Paired timing ratios require mutually correct completed
+histories. Java inference intervals and KM request/response intervals have
+different boundaries, so whole-history costs are also reported.
+
+Correctness checks use hashes of complete canonical full-IRI taxonomies,
+including consistency and unsatisfiable classes. Full pilot outputs are
+retained; disagreements require targeted full-output diagnosis. These checks
+are not sampled-entailment checks. Memory uses sampled process-tree RSS,
+which may miss brief peaks. Scheduling amendments and shared-resource effects
+remain part of the interpretation of timing results.
+
+## Incremental comparison
+
+All 1,800 planned attempts terminated, including warmups. The final comparison
+uses 1,260 measured peer/baseline attempts and 240 measured KM v1.4.1 attempts.
+The table retains all planned cases, including failures and unverified outputs.
+Independent correctness requires complete agreement with fresh HermiT and JFact
+on the identical 251-state history. No available state-digest disagreement was
+found, including partial histories, but partial agreement does not certify a
+complete history.
+
+| Reasoner / arm | Verified / planned | Completed but unverified | Timeout | Other failure |
+|---|---:|---:|---:|---:|
+| km / session | 45 / 120 | 15 | 30 | 30 |
+| km / fresh | 45 / 120 | 15 | 30 | 30 |
+| hermit / session | 60 / 120 | 15 | 45 | 0 |
+| hermit / fresh | 60 / 120 | 15 | 45 | 0 |
+| jfact / session | 60 / 120 | 0 | 59 | 1 |
+| jfact / fresh | 60 / 120 | 0 | 59 | 1 |
+| openllet / session | 60 / 120 | 0 | 60 | 0 |
+| openllet / fresh | 60 / 120 | 0 | 60 | 0 |
+| konclude / fresh | 60 / 120 | 25 | 5 | 30 |
+| elk / session | 30 / 45 | 15 | 0 | 0 |
+| elk / fresh | 30 / 45 | 15 | 0 | 0 |
+| whelk / session | 30 / 45 | 0 | 15 | 0 |
+| whelk / fresh | 30 / 45 | 0 | 15 | 0 |
+
+ELK and Whelk cover only the nine EL histories; the other arms cover 24 histories.
+KM completes MMO, HAO, VTO and ZFA at all three update sizes. VTO lacks a complete
+HermiT/JFact reference pair and remains unverified. MFOMD records 30 worker errors;
+TO records 30 complex-class DL-safe-rule initialization errors. Uberon and MRO
+account for the 60 timeouts. Errors remain visible, including opaque worker `-1`
+reports; this release does not claim to solve those failures.
+
+KM's median fresh/session whole-history ratios on the nine verified histories
+range from 0.529 to 0.974. Retained sessions are slower than fresh reconstruction
+at the median on these cases. EL updates report retained fixpoints, while ZFA
+uses exact rebuilds. These receipts describe the mechanism, not a speedup claim.
+
+The complete per-case wall-time ranges, sampled peak memory, within-reasoner
+paired ratios and source/runtime identities are in the
+[incremental comparison](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/v1.4.1/results/benchmarks/2026-09-17-dynamic-baseline/incremental-final-comparison/README.md).
+The frozen [methodology](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/v1.4.1/benchmarks/dynamic-v1.4/METHODOLOGY.md)
+records the literature, panel construction and comparison boundaries.
+
+The release attaches the tested binary, matching Protégé plugin, benchmark
+evidence, validation archive, source attestation and SHA-256 checksums.
+
 ## [1.4.0] - 2026-09-16
 
 ### Release summary

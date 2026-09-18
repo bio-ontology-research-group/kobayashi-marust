@@ -37,9 +37,18 @@ without access to the expected answer.
   results for ELK, HermiT, Konclude, and Sequoia. The populations and tested
   versions are listed below.
 
+## Dynamic reasoning benchmarks
+
+v1.4.1 adds the [incremental benchmark comparison](results/benchmarks/2026-09-17-dynamic-baseline/incremental-final-comparison/README.md),
+following 250-revision histories from the literature. It reports failures,
+independent correctness, time, memory and retained work separately. KM sessions
+are slower than rebuilding at the median on the verified cases; VTO completion
+lacks a complete reference pair. Minor ABox fixes were tested experimentally
+before Lean certification. See [CHANGELOG.md](CHANGELOG.md) for validation and limits.
+
 ## Install
 
-The [v1.4.0 release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.0)
+The [v1.4.1 release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.1)
 provides a Linux x86-64 binary (glibc 2.34 or newer), a Protégé JAR, and benchmark
 tables. Building from source requires a recent stable Rust toolchain.
 

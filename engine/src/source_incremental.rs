@@ -1561,14 +1561,18 @@ fn map_incremental_result(
             }
         }
     }
+    // Source prechecks can certify a global ABox clash that is not represented
+    // in a retained backend's taxonomy clauses. Preserve that verdict just as
+    // the ordinary classification supervisor does before invoking its worker.
+    let source_abox_inconsistent = frontend.abox_inconsistent || asserted_unsat;
     Classification {
-        consistent: !result.inconsistent && !asserted_unsat,
-        subsumptions: if asserted_unsat {
+        consistent: !result.inconsistent && !source_abox_inconsistent,
+        subsumptions: if source_abox_inconsistent {
             Vec::new()
         } else {
             subsumptions.into_iter().collect()
         },
-        unsatisfiable: if asserted_unsat {
+        unsatisfiable: if source_abox_inconsistent {
             Vec::new()
         } else {
             unsatisfiable.into_iter().collect()
@@ -1752,6 +1756,37 @@ mod tests {
                 term: JTerm::Var { name: "x".into() },
             }],
         }
+    }
+
+    #[test]
+    fn direct_abox_clash_is_preserved_across_source_revisions() {
+        let _environment = lock_environment();
+        let consistent = r#"Ontology(
+DisjointClasses(<http://example.org/A> <http://example.org/B>)
+SubClassOf(<http://example.org/A> <http://example.org/C>)
+ClassAssertion(<http://example.org/A> <http://example.org/a>)
+)"#;
+        let inconsistent = r#"Ontology(
+DisjointClasses(<http://example.org/A> <http://example.org/B>)
+SubClassOf(<http://example.org/A> <http://example.org/C>)
+ClassAssertion(<http://example.org/A> <http://example.org/a>)
+ClassAssertion(<http://example.org/B> <http://example.org/a>)
+)"#;
+        let fresh = SourceIncrementalClassifier::new(inconsistent).unwrap();
+        assert!(fresh.frontend.abox_inconsistent);
+        assert!(!fresh.classification().consistent);
+        assert!(fresh.classification().subsumptions.is_empty());
+        assert!(fresh.classification().unsatisfiable.is_empty());
+        let mut session = SourceIncrementalClassifier::new(consistent).unwrap();
+        let initial = session.classification().clone();
+        assert!(initial.consistent);
+        assert!(!initial.subsumptions.is_empty());
+        session.replace_source(inconsistent).unwrap();
+        assert!(!session.classification().consistent);
+        assert!(session.classification().subsumptions.is_empty());
+        assert!(session.classification().unsatisfiable.is_empty());
+        session.replace_source(consistent).unwrap();
+        assert_eq!(session.classification(), &initial);
     }
 
     fn compact_general_ht_source(extended: bool) -> String {

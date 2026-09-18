@@ -1,0 +1,14 @@
+{
+  "attempts": 13680,
+  "measured": 11400,
+  "terminal": 13680,
+  "verified": 9184,
+  "matrix_execution_complete": true,
+  "integrity_issues": [],
+  "validation_only": false,
+  "comparison_selected_attempts": 10980,
+  "correction_validator_sha256": "bafdc056c41fae5ae8220ef3e0e68185c74dbabdcef999c46a5c0e61c51c2bae",
+  "config_sha256": "74b0e6405eea556f631d2615680734c9f44a73401ae6fd9625aa3c068df31cfd",
+  "renderer_sha256": "e935509f484da9405005db72f02255ded5fb647455825370096fb585e3974f89",
+  "raw_auditor_sha256": "f9b69f4e800225636f04ee17c6e96bcf22c8c0dee48fd0355c41160de50c4340"
+}

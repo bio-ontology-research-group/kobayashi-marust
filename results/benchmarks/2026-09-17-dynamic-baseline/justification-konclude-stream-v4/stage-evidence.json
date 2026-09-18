@@ -1,0 +1,42 @@
+{
+  "stage-51996783.log": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4-stage/stage-51996783.log",
+    "sha256": "a99348a7deb3b86b3e65bd23f4af4af1f4a05d7c4daab26ac625d6b85b310fe1"
+  },
+  "stage-r2-51997023.log": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4-stage/stage-r2-51997023.log",
+    "sha256": "65c15c25f4c6d7933a8485136638d8d353da825ca2563d9948b026176f8e058a"
+  },
+  "stage-receipt.json": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4-stage/stage-receipt.json",
+    "sha256": "1fc48252d15f4098b829701f34f5f7520395e49fd5dddfad479caaa1284e6bab"
+  },
+  "stage-PASS.txt": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4-stage/PASS",
+    "sha256": "a6773fe9c89c546a40557e10496c7b7819618837eccd87fca66303513594017c"
+  },
+  "pilot-audit.json": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4b-original/pilot-audit.json",
+    "sha256": "bace158a0f9b6327135c81ecd7e8d531dd094cc4bb1ace20b34f44aa5bca5d95"
+  },
+  "binding-validation.log": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-comparison-stream-v4-all-r2/bindings-51997356.log",
+    "sha256": "1d11875e6c4197643eb6c89ed71b6910c2ea3a59c31198b2d841440a87ae4e8d"
+  },
+  "original-positive.txt": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4b-original/probe-positive/source-entailed.txt",
+    "sha256": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74"
+  },
+  "original-negative.txt": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4b-original/probe-negative/source-entailed.txt",
+    "sha256": "2ed27c1421e6928dbe13dbfdb5c59e1045b30341fe7ebe05700006bc5ac572c0"
+  },
+  "pure-dl-positive.txt": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4b-pure-dl/probe-positive/source-entailed.txt",
+    "sha256": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74"
+  },
+  "pure-dl-negative.txt": {
+    "remote": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4b-pure-dl/probe-negative/source-entailed.txt",
+    "sha256": "2ed27c1421e6928dbe13dbfdb5c59e1045b30341fe7ebe05700006bc5ac572c0"
+  }
+}

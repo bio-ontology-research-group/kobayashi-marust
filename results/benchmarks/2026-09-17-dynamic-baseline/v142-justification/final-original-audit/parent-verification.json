@@ -1,0 +1,34 @@
+{
+  "observed_utc": "2026-09-17T07:58:55.113370+00:00",
+  "array_job": 51984134,
+  "audit_job": 51984145,
+  "audit_exit": "COMPLETED 0:0",
+  "task_count": 240,
+  "expected_attempts": 1440,
+  "observed_unique_attempts": 1440,
+  "all_attempt_statuses": {
+    "correct": 990,
+    "timeout": 324,
+    "error": 126
+  },
+  "measured_attempts": 1200,
+  "measured_statuses": {
+    "correct": 825,
+    "timeout": 270,
+    "error": 105
+  },
+  "remote_task_completion_and_source_driver_receipt_checks": {
+    "tasks": 240,
+    "problems": []
+  },
+  "manifest_coverage_exact": true,
+  "correct_support_normalization_counts_verified": true,
+  "auditor_sources_match": true,
+  "files": {
+    "audit.json": "acbdb1f933731e19494cc2bd71ba683a6d7dcff2ec2cf3158bea165441618025",
+    "normalized-supports.tsv": "d9494b11051af7a087334a0296602258b9cf6caf4fdcacf7a05ec2860e2c8c38",
+    "audit-hashes.txt": "411b1366db2b3ade6040be8d0587df31b65395668460a4ab4b74401f69ad1004",
+    "tasks.tar.gz": "7a6b2145c43a7d0ef0a05db510e09885f2747863f35c8b864aeb7f076b380e75"
+  },
+  "scope": "Final KM original panel only; comparator and incremental main results remain pending. Errors and timeouts retained."
+}

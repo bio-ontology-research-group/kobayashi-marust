@@ -1,0 +1,122 @@
+{
+  "1.4.1": {
+    "version": "1.4.1",
+    "recorded_utc": "2026-09-17T04:52:30.216329+00:00",
+    "status": "passed",
+    "binary_sha256": "680d9002583468e7c68115bf67cb60b89e420339db4c6aa22b5ca802206c8629",
+    "plugin_jar": "kobayashi-marust-protege-1.4.1.jar",
+    "plugin_sha256": "0b0aeba977fad124eb60a26c227444f3a71ace480a2c1d7ffbf767fbdd5775c5",
+    "plugin_bundle_version": "1.4.1",
+    "maven_version": "3.9.9",
+    "maven_tests": {
+      "tests": 31,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "bundle_verify": "passed",
+    "protege_5_6_6_real_osgi_smoke": "passed",
+    "smoke_covers": [
+      "bundle activation",
+      "native taxonomy classification",
+      "nonbuffering retained incremental addition",
+      "exact two-source-axiom explanation"
+    ],
+    "smoke_isolation": "Copied stock installation without previous KM/test bundles; Java user.home isolated; host HOME unchanged. Test-only launcher changed, production Java unchanged.",
+    "java_source_and_pom_sha256": {
+      "src/main/java/org/bioontology/kobayashimarust/protege/Classifier.java": "bf1baf9839035cfa90372450515afcac8c0143e82fd779d406efe9b910156bc0",
+      "src/main/java/org/bioontology/kobayashimarust/protege/FlattenedOntology.java": "cdf28c9939c7403814c7f2508130289c7c2b0d008f0efb9c99f262767c59a5c3",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationConfiguration.java": "c4dabcf406871cb58138581793fa24951d26b5099edf778fb2b4b50c87749486",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationController.java": "67771d15064c48617bcb7ce3b0d6520599de68d2fd78e0827bf40e65d041b484",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationGenerator.java": "7443e59cc83105d054143955dfa18aa0635eebeaa22f11a2f154174102ab29a6",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationGeneratorFactory.java": "a4ae336960bdbc98c9b68c4b78ed43a7eb737084800ec33a7e39fea8d3abc28f",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationRun.java": "c8f3651e548d23685bd5c0b92888a4632f82357f43abebf7ab7cd06106b8dace",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMNativeExplanationResult.java": "037228c2147955223ffc3a49844e664ffa17aa3f7112d9183aa7c56415331d94",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMNativeExplanationService.java": "78916cd18489fc1548c3133de3d5be760bdc555471324abd079893792dd33413",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMReasoner.java": "17496e35dce4ad52b73526173c2b995f6367d03af6dd74fbcfced6f238283458",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMReasonerFactory.java": "18809a0e914aefd97b67e9220e78de74c11b907249c27f4bda70946994336e28",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMReasonerInfo.java": "a29e21bde7140a516f92f00673d5eae41337ad872bd46aeff32030c29554463e",
+      "src/main/java/org/bioontology/kobayashimarust/protege/NativeProcessTree.java": "f91c0995cb678918ea390b297afea01f9a08808b6ab72d52b702df87075034cf",
+      "src/main/resources/META-INF/services/org.semanticweb.owl.explanation.api.ExplanationGeneratorFactory": "7fa222195ac1558dcdc7055f95c50587765f707242e17ec672bfe3e370b03a57",
+      "src/main/resources/plugin.xml": "dd47ec4ec7fe831e2ef0a6857160460f15fc754566d105b77f0113d44c1ceb3c",
+      "src/test/java/org/bioontology/kobayashimarust/protege/ExplanationGeneratorTest.java": "52516a53525087a7731c7beac53b0f94ac019bddd3f1aab86b9d4c19130c017d",
+      "src/test/java/org/bioontology/kobayashimarust/protege/KMExplanationControllerTest.java": "f25a55c2ad89f9d8931a4f78c24e5d24501f4abec86615c1fd3e29ee14d43bf7",
+      "src/test/java/org/bioontology/kobayashimarust/protege/PluginRegistrationTest.java": "bed9f9400df6a9f142e5ee180cb96e15e76ec760ef6f8d66d6711b0e151b29e1",
+      "src/test/java/org/bioontology/kobayashimarust/protege/ReasonerTest.java": "b1761f78f104c087eff9e02637299829369b2c904164d2c04a277ed68fc5793c",
+      "pom.xml": "42c3a5294591d1d127fc17b463cbf70e8f4a9d6340d7d53bd6b6e5e013d42d73"
+    },
+    "evidence_sha256": {
+      "TEST-org.bioontology.kobayashimarust.protege.ExplanationGeneratorTest.xml": "fe77e8754206c27c3e6ed8bb863fd2ccc37cc8eab98f0a10a28198ab6c69118f",
+      "TEST-org.bioontology.kobayashimarust.protege.KMExplanationControllerTest.xml": "5a8af74cddf0e640d5740c65b549f9547fb3f0b07ae697b5ecb34ccc6e864c3c",
+      "TEST-org.bioontology.kobayashimarust.protege.PluginRegistrationTest.xml": "ee057dcf59dbdb1140903feb147949ab51ab5e31e9e52765d83a5fed4879857c",
+      "TEST-org.bioontology.kobayashimarust.protege.ReasonerTest.xml": "ddc1764766184b2a18ebc0721c468e2ab4b2fedfa221774adc596b62ef099186",
+      "maven-verify.log": "65930ec2750ef18e395b3babe8d07eaa15824197051e3d5fb99dc69f994fc074",
+      "protege.log": "59d0e0c9012e14f1e4b95a4c192ab134eba21d29ad6bbceff7156194fa0a35dc",
+      "run-installation-smoke.sh": "afda4eda8cfca593820dd6e8d331a241013aa3712107878b2baea564a2a93714",
+      "smoke-summary.log": "5950872dd4ec829bc75134c63a83ebbfb77de3648c91e5b8d40fed8eb7fcba3b"
+    },
+    "superseded": true,
+    "superseded_by": "plugin-validation.json",
+    "superseded_reason": "Rebuilt with corrected OWLAPI version metadata and package/API version smoke assertion."
+  },
+  "1.4.2": {
+    "version": "1.4.2",
+    "recorded_utc": "2026-09-17T04:52:30.270578+00:00",
+    "status": "passed",
+    "binary_sha256": "705cac1500018d18018ca4d5482a7451e836091b26648453824afa4b36d16fdb",
+    "plugin_jar": "kobayashi-marust-protege-1.4.2.jar",
+    "plugin_sha256": "1d2f852c5893360f4ad10a6293f974f424824b5089263f0e18e76acb1ee2ad3b",
+    "plugin_bundle_version": "1.4.2",
+    "maven_version": "3.9.9",
+    "maven_tests": {
+      "tests": 31,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "bundle_verify": "passed",
+    "protege_5_6_6_real_osgi_smoke": "passed",
+    "smoke_covers": [
+      "bundle activation",
+      "native taxonomy classification",
+      "nonbuffering retained incremental addition",
+      "exact two-source-axiom explanation"
+    ],
+    "smoke_isolation": "Copied stock installation without previous KM/test bundles; Java user.home isolated; host HOME unchanged. Test-only launcher changed, production Java unchanged.",
+    "java_source_and_pom_sha256": {
+      "src/main/java/org/bioontology/kobayashimarust/protege/Classifier.java": "bf1baf9839035cfa90372450515afcac8c0143e82fd779d406efe9b910156bc0",
+      "src/main/java/org/bioontology/kobayashimarust/protege/FlattenedOntology.java": "cdf28c9939c7403814c7f2508130289c7c2b0d008f0efb9c99f262767c59a5c3",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationConfiguration.java": "c4dabcf406871cb58138581793fa24951d26b5099edf778fb2b4b50c87749486",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationController.java": "67771d15064c48617bcb7ce3b0d6520599de68d2fd78e0827bf40e65d041b484",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationGenerator.java": "7443e59cc83105d054143955dfa18aa0635eebeaa22f11a2f154174102ab29a6",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationGeneratorFactory.java": "a4ae336960bdbc98c9b68c4b78ed43a7eb737084800ec33a7e39fea8d3abc28f",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationRun.java": "c8f3651e548d23685bd5c0b92888a4632f82357f43abebf7ab7cd06106b8dace",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMNativeExplanationResult.java": "037228c2147955223ffc3a49844e664ffa17aa3f7112d9183aa7c56415331d94",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMNativeExplanationService.java": "78916cd18489fc1548c3133de3d5be760bdc555471324abd079893792dd33413",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMReasoner.java": "17496e35dce4ad52b73526173c2b995f6367d03af6dd74fbcfced6f238283458",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMReasonerFactory.java": "18809a0e914aefd97b67e9220e78de74c11b907249c27f4bda70946994336e28",
+      "src/main/java/org/bioontology/kobayashimarust/protege/KMReasonerInfo.java": "a29e21bde7140a516f92f00673d5eae41337ad872bd46aeff32030c29554463e",
+      "src/main/java/org/bioontology/kobayashimarust/protege/NativeProcessTree.java": "f91c0995cb678918ea390b297afea01f9a08808b6ab72d52b702df87075034cf",
+      "src/main/resources/META-INF/services/org.semanticweb.owl.explanation.api.ExplanationGeneratorFactory": "7fa222195ac1558dcdc7055f95c50587765f707242e17ec672bfe3e370b03a57",
+      "src/main/resources/plugin.xml": "dd47ec4ec7fe831e2ef0a6857160460f15fc754566d105b77f0113d44c1ceb3c",
+      "src/test/java/org/bioontology/kobayashimarust/protege/ExplanationGeneratorTest.java": "52516a53525087a7731c7beac53b0f94ac019bddd3f1aab86b9d4c19130c017d",
+      "src/test/java/org/bioontology/kobayashimarust/protege/KMExplanationControllerTest.java": "f25a55c2ad89f9d8931a4f78c24e5d24501f4abec86615c1fd3e29ee14d43bf7",
+      "src/test/java/org/bioontology/kobayashimarust/protege/PluginRegistrationTest.java": "bed9f9400df6a9f142e5ee180cb96e15e76ec760ef6f8d66d6711b0e151b29e1",
+      "src/test/java/org/bioontology/kobayashimarust/protege/ReasonerTest.java": "b1761f78f104c087eff9e02637299829369b2c904164d2c04a277ed68fc5793c",
+      "pom.xml": "76e4ad2325f36a987225b425d37fb3bc4620f96497aa1a4af4216bdb4ff2163a"
+    },
+    "evidence_sha256": {
+      "TEST-org.bioontology.kobayashimarust.protege.ExplanationGeneratorTest.xml": "009383a17fd5e2cebce1c509b71279d26bf19c1645af14d2aac84cad33ed8dc0",
+      "TEST-org.bioontology.kobayashimarust.protege.KMExplanationControllerTest.xml": "6ec9542c205e65c8f2fc5515b4ee45cefb19f9036d4eaf40a55409e7dc185feb",
+      "TEST-org.bioontology.kobayashimarust.protege.PluginRegistrationTest.xml": "190baa88dbbb7db415feaa7c1a20596afc2b386174a49ff61fb37ff96140d56c",
+      "TEST-org.bioontology.kobayashimarust.protege.ReasonerTest.xml": "772046d422bf6afc0396e009b3b65ca7eb8bb1e4a62116399f51678b7074984f",
+      "maven-verify.log": "393f4c292fa545e12ec4cd07eb0f82e01e0e928eda2aa8f1f1273ff0c5657538",
+      "protege.log": "eea1f7c2869a907d7b82d39132f7c30f7d24fdfc5a306acc76106e7bfa4e3cf8",
+      "run-installation-smoke.sh": "afda4eda8cfca593820dd6e8d331a241013aa3712107878b2baea564a2a93714",
+      "smoke-summary.log": "964700a5bb803cf0a6b3962483312b37618aec8ae6d9d9ad740167b3598e765f"
+    },
+    "superseded": true,
+    "superseded_by": "plugin-validation.json",
+    "superseded_reason": "Rebuilt with corrected OWLAPI version metadata and package/API version smoke assertion."
+  }
+}

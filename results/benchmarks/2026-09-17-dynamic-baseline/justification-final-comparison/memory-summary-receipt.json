@@ -1,0 +1,8 @@
+{
+  "attempts_sha256": "ef9e7853b352de3a728dadea814589698b2ab374751a478fbfaf0a65bff9fc19",
+  "selected_measured": 7650,
+  "cases": 1530,
+  "zero_or_missing_samples": 7,
+  "complete_verified_five_rep_cases": 1082,
+  "summary_sha256": "24832d8ccdeb687a49a7b34eeb708f4792c893f83faa58f73edd9781004742d8"
+}

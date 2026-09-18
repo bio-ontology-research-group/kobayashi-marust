@@ -1,0 +1,38 @@
+{
+  "version": "1.4.2",
+  "status": "passed",
+  "finished_utc": "2026-09-17T05:18:23.124798+00:00",
+  "exit_code": 0,
+  "lib_tests": {
+    "passed": 2407,
+    "failed": 0,
+    "ignored": 8,
+    "native_checker_tests_filtered": 22
+  },
+  "filtered_tests_covered_by": "v142-native-gates-source-manifest.json",
+  "integration_targets": [
+    "certified_abox_production",
+    "chain_domain_route",
+    "completion_hot_path_env",
+    "explain_cli",
+    "incremental_cb_reasoning",
+    "incremental_ht_reasoning",
+    "incremental_reasoning",
+    "issue_3_soundness",
+    "mirror_route",
+    "rules_route",
+    "source_incremental_nominals",
+    "source_incremental_rules",
+    "special_source_iris"
+  ],
+  "integration_passed": 59,
+  "integration_failed": 0,
+  "integration_ignored": 0,
+  "source_hashes_still_match_gate_manifest": true,
+  "source_manifest": "v142-native-gates-source-manifest.json",
+  "script_sha256": "3148f1aaf0c8a3dbce81f4cad43334461e6546804a6a37f0dc677e74bc5031f0",
+  "script_changes_from_v141": "Only source/log paths and preflight-before-cd ordering changed: the isolated stage on data2 has no Git parent. CI test exclusions and test commands are identical.",
+  "log_archive": "dynamic-v142-rust-suite.log.gz",
+  "log_sha256": "fb567c015ffe7932650f190a475260716435fd050a61463811db142227600320",
+  "archive_sha256": "15b90fae9d88fe200e4d3b57060b3b61ac9a23799d65332285f399ca2084d0ea"
+}

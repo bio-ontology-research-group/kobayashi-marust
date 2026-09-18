@@ -1,0 +1,27 @@
+{
+  "binding_validation_job": 51993327,
+  "binding_validation_exit": "COMPLETED 0:0",
+  "report_job": 51993344,
+  "dependencies": [
+    51982402,
+    51982764,
+    51984145,
+    51984159,
+    51992863,
+    51992897,
+    51992900,
+    51992935
+  ],
+  "remote_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-comparison-stream-v4",
+  "expected_archived_attempts": 12780,
+  "expected_comparison_selected_attempts": 10980,
+  "regression_tests_passed": 6,
+  "report_status": "submitted; awaiting audits",
+  "source_hashes": {
+    "render_justification_comparison.py": "e3065bda68bff5e8499367ca34aa901a4cdd062872b80087184397ca46157717",
+    "justification_corrections.py": "1437a7291ab5b2fcd8ff80606f5d32968ca633b992ba2dab9a0eece0c4749b3e",
+    "audit_justification_main.py": "f9b69f4e800225636f04ee17c6e96bcf22c8c0dee48fd0355c41160de50c4340",
+    "justification-comparison-stream-v4-config.json": "e5a1e1c32e1027cdff6b9bd804520eaec1dc41dedfa2a7e3a305496e992b774e",
+    "ibex-justification-comparison-stream-v4.sbatch": "08dac7711aee25f80dee3197b4bc1f255f2c2149cbad0b208d683c894a71f83a"
+  }
+}

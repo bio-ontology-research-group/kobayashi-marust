@@ -1,0 +1,32 @@
+{
+  "ontology": "vto",
+  "query_id": "q004",
+  "query_hash": "007e99d81cb75dfa4462f1993157dd545182349a0ee3b0e1cdf10d2288d29771",
+  "track": "module",
+  "input": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-panel-v2/vto/modules/q004.ofn",
+  "sha256": "f09f852143544f9831842a9ac9c2e2286b60bfda2dea80363a362ea8a1bc5690",
+  "sub": "http://purl.obolibrary.org/obo/VTO_0032144",
+  "super": "http://purl.obolibrary.org/obo/VTO_9033406",
+  "el": true,
+  "limits": [
+    1,
+    10,
+    100
+  ],
+  "library": true,
+  "repetition": 3,
+  "warmup": false,
+  "driver_manifest": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-main/driver-manifest.json",
+  "driver_manifest_sha256": "48ac78980a602c0988d57317701c304e0d52a38d276dd40ad0c54db88e8e9250",
+  "km": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex",
+  "konclude": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/konclude_oracle.py",
+  "runtime": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes",
+  "classes": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-main/classes",
+  "arms": [
+    "km-native",
+    "km-common"
+  ],
+  "baseline_task_sha256": "892603956ed9534fe537c1b9d13fa0e82e1969a45b123e1d038f1af1c180bb55",
+  "baseline_driver_manifest_sha256": "48d87bd8bdbbc5f5e1db6ae50f09a2d0f703baa50ad85fcb9fa50ede68ab13ac",
+  "final_version": "1.4.2"
+}

@@ -461,7 +461,49 @@ impl<'a> DataAbox<'a> {
         {
             return None;
         }
-        Some(self.cassert.iter().map(|(class, _)| *class).collect())
+        let classes: std::collections::BTreeSet<_> =
+            self.cassert.iter().map(|(class, _)| *class).collect();
+        if classes.len() <= 1 {
+            return Some(classes);
+        }
+        // Independent class satisfiability supplies one witness per individual
+        // only when that individual has a single asserted class. Otherwise the
+        // conjunction can be unsatisfiable even when each class is satisfiable.
+        let mut individual_classes = HashMap::new();
+        for &(class, individual) in &self.cassert {
+            if let Some(previous) = individual_classes.insert(individual, class) {
+                if previous != class {
+                    return None;
+                }
+            }
+        }
+        // With several classes, lexical individual identity must also imply
+        // semantic identity. Prefixed/relative names can alias a full IRI;
+        // leave such sources on the full ABox path rather than treating their
+        // different spellings as independent witnesses. One class needs only
+        // one shared witness, so aliases are harmless in that case.
+        if classes.len() > 1
+            && individual_classes.keys().any(|individual| {
+                !individual
+                    .strip_prefix('<')
+                    .and_then(|s| s.strip_suffix('>'))
+                    .is_some_and(|iri| {
+                        !iri.contains('\\')
+                            && iri.split_once(':').is_some_and(|(scheme, _)| {
+                                scheme
+                                    .as_bytes()
+                                    .first()
+                                    .is_some_and(u8::is_ascii_alphabetic)
+                                    && scheme.bytes().all(|c| {
+                                        c.is_ascii_alphanumeric() || matches!(c, b'+' | b'-' | b'.')
+                                    })
+                            })
+                    })
+            })
+        {
+            return None;
+        }
+        Some(classes)
     }
 
     pub fn observe(&mut self, node: &Node<'a>) {

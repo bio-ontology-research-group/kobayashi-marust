@@ -1,0 +1,22 @@
+{
+  "recorded_utc": "2026-09-17T05:28:15.287786+00:00",
+  "job_id": 51985480,
+  "remote_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/incremental-completed-mmo-n10-v1",
+  "dependency": "afterany:51982318_42",
+  "dependency_state_observed": "RUNNING",
+  "audit_state_observed": "PENDING Dependency",
+  "case": "mmo-n10",
+  "states_per_history": 251,
+  "repetitions_including_warmup": 6,
+  "arms": [
+    "v1.4.1 KM session",
+    "v1.4.1 KM fresh",
+    "HermiT fresh",
+    "JFact fresh"
+  ],
+  "histories": 24,
+  "scope": "isolated completed-case correctness audit, not fullmatrix performance",
+  "on_difference": "Replay from revision0 throughfirstdisagreement withfullcanonicaloutputs, plusfreshclassification ofexactoffending snapshot; no reasoningchanges authorized inthis diagnostic.",
+  "snapshot_hash_revalidation_scheduled": true,
+  "snapshot_hash_revalidation_evidence": "Pending audit execution; job writes input-verified.log and records its SHA256 in audit.json only after sha256sum -c succeeds."
+}

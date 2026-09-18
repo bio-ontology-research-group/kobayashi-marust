@@ -1,0 +1,90 @@
+{
+  "purpose": "partial runtime/protocol validation, not benchmark performance",
+  "selection": "first declared frozen ontology/query/module cohort, IDs0000-0005, both versions complete; no selection by speed",
+  "tasks": [
+    {
+      "source": "baseline",
+      "task_id": "0000",
+      "task_sha256": "ae11aded2731afcadfc996fbdfdbb1f9851b63f33d332cc4daffd71267a3afae",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "baseline",
+      "task_id": "0001",
+      "task_sha256": "86f5ca5d7563ece9ee163b44fddc6e0893d6e5218cf92425c53d5660252e71c7",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "baseline",
+      "task_id": "0002",
+      "task_sha256": "63ff01ecd02e07790a2370d5f42fdc9cd6c51cb6e013b093e2ca742de43573da",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "baseline",
+      "task_id": "0003",
+      "task_sha256": "0ee49f115f03ac4c79988bf5351a3eef5e75a3bb34147f07ca0c5c54ec59f62c",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "baseline",
+      "task_id": "0004",
+      "task_sha256": "5a115fe8e979da604dca1b773ed5756f540fb55de344c8cafdd5b16b86af6425",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "baseline",
+      "task_id": "0005",
+      "task_sha256": "3a1b607de2a17c51e511c59435f66a1a0c6cffafa77022da96ae4d588aa0119b",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "final",
+      "task_id": "0000",
+      "task_sha256": "c38fce9399d64887de2ba6f881fb13f9483073f5c5a06dcd833c5c5ca1f57892",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "final",
+      "task_id": "0001",
+      "task_sha256": "f849e80d5c23d9c957e05863e99ad96324c0c87a11995e09fe6087ca98c39c25",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "final",
+      "task_id": "0002",
+      "task_sha256": "0f53976a5d32047da496b1b6375448cf18f7ae58ce67521716865d50bc29152c",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "final",
+      "task_id": "0003",
+      "task_sha256": "fafa5708a9832fd7172b71b1a4489d7e562acccd0bd9efe9bc7a53a1894880b2",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "final",
+      "task_id": "0004",
+      "task_sha256": "2bcd10589f1b33ce6cbd6926e63928e4778b3da06d2189801f168e882242fadc",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    },
+    {
+      "source": "final",
+      "task_id": "0005",
+      "task_sha256": "9a9176916a3415425989faa20a86d9fe99b6ad2fab348b59b2441f87ed7b3e5a",
+      "query_hash": "000d25e56e57c9f985e8c2793f62b2510b08e924bd56fa5873a500e4c2922dc9",
+      "input_sha256": "84ef10f04156f93de25c464f29243f8edc140be9f954eeebb691d1d2bb8027dc"
+    }
+  ]
+}

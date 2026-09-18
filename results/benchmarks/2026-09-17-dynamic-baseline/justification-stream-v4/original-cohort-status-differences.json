@@ -1,0 +1,82 @@
+[
+  {
+    "case": [
+      "mfomd",
+      "q000",
+      "full",
+      5,
+      10,
+      "km-common"
+    ],
+    "baseline": {
+      "ontology": "mfomd",
+      "query_id": "q000",
+      "track": "full",
+      "repetition": 5,
+      "warmup": false,
+      "limit": 10,
+      "arm": "km-common",
+      "status": "correct",
+      "elapsed_s": 525.895405234769,
+      "peak_rss_bytes": 932233216,
+      "first_s": 499.054896197,
+      "extraction_s": 522.187131075,
+      "supports": 1,
+      "enumeration_complete": "true",
+      "distinct_logical_supports": 1,
+      "duplicate_logical_supports": 0
+    },
+    "final": {
+      "ontology": "mfomd",
+      "query_id": "q000",
+      "track": "full",
+      "repetition": 5,
+      "warmup": false,
+      "limit": 10,
+      "arm": "km-common",
+      "status": "timeout",
+      "elapsed_s": 600.2813627384603,
+      "peak_rss_bytes": 927801344
+    }
+  },
+  {
+    "case": [
+      "mfomd",
+      "q000",
+      "full",
+      5,
+      100,
+      "km-common"
+    ],
+    "baseline": {
+      "ontology": "mfomd",
+      "query_id": "q000",
+      "track": "full",
+      "repetition": 5,
+      "warmup": false,
+      "limit": 100,
+      "arm": "km-common",
+      "status": "correct",
+      "elapsed_s": 548.0089084338397,
+      "peak_rss_bytes": 926818304,
+      "first_s": 519.244848887,
+      "extraction_s": 544.287913054,
+      "supports": 1,
+      "enumeration_complete": "true",
+      "distinct_logical_supports": 1,
+      "duplicate_logical_supports": 0
+    },
+    "final": {
+      "ontology": "mfomd",
+      "query_id": "q000",
+      "track": "full",
+      "repetition": 5,
+      "warmup": false,
+      "limit": 100,
+      "arm": "km-common",
+      "status": "timeout",
+      "elapsed_s": 600.2598761226982,
+      "peak_rss_bytes": 928989184
+    }
+  }
+]

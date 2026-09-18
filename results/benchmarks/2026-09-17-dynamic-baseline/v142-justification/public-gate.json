@@ -1,0 +1,16 @@
+{
+  "status": "passed_with_known_unsupported",
+  "correct": 18,
+  "known_unsupported": [
+    {
+      "case": "duplicate_assertion-manual",
+      "returncode": 3,
+      "correct": false,
+      "expected_consistency": [
+        true
+      ],
+      "actual": []
+    }
+  ],
+  "binary_sha256": "705cac1500018d18018ca4d5482a7451e836091b26648453824afa4b36d16fdb"
+}

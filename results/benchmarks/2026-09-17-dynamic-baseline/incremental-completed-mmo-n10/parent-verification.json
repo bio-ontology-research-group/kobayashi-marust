@@ -1,0 +1,13 @@
+{
+  "job": "51985480",
+  "case": "mmo-n10",
+  "histories": 24,
+  "states_per_history": 251,
+  "repetitions_including_warmup": 6,
+  "complete_cross_arm_and_cross_repetition_digest_agreement": true,
+  "distinct_state_taxonomy_digests": 251,
+  "audit_sha256": "4a22f751cfae953c696b57179d2328d4d10c7b28b4aa8bf5deb09a8b938aafd4",
+  "audit_archive_sha256": "1dae3c19adbcf0647e9e9fa5f92190e33939c70ae062e6fb7fc14850df99f6dd",
+  "snapshot_verification_log_sha256": "217590dfed905bba6650f39f71f6ee2896565a733409e1b75e374e8852a3ad28",
+  "scope": "One real incremental case; producer digests cover full canonical taxonomies under the validated driver. Not whole-matrix completion."
+}

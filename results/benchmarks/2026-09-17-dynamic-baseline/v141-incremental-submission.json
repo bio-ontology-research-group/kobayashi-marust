@@ -1,0 +1,23 @@
+{
+  "remote_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/v141-incremental-final",
+  "array_job": 51983825,
+  "audit_job": 51983839,
+  "comparison_job": 51983962,
+  "baseline_array_job": 51982318,
+  "supplement_array_job": 51982375,
+  "baseline_audit_jobs": [
+    51982323,
+    51982376
+  ],
+  "binary_sha256": "680d9002583468e7c68115bf67cb60b89e420339db4c6aa22b5ca802206c8629",
+  "deployment_sha256": "d104c13d2e0548b73bc3a7ca7b2b0b1cefd4a79309b6d3d4e8897f17c152fead",
+  "histories": 24,
+  "states_per_history": 251,
+  "warmups": 1,
+  "measured_repetitions": 5,
+  "arms": [
+    "session",
+    "fresh"
+  ],
+  "status_at_submission": "running; no final performance result or release-completion claim"
+}

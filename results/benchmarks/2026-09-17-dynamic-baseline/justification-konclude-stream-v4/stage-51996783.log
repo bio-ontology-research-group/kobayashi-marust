@@ -1,0 +1,15 @@
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+PASS: pinned runtime closes live stream before EOF; draining first preserves response and consumes trailing newline.
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+Exception in thread "main" java.lang.IllegalStateException: KM oracle failed: {"status":"error","error":"Konclude exit 127: /ibex/scratch/hohndor/km/Konclude-official: error while loading shared libraries: libpcre.so.3: cannot open shared object file: No such file or directory\n"} 
+	at org.kmbenchmark.JustificationBenchmark.entails(JustificationBenchmark.java:48)
+	at org.kmbenchmark.JustificationBenchmark.main(JustificationBenchmark.java:124)
+Traceback (most recent call last):
+  File "konclude-stream-stage.py", line 49, in <module>
+    subprocess.run(cmd,check=True,timeout=300)
+  File "/home/hohndor/.pyenv/versions/3.7.7/lib/python3.7/subprocess.py", line 512, in run
+    output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['java', '-XX:ActiveProcessorCount=1', '-Xmx16g', '-cp', '/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4-original/justification-main/classes:/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes/classifier-hermit.jar', 'org.kmbenchmark.JustificationBenchmark', 'verify', 'km:/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4-original/konclude_oracle.py', '/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-panel-v2/hao/modules/q002.ofn', 'http://purl.obolibrary.org/obo/HAO_0000449', 'http://purl.obolibrary.org/obo/HAO_0000041', '/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4-original/probe-positive', '/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-konclude-stream-v4-original/probe-empty']' returned non-zero exit status 1.

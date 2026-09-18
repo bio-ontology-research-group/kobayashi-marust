@@ -1,0 +1,22 @@
+{
+  "expected_baseline_tasks": 6,
+  "km_final_sources": [
+    {
+      "audit": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-early-case-review-v1/final/audit.json",
+      "label": "EARLY-REVIEW-final",
+      "manifest_root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-early-case-review-v1/final",
+      "normalized": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-early-case-review-v1/final/normalized-supports.tsv",
+      "results_root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-early-case-review-v1/final/results"
+    }
+  ],
+  "sources": [
+    {
+      "audit": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-early-case-review-v1/baseline/audit.json",
+      "label": "EARLY-REVIEW-baseline",
+      "manifest_root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-early-case-review-v1/baseline",
+      "normalized": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-early-case-review-v1/baseline/normalized-supports.tsv",
+      "results_root": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-early-case-review-v1/baseline/results"
+    }
+  ],
+  "validation_only": true
+}

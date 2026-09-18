@@ -1,0 +1,32 @@
+{
+  "ontology": "mmo",
+  "query_id": "q003",
+  "query_hash": "0254b02677aa3aa8565ce91fa89f2e03b1a07bca78e614a135515a36a1fb7c82",
+  "track": "full",
+  "input": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/obo-snapshot/merged/mmo.ofn",
+  "sha256": "534d04c694351cdbe380ded52dcec49f329d310c1d94203bca25ad0d9197075b",
+  "sub": "http://purl.obolibrary.org/obo/MMO_0000511",
+  "super": "http://purl.obolibrary.org/obo/MMO_0000371",
+  "el": true,
+  "limits": [
+    1,
+    10,
+    100
+  ],
+  "library": true,
+  "repetition": 5,
+  "warmup": false,
+  "driver_manifest": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-main/driver-manifest.json",
+  "driver_manifest_sha256": "48ac78980a602c0988d57317701c304e0d52a38d276dd40ad0c54db88e8e9250",
+  "km": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex",
+  "konclude": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/konclude_oracle.py",
+  "runtime": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes",
+  "classes": "/ibex/user/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-main/classes",
+  "arms": [
+    "km-native",
+    "km-common"
+  ],
+  "baseline_task_sha256": "9285cf32d993f6d744527d4be29c868bd3c447665609cbade9664ce1ac5ba63f",
+  "baseline_driver_manifest_sha256": "48d87bd8bdbbc5f5e1db6ae50f09a2d0f703baa50ad85fcb9fa50ede68ab13ac",
+  "final_version": "1.4.2"
+}

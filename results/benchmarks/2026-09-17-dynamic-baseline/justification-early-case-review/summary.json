@@ -1,0 +1,12 @@
+{
+  "attempts": 234,
+  "measured": 195,
+  "terminal": 234,
+  "verified": 234,
+  "matrix_execution_complete": true,
+  "integrity_issues": [],
+  "validation_only": true,
+  "config_sha256": "ae07887096317bd3580bfb56ebc90cd9da6a1aa05ca9036dcd9f08df5f5c2286",
+  "renderer_sha256": "85fa111ced93c5980b69c30338046840b351192c9e0bc660aeb389018d6b01ed",
+  "raw_auditor_sha256": "f9b69f4e800225636f04ee17c6e96bcf22c8c0dee48fd0355c41160de50c4340"
+}

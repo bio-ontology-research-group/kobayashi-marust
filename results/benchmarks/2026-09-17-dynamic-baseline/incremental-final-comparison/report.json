@@ -1,0 +1,63 @@
+{
+  "renderer_sha256": "3ca7d2f99b0093c64e1fdccca793bc5179d95146152d8db823b998914c00ebea",
+  "coverage": [
+    {
+      "label": "v1.4.0",
+      "audit_sha256": "5524d552d8df1860841e94aad17cc68618018680b74894bb367d692ce1a14045",
+      "planned_attempts": 1188,
+      "observed_attempts": 1188,
+      "terminal_attempts": 1188,
+      "repetition_scope_complete": true,
+      "execution_complete": true
+    },
+    {
+      "label": "v1.4.0",
+      "audit_sha256": "5077ce21bac88fc3961a252014dcc3da3adf85b76296fa9ba1987af233cfa17c",
+      "planned_attempts": 324,
+      "observed_attempts": 324,
+      "terminal_attempts": 324,
+      "repetition_scope_complete": true,
+      "execution_complete": true
+    },
+    {
+      "label": "v1.4.1",
+      "audit_sha256": "e7bd1b642fe11b00545f1f36d50384e7ecfed609a1e050480d553f8e2eb8316d",
+      "planned_attempts": 288,
+      "observed_attempts": 288,
+      "terminal_attempts": 288,
+      "repetition_scope_complete": true,
+      "execution_complete": true
+    }
+  ],
+  "inputs": [
+    {
+      "label": "v1.4.0",
+      "path": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/incremental-driver-v3/main-audit.json",
+      "sha256": "5524d552d8df1860841e94aad17cc68618018680b74894bb367d692ce1a14045"
+    },
+    {
+      "label": "v1.4.0",
+      "path": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/incremental-pure-dl-supplement/main-audit.json",
+      "sha256": "5077ce21bac88fc3961a252014dcc3da3adf85b76296fa9ba1987af233cfa17c"
+    },
+    {
+      "label": "v1.4.1",
+      "path": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/v141-incremental-final/main-audit.json",
+      "sha256": "e7bd1b642fe11b00545f1f36d50384e7ecfed609a1e050480d553f8e2eb8316d"
+    }
+  ],
+  "failure_sidecars": [
+    {
+      "path": "failure-causes.json",
+      "sha256": "d556f9e9222541c6bac82ccd67a3d0d4853996338ca40db2e8dc91c4b113469a"
+    }
+  ],
+  "scheduler_receipts": [
+    {
+      "path": "scheduler-terminal.psv",
+      "sha256": "79dae049b554735a5c49d08fb91acca09ed2a9fadd5fff6ddd69c75e77befd13"
+    }
+  ],
+  "expected_main_measured_repetitions": 5,
+  "release_certification_established": false
+}

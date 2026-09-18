@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "enricher_sha256": "2b6f9e0617e1581082fccc7bee3f69d932d563a6a27b9ec0912ea960da4b651d",
+  "max_bytes_per_evidence_file": 131072,
+  "scope": "direct failure evidence only; no speculative unsupported classification; raw statuses preserved",
+  "audits": [
+    {
+      "label": "early",
+      "path": ".work/artifacts/dynamic-incremental-early-review/failure-audit.json",
+      "sha256": "7a7d8eedb3f1e7b5e84b669e1a64400cdba734d08bd0501a0079c05d4570d1d2"
+    }
+  ],
+  "entries": [
+    {
+      "label": "early",
+      "audit_sha256": "7a7d8eedb3f1e7b5e84b669e1a64400cdba734d08bd0501a0079c05d4570d1d2",
+      "case": "to-n1",
+      "repetition": "0",
+      "reasoner": "konclude",
+      "arm": "fresh",
+      "measurement_sha256": "786c7f3c45196a125f081c366c7d00e6b48a92c22544bc72fc5e1d6acf47d4a0",
+      "reported_status": "error",
+      "classification": "parse_error",
+      "findings": [
+        {
+          "kind": "parse_error",
+          "evidence": {
+            "path": "/mnt/data2/leechuck/km-work/dynamic-20260917/artifacts/dynamic-incremental-early-review/konclude-to-parse-error/000.response.xml",
+            "size": 7389,
+            "truncated": false,
+            "segments": [
+              {
+                "offset": 0,
+                "length": 7389,
+                "sha256": "96f65f7f743ce51a5238cdc30fe1b4a24a9c9285d4d6f12a8257077199135869"
+              }
+            ]
+          },
+          "excerpt": "All parsers failed for 'file:///ibex/user/hohndor/km/dynamic-benchmark-20260917/incremental-driver-v3/measured/to-n1/konclude/rep-0/fresh/000.input.ofn'."
+        }
+      ]
+    }
+  ]
+}

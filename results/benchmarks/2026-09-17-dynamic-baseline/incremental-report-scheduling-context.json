@@ -1,0 +1,8 @@
+{
+  "report_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/incremental-final-report-v2",
+  "sidecars": {
+    "scheduling-amendment.json": "f95050cd6b3ab769e7218b377ae28a0b8cf33d26094adf4170799e8fc3e37638",
+    "scheduling-amendment-2.json": "0a0838981e69053cce0cbb82a060b0dc4641cc20b5b2430b7cd7136e6d134df0"
+  },
+  "raw_measurements_modified": false
+}

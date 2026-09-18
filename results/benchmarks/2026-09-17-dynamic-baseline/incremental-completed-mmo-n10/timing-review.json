@@ -1,0 +1,88 @@
+{
+  "case": "mmo-n10",
+  "scope": "One independently verified case; not an overall ranking or justification for changing the protocol",
+  "warmup_excluded": true,
+  "arms": {
+    "km/session": {
+      "measured_repetitions": 5,
+      "whole_history_wall_s": {
+        "median": 17.874398313462734,
+        "minimum": 17.851761808618903,
+        "maximum": 17.98126882314682
+      },
+      "intervals": {
+        "canonicalize_s": {
+          "median_update_sum_s": 7.899091137573123
+        },
+        "request_response_s": {
+          "median_update_sum_s": 8.054568901658058
+        }
+      },
+      "update_receipts": {
+        "count": 1250,
+        "strategies": {
+          "el_delta": 1250
+        },
+        "reused_fixpoint": 1250,
+        "median_retained_states": 265.0,
+        "median_invalidated_states": 5092.0
+      }
+    },
+    "km/fresh": {
+      "measured_repetitions": 5,
+      "whole_history_wall_s": {
+        "median": 15.57013713568449,
+        "minimum": 15.5341193433851,
+        "maximum": 15.701403707265854
+      },
+      "intervals": {
+        "canonicalize_s": {
+          "median_update_sum_s": 7.558006905019283
+        },
+        "request_response_s": {
+          "median_update_sum_s": 5.395935203880072
+        }
+      }
+    },
+    "hermit/fresh": {
+      "measured_repetitions": 5,
+      "whole_history_wall_s": {
+        "median": 52.59614847227931,
+        "minimum": 50.296228624880314,
+        "maximum": 53.67039852030575
+      },
+      "intervals": {
+        "extract_s": {
+          "median_update_sum_s": 5.305688902000003
+        },
+        "parse_s": {
+          "median_update_sum_s": 7.570244429000001
+        },
+        "update_inference_s": {
+          "median_update_sum_s": 27.359303065999974
+        }
+      }
+    },
+    "jfact/fresh": {
+      "measured_repetitions": 5,
+      "whole_history_wall_s": {
+        "median": 49.28681939840317,
+        "minimum": 47.892930433154106,
+        "maximum": 50.78362004831433
+      },
+      "intervals": {
+        "extract_s": {
+          "median_update_sum_s": 5.998795151999998
+        },
+        "parse_s": {
+          "median_update_sum_s": 23.890465887999984
+        },
+        "update_inference_s": {
+          "median_update_sum_s": 6.401952506999997
+        }
+      }
+    }
+  },
+  "median_paired_km_fresh_over_session_wall_ratio": 0.8696321359531125,
+  "interpretation": "Retained fixpoint work is real, but KM session is slower than fresh rebuild for this case. Cross-language API intervals are not interchangeable; whole-history wall includes interface and canonicalization costs."
+}

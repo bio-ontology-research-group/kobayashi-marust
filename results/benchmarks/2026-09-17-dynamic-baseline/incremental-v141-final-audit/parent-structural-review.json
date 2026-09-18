@@ -1,0 +1,13 @@
+{
+  "audit_sha256": "e7bd1b642fe11b00545f1f36d50384e7ecfed609a1e050480d553f8e2eb8316d",
+  "status": "structural_review_pass",
+  "measured_statuses": {
+    "ok": 120,
+    "error": 60,
+    "timeout": 60
+  },
+  "own_session_fresh_checked_states_including_warmup": 19626,
+  "fully_agreeing_history_pairs_including_warmup": 72,
+  "independent_correctness": "pending_peer_audit_join",
+  "input_runtime_provenance": "measurement_claims_checked; independent_payload_binding_pending"
+}

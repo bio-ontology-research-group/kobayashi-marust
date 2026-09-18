@@ -1,0 +1,7 @@
+ontology	status	queries	source	fragment	reason
+mmo	prepared	5	EARLY-REVIEW-baseline	EL	
+hao	prepared	5	EARLY-REVIEW-baseline	EL	
+vto	prepared	5	EARLY-REVIEW-baseline	EL	
+mfomd	prepared	5	EARLY-REVIEW-baseline	pure_DL	
+to	preparation_unavailable		EARLY-REVIEW-baseline	DL+rules	independent entailment confirmation or module preparation incomplete
+uberon	preparation_unavailable		EARLY-REVIEW-baseline	DL+rules	independent entailment confirmation or module preparation incomplete

@@ -1,0 +1,25 @@
+ontology	status	queries	source	fragment	reason
+mmo	prepared	5	baseline-original	EL	
+hao	prepared	5	baseline-original	EL	
+vto	prepared	5	baseline-original	EL	
+mfomd	prepared	5	baseline-original	pure_DL	
+to	preparation_unavailable		baseline-original	DL+rules	independent entailment confirmation or module preparation incomplete
+uberon	preparation_unavailable		baseline-original	DL+rules	independent entailment confirmation or module preparation incomplete
+zfa	prepared	5	baseline-pure-dl	pure_DL	
+mro	preparation_unavailable		baseline-pure-dl	pure_DL	independent entailment confirmation or module preparation incomplete
+mmo	prepared	5	stream-v4-baseline-original	EL	
+hao	prepared	5	stream-v4-baseline-original	EL	
+vto	prepared	5	stream-v4-baseline-original	EL	
+mfomd	prepared	5	stream-v4-baseline-original	pure_DL	
+to	preparation_unavailable		stream-v4-baseline-original	DL+rules	independent entailment confirmation or module preparation incomplete
+uberon	preparation_unavailable		stream-v4-baseline-original	DL+rules	independent entailment confirmation or module preparation incomplete
+zfa	prepared	5	stream-v4-baseline-pure-dl	pure_DL	
+mro	preparation_unavailable		stream-v4-baseline-pure-dl	pure_DL	independent entailment confirmation or module preparation incomplete
+mmo	prepared	5	stream-v4-konclude-original	EL	
+hao	prepared	5	stream-v4-konclude-original	EL	
+vto	prepared	5	stream-v4-konclude-original	EL	
+mfomd	prepared	5	stream-v4-konclude-original	pure_DL	
+to	preparation_unavailable		stream-v4-konclude-original	DL+rules	independent entailment confirmation or module preparation incomplete
+uberon	preparation_unavailable		stream-v4-konclude-original	DL+rules	independent entailment confirmation or module preparation incomplete
+zfa	prepared	5	stream-v4-konclude-pure-dl	pure_DL	
+mro	preparation_unavailable		stream-v4-konclude-pure-dl	pure_DL	independent entailment confirmation or module preparation incomplete

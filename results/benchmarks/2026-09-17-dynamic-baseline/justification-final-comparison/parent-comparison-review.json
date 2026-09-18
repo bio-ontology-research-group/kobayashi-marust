@@ -1,0 +1,101 @@
+{
+  "archive_attempts": 13680,
+  "selected_measured_including_baseline_km": 9150,
+  "final_comparison_measured": 7650,
+  "paired_rows": 12300,
+  "eligible_pairs": 4739,
+  "checks": "unique selected keys; final KM only; matching input hashes; selected cohort provenance; eligibility; every ratio; complete five-repetition case denominators and median ratios",
+  "coverage": [
+    {
+      "arm": "elk-common",
+      "measured": 450,
+      "statuses": {
+        "correct": 300,
+        "timeout": 150
+      }
+    },
+    {
+      "arm": "hermit-common",
+      "measured": 750,
+      "statuses": {
+        "correct": 517,
+        "timeout": 233
+      }
+    },
+    {
+      "arm": "hermit-library",
+      "measured": 750,
+      "statuses": {
+        "correct": 710,
+        "timeout": 40
+      }
+    },
+    {
+      "arm": "jfact-common",
+      "measured": 750,
+      "statuses": {
+        "correct": 450,
+        "timeout": 299,
+        "error": 1
+      }
+    },
+    {
+      "arm": "jfact-library",
+      "measured": 750,
+      "statuses": {
+        "correct": 710,
+        "timeout": 40
+      }
+    },
+    {
+      "arm": "km-common",
+      "measured": 750,
+      "statuses": {
+        "correct": 373,
+        "timeout": 362,
+        "error": 15
+      }
+    },
+    {
+      "arm": "km-native",
+      "measured": 750,
+      "statuses": {
+        "correct": 675,
+        "error": 75
+      }
+    },
+    {
+      "arm": "konclude-common",
+      "measured": 750,
+      "statuses": {
+        "correct": 431,
+        "error": 32,
+        "timeout": 287
+      }
+    },
+    {
+      "arm": "openllet-common",
+      "measured": 750,
+      "statuses": {
+        "correct": 450,
+        "timeout": 300
+      }
+    },
+    {
+      "arm": "openllet-library",
+      "measured": 750,
+      "statuses": {
+        "correct": 668,
+        "timeout": 82
+      }
+    },
+    {
+      "arm": "whelk-common",
+      "measured": 450,
+      "statuses": {
+        "correct": 290,
+        "timeout": 160
+      }
+    }
+  ]
+}

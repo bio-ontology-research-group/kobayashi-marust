@@ -1,0 +1,17 @@
+usage: km classify [--lines] [--route ROUTE] [--format FORMAT] <ontology>
+       km explain [OPTIONS] <ontology.ofn> subclass <SUB> <SUPER>
+       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>
+       km explain [OPTIONS] <ontology.ofn> inconsistent
+       km features [--format FORMAT] <ontology> ...
+       km profile [--format FORMAT] <ontology> ...
+       km routes
+       km incremental   (JSONL exact EL++/CB/direct-HT session)
+       km incremental-source   (JSONL complete OWL source session)
+       km ofn|elc|engine|tableau   (worker subcommands)
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "/home/hohndor/.pyenv/versions/3.7.7/lib/python3.7/subprocess.py", line 411, in check_output
+    **kwargs).stdout
+  File "/home/hohndor/.pyenv/versions/3.7.7/lib/python3.7/subprocess.py", line 512, in run
+    output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/ibex/user/hohndor/km/dynamic-benchmark-20260917/v142-rc1/km.ibex', '--version']' returned non-zero exit status 2.

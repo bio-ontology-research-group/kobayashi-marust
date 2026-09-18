@@ -1,0 +1,306 @@
+{
+  "archive_sha256": "49f57e41abe63ef6287f0d057379db225367619143fc7a5a08df5b2ebca52258",
+  "logs": [
+    {
+      "path": "measured/mfomd-n100/km/rep-0/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-0/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-1/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-1/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-2/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-2/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-3/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-3/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-4/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n100/km/rep-4/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-0/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-0/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-1/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-1/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-2/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-2/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-3/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-3/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-4/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n10/km/rep-4/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-0/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-0/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-1/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-1/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-2/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-2/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-3/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-3/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-4/fresh/driver.stderr",
+      "sha256": "9bd2f30a7db9a6a2103636a45d65f4760d707767df1db5eba86db72f7cfb132f",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/mfomd-n1/km/rep-4/session/driver.stderr",
+      "sha256": "67ef8dde23237e135600e55893e9d667d3a0526e502114c7c00a36b21d4cf9d6",
+      "diagnostic": "RuntimeError: {'error': 'worker engine exited -1: ', 'op': 'replace', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-0/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-0/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-1/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-1/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-2/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-2/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-3/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-3/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-4/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n100/km/rep-4/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-0/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-0/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-1/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-1/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-2/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-2/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-3/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-3/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-4/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n10/km/rep-4/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-0/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-0/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-1/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-1/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-2/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-2/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-3/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-3/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-4/fresh/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    },
+    {
+      "path": "measured/to-n1/km/rep-4/session/driver.stderr",
+      "sha256": "543ce0f5e6c99b39cbd231a3cefd780064f56bcb467bb0657b72693096b3de87",
+      "diagnostic": "RuntimeError: {'error': 'DL-safe rule contains a complex class atom', 'op': 'init', 'status': 'error'}"
+    }
+  ],
+  "scope": "Recorded driver errors only; exit -1 is not a diagnosed root cause."
+}

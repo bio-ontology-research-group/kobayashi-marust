@@ -1,0 +1,301 @@
+label	phase	stratum	case	reasoner	arm	planned_attempts	observed_attempts	terminal_attempts	correct_complete_histories	outcomes	correct_wall_n	correct_wall_median_s	correct_wall_min_s	correct_wall_max_s	correct_peak_median_mib	correct_peak_max_mib	observed_wall_s	exact_rebuild_count	el_delta_count	meaningful_incremental_updates	reused_fixpoints
+v1.4.0	measured	DL_plus_rules_stress	to-n1	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1202.8258837480098	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n1	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1202.7559296488762	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n1	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.5208826102316	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n1	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						1201.4547359384596	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n1	km	fresh	5	5	5	0	"{""error"": 5}"	0						1.3241056092083454	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n1	km	session	5	5	5	0	"{""error"": 5}"	0						1.3511501476168633	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n1	konclude	fresh	5	5	5	0	"{""parse_error"": 5}"	0						5.805885806679726	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n1	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.3943257443607	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n1	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1201.38257762976	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1202.9201115444303	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1202.8069572076201	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.6633953358978	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						1201.764574887231	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	km	fresh	5	5	5	0	"{""error"": 5}"	0						2.335162067785859	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	km	session	5	5	5	0	"{""error"": 5}"	0						2.412198793143034	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	konclude	fresh	5	5	5	0	"{""parse_error"": 5}"	0						6.0355404410511255	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.8308629095554	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n10	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1202.0050149206072	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1203.8669202644378	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1203.6194835025817	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.7557347752154	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						1201.7723197340965	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	km	fresh	5	5	5	0	"{""error"": 5}"	0						1.405353358015418	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	km	session	5	5	5	0	"{""error"": 5}"	0						1.3839366603642702	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	konclude	fresh	5	5	5	0	"{""parse_error"": 5}"	0						5.737048549577594	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.8576112166047	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	to-n100	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1201.9468539189547	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1210.2719087935984	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1205.1130143627524	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.5297696068883	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						1201.486008565873	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1205.861594695598	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	km	session	5	5	5	0	"{""timeout"": 5}"	0						1205.5098499655724	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	konclude	fresh	5	5	5	0	"{""memout"": 5}"	0						520.5559486281127	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.6921725217253	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n1	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1201.653463549912	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1239.8265488222241	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1242.7003454454243	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.7295749727637	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						1201.701469361782	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1203.8652945123613	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	km	session	5	5	5	0	"{""timeout"": 5}"	0						1203.7682209517807	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	konclude	fresh	5	5	5	0	"{""memout"": 5}"	0						574.0490685366094	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.6757192835212	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n10	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1201.5970394723117	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1219.0018145460635	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1218.7300220765173	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	jfact	fresh	5	5	5	0	"{""error"": 1, ""timeout"": 4}"	0						1197.9412233997136	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	jfact	session	5	5	5	0	"{""error"": 1, ""timeout"": 4}"	0						1194.0438547991216	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1204.8525461442769	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	km	session	5	5	5	0	"{""timeout"": 5}"	0						1204.7428333088756	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	konclude	fresh	5	5	5	0	"{""memout"": 5}"	0						524.9316367972642	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.7153144236654	0	0	0	0
+v1.4.0	measured	DL_plus_rules_stress	uberon-n100	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1201.746636947617	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	elk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	258.34031766839325	239.8274846225977	281.79361054487526	738.6328125	742.71484375	1300.8398597259074	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	elk	session	5	5	5	5	"{""verified_correct"": 5}"	5	194.5992947947234	182.6361950840801	199.58666626363993	741.9453125	748.16015625	964.4931099619716	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	247.4559942819178	244.8341000713408	254.77045724727213	716.1171875	757.48828125	1245.1167271081358	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	249.4805011358112	248.57790283672512	253.9149269927293	717.2890625	748.7578125	1251.9699274543673	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	3180.167779011652	3006.5037895757705	3555.733024727553	2151.27734375	2155.48828125	16306.213444853202	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	3536.0146037749946	3225.4065327662975	3787.4011317845434	2149.87109375	2153.7421875	17653.426776647568	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	240.33547013252974	201.37882868759334	251.89026442170143	127.6484375	131.8671875	1168.1232792846859	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	281.27337028086185	262.0265047419816	315.8720536585897	125.27734375	125.93359375	1433.962669448927	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	hao-n1	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	212.2133436575532	210.17201121151447	214.3802403640002	105.46484375	109.07421875	1062.1527949813753	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	2420.28211309202	2225.219462379813	2666.065880380571	2210.28515625	2232.5625	12086.206682108343	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	2588.739161239937	2370.4541853312403	2729.4755272753537	2217.73828125	2236.08203125	12779.197645002976	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	whelk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	507.75283897668123	455.5965495314449	571.8803209643811	1108.89453125	1126.9453125	2542.1400006935	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n1	whelk	session	5	5	5	5	"{""verified_correct"": 5}"	5	488.24732852727175	452.1229556556791	527.4362460523844	807.49609375	822.84765625	2447.140511153266	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	elk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	207.05291678011417	205.00195398554206	224.83961971104145	737.609375	742.2890625	1064.9277351088822	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	elk	session	5	5	5	5	"{""verified_correct"": 5}"	5	155.5231354869902	155.33026677928865	167.41310447081923	766.71875	770.40625	793.7343564685434	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	248.67959037609398	244.57427004538476	258.7666427753866	718.62109375	746.5078125	1254.1383755505085	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	250.4668766465038	248.88354357890785	253.65828037261963	720.74609375	725.2578125	1254.4828224461526	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	2916.058348653838	2597.498534038663	3230.7695105019957	2158.34375	2159.28515625	14728.14746832475	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	3005.225716855377	2544.7953045982867	3093.683002885431	2145.6171875	2157.02734375	14512.124418199062	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	204.1922113597393	202.63596925884485	212.43910088017583	135.78125	208.28125	1030.8489955607802	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	264.58795271255076	260.10080800019205	271.527470568195	131.25390625	132.8515625	1325.7895263843238	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	hao-n10	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	208.4010978601873	207.40709305740893	208.7504787556827	99.77734375	102.23046875	1041.1333308201283	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	2894.4983809050173	2663.5696998443455	3297.874765522778	2233.84375	2239.02734375	14656.273622430861	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	2948.7463216949254	2640.6206561606377	3274.882846156135	2235.72265625	2255.41796875	14773.25627197884	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	whelk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	575.8583682999015	571.5295758266002	581.5090209394693	1146.8046875	1173.2265625	2881.505776077509	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n10	whelk	session	5	5	5	5	"{""verified_correct"": 5}"	5	573.7794096823782	558.1455840654671	607.8131364304572	811.48828125	823.875	2911.610046055168	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	elk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	263.10390204936266	260.0249166674912	266.5322652515024	742.96484375	745.75	1314.8521778602153	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	elk	session	5	5	5	5	"{""verified_correct"": 5}"	5	219.36881179735065	214.39714313670993	223.56189995631576	867.37890625	873.12890625	1099.2519746683538	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	252.72711783833802	248.9704238474369	261.96455584838986	714.40234375	721.3984375	1273.8834467977285	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	258.39387278072536	255.55972697027028	265.4770025797188	717.34375	726.2421875	1297.168874638155	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	3246.460193350911	3082.0376318562776	3504.8511173110455	2155.99609375	2160.83203125	16487.57934026979	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	3075.4061759077013	2726.60461175628	3554.411619078368	2150.2578125	2159.39453125	15594.767644578591	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	245.2721063233912	189.88646197877824	245.9389732964337	153.921875	162.984375	1170.892377384007	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	328.48089270479977	241.85043079219759	329.89959382638335	134.54296875	137.1015625	1555.484092116356	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	hao-n100	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	173.68106522783637	171.32174826785922	175.54531617090106	110.59765625	110.8671875	868.5117875877768	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	3421.867336381227	3037.421771226451	4293.0724165756255	2227.5859375	2235.41015625	17762.084908276796	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	3254.2888389844447	3149.947492578998	4472.096529273316	2226.44921875	2231.63671875	17540.124299075454	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	whelk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	547.6729214917868	544.1323657277972	559.835607888177	1148.68359375	1160.6015625	2746.1502662021667	0	0	0	0
+v1.4.0	measured	OWL2EL	hao-n100	whelk	session	5	5	5	5	"{""verified_correct"": 5}"	5	551.421534832567	541.7267636004835	570.7980128265917	810.4609375	816.71484375	2777.2208685260266	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	elk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	52.31557051278651	51.184821931645274	53.01170597597957	697.50390625	702.96875	260.2806370574981	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	elk	session	5	5	5	5	"{""verified_correct"": 5}"	5	46.35547371208668	44.22063480690122	47.76439356431365	688.28515625	692.6875	230.17035213299096	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	49.557485131546855	45.54419463314116	51.431789733469486	695.95703125	711.54296875	246.7186598982662	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	48.80965211801231	47.3335934355855	49.79131144657731	693.45703125	694.5703125	243.20427588745952	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	51.862841840833426	48.9814539514482	55.284965842962265	868.3984375	874.078125	258.2456215489656	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	53.56402164325118	51.54055861569941	55.93085731938481	822.84375	825.53515625	269.1780680902302	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	17.58714951761067	17.45526239834726	17.7896759044379	29.1328125	29.31640625	87.99989604949951	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	20.291345054283738	20.24772193096578	20.467881079763174	29.1171875	29.7734375	101.6710967514664	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	mmo-n1	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	119.57985977642238	116.44549490883946	120.51836301386356	52.80078125	55.8203125	596.2970166746527	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	74.03946966864169	73.371606066823	74.15758603625	696.62109375	702.2265625	369.6441592108458	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	73.32192256487906	71.73881851695478	74.71968886815012	697.50390625	700.07421875	366.017837010324	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	whelk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	77.10702137090266	76.82028729468584	78.64843942783773	717.06640625	723.28515625	386.9574718941003	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n1	whelk	session	5	5	5	5	"{""verified_correct"": 5}"	5	79.44550644233823	76.88220318593085	82.22096720337868	702.8671875	713.421875	396.2714471369982	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	elk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	50.010823015123606	47.18085074797273	51.245089979842305	697.75	698.4609375	248.34946646168828	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	elk	session	5	5	5	5	"{""verified_correct"": 5}"	5	47.51207966171205	45.25008040480316	48.40176719427109	701.93359375	705.59375	235.60386880114675	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	52.59614847227931	50.296228624880314	53.67039852030575	700.64453125	706.7890625	259.94447568431497	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	52.23616639710963	48.449958523735404	53.70094489119947	692.48046875	695.9765625	257.0411114450544	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	49.28681939840317	47.892930433154106	50.78362004831433	855.63671875	863.0859375	246.33150313049555	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	50.618912579491735	49.53063038922846	52.38726466521621	825.00390625	825.6796875	254.62467302568257	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	17.20199241116643	17.075185565277934	17.224155819043517	29.30859375	29.8515625	85.87019224464893	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	19.604089757427573	19.2984252050519	19.885340793058276	29.4609375	29.8125	97.95669883675873	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	mmo-n10	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	214.85489817894995	148.89582371339202	262.2162111643702	52.4921875	54.83984375	1055.1108640283346	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	77.41181653365493	75.84984463639557	78.21090363152325	700.07421875	701.8984375	385.9551953151822	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	81.55652576312423	77.19158258102834	82.43537088483572	693.79296875	703.7265625	403.8199713639915	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	whelk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	83.04296324960887	81.41438212059438	83.79257174953818	715.81640625	727.28515625	413.64312363415956	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n10	whelk	session	5	5	5	5	"{""verified_correct"": 5}"	5	81.82266991212964	80.74902914837003	85.57410435006022	709.76953125	724.06640625	413.9342084508389	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	elk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	53.34227547235787	52.172966703772545	55.67425465025008	690.01953125	691.41015625	267.8532132077962	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	elk	session	5	5	5	5	"{""verified_correct"": 5}"	5	56.96953421086073	55.95988587848842	59.95776032283902	776.25	778.87890625	287.6622579228133	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	47.77751354314387	44.16002137772739	51.108133759349585	685.640625	707.73046875	237.68493469059467	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	46.6543485801667	45.78598424233496	49.811981063336134	693.47265625	719.015625	237.85229670628905	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	76.68533628992736	64.24050076678395	82.91683065705001	847.54296875	859.81640625	373.26944978162646	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	78.01014287211001	70.36703622341156	88.3530103880912	832.03125	844.47265625	396.6697455905378	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	15.633691232651472	15.591994723305106	15.68711100704968	29.265625	29.51953125	78.19287336617708	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	18.260015344247222	18.023188829421997	18.350461028516293	29.69921875	29.953125	91.00642732530832	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	mmo-n100	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	118.29464036598802	118.09674209356308	119.44966211169958	47.48046875	53.26171875	593.194640180096	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	76.16333089955151	74.90425491705537	77.97153561934829	697.8984375	700.96875	380.4399993363768	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	80.80015790089965	76.9439505636692	84.58479007706046	700.8359375	708.828125	404.1579329650849	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	whelk	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	78.6220334880054	76.40549864247441	80.0456666443497	702.92578125	714.5390625	391.87474923208356	0	0	0	0
+v1.4.0	measured	OWL2EL	mmo-n100	whelk	session	5	5	5	5	"{""verified_correct"": 5}"	5	79.48899557627738	78.2620598115027	81.90293392539024	708.26171875	723.47265625	398.02911938913167	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	elk	fresh	5	5	5	0	"{""unverified"": 5}"	0						21486.815062660724	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	elk	session	5	5	5	0	"{""unverified"": 5}"	0						17765.33450961858	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	hermit	fresh	5	5	5	0	"{""unverified"": 5}"	0						29559.17686789483	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	hermit	session	5	5	5	0	"{""unverified"": 5}"	0						28778.552265284583	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						36001.49209913984	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						36001.554393468425	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	km	fresh	5	5	5	0	"{""unverified"": 5}"	0						19742.307633521035	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	km	session	5	5	5	0	"{""unverified"": 5}"	0						23252.453841656446	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	vto-n1	konclude	fresh	5	5	5	0	"{""unverified"": 5}"	0						14867.406624961644	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						36000.43586829677	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						36000.326677411795	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	whelk	fresh	5	5	5	0	"{""timeout"": 5}"	0						36000.46302155405	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n1	whelk	session	5	5	5	0	"{""timeout"": 5}"	0						36000.37211880088	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	elk	fresh	5	5	5	0	"{""unverified"": 5}"	0						23409.765757607296	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	elk	session	5	5	5	0	"{""unverified"": 5}"	0						19240.71162204258	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	hermit	fresh	5	5	5	0	"{""unverified"": 5}"	0						28718.509360700846	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	hermit	session	5	5	5	0	"{""unverified"": 5}"	0						28572.977742325515	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						36001.83436592482	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						36001.87849629484	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	km	fresh	5	5	5	0	"{""unverified"": 5}"	0						20595.588837735355	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	km	session	5	5	5	0	"{""unverified"": 5}"	0						26828.188107520342	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	vto-n10	konclude	fresh	5	5	5	0	"{""unverified"": 5}"	0						15731.629963817075	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						36000.43990510516	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						36000.50724347308	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	whelk	fresh	5	5	5	0	"{""timeout"": 5}"	0						36000.38073278032	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n10	whelk	session	5	5	5	0	"{""timeout"": 5}"	0						36000.36247578263	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	elk	fresh	5	5	5	0	"{""unverified"": 5}"	0						22670.17240044102	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	elk	session	5	5	5	0	"{""unverified"": 5}"	0						19097.58906999603	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	hermit	fresh	5	5	5	0	"{""unverified"": 5}"	0						28894.618179136887	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	hermit	session	5	5	5	0	"{""unverified"": 5}"	0						28519.696568636224	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						36001.88162226044	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						36001.79126313329	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	km	fresh	5	5	5	0	"{""unverified"": 5}"	0						17980.763618165627	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	km	session	5	5	5	0	"{""unverified"": 5}"	0						22692.934449657798	0	1250	1250	1250
+v1.4.0	measured	OWL2EL	vto-n100	konclude	fresh	5	5	5	0	"{""unverified"": 5}"	0						14258.65534834005	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						36000.32439532131	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						36000.35007062927	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	whelk	fresh	5	5	5	0	"{""timeout"": 5}"	0						36000.32923396677	0	0	0	0
+v1.4.0	measured	OWL2EL	vto-n100	whelk	session	5	5	5	0	"{""timeout"": 5}"	0						36000.41091767885	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	113.99576704762876	111.79822708107531	115.17107580602169	714.671875	752.15625	567.3988186754286	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	113.26766445487738	112.80315189063549	116.4842859134078	699.65625	741.87109375	570.1974668987095	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	103.92241081781685	101.53373175114393	107.02686833031476	880.2421875	880.86328125	521.7676597293466	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	106.94675741903484	101.01218574307859	111.58933064900339	838.875	847.30859375	529.5145620461553	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	km	fresh	5	5	5	0	"{""error"": 5}"	0						4179.229436485097	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	km	session	5	5	5	0	"{""error"": 5}"	0						4202.770820837468	650	0	190	190
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	116.80997335538268	116.52715909481049	117.51643200032413	52.265625	55.9921875	584.3451538830996	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	125.39626877941191	121.80193546414375	131.96551075205207	724.640625	726.2890625	629.7564552985132	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n1	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	128.1061375271529	126.06692782603204	129.60004875063896	718.32421875	730.16796875	639.461748726666	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	117.29613424837589	112.61563819646835	119.80722752399743	719.71484375	765.98046875	582.0871299803257	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	119.3763531818986	113.9223277065903	125.91918228007853	713.0625	752.03125	601.3276127912104	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	99.0297031570226	93.36804207600653	107.8256549295038	875.96484375	879.75390625	504.3184614870697	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	108.58859770186245	98.57064789533615	109.54792641662061	838.7265625	843.078125	525.0422334522009	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	km	fresh	5	5	5	0	"{""error"": 5}"	0						3709.51007274352	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	km	session	5	5	5	0	"{""error"": 5}"	0						3724.6388565041125	360	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	115.01224545575678	114.94982516020536	115.40963731519878	57.515625	58.78515625	575.4440165087581	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	98.33880181238055	95.18705632351339	102.18936748988926	721.66015625	726.86328125	492.94672433286905	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n10	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	102.79603902995586	102.05623906850815	105.91146465204656	726.625	736.796875	517.1305137351155	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	119.96095286309719	115.59401042945683	121.85505034029484	748.69140625	750.5078125	599.0257074292749	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	123.85930144786835	118.14505458623171	130.66719723120332	707.00390625	730.8984375	619.9623525533825	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	100.87455064058304	99.45065373927355	111.11682083643973	878.4453125	886.546875	512.4608776755631	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	104.76907139457762	100.46405739337206	111.18710777536035	848.9609375	857.54296875	525.9008974172175	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	km	fresh	5	5	5	0	"{""error"": 5}"	0						1493.0950726848096	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	km	session	5	5	5	0	"{""error"": 5}"	0						1498.319257196039	80	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	117.5669735968113	117.30412499420345	117.65651555359364	49.5703125	55.97265625	587.6009042225778	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	124.84220503643155	117.8281092364341	126.25951119698584	723.0703125	736.18359375	613.1723201032728	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mfomd-n100	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	126.45115772262216	118.23789381235838	127.6666240952909	711.88671875	717.52734375	622.4561303835362	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1203.0065218564123	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1203.518675956875	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.952540813014	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						1201.9395164940506	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.4768877327442	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	km	session	5	5	5	0	"{""timeout"": 5}"	0						1201.3298836871982	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	konclude	fresh	5	5	5	0	"{""timeout"": 2, ""unverified"": 3}"	0						34323.87852927111	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1202.383523374796	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n1	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1201.83031386137	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1202.3591177817434	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1202.335690908134	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.6631033569574	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						1201.5543454121798	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.6750380694866	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	km	session	5	5	5	0	"{""timeout"": 5}"	0						1201.6717130113393	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	konclude	fresh	5	5	5	0	"{""timeout"": 2, ""unverified"": 3}"	0						35300.20848965831	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.4452647566795	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n10	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1210.1019525583833	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	hermit	fresh	5	5	5	0	"{""timeout"": 5}"	0						1202.3218191247433	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	hermit	session	5	5	5	0	"{""timeout"": 5}"	0						1202.366277795285	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	jfact	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.4373293016106	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	jfact	session	5	5	5	0	"{""timeout"": 5}"	0						1201.5737859979272	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.394125327468	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	km	session	5	5	5	0	"{""timeout"": 5}"	0						1201.460720770061	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	konclude	fresh	5	5	5	0	"{""timeout"": 1, ""unverified"": 4}"	0						29219.044026888907	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	openllet	fresh	5	5	5	0	"{""timeout"": 5}"	0						1216.735994970426	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	mro-n100	openllet	session	5	5	5	0	"{""timeout"": 5}"	0						1206.0268961712718	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	312.7302715331316	305.64152853004634	338.44217082858086	720.16796875	726.109375	1580.410015862435	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	310.8254685495049	305.09537067450583	314.9294326584786	723.02734375	732.59765625	1552.2217518072575	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	1292.5592219214886	1280.2806893214583	1324.1964016258717	1343.45703125	1344.46875	6498.363965330645	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	1288.6276050489396	1207.2613776549697	1297.5610840804875	1310.0859375	1315.8984375	6352.040602693334	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	345.6385795343667	336.4215269945562	348.72235130518675	129.2890625	130.67578125	1715.6320046354085	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	653.1091485153884	638.0591396056116	661.7594548873603	152.296875	152.921875	3250.041730111465	1250	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	191.43792466074228	190.87792249955237	192.9764787554741	97.60546875	97.87109375	958.4764680247754	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	401.767087046057	382.6828660350293	425.49313610978425	743.77734375	745.90625	2025.107881784439	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n1	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	410.939995970577	405.0225987602025	440.3239560201764	749.2109375	752.796875	2077.3124104887247	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	336.28845008835196	315.84651940874755	360.8742955829948	721.87890625	732.62109375	1682.8840924426913	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	328.69086613692343	315.83885435573757	368.58339790068567	727.9921875	752.3125	1665.4873132780194	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	1492.3449077475816	1245.372922681272	1638.2512816470116	1338.6171875	1353.421875	7262.317156042904	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	1433.510923910886	1409.444314751774	1628.6381212845445	1308.953125	1316.08984375	7430.578640857711	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	324.61457980051637	323.377046905458	328.2414803225547	133.4921875	134.0859375	1626.011068545282	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	393.17378994077444	389.01315699517727	395.7481598556042	148.5	149.55078125	1964.9747789334506	1250	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	203.25357130169868	201.70425590500236	204.38523489795625	91.1328125	96.93359375	1015.9974081683904	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	425.41793102398515	417.9144170805812	426.1030861977488	741.7734375	745.73046875	2117.6333972401917	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n10	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	417.62560109235346	411.737382683903	426.4153314996511	745.68359375	751.8984375	2089.139275616035	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	hermit	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	347.1994341276586	331.4782926198095	370.90769036486745	721.375	724.30859375	1739.2334206793457	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	hermit	session	5	5	5	5	"{""verified_correct"": 5}"	5	350.3697700202465	336.1771749127656	374.240835191682	726.90234375	732.83984375	1772.8224346097559	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	jfact	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	1425.8645403794944	1315.245679423213	1524.3712912164629	1337.44921875	1345.73828125	7108.305098734796	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	jfact	session	5	5	5	5	"{""verified_correct"": 5}"	5	1457.7937666922808	1308.2194359246641	1507.1078684907407	1322.96484375	1328.06640625	7125.796118680388	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	358.81993243843317	348.7993554826826	393.5403057318181	132.234375	132.578125	1840.6043703723699	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	388.0210464708507	353.78039387986064	406.1220485083759	146.421875	149.7265625	1898.9314759224653	1250	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	konclude	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	197.87318463623524	194.69256602413952	198.6321058589965	97.7421875	98.56640625	986.5932066533715	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	openllet	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	396.1816718187183	387.0464000813663	404.5166940689087	746.8984375	749.9375	1983.7540874052793	0	0	0	0
+v1.4.0	measured	pure_OWL2DL	zfa-n100	openllet	session	5	5	5	5	"{""verified_correct"": 5}"	5	400.53496115654707	386.8653724845499	402.84827061742544	755.09375	756.2734375	1983.8548154346645	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	to-n1	km	fresh	5	5	5	0	"{""error"": 5}"	0						1.3535688016563654	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	to-n1	km	session	5	5	5	0	"{""error"": 5}"	0						1.3780268356204033	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	to-n10	km	fresh	5	5	5	0	"{""error"": 5}"	0						1.9670788869261742	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	to-n10	km	session	5	5	5	0	"{""error"": 5}"	0						1.9484523106366396	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	to-n100	km	fresh	5	5	5	0	"{""error"": 5}"	0						1.35118499211967	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	to-n100	km	session	5	5	5	0	"{""error"": 5}"	0						1.3275288864970207	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	uberon-n1	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1204.468811346218	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	uberon-n1	km	session	5	5	5	0	"{""timeout"": 5}"	0						1204.3133242558688	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	uberon-n10	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1204.5421810839325	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	uberon-n10	km	session	5	5	5	0	"{""timeout"": 5}"	0						1204.3576343394816	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	uberon-n100	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1203.6153675504029	0	0	0	0
+v1.4.1	measured	DL_plus_rules_stress	uberon-n100	km	session	5	5	5	0	"{""timeout"": 5}"	0						1203.8046100474894	0	0	0	0
+v1.4.1	measured	OWL2EL	hao-n1	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	203.73216954804957	199.78517536632717	235.3020146097988	128.53125	144.2734375	1045.5802740491927	0	0	0	0
+v1.4.1	measured	OWL2EL	hao-n1	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	268.1962222531438	256.36658287607133	277.5755258370191	125.5703125	128.46484375	1333.764609882608	0	1250	1250	1250
+v1.4.1	measured	OWL2EL	hao-n10	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	180.92982374690473	180.21767196245492	181.5433400068432	135.7734375	149.8515625	904.7996197193861	0	0	0	0
+v1.4.1	measured	OWL2EL	hao-n10	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	226.632498472929	225.62034444510937	228.58221270516515	131.1015625	134.6640625	1134.5393609143794	0	1250	1250	1250
+v1.4.1	measured	OWL2EL	hao-n100	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	208.94040583632886	199.14192856289446	253.26761117577553	141.33203125	150.66015625	1092.1992578040808	0	0	0	0
+v1.4.1	measured	OWL2EL	hao-n100	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	269.1499839592725	268.71069473959506	318.6805912721902	133.69921875	135.59375	1414.315449655056	0	1250	1250	1250
+v1.4.1	measured	OWL2EL	mmo-n1	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	18.265580603852868	17.92969263717532	21.463935932144523	29.55859375	29.91015625	95.3218288179487	0	0	0	0
+v1.4.1	measured	OWL2EL	mmo-n1	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	21.233850818127394	19.991872357204556	22.644668081775308	29.4921875	29.55859375	106.29178482107818	0	1250	1250	1250
+v1.4.1	measured	OWL2EL	mmo-n10	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	15.57013713568449	15.5341193433851	15.701403707265854	29.1015625	29.21484375	77.95762395299971	0	0	0	0
+v1.4.1	measured	OWL2EL	mmo-n10	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	17.874398313462734	17.851761808618903	17.98126882314682	29.69140625	29.796875	89.47064815275371	0	1250	1250	1250
+v1.4.1	measured	OWL2EL	mmo-n100	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	15.455721890553832	15.409183980897069	15.565873984247446	29.15234375	29.38671875	77.37520951777697	0	0	0	0
+v1.4.1	measured	OWL2EL	mmo-n100	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	18.08525370620191	17.824589289724827	18.145742820575833	29.44140625	29.58203125	90.09596668370068	0	1250	1250	1250
+v1.4.1	measured	OWL2EL	vto-n1	km	fresh	5	5	5	0	"{""unverified"": 5}"	0						19551.379814663902	0	0	0	0
+v1.4.1	measured	OWL2EL	vto-n1	km	session	5	5	5	0	"{""unverified"": 5}"	0						23641.328733725473	0	1250	1250	1250
+v1.4.1	measured	OWL2EL	vto-n10	km	fresh	5	5	5	0	"{""unverified"": 5}"	0						21760.88538073562	0	0	0	0
+v1.4.1	measured	OWL2EL	vto-n10	km	session	5	5	5	0	"{""unverified"": 5}"	0						27070.180744145066	0	1250	1250	1250
+v1.4.1	measured	OWL2EL	vto-n100	km	fresh	5	5	5	0	"{""unverified"": 5}"	0						16203.770239731297	0	0	0	0
+v1.4.1	measured	OWL2EL	vto-n100	km	session	5	5	5	0	"{""unverified"": 5}"	0						19794.007051905617	0	1250	1250	1250
+v1.4.1	measured	pure_OWL2DL	mfomd-n1	km	fresh	5	5	5	0	"{""error"": 5}"	0						3855.5378074962646	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	mfomd-n1	km	session	5	5	5	0	"{""error"": 5}"	0						3882.276623962447	650	0	190	190
+v1.4.1	measured	pure_OWL2DL	mfomd-n10	km	fresh	5	5	5	0	"{""error"": 5}"	0						3683.2393098957837	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	mfomd-n10	km	session	5	5	5	0	"{""error"": 5}"	0						3706.638887317851	360	0	0	0
+v1.4.1	measured	pure_OWL2DL	mfomd-n100	km	fresh	5	5	5	0	"{""error"": 5}"	0						1489.3111802525818	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	mfomd-n100	km	session	5	5	5	0	"{""error"": 5}"	0						1493.5562329944223	80	0	0	0
+v1.4.1	measured	pure_OWL2DL	mro-n1	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.5057501774281	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	mro-n1	km	session	5	5	5	0	"{""timeout"": 5}"	0						1201.4721413496882	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	mro-n10	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.5478268843144	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	mro-n10	km	session	5	5	5	0	"{""timeout"": 5}"	0						1201.5050927139819	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	mro-n100	km	fresh	5	5	5	0	"{""timeout"": 5}"	0						1201.3095046281815	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	mro-n100	km	session	5	5	5	0	"{""timeout"": 5}"	0						1201.3656865116209	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	zfa-n1	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	355.8854714855552	353.6767689008266	368.0540383178741	130.74609375	133.34375	1797.3239596635103	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	zfa-n1	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	673.3908230103552	672.4827618598938	685.7933113761246	151.90625	153.98046875	3390.5586941316724	1250	0	0	0
+v1.4.1	measured	pure_OWL2DL	zfa-n10	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	295.72037037461996	283.76045255176723	308.2459467034787	134.23046875	135.27734375	1488.689745515585	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	zfa-n10	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	372.7818271704018	357.9711014870554	373.5402690060437	149.703125	150.63671875	1838.0925058368593	1250	0	0	0
+v1.4.1	measured	pure_OWL2DL	zfa-n100	km	fresh	5	5	5	5	"{""verified_correct"": 5}"	5	305.71344985067844	294.66066459193826	310.9376346003264	132.54296875	134.765625	1515.0144753940403	0	0	0	0
+v1.4.1	measured	pure_OWL2DL	zfa-n100	km	session	5	5	5	5	"{""verified_correct"": 5}"	5	313.9688338674605	304.23822111822665	314.6895870156586	145.58203125	146.08203125	1554.0066874008626	1250	0	0	0

@@ -37,6 +37,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMConcreteWorkerAdapters \
         ContextCalculus.KMConcreteAutomaticSupervisor \
         ContextCalculus.KMIncrementalExplanationCertification \
+        ContextCalculus.KMAtomicABoxPublication \
         ContextCalculus.ELCheckerTermEmbedding \
         ContextCalculus.ELNormalCheckerTermEmbedding \
         ContextCalculus.ELCommonSourceWire \
@@ -134,6 +135,18 @@ for theorem in \
     satisfiable_of_included \
     CertifiedInconsistencyExplanation.inconsistent \
     CertifiedInconsistencyExplanation.subsetMinimal \
+    singleClass_of_oneClass \
+    conflicting_rows_decline \
+    singleClass_map_of_injective \
+    atomicSatisfiable_of_singleClass \
+    atomicSatisfiable_iff_classes \
+    nativeAtomic_models \
+    nativeAtomic_fullSatisfiable \
+    nativeAtomic_taxonomy_exact \
+    publish_frontend_false \
+    publish_frontend_clash \
+    publish_consistent_iff \
+    direct_disjoint_assertions_inconsistent \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
     WireDirectTaxonomyPublication.check_sound \
@@ -197,6 +210,8 @@ fi
         automatic_el_decline_retries_exactly_but_forced_el_remains_atomic
     CARGO_TARGET_DIR="$target_root" cargo test --release \
         source_incremental::tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
+        frontend::separable_abox_elision_tests::
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_reasoning
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_cb_reasoning
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_ht_reasoning

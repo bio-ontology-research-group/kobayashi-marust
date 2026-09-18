@@ -1,0 +1,78 @@
+{
+  "remote_utc": "2026-09-17T05:23:22.290690+00:00",
+  "reason": "105 matching usable nodes;2357 free CPUs;20423680 MiB unreserved memory;795 additional1CPU22GiB slots available",
+  "updates": [
+    {
+      "job": "51982318",
+      "old_cap": 16,
+      "new_cap": 32,
+      "rc": 0,
+      "stderr": "",
+      "verified_caps": [
+        "32"
+      ]
+    },
+    {
+      "job": "51982375",
+      "old_cap": 8,
+      "new_cap": 16,
+      "rc": 1,
+      "stderr": "51982375_3: Job has already finished",
+      "verified_caps": [
+        "16"
+      ]
+    },
+    {
+      "job": "51983825",
+      "old_cap": 12,
+      "new_cap": 24,
+      "rc": 0,
+      "stderr": "",
+      "verified_caps": [
+        "24"
+      ]
+    },
+    {
+      "job": "51982389",
+      "old_cap": 24,
+      "new_cap": 48,
+      "rc": 0,
+      "stderr": "",
+      "verified_caps": [
+        "48"
+      ]
+    },
+    {
+      "job": "51982752",
+      "old_cap": 12,
+      "new_cap": 24,
+      "rc": 0,
+      "stderr": "",
+      "verified_caps": [
+        "24"
+      ]
+    },
+    {
+      "job": "51984134",
+      "old_cap": 16,
+      "new_cap": 32,
+      "rc": 0,
+      "stderr": "",
+      "verified_caps": [
+        "32"
+      ]
+    },
+    {
+      "job": "51984137",
+      "old_cap": 8,
+      "new_cap": 16,
+      "rc": 1,
+      "stderr": "51984137_6-11,24-26: Job has already finished",
+      "verified_caps": [
+        "16"
+      ]
+    }
+  ],
+  "unchanged": "All per-job resources, sources, repetitions, deadlines and within-job arm order; no resubmissions",
+  "caveat": "Preserve scheduling-phase and host/start-time provenance. Shared filesystem or memory-bandwidth contention may affect walltime."
+}

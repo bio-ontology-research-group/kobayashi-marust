@@ -1,0 +1,30 @@
+{
+  "observed_utc": "2026-09-17T10:39:36.254981+00:00",
+  "audit_job": 51997162,
+  "audit_exit": "COMPLETED 0:0",
+  "task_count": 240,
+  "attempts": 720,
+  "exact_manifest_coverage": true,
+  "correct_support_normalization_verified": true,
+  "receipts": {
+    "tasks": 240,
+    "problems": []
+  },
+  "measured_attempts": 600,
+  "measured_statuses": {
+    "correct": 357,
+    "error": 27,
+    "timeout": 216
+  },
+  "all_statuses": {
+    "correct": 426,
+    "error": 33,
+    "timeout": 261
+  },
+  "files": {
+    "normalized-supports.tsv": "86be1a8a80268a524f0d9990adaa1d08c72a785658c82b16bb6309ffa7a662de",
+    "tasks-and-receipts.tar.gz": "8b323913761b913a3c6056b8937d7fa901158d50345d440025e5785dd9a0516f",
+    "audit-hashes.txt": "411b1366db2b3ade6040be8d0587df31b65395668460a4ab4b74401f69ad1004",
+    "audit.json": "c05d2dc72a7dcbe08b0216b576957180890452356f0fae95b72dc3cd1dd26283"
+  }
+}

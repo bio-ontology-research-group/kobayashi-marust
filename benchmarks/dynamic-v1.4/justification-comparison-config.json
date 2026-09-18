@@ -1,0 +1,36 @@
+{
+  "validation_only": false,
+  "expected_baseline_tasks": 300,
+  "sources": [
+    {
+      "label": "baseline-original",
+      "manifest_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-main",
+      "results_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-main/results",
+      "audit": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-audit/audit.json",
+      "normalized": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-driver-v3/justification-audit/normalized-supports.tsv"
+    },
+    {
+      "label": "baseline-pure-dl",
+      "manifest_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-pure-dl-v1/justification-main",
+      "results_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-pure-dl-v1/justification-main/results",
+      "audit": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-pure-dl-v1/justification-audit/audit.json",
+      "normalized": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-pure-dl-v1/justification-audit/normalized-supports.tsv"
+    }
+  ],
+  "km_final_sources": [
+    {
+      "label": "v142-original",
+      "manifest_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-main",
+      "results_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-main/results",
+      "audit": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-audit/audit.json",
+      "normalized": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-v142-original/justification-audit/normalized-supports.tsv"
+    },
+    {
+      "label": "v142-pure-dl",
+      "manifest_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-v142-pure-dl/justification-main",
+      "results_root": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-v142-pure-dl/justification-main/results",
+      "audit": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-v142-pure-dl/justification-audit/audit.json",
+      "normalized": "/ibex/scratch/hohndor/km/dynamic-benchmark-20260917/justification-v142-pure-dl/justification-audit/normalized-supports.tsv"
+    }
+  ]
+}

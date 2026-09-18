@@ -1,0 +1,18 @@
+{
+  "audit_sha256": "5077ce21bac88fc3961a252014dcc3da3adf85b76296fa9ba1987af233cfa17c",
+  "arms": 324,
+  "statuses": {
+    "ok": 173,
+    "timeout": 151
+  },
+  "measured_statuses": {
+    "ok": 145,
+    "timeout": 125
+  },
+  "available_state_comparisons": 81324,
+  "mismatches": [],
+  "state_evidence": {
+    "producer_digest_only": 45104
+  },
+  "scope": "Structural coverage and digest comparisons only. Raw input/runtime bindings and full-output verification remain pending."
+}

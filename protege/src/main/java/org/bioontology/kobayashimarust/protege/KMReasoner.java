@@ -281,7 +281,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- precompute / metadata -----------------------------------------
 
     @Override public String getReasonerName() { return "Kobayashi-MaRust"; }
-    @Override public Version getReasonerVersion() { return new Version(0, 3, 0, 0); }
+    @Override public Version getReasonerVersion() { return new Version(1, 4, 1, 0); }
 
     @Override public void precomputeInferences(InferenceType... types) { /* eager in ctor */ }
     @Override public boolean isPrecomputed(InferenceType inferenceType) { return true; }

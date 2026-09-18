@@ -1,0 +1,32 @@
+[
+  {
+    "ontology": "mmo",
+    "status": "prepared",
+    "queries": 5
+  },
+  {
+    "ontology": "hao",
+    "status": "prepared",
+    "queries": 5
+  },
+  {
+    "ontology": "vto",
+    "status": "prepared",
+    "queries": 5
+  },
+  {
+    "ontology": "mfomd",
+    "status": "prepared",
+    "queries": 5
+  },
+  {
+    "ontology": "to",
+    "status": "preparation_unavailable",
+    "reason": "independent entailment confirmation or module preparation incomplete"
+  },
+  {
+    "ontology": "uberon",
+    "status": "preparation_unavailable",
+    "reason": "independent entailment confirmation or module preparation incomplete"
+  }
+]

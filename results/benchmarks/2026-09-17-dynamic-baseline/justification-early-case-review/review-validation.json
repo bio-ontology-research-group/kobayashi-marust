@@ -1,0 +1,23 @@
+{
+  "job": "51985085",
+  "scope": "first declared MMO q000 STAR module, all6reps and3bounds; partial validation only",
+  "attempts": 234,
+  "verified": 234,
+  "unique_logical_support_families": 1,
+  "case_dispersion_rows": 39,
+  "each_case_has_five_measured_repetitions": true,
+  "warmup_excluded_from_all_pairs": true,
+  "enumeration_counts": {
+    "bounded_or_unfinished": 60,
+    "unknown": 54,
+    "complete": 120
+  },
+  "paired_eligibility_counts": {
+    "True": 195,
+    "False": 75
+  },
+  "excluded_pairs": "45 incompatible common-vs-library comparisons and30 native-vs-library bounds10/100 with unknown enumeration",
+  "interpretation": "No semantic/runtime/protocol disagreement found in this bounded case. Not overall benchmark performance.",
+  "dispersion_recomputed_from_raw_five_repetition_rows": true,
+  "all_eligible_paired_ratios_recomputed_from_matching_wall_rows": true
+}
