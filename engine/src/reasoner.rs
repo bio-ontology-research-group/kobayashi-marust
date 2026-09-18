@@ -942,10 +942,11 @@ impl Reasoner {
         let threads = if retain_certificate_engine {
             1
         } else {
-            // A giant's query partitions also bound the conditional labels
-            // that coexist in its ground context. Preserve that partitioning
-            // even on one CPU; Rayon still bounds simultaneous execution.
-            let tasks = if nominal_static && queries.len() > 4_096 {
+            // Preserve the established schedule outside small static nominal
+            // inputs. Large query partitions bound conditional labels, while
+            // non-nominal engines also rely on the parallel-path context
+            // lifecycle even when Rayon executes its tasks on one CPU.
+            let tasks = if !nominal_static || queries.len() > 4_096 {
                 Self::requested_threads()
             } else {
                 Self::want_threads()

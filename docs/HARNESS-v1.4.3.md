@@ -18,7 +18,11 @@ wrapper with `KM140_BIN` explicitly identifying v1.4.2. The wrapper selects
 
 The completed v1.4.2 baseline has 1,816 `ok`, 61 `err_reject`, 33 `dnf` and
 10 `declined` outcomes. These are process outcomes, not correctness verdicts.
-The full rustdl and patched-KM panels remain in progress.
+The full rustdl and patched-KM panels remain in progress. Candidate arrays
+started with eight concurrent tasks and increased to sixteen after the
+scheduler left capacity idle. The per-ontology allocation and limits did not
+change; `scheduling-amendment.json` records the transition. These runs test
+coverage and answer preservation, not repeated performance or speed ranking.
 
 ## Worker outcomes
 
@@ -36,12 +40,15 @@ their diagnostic rather than guessing from a signal number.
 
 Rayon already honors the harness's thread budget. KM's route settings still
 requested sixteen independent saturation tasks, which repeated the nominal
-ground closure on a single active worker. Small query sets now use the
-available CPU/Rayon budget. Large nominal query sets retain their original
-partition count, which bounds the conditional labels accumulated in each
+ground closure on a single active worker. Small static nominal query sets now use the
+available CPU/Rayon budget. Non-nominal inputs and large nominal query sets
+retain their original partition count, which bounds the conditional labels accumulated in each
 ground context. Reducing all query sets to a single partition regressed a
 large ontology by reaching the per-engine message backstop; that experiment
-is not the final scheduling policy.
+is not the final scheduling policy. A subsequent full sweep also found that
+capping non-nominal engines regressed `ore_ont_3215` from 169 seconds to a
+240-second timeout. The final policy limits the optimization to its intended
+small static nominal inputs and preserves the established schedule elsewhere.
 
 Hyper previously allocated owned provenance vectors for every prospective
 resolvent even when certificate history was disabled. The patch constructs
