@@ -1179,14 +1179,21 @@ fn ofn_to_clauses_requested(
     // to before. An active rule route rejects any rule shape it cannot encode;
     // silently dropping one would make a supposedly complete policy leaf
     // incomplete.
-    let rules: Vec<crate::json_io::JRule> = if std::env::var_os("KM_NO_HT_RULES").is_none() {
+    let rules_result = if std::env::var_os("KM_NO_HT_RULES").is_none() {
         collect_rules(
             &ontology,
             profile.source.rule_axioms,
             certified_unsupported_rules + profile.normalized_unary_rules,
-        )?
+        )
     } else {
-        Vec::new()
+        Ok(Vec::new())
+    };
+    // Delay an unsupported-rule error until the source ABox checks below.
+    // An already inconsistent base cannot acquire a model when rules are
+    // added. Otherwise preserve the original fail-closed rule contract.
+    let (rules, rules_error) = match rules_result {
+        Ok(rules) => (rules, None),
+        Err(error) => (Vec::new(), Some(error)),
     };
     let ht_rules = !rules.is_empty();
     drop(ontology); // the syntax AST is dead once clausified
@@ -1234,6 +1241,11 @@ fn ofn_to_clauses_requested(
         || nominal_enumeration_inconsistent
         || data_abox.is_inconsistent()
         || rule_abox_inconsistent;
+    if !abox_inconsistent {
+        if let Some(error) = rules_error {
+            return Err(error);
+        }
+    }
     // Functional string values can be projected only together with their
     // entailed owner inequalities. Keep those inequalities in both the typed
     // payload and the exact nominal clause view, so later object-side merges

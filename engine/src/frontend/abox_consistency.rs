@@ -9,8 +9,9 @@
 //! unsatisfiable (the ontology is inconsistent) but KM emitted the full
 //! taxonomy of subsumptions.
 //!
-//! Conservative and sound: only NAMED classes participate. Complex operands of
-//! `DisjointClasses`/`EquivalentClasses`/`SubClassOf` and complex assertion
+//! Conservative and sound: only named classes participate in the closure.
+//! Unions on the left and intersections on the right of inclusions expose
+//! entailed named edges. Other complex operands and complex assertion
 //! concepts are skipped, so every detected clash is a genuine entailment
 //! (`a : C`, `a : C'`, `C ⊑* D`, `C' ⊑* D'`, `DisjointClasses(D, D')`). It is
 //! incomplete by design: existential-, datatype-, or complex-concept-driven
@@ -23,6 +24,44 @@ use std::collections::{HashMap, HashSet};
 
 use super::rbox::RboxRecord;
 use super::syntax::{Axiom, Concept, Ontology};
+
+/// Project only necessary named inclusions. A union on the left distributes
+/// into inclusions for each member; an intersection on the right distributes
+/// into inclusions to each member. The opposite directions do not distribute.
+fn collect_named_inclusions(left: &Concept, right: &Concept, sup: &mut HashMap<String, Vec<String>>) {
+    match (left, right) {
+        (Concept::Or(parts), _) => {
+            for part in parts { collect_named_inclusions(part, right, sup); }
+        }
+        (_, Concept::And(parts)) => {
+            for part in parts { collect_named_inclusions(left, part, sup); }
+        }
+        (Concept::Name(a), Concept::Name(b)) => {
+            sup.entry(a.clone()).or_default().push(b.clone());
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn boolean_inclusion_projection_obeys_polarity() {
+    use super::syntax::{mk_and, mk_or};
+    let a = Concept::Name("A".into());
+    let b = Concept::Name("B".into());
+    let c = Concept::Name("C".into());
+    let mut edges = HashMap::new();
+    collect_named_inclusions(&mk_or([a.clone(), b.clone()]), &c, &mut edges);
+    assert_eq!(edges.get("A"), Some(&vec!["C".to_string()]));
+    assert_eq!(edges.get("B"), Some(&vec!["C".to_string()]));
+    edges.clear();
+    collect_named_inclusions(&a, &mk_and([b.clone(), c.clone()]), &mut edges);
+    assert_eq!(edges.get("A"), Some(&vec!["B".to_string(), "C".to_string()]));
+    edges.clear();
+    collect_named_inclusions(&mk_and([a.clone(), b.clone()]), &c, &mut edges);
+    collect_named_inclusions(&a, &mk_or([b, c]), &mut edges);
+    assert!(edges.is_empty(), "opposite Boolean directions must not produce named edges");
+}
 
 fn nominal_set(concept: &Concept) -> Option<HashSet<String>> {
     match concept {
@@ -194,12 +233,12 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
     let mut sup: HashMap<String, Vec<String>> = HashMap::new();
     for ax in ont.tbox() {
         match ax {
-            Axiom::SubClassOf(Concept::Name(a), Concept::Name(b)) => {
-                sup.entry(a.clone()).or_default().push(b.clone());
+            Axiom::SubClassOf(left, right) => {
+                collect_named_inclusions(left, right, &mut sup);
             }
-            Axiom::EquivalentClasses(Concept::Name(a), Concept::Name(b)) => {
-                sup.entry(a.clone()).or_default().push(b.clone());
-                sup.entry(b.clone()).or_default().push(a.clone());
+            Axiom::EquivalentClasses(left, right) => {
+                collect_named_inclusions(left, right, &mut sup);
+                collect_named_inclusions(right, left, &mut sup);
             }
             _ => {}
         }
@@ -711,7 +750,7 @@ mod gated_projection_tests {
     }
 
     #[test]
-    fn gated_projection_matches_the_reference_on_every_gate_shape() {
+    fn gated_projection_matches_reference_plus_entailed_boolean_edges() {
         let variants: Vec<Vec<Axiom>> = vec![
             hierarchy(),
             hierarchy()
@@ -750,7 +789,13 @@ mod gated_projection_tests {
         for (index, axioms) in variants.into_iter().enumerate() {
             let o = ont(axioms);
             let gated = collect(&o);
-            let reference = collect_reference(&o);
+            let mut reference = collect_reference(&o);
+            // The old allocation-gate oracle deliberately retains its former
+            // named-only semantics. This fixture now additionally entails
+            // G ⊑ A and G ⊑ B from G ≡ A ⊓ B; require exactly those new edges.
+            if let Some(expected) = reference.as_mut() {
+                expected.sup.insert("G".into(), vec!["A".into(), "B".into()]);
+            }
             assert_eq!(gated.is_some(), reference.is_some(), "variant {index}");
             let verdict = gated.as_ref().map(|_| ());
             same_projection(gated, reference);
