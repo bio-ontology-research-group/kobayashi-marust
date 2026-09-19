@@ -157,3 +157,19 @@ is pending. The first 12128 diagnostic failed before this label
 fix. A separate diagnostic established that its CB fallback reaches the
 25-million-message safety limit. Raising that limit to 250 million still
 failed to finish within 600 seconds and is not an accepted fix.
+
+The atomic-v2 gold panel is complete: all 592 statuses and signatures are
+unchanged (588 matches, two missing golds and two previously contested
+consistency results). The full 1,920-input standard panel is still running.
+
+Ontology 12128 completes in 570.12 seconds with 16 CPUs, a 160-GiB worker
+limit, a 256-GiB outer limit and a 250-million-message backstop. Peak RSS is
+145,433,664 KiB. Konclude independently finishes in 15.70 seconds. Under the
+existing normalizer's own-unsatisfiable-class exclusion, both outputs contain
+exactly 2,155,032 taxonomy pairs and the same 4,716 unsatisfiable classes;
+consistency agrees and KM reports zero dropped clauses. A raw comparison
+found 64 additional KM edges, all from classes that both outputs identify as
+unsatisfiable. The raw evidence is retained alongside the normalized audit.
+Negative controls confirm that differing unsatisfiable sets and genuine
+additional pairs between satisfiable classes still fail validation. This is
+a verified extended-budget completion, not a standard-budget recovery.
