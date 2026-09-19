@@ -160,4 +160,9 @@ The inverse-v3 standard sweep is complete: 1,830 ok, 80 deadlines, three errors,
 and seven declines. No v1.4.3 success was lost. All 147 changed successful
 outputs differ only in their dropped-clause counters, with equal consistency,
 taxonomy and unsatisfiable-class results. The separate 592 gold panel remains
-unchanged. New rule-source corpus validation is still required before release.
+unchanged. The final rule-source validation also preserves every status and signature in
+the 592-input gold panel. An exhaustive source scan finds 22 rule-bearing
+inputs in the 1,920-input corpus; their standard-budget panel has 13 ok,
+seven declines and two deadlines, with unchanged statuses and byte-identical
+outputs relative to inverse-v3. The remaining unsupported rule forms and
+resource failures are still open.
