@@ -63,8 +63,10 @@ pub struct Config {
     /// KM_THREADS (the ambient value is inherited by children automatically; we
     /// only need it to know whether the single-threaded retry differs from it).
     pub threads: Option<usize>,
-    /// KM_PAR_MEM_GB RSS cap for the parallel attempt (default 18.0)
+    /// Parallel worker RSS cap. KM_RESOURCE_WORKER_MEM_GB overrides route defaults.
     pub par_mem_gb: f64,
+    /// HT racer RSS cap, with the same explicit resource override.
+    pub ht_mem_gb: f64,
     /// KM_CENTRAL_TIME_CAP wall cap for the central strategy (default 190.0)
     pub central_time_cap: f64,
     /// KM_NO_RETRY: disable the single-threaded adaptive retry
@@ -157,6 +159,15 @@ fn env_f64(key: &str, default: f64) -> f64 {
 impl Config {
     pub fn from_env() -> Config {
         let self_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("km"));
+        // Resource policy is separate from the normalized logical route bundle.
+        // A named/automatic route must not erase an explicit cluster budget.
+        let worker_memory = std::env::var("KM_RESOURCE_WORKER_MEM_GB").ok().and_then(|raw| {
+            let parsed = raw.parse::<f64>().ok().filter(|v| v.is_finite() && *v > 0.0);
+            if parsed.is_none() {
+                eprintln!("KM_RESOURCE_WORKER_MEM_GB must be positive and finite; retaining route defaults");
+            }
+            parsed
+        });
         Config {
             self_exe,
             ofn_bin_override: std::env::var_os("KM_OFN_BIN").map(PathBuf::from),
@@ -189,7 +200,8 @@ impl Config {
             threads: std::env::var("KM_THREADS")
                 .ok()
                 .and_then(|v| v.parse().ok()),
-            par_mem_gb: env_f64("KM_PAR_MEM_GB", 18.0),
+            par_mem_gb: worker_memory.unwrap_or_else(|| env_f64("KM_PAR_MEM_GB", 18.0)),
+            ht_mem_gb: worker_memory.unwrap_or_else(|| env_f64("KM_HT_MEM_GB", 12.0)),
             central_time_cap: env_f64("KM_CENTRAL_TIME_CAP", 190.0),
             no_retry: std::env::var_os("KM_NO_RETRY").is_some(),
             no_central: std::env::var_os("KM_NO_CENTRAL").is_some(),

@@ -3232,13 +3232,7 @@ where
         // process group (observed: ore_ont_541's bridge arm reached 56 GB in
         // 51 s and turned a CB timeout into a memout). Kill the arm over-cap
         // and let CB keep its full budget; monotone-safe (same as HT erroring).
-        let ht_cap_bytes: u64 = {
-            let gb = std::env::var("KM_HT_MEM_GB")
-                .ok()
-                .and_then(|v| v.parse::<f64>().ok())
-                .unwrap_or(12.0);
-            (gb * (1u64 << 30) as f64) as u64
-        };
+        let ht_cap_bytes = (cfg.ht_mem_gb * (1u64 << 30) as f64) as u64;
 
         let mut interval = Duration::from_millis(1);
         loop {
