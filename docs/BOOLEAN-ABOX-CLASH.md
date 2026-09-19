@@ -31,5 +31,7 @@ original expected projection. Both Boolean polarity controls are retained.
 All four CB, HT, routing and ELC certification gates pass. The 22-ontology
 rule panel changes only ontology 10906: declined becomes a complete
 inconsistency result in 0.078 seconds. Every other status and successful
-output hash is unchanged. Full 592-ontology gold and 1,920-ontology standard
-budget regression runs remain in progress; this candidate is not released.
+output hash is unchanged. The full 592-ontology gold panel is unchanged: 588 matches, two inputs
+without gold, and the same two previously contested consistency results.
+The 1,920-ontology standard budget regression remains in progress; this
+candidate is not released.
