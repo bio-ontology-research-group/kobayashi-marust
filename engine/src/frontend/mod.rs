@@ -1298,6 +1298,21 @@ fn ofn_to_clauses_requested(
             .retain(|reason| reason != &diagnostic);
         nominal_abox.complete = nominal_abox.unsupported.is_empty();
     }
+    // Nominal clausification does not encode data-property assertions. The
+    // omission checks above can certify them redundant, but an unchecked
+    // assertion must not disappear merely because the CB worker accepts every
+    // emitted clause. In particular, a numeric value may satisfy a restriction
+    // that forces its subject into a disjoint class. A proved base clash still
+    // has a complete inconsistency answer regardless of this coverage gap.
+    if nominals_mode && !abox_inconsistent {
+        if let Some(reason) = nominal_abox.unsupported.iter().find(|reason| {
+            reason.contains("data-property assertion axiom(s) are unsupported")
+        }) {
+            return Err(parse::OutOfFragment(format!(
+                "nominal data coverage: {reason}; no exact omission certificate"
+            )));
+        }
+    }
     // Source routing initially keeps these ontologies on the exact nominal CB
     // calculus because data assertions are not known to be representable until
     // the parsed-AST certificate above has run. Once the complete typed payload
