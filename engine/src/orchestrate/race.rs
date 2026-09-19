@@ -772,7 +772,7 @@ pub(crate) fn prepare_incremental_ht(
         return None;
     }
     let named = frontend.named.iter().cloned().collect();
-    let tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert(
         &frontend.clauses,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -783,22 +783,20 @@ pub(crate) fn prepare_incremental_ht(
         &[],
         false,
     );
-    // `ht_general` deliberately consumes the legacy clause-only view. Its
-    // compact-nominal automatic leaf keeps singleton and ground ABox meaning
-    // in those clauses and does not install the typed ABox a second time. The
-    // ordinary `ht_routable` predicate rejects every nominal, so without this
-    // route-specific gate the source session silently degraded every such
-    // revision to ExactBatch. Retained HT can carry those nominal ids, but we
-    // still require complete conversion and reject every other forced-route
-    // escape hatch that is not represented by its typed state.
-    let general_clause_only = frontend.route == "ht_general"
+    // Retained general HT uses the same source-bound ABox as batch execution.
+    // Nominal ids alone do not create roots for existing individuals.
+    if frontend.route == "ht_general"
+        && !cb_to_ht::install_nominal_abox_with_same(&mut tin, &frontend.nominal_abox, true)
+    {
+        return None;
+    }
+    let general_complete = frontend.route == "ht_general"
         && std::env::var("KM_HT_ONLY").ok().as_deref() == Some("general")
         && tin.dropped == 0
         && tin.fenced.is_empty()
         && !tin.inverse
-        && tin.native_abox.is_empty()
         && tin.card_defs.is_empty();
-    (ht_routable(&tin) || general_clause_only).then_some(tin)
+    (ht_routable(&tin) || general_complete).then_some(tin)
 }
 
 /// Build the typed input used by the production first-class-cardinality arm.
@@ -1025,19 +1023,14 @@ fn specialist_route_allows(
     }
 }
 
-/// An explicit `general` worker must preserve the legacy clause-only input.
-/// Specialist candidates may otherwise inject native ABox state and worker
-/// flags merely because the ontology happens to satisfy their feature gate.
+/// Keep general classification separate from specialist scheduling. It must
+/// still consume the complete source ABox before publishing a result.
 fn general_only_route(requested: Option<&str>) -> bool {
     requested == Some("general")
 }
 
-fn should_install_native_abox(
-    certified_tbox_only: bool,
-    general_only: bool,
-    global_native_abox: bool,
-) -> bool {
-    !certified_tbox_only && (!general_only || global_native_abox)
+fn should_install_native_abox(certified_tbox_only: bool) -> bool {
+    !certified_tbox_only
 }
 
 /// Gate for `KM_HT_BRIDGE_ONLY`: the worker must produce NO answer when the
@@ -2111,7 +2104,8 @@ fn spawn_ht(
         && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let mut proxy_abox_certificate = None;
     let global_native_abox = std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
-    let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some() || global_native_abox;
+    let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
+        || global_native_abox || general_only;
     if card_proxy_abox {
         let mut native = tin.clone();
         cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);
@@ -2130,8 +2124,8 @@ fn spawn_ht(
             tin.queries.dedup();
             proxy_abox_certificate = Some(certificate);
         }
-    } else if should_install_native_abox(certified_tbox_only, general_only, global_native_abox) {
-        let atomic_certificate = if global_native_abox {
+    } else if should_install_native_abox(certified_tbox_only) {
+        let atomic_certificate = if global_native_abox || general_only {
             None
         } else {
             atomic_component_abox_certificate(&tin, &nominal_abox)
@@ -2731,10 +2725,9 @@ pub fn run_ht_shoq_in_process(
     }))
 }
 
-/// Run the selected clause-only general hypertableau in this process. The
-/// conversion and worker flags are the same as the isolated `KM_HT_ONLY=general`
-/// worker. In particular, this route deliberately keeps its clause-only view:
-/// it does not install the native ABox or any specialist side channel.
+/// Run the selected general hypertableau in this process. Both this adapter
+/// and the isolated worker require the exact typed ABox. Nominal concept ids
+/// alone enforce singleton identity but do not create existing individuals.
 pub fn run_ht_general_in_process(
     frontend: JInput,
     named: &std::collections::HashSet<String>,
@@ -2755,7 +2748,7 @@ pub fn run_ht_general_in_process(
         ));
     }
     let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, false);
-    let tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert(
         &view,
         Some(rbox.as_slice()),
         named,
@@ -2766,6 +2759,11 @@ pub fn run_ht_general_in_process(
         &[],
         false,
     );
+    if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, true) {
+        return Err(OrchestrateError::OutOfFragment(
+            "general HT requires a complete source ABox".into(),
+        ));
+    }
     drop(view);
     drop(clauses);
     // The converter consumed the typed side data by reference and `tin` now
@@ -4166,10 +4164,8 @@ mod tests {
         for route in [None, Some("certified"), Some("shoq"), Some("card")] {
             assert!(!general_only_route(route));
         }
-        assert!(!should_install_native_abox(false, true, false));
-        assert!(should_install_native_abox(false, true, true));
-        assert!(should_install_native_abox(false, false, false));
-        assert!(!should_install_native_abox(true, false, true));
+        assert!(should_install_native_abox(false));
+        assert!(!should_install_native_abox(true));
     }
 
     #[test]

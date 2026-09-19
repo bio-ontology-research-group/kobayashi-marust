@@ -2192,7 +2192,30 @@ Ontology(
     }
 
     #[test]
-    fn automatic_general_ht_route_retains_clause_only_nominal_probes() {
+    fn general_ht_preparation_preserves_existing_individual_clashes() {
+        let _environment = lock_environment();
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        crate::routing::Route::HtGeneral.apply_environment();
+        std::env::set_var("KM_ROUTE", "ht_general");
+        let base = "Ontology(ClassAssertion(<http://e/A> <http://e/a>)
+            ClassAssertion(ObjectSomeValuesFrom(<http://e/r> <http://e/C>) <http://e/a>)
+            SubClassOf(ObjectIntersectionOf(<http://e/A>
+                ObjectSomeValuesFrom(<http://e/r> <http://e/C>)) <http://e/B>)";
+        for (extra, inconsistent) in [("", false),
+            ("DisjointClasses(<http://e/A> <http://e/B>)", true)] {
+            let source = format!("{base} {extra})");
+            let frontend = crate::frontend::ofn_to_clauses(&source).unwrap();
+            let input = crate::orchestrate::race::prepare_incremental_ht(&frontend).unwrap();
+            assert!(input.native_abox.complete);
+            assert_eq!(input.native_abox.individuals.len(), 1);
+            let classifier = crate::incremental_ht::IncrementalHtClassifier::new_typed(
+                &frontend.clauses, input).unwrap();
+            assert_eq!(classifier.result().inconsistent, inconsistent);
+        }
+    }
+
+    #[test]
+    fn automatic_general_ht_route_retains_source_abox_probes() {
         let _environment = lock_environment();
         let before = compact_general_ht_source(false);
         let after = compact_general_ht_source(true);

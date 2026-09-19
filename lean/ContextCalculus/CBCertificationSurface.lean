@@ -1,3 +1,4 @@
+import ContextCalculus.ABoxOccurrenceAccounting
 import ContextCalculus.InverseRoleChainNormalization
 import ContextCalculus.BooleanABoxClash
 import ContextCalculus.DLSafeUnaryRuleNormalization
@@ -408,3 +409,6 @@ end ContextCalculus.CB
 #print axioms ContextCalculus.DLSafeUnaryRuleNormalization.unary_rule_equivalent
 #print axioms ContextCalculus.DLSafeUnaryRuleNormalization.theory_equivalent
 #print axioms ContextCalculus.DLSafeUnaryRuleNormalization.pointwise_fresh_extension
+
+#print axioms ContextCalculus.ABoxOccurrenceAccounting.duplicate_constraint
+#print axioms ContextCalculus.ABoxOccurrenceAccounting.same_members_same_models

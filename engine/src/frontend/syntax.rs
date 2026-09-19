@@ -186,6 +186,9 @@ impl Axiom {
 pub struct Ontology {
     axioms: Vec<std::rc::Rc<Axiom>>,
     seen: crate::fxhash::FxHashSet<std::rc::Rc<Axiom>>,
+    /// Accepted duplicate ABox occurrences, retained for source-coverage
+    /// accounting even though normalization needs only one copy of each axiom.
+    duplicate_assertions: [u64; 3],
 }
 
 impl Ontology {
@@ -198,7 +201,18 @@ impl Ontology {
         let ax = std::rc::Rc::new(ax);
         if self.seen.insert(ax.clone()) {
             self.axioms.push(ax);
+        } else {
+            match ax.as_ref() {
+                Axiom::ConceptAssertion(..) => self.duplicate_assertions[0] += 1,
+                Axiom::RoleAssertion(..) => self.duplicate_assertions[1] += 1,
+                Axiom::NegativeRoleAssertion(..) => self.duplicate_assertions[2] += 1,
+                _ => {}
+            }
         }
+    }
+
+    pub fn duplicate_assertion_counts(&self) -> [u64; 3] {
+        self.duplicate_assertions
     }
 
     pub fn tbox(&self) -> impl Iterator<Item = &Axiom> {

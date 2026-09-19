@@ -320,6 +320,14 @@ fn collect_nominal_abox(
         + source_same
         + source_different;
 
+    // Source statistics count occurrences; the rich AST stores a set. Only
+    // duplicates accepted by Ontology::add may close this accounting gap.
+    // Unparsed or omitted assertions cannot acquire a duplicate credit.
+    let [duplicate_class, duplicate_role, duplicate_negative_role] =
+        ontology.duplicate_assertion_counts();
+    parsed_class += duplicate_class;
+    parsed_role += duplicate_role;
+    parsed_negative_role += duplicate_negative_role;
     if parsed_class != source.class_assertions {
         unsupported.insert(format!(
             "source/parsed ClassAssertion mismatch ({}/{parsed_class})",
@@ -1297,6 +1305,21 @@ fn ofn_to_clauses_requested(
             .unsupported
             .retain(|reason| reason != &diagnostic);
         nominal_abox.complete = nominal_abox.unsupported.is_empty();
+    }
+    // Nominal clausification does not encode data-property assertions. The
+    // omission checks above can certify them redundant, but an unchecked
+    // assertion must not disappear merely because the CB worker accepts every
+    // emitted clause. In particular, a numeric value may satisfy a restriction
+    // that forces its subject into a disjoint class. A proved base clash still
+    // has a complete inconsistency answer regardless of this coverage gap.
+    if nominals_mode && !abox_inconsistent {
+        if let Some(reason) = nominal_abox.unsupported.iter().find(|reason| {
+            reason.contains("data-property assertion axiom(s) are unsupported")
+        }) {
+            return Err(parse::OutOfFragment(format!(
+                "nominal data coverage: {reason}; no exact omission certificate"
+            )));
+        }
     }
     // Source routing initially keeps these ontologies on the exact nominal CB
     // calculus because data assertions are not known to be representable until
