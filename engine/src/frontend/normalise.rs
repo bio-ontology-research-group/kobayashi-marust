@@ -1461,9 +1461,12 @@ pub fn normalise_with_native_cardinality(
             }
             Axiom::RoleChain(chain, sup) => {
                 debug_assert!(chain.len() >= 2, "parser rejects short role chains");
-                let x0 = Term::Var("x0".to_string());
-                let x1 = Term::Var("x1".to_string());
-                let x2 = Term::Var("x2".to_string());
+                // Center the binary join on its shared variable. Both body
+                // roles must mention x for the CB normal-form loader. This is
+                // alpha-renaming of the same universally quantified axiom.
+                let x0 = Term::Var("y".to_string());
+                let x1 = Term::Var("x".to_string());
+                let x2 = Term::Var("z1".to_string());
                 let mut suffix = chain[chain.len() - 1].clone();
                 for role in chain[1..chain.len() - 1].iter().rev() {
                     let combined = clausifier.fresh_chain_role();

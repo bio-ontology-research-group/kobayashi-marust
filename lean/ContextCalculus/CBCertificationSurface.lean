@@ -1,3 +1,4 @@
+import ContextCalculus.InverseRoleChainNormalization
 import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBLiveInsertionDerivation
@@ -392,3 +393,7 @@ theorem certifiedCBProductionExactTaxonomyPublication
 #print axioms certifiedCBProductionExactTaxonomyPublication
 
 end ContextCalculus.CB
+
+#print axioms ContextCalculus.InverseRoleChainNormalization.theory_consequences_preserved
+#print axioms ContextCalculus.InverseRoleChainNormalization.negative_role_guard
+#print axioms ContextCalculus.InverseRoleChainNormalization.centered_binary_chain

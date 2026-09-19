@@ -28,6 +28,28 @@ fn role_str(reg: &mut IriRegistry, node: &Node) -> Result<String, OutOfFragment>
     }
 }
 
+/// Resolve a chain role using the same converse proxy as `resolve_role`.
+/// The registry escapes source names beginning with `__`, so these proxies
+/// cannot alias a source role, including a source IRI named `__inv__r`.
+/// The returned definition must be installed in both clauses and typed RBox.
+pub(super) fn chain_role(
+    reg: &mut IriRegistry,
+    node: &Node,
+) -> Result<(String, Option<(String, String)>), OutOfFragment> {
+    match node {
+        Node::Atom(_) => Ok((role_str(reg, node)?, None)),
+        Node::List("ObjectInverseOf", args) => {
+            let [Node::Atom(base)] = args.as_slice() else {
+                return Err(OutOfFragment("chain inverse requires exactly one named role".into()));
+            };
+            let base = reg.short(base);
+            let inverse = format!("__inv__{base}");
+            Ok((inverse.clone(), Some((base, inverse))))
+        }
+        _ => Err(OutOfFragment(format!("unsupported chain role: {node:?}"))),
+    }
+}
+
 /// Port of `role_cls`: role expression for class constructs.
 fn role_cls(reg: &mut IriRegistry, node: &Node) -> Result<Role, OutOfFragment> {
     match node {
@@ -365,14 +387,22 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 if *h == "ObjectPropertyChain" {
                     let mut chain = Vec::new();
                     for r in chain_args {
-                        chain.push(role_str(reg, r)?);
+                        let (role, inverse) = chain_role(reg, r)?;
+                        if let Some((base, proxy)) = inverse {
+                            o.add(Axiom::InverseRoles(base, proxy));
+                        }
+                        chain.push(role);
                     }
                     if chain.len() < 2 {
                         return Err(OutOfFragment(
                             "ObjectPropertyChain requires at least two roles".to_string(),
                         ));
                     }
-                    o.add(Axiom::RoleChain(chain, role_str(reg, args[1])?));
+                    let (sup, inverse) = chain_role(reg, args[1])?;
+                    if let Some((base, proxy)) = inverse {
+                        o.add(Axiom::InverseRoles(base, proxy));
+                    }
+                    o.add(Axiom::RoleChain(chain, sup));
                     return Ok(());
                 }
             }

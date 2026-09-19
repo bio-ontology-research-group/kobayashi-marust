@@ -1072,7 +1072,13 @@ pub fn augment_with_chains(
     // `trans`/`chain` records (rbox.rs), which the frontend emits for
     // KM_KEEP_CHAIN_AXIOMS.  KM_ROLE_AUTOMATON still keeps them (the expensive
     // preprocessing closure needs the raw axioms in the tbox it scans).
-    let keep_chains = std::env::var_os("KM_ROLE_AUTOMATON").is_some();
+    // Recognition clauses preserve class consumers, but do not materialize
+    // chain edges between named individuals. The nominal clause stream must
+    // retain the original chain implications so ground negative assertions
+    // and other ABox consumers see every entailed edge. These are original
+    // normalized axioms, not a new inference rule or an approximation.
+    let keep_chains = std::env::var_os("KM_ROLE_AUTOMATON").is_some()
+        || (std::env::var_os("KM_NOMINALS").is_some() && !abox.is_empty());
     // Build every addition while raw chain axioms remain borrowable, then move
     // the retained normalized clauses into `base`. Cloning the whole TBox here
     // served only to keep the original alive for these derived passes.

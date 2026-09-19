@@ -212,6 +212,23 @@ impl Builder {
     /// Parse a JClause to an OntologyClause; None if unsupported / non-normal.
     fn clause(&mut self, c: &JClause) -> Option<OntologyClause> {
         let mut varmap: HashMap<String, Term> = HashMap::new();
+        // A ground negative role assertion is equivalently
+        // forall x, R(x,b) -> x != a. The central-variable guard puts the
+        // constraint in the normal form consumed by nominal Hyper without
+        // discarding it. Keep the source JSON intact for typed certificates.
+        if self.nominals && c.head.is_empty() {
+            if let [JAtom::Role { role, source: JTerm::Ind { name: source },
+                target: JTerm::Ind { name: target } }] = c.body.as_slice()
+            {
+                let source = ind_term(self.individual(source));
+                let target = ind_term(self.individual(target));
+                let iri = self.sig.role(role);
+                return Some(OntologyClause::new(
+                    vec![Pred::Role { iri, s: X, t: target }],
+                    vec![Lit::ineq(X, source)],
+                ));
+            }
+        }
         let mut body: Vec<Pred> = Vec::new();
         // A body equality `a ≈ b` is a negative equality literal: the clause
         // `{a≈b} ∧ Γ → Δ` is logically `Γ → Δ ∨ a ≉ b`.  We move such body

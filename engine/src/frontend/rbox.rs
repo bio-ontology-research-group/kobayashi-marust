@@ -117,6 +117,19 @@ fn plain_role(reg: &mut IriRegistry, node: &Node) -> Option<String> {
     }
 }
 
+/// Preserve every converse definition alongside the chain using it. Accepting
+/// the clause translation alone would leave the native bridge underconstrained.
+fn chain_role(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) -> Option<String> {
+    let (role, inverse) = super::parse::chain_role(reg, node).ok()?;
+    if let Some((base, proxy)) = inverse {
+        let record = RboxRecord::Inverse(base, proxy);
+        if !out.contains(&record) {
+            out.push(record);
+        }
+    }
+    Some(role)
+}
+
 /// Port of `_plain_class`: named class -> Some(short); ⊤ -> Some(""); ⊥/complex
 /// -> None.
 fn plain_class(reg: &mut IriRegistry, node: &Node) -> Option<String> {
@@ -162,17 +175,19 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                     // `chains` field for the Ht chain-unfolding. Binary rows
                     // retain the legacy shape. Longer named chains use the
                     // distinct `chain-n` source row and are compiled to
-                    // certified binary clauses by the normalizer. Fall back to
-                    // a fence only when a chain role is not plain.
+                    // certified binary clauses by the normalizer. Inverse
+                    // expressions use fresh converse proxies and retain their
+                    // definitions here as well as in normalized clauses.
                     let chain_args: Vec<&Node> = match sub {
                         Node::List(_, ca) => strip_annotations(ca).to_vec(),
                         _ => Vec::new(),
                     };
                     let roles: Option<Vec<String>> = chain_args
                         .iter()
-                        .map(|role| plain_role(reg, role))
+                        .map(|role| chain_role(reg, role, out))
                         .collect();
-                    if let (Some(roles), Some(rs)) = (roles, ssup) {
+                    let chain_sup = chain_role(reg, sup, out);
+                    if let (Some(roles), Some(rs)) = (roles, chain_sup) {
                         if let [r1, r2] = roles.as_slice() {
                             out.push(RboxRecord::Chain(r1.clone(), r2.clone(), rs));
                         } else {

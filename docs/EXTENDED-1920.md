@@ -24,7 +24,10 @@ normalization, calculus rules, fragment admission nor acceptance of a completed
 answer. Exhaustion still returns failure; it never licenses partial taxonomy
 publication. Existing source publication theorems apply to the same accepted
 worker results. Exact-source certification gates and experimental semantic
-checks remain mandatory before promoting the change. Validation is pending.
+checks remain mandatory before promoting the change. The frozen resource-only
+commit `faee067` passed its regression and all four CB, HT, routing and ELC
+certification gates. Four diagnostic 64 GiB worker-limit reruns still failed;
+the override repairs resource control but does not establish extra coverage.
 
 ## Remaining semantic support
 
@@ -41,3 +44,74 @@ whose entire head consists of recognized query operators. It does not justify
 ignoring arbitrary SWRL built-ins or mixed logical heads. Initial lexical
 inventory finds 94 candidate query-only heads among 95 rules in input 15753;
 a structural check and Lean model-preservation proof are still required.
+
+## Inverse-chain implementation under validation
+
+Chain operands and super-roles now use the same converse proxy convention as
+inverse restrictions. Each proxy adds both implication clauses through the
+existing `InverseRoles` normalizer, and an `Inverse` record next to the typed
+chain. Source names in the reserved internal namespace are escaped by the IRI
+registry. Binary chains are alpha-renamed so their shared variable is central; role
+orientations and implications remain unchanged.
+
+`InverseRoleChainNormalization.theory_consequences_preserved` proves both
+projection and expansion for an entire chain theory, including shared proxies
+and inverse heads. It requires realization only for symbols used by each chain.
+The CB certification surface now imports and audits this theorem. The proof
+uses only propositional extensionality, with no `sorryAx`. The Rust symbol
+encoding and parser remain part of the explicit frontend trust boundary;
+structural and end-to-end tests check that correspondence. Full validation of
+this implementation and the three original inputs remains pending.
+
+The ABox regression found a second issue: preprocessing removed raw binary chain
+axioms even when ground positive and negative role assertions were retained.
+Recognition encodings alone did not expose the entailed ground edge. The nominal
+ABox stream now retains the original normalized chain implications. This adds
+source axioms back to the stream; it does not alter their semantics. Runtime
+regression and source-bound certification of this change are pending.
+
+Input 15687 contains cardinalities of one million. The ordinary clausifier
+expands pairwise distinctness quadratically and attempted a 240 GiB allocation
+before reasoning. This requires a certified compact cardinality treatment for
+its actual fragment, not a larger worker watchdog or weakened cardinality.
+
+Retaining raw chains alone did not fix the regression: the CB loader rejected
+non-central chain bodies and ground negative-role bodies. Binary chain joins
+now use `x` for the shared endpoint. A ground negative assertion `not R(a,b)`
+is loaded as `R(x,b) -> x != a`, preserving the original JSON for source
+certificates. `centered_binary_chain` and `negative_role_guard` prove both
+equivalences in Lean without axioms, including non-distinct individual names.
+A direct clause-level replay detected the contradiction with zero dropped
+clauses. The full frontend-to-worker regression is being rerun.
+
+## Frozen inverse candidate v3 validation
+
+All four CB, HT, routing and ELC gates passed on the frozen engine/Lean source
+manifest. The three inverse-chain regressions pass with zero dropped clauses.
+The unit suite passes when default-mode tests and the 21 tests requiring real
+checker exports run in their respective environments (2,435 executed; eight
+existing ignored tests). All integration groups, binary tests and doc tests
+pass in their required checker environments. A global checker export is not a
+valid configuration for every default-mode fixture, and parallel environment
+mutation can disturb the two transitive-chain unit tests; failed diagnostic
+runs are retained beside the successful configured runs.
+
+On IBEX, 2738 completes in 26.3 seconds and exactly matches Konclude's 639,802
+relations. Input 2874 completes in 88.9 seconds and exactly matches 648,538
+relations and all 4,804 unsatisfiable classes. Both use zero dropped clauses.
+Input 8250 now parses, but its CB classification reaches the 550-second
+diagnostic deadline. HermiT and JFact complete its reference classification;
+Konclude crashes, and that failed attempt remains recorded.
+
+The standard 1,920-input and separate 592-input gold regressions are ongoing.
+At the first 475-input standard checkpoint, 38 successful raw output hashes
+changed only because fewer clauses are dropped; their semantic results were
+identical. At the 521-input gold checkpoint, every status and signature matched
+the released baseline, including its known contested-gold and no-gold cases.
+These partial checks are not evidence that the full completion goal is met.
+
+A separate rule/nominal witness also invalidates the general assumption that
+DL-safe rules cannot affect class subsumption: with Thing equivalent to {a},
+the rule Person(x) -> Adult(x) entails Person <= Adult. The existing rule-free
+taxonomy stage misses that consequence. Rule-aware taxonomy or a proved
+separability condition is required; query-head projection alone will not fix it.
