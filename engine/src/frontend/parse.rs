@@ -331,7 +331,7 @@ fn parse_rule_atoms(reg: &mut IriRegistry, node: &Node) -> Option<Vec<RuleAtom>>
 }
 
 /// Port of `add_axiom`.
-fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(), OutOfFragment> {
+pub(super) fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(), OutOfFragment> {
     let (head, args) = match node {
         Node::List(h, a) => (*h, a),
         Node::Atom(_) => return Ok(()),

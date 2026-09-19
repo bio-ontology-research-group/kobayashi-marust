@@ -11,6 +11,7 @@ pub mod bottom_prepass;
 pub mod clauses;
 pub mod data_abox;
 pub mod data_range;
+mod ground_data;
 pub mod datatypes;
 pub mod iri;
 pub mod normalise;
@@ -928,6 +929,7 @@ fn ofn_to_clauses_requested(
     let mut declared_raw: Vec<&str> = Vec::new();
     let mut data_ranges = data_range::DataRanges::default();
     let mut data_abox = data_abox::DataAbox::default();
+    let mut ground_data_scan = ground_data::Scan::default();
     let mut unary_rule_scan = unary_rules::Scan::default();
     let speculative_abox_omission = requested == crate::routing::Route::Auto
         && std::env::var_os("KM_NO_FAST_SEPARABLE_ABOX_PARSE").is_none()
@@ -941,6 +943,7 @@ fn ofn_to_clauses_requested(
         raw_rbox.observe(node);
         data_ranges.observe(node);
         data_abox.observe(node);
+        ground_data_scan.observe(node);
         if let Some(name) = parse::declared_class_node(node) {
             declared_raw.push(name);
         }
@@ -974,6 +977,19 @@ fn ofn_to_clauses_requested(
     let rule_individual_names = profile_builder.rule_individual_names();
     let (mut profile, source_class_raw) =
         profile_builder.finish_with_separable_class_names(text.len() as u64);
+    // Exact ground-data model extension: materialize all entailed object
+    // domain assertions before normalization, without making literals objects.
+    // Keep the original source statistics; use separate occurrence accounting
+    // only when binding the augmented typed ABox to its source certificate.
+    let ground_data_projection = ground_data_scan.project(text,
+        profile.source.axiom_types.get("DataPropertyAssertion").copied().unwrap_or(0));
+    let mut projected_domain_occurrences = 0;
+    if let Some(assertions) = &ground_data_projection {
+        for assertion in assertions {
+            parse::add_axiom(&mut reg, &mut ontology, assertion)?;
+            projected_domain_occurrences += 1;
+        }
+    }
     profile.normalized_unary_rules = unary_rule_scan.lower(
         &mut ontology, &mut reg, &rule_individual_names, profile.source.rule_axioms,
     );
@@ -1098,7 +1114,8 @@ fn ofn_to_clauses_requested(
         && std::env::var_os("KM_ABOX_DISJOINT_UNION_CHECK").is_some()
         && std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_none()
         && std::env::var_os("KM_DISJOINT_UNION_ABOX_DECLINED").is_none();
-    let omit_separable_abox = (automatic || route == crate::routing::Route::Elc)
+    let omit_separable_abox = ground_data_projection.is_none()
+        && (automatic || route == crate::routing::Route::Elc)
         && profile.source.abox_axioms > 0
         && std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION").is_none()
         && (profile.positive_abox_tbox_separable
@@ -1145,7 +1162,12 @@ fn ofn_to_clauses_requested(
     let mut nominal_abox = if omit_separable_abox {
         crate::json_io::NominalAboxMeta::default()
     } else {
-        collect_nominal_abox(&ontology, &abox, &hooks, &profile.source)
+        let mut represented_source = profile.source.clone();
+        represented_source.class_assertions += projected_domain_occurrences;
+        represented_source.abox_axioms += projected_domain_occurrences;
+        *represented_source.axiom_types.entry("ClassAssertion".into()).or_default()
+            += projected_domain_occurrences;
+        collect_nominal_abox(&ontology, &abox, &hooks, &represented_source)
     };
     // Project the named-class ABox-consistency data before the AST is dropped
     // (cheap: `None` unless the ontology has named-class disjointness). The
@@ -1291,7 +1313,8 @@ fn ofn_to_clauses_requested(
         nominal_abox.different.dedup();
     }
     if !abox_inconsistent
-        && (data_abox.positive_assertions_redundant() || functional_data_projected.is_some())
+        && (ground_data_projection.is_some() || data_abox.positive_assertions_redundant()
+            || functional_data_projected.is_some())
     {
         let source_data_assertions = profile
             .source

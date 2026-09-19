@@ -1,3 +1,4 @@
+import ContextCalculus.GroundDataProjection
 import ContextCalculus.ABoxOccurrenceAccounting
 import ContextCalculus.InverseRoleChainNormalization
 import ContextCalculus.BooleanABoxClash
@@ -412,3 +413,5 @@ end ContextCalculus.CB
 
 #print axioms ContextCalculus.ABoxOccurrenceAccounting.duplicate_constraint
 #print axioms ContextCalculus.ABoxOccurrenceAccounting.same_members_same_models
+
+#print axioms ContextCalculus.GroundDataProjection.exact_model_extension
