@@ -19,6 +19,7 @@ pub mod preprocess;
 pub mod profile;
 pub mod rbox;
 mod rule_certificate;
+mod unary_rules;
 pub mod sexpr;
 pub mod syntax;
 pub mod top_role;
@@ -919,6 +920,7 @@ fn ofn_to_clauses_requested(
     let mut declared_raw: Vec<&str> = Vec::new();
     let mut data_ranges = data_range::DataRanges::default();
     let mut data_abox = data_abox::DataAbox::default();
+    let mut unary_rule_scan = unary_rules::Scan::default();
     let speculative_abox_omission = requested == crate::routing::Route::Auto
         && std::env::var_os("KM_NO_FAST_SEPARABLE_ABOX_PARSE").is_none()
         && text.len() >= (8 << 20)
@@ -926,6 +928,7 @@ fn ofn_to_clauses_requested(
     let mut ontology = parse::parse_axioms_observed_filtered(&mut reg, text, |node| {
         profile_builder.observe(node);
         rule_certificate_scan.observe(node);
+        unary_rule_scan.observe(node);
         top_role_scan.observe(node);
         raw_rbox.observe(node);
         data_ranges.observe(node);
@@ -960,8 +963,12 @@ fn ofn_to_clauses_requested(
     // Source features are now complete and their borrowed distinct-entity sets
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
+    let rule_individual_names = profile_builder.rule_individual_names();
     let (mut profile, source_class_raw) =
         profile_builder.finish_with_separable_class_names(text.len() as u64);
+    profile.normalized_unary_rules = unary_rule_scan.lower(
+        &mut ontology, &mut reg, &rule_individual_names, profile.source.rule_axioms,
+    );
     let inert_role_probes =
         inert_role_abox_probes(&ontology, &profile, elide_top_role).unwrap_or_default();
     profile.inert_role_abox_probe_candidate = !inert_role_probes.is_empty();
@@ -1015,7 +1022,8 @@ fn ofn_to_clauses_requested(
     // consistency, so it is safe to admit every independently certified
     // redundant rule and return the clash. Otherwise redundancy remains an
     // explicit opt-in until its downstream route meets the production budget.
-    let rule_abox_inconsistent = rule_certificate_scan.certified_inconsistent();
+    let rule_abox_inconsistent = profile.normalized_unary_rules == 0
+        && rule_certificate_scan.certified_inconsistent();
     let available_rule_certificates = rule_certificate_scan.certified_unsupported_rules();
     let certified_unsupported_rules =
         if rule_abox_inconsistent || std::env::var_os("KM_RULE_REDUNDANCY_CERT").is_some() {
@@ -1044,6 +1052,12 @@ fn ofn_to_clauses_requested(
     // Named bundles control clausification as well as the later worker. This
     // call occurs before normalisation and before any reasoner thread starts.
     route.apply_environment();
+    if profile.normalized_unary_rules > 0 {
+        // The exact rule encoding introduces nominal guards even if the raw
+        // source had no nominal class expressions. Preserve their semantics
+        // on explicit routes as well as automatic classification.
+        std::env::set_var("KM_NOMINALS", "1");
+    }
     // The source-profile gate proves that this is the narrow, datatype-free,
     // inverse-free native SHOQ fragment whose first-class cardinality payload
     // is complete. Avoid materialising the quadratic clausal pigeonhole only
@@ -1169,7 +1183,7 @@ fn ofn_to_clauses_requested(
         collect_rules(
             &ontology,
             profile.source.rule_axioms,
-            certified_unsupported_rules,
+            certified_unsupported_rules + profile.normalized_unary_rules,
         )?
     } else {
         Vec::new()

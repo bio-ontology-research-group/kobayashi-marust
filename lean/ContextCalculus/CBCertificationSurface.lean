@@ -1,4 +1,5 @@
 import ContextCalculus.InverseRoleChainNormalization
+import ContextCalculus.DLSafeUnaryRuleNormalization
 import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBLiveInsertionDerivation
@@ -397,3 +398,6 @@ end ContextCalculus.CB
 #print axioms ContextCalculus.InverseRoleChainNormalization.theory_consequences_preserved
 #print axioms ContextCalculus.InverseRoleChainNormalization.negative_role_guard
 #print axioms ContextCalculus.InverseRoleChainNormalization.centered_binary_chain
+#print axioms ContextCalculus.DLSafeUnaryRuleNormalization.unary_rule_equivalent
+#print axioms ContextCalculus.DLSafeUnaryRuleNormalization.theory_equivalent
+#print axioms ContextCalculus.DLSafeUnaryRuleNormalization.pointwise_fresh_extension

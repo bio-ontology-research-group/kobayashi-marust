@@ -2158,6 +2158,14 @@ fn sriq_policy_eligible(route: Route) -> bool {
 }
 
 pub fn select(profile: &OntologyProfile) -> Route {
+    if profile.normalized_unary_rules > 0
+        && profile.normalized_unary_rules == profile.source.rule_axioms
+        && profile.source.unsupported_rule_axioms == 0
+    {
+        // Every source rule is now an equivalent nominal-guarded inclusion,
+        // so its consequences must participate in the taxonomy calculation.
+        return Route::Nominals;
+    }
     // The parsed frontend has replaced every individual's asserted named-type
     // conjunction by a fresh internal satisfiability probe and proved that
     // ground role edges and explicit inequalities are otherwise inert.

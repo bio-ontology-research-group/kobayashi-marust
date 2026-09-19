@@ -223,6 +223,10 @@ pub struct ClauseStatistics {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OntologyProfile {
     pub schema_version: u32,
+    /// Original source rules exactly lowered to nominal-guarded OWL inclusions.
+    /// Source rule counts remain unchanged for provenance and coverage checks.
+    #[serde(default)]
+    pub normalized_unary_rules: u64,
     /// Source-only proof that the positive ABox is consistent and cannot alter
     /// any named-class TBox subsumption. See
     /// `positive_abox_tbox_separable` for the fail-closed contract.
@@ -937,6 +941,15 @@ impl<'a> SourceProfileBuilder<'a> {
         self.expr.universal_role = false;
     }
 
+    pub(super) fn rule_individual_names(&self) -> Vec<&'a str> {
+        if self.stats.rule_axioms == 0 { return Vec::new(); }
+        let mut names: Vec<_> = self.individuals.iter().copied()
+            .filter(|name| !name.starts_with("_:"))
+            .collect();
+        names.sort_unstable();
+        names
+    }
+
     pub fn finish(self, file_bytes: u64) -> OntologyProfile {
         self.finish_with_separable_class_names(file_bytes).0
     }
@@ -1070,6 +1083,7 @@ impl<'a> SourceProfileBuilder<'a> {
         (
             OntologyProfile {
                 schema_version: 2,
+                normalized_unary_rules: 0,
                 positive_abox_tbox_separable,
                 positive_el_abox_materializable,
                 atomic_class_abox_candidate: false,

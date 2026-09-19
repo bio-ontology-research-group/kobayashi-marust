@@ -115,3 +115,49 @@ DL-safe rules cannot affect class subsumption: with Thing equivalent to {a},
 the rule Person(x) -> Adult(x) entails Person <= Adult. The existing rule-free
 taxonomy stage misses that consequence. Rule-aware taxonomy or a proved
 separability condition is required; query-head projection alone will not fix it.
+
+
+## Unary DL-safe rule normalization
+
+A strict all-rules check recognizes class-only rules with one shared variable.
+The frontend replaces each with an equivalent inclusion whose antecedent is
+guarded by the union of source named-individual nominals. Every head conjunct
+becomes an inclusion. Anonymous source individuals and fresh query witnesses
+stay outside the guard; aliases require no unique-name assumption. Mixed or
+unrepresented rules prevent the transformation entirely. Original source rule
+counts remain recorded beside `normalized_unary_rules`.
+
+The normalized inclusions enter nominal-aware taxonomy classification. The old
+rule-consistency shortcut is bypassed for fully normalized rules, so anonymous
+individuals are not accidentally treated as DL-safe names. The Lean module
+`DLSafeUnaryRuleNormalization` proves the rule and theory equivalences without
+axioms. Seven runtime regressions pass. Six original rule ontologies also
+match independent HermiT consistency, full-IRI subsumption and unsatisfiable
+class results exactly, with zero dropped clauses. All four certification gates
+are running against frozen rules-source-v1; completion is not yet claimed.
+
+The inverse-v3 gold regression has now completed all 592 inputs with unchanged
+statuses and signatures. At the 1,193-input standard checkpoint, no previously
+successful input was lost and 2738 changed from declined to complete. All 96
+changed successful JSON outputs differ only in the dropped-clause counter.
+The resource probe also completed 16511 with an exact Konclude comparison;
+1194 and 2574 still need independent confirmation, and 7192 is newly awaiting
+comparison. These resource runs are separate from the standard benchmark.
+
+
+The final unary-rule source adds a raw-source separability check for class-only
+pointwise TBoxes. Its fresh-point Lean theorem proves that an unnamed class
+counterexample can be adjoined without changing any source rule instance.
+Such inputs keep the retained rule backend. Nominal, universal-role, datatype,
+role and anonymous-individual cases remain outside this shortcut. Both original
+incremental-source regressions and all seven unary-rule regressions pass, as
+do all four certification gates. Six original rule sources exactly match
+HermiT, and a nominal-rule incremental add/remove/re-add audit restores and
+retracts the expected taxonomy consequence. The earlier unconditional route
+change failed the incremental gate; those assertions were preserved.
+
+The inverse-v3 standard sweep is complete: 1,830 ok, 80 deadlines, three errors,
+and seven declines. No v1.4.3 success was lost. All 147 changed successful
+outputs differ only in their dropped-clause counters, with equal consistency,
+taxonomy and unsatisfiable-class results. The separate 592 gold panel remains
+unchanged. New rule-source corpus validation is still required before release.
