@@ -43,3 +43,15 @@ that the former general adapter admitted. These remain coverage work, not
 successful fixes. The separate data-sort diagnostic also confirms an existing
 literal/object-domain conflation against HermiT and Openllet. Neither issue is
 resolved by this ABox-instantiation repair; this branch is not a release.
+
+A later diagnostic exposed an opt-in consistency-probe lifecycle bug: a declined
+probe left KM_HT_GLOBAL and KM_HT_REQUIRE_MASKED_DISJOINT_UNION_SHAPE set.
+The isolated fallback on 7499 returned an empty taxonomy with dropped=0.
+EnvironmentGuard now restores both flags, preserving any caller values.
+The regression runs in a private test process and checks absent, 0, and 1
+initial values. Its before-change control fails; both the actual-source
+standalone test and the full Cargo regression pass. Frozen v3 then completed
+7499 through the same declined-probe path in 176.4324 seconds, with the exact
+reference-validated output hash. This changes environment lifetime, not any
+inference rule. The opt-in projection still retains its existing admission
+checks and remains opt-in.

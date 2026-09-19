@@ -2415,6 +2415,10 @@ impl EnvironmentGuard {
             .chain(std::iter::once("KM_NO_SEPARABLE_ABOX_ELISION"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
+            // Consistency-only probes may decline and re-enter classification.
+            // These probe flags must not suppress the fallback's taxonomy.
+            .chain(std::iter::once("KM_HT_GLOBAL"))
+            .chain(std::iter::once("KM_HT_REQUIRE_MASKED_DISJOINT_UNION_SHAPE"))
             .chain(ROUTE_KEYS.iter().copied())
             .map(|key| (key, std::env::var_os(key)))
             .collect();
@@ -2977,6 +2981,34 @@ const ROUTE_KEYS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consistency_probe_guard_restores_taxonomy_mode() {
+        // Run mutations in a private process, so other unit tests never see
+        // consistency-only flags while this lifecycle regression executes.
+        if std::env::var_os("KM_TEST_PROBE_GUARD_CHILD").is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "routing::tests::consistency_probe_guard_restores_taxonomy_mode"])
+                .env("KM_TEST_PROBE_GUARD_CHILD", "1").status().unwrap();
+            assert!(status.success());
+            return;
+        }
+        let _outer = EnvironmentGuard::capture();
+        for key in ["KM_HT_GLOBAL", "KM_HT_REQUIRE_MASKED_DISJOINT_UNION_SHAPE"] {
+            for initial in [None, Some("0"), Some("1")] {
+                match initial {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+                {
+                    let _probe = EnvironmentGuard::capture();
+                    std::env::set_var(key, "probe");
+                }
+                assert_eq!(std::env::var(key).ok().as_deref(), initial, "{key}");
+            }
+        }
+    }
+
 
     fn wine_nominal_ni_profile() -> OntologyProfile {
         let mut profile = OntologyProfile::default();
