@@ -55,7 +55,7 @@ theorem conflicting_rows_decline (rows : AtomicRows) (left right : Nat × Nat)
 
 /-- A lexical per-individual check transfers to semantic identifiers only if
 distinct accepted spellings cannot alias. This is the obligation addressed by
-the conservative absolute, unescaped IRI screen in the Rust implementation. -/
+the conservative absolute, unescaped IRI and scoped anonymous-label screen. -/
 theorem singleClass_map_of_injective (rows : AtomicRows)
     (individual concept : Nat → Nat) (hinjective : Function.Injective individual)
     (hsingle : SingleClassPerIndividual rows) :
@@ -66,6 +66,25 @@ theorem singleClass_map_of_injective (rows : AtomicRows)
   rcases List.mem_map.mp hright with ⟨rightRow, hrightRow, rfl⟩
   exact congrArg concept
     (hsingle leftRow hleftRow rightRow hrightRow (hinjective heq))
+
+/-- Full IRIs and document-local anonymous labels use disjoint identifier
+namespaces. Injectivity within each namespace therefore suffices for the
+lexical screen's combined identifier map. This says nothing about distinct
+individuals having distinct denotations in every model. -/
+theorem scopedIndividual_injective (named anonymous : Nat → Nat)
+    (hnamed : Function.Injective named) (hanonymous : Function.Injective anonymous)
+    (hdisjoint : ∀ n a, named n ≠ anonymous a) :
+    Function.Injective (Sum.elim named anonymous) := by
+  intro x y h
+  cases x with
+  | inl x =>
+      cases y with
+      | inl y => exact congrArg Sum.inl (hnamed h)
+      | inr y => exact False.elim (hdisjoint x y h)
+  | inr x =>
+      cases y with
+      | inl y => exact False.elim (hdisjoint y x h.symm)
+      | inr y => exact congrArg Sum.inr (hanonymous h)
 
 /-- Construct a joint model, rather than assume that individually satisfiable
 classes can be assigned to the same named individual. -/
@@ -268,6 +287,7 @@ theorem direct_disjoint_assertions_inconsistent
 #print axioms singleClass_map_of_injective
 #print axioms atomicSatisfiable_of_singleClass
 #print axioms atomicSatisfiable_iff_classes
+#print axioms scopedIndividual_injective
 #print axioms nativeAtomic_models
 #print axioms nativeAtomic_fullSatisfiable
 #print axioms nativeAtomic_taxonomy_exact

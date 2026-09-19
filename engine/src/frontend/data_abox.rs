@@ -477,13 +477,22 @@ impl<'a> DataAbox<'a> {
                 }
             }
         }
-        // With several classes, lexical individual identity must also imply
-        // semantic identity. Prefixed/relative names can alias a full IRI;
+        // With several classes, distinct accepted tokens must not name the
+        // same source individual. Prefixed/relative names can alias a full IRI;
         // leave such sources on the full ABox path rather than treating their
         // different spellings as independent witnesses. One class needs only
-        // one shared witness, so aliases are harmless in that case.
+        // one shared witness, so aliases are harmless in that case. Anonymous
+        // labels have a separate, document-local namespace. Accept a simple
+        // unescaped subset of labels; these cannot alias an absolute IRI.
+        // This constructs a possible model, without assuming unique names.
         if classes.len() > 1
             && individual_classes.keys().any(|individual| {
+                if individual.strip_prefix("_:").is_some_and(|label| {
+                    !label.is_empty()
+                        && label.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+                }) {
+                    return false;
+                }
                 !individual
                     .strip_prefix('<')
                     .and_then(|s| s.strip_suffix('>'))

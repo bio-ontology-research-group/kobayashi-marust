@@ -138,6 +138,7 @@ for theorem in \
     singleClass_of_oneClass \
     conflicting_rows_decline \
     singleClass_map_of_injective \
+    scopedIndividual_injective \
     atomicSatisfiable_of_singleClass \
     atomicSatisfiable_iff_classes \
     nativeAtomic_models \

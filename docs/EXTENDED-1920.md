@@ -115,3 +115,45 @@ DL-safe rules cannot affect class subsumption: with Thing equivalent to {a},
 the rule Person(x) -> Adult(x) entails Person <= Adult. The existing rule-free
 taxonomy stage misses that consequence. Rule-aware taxonomy or a proved
 separability condition is required; query-head projection alone will not fix it.
+
+## General object-only atomic ABox projection candidate
+
+12128 has 220,948 class assertions and an object-only TBox with inverse roles,
+functionality, universals and disjunction. The existing atomic projection was
+restricted to positive EL even though `KMAtomicABoxPublication` proves its
+model construction for any TBox closed under disjoint union.
+
+The new raw-source whitelist also admits ordinary object-only SROIQ without
+nominals, the universal role, keys, imports or rules. Datatype constructors and
+data properties stay outside this extension. The existing independent observer
+must still establish complete atomic assertion coverage and at most one class
+per semantic individual. Every asserted class remains a satisfiability query;
+any unsatisfiable asserted class makes the final ontology inconsistent. A
+worker that drops clauses cannot publish a projected result. No consistency
+assumption is inferred merely from the syntactic whitelist.
+
+The proof obligations are the existing `atomicSatisfiable_iff_classes` and
+`nativeAtomic_taxonomy_exact`, built by the routing certification gate. New
+coverage and semantic regressions, all four gates, and the real-input replay
+must pass before this candidate is accepted.
+
+The 12128 source has 220,948 class assertions over four classes, with exactly
+one class per individual. Of those individuals, 220,931 use anonymous labels.
+The original absolute-IRI screen rejected these labels. The revised screen
+also accepts simple unescaped anonymous labels in their document-local
+namespace. Shared labels still share a class constraint, and prefixed or
+relative named-individual spellings remain outside the multi-class shortcut.
+The Lean `scopedIndividual_injective` theorem proves that injective maps for
+the named and anonymous namespaces combine when their identifier ranges are
+disjoint; it introduces no axioms. The existing full-model construction then
+applies without a unique-name assumption.
+
+The revised source passes 28 focused unit tests and four integration tests.
+Four original anonymous-individual sources exactly match HermiT consistency,
+full-IRI taxonomy and unsatisfiable-class output, with zero dropped clauses.
+The frozen atomic-source-v1 passed all four certification gates. The revised
+atomic-source-v2 has passed all four certification gates. Corpus validation
+is pending. The first 12128 diagnostic failed before this label
+fix. A separate diagnostic established that its CB fallback reaches the
+25-million-message safety limit. Raising that limit to 250 million still
+failed to finish within 600 seconds and is not an accepted fix.

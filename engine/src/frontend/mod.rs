@@ -691,6 +691,30 @@ fn existential_witness_abox_projection(
 /// concept/RBox constructor that could read an asserted edge, impose a negative
 /// role constraint, or generate equality. The added probe names are a
 /// conservative extension and never enter public output.
+/// The atomic-ABox model construction is not specific to EL: it needs a
+/// TBox closed under disjoint union. This raw-source whitelist admits the
+/// object-only, nominal-free and universal-role-free fragment. The separate
+/// atomic assertion observer must still establish complete coverage and at
+/// most one class per individual; this function does not assert consistency.
+fn atomic_object_abox_separable(profile: &profile::OntologyProfile) -> bool {
+    const LOCAL_AXIOMS: &[&str] = &[
+        "Declaration", "SubClassOf", "EquivalentClasses", "DisjointClasses",
+        "DisjointUnion", "SubObjectPropertyOf", "EquivalentObjectProperties",
+        "DisjointObjectProperties", "InverseObjectProperties",
+        "ObjectPropertyDomain", "ObjectPropertyRange", "FunctionalObjectProperty",
+        "InverseFunctionalObjectProperty", "ReflexiveObjectProperty",
+        "IrreflexiveObjectProperty", "SymmetricObjectProperty",
+        "AsymmetricObjectProperty", "TransitiveObjectProperty", "ClassAssertion",
+        "Annotation", "AnnotationAssertion", "SubAnnotationPropertyOf",
+        "AnnotationPropertyDomain", "AnnotationPropertyRange",
+    ];
+    profile.disjoint_union_abox_candidate
+        && !profile.expressivity.datatype
+        && profile.source.distinct_data_properties == 0
+        && profile.source.datatype_constructors == 0
+        && profile.source.axiom_types.keys().all(|kind| LOCAL_AXIOMS.contains(&kind.as_str()))
+}
+
 fn inert_role_abox_probes(
     ontology: &syntax::Ontology,
     profile: &profile::OntologyProfile,
@@ -980,9 +1004,12 @@ fn ofn_to_clauses_requested(
     // An atomic ABox with at most one distinct class per individual has a
     // compact certificate: it is consistent iff every asserted class is
     // satisfiable in the TBox. The
-    // source profile proves the surrounding positive EL fragment, while this
-    // independent observer proves complete atomic-assertion coverage.
-    let atomic_class_abox_raw = if profile.positive_el_abox_materializable
+    // source profile proves closure under disjoint union (positive EL or the
+    // screened object-only fragment), while the independent observer proves
+    // complete atomic-assertion coverage. KMAtomicABoxPublication constructs
+    // the full ABox model from the retained class-satisfiability queries.
+    let atomic_class_abox_raw = if (profile.positive_el_abox_materializable
+        || atomic_object_abox_separable(&profile))
         && profile.source.abox_axioms == profile.source.class_assertions
     {
         data_abox.atomic_class_assertion_classes(profile.source.class_assertions)
@@ -1763,6 +1790,63 @@ mod separable_abox_elision_tests {
             if second_individual != ":a" {
                 assert_eq!(result.abox_inconsistent, expect_clash);
             }
+        }
+    }
+
+    #[test]
+    fn object_only_atomic_abox_retains_queries_beyond_el() {
+        let _environment_lock = lock_environment();
+        let source = "Ontology(
+            SubClassOf(<http://e/A> ObjectSomeValuesFrom(<http://e/r> <http://e/B>))
+            SubClassOf(<http://e/A> ObjectAllValuesFrom(<http://e/r> <http://e/C>))
+            DisjointClasses(<http://e/B> <http://e/C>)
+            FunctionalObjectProperty(<http://e/r>)
+            InverseFunctionalObjectProperty(<http://e/r>)
+            ClassAssertion(<http://e/A> <http://e/a>)
+            ClassAssertion(<http://e/A> <http://e/b>))";
+        let result = with_ofn_to_clauses_requested_route(source, Route::Auto, |r| r).unwrap();
+        assert!(result.profile.atomic_class_abox_candidate);
+        assert!(!result.profile.positive_el_abox_materializable);
+        assert_eq!(result.asserted_classes, vec!["A"]);
+        assert!(result.nominal_abox.individuals.is_empty());
+    }
+
+    #[test]
+    fn atomic_abox_accepts_scoped_anonymous_labels_without_splitting_shared_labels() {
+        let _environment_lock = lock_environment();
+        for (left, right, expected) in [
+            ("_:genid1", "_:genid2", true),
+            ("_:genid1", "<http://e/genid1>", true),
+            ("_:genid1", "_:genid1", false),
+            ("<http://e/a>", ":a", false),
+        ] {
+            let source = format!("Prefix(:=<http://e/>) Ontology(
+                DisjointClasses(<http://e/A> <http://e/B>)
+                SubClassOf(<http://e/A> ObjectAllValuesFrom(<http://e/r> <http://e/B>))
+                ClassAssertion(<http://e/A> {left}) ClassAssertion(<http://e/B> {right}))");
+            let result = with_ofn_to_clauses_requested_route(&source, Route::Auto, |r| r).unwrap();
+            assert_eq!(result.profile.atomic_class_abox_candidate, expected, "{left} {right}");
+            if expected {
+                assert_eq!(result.asserted_classes, vec!["A", "B"]);
+                assert!(result.nominal_abox.individuals.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn object_atomic_projection_rejects_nonlocal_or_datatype_sources() {
+        let _environment_lock = lock_environment();
+        for extra in [
+            "SubClassOf(<http://e/A> ObjectOneOf(<http://e/a>))",
+            "SubClassOf(<http://e/A> ObjectAllValuesFrom(owl:topObjectProperty <http://e/B>))",
+            "DataPropertyRange(<http://e/age> xsd:integer)",
+            "ClassAssertion(<http://e/B> <http://e/a>)",
+        ] {
+            let source = format!("Ontology(
+                SubClassOf(<http://e/A> ObjectAllValuesFrom(<http://e/r> <http://e/B>))
+                ClassAssertion(<http://e/A> <http://e/a>) {extra})");
+            let result = with_ofn_to_clauses_requested_route(&source, Route::Auto, |r| r).unwrap();
+            assert!(!result.profile.atomic_class_abox_candidate, "{extra}");
         }
     }
 
