@@ -61,3 +61,26 @@ Lean statements:
 - Literal decoding, fresh-name allocation for `Obj`, role classification (object vs
   data), reflexive and universal roles (declined together with data for now), routing,
   and output filtering of the private class.
+
+## Frontend passes
+
+`KM_SORTED_DATA=1` runs the established frontend first, with the object-sort guard added.
+Every exact ABox certificate (separable, atomic, ground, finite membership) keeps priority,
+which matters for speed: a first wiring that always desugared data assertions turned 29
+previously fast inputs into timeouts, because it switched the ABox-omission certificates off.
+Only when that pass declines for data-assertion coverage, or finds that a guard is needed, is
+the source read again with data assertions as `DataHasValue` class assertions and the full ABox
+retained.
+
+Known gap: a reflexive or universal role defeats the shape analysis. The first pass then keeps
+the established behaviour (no guard), and the second pass declines. The exact treatment is
+`Obj ⊑ ∃r.Self` in place of the reflexivity axiom, which also has to reach the typed RBox.
+
+## Oracle changes made for adequacy
+
+- Float and double literals decode to exact IEEE values; float, double and the decimal tower are
+  separate partitions (OWL 2 Structural Specification 4.2: pairwise disjoint value spaces).
+- Distinctness of more than 64 values uses a binary index encoding, O(n log n) clauses.
+- Still open: a fail-closed check that every data-node type the clauses permit is realisable
+  (laminar ranges, finite regions enumerated), duplicate facets with mixed inclusivity in
+  `DatatypeRestriction`, facet restrictions over float and double, string subtypes, dateTime order.

@@ -914,6 +914,33 @@ fn ofn_to_clauses_requested(
     text: &str,
     requested: crate::routing::Route,
 ) -> Result<FrontendResult, parse::OutOfFragment> {
+    // Sorted data-node abstraction (docs/SORTED-DATA-ABSTRACTION.md), opt-in
+    // through KM_SORTED_DATA while it is validated. The first pass is the
+    // established frontend plus the object-sort guard, so every exact ABox
+    // certificate (separable, atomic, ground, finite) keeps priority. Only an
+    // ontology that pass declines for data-assertion coverage is read again with
+    // its data assertions as DataHasValue class assertions.
+    let enabled = std::env::var_os("KM_SORTED_DATA").is_some();
+    match ofn_to_clauses_sorted(text, requested, enabled, false) {
+        Err(parse::OutOfFragment(reason))
+            if enabled
+                && (reason.contains("data-property assertion axiom(s) are unsupported")
+                    || reason.contains(SORTED_GUARD_NEEDS_ABOX)) =>
+        {
+            ofn_to_clauses_sorted(text, requested, true, true)
+        }
+        other => other,
+    }
+}
+
+const SORTED_GUARD_NEEDS_ABOX: &str = "object-sort guard needs the full ABox";
+
+fn ofn_to_clauses_sorted(
+    text: &str,
+    requested: crate::routing::Route,
+    sorted_guard: bool,
+    sorted_assertions: bool,
+) -> Result<FrontendResult, parse::OutOfFragment> {
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     let finite_data_projection = if text.contains("DataHasValue") {
@@ -925,11 +952,9 @@ fn ofn_to_clauses_requested(
         reg.install_finite_data_bindings(plan.bindings.iter().map(|((p, v), c)|
             (((*p).to_owned(), v.clone()), c.clone())).collect());
     }
-    // Sorted data-node abstraction (docs/SORTED-DATA-ABSTRACTION.md). Opt-in
-    // while it is validated; the finite membership projection keeps priority
-    // because it needs no data nodes.
-    let sorted_data = std::env::var_os("KM_SORTED_DATA").is_some()
-        && finite_data_projection.is_none();
+    // The finite membership projection keeps priority over assertion
+    // desugaring because it needs no data nodes.
+    let sorted_data = sorted_assertions && finite_data_projection.is_none();
     reg.set_sorted_data(sorted_data);
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
     // document AST is ever materialised (both used to be O(document) with a
@@ -1238,18 +1263,38 @@ fn ofn_to_clauses_requested(
     // a data node would violate, then type classes, object roles and
     // individuals. Untouched when no inclusion needs a guard.
     let mut sorted_generated_assertions = 0u64;
-    if sorted_data && !reg.data_roles().is_empty() {
+    if sorted_guard && finite_data_projection.is_none() && !reg.data_roles().is_empty() {
         let data_roles = reg.data_roles().clone();
         let declared_tokens: Vec<&str> = declared_raw.clone();
-        let outcome = sort_guard::apply(&mut ontology, &data_roles, || {
+        let outcome = match sort_guard::apply(&mut ontology, &data_roles, || {
             declared_tokens
                 .iter()
                 .map(|token| reg.short(token))
                 .filter(|name| name != "owl:Thing" && name != "owl:Nothing")
                 .collect()
-        })
-        .map_err(|reason| parse::OutOfFragment(format!("sorted data abstraction: {reason}")))?;
+        }) {
+            Ok(outcome) => outcome,
+            // A reflexive or universal role defeats the shape analysis. The
+            // first pass then keeps the established behaviour unchanged (a known
+            // gap, recorded in docs/SORTED-DATA-ABSTRACTION.md); the pass that
+            // relies on the abstraction for data assertions declines.
+            Err(reason) if !sorted_assertions => {
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!("KM_TIMING sorted data: guard skipped ({reason})");
+                }
+                sort_guard::Outcome::default()
+            }
+            Err(reason) => {
+                return Err(parse::OutOfFragment(format!("sorted data abstraction: {reason}")))
+            }
+        };
         sorted_generated_assertions = outcome.assertions as u64;
+        // The guard's typing assertions and guarded inclusions were not part of
+        // the source the ABox-omission certificates looked at. When a guard is
+        // needed, read the ontology again with the full ABox retained.
+        if outcome.guarded > 0 && !sorted_assertions {
+            return Err(parse::OutOfFragment(SORTED_GUARD_NEEDS_ABOX.into()));
+        }
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!(
                 "KM_TIMING sorted data: guarded={} typing={} data_roles={}",
@@ -1263,9 +1308,7 @@ fn ofn_to_clauses_requested(
     // occurrences: count them apart from the source so the ABox coverage
     // certificate still balances. Data assertions need no such credit, because
     // the source profile already counts them in their class-assertion spelling.
-    if sorted_data {
-        projected_domain_occurrences += sorted_generated_assertions;
-    }
+    projected_domain_occurrences += sorted_generated_assertions;
     let (tbox, abox, mut hooks) =
         normalise::normalise_with_native_cardinality(&ontology, native_cardinality_only);
     let mut nominal_abox = if omit_separable_abox {
