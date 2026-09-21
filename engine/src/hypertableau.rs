@@ -546,6 +546,11 @@ pub struct Ext {
     /// (a ≤n merge); `resolve` follows the chain. Trail-recorded (`Trail::Merge`).
     number: bool,
     merged: Vec<Option<Node>>,
+    /// Justification of each redirect: `merge_dep[v]` is the dependency set
+    /// under which `v ≈ merged[v]` was derived (empty while `v` is live). Any
+    /// fact transferred from a victim to its survivor through `resolve` holds
+    /// only under the union of these sets along the chain (`resolve_dep`).
+    merge_dep: Vec<DepSet>,
     merges: u64,
 
     // ---- incremental ("watch") disjunction bookkeeping (KM_HT_WATCH) ----
@@ -677,6 +682,7 @@ impl Ext {
             unsupported: false,
             number: std::env::var_os("KM_HT_NUMBER").is_some(),
             merged: Vec::new(),
+            merge_dep: Vec::new(),
             merges: 0,
             watch: false,
             lit_disj: HashMap::new(),
@@ -1078,6 +1084,7 @@ impl Ext {
         self.blockable.push(blockable);
         self.globals_fired.push(false);
         self.merged.push(None);
+        self.merge_dep.push(dep_empty());
         if self.incroblig {
             self.node_obligs.push(Vec::new());
         }
@@ -1195,13 +1202,31 @@ impl Ext {
         x
     }
 
+    /// `resolve` together with its justification: the union of the dependency
+    /// sets of every merge on the chain `n ≈ … ≈ survivor`. A fact about `n`
+    /// (dep `d`) is a fact about the survivor only under `d ∪` this set, so every
+    /// caller that moves a fact, an inequality, or a merge from a possibly dead
+    /// node onto its survivor must fold it in. Empty for a live node.
+    pub fn resolve_dep(&self, n: Node) -> (Node, DepSet) {
+        let mut x = n;
+        let mut dep = dep_empty();
+        while let Some(p) = self.merged[x] {
+            dep = dep_union(&dep, &self.merge_dep[x]);
+            x = p;
+        }
+        (x, dep)
+    }
+
     /// KM_HT_CARD: assert `a ≠ b` (Konclude `createIndividualsDistinct`). Records
     /// the inequality on both nodes' `distinct` lists under `dep`, trail-recorded.
     /// Idempotent (a re-asserted pair is ignored). Resolves through merges first,
     /// so an inequality always names live survivors.
     pub fn add_distinct(&mut self, a: Node, b: Node, dep: &DepSet) {
-        let a = self.resolve(a);
-        let b = self.resolve(b);
+        let (a, da) = self.resolve_dep(a);
+        let (b, db) = self.resolve_dep(b);
+        // The inequality names the survivors only under the merges that
+        // identified the original nodes with them.
+        let dep = &dep_union(dep, &dep_union(&da, &db));
         if a == b {
             // a≠a is an immediate contradiction (Konclude clashes a self-distinct).
             self.raise_clash(dep.clone());
@@ -1239,11 +1264,15 @@ impl Ext {
     /// undoes the whole merge. The merge dep `mdep` flows into every copied fact
     /// so a resulting clash backjumps past the cardinality clause that forced it.
     pub fn merge_into(&mut self, a: Node, b: Node, mdep: &DepSet) {
-        let a = self.resolve(a);
-        let b = self.resolve(b);
+        // `a ≈ b` (under `mdep`) identifies the two SURVIVORS only under the
+        // merges that redirected `a` and `b` to them. Dropping those sets lets a
+        // resulting clash escape the branch choice that caused the earlier merge.
+        let (a, da) = self.resolve_dep(a);
+        let (b, db) = self.resolve_dep(b);
         if a == b {
             return;
         }
+        let mdep = &dep_union(mdep, &dep_union(&da, &db));
         // Konclude `isIndividualNodesMergeable`: a distinct (inequality) edge
         // between the pair makes the merge a CLASH — the ≤n cannot identify two
         // provably-distinct successors. Backjump past both the merge cause and
@@ -1264,6 +1293,7 @@ impl Ext {
         }
         self.trail.push(Trail::Merge(victim));
         self.merged[victim] = Some(survivor);
+        self.merge_dep[victim] = mdep.clone();
         let cs: Vec<(CLit, DepSet)> = self.concepts[victim]
             .iter()
             .map(|(k, v)| (*k, v.clone()))
@@ -1277,8 +1307,8 @@ impl Ext {
         }
         let oes: Vec<(R, Node, DepSet)> = self.out_edges[victim].clone();
         for (r, t, d) in oes {
-            let t2 = self.resolve(t);
-            let nd = dep_union(&d, mdep);
+            let (t2, td) = self.resolve_dep(t);
+            let nd = dep_union(&dep_union(&d, mdep), &td);
             self.add_edge(r, survivor, t2, &nd);
             if self.clash.is_some() {
                 return;
@@ -1286,8 +1316,8 @@ impl Ext {
         }
         let ies: Vec<(R, Node, DepSet)> = self.in_edges[victim].clone();
         for (r, s, d) in ies {
-            let s2 = self.resolve(s);
-            let nd = dep_union(&d, mdep);
+            let (s2, sd) = self.resolve_dep(s);
+            let nd = dep_union(&dep_union(&d, mdep), &sd);
             self.add_edge(r, s2, survivor, &nd);
             if self.clash.is_some() {
                 return;
@@ -1327,23 +1357,36 @@ impl Ext {
                 Some(v) if v.len() >= 2 => v.clone(),
                 _ => continue,
             };
-            let mut survs: Vec<Node> = carriers.iter().map(|&n| self.resolve(n)).collect();
-            survs.sort_unstable();
-            survs.dedup();
-            if survs.len() < 2 {
+            // One witnessing carrier per survivor. A carrier may be a DEAD node:
+            // a pending disjunction recorded on a node before it was merged away
+            // is still branched on that node, so `__nom__o` can be asserted on a
+            // victim whose survivor does not carry it. The membership dep must be
+            // read from the carrier that actually holds the literal — never from
+            // the survivor's label, where it may be absent — and `merge_into`
+            // adds the carrier→survivor merge deps. `(survivor, carrier)` order
+            // prefers the survivor itself (lowest id) as its own witness.
+            let mut reps: Vec<(Node, Node)> =
+                carriers.iter().map(|&n| (self.resolve(n), n)).collect();
+            reps.sort_unstable();
+            reps.dedup_by_key(|rep| rep.0);
+            if reps.len() < 2 {
                 continue;
             }
             let lit = CLit { neg: false, c };
-            let keep = survs[0];
-            for &o in &survs[1..] {
+            let keep = reps[0].1;
+            for &(_, o) in &reps[1..] {
                 if self.resolve(keep) == self.resolve(o) {
                     continue;
                 }
-                let dk = self.concepts[self.resolve(keep)]
-                    .get(&lit)
-                    .cloned()
-                    .unwrap_or(None);
-                let dobj = self.concepts[o].get(&lit).cloned().unwrap_or(None);
+                let (Some(dk), Some(dobj)) = (
+                    self.concepts[keep].get(&lit).cloned(),
+                    self.concepts[o].get(&lit).cloned(),
+                ) else {
+                    // A carrier without the literal has no known justification;
+                    // an empty dep would claim the merge is unconditional.
+                    self.unsupported = true;
+                    continue;
+                };
                 let mdep = dep_union(&dk, &dobj);
                 self.merge_into(keep, o, &mdep);
                 changed = true;
@@ -1430,6 +1473,7 @@ impl Ext {
                     self.blockable.pop();
                     self.globals_fired.pop();
                     self.merged.pop();
+                    self.merge_dep.pop();
                     if self.incroblig {
                         self.node_obligs.pop();
                     }
@@ -1442,6 +1486,7 @@ impl Ext {
                 Trail::Merge(v) => {
                     if v < self.merged.len() {
                         self.merged[v] = None;
+                        self.merge_dep[v] = dep_empty();
                     }
                 }
                 Trail::NomCarrier(c) => {
@@ -1562,6 +1607,9 @@ impl Ext {
             for (_, dependency) in distinct {
                 *dependency = dep_empty();
             }
+        }
+        for dependency in &mut self.merge_dep {
+            *dependency = dep_empty();
         }
 
         self.trail.clear();
@@ -2011,10 +2059,15 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
         // Recognized concept disjuncts (the `Q`): satisfied ⇒ done; dead (¬Q
         // present) ⇒ fold its reason; else a live branch option.
         let mut dead = dep_empty();
+        // Merge deps of every body-bound node redirected to a survivor: the head
+        // is asserted on survivors, so it holds only under these as well.
+        let mut redirect = dep_empty();
         let mut concepts: Vec<(Node, CLit)> = Vec::new();
         for h in head {
             if let Atom::Concept { lit, t } = *h {
-                let n = ext.resolve(sigma[t as usize].expect("recognition head var bound by body"));
+                let (n, nd) = ext
+                    .resolve_dep(sigma[t as usize].expect("recognition head var bound by body"));
+                redirect = dep_union(&redirect, &nd);
                 if ext.has_concept(n, lit) {
                     return;
                 }
@@ -2034,17 +2087,20 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
         let mut pairs: Vec<(Node, Node)> = Vec::new();
         for h in head {
             if let Atom::Eq { s, t } = *h {
-                let sn = ext.resolve(sigma[s as usize].expect("eq head src bound by body"));
-                let tn = ext.resolve(sigma[t as usize].expect("eq head dst bound by body"));
+                let (sn, sd) =
+                    ext.resolve_dep(sigma[s as usize].expect("eq head src bound by body"));
+                let (tn, td) =
+                    ext.resolve_dep(sigma[t as usize].expect("eq head dst bound by body"));
                 if sn == tn {
                     return;
                 }
+                redirect = dep_union(&redirect, &dep_union(&sd, &td));
                 pairs.push(if sn <= tn { (sn, tn) } else { (tn, sn) });
             }
         }
         pairs.sort_unstable();
         pairs.dedup();
-        let bdep2 = dep_union(bdep, &dead);
+        let bdep2 = dep_union(&dep_union(bdep, &dead), &redirect);
         // pairs is non-empty here (the head has an Eq atom and none is already
         // identified), so there is always ≥1 option — a merge is always available,
         // hence no immediate clash (a forbidden merge clashes later via the ≥m
@@ -18991,12 +19047,17 @@ impl Ht {
                     // are counted (`process_card_max`).
                     if self.card && !lit.neg {
                         if let Some(&def) = self.card_defs.get(&lit.c) {
-                            let node = self.ext.resolve(n);
-                            let dep = self
-                                .ext
-                                .dep_of(node, lit)
-                                .cloned()
-                                .unwrap_or_else(dep_empty);
+                            // The marker lives on `n` (possibly a dead victim);
+                            // the survivor need not carry it, so read its dep at
+                            // `n` and add the n→survivor merge deps.
+                            let (node, redirect) = self.ext.resolve_dep(n);
+                            let dep = match self.ext.dep_of(n, lit) {
+                                Some(own) => dep_union(own, &redirect),
+                                None => {
+                                    self.ext.unsupported = true;
+                                    redirect
+                                }
+                            };
                             let at = self.ext.trail.len();
                             let req = CardReq {
                                 n: node,
@@ -20162,7 +20223,10 @@ impl Ht {
         let mut dead = dep_empty();
         let mut options: Vec<MergeChoice> = Vec::new();
         for &(n, lit) in &concepts {
-            let rn = self.ext.resolve(n);
+            let (rn, nd) = self.ext.resolve_dep(n);
+            // merges since the push: the option lands on the survivor only
+            // under their deps (folded into the branch dep below).
+            dead = dep_union(&dead, &nd);
             if self.ext.has_concept(rn, lit) {
                 return self.dfs(depth);
             }
@@ -20177,11 +20241,12 @@ impl Ht {
             }
         }
         for &(a, b) in &pairs {
-            let ra = self.ext.resolve(a);
-            let rb = self.ext.resolve(b);
+            let (ra, da) = self.ext.resolve_dep(a);
+            let (rb, db) = self.ext.resolve_dep(b);
             if ra == rb {
                 return self.dfs(depth);
             }
+            dead = dep_union(&dead, &dep_union(&da, &db));
             options.push(MergeChoice::Merge(ra, rb));
         }
         let gddep = dep_union(&bdep, &dead);
