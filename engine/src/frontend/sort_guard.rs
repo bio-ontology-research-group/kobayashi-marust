@@ -117,6 +117,26 @@ fn reject_universal(role: &Role) -> Result<(), Unsupported> {
     }
 }
 
+/// The universal role relates every pair of nodes in the one-sorted reading,
+/// data nodes included, which no guard on a left side can repair. It is
+/// rejected wherever it occurs, not only in the expression whose shape decides
+/// the guard.
+fn reject_universal_deep(concept: &Concept) -> Result<(), Unsupported> {
+    match concept {
+        Concept::Name(_) | Concept::Top | Concept::Bottom | Concept::Nominal(_) => Ok(()),
+        Concept::Not(inner) => reject_universal_deep(inner),
+        Concept::And(parts) | Concept::Or(parts) => parts.iter().try_for_each(reject_universal_deep),
+        Concept::Exists(role, filler)
+        | Concept::Forall(role, filler)
+        | Concept::AtLeast(_, role, filler)
+        | Concept::AtMost(_, role, filler) => {
+            reject_universal(role)?;
+            reject_universal_deep(filler)
+        }
+        Concept::HasSelf(role) => reject_universal(role),
+    }
+}
+
 /// An inclusion holds at every data node without a guard when its left side is
 /// false there or its right side is true there.
 fn inclusion_is_safe(sub: &Concept, sup: &Concept) -> Result<bool, Unsupported> {
@@ -189,6 +209,16 @@ pub fn apply(
     data_roles: &BTreeSet<String>,
     declared_classes: impl FnOnce() -> BTreeSet<String>,
 ) -> Result<Outcome, Unsupported> {
+    for axiom in ontology.tbox().chain(ontology.abox()) {
+        match axiom {
+            Axiom::SubClassOf(a, b) | Axiom::EquivalentClasses(a, b) | Axiom::DisjointClasses(a, b) => {
+                reject_universal_deep(a)?;
+                reject_universal_deep(b)?;
+            }
+            Axiom::ConceptAssertion(concept, _) => reject_universal_deep(concept)?,
+            _ => {}
+        }
+    }
     let mut replacements: Vec<(Axiom, Vec<Axiom>)> = Vec::new();
     // A `DatatypeDefinition` relates two data ranges. It speaks about data
     // nodes only, so it has no object-sort reading and takes no guard.
