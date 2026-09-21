@@ -1289,10 +1289,12 @@ fn ofn_to_clauses_sorted(
             }
         };
         sorted_generated_assertions = outcome.assertions as u64;
-        // The guard's typing assertions and guarded inclusions were not part of
-        // the source the ABox-omission certificates looked at. When a guard is
-        // needed, read the ontology again with the full ABox retained.
-        if outcome.guarded > 0 && !sorted_assertions {
+        // A guard is compatible with the ABox-omission certificates: they are
+        // statements about the source ontology's models, and the guarded
+        // translation is exact for those models, with or without the ABox. Only
+        // a speculative omission decided before parsing has already skipped
+        // assertions this pass would have to type, so that case reads again.
+        if outcome.guarded > 0 && speculative_abox_omission && !sorted_assertions {
             return Err(parse::OutOfFragment(SORTED_GUARD_NEEDS_ABOX.into()));
         }
         if std::env::var_os("KM_TIMING").is_some() {
