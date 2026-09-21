@@ -921,12 +921,19 @@ fn ofn_to_clauses_requested(
     // ontology that pass declines for data-assertion coverage is read again with
     // its data assertions as DataHasValue class assertions.
     let enabled = std::env::var_os("KM_SORTED_DATA").is_some();
+    // The first pass may already have applied its route's environment. The
+    // second pass must choose its route from the original state, not from the
+    // nominal CB settings of a route it is about to replace.
+    let environment = enabled.then(crate::routing::Route::environment_snapshot);
     match ofn_to_clauses_sorted(text, requested, enabled, false) {
         Err(parse::OutOfFragment(reason))
             if enabled
                 && (reason.contains("data-property assertion axiom(s) are unsupported")
                     || reason.contains(SORTED_GUARD_NEEDS_ABOX)) =>
         {
+            if let Some(environment) = &environment {
+                crate::routing::Route::restore_environment(environment);
+            }
             ofn_to_clauses_sorted(text, requested, true, true)
         }
         other => other,

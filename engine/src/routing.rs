@@ -210,6 +210,26 @@ impl Route {
 
     /// Normalize the process environment to the matrix procedure. This is
     /// called once, before normalisation or any reasoner thread starts.
+    /// Values of every variable a route may set or clear. A caller that runs
+    /// the frontend twice restores this between the passes, so the second
+    /// pass selects its route from the same state as the first.
+    pub fn environment_snapshot() -> Vec<(&'static str, Option<std::ffi::OsString>)> {
+        let mut keys: Vec<&'static str> = ROUTE_KEYS.to_vec();
+        keys.extend(COMMON_SETTINGS.iter().map(|(key, _)| *key));
+        keys.sort_unstable();
+        keys.dedup();
+        keys.into_iter().map(|key| (key, std::env::var_os(key))).collect()
+    }
+
+    pub fn restore_environment(snapshot: &[(&'static str, Option<std::ffi::OsString>)]) {
+        for (key, value) in snapshot {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+
     pub fn apply_environment(self) {
         if matches!(self, Route::Auto | Route::Manual) {
             return;
