@@ -618,10 +618,14 @@ fn range_from_node(node: &Node) -> DRange {
                         Some((Val::Num(rv), _)) => rv,
                         _ => return DRange::Unknown,
                     };
+                    // At equal bounds the exclusive one is the tighter: a base type's
+                    // inclusive 0 must give way to `minExclusive 0`, or 0 would count
+                    // as a member of "greater than 0" (ore_ont_11647 then derived
+                    // ClearSky ⊑ PartlyCloudy).
                     let tighter_min = |cur: &Option<(Rat, bool)>, nb: (Rat, bool)| match cur {
                         None => Some(nb),
-                        Some((c, _)) => {
-                            if c.lt(&nb.0).unwrap_or(false) {
+                        Some((c, inclusive)) => {
+                            if c.lt(&nb.0).unwrap_or(false) || (*c == nb.0 && *inclusive && !nb.1) {
                                 Some(nb)
                             } else {
                                 *cur
@@ -630,8 +634,8 @@ fn range_from_node(node: &Node) -> DRange {
                     };
                     let tighter_max = |cur: &Option<(Rat, bool)>, nb: (Rat, bool)| match cur {
                         None => Some(nb),
-                        Some((c, _)) => {
-                            if nb.0.lt(c).unwrap_or(false) {
+                        Some((c, inclusive)) => {
+                            if nb.0.lt(c).unwrap_or(false) || (*c == nb.0 && *inclusive && !nb.1) {
                                 Some(nb)
                             } else {
                                 *cur
@@ -1817,6 +1821,26 @@ mod tests {
         let few = datatype_relation_clauses(&names(&refs[..5]), 8);
         assert!(has_pair_clash(&few, &values[3], &values[4]));
         assert!(!few.iter().any(|clause| format!("{clause:?}").contains("__dt__index__")));
+    }
+
+    #[test]
+    fn exclusive_facet_at_a_base_bound_excludes_the_bound() {
+        let positive =
+            "__dt__c__DatatypeRestriction(xsd:nonNegativeInteger xsd:minExclusive \"0\"^^xsd:integer)";
+        let zero = "__dt__val__\"0\"^^xsd:integer";
+        let one = "__dt__val__\"1\"^^xsd:integer";
+        let clauses = datatype_relation_clauses(&names(&[positive, zero, one]), 8);
+        assert!(has_pair_clash(&clauses, zero, positive), "0 is not greater than 0: {clauses:#?}");
+        assert!(!has_pair_clash(&clauses, one, positive));
+        let non_positive =
+            "__dt__c__DatatypeRestriction(xsd:nonPositiveInteger xsd:maxExclusive \"0\"^^xsd:integer)";
+        let clauses = datatype_relation_clauses(&names(&[non_positive, zero]), 8);
+        assert!(has_pair_clash(&clauses, zero, non_positive), "0 is not less than 0");
+        // The order of two facets at one bound does not matter.
+        let both = "__dt__c__DatatypeRestriction(xsd:integer xsd:minExclusive \"3\"^^xsd:integer xsd:minInclusive \"3\"^^xsd:integer)";
+        let three = "__dt__val__\"3\"^^xsd:integer";
+        let clauses = datatype_relation_clauses(&names(&[both, three]), 8);
+        assert!(has_pair_clash(&clauses, three, both));
     }
 
     #[test]
