@@ -1345,9 +1345,66 @@ fn singleton_clause(name: &str) -> DLClause {
 /// (collected from the clause set).  Every emitted clause is justified by the
 /// OWL 2 datatype map; unknown relations emit nothing.  `cap` bounds the
 /// finite-cover enumeration width.
+/// Identity key of a represented value: two represented values are equal exactly
+/// when their keys are. `None` for an opaque value, whose identity is unknown.
+fn value_key(value: &Val) -> Option<String> {
+    Some(match value {
+        Val::Num(r) => format!("n{}/{}", r.num, r.den),
+        Val::Bool(b) => format!("b{b}"),
+        Val::Str(text, lang) => format!("s{}\u{0}{text}", lang.as_deref().unwrap_or("")),
+        Val::Float(bits) => format!("f{bits}"),
+        Val::Double(bits) => format!("d{bits}"),
+        Val::Opaque(_) => return None,
+    })
+}
+
+/// Above this many distinct represented values, pairwise clash clauses give way
+/// to the binary index encoding of [`distinct_value_index_clauses`].
+const PAIRWISE_VALUE_LIMIT: usize = 64;
+
+/// Distinctness of many values in O(n log n) clauses. The distinct values get
+/// indices; value `i` implies, for every bit position `k`, the private concept
+/// for bit `k` of `i`, and the two concepts of one position are disjoint. Two
+/// distinct indices differ at some position, so two distinct values still clash
+/// on one node. Reading each bit concept as the union of the values that imply it
+/// shows the encoding adds nothing beyond those pairwise clashes.
+fn distinct_value_index_clauses(index_of: &std::collections::BTreeMap<&str, usize>, distinct: usize) -> Vec<DLClause> {
+    let mut out = Vec::new();
+    let bits = (usize::BITS - distinct.saturating_sub(1).leading_zeros()) as usize;
+    let bit = |position: usize, one: bool| format!("__dt__index__{position}__{}", u8::from(one));
+    for position in 0..bits {
+        out.push(clause([cx(&bit(position, false)), cx(&bit(position, true))], []));
+    }
+    for (name, index) in index_of {
+        for position in 0..bits {
+            out.push(clause([cx(name)], [cx(&bit(position, (index >> position) & 1 == 1))]));
+        }
+    }
+    out
+}
+
 pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DLClause> {
     let entries: Vec<DtEntry> = names.iter().filter_map(|n| classify_name(n)).collect();
     let mut out: Vec<DLClause> = Vec::new();
+    // Represented values grouped by identity. Past the pairwise limit their
+    // mutual distinctness is stated once through the index encoding, and the
+    // pair loop below skips the clash clause for two indexed values.
+    let mut key_index: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut index_of: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for e in &entries {
+        if let DtEntry::Value(name, value) = e {
+            if let Some(key) = value_key(value) {
+                let next = key_index.len();
+                let index = *key_index.entry(key).or_insert(next);
+                index_of.insert(name.as_str(), index);
+            }
+        }
+    }
+    if key_index.len() > PAIRWISE_VALUE_LIMIT {
+        out.extend(distinct_value_index_clauses(&index_of, key_index.len()));
+    } else {
+        index_of.clear();
+    }
     let mut new_val_names: BTreeSet<String> = BTreeSet::new();
     // every value concept is a singleton (a data node IS its value)
     for e in &entries {
@@ -1367,7 +1424,11 @@ pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DL
                             }
                             Some(false) => {
                                 // one data node carries one value
-                                out.push(clause([cx(an), cx(bn)], []));
+                                if !(index_of.contains_key(an.as_str())
+                                    && index_of.contains_key(bn.as_str()))
+                                {
+                                    out.push(clause([cx(an), cx(bn)], []));
+                                }
                             }
                             None => {}
                         },
@@ -1722,6 +1783,40 @@ mod tests {
         let custom = format!("__dt__{}", datatype_concept_key("ex:boolean"));
         assert!(!bridge_exact_atomic_name(&custom));
         assert!(!bridge_exact_atomic_name("__dt__ex:boolean"));
+    }
+
+    #[test]
+    fn many_values_use_the_index_encoding_and_still_clash_pairwise() {
+        let values: Vec<String> = (0..200)
+            .map(|i| format!("__dt__val__\"{i}\"^^xsd:integer"))
+            .chain(["__dt__val__\"007\"^^xsd:integer".to_string()])
+            .collect();
+        let refs: Vec<&str> = values.iter().map(String::as_str).collect();
+        let clauses = datatype_relation_clauses(&names(&refs), 8);
+        // 201 names, 200 distinct values: far fewer clauses than 200*199/2 pairs.
+        assert!(clauses.len() < 3000, "{}", clauses.len());
+        assert!(!has_pair_clash(&clauses, &values[3], &values[4]));
+        // Every value implies one concept per bit position, two distinct values
+        // disagree somewhere, and each position's two concepts are disjoint.
+        let bits_of = |name: &str| -> BTreeSet<String> {
+            clauses.iter().filter_map(|clause| match (clause.body.as_slice(), clause.head.as_slice()) {
+                ([Atom::Concept(body, _)], [Atom::Concept(head, _)])
+                    if body == name && head.starts_with("__dt__index__") => Some(head.clone()),
+                _ => None,
+            }).collect()
+        };
+        let (three, four, seven, padded) =
+            (bits_of(&values[3]), bits_of(&values[4]), bits_of(&values[7]), bits_of(&values[200]));
+        assert_eq!(three.len(), 8);
+        assert_ne!(three, four);
+        assert_eq!(seven, padded, "equal values share one index");
+        let differing = three.symmetric_difference(&four).next().unwrap();
+        let (prefix, _) = differing.rsplit_once("__").unwrap();
+        assert!(has_pair_clash(&clauses, &format!("{prefix}__0"), &format!("{prefix}__1")));
+        // Below the limit the pairwise form is kept unchanged.
+        let few = datatype_relation_clauses(&names(&refs[..5]), 8);
+        assert!(has_pair_clash(&few, &values[3], &values[4]));
+        assert!(!few.iter().any(|clause| format!("{clause:?}").contains("__dt__index__")));
     }
 
     #[test]
