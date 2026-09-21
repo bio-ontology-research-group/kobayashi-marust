@@ -87,6 +87,12 @@ enum Val {
     Bool(bool),
     /// string with optional language tag
     Str(String, Option<String>),
+    /// IEEE binary32 / binary64 value by bit pattern (`ground_data`'s exact
+    /// decoder: correctly rounded, one NaN, signed zeroes kept apart). OWL 2
+    /// compares data values by identity, and the float, double and real value
+    /// spaces are pairwise disjoint.
+    Float(u32),
+    Double(u64),
     /// recognised datatype but value not represented exactly (e.g. enormous
     /// exponents) — comparable only for identity of the raw token
     Opaque(String),
@@ -98,6 +104,8 @@ enum Val {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Partition {
     Numeric,
+    Float,
+    Double,
     Strings,
     Boolean,
     Uri,
@@ -279,7 +287,7 @@ fn named_dt_kind(local: &str) -> Option<NamedDt> {
         // see `dt_subsumed` for the (non-)relations with decimal.
         "float" | "double" => NamedDt {
             kind: if local == "float" { "float" } else { "double" },
-            part: Partition::Numeric,
+            part: if local == "float" { Partition::Float } else { Partition::Double },
             min: None,
             max: None,
             integral: false,
@@ -404,7 +412,13 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
         // lexical form as an exact rational (or directly as f64 for xsd:float)
         // can distinguish two spellings that round to the same value.  Keep
         // both widths opaque until their exact value canonicalisation exists.
-        Some("float" | "double") => Val::Opaque(tok.to_string()),
+        Some(kind @ ("float" | "double")) => {
+            match super::ground_data::floating_value(lex, kind == "double") {
+                Some(super::ground_data::Value::Float(bits)) => Val::Float(bits),
+                Some(super::ground_data::Value::Double(bits)) => Val::Double(bits),
+                _ => Val::Opaque(tok.to_string()),
+            }
+        }
         Some(kind) if named_dt_kind(kind).is_some_and(|d| d.part == Partition::Numeric) => {
             match parse_decimal(lex.trim()) {
                 Some(r) => Val::Num(r),
@@ -646,6 +660,13 @@ fn val_eq(v: &Val, w: &Val) -> Option<bool> {
         (Val::Num(a), Val::Num(b)) => Some(a == b),
         (Val::Bool(a), Val::Bool(b)) => Some(a == b),
         (Val::Str(a, la), Val::Str(b, lb)) => Some(a == b && la == lb),
+        (Val::Float(a), Val::Float(b)) => Some(a == b),
+        (Val::Double(a), Val::Double(b)) => Some(a == b),
+        // float, double and every other represented value space are disjoint
+        (Val::Float(_) | Val::Double(_), Val::Num(_) | Val::Bool(_) | Val::Str(..))
+        | (Val::Num(_) | Val::Bool(_) | Val::Str(..), Val::Float(_) | Val::Double(_))
+        | (Val::Float(_), Val::Double(_))
+        | (Val::Double(_), Val::Float(_)) => Some(false),
         // cross-partition values are always distinct
         (Val::Num(_), Val::Bool(_) | Val::Str(..))
         | (Val::Bool(_), Val::Num(_) | Val::Str(..))
@@ -658,6 +679,8 @@ fn val_eq(v: &Val, w: &Val) -> Option<bool> {
 fn val_partition(v: &Val) -> Option<Partition> {
     match v {
         Val::Num(_) => Some(Partition::Numeric),
+        Val::Float(_) => Some(Partition::Float),
+        Val::Double(_) => Some(Partition::Double),
         Val::Bool(_) => Some(Partition::Boolean),
         Val::Str(..) => Some(Partition::Strings),
         Val::Opaque(_) => None,
@@ -726,7 +749,8 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
         }
         DRange::Num(r) => match v {
             Val::Num(rv) => in_num_range(rv, r),
-            Val::Bool(_) | Val::Str(..) => Some(false),
+            // `NumRange` never has a float or double base.
+            Val::Bool(_) | Val::Str(..) | Val::Float(_) | Val::Double(_) => Some(false),
             Val::Opaque(_) => None,
         },
         DRange::Named(nd) => match v {
@@ -760,6 +784,8 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
                 Some(true)
             }
             Val::Bool(_) => Some(nd.part == Partition::Boolean),
+            Val::Float(_) => Some(nd.part == Partition::Float),
+            Val::Double(_) => Some(nd.part == Partition::Double),
             Val::Str(_, lang) => {
                 if nd.part != Partition::Strings {
                     return Some(false);

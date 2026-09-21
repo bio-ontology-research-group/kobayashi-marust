@@ -97,7 +97,7 @@ fn decimal_float_lexical(text: &str) -> bool {
     }
     i == bytes.len()
 }
-fn floating_value(text: &str, double: bool) -> Option<Value<'static>> {
+pub(super) fn floating_value(text: &str, double: bool) -> Option<Value<'static>> {
     let text = text.trim_matches([' ', '\t', '\n', '\r']);
     if double {
         let value = match text {
