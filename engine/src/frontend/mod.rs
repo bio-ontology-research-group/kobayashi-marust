@@ -23,6 +23,7 @@ pub mod rbox;
 mod rule_certificate;
 mod unary_rules;
 pub mod sexpr;
+pub mod sort_guard;
 pub mod syntax;
 pub mod top_role;
 
