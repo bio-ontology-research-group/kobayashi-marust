@@ -66,9 +66,34 @@ pub struct IriRegistry {
     /// short name -> full IRI that owns it
     short_owner: FxHashMap<String, String>,
     finite_data_bindings: Option<std::collections::BTreeMap<(String, String), String>>,
+    /// Sorted data-node abstraction (`KM_SORTED_DATA`): data property assertions
+    /// are read as `DataHasValue` class assertions instead of being skipped.
+    sorted_data: bool,
+    /// Internal names of every data property seen by the parser.
+    data_roles: std::collections::BTreeSet<String>,
 }
 
 impl IriRegistry {
+    pub(super) fn set_sorted_data(&mut self, enabled: bool) {
+        self.sorted_data = enabled;
+    }
+
+    pub(super) fn sorted_data(&self) -> bool {
+        self.sorted_data
+    }
+
+    /// Internal name of a data property, recorded so the object-sort guard can
+    /// tell data roles from object roles.
+    pub(super) fn data_role(&mut self, name: &str) -> String {
+        let short = self.short(name);
+        self.data_roles.insert(short.clone());
+        short
+    }
+
+    pub(super) fn data_roles(&self) -> &std::collections::BTreeSet<String> {
+        &self.data_roles
+    }
+
     pub(super) fn install_finite_data_bindings(&mut self, bindings: std::collections::BTreeMap<(String, String), String>) {
         self.finite_data_bindings = Some(bindings);
     }

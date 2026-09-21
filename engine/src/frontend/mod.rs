@@ -925,6 +925,12 @@ fn ofn_to_clauses_requested(
         reg.install_finite_data_bindings(plan.bindings.iter().map(|((p, v), c)|
             (((*p).to_owned(), v.clone()), c.clone())).collect());
     }
+    // Sorted data-node abstraction (docs/SORTED-DATA-ABSTRACTION.md). Opt-in
+    // while it is validated; the finite membership projection keeps priority
+    // because it needs no data nodes.
+    let sorted_data = std::env::var_os("KM_SORTED_DATA").is_some()
+        && finite_data_projection.is_none();
+    reg.set_sorted_data(sorted_data);
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
     // document AST is ever materialised (both used to be O(document) with a
     // heap string per token, and the AST was additionally deep-cloned for the
@@ -944,6 +950,7 @@ fn ofn_to_clauses_requested(
     let mut unary_rule_scan = unary_rules::Scan::default();
     let speculative_abox_omission = requested == crate::routing::Route::Auto
         && finite_data_projection.is_none()
+        && !sorted_data
         && std::env::var_os("KM_NO_FAST_SEPARABLE_ABOX_PARSE").is_none()
         && text.len() >= (8 << 20)
         && (likely_separable_positive_abox(text) || likely_atomic_class_only_abox(text));
@@ -1178,6 +1185,7 @@ fn ofn_to_clauses_requested(
         && std::env::var_os("KM_DISJOINT_UNION_ABOX_DECLINED").is_none();
     let omit_separable_abox = ground_data_projection.is_none()
         && finite_data_projection.is_none()
+        && !(sorted_data && !reg.data_roles().is_empty())
         && (automatic || route == crate::routing::Route::Elc)
         && profile.source.abox_axioms > 0
         && std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION").is_none()
@@ -1220,6 +1228,39 @@ fn ofn_to_clauses_requested(
         }
     }
     t.lap("parse+axioms");
+    // Object-sort guard for the data-node abstraction: guard only the inclusions
+    // a data node would violate, then type classes, object roles and
+    // individuals. Untouched when no inclusion needs a guard.
+    let mut sorted_generated_assertions = 0u64;
+    if sorted_data && !reg.data_roles().is_empty() {
+        let data_roles = reg.data_roles().clone();
+        let declared_tokens: Vec<&str> = declared_raw.clone();
+        let outcome = sort_guard::apply(&mut ontology, &data_roles, || {
+            declared_tokens
+                .iter()
+                .map(|token| reg.short(token))
+                .filter(|name| name != "owl:Thing" && name != "owl:Nothing")
+                .collect()
+        })
+        .map_err(|reason| parse::OutOfFragment(format!("sorted data abstraction: {reason}")))?;
+        sorted_generated_assertions = outcome.assertions as u64;
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!(
+                "KM_TIMING sorted data: guarded={} typing={} data_roles={}",
+                outcome.guarded,
+                outcome.typing,
+                data_roles.len()
+            );
+        }
+    }
+    // Each source data assertion became one class assertion, and the guard may
+    // have added `Obj(a)` assertions. Both are generated occurrences: count them
+    // apart from the source so the ABox coverage certificate still balances.
+    if sorted_data {
+        let source_data_assertions = profile.source.axiom_types.get("DataPropertyAssertion").copied().unwrap_or(0)
+            + profile.source.axiom_types.get("NegativeDataPropertyAssertion").copied().unwrap_or(0);
+        projected_domain_occurrences += source_data_assertions + sorted_generated_assertions;
+    }
     let (tbox, abox, mut hooks) =
         normalise::normalise_with_native_cardinality(&ontology, native_cardinality_only);
     let mut nominal_abox = if omit_separable_abox {
@@ -1378,6 +1419,7 @@ fn ofn_to_clauses_requested(
     }
     if !abox_inconsistent
         && (finite_data_projection.is_some() || ground_data_projection.is_some() || data_abox.positive_assertions_redundant()
+            || sorted_data
             || functional_data_projected.is_some())
     {
         let source_data_assertions = profile
@@ -1386,7 +1428,7 @@ fn ofn_to_clauses_requested(
             .get("DataPropertyAssertion")
             .copied()
             .unwrap_or(0)
-            + if finite_data_projection.is_some() {
+            + if finite_data_projection.is_some() || sorted_data {
                 profile.source.axiom_types.get("NegativeDataPropertyAssertion").copied().unwrap_or(0)
             } else { 0 };
         let diagnostic =

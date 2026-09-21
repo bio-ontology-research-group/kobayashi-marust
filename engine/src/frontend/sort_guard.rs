@@ -134,6 +134,10 @@ pub struct Outcome {
     pub guarded: usize,
     /// Typing axioms added (`A ⊑ Obj`, `Obj ⊑ ∀r.Obj`, `Obj(a)`).
     pub typing: usize,
+    /// How many of the typing axioms are class assertions `Obj(a)`. The caller
+    /// needs this to keep generated assertions apart from source assertions in
+    /// the ABox coverage accounting.
+    pub assertions: usize,
 }
 
 fn collect_names(
@@ -183,11 +187,18 @@ fn collect_names(
 pub fn apply(
     ontology: &mut Ontology,
     data_roles: &BTreeSet<String>,
-    declared_classes: &BTreeSet<String>,
+    declared_classes: impl FnOnce() -> BTreeSet<String>,
 ) -> Result<Outcome, Unsupported> {
     let mut replacements: Vec<(Axiom, Vec<Axiom>)> = Vec::new();
+    // A `DatatypeDefinition` relates two data ranges. It speaks about data
+    // nodes only, so it has no object-sort reading and takes no guard.
+    let data_side = |a: &Concept, b: &Concept| {
+        matches!((a, b), (Concept::Name(x), Concept::Name(y)) if is_data_range(x) && is_data_range(y))
+    };
     for axiom in ontology.tbox() {
         match axiom {
+            Axiom::SubClassOf(a, b) | Axiom::EquivalentClasses(a, b) | Axiom::DisjointClasses(a, b)
+                if data_side(a, b) => {}
             Axiom::SubClassOf(sub, sup) => {
                 if !inclusion_is_safe(sub, sup)? {
                     replacements.push((
@@ -232,7 +243,7 @@ pub fn apply(
         return Ok(Outcome::default());
     }
 
-    let mut classes = declared_classes.clone();
+    let mut classes = declared_classes();
     let mut individuals = BTreeSet::new();
     let mut roles = BTreeSet::new();
     for axiom in ontology.tbox().chain(ontology.abox()) {
@@ -293,7 +304,7 @@ pub fn apply(
         .filter(|name| !data_roles.contains(name))
         .collect();
 
-    let mut outcome = Outcome { guarded: replacements.len(), typing: 0 };
+    let mut outcome = Outcome { guarded: replacements.len(), typing: 0, assertions: 0 };
     let removed: std::collections::HashSet<Axiom> =
         replacements.iter().map(|(old, _)| old.clone()).collect();
     ontology.retain_axioms(|axiom| !removed.contains(axiom));
@@ -326,6 +337,7 @@ pub fn apply(
     for individual in individuals {
         ontology.add(Axiom::ConceptAssertion(obj(), individual));
         outcome.typing += 1;
+        outcome.assertions += 1;
     }
     Ok(outcome)
 }
@@ -380,7 +392,7 @@ mod tests {
         ontology.add(Axiom::DisjointClasses(name("A"), not(name("B"))));
         let before: Vec<Axiom> = ontology.tbox().cloned().collect();
         let data: BTreeSet<String> = ["p".to_string()].into();
-        let outcome = apply(&mut ontology, &data, &BTreeSet::new()).unwrap();
+        let outcome = apply(&mut ontology, &data, BTreeSet::new).unwrap();
         assert_eq!(outcome, Outcome::default());
         assert_eq!(before, ontology.tbox().cloned().collect::<Vec<_>>());
     }
@@ -398,7 +410,7 @@ mod tests {
         ontology.add(Axiom::RoleAssertion("r".into(), "a".into(), "b".into()));
         let data: BTreeSet<String> = ["p".to_string()].into();
         let declared: BTreeSet<String> = ["C".to_string()].into();
-        let outcome = apply(&mut ontology, &data, &declared).unwrap();
+        let outcome = apply(&mut ontology, &data, || declared.clone()).unwrap();
         assert_eq!(outcome.guarded, 1);
         let tbox: Vec<Axiom> = ontology.tbox().cloned().collect();
         assert!(tbox.contains(&Axiom::SubClassOf(name(OBJ), Concept::Nominal("a".into()))));
@@ -422,7 +434,7 @@ mod tests {
         ontology.add(Axiom::SubClassOf(not(name("A")), name("B")));
         ontology.add(Axiom::SubClassOf(Concept::Forall(role("r"), Box::new(name("A"))), name("B")));
         ontology.add(Axiom::DisjointClasses(not(name("A")), not(name("B"))));
-        let outcome = apply(&mut ontology, &BTreeSet::new(), &BTreeSet::new()).unwrap();
+        let outcome = apply(&mut ontology, &BTreeSet::new(), BTreeSet::new).unwrap();
         assert_eq!(outcome.guarded, 3);
         let tbox: Vec<Axiom> = ontology.tbox().cloned().collect();
         assert!(tbox.contains(&Axiom::SubClassOf(mk_and([name(OBJ), not(name("A"))]), name("B"))));
@@ -433,11 +445,25 @@ mod tests {
     }
 
     #[test]
+    fn datatype_definitions_take_no_guard() {
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::EquivalentClasses(name("__dt__iri__0_aa"), name("__dt__integer")));
+        ontology.add(Axiom::SubClassOf(not(name("A")), name("B")));
+        let outcome = apply(&mut ontology, &BTreeSet::new(), BTreeSet::new).unwrap();
+        assert_eq!(outcome.guarded, 1);
+        assert!(ontology.tbox().any(|axiom| axiom
+            == &Axiom::EquivalentClasses(name("__dt__iri__0_aa"), name("__dt__integer"))));
+        // A data range is not a named class and gets no object typing.
+        assert!(!ontology.tbox().any(|axiom| axiom
+            == &Axiom::SubClassOf(name("__dt__integer"), name(OBJ))));
+    }
+
+    #[test]
     fn reflexive_and_universal_roles_are_declined() {
         let mut ontology = Ontology::new();
         ontology.add(Axiom::ReflexiveRole("r".into()));
         assert_eq!(
-            apply(&mut ontology, &BTreeSet::new(), &BTreeSet::new()),
+            apply(&mut ontology, &BTreeSet::new(), BTreeSet::new),
             Err(Unsupported::ReflexiveRole("r".into()))
         );
         let mut ontology = Ontology::new();
@@ -446,7 +472,7 @@ mod tests {
             Concept::Exists(Role::Universal, Box::new(name("B"))),
         ));
         assert_eq!(
-            apply(&mut ontology, &BTreeSet::new(), &BTreeSet::new()),
+            apply(&mut ontology, &BTreeSet::new(), BTreeSet::new),
             Err(Unsupported::UniversalRole)
         );
     }

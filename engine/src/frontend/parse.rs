@@ -216,11 +216,11 @@ pub(super) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
             )),
             "ObjectHasSelf" => Ok(Concept::HasSelf(role_cls(reg, &args[0])?)),
             "DataSomeValuesFrom" => Ok(Concept::Exists(
-                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                Role::Name(reg.data_role(args[0].as_atom().unwrap_or(""))),
                 Box::new(dt_concept(&args[1])),
             )),
             "DataAllValuesFrom" => Ok(Concept::Forall(
-                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                Role::Name(reg.data_role(args[0].as_atom().unwrap_or(""))),
                 Box::new(dt_concept(&args[1])),
             )),
             "DataHasValue" => {
@@ -238,7 +238,7 @@ pub(super) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                     return Err(OutOfFragment("invalid finite data literal".into()));
                 }
                 Ok(Concept::Exists(
-                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                    Role::Name(reg.data_role(args[0].as_atom().unwrap_or(""))),
                     Box::new(dt_value_concept(&refs, 1)),
                 ))
             }
@@ -247,7 +247,7 @@ pub(super) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                     .as_atom()
                     .and_then(|s| s.parse().ok())
                     .ok_or_else(|| OutOfFragment(format!("bad cardinality: {:?}", args[0])))?;
-                let r = Role::Name(reg.short(args[1].as_atom().unwrap_or("")));
+                let r = Role::Name(reg.data_role(args[1].as_atom().unwrap_or("")));
                 // Unqualified data cardinalities count ALL successors: the old
                 // `__dt__val` filler only counted nodes carrying that one
                 // concept, so e.g. `≤1 p` never clashed with two DataHasValue
@@ -528,7 +528,7 @@ pub(super) fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) ->
             // domain(p) = C ≡ ∃p.⊤ ⊑ C
             o.add(Axiom::SubClassOf(
                 Concept::Exists(
-                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                    Role::Name(reg.data_role(args[0].as_atom().unwrap_or(""))),
                     Box::new(Concept::Top),
                 ),
                 cls(reg, args[1])?,
@@ -633,19 +633,19 @@ pub(super) fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) ->
         // unsatisfiable, which the dropped functionality silently missed.
         "FunctionalDataProperty" => {
             o.add(Axiom::FunctionalRole(
-                reg.short(args[0].as_atom().unwrap_or("")),
+                reg.data_role(args[0].as_atom().unwrap_or("")),
             ));
         }
         "SubDataPropertyOf" => {
             o.add(Axiom::RoleInclusion(
-                reg.short(args[0].as_atom().unwrap_or("")),
-                reg.short(args[1].as_atom().unwrap_or("")),
+                reg.data_role(args[0].as_atom().unwrap_or("")),
+                reg.data_role(args[1].as_atom().unwrap_or("")),
             ));
         }
         "EquivalentDataProperties" => {
             let ps: Vec<String> = args
                 .iter()
-                .map(|a| reg.short(a.as_atom().unwrap_or("")))
+                .map(|a| reg.data_role(a.as_atom().unwrap_or("")))
                 .collect();
             for i in 0..ps.len() {
                 for j in (i + 1)..ps.len() {
@@ -657,7 +657,7 @@ pub(super) fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) ->
         "DisjointDataProperties" => {
             let ps: Vec<String> = args
                 .iter()
-                .map(|a| reg.short(a.as_atom().unwrap_or("")))
+                .map(|a| reg.data_role(a.as_atom().unwrap_or("")))
                 .collect();
             for i in 0..ps.len() {
                 for j in (i + 1)..ps.len() {
@@ -672,10 +672,33 @@ pub(super) fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) ->
             o.add(Axiom::SubClassOf(
                 Concept::Top,
                 Concept::Forall(
-                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                    Role::Name(reg.data_role(args[0].as_atom().unwrap_or(""))),
                     Box::new(dt_concept(args[1])),
                 ),
             ));
+        }
+        "DataPropertyAssertion" | "NegativeDataPropertyAssertion" if reg.sorted_data() => {
+            // p(a, v) holds exactly when a is an instance of DataHasValue(p v);
+            // the negative form asserts the complement. Reuse the class
+            // expression encoding so both spellings share one value concept.
+            let owner = args.get(1).and_then(|n| n.as_atom());
+            let literal = glue_literal(&args, 2);
+            let (Some(owner), Some((_, used))) = (owner, literal) else {
+                return Err(OutOfFragment(format!("malformed {head}")));
+            };
+            if used + 2 != args.len() {
+                return Err(OutOfFragment(format!("malformed {head}")));
+            }
+            let value = Concept::Exists(
+                Role::Name(reg.data_role(args[0].as_atom().unwrap_or(""))),
+                Box::new(dt_value_concept(&args, 2)),
+            );
+            let concept = if head == "DataPropertyAssertion" {
+                value
+            } else {
+                Concept::Not(Box::new(value))
+            };
+            o.add(Axiom::ConceptAssertion(concept, reg.short(owner)));
         }
         "DatatypeDefinition" => {
             o.add(Axiom::EquivalentClasses(
