@@ -1,6 +1,7 @@
 import ContextCalculus.FiniteDataSourceIdentities
 import ContextCalculus.FiniteDataMembership
 import ContextCalculus.GroundDataRangeClash
+import ContextCalculus.SortedDataAbstraction
 import ContextCalculus.GroundDataOwnerClash
 import ContextCalculus.FloatingDataIdentity
 import ContextCalculus.CBGroundFactInstantiation
@@ -446,3 +447,11 @@ end ContextCalculus.CB
 
 #print axioms ContextCalculus.FiniteDataMembership.erase_top_data_inclusion
 #print axioms ContextCalculus.FiniteDataMembership.anonymous_assignment_translation_exact
+#print axioms ContextCalculus.SortedDataAbstraction.sortShape_sound
+#print axioms ContextCalculus.SortedDataAbstraction.canonical_plain_exact
+#print axioms ContextCalculus.SortedDataAbstraction.canonical_axiom
+#print axioms ContextCalculus.SortedDataAbstraction.typed_plain_exact
+#print axioms ContextCalculus.SortedDataAbstraction.abstract_axiom
+#print axioms ContextCalculus.SortedDataAbstraction.abstract_exact
+#print axioms ContextCalculus.SortedDataAbstraction.canonical_exact
+#print axioms ContextCalculus.SortedDataAbstraction.canonical_adequate
