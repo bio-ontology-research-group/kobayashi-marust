@@ -1,0 +1,11 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(
+Declaration(Class(<http://e/Z>)) Declaration(Class(<http://e/News>)) Declaration(Class(<http://e/Comp>))
+Declaration(Class(<http://e/Thing>)) Declaration(Class(<http://e/Int>)) Declaration(Class(<http://e/Tan>)) Declaration(Class(<http://e/Temp>)) Declaration(Class(<http://e/Q>))
+SubClassOf(<http://e/News> <http://e/Comp>)
+SubClassOf(<http://e/Int> <http://e/Thing>)
+SubClassOf(<http://e/Q> <http://e/Int>)
+EquivalentClasses(<http://e/Tan> ObjectComplementOf(<http://e/Int>))
+SubClassOf(<http://e/Tan> <http://e/Temp>)
+SubClassOf(<http://e/Temp> <http://e/Thing>)
+)
