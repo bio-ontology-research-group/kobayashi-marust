@@ -19169,7 +19169,13 @@ impl Ht {
             let mut dead_dep = dep_empty();
             let mut live: Vec<GroundDisjunct> = Vec::new();
             for j in 0..m {
-                let (n, lit) = self.ext.pending[i].disjuncts[j];
+                // A disjunct recorded on a node that was later merged away
+                // speaks about the survivor: `n0 ≈ n` holds under `merge_dep`.
+                // Reading the victim's stale label instead made a disjunction
+                // look open after its survivor had already settled it, and every
+                // such branch ended in the same merge clash (ore_ont_5964).
+                let (n0, lit) = self.ext.pending[i].disjuncts[j];
+                let (n, merge_dep) = self.ext.resolve_dep(n0);
                 if self.ext.has_concept(n, lit) {
                     satisfied = true;
                     break;
@@ -19178,9 +19184,12 @@ impl Ht {
                     neg: !lit.neg,
                     c: lit.c,
                 };
+                // Whatever this disjunct contributes, it does so only under the
+                // merges that identify its node with the survivor.
+                dead_dep = dep_union(&dead_dep, &merge_dep);
                 if let Some(d) = self.ext.dep_of(n, comp) {
                     dead_dep = dep_union(&dead_dep, d);
-                } else {
+                } else if !live.iter().any(|d| d.node == n && d.lit == lit) {
                     live.push(GroundDisjunct { node: n, lit });
                 }
             }
