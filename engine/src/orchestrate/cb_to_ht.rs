@@ -4211,16 +4211,16 @@ pub fn convert_with_abox(
     // positive head literal. This is propositional literal movement, hence
     // logically equivalent and independent of the completion calculus.
     //
-    // Every hypertableau consumer needs this, not only the trigger absorber. A
+    // KM_HT_MOVE_SIGNED_LITERALS applies the same movement for the general
+    // hypertableau. It is opt-in because neither form is complete there yet. A
     // body literal `¬A(x)` fires only when `¬A` is explicitly in the label, so
-    // `EquivalentClasses(B, ¬A)` left as `¬A(x) → B(x)` never splits a node that
-    // mentions neither class. Such a label is then not a model, the model-based
-    // candidate set misses every consequence of the split, and classification
-    // is incomplete (ore_ont_12566: `support#Thing` is equivalent to owl:Thing
-    // through `Tangible ≡ ¬Intangible`, yet unrelated classes were not placed
-    // below it). KM_HT_KEEP_SIGNED_LITERALS keeps the old form for A/B runs.
+    // `EquivalentClasses(B, ¬A)` kept as `¬A(x) → B(x)` never splits a node that
+    // mentions neither class, and ore_ont_12566 loses every superclass that
+    // holds only through that split (tests/data/ht_signed_literals/top6.owl).
+    // With the literals moved that case is exact, but ore_ont_778 then loses 42
+    // subsumptions that the signed form finds (min778.owl, confirmed by HermiT).
     if std::env::var_os("KM_TRIGGER_ABSORB").is_some()
-        || std::env::var_os("KM_HT_KEEP_SIGNED_LITERALS").is_none()
+        || std::env::var_os("KM_HT_MOVE_SIGNED_LITERALS").is_some()
     {
         let (out, moved, dropped_tautologies) =
             normalize_signed_trigger_clauses(ht, definers, &ids.con_names);
