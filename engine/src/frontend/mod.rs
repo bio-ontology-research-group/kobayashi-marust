@@ -925,19 +925,27 @@ fn ofn_to_clauses_requested(
     // second pass must choose its route from the original state, not from the
     // nominal CB settings of a route it is about to replace.
     let environment = enabled.then(crate::routing::Route::environment_snapshot);
-    match ofn_to_clauses_sorted(text, requested, enabled, false) {
-        Err(parse::OutOfFragment(reason))
-            if enabled
-                && (reason.contains("data-property assertion axiom(s) are unsupported")
-                    || reason.contains(SORTED_GUARD_NEEDS_ABOX)) =>
-        {
-            if let Some(environment) = &environment {
-                crate::routing::Route::restore_environment(environment);
-            }
-            ofn_to_clauses_sorted(text, requested, true, true)
+    const UNCOVERED: &str = "data-property assertion axiom(s) are unsupported";
+    let first = ofn_to_clauses_sorted(text, requested, enabled, false);
+    // Outside the nominal CB mode an uncovered data assertion is not an error:
+    // the pass succeeds with an incomplete typed ABox, the exact hypertableau
+    // routes then defer, and the orchestrator falls back to the nominal CB
+    // route. Read again in that case too, so the route chosen for the source is
+    // the one that answers.
+    let uncovered = match &first {
+        Err(parse::OutOfFragment(reason)) => {
+            reason.contains(UNCOVERED) || reason.contains(SORTED_GUARD_NEEDS_ABOX)
         }
-        other => other,
+        Ok(result) => result.nominal_abox.unsupported.iter().any(|reason| reason.contains(UNCOVERED)),
+    };
+    if !(enabled && uncovered) {
+        return first;
     }
+    drop(first);
+    if let Some(environment) = &environment {
+        crate::routing::Route::restore_environment(environment);
+    }
+    ofn_to_clauses_sorted(text, requested, true, true)
 }
 
 const SORTED_GUARD_NEEDS_ABOX: &str = "object-sort guard needs the full ABox";
