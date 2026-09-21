@@ -1728,16 +1728,29 @@ mod tests {
     fn opaque_values_are_not_declared_outside_numeric_restrictions() {
         let numeric =
             "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"0\"^^xsd:integer)";
-        for value in [
-            "__dt__val__\"5\"^^ex:integer",
-            "__dt__val__\"16777217\"^^xsd:float",
-        ] {
-            let clauses = datatype_relation_clauses(&names(&[value, numeric]), 8);
-            assert!(
-                !has_pair_clash(&clauses, value, numeric),
-                "opaque value was falsely excluded from a numeric range: {clauses:#?}"
-            );
-        }
+        // A literal of an unknown datatype stays opaque: nothing is known about
+        // its value, so it must not be excluded.
+        let opaque = "__dt__val__\"5\"^^ex:integer";
+        let clauses = datatype_relation_clauses(&names(&[opaque, numeric]), 8);
+        assert!(
+            !has_pair_clash(&clauses, opaque, numeric),
+            "opaque value was falsely excluded from a numeric range: {clauses:#?}"
+        );
+        // An xsd:float literal is an exact binary32 value. OWL 2 (Structural
+        // Specification 4.2) makes the float, double and decimal value spaces
+        // pairwise disjoint, so no float lies in an integer restriction, however
+        // integral its lexical form looks.
+        let float = "__dt__val__\"16777217\"^^xsd:float";
+        let clauses = datatype_relation_clauses(&names(&[float, numeric]), 8);
+        assert!(has_pair_clash(&clauses, float, numeric), "{clauses:#?}");
+        // Two spellings that round to one binary32 value name the same value.
+        let rounded = "__dt__val__\"16777216\"^^xsd:float";
+        let clauses = datatype_relation_clauses(&names(&[float, rounded]), 8);
+        assert!(!has_pair_clash(&clauses, float, rounded), "{clauses:#?}");
+        // Signed zeroes are distinct values.
+        let clauses = datatype_relation_clauses(
+            &names(&["__dt__val__\"0.0\"^^xsd:float", "__dt__val__\"-0.0\"^^xsd:float"]), 8);
+        assert!(has_pair_clash(&clauses, "__dt__val__\"0.0\"^^xsd:float", "__dt__val__\"-0.0\"^^xsd:float"));
 
         let custom_facet =
             "__dt__c__DatatypeRestriction(xsd:integer ex:minInclusive \"0\"^^xsd:integer)";

@@ -955,7 +955,13 @@ fn ofn_to_clauses_requested(
         && text.len() >= (8 << 20)
         && (likely_separable_positive_abox(text) || likely_atomic_class_only_abox(text));
     let mut ontology = parse::parse_axioms_observed_filtered(&mut reg, text, |node| {
-        profile_builder.observe(node);
+        // The source profile, and with it the router and the ABox coverage
+        // accounting, sees a data assertion in its class-assertion spelling, the
+        // form the parser builds for it under the sorted data abstraction.
+        match sorted_data.then(|| parse::data_assertion_as_class_assertion(node)).flatten() {
+            Some(class_assertion) => profile_builder.observe(&class_assertion),
+            None => profile_builder.observe(node),
+        }
         rule_certificate_scan.observe(node);
         unary_rule_scan.observe(node);
         top_role_scan.observe(node);
@@ -1253,13 +1259,12 @@ fn ofn_to_clauses_requested(
             );
         }
     }
-    // Each source data assertion became one class assertion, and the guard may
-    // have added `Obj(a)` assertions. Both are generated occurrences: count them
-    // apart from the source so the ABox coverage certificate still balances.
+    // The guard may have added `Obj(a)` assertions. They are generated
+    // occurrences: count them apart from the source so the ABox coverage
+    // certificate still balances. Data assertions need no such credit, because
+    // the source profile already counts them in their class-assertion spelling.
     if sorted_data {
-        let source_data_assertions = profile.source.axiom_types.get("DataPropertyAssertion").copied().unwrap_or(0)
-            + profile.source.axiom_types.get("NegativeDataPropertyAssertion").copied().unwrap_or(0);
-        projected_domain_occurrences += source_data_assertions + sorted_generated_assertions;
+        projected_domain_occurrences += sorted_generated_assertions;
     }
     let (tbox, abox, mut hooks) =
         normalise::normalise_with_native_cardinality(&ontology, native_cardinality_only);

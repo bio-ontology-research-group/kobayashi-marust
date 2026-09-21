@@ -289,6 +289,30 @@ pub(super) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> SmallVec<[&'n N
         .collect()
 }
 
+/// The class-assertion spelling of a data property assertion:
+/// `DataPropertyAssertion(p a v)` is `ClassAssertion(DataHasValue(p v) a)` and the
+/// negative form asserts the complement. Axiom annotations carry no semantics and
+/// are dropped. `None` for any other node or a malformed assertion.
+pub(super) fn data_assertion_as_class_assertion<'a>(node: &Node<'a>) -> Option<Node<'a>> {
+    let Node::List(head, args) = node else { return None };
+    let negative = match *head {
+        "DataPropertyAssertion" => false,
+        "NegativeDataPropertyAssertion" => true,
+        _ => return None,
+    };
+    let args = strip_annotations(args);
+    if args.len() < 3 || glue_literal(&args, 2).map(|(_, used)| used + 2) != Some(args.len()) {
+        return None;
+    }
+    let mut value = vec![args[0].clone()];
+    value.extend(args[2..].iter().map(|n| (*n).clone()));
+    let mut class = Node::List("DataHasValue", value);
+    if negative {
+        class = Node::List("ObjectComplementOf", vec![class]);
+    }
+    Some(Node::List("ClassAssertion", vec![class, args[1].clone()]))
+}
+
 /// A SWRL rule term: `Variable(<iri>)` ⟶ a rule variable; a bare individual atom
 /// ⟶ a named individual. Anything else (a nested expression) is unrepresentable.
 fn parse_rule_term(reg: &mut IriRegistry, node: &Node) -> Option<RuleTerm> {
