@@ -143,7 +143,7 @@ fn dt_value_concept(args: &[&Node], i: usize) -> Concept {
 }
 
 /// Port of `cls`.
-fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
+pub(super) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
     match node {
         Node::Atom(s) => {
             let sh = reg.short(s);
@@ -225,6 +225,18 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
             )),
             "DataHasValue" => {
                 let refs: Vec<&Node> = args.iter().collect();
+                let property = args.first().and_then(Node::as_atom).unwrap_or("");
+                if let Some((literal, used)) = glue_literal(&refs, 1) {
+                    if let Some(binding) = reg.finite_data_binding(property, &literal) {
+                        if used + 1 != args.len() {
+                            return Err(OutOfFragment("unrepresented finite data literal arguments".into()));
+                        }
+                        return binding.map(|name| Concept::Name(name.to_owned()))
+                            .ok_or_else(|| OutOfFragment("missing finite data membership binding".into()));
+                    }
+                } else if reg.finite_data_binding(property, "").is_some() {
+                    return Err(OutOfFragment("invalid finite data literal".into()));
+                }
                 Ok(Concept::Exists(
                     Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
                     Box::new(dt_value_concept(&refs, 1)),

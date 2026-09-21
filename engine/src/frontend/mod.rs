@@ -12,6 +12,7 @@ pub mod clauses;
 pub mod data_abox;
 pub mod data_range;
 mod ground_data;
+mod finite_data;
 pub mod datatypes;
 pub mod iri;
 pub mod normalise;
@@ -914,6 +915,15 @@ fn ofn_to_clauses_requested(
 ) -> Result<FrontendResult, parse::OutOfFragment> {
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
+    let finite_data_projection = if text.contains("DataHasValue") {
+        let mut scan = finite_data::Scan::default();
+        parse::for_each_ontology_child(text, |node| { scan.observe(node); Ok(()) })?;
+        scan.finish(text)
+    } else { None };
+    if let Some(plan) = &finite_data_projection {
+        reg.install_finite_data_bindings(plan.bindings.iter().map(|((p, v), c)|
+            (((*p).to_owned(), v.clone()), c.clone())).collect());
+    }
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
     // document AST is ever materialised (both used to be O(document) with a
     // heap string per token, and the AST was additionally deep-cloned for the
@@ -932,6 +942,7 @@ fn ofn_to_clauses_requested(
     let mut ground_data_scan = ground_data::Scan::default();
     let mut unary_rule_scan = unary_rules::Scan::default();
     let speculative_abox_omission = requested == crate::routing::Route::Auto
+        && finite_data_projection.is_none()
         && std::env::var_os("KM_NO_FAST_SEPARABLE_ABOX_PARSE").is_none()
         && text.len() >= (8 << 20)
         && (likely_separable_positive_abox(text) || likely_atomic_class_only_abox(text));
@@ -940,9 +951,19 @@ fn ofn_to_clauses_requested(
         rule_certificate_scan.observe(node);
         unary_rule_scan.observe(node);
         top_role_scan.observe(node);
+        // Keep the original source profile, but never reinterpret represented
+        // data properties as object roles or run the old data approximation.
+        if finite_data_projection.is_some() && matches!(node.head(),
+            Some("DataPropertyDomain" | "DataPropertyRange" | "FunctionalDataProperty"
+                | "SubDataPropertyOf" | "EquivalentDataProperties" | "DisjointDataProperties"
+                | "DataPropertyAssertion" | "NegativeDataPropertyAssertion")) {
+            return false;
+        }
         raw_rbox.observe(node);
-        data_ranges.observe(node);
-        data_abox.observe(node);
+        if finite_data_projection.is_none() {
+            data_ranges.observe(node);
+            data_abox.observe(node);
+        }
         ground_data_scan.observe(node);
         if let Some(name) = parse::declared_class_node(node) {
             declared_raw.push(name);
@@ -984,10 +1005,46 @@ fn ofn_to_clauses_requested(
     let ground_data_projection = ground_data_scan.project(text,
         profile.source.axiom_types.get("DataPropertyAssertion").copied().unwrap_or(0));
     let mut projected_domain_occurrences = 0;
+    if let Some(plan) = &finite_data_projection {
+        use syntax::{Axiom, Concept};
+        for (a, b) in plan.inclusions.iter().chain(&plan.bits) {
+            ontology.add(Axiom::SubClassOf(Concept::Name(a.clone()), Concept::Name(b.clone())));
+        }
+        for (member, domain) in &plan.domains {
+            ontology.add(Axiom::SubClassOf(Concept::Name(member.clone()), parse::cls(&mut reg, domain)?));
+        }
+        for member in &plan.empty {
+            ontology.add(Axiom::SubClassOf(Concept::Name(member.clone()), Concept::Bottom));
+        }
+        for (a, b) in &plan.disjoint {
+            ontology.add(Axiom::DisjointClasses(Concept::Name(a.clone()), Concept::Name(b.clone())));
+        }
+        for (owner, member, positive) in &plan.facts {
+            let c = Concept::Name(member.clone());
+            ontology.add(Axiom::ConceptAssertion(if *positive { c } else { Concept::Not(Box::new(c)) }, reg.short(owner)));
+            projected_domain_occurrences += 1;
+        }
+    }
     if let Some(assertions) = &ground_data_projection {
-        for assertion in assertions {
+        for assertion in &assertions.domains {
             parse::add_axiom(&mut reg, &mut ontology, assertion)?;
             projected_domain_occurrences += 1;
+        }
+        // Two disjoint positive markers constrain only owners with an
+        // asserted value. Unlike complements they do not impose a global
+        // excluded-middle choice on every unrelated object.
+        let mut bit_pairs = BTreeSet::new();
+        for (owner, marker, positive) in &assertions.bits {
+            let concept = syntax::Concept::Name(format!("{marker}_{}", u8::from(*positive)));
+            ontology.add(syntax::Axiom::ConceptAssertion(concept, reg.short(owner)));
+            projected_domain_occurrences += 1;
+            bit_pairs.insert(marker);
+        }
+        for marker in bit_pairs {
+            let pair = [syntax::Concept::Name(format!("{marker}_0")),
+                syntax::Concept::Name(format!("{marker}_1"))].into_iter().collect();
+            ontology.add(syntax::Axiom::SubClassOf(syntax::Concept::And(pair),
+                syntax::Concept::Bottom));
         }
     }
     profile.normalized_unary_rules = unary_rule_scan.lower(
@@ -1068,7 +1125,11 @@ fn ofn_to_clauses_requested(
         existential_witness_abox_projection(&ontology, &profile).unwrap_or_default();
     profile.existential_witness_abox_candidate = !existential_witness_fillers.is_empty();
     let automatic = requested == crate::routing::Route::Auto;
-    let mut route = if automatic {
+    let mut route = if automatic && finite_data_projection.is_some() {
+        // Normalization must use the same complete typed consumer as execution.
+        // A late route switch retains nominal-CB clauses the bridge cannot consume.
+        crate::routing::Route::HtBridge
+    } else if automatic {
         crate::routing::select(&profile)
     } else {
         requested
@@ -1115,6 +1176,7 @@ fn ofn_to_clauses_requested(
         && std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_none()
         && std::env::var_os("KM_DISJOINT_UNION_ABOX_DECLINED").is_none();
     let omit_separable_abox = ground_data_projection.is_none()
+        && finite_data_projection.is_none()
         && (automatic || route == crate::routing::Route::Elc)
         && profile.source.abox_axioms > 0
         && std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION").is_none()
@@ -1269,6 +1331,7 @@ fn ofn_to_clauses_requested(
     // or datatype range/functionality clash (data_abox); both sound prechecks.
     let abox_inconsistent = abox_data.map(|d| d.is_inconsistent(&rbox)).unwrap_or(false)
         || nominal_enumeration_inconsistent
+        || ground_data_projection.as_ref().is_some_and(|projection| projection.inconsistent)
         || data_abox.is_inconsistent()
         || rule_abox_inconsistent;
     if !abox_inconsistent {
@@ -1280,7 +1343,7 @@ fn ofn_to_clauses_requested(
     // entailed owner inequalities. Keep those inequalities in both the typed
     // payload and the exact nominal clause view, so later object-side merges
     // cannot erase a datatype clash.
-    let functional_data_projected = if !abox_inconsistent {
+    let functional_data_projected = if !abox_inconsistent && ground_data_projection.is_none() {
         data_abox.functional_string_projection().and_then(|pairs| {
             let mut normalized = Vec::new();
             for (left, right) in pairs {
@@ -1313,7 +1376,7 @@ fn ofn_to_clauses_requested(
         nominal_abox.different.dedup();
     }
     if !abox_inconsistent
-        && (ground_data_projection.is_some() || data_abox.positive_assertions_redundant()
+        && (finite_data_projection.is_some() || ground_data_projection.is_some() || data_abox.positive_assertions_redundant()
             || functional_data_projected.is_some())
     {
         let source_data_assertions = profile
@@ -1321,7 +1384,10 @@ fn ofn_to_clauses_requested(
             .axiom_types
             .get("DataPropertyAssertion")
             .copied()
-            .unwrap_or(0);
+            .unwrap_or(0)
+            + if finite_data_projection.is_some() {
+                profile.source.axiom_types.get("NegativeDataPropertyAssertion").copied().unwrap_or(0)
+            } else { 0 };
         let diagnostic =
             format!("{source_data_assertions} data-property assertion axiom(s) are unsupported");
         nominal_abox
@@ -1668,6 +1734,30 @@ mod separable_abox_elision_tests {
         ENV_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn finite_data_projection_routes_complete_role_chains_to_native_consumer() {
+        let _environment_lock = lock_environment();
+        let source = r#"Ontology(
+            SubClassOf(<http://e/A> ObjectSomeValuesFrom(<http://e/r> ObjectSomeValuesFrom(<http://e/s> <http://e/C>)))
+            SubObjectPropertyOf(ObjectPropertyChain(<http://e/r> <http://e/s>) <http://e/t>)
+            SubClassOf(ObjectSomeValuesFrom(<http://e/t> <http://e/C>) <http://e/B>)
+            ClassAssertion(DataHasValue(<http://e/p> "v") <http://e/a>))"#;
+        let automatic = with_ofn_to_clauses_requested_route(source, Route::Auto, |r| r).unwrap();
+        let explicit = with_ofn_to_clauses_requested_route(source, Route::HtBridge, |r| r).unwrap();
+        assert_eq!(serde_json::to_value(&automatic.clauses).unwrap(),
+                   serde_json::to_value(&explicit.clauses).unwrap(),
+                   "automatic bridge selection must precede normalization");
+        assert_eq!(crate::routing::automatic_atomic_fallback(Route::HtBridge, &automatic.profile), None);
+        for requested in [Route::Auto, Route::Nominals] {
+            let result = with_ofn_to_clauses_requested_route(source, requested, |r| r).unwrap();
+            assert!(result.nominal_abox.complete);
+            assert_eq!(result.route, if requested == Route::Auto {
+                Route::HtBridge.as_str()
+            } else { Route::Nominals.as_str() });
+            assert!(!result.rbox.is_empty());
+        }
     }
 
     #[test]

@@ -127,6 +127,8 @@ done
     cargo test --lib certified_typed_source
     cargo test --lib source_exact_taxonomy_uses_real_production_traces_and_models
     cargo test --lib pred_standalone_dag_passes_the_real_lean_checker
+    cargo test --lib ground_fact_instantiation_passes_real_lean_checker
+    cargo test --lib universal_facts_are_instantiated_at_abox_individuals
     cargo test --lib native_source_live_pred_candidate_passes_real_lean_checker
     cargo test --lib native_regular_countermodel_passes_the_exact_lean_wire_checker
     cargo test --lib typed_regular_cardinality_countermodel_respects_function_allocation

@@ -933,16 +933,20 @@ pub(crate) fn install_nominal_abox_with_same(
                     };
                     proxies.push(id);
                 }
-                for marker in &entry.assertion_markers {
+                for (assertion, marker) in entry.assertions.iter().zip(&entry.assertion_markers) {
                     let id = match concept_ids.get(marker) {
                         Some(&id) => id,
                         // A named class that occurs only in an ABox assertion
                         // has no TBox clause occurrence, so conversion has not
                         // allocated it yet. The typed frontend payload is the
                         // authoritative occurrence and can allocate that name
-                        // exactly. Generated markers still require their
-                        // defining clauses and therefore fail closed.
-                        None if !is_internal(marker) => {
+                        // exactly. A direct atomic assertion is also an exact
+                        // occurrence when its name is private (finite data
+                        // membership predicates need no defining clause).
+                        // Markers for complex assertions still require their
+                        // definitions and therefore fail closed.
+                        None if !is_internal(marker) || matches!(assertion,
+                            crate::frontend::syntax::Concept::Name(name) if name == marker) => {
                             let id = concepts.len();
                             concepts.push(marker.clone());
                             concept_ids.insert(marker.clone(), id);
@@ -2856,6 +2860,24 @@ pub fn convert(
     rules: &[JRule],
     ht_rules: bool,
 ) -> TInput {
+    convert_with_abox(clauses, rbox, named, cardinalities, definers, source_axioms,
+        card_enabled, rules, ht_rules, &crate::json_io::NominalAboxMeta::default())
+}
+
+/// Preserve concept definitions referenced by the separately installed ABox.
+/// Substitution in TBox clauses alone cannot rename externally held assertions.
+pub fn convert_with_abox(
+    clauses: &[JClause],
+    rbox: Option<&[Vec<String>]>,
+    named: &std::collections::HashSet<String>,
+    cardinalities: &[crate::json_io::CardMeta],
+    definers: &[crate::json_io::DefinerMeta],
+    source_axioms: &[crate::json_io::SourceAxiomMeta],
+    card_enabled: bool,
+    rules: &[JRule],
+    ht_rules: bool,
+    abox: &crate::json_io::NominalAboxMeta,
+) -> TInput {
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();
@@ -4168,7 +4190,10 @@ pub fn convert(
     // are a complementary pair (`⊤⊑q∨NQ`, `q⊓NQ⊑⊥`) that emelim would fold, which
     // would drop the NQ concept that carries the `≥(n+1)` recognition card_def.
     if card_defs.is_empty() && !rules_active && std::env::var_os("KM_NO_HT_EMELIM").is_none() {
-        let (out, n_elim) = elim_complements(ht, &ids.con_names);
+        let external: HashSet<&str> = abox.individuals.iter()
+            .flat_map(|individual| individual.assertion_markers.iter().chain(individual.proxies.iter()))
+            .map(String::as_str).collect();
+        let (out, n_elim) = elim_complements_protected(ht, &ids.con_names, &external);
         ht = out;
         if std::env::var_os("KM_HT_STATS").is_some() {
             eprintln!(
@@ -4317,6 +4342,28 @@ mod native_abox_install_tests {
                 .unwrap_or_default(),
             assertion_markers: marker.map(|name| vec![name.into()]).unwrap_or_default(),
         }
+    }
+
+    #[test]
+    fn private_atomic_abox_names_allocate_without_inventing_complex_definitions() {
+        let atom = "__km_data_member_p0_v0";
+        let mut tin = TInput::default();
+        let mut meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![individual("a", "__nom__a", Some(atom))],
+            ..NominalAboxMeta::default()
+        };
+        assert!(install_nominal_abox(&mut tin, &meta));
+        let id = tin.concepts.iter().position(|name| name == atom).unwrap();
+        assert_eq!(tin.native_abox.individuals[0].assertions, vec![id]);
+        assert!(tin.clauses.is_empty());
+
+        meta.individuals[0].assertions[0] = Concept::Not(Box::new(Concept::Name("A".into())));
+        let mut rejected = TInput::default();
+        assert!(!install_nominal_abox(&mut rejected, &meta));
+        assert!(rejected.concepts.is_empty());
+        assert!(rejected.native_abox.individuals.is_empty());
+        assert!(rejected.fenced[0].detail.contains("unresolved"));
     }
 
     #[test]
@@ -4557,6 +4604,12 @@ fn sub_atom(a: &HAtom, sub: &HashMap<usize, usize>) -> HAtom {
 }
 
 pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClause>, usize) {
+    elim_complements_protected(ht, con_names, &HashSet::new())
+}
+
+fn elim_complements_protected(
+    ht: Vec<HtClause>, con_names: &[String], external: &HashSet<&str>,
+) -> (Vec<HtClause>, usize) {
     use std::collections::HashSet;
     // `em` keeps INSERTION order (Python dict) — order decides which substitution
     // wins under the chain-free `used` guard, so it must not be sorted.
@@ -4638,6 +4691,11 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
                         // drives a consequence and is NOT independently (Horn) derivable — then
                         // dropping the disjunction would silence that consequence. A consequence
                         // whose side is Horn-derivable survives the drop, so that pair still folds.
+        // Both members must survive: the external payload is not rewritten
+        // into signed literals when the complementary pair is folded.
+        if external.contains(con_names[a].as_str()) || external.contains(con_names[b].as_str()) {
+            continue;
+        }
         let unsafe_a = body_drives.contains(&a) && !head_horn.contains(&a);
         let unsafe_b = body_drives.contains(&b) && !head_horn.contains(&b);
         if unsafe_a || unsafe_b {

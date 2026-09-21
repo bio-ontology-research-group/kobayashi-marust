@@ -1,0 +1,7 @@
+# Preserve raw assertion expansion after cache rejection
+
+The native ABox loader added raw assertions through the cached-label insertion routine. That routine skips the AND rule, because a completed cache already contains its consequences. When saturation found a clash and aborted its association write, the loader still skipped expansion of raw assertions. The later root initializer saw the concept in the label and treated it as a duplicate. This could publish a consistent result for X(a), Y(a), and X intersect Y subclass Nothing on the cardinality schedule.
+
+Raw assertions now use ordinary concept insertion and processing. Deterministic labels read from a valid association retain their existing replay routine. No inference rule changes: the fix restores the existing rules' pending work for source assertions.
+
+The regression checks fresh completion, reconstruction after saturation, and final classification with and without the cardinality schedule, for consistent and inconsistent inputs. It confirms that saturation rejects the clashing cache. The new Lean module proves that asserted conjunction operands remain required by the native ABox model contract and that adding entailed assertion consequences preserves exactly its models. These lemmas do not claim to verify the Rust queue implementation; the runtime regression tests that boundary. Full certification gates and corpus comparison remain required before promotion.

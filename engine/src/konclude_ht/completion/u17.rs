@@ -548,6 +548,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         false
     }
 
+    /// A concept-saturation label cannot certify a model independently of the
+    /// ABox when one of its structural concept operands denotes a named object.
+    /// Status propagation is an additional fast guard, but imported/copy labels
+    /// can precede that propagation. Inspect the immutable concept DAG as well;
+    /// cycles terminate through the visited set and no identity assumption is
+    /// made about distinct named individuals.
+    fn saturation_label_has_nominal_dependency(
+        &self,
+        saturation_node: SatNodeId,
+        ctx: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let label = ctx.process_context().sat_node(saturation_node).reapply_con_sat_label_set;
+        if label.is_none() { return false; }
+        let mut pending = Vec::new();
+        let mut descriptor = ctx.process_context().reapply_con_sat_label_set(label)
+            .get_concept_saturation_description_linker();
+        while descriptor.is_some() {
+            let entry = ctx.process_context().con_sat_desc(descriptor);
+            pending.push(entry.get_concept());
+            descriptor = entry.get_next_concept_desciptor();
+        }
+        let mut visited = std::collections::HashSet::new();
+        while let Some(concept) = pending.pop() {
+            if !visited.insert(concept) { continue; }
+            let concept = ctx.ontology_arenas().concept(concept);
+            if concept.get_operator_code() == super::super::model::op::CCNOMINAL {
+                return true;
+            }
+            pending.extend(concept.get_operand_list().iter().map(|operand| operand.target));
+        }
+        false
+    }
+
     /// Typed, live form of `tryInitalizingFromSaturatedData` for the common
     /// single initial-concept job used by classification. Konclude's original
     /// API receives an intrusive concept linker; the bridge already owns the
@@ -622,6 +655,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             )
         };
         if sat_label.is_none() {
+            return false;
+        }
+        if self.conf_saturation_coupling_declines_nominal_connected
+            && ((resolved_flags | base_flags)
+                & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION != 0
+                || self.saturation_label_has_nominal_dependency(resolved_sat_node, calc_alg_context))
+        {
+            self.saturation_nominal_connected_decline_count += 1;
             return false;
         }
         if super::sat_absorb_debug_enabled() {
@@ -1062,7 +1103,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // successor is then built exactly as it is today, and
         // `try_establish_saturation_caching` independently declines the same
         // node through `conf_saturation_caching_with_nominals = false`.
-        if nominal_connection_flag && self.conf_saturation_coupling_declines_nominal_connected {
+        if self.conf_saturation_coupling_declines_nominal_connected
+            && (nominal_connection_flag
+                || self.saturation_label_has_nominal_dependency(*saturation_indi_node, calc_alg_context))
+        {
             self.saturation_nominal_connected_decline_count += 1;
             return false;
         }

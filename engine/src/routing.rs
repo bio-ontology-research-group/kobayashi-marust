@@ -2365,6 +2365,12 @@ pub(crate) fn automatic_atomic_fallback(
     selected: Route,
     profile: &OntologyProfile,
 ) -> Option<Route> {
+    // Exact finite data translation selects the native bridge before normalization.
+    // The nominal CB fallback cannot consume every retained role-chain clause.
+    // A bridge refusal must remain a refusal for these source data ontologies.
+    if selected == Route::HtBridge && profile.source.datatype_constructors > 0 {
+        return None;
+    }
     let specialist = matches!(
         selected,
         Route::Elc

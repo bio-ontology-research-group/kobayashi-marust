@@ -730,15 +730,19 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: descriptor
-        // chain, the saturation/reapply label-set reads, the backend association
-        // cache handler (W6-DEFER[api]), the status/critical masks, and the ~9
-        // siblings are all not yet ported.
-        let _ = (
-            &mut *process_indi,
-            con_sat_pro_linker,
-            &mut *calc_alg_context,
+        // Named-individual assertion transfer is installed by the bridge's
+        // separate ABox phase, not this concept-saturation rule. Nevertheless
+        // every concept node containing a nominal depends on that ABox. Carry
+        // the dependency through the existing status propagation so completion
+        // cannot treat this partial label as a nominal-free cache certificate.
+        // The native bridge already refuses expansion/blocking on this flag;
+        // ordinary completion then installs the nominal and its assertions.
+        self.update_direct_adding_individual_status_flags(
+            *process_indi,
+            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION,
+            calc_alg_context,
         );
+        let _ = con_sat_pro_linker;
     }
 }
 
@@ -803,6 +807,20 @@ mod tests {
             ctx.process_context_mut().alloc_con_sat_proc_linker(linker),
             descriptor,
         )
+    }
+
+    #[test]
+    fn s04_nominal_rule_marks_cache_dependency() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let concept = atom(&mut ctx, 701);
+        ctx.ontology_arenas_mut().concept_mut(concept).set_operator_code(super::super::super::model::op::CCNOMINAL);
+        let (linker, _) = concept_process_linker(&mut ctx, concept, false);
+        let mut node = ctx.process_context_mut().alloc_sat_node(IndividualSaturationProcessNode::default());
+        algo.apply_nominal_rule(&mut node, linker, &mut ctx);
+        let flags = IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION;
+        assert_ne!(ctx.process_context().sat_node(node).direct_status_flags.get_flags() & flags, 0);
+        assert_ne!(ctx.process_context().sat_node(node).indirect_status_flags.get_flags() & flags, 0);
     }
 
     #[test]

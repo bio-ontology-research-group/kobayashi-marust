@@ -3414,7 +3414,17 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
 }
 
 fn has_any_nominal_input(tin: &TInput) -> bool {
-    !tin.nominals.is_empty() || !tin.nominal_abox.is_empty()
+    // `NominalAboxMeta::is_empty` is a wire-omission predicate: complete=true
+    // must survive serialization even with no assertions. Coverage metadata
+    // alone is not a semantic nominal obligation.
+    let meta = &tin.nominal_abox;
+    !tin.nominals.is_empty()
+        || !meta.individuals.is_empty()
+        || !meta.same.is_empty()
+        || !meta.different.is_empty()
+        || !meta.role_assertions.is_empty()
+        || !meta.negative_role_assertions.is_empty()
+        || !meta.unsupported.is_empty()
 }
 
 /// Select Konclude's conditional-full mixed number-restriction+ABox profile.
@@ -3615,7 +3625,11 @@ fn independent_abox_representative_tags(bridged: &Bridged) -> HashSet<Cint64> {
 /// This deliberately does not relax the legacy fast-tableau nominal fence.
 fn native_nominal_metadata_covered(tin: &TInput, source_mode: bool) -> bool {
     let meta = &tin.nominal_abox;
-    if !source_mode || !meta.complete || !meta.unsupported.is_empty() || meta.individuals.is_empty()
+    // An absent source TBox does not invalidate a complete typed ABox. In
+    // that case the builder retains its clause/definer mode and installs the
+    // assertions independently. A disabled nonempty source view still defers.
+    if (!source_mode && !tin.source_axioms.is_empty())
+        || !meta.complete || !meta.unsupported.is_empty() || meta.individuals.is_empty()
     {
         return false;
     }
@@ -3635,7 +3649,7 @@ fn native_nominal_metadata_covered(tin: &TInput, source_mode: bool) -> bool {
             }
         }
     }
-    if meta.different.iter().any(|(left, right)| {
+    if meta.different.iter().chain(meta.same.iter()).any(|(left, right)| {
         !individuals.contains(left.as_str()) || !individuals.contains(right.as_str())
     }) {
         return false;
@@ -3869,6 +3883,27 @@ fn bridge_tinput_with_trigger_absorption(
                 assertions: Vec::new(),
                 role_assertions: Vec::new(),
             });
+        }
+        // SameIndividual(a,b) is the ordinary positive nominal assertion
+        // a:{b}. Keep both directions in the source seeds so component-local
+        // initialization cannot omit the equality when starting at either end.
+        // The completion calculus performs the merge and replays both labels.
+        for (left, right) in &tin.nominal_abox.same {
+            let left_index = nominal_seed_index_by_name[left];
+            let right_index = nominal_seed_index_by_name[right];
+            let left_nominal = nominal_by_name[left];
+            let right_nominal = nominal_by_name[right];
+            for (seed_index, target) in [(left_index, right_nominal), (right_index, left_nominal)] {
+                let seed = &mut nominal_seeds[seed_index];
+                if !seed.assertions.contains(&(target, false)) {
+                    seed.assertions.push((target, false));
+                }
+                let assertion = ConceptAssertion { target, negated: false };
+                let individual = b.ctx.ontology_arenas_mut().individual_mut(seed.individual);
+                if !individual.get_assertion_concept_linker().contains(&assertion) {
+                    individual.add_assertion_concept_linker(assertion);
+                }
+            }
         }
         for (left, right) in &tin.nominal_abox.different {
             if let (
@@ -4408,8 +4443,10 @@ fn bridge_tinput_with_trigger_absorption(
     // reach CTriggeredImplicationBinaryAbsorberPreProcess. Use the normalized
     // source side channel when present, then ignore the frontend's derived
     // concept clauses below (role hierarchy/functionality clauses remain the
-    // authoritative RBox representation).
-    if source_mode {
+    // authoritative RBox representation). Complete typed assertions also need
+    // this installer with an empty source TBox. This does NOT enable source
+    // mode: the clause loop and definer reconstruction remain authoritative.
+    if source_mode || native_nominal_covered {
         let concept_index: HashMap<&str, usize> = tin
             .concepts
             .iter()
@@ -4981,6 +5018,15 @@ fn bridge_tinput_with_trigger_absorption(
                     Some(c) => b.atmost_q(role_obj, (k - 1) as Cint64, resolved[c]),
                     None => b.atmost(role_obj, (k - 1) as Cint64),
                 };
+                // An unguarded equality-only clause is a universal
+                // at-most restriction. Install it on Top, as for functional
+                // roles, so named edges need no auxiliary role trigger to
+                // activate their merge obligation.
+                if guards.is_empty() && heads.is_empty() {
+                    tbox.push(am);
+                    top_gcis.push(am);
+                    continue 'clause;
+                }
                 let mut head_ops: Vec<(ConceptId, bool)> = heads
                     .iter()
                     .map(|&c| {
@@ -8522,6 +8568,17 @@ fn empty_role_nominal_model_certificate(tin: &TInput, bridged: &Bridged) -> bool
     if individuals.len() != tin.nominal_abox.individuals.len() {
         return false;
     }
+    // This particular witness assigns a distinct domain element to each
+    // source name. It certifies equality only when both names resolve to the
+    // same element; other equalities continue through ordinary completion.
+    if tin.nominal_abox.same.iter().any(|(left, right)| {
+        match (individuals.get(left.as_str()), individuals.get(right.as_str())) {
+            (Some(left), Some(right)) => left != right,
+            _ => true,
+        }
+    }) {
+        return false;
+    }
     let domain_size = individuals.len();
 
     fn holds(
@@ -10308,8 +10365,24 @@ fn write_native_abox_representative_cache(
             }
         }
 
-        let (completely_handled, completely_propagated) =
+        let (status_handled, completely_propagated) =
             native_abox_association_status(direct_flags, indirect_flags);
+        // This saturation writer records each individual's identity as itself
+        // with an empty same-individual set below. A positive foreign nominal
+        // requires a merge that those fields do not represent. Such an entry
+        // cannot certify completed handling or replay its label as a finished
+        // model: let ordinary full completion realize the pending equality.
+        let nominal_identity_covered = concepts.iter().all(|&(concept, negated)| {
+            let concept = ctx.ontology_arenas().concept(concept);
+            if negated || concept.get_operator_code() != op::CCNOMINAL {
+                return true;
+            }
+            let individual = concept.get_nominal_individual();
+            individual.is_some()
+                && individual.index() < ctx.ontology_arenas().individual_count() as usize
+                && ctx.ontology_arenas().individual(individual).get_individual_id() == individual_tag
+        });
+        let completely_handled = status_handled && nominal_identity_covered;
         let status_incomplete = !completely_handled;
         // The saturation substrate does not retain per-descriptor dependency
         // track points. Only a completely handled association certifies its
@@ -10419,7 +10492,7 @@ fn write_native_abox_representative_cache(
             used_association_update_id: None,
             scheduled_individual: None,
             association_origin: Some(NativeAboxAssociationOrigin::IndividualSaturation),
-            merge_identity_metadata_complete: true,
+            merge_identity_metadata_complete: nominal_identity_covered,
             role_metadata_complete: true,
             synchronization_metadata_complete: true,
         };
@@ -14628,6 +14701,137 @@ mod tests {
     }
 
     #[test]
+    fn native_nominal_successor_entailment_survives_saturation_cache() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        for asserted in [false, true] {
+            for number in [false, true] {
+                for cached in [false, true] {
+                    let tin = TInput {
+                        concepts: vec!["A".into(), "B".into(), "Part".into(), "Past".into(), "__nom__a".into()],
+                        roles: vec!["r".into()], queries: vec![0, 1, 2, 3], number,
+                        source_axioms: vec![
+                            source_subclass(C::Name("A".into()), C::And([
+                                C::Exists(R::Name("r".into()), Box::new(C::Nominal("a".into()))),
+                                C::Name("Part".into()),
+                            ].into_iter().collect())),
+                            source_equivalence(C::Name("B".into()), C::And([
+                                C::Exists(R::Name("r".into()), Box::new(C::Name("Past".into()))),
+                                C::Name("Part".into()),
+                            ].into_iter().collect())),
+                        ],
+                        nominal_abox: native_nominal_meta(vec![("a", "__nom__a",
+                            if asserted { vec![C::Name("Past".into())] } else { vec![] })], vec![]),
+                        ..Default::default()
+                    };
+                    let result = bridged_classify_opts_with_trigger_absorption(&tin, cached, cached, true)
+                        .expect("the complete nominal entailment fixture must classify");
+                    assert!(result.consistent);
+                    assert_eq!(result.subsumptions.contains(&(0, 1)), asserted,
+                        "asserted={asserted}, number={number}, cached={cached}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_complete_abox_metadata_preserves_tbox_classification() {
+        use crate::frontend::syntax::Concept as C;
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "B".into()], queries: vec![0, 1],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Name("B".into()))],
+            ..Default::default()
+        };
+        let expected = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .expect("TBox control must classify");
+        tin.nominal_abox.complete = true;
+        assert!(!has_any_nominal_input(&tin));
+        let actual = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .expect("empty coverage metadata adds no nominal obligations");
+        assert_eq!(actual.consistent, expected.consistent);
+        assert_eq!(actual.subsumptions, expected.subsumptions);
+        assert_eq!(actual.unsatisfiable, expected.unsatisfiable);
+        assert!(actual.subsumptions.contains(&(0, 1)));
+        tin.nominal_abox.unsupported.push("unrepresented assertion".into());
+        assert!(has_any_nominal_input(&tin));
+        assert!(bridged_classify_opts_with_trigger_absorption(&tin, true, true, true).is_none());
+    }
+
+    #[test]
+    fn empty_role_model_checks_same_individual_obligations() {
+        use crate::frontend::syntax::Concept as C;
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Name("A".into()))],
+            nominal_abox: native_nominal_meta(vec![
+                ("a", "__nom__a", vec![]), ("b", "__nom__b", vec![]),
+            ], vec![("a", "b")]),
+            ..Default::default()
+        };
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let bridged = bridge_tinput_with_trigger_absorption(&mut ctx, &tin, true);
+        assert!(empty_role_nominal_model_certificate(&tin, &bridged));
+        tin.nominal_abox.same.push(("a".into(), "b".into()));
+        assert!(!empty_role_nominal_model_certificate(&tin, &bridged));
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("source equality and inequality must reach completion");
+        assert!(!result.consistent);
+    }
+
+    #[test]
+    fn native_same_individual_seeds_preserve_assertions() {
+        use crate::frontend::syntax::Concept as C;
+        for cached in [false, true] {
+            for same in [false, true] {
+                let mut tin = TInput {
+                    concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+                    queries: vec![0],
+                    nominal_abox: native_nominal_meta(vec![
+                        ("a", "__nom__a", vec![C::Name("A".into())]),
+                        ("b", "__nom__b", vec![C::Not(Box::new(C::Name("A".into())))]),
+                    ], vec![]),
+                    ..Default::default()
+                };
+                if same { tin.nominal_abox.same.push(("a".into(), "b".into())); }
+                let result = bridged_classify_opts_with_trigger_absorption(&tin, cached, cached, true)
+                    .expect("complete source equality must classify");
+                assert_eq!(result.consistent, !same, "cached={cached}, same={same}");
+                tin.nominal_abox.same.push(("a".into(), "missing".into()));
+                assert!(!native_nominal_metadata_covered(&tin, false));
+            }
+        }
+    }
+
+    #[test]
+    fn native_abox_without_source_tbox_retains_clause_constraints() {
+        use crate::frontend::syntax::Concept as C;
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "__nom__a".into()],
+            queries: vec![0, 1],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![C::Name("A".into()),
+                    C::Not(Box::new(C::Name("B".into())))])], vec![]),
+            ..Default::default()
+        };
+        let control = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("a complete typed ABox does not require a nonempty TBox");
+        assert!(control.consistent);
+        tin.clauses.push(HtClause {
+            body: vec![HAtom::Concept { neg: false, c: 0, t: 0 }],
+            head: vec![HAtom::Concept { neg: false, c: 1, t: 0 }],
+        });
+        let clash = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("retained clause and typed assertions must both be encoded");
+        assert!(!clash.consistent, "A(a), not B(a), A <= B is inconsistent");
+        let mut malformed = tin.clone();
+        malformed.nominal_abox.complete = false;
+        assert!(bridged_classify_opts_with_trigger_absorption(&malformed, false, false, true).is_none());
+        tin.source_axioms.push(source_subclass(C::Name("A".into()), C::Name("B".into())));
+        assert!(!native_nominal_metadata_covered(&tin, false),
+            "a disabled nonempty source view still requires its certificate");
+    }
+
+    #[test]
     fn native_nominals_merge_without_una_and_clash_with_explicit_different() {
         use crate::frontend::syntax::Concept as C;
 
@@ -15016,6 +15220,125 @@ mod tests {
             .expect("negative nominal clash must be decided");
         assert!(result.consistent);
         assert!(result.unsatisfiable.contains(&0));
+    }
+
+    #[test]
+    fn native_inverse_functionality_preserves_disjoint_owner_clash() {
+        use crate::frontend::syntax::Concept as C;
+        for clash in [false, true] {
+            for number in [false, true] {
+                let mut meta = native_nominal_meta(vec![
+                    ("a", "__nom__a", vec![C::Name("X".into())]),
+                    ("b", "__nom__b", vec![C::Name("Y".into())]),
+                    ("c", "__nom__c", vec![]),
+                ], vec![]);
+                meta.role_assertions = vec![nominal_role("r", "a", "c"), nominal_role("r", "b", "c")];
+                let tin = TInput {
+                    concepts: vec!["X".into(), "Y".into(), "__nom__a".into(), "__nom__b".into(), "__nom__c".into()],
+                    roles: vec!["r".into()],
+                    number,
+                    source_axioms: vec![
+                        source_subclass(C::Name("X".into()), if clash { C::Not(Box::new(C::Name("Y".into()))) } else { C::Top }),
+                    ],
+                    clauses: vec![HtClause {
+                        body: vec![HAtom::Role { r: 0, s: 1, t: 0 }, HAtom::Role { r: 0, s: 2, t: 0 }],
+                        head: vec![HAtom::Eq { s: 1, t: 2 }],
+                    }],
+                    nominal_abox: meta,
+                    ..Default::default()
+                };
+                let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+                let fresh = native_nominal_consistency(&mut algo, &mut ctx, &bridged);
+                assert_eq!(fresh, Some(!clash));
+                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+                assert!(run_bridged_saturation(&mut ctx, &bridged));
+                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, true);
+                let restored = native_nominal_consistency(&mut algo, &mut ctx, &bridged);
+                assert_eq!(restored, Some(!clash));
+                let classified = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+                    .map(|result| result.consistent);
+                assert_eq!(classified, Some(!clash), "number={number}, clash={clash}");
+            }
+        }
+    }
+
+    #[test]
+    fn native_same_owner_disjoint_clash_survives_cardinality_schedule() {
+        use crate::frontend::syntax::Concept as C;
+        for clash in [false, true] {
+            for number in [false, true] {
+                let mut assertions = vec![C::Name("X".into())];
+                if clash { assertions.push(C::Name("Y".into())); }
+                let tin = TInput {
+                    concepts: vec!["X".into(), "Y".into(), "__nom__a".into()],
+                    queries: vec![0, 1],
+                    number,
+                    source_axioms: vec![source_subclass(
+                        C::And([C::Name("X".into()), C::Name("Y".into())].into_iter().collect()),
+                        C::Bottom,
+                    )],
+                    nominal_abox: native_nominal_meta(vec![("a", "__nom__a", assertions)], vec![]),
+                    ..Default::default()
+                };
+                let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+                assert_eq!(native_nominal_consistency(&mut algo, &mut ctx, &bridged), Some(!clash),
+                    "fresh: number={number}, clash={clash}");
+                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+                assert!(run_bridged_saturation(&mut ctx, &bridged));
+                if clash {
+                    assert!(bridged.native_representative_cache.borrow().as_ref().unwrap().association_write_aborted,
+                        "saturation must reject the clashing representative cache");
+                }
+                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, true);
+                assert_eq!(native_nominal_consistency(&mut algo, &mut ctx, &bridged), Some(!clash),
+                    "cached: number={number}, clash={clash}");
+                let classified = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+                    .map(|result| result.consistent);
+                assert_eq!(classified, Some(!clash), "classify: number={number}, clash={clash}");
+            }
+        }
+    }
+
+    #[test]
+    fn native_singleton_domain_clash_survives_cardinality_schedule() {
+        use crate::frontend::syntax::Concept as C;
+        for clash in [false, true] {
+            for number in [false, true] {
+                let assertion = if clash {
+                    C::Not(Box::new(C::Name("X".into())))
+                } else {
+                    C::Name("X".into())
+                };
+                let tin = TInput {
+                    concepts: vec!["X".into(), "__nom__a".into(), "__nom__b".into()],
+                    queries: vec![0],
+                    number,
+                    source_axioms: vec![source_equivalence(C::Top, C::Nominal("a".into()))],
+                    nominal_abox: native_nominal_meta(vec![
+                        ("a", "__nom__a", vec![C::Name("X".into())]),
+                        ("b", "__nom__b", vec![assertion]),
+                    ], vec![]),
+                    ..Default::default()
+                };
+                let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+                assert_eq!(native_nominal_consistency(&mut algo, &mut ctx, &bridged), Some(!clash));
+                if number {
+                    reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+                    assert!(run_bridged_saturation(&mut ctx, &bridged));
+                    let cache = bridged.native_representative_cache.borrow();
+                    let entry = cache.as_ref().unwrap().entries.get(&1).unwrap();
+                    assert!(!entry.complete_for_precomputation(),
+                        "a foreign nominal needs equality completion, even if its label is saturated");
+                    drop(cache);
+                    reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, true);
+                    assert_eq!(native_nominal_consistency(&mut algo, &mut ctx, &bridged), Some(!clash),
+                        "cached reconstruction must preserve the fresh consistency verdict");
+                }
+                let classified = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+                    .map(|result| result.consistent);
+                assert_eq!(classified, Some(!clash), "number={number}, clash={clash}");
+            }
+        }
     }
 
     #[test]

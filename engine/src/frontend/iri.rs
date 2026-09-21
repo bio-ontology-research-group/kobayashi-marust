@@ -65,9 +65,19 @@ pub struct IriRegistry {
     short_iri: FxHashMap<String, String>,
     /// short name -> full IRI that owns it
     short_owner: FxHashMap<String, String>,
+    finite_data_bindings: Option<std::collections::BTreeMap<(String, String), String>>,
 }
 
 impl IriRegistry {
+    pub(super) fn install_finite_data_bindings(&mut self, bindings: std::collections::BTreeMap<(String, String), String>) {
+        self.finite_data_bindings = Some(bindings);
+    }
+
+    pub(super) fn finite_data_binding(&self, property: &str, literal: &str) -> Option<Option<&str>> {
+        self.finite_data_bindings.as_ref().map(|bindings|
+            bindings.get(&(property.to_owned(), literal.to_owned())).map(String::as_str))
+    }
+
     pub fn new() -> Self {
         IriRegistry::default()
     }

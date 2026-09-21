@@ -748,6 +748,20 @@ fn cb_hyper_event_evidence(
             })
         })
         .collect::<Vec<_>>();
+    if context_clause_ids.is_empty() {
+        // Instantiation can identify previously distinct head literals. The
+        // premise checker compares literal sets, matching ContextClause's
+        // duplicate elimination; retain that same canonical set in the trace.
+        let mut normalized = instantiated_source.clone();
+        normalized.head.clear();
+        for literal in &instantiated_source.head {
+            cb_push_unique(&mut normalized.head, literal.clone());
+        }
+        return cb_filtered_seed_trace(live, event, normalized,
+            serde_json::json!({"premise": {
+                "index": ontology_index, "substitution": wire_substitution,
+            }}));
+    }
     trace.push(serde_json::json!({
         "clause": cb_wire_clause(instantiated_source, live.comp_ind_bits),
         "justification": {"premise": {
@@ -1277,12 +1291,28 @@ fn cb_filtered_seed_trace(
             live.source_ontology
                 .iter()
                 .enumerate()
-                .find(|(_, source)| {
-                    source.body.as_slice() == [literal.clone()] && source.head.is_empty()
+                .find_map(|(index, source)| {
+                    if !source.head.is_empty() || source.body.len() != 1 {
+                        return None;
+                    }
+                    if source.body.as_slice() == [literal.clone()] {
+                        return Some((literal.clone(), index, source.clone(), Vec::new()));
+                    }
+                    // Sig::nothing also filters ground instances of A(x) ->
+                    // bottom. Bind the source premise at that exact term.
+                    let body = &source.body[0];
+                    if body.kind == "concept" && literal.kind == "concept"
+                        && body.iri == literal.iri && body.first == crate::calc::X
+                    {
+                        return Some((literal.clone(), index, crate::engine::CbLiveClause {
+                            body: vec![literal.clone()], head: Vec::new(),
+                        }, vec![serde_json::json!({"variableId": 0,
+                            "term": cb_wire_term(literal.first, live.comp_ind_bits)})]));
+                    }
+                    None
                 })
-                .map(|(index, source)| (literal.clone(), index, source.clone()))
         });
-        let Some((literal, ontology_index, bottom_clause)) = removable else {
+        let Some((literal, ontology_index, bottom_clause, substitution)) = removable else {
             break;
         };
         let positive = trace.len() - 1;
@@ -1291,7 +1321,7 @@ fn cb_filtered_seed_trace(
             "clause": cb_wire_clause(&bottom_clause, live.comp_ind_bits),
             "justification": {"premise": {
                 "index": ontology_index,
-                "substitution": [],
+                "substitution": substitution,
             }},
         }));
         current = cb_resolve_live(&current, &bottom_clause, &literal)?;
@@ -7438,6 +7468,68 @@ mod cb_derivation_candidate_tests {
                 .success(),
             "Lean must accept the native nested Pred DAG"
         );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn ground_fact_instantiation_passes_real_lean_checker() {
+        use crate::engine::{CbLiveClause, CbLiveInsertionEvent, CbLiveLit,
+            CbLiveRuleEvidence, CbLiveSubstitution};
+        let individual = crate::calc::ind_term(1);
+        let concept = |term| CbLiveLit {
+            kind: "concept", iri: Some(0), first: term, second: None,
+        };
+        let reflexive = |term| CbLiveLit {
+            kind: "inequality", iri: None, first: term, second: Some(term),
+        };
+        let bottom_concept = |term| CbLiveLit {
+            kind: "concept", iri: Some(1), first: term, second: None,
+        };
+        let bottom = CbLiveClause { body: vec![bottom_concept(crate::calc::X)], head: vec![] };
+        let source = CbLiveClause { body: vec![],
+            head: vec![concept(crate::calc::X), concept(individual), bottom_concept(crate::calc::X), reflexive(crate::calc::X)] };
+        let instance = CbLiveClause { body: vec![],
+            head: vec![concept(individual), concept(individual), bottom_concept(individual), reflexive(individual)] };
+        let mut live = live_snapshot();
+        live.concept_count = 2;
+        live.concept_names = vec!["A".into(), "B".into()];
+        live.source_individual_count = 2;
+        live.runtime_individual_count = 2;
+        live.source_ontology = vec![source.clone(), bottom.clone()];
+        live.root_clause_arena = vec![CbLiveClause { body: vec![], head: vec![concept(individual)] }];
+        live.contexts[0].root = true;
+        let event = CbLiveInsertionEvent {
+            sequence: 0, context_index: 0, root: true, clause_id: 0,
+            origin_hint: "derived", origin_index: None, rule_hint: Some("hyper"),
+            rule_evidence: Some(CbLiveRuleEvidence::Hyper {
+                ontology_index: 0, instantiated_source: instance,
+                context_clause_ids: vec![], matched_predicates: vec![],
+                substitution: vec![CbLiveSubstitution { variable_id: crate::calc::X, value: individual }],
+            }),
+        };
+        let evidence = cb_hyper_event_evidence(&live, &event, &Default::default()).unwrap();
+        assert_eq!(evidence["trace"].as_array().unwrap().len(), 4);
+        live.insertion_history = vec![event];
+        let Some(checker) = std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER") else {
+            return;
+        };
+        let source_wire = serde_json::json!({
+            "version": 1, "concept_count": 2, "role_count": 0,
+            "function_count": 0, "individual_count": 2,
+            "source_clauses": [], "role_chains": [], "role_axioms": [],
+            "ontology": [cb_wire_clause(&source, live.comp_ind_bits), cb_wire_clause(&bottom, live.comp_ind_bits)],
+        });
+        let publication = serde_json::json!({"derivation": {
+            "production_bound": {"global_model": {"source": source_wire}, "live_state": live},
+            "insertion_evidence": [evidence],
+        }});
+        let (document, _) = cb_standalone_context_proof_document(&publication, &[0]).unwrap();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
+            .join(".work/artifacts").join(format!("cb-ground-fact-{}.json", std::process::id()));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+        assert!(std::process::Command::new(checker).arg(&path).status().unwrap().success(),
+            "Lean must accept grounded universal facts with normalized heads");
         let _ = std::fs::remove_file(path);
     }
 

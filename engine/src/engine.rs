@@ -1291,6 +1291,9 @@ impl DeterminedIndex {
 struct Ontology {
     clauses: Vec<OntologyClause>,
     facts: Vec<usize>, // indices of empty-body clauses (x-form only)
+    /// Empty-body clauses whose head still depends on universally quantified x.
+    /// Includes mixed heads mentioning both x and a named individual.
+    universal_facts: Vec<usize>,
     /// Ground facts (empty-body clauses whose head mentions an individual),
     /// keyed by each individual they mention. Seeded fully into the ground
     /// context and on demand into a context that first derives an atom about
@@ -1323,6 +1326,14 @@ impl Ontology {
     fn push_clause(&mut self, sig: &mut Sig, c: OntologyClause, mark_nothing: bool) -> usize {
         let idx = self.clauses.len();
         if c.body.is_empty() {
+            let variable_term = |t: Term| t == X || (is_function(t) && !is_comp(t));
+            if c.head.iter().any(|literal| match *literal {
+                Lit::P(Pred::Concept { t, .. }) => variable_term(t),
+                Lit::P(Pred::Role { s, t, .. }) | Lit::Eq { s, t } | Lit::Ineq { s, t } =>
+                    variable_term(s) || variable_term(t),
+            }) {
+                self.universal_facts.push(idx);
+            }
             // Ground facts (heads mentioning an individual) seed the ground
             // context fully and other contexts on demand.
             let mut inds: Vec<Term> = Vec::new();
@@ -4010,6 +4021,12 @@ impl Engine {
             for &fact in &new_facts {
                 self.seed_fact(id, fact);
             }
+            if self.ground_ctx == Some(id) && !new_facts.is_empty() {
+                let individuals: Vec<Term> = self.contexts[id].seeded_inds.iter().copied().collect();
+                for individual in individuals {
+                    self.seed_ground_fact_instances(id, individual);
+                }
+            }
 
             // The active old side clauses were already worked off before the
             // new ontology clauses existed. Replaying only their Hyper role is
@@ -4213,8 +4230,11 @@ impl Engine {
         self.contexts.push(ctx);
         self.ground_ctx = Some(id);
         let inds: Vec<Term> = self.ont.ground_facts.keys().copied().collect();
-        self.contexts[id].seeded_inds.extend(inds);
+        self.contexts[id].seeded_inds.extend(inds.iter().copied());
         self.init_context(id);
+        for individual in inds {
+            self.seed_ground_fact_instances(id, individual);
+        }
         let mut fis: Vec<usize> = self.ont.ground_facts.values().flatten().copied().collect();
         fis.sort_unstable();
         fis.dedup();
@@ -4223,6 +4243,31 @@ impl Engine {
         }
         self.saturate(id);
         id
+    }
+
+    /// Zero-premise Hyper at x := individual. Keeping only the x-shaped
+    /// ontology fact in the ground context misses universal constraints on
+    /// ABox roots (for example Top <= {a} with X(a), not-X(b)). The original
+    /// fact remains available; these are additional, source-bound instances.
+    fn seed_ground_fact_instances(&mut self, id: usize, individual: Term) {
+        debug_assert_eq!(self.ground_ctx, Some(id));
+        let mut sigma = CentralSubst::new(true);
+        assert!(sigma.add(X, individual));
+        for fi in self.ont.universal_facts.clone() {
+            let instantiated: Vec<Lit> = self.ont.clauses[fi].head.iter()
+                .map(|literal| literal.apply(&|term| if is_comp(term) { term } else { sigma.apply(term) })).collect();
+            let Some(head) = self.filter_head(instantiated.clone()) else { continue; };
+            let evidence = self.certificate_history.as_ref().map(|_| CbLiveRuleEvidence::Hyper {
+                ontology_index: fi,
+                instantiated_source: CbLiveClause {
+                    body: Vec::new(), head: instantiated.into_iter().map(Into::into).collect(),
+                },
+                context_clause_ids: Vec::new(), matched_predicates: Vec::new(),
+                substitution: vec![CbLiveSubstitution { variable_id: X, value: individual }],
+            });
+            let clause = ContextClause::new(vec![], head, false, &self.sig);
+            self.add_clause_with_rule(id, clause, Some("hyper"), evidence);
+        }
     }
 
     /// Complete enumeration-certified class queries from the saturated ground
@@ -4489,6 +4534,9 @@ impl Engine {
             ctx.todo.push_back(cid);
         }
         for o in new_inds {
+            if self.ground_ctx == Some(id) {
+                self.seed_ground_fact_instances(id, o);
+            }
             if let Some(fis) = self.ont.ground_facts.get(&o) {
                 for fi in fis.clone() {
                     self.seed_fact(id, fi);
@@ -8741,6 +8789,33 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn universal_facts_are_instantiated_at_abox_individuals() {
+        for mixed in [false, true] {
+            let mut sig = Sig::default();
+            let a = sig.concept("A");
+            let b = sig.concept("B");
+            let r = sig.role("R");
+            let individual = ind_term(1);
+            let universal = if mixed { rl(r, X, ind_term(2)) } else { cx(a, X) };
+            let clauses = vec![
+                OntologyClause::new(vec![], vec![Lit::P(universal)]),
+                OntologyClause::new(vec![], vec![Lit::P(cx(b, individual))]),
+                OntologyClause::new(vec![universal, cx(b, X)], vec![]),
+            ];
+            let mut engine = Engine::new(sig, clauses, 0);
+            engine.certificate_history = Some(Vec::new());
+            engine.run_for(&[]);
+            assert!(engine.inconsistent(), "mixed={mixed}: universal source fact applies to every individual");
+            assert!(engine.certificate_history.as_ref().unwrap().iter().any(|event| {
+                matches!(&event.rule_evidence,
+                    Some(CbLiveRuleEvidence::Hyper { context_clause_ids, substitution, .. })
+                    if context_clause_ids.is_empty() && substitution.iter().any(|entry|
+                        entry.variable_id == X && entry.value == individual))
+            }), "grounded facts need checked zero-provider Hyper evidence");
+        }
+    }
 
     #[test]
     fn compact_posting_preserves_order_across_inline_and_spill() {

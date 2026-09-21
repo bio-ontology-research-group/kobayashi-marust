@@ -1,3 +1,9 @@
+import ContextCalculus.NativeSameIndividualSeeds
+import ContextCalculus.NativeNominalCacheDependency
+import ContextCalculus.NativeABoxRetainedTheory
+import ContextCalculus.NativeABoxAssertionExpansion
+import ContextCalculus.HTUniversalAtMost
+import ContextCalculus.NativeABoxCacheIdentity
 import ContextCalculus.HypertableauProductionGlobalPublication
 import ContextCalculus.HypertableauProductionTaxonomyPublication
 import ContextCalculus.HypertableauCardinalityTaxonomyRunMatrixWire
@@ -187,3 +193,19 @@ theorem certifiedHTBundleCardinalityCommonTaxonomyPublication
 #print axioms certifiedHTBundleCardinalityCommonTaxonomyPublication
 
 end ContextCalculus.Hypertableau
+
+#print axioms ContextCalculus.Hypertableau.NativeABox.models.proxy_requires_owner_equality
+#print axioms ContextCalculus.Hypertableau.NativeABox.models.unmerged_cache_rejects_foreign_proxy
+
+#print axioms ContextCalculus.Hypertableau.universal_pigeonhole_iff_atMost
+#print axioms ContextCalculus.Hypertableau.inverse_universal_pigeonhole_iff_atMost
+
+#print axioms ContextCalculus.Hypertableau.NativeABox.models.append_asserted_consequences_iff
+
+#print axioms ContextCalculus.Hypertableau.nativeABoxSeed_with_retained_theory_iff
+
+#print axioms ContextCalculus.NativeNominalCacheDependency.named_successor_entailment
+#print axioms ContextCalculus.NativeNominalCacheDependency.no_countermodel_without_named_assertion
+
+#print axioms ContextCalculus.NativeSameIndividualSeeds.same_iff_bidirectional_seeds
+#print axioms ContextCalculus.NativeSameIndividualSeeds.same_owner_clash

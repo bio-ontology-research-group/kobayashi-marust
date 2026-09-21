@@ -1191,7 +1191,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // lazily, so materialise the same independent base track point before
         // adding the nominal and cached assertion concepts.
         let dep_track_point = calc_alg_context.get_or_create_base_dependency_track_point();
-        let localiced_indi = calc_alg_context
+        let mut localiced_indi = calc_alg_context
             .process_context_mut()
             .alloc_node(IndividualProcessNode::new(Id::NONE));
         {
@@ -1265,14 +1265,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // selected roots, so assertions cannot be left to the root
             // initializer.
             for &(concept, negated) in &replay.asserted_concepts {
-                self.add_concept_to_individual_skip_and_processing(
+                // Raw assertions have not been expanded in this completion
+                // task. In particular an aborted saturation association has
+                // no completed label from which AND operands can be replayed.
+                // Skipping AND here marks the raw concept present without
+                // scheduling its consequences; the eager initializer then
+                // sees a duplicate and cannot restore the lost obligation.
+                self.add_concept_to_individual(
                     concept,
                     negated,
-                    localiced_indi,
+                    &mut localiced_indi,
                     dep_track_point,
                     true,
                     true,
-                    false,
                     calc_alg_context,
                 );
                 if calc_alg_context.has_pending_signal() {

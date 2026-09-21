@@ -304,6 +304,15 @@ done
     cargo test --release --lib every_cardinality_taxonomy_projection_passes_the_common_lean_checker -- --nocapture
     cargo test --release --lib source_matrix_passes_real_lean_checker -- --nocapture
     cargo test --release --lib joint_native_abox_classification_carries_one_source_and_abox -- --nocapture
+    cargo test --release --lib native_inverse_functionality_preserves_disjoint_owner_clash
+    cargo test --release --lib s04_nominal_rule_marks_cache_dependency
+    cargo test --release --lib native_nominal_successor_entailment_survives_saturation_cache
+    cargo test --release --lib empty_complete_abox_metadata_preserves_tbox_classification
+    cargo test --release --lib empty_role_model_checks_same_individual_obligations
+    cargo test --release --lib native_same_individual_seeds_preserve_assertions
+    cargo test --release --lib native_abox_without_source_tbox_retains_clause_constraints
+    cargo test --release --lib native_same_owner_disjoint_clash_survives_cardinality_schedule
+    cargo test --release --lib native_singleton_domain_clash_survives_cardinality_schedule -- --nocapture
     cargo test --release --lib joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes -- --nocapture
     cargo test --release --lib certified_input_coverage_matches_the_lean_truth_table -- --nocapture
     cargo test --release --lib regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture

@@ -181,7 +181,7 @@ fn spawn_tableau(
     if !cl.iter().any(|c| c.head.len() >= 2) {
         return None;
     }
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &cl,
         Some(&rbox),
         named,
@@ -191,6 +191,7 @@ fn spawn_tableau(
         false,
         &[],
         false,
+        &nominal_abox,
     );
     cb_to_ht::install_nominal_abox(&mut tin, &nominal_abox);
     // Diagnostic parity with the HT racer: preserve the exact converted input
@@ -772,7 +773,7 @@ pub(crate) fn prepare_incremental_ht(
         return None;
     }
     let named = frontend.named.iter().cloned().collect();
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &frontend.clauses,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -782,6 +783,7 @@ pub(crate) fn prepare_incremental_ht(
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
+        &frontend.nominal_abox,
     );
     // Retained general HT uses the same source-bound ABox as batch execution.
     // Nominal ids alone do not create roots for existing individuals.
@@ -820,7 +822,7 @@ pub(crate) fn prepare_incremental_card(
         false,
     );
     let named = frontend.named.iter().cloned().collect();
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &view,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -830,6 +832,7 @@ pub(crate) fn prepare_incremental_card(
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
+        &frontend.nominal_abox,
     );
     let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
         || std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
@@ -865,7 +868,7 @@ pub(crate) fn prepare_incremental_nominal_ni(
         false,
     );
     let named = frontend.named.iter().cloned().collect();
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &view,
         (!certified_tbox_only).then_some(frontend.rbox.as_slice()),
         &named,
@@ -875,6 +878,7 @@ pub(crate) fn prepare_incremental_nominal_ni(
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
+        &frontend.nominal_abox,
     );
     if !certified_tbox_only
         && !cb_to_ht::install_nominal_abox_with_same(&mut tin, &frontend.nominal_abox, true)
@@ -901,7 +905,7 @@ pub(crate) fn prepare_incremental_qo(
         return None;
     }
     let named = frontend.named.iter().cloned().collect();
-    let tin = cb_to_ht::convert(
+    let tin = cb_to_ht::convert_with_abox(
         &frontend.clauses,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -911,6 +915,7 @@ pub(crate) fn prepare_incremental_qo(
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
+        &frontend.nominal_abox,
     );
     (tin.dropped == 0
         && tin.fenced.is_empty()
@@ -931,7 +936,7 @@ pub(crate) fn prepare_incremental_bridge(
         return None;
     }
     let named = frontend.named.iter().cloned().collect();
-    let tin = cb_to_ht::convert(
+    let tin = cb_to_ht::convert_with_abox(
         &frontend.clauses,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -941,6 +946,7 @@ pub(crate) fn prepare_incremental_bridge(
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
+        &frontend.nominal_abox,
     );
     let trigger_bridge = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
     let source_tbox = trigger_bridge
@@ -1984,7 +1990,7 @@ pub(crate) fn prepare_incremental_card_proxy(
         false,
     );
     let named = frontend.named.iter().cloned().collect();
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &view,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -1994,6 +2000,7 @@ pub(crate) fn prepare_incremental_card_proxy(
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
+        &frontend.nominal_abox,
     );
     let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
     if !card_candidate_from(
@@ -2079,7 +2086,7 @@ fn spawn_ht(
                 || std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_some()),
         !rules.is_empty(),
     );
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &nominal_bridge_view,
         (!certified_tbox_only).then_some(rbox.as_slice()),
         named,
@@ -2089,6 +2096,7 @@ fn spawn_ht(
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
+        &nominal_abox,
     );
     let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
     // Native-ABox admission for the cardinality arm (`KM_HT_CARD_PROXY_ABOX`,
@@ -2105,7 +2113,7 @@ fn spawn_ht(
     let mut proxy_abox_certificate = None;
     let global_native_abox = std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
     let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
-        || global_native_abox || general_only;
+        || global_native_abox || general_only || specialist_only.as_deref() == Some("bridge");
     if card_proxy_abox {
         let mut native = tin.clone();
         cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);
@@ -2652,7 +2660,7 @@ pub fn run_ht_shoq_in_process(
     } = frontend;
     let view =
         native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, !rules.is_empty());
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &view,
         Some(rbox.as_slice()),
         named,
@@ -2662,6 +2670,7 @@ pub fn run_ht_shoq_in_process(
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
+        &nominal_abox,
     );
     if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, false) {
         return Err(OrchestrateError::OutOfFragment(
@@ -2748,7 +2757,7 @@ pub fn run_ht_general_in_process(
         ));
     }
     let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, false);
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &view,
         Some(rbox.as_slice()),
         named,
@@ -2758,6 +2767,7 @@ pub fn run_ht_general_in_process(
         false,
         &[],
         false,
+        &nominal_abox,
     );
     if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, true) {
         return Err(OrchestrateError::OutOfFragment(
@@ -2832,7 +2842,7 @@ pub fn run_ht_bridge_in_process(
         ));
     }
     let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, false);
-    let mut tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert_with_abox(
         &view,
         Some(rbox.as_slice()),
         named,
@@ -2842,8 +2852,9 @@ pub fn run_ht_bridge_in_process(
         false,
         &[],
         false,
+        &nominal_abox,
     );
-    if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, false) {
+    if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, true) {
         return Err(OrchestrateError::OutOfFragment(
             "native HT bridge ABox conversion was incomplete".into(),
         ));

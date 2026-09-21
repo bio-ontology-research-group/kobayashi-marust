@@ -1,3 +1,10 @@
+import ContextCalculus.FiniteDataSourceIdentities
+import ContextCalculus.FiniteDataMembership
+import ContextCalculus.GroundDataRangeClash
+import ContextCalculus.GroundDataOwnerClash
+import ContextCalculus.FloatingDataIdentity
+import ContextCalculus.CBGroundFactInstantiation
+import ContextCalculus.FunctionalGroundDataProjection
 import ContextCalculus.GroundDataProjection
 import ContextCalculus.ABoxOccurrenceAccounting
 import ContextCalculus.InverseRoleChainNormalization
@@ -415,3 +422,27 @@ end ContextCalculus.CB
 #print axioms ContextCalculus.ABoxOccurrenceAccounting.same_members_same_models
 
 #print axioms ContextCalculus.GroundDataProjection.exact_model_extension
+
+#print axioms ContextCalculus.FunctionalGroundDataProjection.exact_functional_model_extension
+#print axioms ContextCalculus.FunctionalGroundDataProjection.compatible_iff_bit_model
+#print axioms ContextCalculus.FunctionalGroundDataProjection.bounded_bit_codes_injective
+
+#print axioms ContextCalculus.CBGroundFactInstantiation.model_preservation
+#print axioms ContextCalculus.CBGroundFactInstantiation.ground_seed_sound
+
+#print axioms ContextCalculus.FunctionalGroundDataProjection.compatible_iff_disjoint_bit_model
+
+#print axioms ContextCalculus.FloatingDataIdentity.single_signed_zeros_incompatible
+#print axioms ContextCalculus.FloatingDataIdentity.cross_primitive_values_incompatible
+
+#print axioms ContextCalculus.GroundDataOwnerClash.same_owner_incompatible
+
+#print axioms ContextCalculus.GroundDataRangeClash.no_extension_of_range_violation
+
+#print axioms ContextCalculus.FiniteDataMembership.translation_exact
+#print axioms ContextCalculus.FiniteDataMembership.extension_translation_exact
+#print axioms ContextCalculus.FiniteDataMembership.extension_functional
+#print axioms ContextCalculus.FiniteDataMembership.restriction_exact
+
+#print axioms ContextCalculus.FiniteDataMembership.erase_top_data_inclusion
+#print axioms ContextCalculus.FiniteDataMembership.anonymous_assignment_translation_exact
