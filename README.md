@@ -14,7 +14,7 @@ without access to the expected answer.
 
 ## Highlights
 
-- `km classify` completes all 592 ORE 2015 ontologies under the documented
+- The recorded v1.4.0 candidate completes all 592 ORE 2015 ontologies under the documented
   240-second and 20-GiB benchmark contract.
 - Those results comprise 588 exact retained signatures and four independently
   adjudicated cases: 2669, 15516, 10860, and the no-gold ontology 1194.
@@ -73,6 +73,32 @@ the input to KM's normalized clause representation, profiles its features, and
 selects a compatible reasoning route. Worker entry points are also available
 as `km ofn`, `km elc`, `km engine`, and `km tableau` for development and
 diagnostics.
+
+Version 1.4.4 adds inverse expressions in role chains and
+extends DL-safe SWRL reasoning. Its input checks reject malformed ontologies
+before reasoning. For example, `"text"^^rdfs:Literal` has no literal lexical
+mapping: use of `rdfs:Literal` as a data range does not make it a valid literal
+datatype. KM explains the violation and exits with code 2 without rewriting
+the input or producing a classification. A valid construct whose complete
+execution cannot be established is a separate refusal (exit code 3).
+
+The final validation inventory covers 1,920 unchanged corpus files: 1,708
+pass its implemented checks and 212 are refused. Independent audits verified
+all 212 violations, including the 33 additional anonymous-tree diagnoses.
+The anonymous-individual check follows the formal condition in
+[OWL 2 section 11.2](https://www.w3.org/TR/owl2-syntax/#Global_Restrictions_on_Axioms_in_OWL_2_DL):
+each anonymous tree must contain a node with at most one object-property
+assertion to a named individual. The named-star example immediately after
+that condition contradicts it; KM follows the explicit condition. The release
+candidate passed 2,822 Rust tests and all four production Lean gates.
+The final 1,920-input classification run reports 1,622 successes, 212 input
+rejections, and 86 non-completions. The output audit verifies every successful
+output, zero dropped axioms, and all refusals as invalid inputs. No unsupported
+input or unexplained engine-error outcomes remain in this run. The
+592-input gold comparison has 552 Konclude matches, two successes without
+gold, 35 invalid-input refusals, two memory-limit failures, and one timeout.
+The historical benchmark table below does not describe these new validation
+rules.
 
 ## ORE 2015 benchmark
 

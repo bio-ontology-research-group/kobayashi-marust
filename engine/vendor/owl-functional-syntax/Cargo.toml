@@ -1,0 +1,11 @@
+[package]
+name = "km-owl-functional-syntax"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "LGPL-3.0-only"
+description = "Grammar-only OWL functional syntax validation using Horned-OWL's grammar"
+
+[dependencies]
+pest = "2.8.7"
+pest_derive = "2.8.7"

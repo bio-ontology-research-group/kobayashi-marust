@@ -1,0 +1,103 @@
+{
+  "normative_source": "https://www.w3.org/TR/owl2-syntax/#Typing_Constraints_of_OWL_2_DL",
+  "cases": 8,
+  "confirmed": 8,
+  "results": [
+    {
+      "ontology": "ore_ont_13647",
+      "sha256": "48f3e546118dc91b27005517fc5276b97613bf1f48d1f91548f23e8648fee304",
+      "confirmed": true,
+      "expanded_no_imports": true,
+      "declaration_found": false,
+      "witness": {
+        "line": 3597,
+        "property": "http://purl.obolibrary.org/obo/IAO_0000116",
+        "construct": "Annotation"
+      }
+    },
+    {
+      "ontology": "ore_ont_16457",
+      "sha256": "2108a7dab84eb979d4034c8f2ca0f116039f6ca32c5a16e3aa02edafa40097cd",
+      "confirmed": true,
+      "expanded_no_imports": true,
+      "declaration_found": false,
+      "witness": {
+        "line": 2329,
+        "property": "http://purl.obolibrary.org/obo/IAO_0000116",
+        "construct": "Annotation"
+      }
+    },
+    {
+      "ontology": "ore_ont_4911",
+      "sha256": "ab79968fe69e5948db726a35e25bede5717a01893dcca2c55b6522b8d120571f",
+      "confirmed": true,
+      "expanded_no_imports": true,
+      "declaration_found": false,
+      "witness": {
+        "line": 3159,
+        "property": "http://purl.obolibrary.org/obo/IAO_0000116",
+        "construct": "Annotation"
+      }
+    },
+    {
+      "ontology": "ore_ont_6627",
+      "sha256": "73b29d17e3aa77a27b3a74c0dd819333230f0b7570ff07c78555e15915d68039",
+      "confirmed": true,
+      "expanded_no_imports": true,
+      "declaration_found": false,
+      "witness": {
+        "line": 41246,
+        "property": "http://www.geneontology.org/formats/oboInOwl#conflicts",
+        "construct": "Annotation"
+      }
+    },
+    {
+      "ontology": "ore_ont_7646",
+      "sha256": "d7ff028cc60300907a94ebb378c6813f0aaf4981a16d18fd9bfcbe353e74ef94",
+      "confirmed": true,
+      "expanded_no_imports": true,
+      "declaration_found": false,
+      "witness": {
+        "line": 1470834,
+        "property": "http://purl.obolibrary.org/obo/IAO_0000116",
+        "construct": "Annotation"
+      }
+    },
+    {
+      "ontology": "ore_ont_7914",
+      "sha256": "bfd003b43e573acfbaf62d1456cdff714f26ace592287a0bc262910419113037",
+      "confirmed": true,
+      "expanded_no_imports": true,
+      "declaration_found": false,
+      "witness": {
+        "line": 24672,
+        "property": "http://www.geneontology.org/formats/oboInOwl#conflicts",
+        "construct": "Annotation"
+      }
+    },
+    {
+      "ontology": "ore_ont_9654",
+      "sha256": "9b80e89d2d93b66d438ba597a125905f576fd0871502a000ac3676db87eb2513",
+      "confirmed": true,
+      "expanded_no_imports": true,
+      "declaration_found": false,
+      "witness": {
+        "line": 4711,
+        "property": "http://purl.obolibrary.org/obo/IAO_0000116",
+        "construct": "Annotation"
+      }
+    },
+    {
+      "ontology": "ore_ont_9663",
+      "sha256": "13497cacd9c6fc1035450e50255c8f2d605a7aa85829958aa4c5d9fedfc7c86b",
+      "confirmed": true,
+      "expanded_no_imports": true,
+      "declaration_found": false,
+      "witness": {
+        "line": 114841,
+        "property": "http://www.geneontology.org/formats/oboInOwl#source",
+        "construct": "Annotation"
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+Prefix(:=<urn:conformance:>)
+Ontology(
+ Declaration(DataProperty(:reasonForVisit))
+ Declaration(NamedIndividual(:patient))
+ DataPropertyRange(:reasonForVisit rdfs:Literal)
+ DataPropertyAssertion(:reasonForVisit :patient "Diabetes"^^rdfs:Literal)
+)

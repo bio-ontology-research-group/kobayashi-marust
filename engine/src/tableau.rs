@@ -1682,6 +1682,50 @@ impl Tableau {
         }
     }
 
+    /// Permute only ordinary relational conjunctions. Equality, existential
+    /// body atoms and self-role atoms retain their existing matching path.
+    fn selective_match_clause(cl: &Clause, g: &Graph, seed: &Subst) -> Option<Clause> {
+        if cl.body.len() < 6 || !cl.body.iter().all(|atom| match atom {
+            Atom::Concept { .. } => true, Atom::Role { s, t, .. } => s != t, _ => false,
+        }) {
+            return None;
+        }
+        let mut literal_counts = HashMap::new();
+        let mut role_counts = HashMap::new();
+        for atom in &cl.body {
+            if let Atom::Concept { lit, .. } = atom {
+                literal_counts.entry(*lit).or_insert_with(|| g.concepts.iter().filter(|labels| labels.contains(lit)).count());
+            }
+        }
+        for &(role, _, _) in &g.edges { *role_counts.entry(role).or_insert(0usize) += 1; }
+        let mut bound: HashSet<Var> = seed.v.iter().map(|(variable, _)| *variable).collect();
+        let mut remaining: Vec<_> = (0..cl.body.len()).collect();
+        let mut body = Vec::with_capacity(cl.body.len());
+        while !remaining.is_empty() {
+            let position = remaining.iter().enumerate().min_by_key(|(_, index)| {
+                let estimate = match &cl.body[**index] {
+                    Atom::Concept { lit, t } => if bound.contains(t) { 1 } else { literal_counts[lit] },
+                    Atom::Role { r, s, t } => {
+                        let count = role_counts.get(r).copied().unwrap_or(0);
+                        if count == 0 { 0 } else if bound.contains(s) && bound.contains(t) { 1 }
+                        else if bound.contains(s) || bound.contains(t) { (count / g.n().max(1)).max(1) }
+                        else { count }
+                    }
+                    _ => unreachable!(),
+                };
+                (estimate, **index)
+            }).unwrap().0;
+            let index = remaining.remove(position);
+            match &cl.body[index] {
+                Atom::Concept { t, .. } => { bound.insert(*t); }
+                Atom::Role { s, t, .. } => { bound.insert(*s); bound.insert(*t); }
+                _ => unreachable!(),
+            }
+            body.push(cl.body[index].clone());
+        }
+        Some(Clause::new(body, cl.head.clone()))
+    }
+
     /// All substitutions binding every clause variable to a node such that every
     /// body atom holds. Unguarded variables (the center `x` when not bound by the
     /// body) range over all nodes. Prefer `match_visit` when you do not need the
@@ -1698,6 +1742,11 @@ impl Tableau {
     /// Visit each body-satisfying substitution, calling `f`. Returning `false`
     /// from `f` stops the search early; `match_visit` then returns `false`.
     fn match_visit(&self, cl: &Clause, g: &Graph, f: &mut dyn FnMut(&Subst) -> bool) -> bool {
+        let seed = Subst::new();
+        let ordered = if std::env::var_os("KM_RULE_JOIN_ORDER").is_some() {
+            Self::selective_match_clause(cl, g, &seed)
+        } else { None };
+        let cl = ordered.as_ref().unwrap_or(cl);
         let vars = clause_vars(cl);
         self.match_rec(cl, g, 0, &mut Subst::new(), &vars, f)
     }
@@ -1830,6 +1879,10 @@ impl Tableau {
         seed: Subst,
         f: &mut dyn FnMut(&Subst) -> bool,
     ) -> bool {
+        let ordered = if std::env::var_os("KM_RULE_JOIN_ORDER").is_some() {
+            Self::selective_match_clause(cl, g, &seed)
+        } else { None };
+        let cl = ordered.as_ref().unwrap_or(cl);
         let vars = clause_vars(cl);
         let mut subst = seed;
         self.match_rec(cl, g, 0, &mut subst, &vars, f)
@@ -5138,6 +5191,13 @@ pub struct JClause {
 /// concept ids to classify (default: all concepts).
 #[derive(Deserialize)]
 pub struct TInput {
+    /// Source-derived role sorts for finite rule-model verification only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_data_roles: Option<Vec<bool>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_source_classes: Option<crate::frontend::profile::RuleSourceClasses>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_source_abox: Option<crate::frontend::profile::RuleSourceAbox>,
     pub concepts: Vec<String>,
     pub roles: Vec<String>,
     pub clauses: Vec<JClause>,
@@ -5207,7 +5267,7 @@ pub struct JCardDef {
     pub exact: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub(crate) struct TOutput {
     pub consistent: bool,
     pub unsatisfiable: Vec<String>,
@@ -5288,22 +5348,848 @@ fn atom_of(j: &JAtom) -> Atom {
 /// because the careful DFS can recurse deeply. Exposed separately from
 /// `run_json` so the orchestrator's precheck contract is testable without the
 /// env-var gate.
+/// Check an actual finite interpretation, without relying on saturation or
+/// blocking claims. Positive labels define class extensions; negative atoms
+/// mean complement, including at nodes without an explicit negative label.
+/// This checks converted clauses only; source coverage remains a producer
+/// obligation. Exhausting the checker budget produces no certificate.
+fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
+    mut budget: usize) -> Result<(), String> {
+    let domain: Vec<_> = (0..g.n()).filter(|&n| g.alive(n)).collect();
+    if domain.is_empty() { return Err("finite model has an empty object domain".into()); }
+    for &node in &domain {
+        if g.concepts[node].iter().any(|lit| lit.neg && g.concepts[node].contains(&lit.complement())) {
+            return Err("finite model contains contradictory class labels".into());
+        }
+    }
+    for &nominal in nominals {
+        if domain.iter().filter(|&&node| g.concepts[node].contains(&CLit::pos(nominal))).count() != 1 {
+            return Err("finite model nominal is not a singleton".into());
+        }
+    }
+    // Exact relation projections used only to restrict universal assignments
+    // that can satisfy the body. Keep retired nodes outside the interpretation.
+    let mut role_edges: HashMap<R, Vec<(Node, Node)>> = HashMap::new();
+    let mut successors: HashMap<(R, Node), Vec<Node>> = HashMap::new();
+    for &(role, source, target) in &g.edges {
+        if g.alive(source) && g.alive(target) {
+            role_edges.entry(role).or_default().push((source, target));
+            successors.entry((role, source)).or_default().push(target);
+        }
+    }
+    fn terms(atom: &Atom) -> Vec<Var> {
+        match atom {
+            Atom::Concept { t, .. } | Atom::Exists { t, .. } => vec![*t],
+            Atom::Role { s, t, .. } | Atom::Eq { s, t } => vec![*s, *t],
+        }
+    }
+    fn holds(g: &Graph, successors: &HashMap<(R, Node), Vec<Node>>, atom: &Atom, binding: &HashMap<Var, Node>) -> Option<bool> {
+        let class = |node: Node, lit: CLit| g.concepts[node].contains(&CLit::pos(lit.c)) != lit.neg;
+        Some(match atom {
+            Atom::Concept { lit, t } => class(*binding.get(t)?, *lit),
+            Atom::Role { r, s, t } => g.edges.contains(&(*r, *binding.get(s)?, *binding.get(t)?)),
+            Atom::Eq { s, t } => binding.get(s)? == binding.get(t)?,
+            Atom::Exists { r, fil, t } => {
+                let source = *binding.get(t)?;
+                successors.get(&(*r, source)).into_iter().flatten().any(|&target| class(target, *fil))
+            }
+        })
+    }
+    fn check(g: &Graph, domain: &[Node], role_edges: &HashMap<R, Vec<(Node, Node)>>,
+        successors: &HashMap<(R, Node), Vec<Node>>, unary_domains: &HashMap<Var, Vec<Node>>, clause: &Clause, vars: &[Var],
+        binding: &mut HashMap<Var, Node>, budget: &mut usize) -> Result<(), String> {
+        if *budget == 0 { return Err("finite model verification budget exhausted".into()); }
+        *budget -= 1;
+        if clause.body.iter().any(|atom| holds(g, successors, atom, binding) == Some(false)) {
+            return Ok(());
+        }
+        // A head already true under a partial assignment remains true under
+        // every extension. No remaining universal assignments can violate it.
+        if clause.head.iter().any(|atom| holds(g, successors, atom, binding) == Some(true)) {
+            return Ok(());
+        }
+        if let Some((&var, remaining)) = vars.split_first() {
+            let mut restricted: Option<HashSet<Node>> = None;
+            for atom in &clause.body {
+                let next = match atom {
+                    Atom::Role { r, s, t } if *s == var || *t == var => {
+                        let mut allowed = HashSet::new();
+                        for &(source, target) in role_edges.get(r).into_iter().flatten() {
+                            if *s == *t && source != target { continue; }
+                            if *s != var && binding.get(s).is_some_and(|&node| node != source) { continue; }
+                            if *t != var && binding.get(t).is_some_and(|&node| node != target) { continue; }
+                            allowed.insert(if *s == var { source } else { target });
+                        }
+                        Some(allowed)
+                    }
+                    Atom::Eq { s, t } if *s == var && *t != var =>
+                        binding.get(t).map(|&node| HashSet::from([node])),
+                    Atom::Eq { s, t } if *t == var && *s != var =>
+                        binding.get(s).map(|&node| HashSet::from([node])),
+                    _ => None,
+                };
+                if let Some(next) = next {
+                    match &mut restricted {
+                        Some(current) => current.retain(|node| next.contains(node)),
+                        None => restricted = Some(next),
+                    }
+                }
+            }
+            // Positive unary premises restrict this variable's domain exactly.
+            // This is a model-checking join, not closed-world rule inference.
+            let candidates: Vec<_> = unary_domains[&var].iter().copied()
+                .filter(|node| restricted.as_ref().is_none_or(|allowed| allowed.contains(node)))
+                .collect();
+            for node in candidates {
+                binding.insert(var, node);
+                check(g, domain, role_edges, successors, unary_domains, clause, remaining, binding, budget)?;
+            }
+            binding.remove(&var);
+            return Ok(());
+        }
+        if clause.head.iter().any(|atom| holds(g, successors, atom, binding) == Some(true)) {
+            Ok(())
+        } else { Err("finite interpretation violates a converted rule clause".into()) }
+    }
+    let mut class_extensions: HashMap<CLit, HashSet<Node>> = HashMap::new();
+    let stats = std::env::var_os("KM_TAB_STATS").is_some();
+    for (index, clause) in clauses.iter().enumerate() {
+        if stats && index % 1000 == 0 {
+            eprintln!("KM_TAB_STATS finite-model clause={index}/{} domain={} budget={budget}", clauses.len(), domain.len());
+        }
+        let vars: std::collections::BTreeSet<_> = clause.body.iter().chain(&clause.head).flat_map(terms).collect();
+        for atom in &clause.body {
+            if let Atom::Concept { lit, .. } = atom {
+                class_extensions.entry(*lit).or_insert_with(|| domain.iter().copied().filter(|&node|
+                    g.concepts[node].contains(&CLit::pos(lit.c)) != lit.neg).collect());
+            }
+        }
+        let unary_domains: HashMap<_, Vec<_>> = vars.iter().map(|&var| {
+            let mut constraints: Vec<_> = clause.body.iter().filter_map(|atom| match atom {
+                Atom::Concept { lit, t } if *t == var => Some(&class_extensions[lit]),
+                _ => None,
+            }).collect();
+            constraints.sort_by_key(|set| set.len());
+            let mut candidates: Vec<_> = match constraints.first() {
+                Some(first) => first.iter().copied().filter(|node| constraints.iter().skip(1).all(|set| set.contains(node))).collect(),
+                None => domain.clone(),
+            };
+            candidates.sort_unstable();
+            (var, candidates)
+        }).collect();
+        // Finite grounding can put a selective concrete-value guard on a
+        // late-numbered variable. Check its domain before enumerating other
+        // variables; an empty body domain makes the implication vacuous.
+        if unary_domains.values().any(Vec::is_empty) { continue; }
+        let mut vars: Vec<_> = vars.into_iter().collect();
+        vars.sort_by_key(|var| unary_domains[var].len());
+        check(g, &domain, &role_edges, &successors, &unary_domains, clause, &vars, &mut HashMap::new(), &mut budget)?;
+    }
+    Ok(())
+}
+
+/// Find an injective concrete-value interpretation for every datatype-labelled
+/// live node. This is a separate obligation from source data-role typing: a
+/// caller must still prove that all data successors are among these nodes and
+/// that source object individuals/roles remain in the object domain.
+fn finite_datatype_values(g: &Graph, names: &[String]) -> Result<HashMap<Node, String>, String> {
+    let vocabulary: Vec<_> = names.iter().enumerate().filter(|(_, name)| name.starts_with("__dt__")).collect();
+    let datatype_names: Vec<_> = vocabulary.iter().map(|(_, name)| (*name).clone()).collect();
+    let mut concrete_profiles = HashMap::new();
+    for name in &datatype_names {
+        if let Some(literal) = name.strip_prefix("__dt__val__") {
+            let profile = crate::frontend::datatypes::finite_literal_datatype_truth(literal, &datatype_names)
+                .ok_or_else(|| "undecided concrete-value membership in finite model".to_string())?;
+            concrete_profiles.entry(profile).or_insert(literal);
+        }
+    }
+    let mut used = HashSet::new();
+    let mut data_nodes = HashMap::new();
+    for node in (0..g.n()).filter(|&node| g.alive(node)) {
+        let profile: Vec<_> = vocabulary.iter().map(|(id, _)| g.concepts[node].contains(&CLit::pos(*id as C))).collect();
+        if !profile.iter().any(|&present| present) { continue; }
+        if !concrete_profiles.contains_key(&profile) {
+            return Err(format!("no concrete literal realizes datatype node {node}"));
+        }
+        // Every candidate has its singleton concept in the vocabulary, so
+        // equal profiles denote the same value. Distinct graph nodes cannot
+        // share one value without changing the verified equality relation.
+        let literal = concrete_profiles[&profile].to_owned();
+        if !used.insert(profile) {
+            return Err("concrete values would identify distinct finite-model nodes".into());
+        }
+        data_nodes.insert(node, literal);
+    }
+    Ok(data_nodes)
+}
+
+#[cfg(test)]
+fn verify_finite_datatype_realization(g: &Graph, names: &[String]) -> Result<HashSet<Node>, String> {
+    Ok(finite_datatype_values(g, names)?.into_keys().collect())
+}
+
+fn evaluate_source_boolean(expression: &crate::frontend::syntax::Concept, node: Node, graph: &Graph, registry: &crate::frontend::iri::IriRegistry,
+        ids: &HashMap<String, C>) -> Result<bool, String> {
+        use crate::frontend::syntax::Concept;
+        Ok(match expression {
+            Concept::Top => true,
+            Concept::Bottom => false,
+            Concept::Name(name) => ids.get(&registry.full_iri(name))
+                .is_some_and(|id| graph.concepts[node].contains(&CLit::pos(*id))),
+            Concept::Not(body) => !evaluate_source_boolean(body, node, graph, registry, ids)?,
+            Concept::And(parts) => {
+                let mut value = true;
+                for part in parts { value &= evaluate_source_boolean(part, node, graph, registry, ids)?; }
+                value
+            }
+            Concept::Or(parts) => {
+                let mut value = false;
+                for part in parts { value |= evaluate_source_boolean(part, node, graph, registry, ids)?; }
+                value
+            }
+            _ => return Err("non-Boolean source class expression".into()),
+        })
+    }
+
+/// Independently evaluate the original Boolean TBox on the object part of
+/// the candidate. Named classes absent from the worker are interpreted as
+/// empty; top/bottom are semantic constants, not graph labels.
+fn verify_finite_source_classes(g: &Graph, data_nodes: &HashSet<Node>,
+    source: &crate::frontend::profile::RuleSourceClasses) -> Result<(), String> {
+    use crate::frontend::{iri::IriRegistry, parse, syntax::Axiom};
+    let mut ids = HashMap::new();
+    for (id, iri) in source.concept_iris.iter().enumerate() {
+        if let Some(iri) = iri {
+            if ids.insert(iri.clone(), id as C).is_some() {
+                return Err("duplicate full IRI in source class interpretation".into());
+            }
+        }
+    }
+    let mut registry = IriRegistry::new();
+    let mut admitted = true;
+    let ontology = parse::parse_axioms_observed(&mut registry, &source.source, |node| {
+        use crate::frontend::sexpr::Node;
+        admitted &= match node {
+            Node::List("SubClassOf" | "EquivalentClasses" | "DisjointClasses" | "DisjointUnion", _) => true,
+            Node::List("Declaration", args) => matches!(args.as_slice(), [Node::List("Class", _) ]),
+            _ => false,
+        };
+    }).map_err(|error| format!("cannot parse source Boolean theory: {error:?}"))?;
+    if !admitted { return Err("source class theory contains non-class axioms".into()); }
+    let objects: Vec<_> = (0..g.n()).filter(|node| g.alive(*node) && !data_nodes.contains(node)).collect();
+    if objects.is_empty() { return Err("source class model has no objects".into()); }
+    for axiom in ontology.tbox() {
+        for &node in &objects {
+            let eval = |expression| evaluate_source_boolean(expression, node, g, &registry, &ids);
+            let valid = match axiom {
+                Axiom::SubClassOf(left, right) => !eval(left)? | eval(right)?,
+                Axiom::EquivalentClasses(left, right) => eval(left)? == eval(right)?,
+                Axiom::DisjointClasses(left, right) => !(eval(left)? & eval(right)?),
+                _ => return Err("unexpected source class axiom".into()),
+            };
+            if !valid { return Err(format!("finite interpretation violates source class axiom at object {node}")); }
+        }
+    }
+    Ok(())
+}
+
+/// Check original object assertions directly, including non-unique names and
+/// negative edges. Source data assertions are a separate concrete obligation.
+fn verify_finite_source_abox(g: &Graph, data_nodes: &HashSet<Node>,
+    source: &crate::frontend::profile::RuleSourceAbox, values: Option<&HashMap<Node, String>>) -> Result<(), String> {
+    use crate::frontend::{iri::IriRegistry, parse, syntax::Axiom};
+    fn index(names: &[Option<String>]) -> Result<HashMap<String, u32>, String> {
+        let mut result = HashMap::new();
+        for (id, name) in names.iter().enumerate() {
+            if let Some(name) = name {
+                if result.insert(name.clone(), id as u32).is_some() {
+                    return Err("duplicate full IRI in source ABox signature".into());
+                }
+            }
+        }
+        Ok(result)
+    }
+    let classes = index(&source.concept_iris)?;
+    let roles = index(&source.role_iris)?;
+    let nominal_ids = index(&source.nominal_iris)?;
+    let mut individuals = HashMap::new();
+    for (iri, id) in nominal_ids {
+        let nodes: Vec<_> = (0..g.n()).filter(|node| g.alive(*node)
+            && g.concepts[*node].contains(&CLit::pos(id))).collect();
+        if nodes.len() != 1 || data_nodes.contains(&nodes[0]) {
+            return Err("source named individual lacks a unique object denotation".into());
+        }
+        individuals.insert(iri, nodes[0]);
+    }
+    let mut registry = IriRegistry::new();
+    let mut admitted = true;
+    let ontology = parse::parse_axioms_observed(&mut registry, &source.source, |node| {
+        use crate::frontend::sexpr::Node;
+        admitted &= matches!(node, Node::List("ClassAssertion" | "ObjectPropertyAssertion"
+            | "NegativeObjectPropertyAssertion" | "SameIndividual" | "DifferentIndividuals", _));
+    }).map_err(|error| format!("cannot parse original object ABox: {error:?}"))?;
+    if !admitted { return Err("source object ABox contains other axioms".into()); }
+    let individual = |name: &str| individuals.get(&registry.full_iri(name)).copied()
+        .ok_or_else(|| format!("source individual has no worker denotation: {}", registry.full_iri(name)));
+    let edge = |role: &str, a, b| {
+        let iri = registry.full_iri(role);
+        match iri.as_str() {
+            "owl:topObjectProperty" | "http://www.w3.org/2002/07/owl#topObjectProperty" => true,
+            "owl:bottomObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty" => false,
+            _ => roles.get(&iri).is_some_and(|id| g.edges.contains(&(*id, a, b))),
+        }
+    };
+    for axiom in ontology.abox() {
+        let valid = match axiom {
+            Axiom::ConceptAssertion(class, name) =>
+                evaluate_source_boolean(class, individual(name)?, g, &registry, &classes)?,
+            Axiom::RoleAssertion(role, a, b) => edge(role, individual(a)?, individual(b)?),
+            Axiom::NegativeRoleAssertion(role, a, b) => !edge(role, individual(a)?, individual(b)?),
+            Axiom::SameIndividual(a, b) => individual(a)? == individual(b)?,
+            Axiom::DifferentIndividuals(a, b) => individual(a)? != individual(b)?,
+            _ => return Err("unexpected source object assertion".into()),
+        };
+        if !valid { return Err("finite interpretation violates original object assertion".into()); }
+    }
+    if let Some(rules) = &source.rules {
+        verify_finite_source_rules(g, rules, &classes, &roles, &individuals,
+            values.ok_or("source rule verification lacks concrete values")?)?;
+    }
+    if let Some(data) = &source.data_axioms {
+        verify_finite_source_data(g, data, &classes, &roles, &individuals,
+            values.ok_or("source data verification lacks concrete values")?)?;
+    }
+    if let Some(properties) = &source.object_properties {
+        verify_finite_source_properties(g, data_nodes, properties, &classes, &roles)?;
+    }
+    Ok(())
+}
+
+/// Check source SWRL directly by joining finite object/data relations. Builtin
+/// outputs are evaluated as values, not invented object or datatype nodes.
+fn verify_finite_source_rules(g: &Graph, source: &str, classes: &HashMap<String, C>,
+    roles: &HashMap<String, R>, individuals: &HashMap<String, Node>,
+    values: &HashMap<Node, String>) -> Result<(), String> {
+    use crate::frontend::{data_rules::{evaluate_builtin_conjunction, BuiltinEvaluation},
+        datatypes, iri::IriRegistry, parse, sexpr::Node as SNode,
+        syntax::{RuleAtom as A, RuleTerm as T, RuleDataTerm as D}};
+    #[derive(Clone, Default)]
+    struct Binding { objects: HashMap<String, Node>, data: std::collections::BTreeMap<String, String> }
+    struct Model<'a> { graph: &'a Graph, classes: &'a HashMap<String,C>, roles: &'a HashMap<String,R>,
+        individuals: &'a HashMap<String,Node>, values: &'a HashMap<Node,String>, domain: Vec<Node>, registry: &'a IriRegistry,
+        edges: &'a HashMap<R,Vec<(Node,Node)>>, var_domains: HashMap<String,Vec<Node>> }
+    impl Model<'_> {
+        fn spend(budget: &mut usize) -> Result<(), String> {
+            *budget = budget.checked_sub(1).ok_or("source rule verification budget exhausted")?;
+            Ok(())
+        }
+        fn candidates(&self, term: &T, binding: &Binding) -> Result<Vec<Node>, String> {
+            Ok(match term {
+                T::Ind(name) => vec![*self.individuals.get(&self.registry.full_iri(name)).ok_or("rule individual lacks denotation")?],
+                T::Var(name) => binding.objects.get(name).map(|n| vec![*n]).unwrap_or_else(|| self.var_domains.get(name).cloned().unwrap_or_else(|| self.domain.clone())),
+            })
+        }
+        fn bind(&self, term: &T, value: Node, binding: &mut Binding) -> Result<bool, String> {
+            match term {
+                T::Ind(_) => Ok(self.candidates(term,binding)? == vec![value]),
+                T::Var(name) => {
+                    if binding.data.contains_key(name) { return Err("rule variable mixes object and data sorts".into()); }
+                    if self.var_domains.get(name).is_some_and(|nodes| !nodes.contains(&value)) { return Ok(false); }
+                    Ok(binding.objects.insert(name.clone(),value).is_none_or(|old| old == value))
+                }
+            }
+        }
+        fn same_value(left: &str, right: &str) -> Result<bool, String> {
+            let names = [format!("__dt__val__{right}")];
+            Ok(datatypes::finite_literal_datatype_truth(left, &names).ok_or("rule data equality is undecided")?[0])
+        }
+        fn bind_data(&self, term: &D, value: &str, binding: &mut Binding) -> Result<bool, String> {
+            match term {
+                D::Literal(literal) => Self::same_value(value,literal),
+                D::Var(name) => {
+                    if binding.objects.contains_key(name) { return Err("rule variable mixes data and object sorts".into()); }
+                    if let Some(old) = binding.data.get(name) { Self::same_value(value,old) }
+                    else { binding.data.insert(name.clone(),value.into()); Ok(true) }
+                }
+                _ => Err("unsupported source data-rule term".into()),
+            }
+        }
+        fn edge(&self, role: &str, a: Node, b: Node) -> bool {
+            match self.registry.full_iri(role).as_str() {
+                "owl:topObjectProperty" | "http://www.w3.org/2002/07/owl#topObjectProperty" => true,
+                "owl:bottomObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty" => false,
+                iri => self.roles.get(iri).is_some_and(|r| self.graph.edges.contains(&(*r,a,b))),
+            }
+        }
+        fn heads(&self, head: &[A], binding: &Binding, budget: &mut usize) -> Result<(), String> {
+            for atom in head {
+                let terms: Vec<_> = match atom { A::Class(_,t) => vec![t],
+                    A::Role(_,a,b) | A::Same(a,b) | A::Diff(a,b) => vec![a,b],
+                    _ => return Err("unsupported logical source rule head".into()) };
+                for term in terms {
+                    if let T::Var(name) = term { if !binding.objects.contains_key(name) {
+                        for &node in &self.domain {
+                            *budget = budget.checked_sub(1).ok_or("source rule verification budget exhausted")?;
+                            let mut next = binding.clone();
+                            self.bind(term,node,&mut next)?;
+                            self.heads(head,&next,budget)?;
+                        }
+                        return Ok(());
+                    }}
+                }
+            }
+            let object = |term| self.candidates(term,binding).map(|v| v[0]);
+            for atom in head {
+                let valid = match atom {
+                    A::Class(c,t) => evaluate_source_boolean(c,object(t)?,self.graph,self.registry,self.classes)?,
+                    A::Role(r,a,b) => self.edge(r,object(a)?,object(b)?),
+                    A::Same(a,b) => object(a)? == object(b)?,
+                    A::Diff(a,b) => object(a)? != object(b)?,
+                    _ => return Err("unsupported logical source rule head".into()),
+                };
+                if !valid { return Err("finite interpretation violates original SWRL rule head".into()); }
+            }
+            Ok(())
+        }
+        fn join(&self, body: &[A], builtins: &[A], head: &[A], binding: Binding,
+            budget: &mut usize) -> Result<(), String> {
+            *budget = budget.checked_sub(1).ok_or("source rule verification budget exhausted")?;
+            let mut binding = binding;
+            match evaluate_builtin_conjunction(builtins,&binding.data) {
+                BuiltinEvaluation::Refuted => return Ok(()),
+                BuiltinEvaluation::Satisfied(data) => {
+                    binding.data = data;
+                    let ready = head.iter().all(|atom| {
+                        let terms: Vec<_> = match atom { A::Class(_,t) => vec![t],
+                            A::Role(_,a,b) | A::Same(a,b) | A::Diff(a,b) => vec![a,b], _ => return false };
+                        terms.into_iter().all(|t| match t { T::Ind(_) => true, T::Var(v) => binding.objects.contains_key(v) })
+                    });
+                    if ready && self.heads(head,&binding,budget).is_ok() { return Ok(()); }
+                }
+                BuiltinEvaluation::Deferred => {}
+            }
+            // Select the next relation under this partial substitution. Every
+            // atom is retained; only conjunction enumeration order changes.
+            let bound = |term: &T| matches!(term,T::Ind(_)) || matches!(term,T::Var(v) if binding.objects.contains_key(v));
+            let cost = |atom: &A| -> usize { match atom {
+                A::Class(_,term) => if bound(term) { 0 } else { self.candidates(term,&binding).map_or(usize::MAX,|v| v.len()) },
+                A::Role(role,a,b) => if bound(a) && bound(b) { 0 } else if bound(a) || bound(b) { 1 } else {
+                    self.roles.get(&self.registry.full_iri(role)).and_then(|r| self.edges.get(r)).map_or(0,Vec::len)
+                },
+                A::Data(role,subject,_) => if bound(subject) { 1 } else {
+                    self.roles.get(&self.registry.full_iri(role)).and_then(|r| self.edges.get(r)).map_or(0,Vec::len)
+                },
+                A::Same(a,b) | A::Diff(a,b) => if bound(a) && bound(b) { 0 } else { self.domain.len().saturating_mul(self.domain.len()) },
+                _ => usize::MAX,
+            }};
+            let Some(index) = body.iter().enumerate().min_by_key(|(_,atom)| cost(atom)).map(|(i,_)| i) else {
+                return match evaluate_builtin_conjunction(builtins,&binding.data) {
+                    BuiltinEvaluation::Refuted => Ok(()),
+                    BuiltinEvaluation::Deferred => Err("source rule builtin is unresolved".into()),
+                    BuiltinEvaluation::Satisfied(data) => self.heads(head,&Binding { data, ..binding },budget),
+                };
+            };
+            let atom = &body[index];
+            let remaining: Vec<_> = body.iter().enumerate().filter(|(i,_)| *i != index).map(|(_,atom)| atom.clone()).collect();
+            let rest = remaining.as_slice();
+            match atom {
+                A::Class(class,term) => for node in self.candidates(term,&binding)? {
+                    Self::spend(budget)?;
+                    if evaluate_source_boolean(class,node,self.graph,self.registry,self.classes)? {
+                        let mut next = binding.clone(); if self.bind(term,node,&mut next)? { self.join(rest,builtins,head,next,budget)?; }
+                    }
+                },
+                A::Role(role,a,b) => {
+                    let iri = self.registry.full_iri(role);
+                    if matches!(iri.as_str(), "owl:topObjectProperty" | "http://www.w3.org/2002/07/owl#topObjectProperty") {
+                        return Err("universal source rule relation is outside the admitted fragment".into());
+                    }
+                    if matches!(iri.as_str(), "owl:bottomObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty") { return Ok(()); }
+                    if let Some(id) = self.roles.get(&iri) {
+                        for &(x,y) in self.edges.get(id).into_iter().flatten() {
+                            if bound(a) && !self.candidates(a,&binding)?.contains(&x) { continue; }
+                            if bound(b) && !self.candidates(b,&binding)?.contains(&y) { continue; }
+                            Self::spend(budget)?;
+                            if !self.domain.contains(&x) || !self.domain.contains(&y) { continue; }
+                            let mut next = binding.clone();
+                            if self.bind(a,x,&mut next)? && self.bind(b,y,&mut next)? { self.join(rest,builtins,head,next,budget)?; }
+                        }
+                    }
+                }
+                A::Data(role,subject,value) => {
+                    if let Some(id) = self.roles.get(&self.registry.full_iri(role)) {
+                        for &(a,b) in self.edges.get(id).into_iter().flatten() {
+                            if bound(subject) && !self.candidates(subject,&binding)?.contains(&a) { continue; }
+                            Self::spend(budget)?;
+                            if !self.domain.contains(&a) { continue; }
+                            let literal = self.values.get(&b).ok_or("rule data edge lacks a concrete value")?;
+                            let mut next = binding.clone();
+                            if self.bind(subject,a,&mut next)? && self.bind_data(value,literal,&mut next)? {
+                                self.join(rest,builtins,head,next,budget)?;
+                            }
+                        }
+                    }
+                }
+                A::Same(a,b) | A::Diff(a,b) => for x in self.candidates(a,&binding)? { for y in self.candidates(b,&binding)? {
+                        Self::spend(budget)?;
+                    if (x == y) != matches!(atom,A::Same(..)) { continue; }
+                    let mut next = binding.clone();
+                    if self.bind(a,x,&mut next)? && self.bind(b,y,&mut next)? { self.join(rest,builtins,head,next,budget)?; }
+                }},
+                _ => return Err("unsupported logical source rule premise".into()),
+            }
+            Ok(())
+        }
+    }
+    let mut edges: HashMap<R,Vec<(Node,Node)>> = HashMap::new();
+    for &(r,a,b) in &g.edges {
+        if g.alive(a) && g.alive(b) { edges.entry(r).or_default().push((a,b)); }
+    }
+    let mut registry = IriRegistry::new(); let mut budget = 10_000_000;
+    parse::for_each_ontology_child(source, |node| {
+        let checked = (|| -> Result<(),String> {
+            let SNode::List("DLSafeRule",raw) = node else { return Err("non-rule axiom in original rule source".into()); };
+            let args = parse::strip_annotations(raw);
+            if args.len() != 2 { return Err("source rule needs exactly one body and head".into()); }
+            let body = args.iter().find(|n| n.head() == Some("Body")).ok_or("missing source rule body")?;
+            let head = args.iter().find(|n| n.head() == Some("Head")).ok_or("missing source rule head")?;
+            let mut body = parse::parse_rule_atoms(&mut registry,body).ok_or("unparsed original rule premise")?;
+            let parsed_head = parse::parse_rule_atoms(&mut registry,head).ok_or("unparsed original rule head")?;
+            if parsed_head.is_empty() {
+                if let SNode::List(_,raw) = head { if raw.iter().any(|n| n.head() != Some("Annotation")) { return Ok(()); } }
+                return Err("empty logical source rule head".into());
+            }
+            let mut domain: Vec<_> = individuals.values().copied().collect(); domain.sort_unstable(); domain.dedup();
+            if domain.is_empty() { return Err("source rules lack a named-object interpretation".into()); }
+            if parsed_head.iter().any(|a| !matches!(a,A::Class(..)|A::Role(..)|A::Same(..)|A::Diff(..))) {
+                return Err("unsupported logical source rule head".into());
+            }
+            let builtins: Vec<_> = body.iter().filter(|a| matches!(a,A::Builtin(..))).cloned().collect();
+            body.retain(|a| !matches!(a,A::Builtin(..)));
+            body.sort_by_key(|a| match a { A::Data(..) => 0, A::Role(..) => 1, A::Class(..) => 2, _ => 3 });
+            if body.iter().any(|a| !matches!(a,A::Class(..)|A::Role(..)|A::Same(..)|A::Diff(..)|A::Data(..))) {
+                return Err("unsupported logical source rule premise".into());
+            }
+            for atom in body.iter().chain(&parsed_head) {
+                if let A::Class(class,_) = atom {
+                    let _ = evaluate_source_boolean(class,domain[0],g,&registry,classes)?;
+                }
+            }
+            let mut var_domains: HashMap<String,Vec<Node>> = HashMap::new();
+            for atom in &body {
+                if let A::Class(class,T::Var(variable)) = atom {
+                    let mut allowed = Vec::new();
+                    for &node in var_domains.get(variable).unwrap_or(&domain) {
+                        if evaluate_source_boolean(class,node,g,&registry,classes)? { allowed.push(node); }
+                    }
+                    if allowed.is_empty() { return Ok(()); }
+                    var_domains.insert(variable.clone(),allowed);
+                }
+            }
+            let model = Model { graph:g, classes, roles, individuals, values, domain, registry:&registry, edges:&edges, var_domains };
+            model.join(&body,&builtins,&parsed_head,Binding::default(),&mut budget)
+        })(); checked.map_err(parse::OutOfFragment)
+    }).map_err(|error| error.0)
+}
+
+/// Verify original concrete-data axioms using the already checked injective
+/// assignment of data nodes to actual datatype values.
+fn verify_finite_source_data(g: &Graph, source: &str, classes: &HashMap<String, C>,
+    roles: &HashMap<String, R>, individuals: &HashMap<String, Node>,
+    values: &HashMap<Node, String>) -> Result<(), String> {
+    use crate::frontend::{datatypes, iri::IriRegistry, parse, sexpr::Node as SNode};
+    let mut registry = IriRegistry::new();
+    parse::for_each_ontology_child(source, |node| {
+        let checked = (|| -> Result<(), String> {
+            let SNode::List(kind, raw) = node else { return Err("invalid source data axiom".into()); };
+            let args = parse::strip_annotations(raw);
+            let property = args.first().and_then(|n| n.as_atom()).ok_or("source data property is not named")?;
+            let property_name = registry.short(property);
+            let iri = registry.full_iri(&property_name);
+            let edges: Vec<_> = roles.get(&iri).map(|id| g.edges.iter().filter(|(r,a,b)|
+                r == id && g.alive(*a) && g.alive(*b)).map(|(_,a,b)| (*a,*b)).collect()).unwrap_or_default();
+            for &(a,b) in &edges {
+                if values.contains_key(&a) || !values.contains_key(&b) {
+                    return Err("source data edge lacks object-to-value interpretation".into());
+                }
+            }
+            let valid = match *kind {
+                "DataPropertyAssertion" if args.len() >= 3 => {
+                    let individual = args[1].as_atom().ok_or("source data assertion has no named subject")?;
+                    let short = registry.short(individual);
+                    let object = individuals.get(&registry.full_iri(&short)).ok_or("source data subject has no denotation")?;
+                    let (literal, consumed) = parse::glue_literal(&args, 2).ok_or("invalid source literal")?;
+                    if consumed + 2 != args.len() { return Err("extra source data assertion operands".into()); }
+                    let singleton = format!("__dt__val__{literal}");
+                    if !datatypes::bridge_exact_atomic_name(&singleton) {
+                        return Err("source assertion literal has no exact value interpretation".into());
+                    }
+                    let mut matched = false;
+                    let mut undecided = false;
+                    for &(a,b) in &edges {
+                        if a != *object { continue; }
+                        match datatypes::finite_literal_datatype_truth(&values[&b], std::slice::from_ref(&singleton)) {
+                            Some(truth) => matched |= truth[0],
+                            None => undecided = true,
+                        }
+                    }
+                    if !matched && undecided { return Err("source literal equality is undecided".into()); }
+                    matched
+                }
+                "DataPropertyRange" if args.len() == 2 => {
+                    let datatype = args[1].as_atom().ok_or("source data range is not atomic")?;
+                    let range = format!("__dt__{}", datatypes::datatype_concept_key(datatype));
+                    let mut valid = true;
+                    for &(_,b) in &edges {
+                        let truth = datatypes::finite_literal_datatype_truth(&values[&b], std::slice::from_ref(&range))
+                            .ok_or("source datatype membership is undecided")?;
+                        valid &= truth[0];
+                    }
+                    valid
+                }
+                "DataPropertyDomain" if args.len() == 2 => {
+                    let expression = parse::cls(&mut registry, args[1]).map_err(|e| format!("source data domain: {e:?}"))?;
+                    let object = (0..g.n()).find(|n| g.alive(*n) && !values.contains_key(n))
+                        .ok_or("source data interpretation has no objects")?;
+                    let _ = evaluate_source_boolean(&expression, object, g, &registry, classes)?;
+                    let mut valid = true;
+                    for &(a,_) in &edges { valid &= evaluate_source_boolean(&expression, a, g, &registry, classes)?; }
+                    valid
+                }
+                "FunctionalDataProperty" if args.len() == 1 => {
+                    let mut seen = HashMap::new();
+                    edges.iter().all(|&(a,b)| seen.insert(a,b).is_none_or(|old| old == b))
+                }
+                _ => return Err(format!("unrecognized source data axiom: {kind}")),
+            };
+            if valid { Ok(()) } else { Err(format!("finite interpretation violates source {kind}")) }
+        })();
+        checked.map_err(parse::OutOfFragment)
+    }).map_err(|error| error.0)
+}
+
+/// Evaluate original object-property axioms on finite relations, independently
+/// of the converter's role automata, clauses and inverse proxy construction.
+fn verify_finite_source_properties(g: &Graph, data_nodes: &HashSet<Node>, source: &str,
+    classes: &HashMap<String, C>, roles: &HashMap<String, R>) -> Result<(), String> {
+    use crate::frontend::{iri::IriRegistry, parse, sexpr::Node as SNode};
+    type Relation = HashSet<(Node, Node)>;
+    let objects: Vec<_> = (0..g.n()).filter(|n| g.alive(*n) && !data_nodes.contains(n)).collect();
+    if objects.is_empty() { return Err("object-property model has no objects".into()); }
+    let relations: HashMap<_, Relation> = roles.iter().map(|(iri, id)| {
+        let edges = g.edges.iter().filter(|(r, a, b)| r == id && g.alive(*a) && g.alive(*b)
+            && !data_nodes.contains(a) && !data_nodes.contains(b)).map(|(_, a, b)| (*a, *b)).collect();
+        (iri.clone(), edges)
+    }).collect();
+    fn role(node: &SNode<'_>, relations: &HashMap<String, Relation>, objects: &[Node]) -> Result<Relation, String> {
+        match node {
+            SNode::Atom(name) => {
+                let iri = name.strip_prefix('<').and_then(|n| n.strip_suffix('>')).unwrap_or(name);
+                match iri {
+                    "owl:bottomObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty" => Ok(Relation::new()),
+                    "owl:topObjectProperty" | "http://www.w3.org/2002/07/owl#topObjectProperty" => {
+                        if objects.len().saturating_mul(objects.len()) > 1_000_000 {
+                            return Err("universal source relation exceeds verification budget".into());
+                        }
+                        Ok(objects.iter().flat_map(|a| objects.iter().map(move |b| (*a, *b))).collect())
+                    }
+                    _ => Ok(relations.get(iri).cloned().unwrap_or_default()),
+                }
+            }
+            SNode::List("ObjectInverseOf", args) if matches!(args.as_slice(), [SNode::Atom(_)]) =>
+                Ok(role(&args[0], relations, objects)?.into_iter().map(|(a,b)| (b,a)).collect()),
+            _ => Err("invalid source object-property expression".into()),
+        }
+    }
+    fn compose(left: &Relation, right: &Relation, budget: &mut usize) -> Result<Relation, String> {
+        let mut successors: HashMap<Node, Vec<Node>> = HashMap::new();
+        for &(a,b) in right { successors.entry(a).or_default().push(b); }
+        let mut result = Relation::new();
+        for &(a,b) in left {
+            for &c in successors.get(&b).into_iter().flatten() {
+                *budget = budget.checked_sub(1).ok_or("source role-chain verification budget exhausted")?;
+                result.insert((a,c));
+            }
+        }
+        Ok(result)
+    }
+    let mut registry = IriRegistry::new();
+    let mut budget = 10_000_000;
+    parse::for_each_ontology_child(source, |node| {
+        let checked = (|| -> Result<(), String> {
+            let SNode::List(kind, raw) = node else { return Err("invalid source property axiom".into()); };
+            let args = parse::strip_annotations(raw);
+            let relation = |arg| role(arg, &relations, &objects);
+            let valid = match *kind {
+                "SubObjectPropertyOf" if args.len() == 2 => {
+                    let left = match args[0] {
+                        SNode::List("ObjectPropertyChain", parts) if parts.len() >= 2 => {
+                            let mut result = relation(&parts[0])?;
+                            for part in &parts[1..] { result = compose(&result, &relation(part)?, &mut budget)?; }
+                            result
+                        }
+                        _ => relation(args[0])?,
+                    };
+                    left.is_subset(&relation(args[1])?)
+                }
+                "EquivalentObjectProperties" | "DisjointObjectProperties" if args.len() >= 2 => {
+                    let values: Vec<_> = args.iter().map(|arg| relation(arg)).collect::<Result<_,_>>()?;
+                    let mut valid = true;
+                    for i in 0..values.len() { for j in i+1..values.len() {
+                        valid &= if *kind == "EquivalentObjectProperties" { values[i] == values[j] }
+                            else { values[i].is_disjoint(&values[j]) };
+                    }}
+                    valid
+                }
+                "InverseObjectProperties" if args.len() == 2 => {
+                    let inverse: Relation = relation(args[1])?.into_iter().map(|(a,b)| (b,a)).collect();
+                    relation(args[0])? == inverse
+                }
+                "ObjectPropertyDomain" | "ObjectPropertyRange" if args.len() == 2 => {
+                    let expression = parse::cls(&mut registry, args[1]).map_err(|e| format!("source property class: {e:?}"))?;
+                    // Validate the expression even when the role is empty.
+                    let _ = evaluate_source_boolean(&expression, objects[0], g, &registry, classes)?;
+                    let mut valid = true;
+                    for (a,b) in relation(args[0])? {
+                        let object = if *kind == "ObjectPropertyDomain" { a } else { b };
+                        valid &= evaluate_source_boolean(&expression, object, g, &registry, classes)?;
+                    }
+                    valid
+                }
+                "FunctionalObjectProperty" | "InverseFunctionalObjectProperty" if args.len() == 1 => {
+                    let mut seen = HashMap::new();
+                    relation(args[0])?.into_iter().all(|(a,b)| {
+                        let (key,value) = if *kind == "FunctionalObjectProperty" { (a,b) } else { (b,a) };
+                        seen.insert(key,value).is_none_or(|old| old == value)
+                    })
+                }
+                "TransitiveObjectProperty" if args.len() == 1 => {
+                    let r = relation(args[0])?;
+                    compose(&r, &r, &mut budget)?.is_subset(&r)
+                }
+                "SymmetricObjectProperty" | "AsymmetricObjectProperty" |
+                "ReflexiveObjectProperty" | "IrreflexiveObjectProperty" if args.len() == 1 => {
+                    let r = relation(args[0])?;
+                    match *kind {
+                        "SymmetricObjectProperty" => r.iter().all(|&(a,b)| r.contains(&(b,a))),
+                        "AsymmetricObjectProperty" => r.iter().all(|&(a,b)| !r.contains(&(b,a))),
+                        "ReflexiveObjectProperty" => objects.iter().all(|&a| r.contains(&(a,a))),
+                        _ => r.iter().all(|&(a,b)| a != b),
+                    }
+                }
+                _ => return Err(format!("unrecognized source object-property axiom: {kind}")),
+            };
+            if valid { Ok(()) } else { Err(format!("finite interpretation violates source {kind}")) }
+        })();
+        checked.map_err(parse::OutOfFragment)
+    }).map_err(|error| error.0)
+}
+
+/// Check the two OWL domains against source-provided property sorts. Only
+/// live nodes/edges belong to the finite interpretation. `true` denotes a
+/// data property; the caller owns source provenance for this complete table.
+fn verify_finite_role_sorts(g: &Graph, data_nodes: &HashSet<Node>, nominals: &[C],
+    data_roles: &[bool]) -> Result<(), String> {
+    if !(0..g.n()).any(|node| g.alive(node) && !data_nodes.contains(&node)) {
+        return Err("finite model has an empty object sort".into());
+    }
+    if data_nodes.iter().any(|&node| nominals.iter().any(|&nominal|
+        g.concepts[node].contains(&CLit::pos(nominal)))) {
+        return Err("source individual belongs to the concrete data sort".into());
+    }
+    for &(role, source, target) in &g.edges {
+        if !g.alive(source) || !g.alive(target) { continue; }
+        let data_role = data_roles.get(role as usize)
+            .ok_or_else(|| "finite model role has no source sort".to_string())?;
+        if data_nodes.contains(&source) || data_nodes.contains(&target) != *data_role {
+            return Err(format!("finite model edge violates the source sort of role {role}"));
+        }
+    }
+    Ok(())
+}
+
 pub fn rules_consistency_verdict(inp: &TInput, ht_clauses: Vec<Clause>) -> Result<bool, String> {
+    match &inp.rule_data_roles {
+        Some(sorts) => rules_consistency_verdict_with_role_sorts(inp, ht_clauses, sorts),
+        None => rules_consistency_with_sorts(inp, ht_clauses, None),
+    }
+}
+
+/// Check clauses, concrete values and object/data edge boundaries together.
+/// This API requires a complete role table derived from the original source;
+/// it does not establish that provenance or authorize taxonomy projection.
+pub fn rules_consistency_verdict_with_role_sorts(inp: &TInput, ht_clauses: Vec<Clause>,
+    data_roles: &[bool]) -> Result<bool, String> {
+    if data_roles.len() != inp.roles.len() {
+        return Err("source role sorts do not cover the worker role table".into());
+    }
+    if inp.dropped != 0 || !inp.fenced.is_empty() {
+        return Err("finite rule source-model verification requires zero converter omissions".into());
+    }
+    rules_consistency_with_sorts(inp, ht_clauses, Some(data_roles.to_vec()))
+}
+
+fn rules_consistency_with_sorts(inp: &TInput, mut ht_clauses: Vec<Clause>,
+    role_sorts: Option<Vec<bool>>) -> Result<bool, String> {
+    // The converter may replace raw composition axioms by this typed side
+    // channel. The consistency-only worker must consume them too, otherwise
+    // named ABox/rule premises silently lose source role consequences.
+    ht_clauses.extend(certified_role_chain_clauses(&inp.chains, &inp.transitive));
     let inverse = inp.inverse;
     let number = inp.number || !inp.card_defs.is_empty();
     let noms = inp.nominals.clone();
+    let verify_data = role_sorts.is_some() || std::env::var_os("KM_RULES_FINITE_DATA_VERIFY").is_some();
+    if (inp.rule_source_classes.is_some() || inp.rule_source_abox.is_some()) && role_sorts.is_none() {
+        return Err("source class verification requires object/data role sorts".into());
+    }
+    let source_classes = inp.rule_source_classes.clone();
+    let source_abox = inp.rule_source_abox.clone();
+    if source_abox.as_ref().is_some_and(|source| source.concept_iris.len() != inp.concepts.len()
+        || source.nominal_iris.len() != inp.concepts.len() || source.role_iris.len() != inp.roles.len()) {
+        return Err("source ABox IRI tables do not cover the worker signature".into());
+    }
+    if source_classes.as_ref().is_some_and(|source| source.concept_iris.len() != inp.concepts.len()) {
+        return Err("source class IRI table does not cover worker concepts".into());
+    }
+    let datatype_names = verify_data.then(|| inp.concepts.clone());
+    let verify_finite = verify_data || std::env::var_os("KM_RULES_FINITE_MODEL_VERIFY").is_some();
     std::thread::Builder::new()
         .stack_size(4usize << 30)
         .spawn(move || {
+            let evidence = verify_finite.then(|| ht_clauses.clone());
             let mut t = Tableau::new(ht_clauses);
             t.set_pairwise(inverse);
             t.set_number(number);
-            t.set_nominals(noms);
-            t.consistent(&[])
+            t.set_nominals(noms.clone());
+            if let Some(clauses) = evidence {
+                match t.find_model(&[]) {
+                    Some(graph) => {
+                        verify_finite_rule_model(&graph, &clauses, &noms, 10_000_000)?;
+                        if let Some(names) = datatype_names {
+                            let values = finite_datatype_values(&graph, &names)?;
+                            let data_nodes = values.keys().copied().collect();
+                            if let Some(source) = source_classes {
+                                verify_finite_source_classes(&graph, &data_nodes, &source)?;
+                            }
+                            if let Some(source) = source_abox {
+                                verify_finite_source_abox(&graph, &data_nodes, &source, Some(&values))?;
+                            }
+                            if let Some(sorts) = role_sorts {
+                                verify_finite_role_sorts(&graph, &data_nodes, &noms, &sorts)?;
+                            }
+                            if std::env::var_os("KM_TAB_STATS").is_some() {
+                                eprintln!("KM_TAB_STATS finite-model concrete-values={}", data_nodes.len());
+                            }
+                        }
+                        Ok(true)
+                    }
+                    None => Ok(false),
+                }
+            } else { Ok(t.consistent(&[])) }
         })
         .map_err(|e| e.to_string())?
         .join()
-        .map_err(|_| "rules-consistency thread panicked".to_string())
+        .map_err(|_| "rules-consistency thread panicked".to_string())?
 }
 
 /// Build the tableau clause vector from a parsed `TInput` (the deserialised
@@ -5481,6 +6367,107 @@ pub fn run_json_owned(input: String) -> Result<String, String> {
     serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 
+/// Run a bridge-exclusive worker and retain the complete taxonomy in the
+/// dictionary-coded transport consumed by the orchestrator. This entry point
+/// is deliberately narrower than `run_json_owned`: mixed bridge/tableau
+/// workers must preserve their established defer-and-fallback behaviour, and
+/// standalone tableau callers keep the JSON contract.
+pub(crate) fn run_bridge_json_owned_compact(
+    input: String,
+) -> Result<crate::json_io::CompactElcOutput, String> {
+    if std::env::var_os("KM_HT_BRIDGE").is_none() || std::env::var_os("KM_HT_BRIDGE_ONLY").is_none()
+    {
+        return Err("compact bridge output requires a bridge-exclusive worker".to_string());
+    }
+    if ht_lean_certification_requested() {
+        return Err("compact bridge output cannot bypass HT certification".to_string());
+    }
+
+    // Preserve the established worker-side wire and native-ABox validation
+    // before entering the bridge. The producer value is parsed independently,
+    // exactly as the legacy bridge arm reparses `raw_input`.
+    let worker_input: TInput = serde_json::from_str(&input).map_err(|e| e.to_string())?;
+    validate_native_abox(&worker_input)?;
+    let producer_input: crate::orchestrate::cb_to_ht::TInput =
+        serde_json::from_str(&input).map_err(|e| e.to_string())?;
+    drop(worker_input);
+    drop(input);
+    // Return the duplicate validation parse and wire buffers before the bridge
+    // builds its completion structures. This mirrors the typed bridge path and
+    // keeps the transport optimization visible in peak RSS, not only live bytes.
+    crate::mem::release_transient_heap();
+
+    let (result, concepts) = std::thread::Builder::new()
+        .stack_size(4usize << 30)
+        .spawn(move || {
+            let result = crate::konclude_ht::bridge::bridged_classify(&producer_input);
+            (result, producer_input.concepts)
+        })
+        .map_err(|error| error.to_string())?
+        .join()
+        .map_err(|_| "konclude_ht bridge thread panicked".to_string())?;
+    let result = result.ok_or_else(|| "konclude_ht bridge defer".to_string())?;
+    crate::mem::release_transient_heap();
+    compact_bridge_classification(concepts, result)
+}
+
+fn compact_bridge_classification(
+    concepts: Vec<String>,
+    result: crate::konclude_ht::bridge::BridgedClassification,
+) -> Result<crate::json_io::CompactElcOutput, String> {
+    use std::sync::Arc;
+
+    let concept_count = concepts.len();
+    let mut names: Vec<Arc<str>> = concepts.into_iter().map(Arc::from).collect();
+    let bottom = if result.unsatisfiable.is_empty() {
+        None
+    } else if let Some(index) = names.iter().position(|name| name.as_ref() == "owl:Nothing") {
+        Some(u32::try_from(index).map_err(|_| "bridge concept id overflow".to_string())?)
+    } else {
+        let index = u32::try_from(names.len())
+            .map_err(|_| "bridge concept dictionary overflow".to_string())?;
+        names.push(Arc::from("owl:Nothing"));
+        Some(index)
+    };
+
+    // Bridge publication already sorts and deduplicates pairs. Grouping by
+    // subject changes only the worker transport; the public mapper performs
+    // its established deterministic row ordering and filtering afterwards.
+    let mut grouped: Vec<Vec<u32>> = vec![Vec::new(); concept_count];
+    for (subject, superclass) in result.subsumptions {
+        if subject >= concept_count || superclass >= concept_count {
+            return Err("bridge taxonomy concept id out of range".to_string());
+        }
+        grouped[subject]
+            .push(u32::try_from(superclass).map_err(|_| "bridge concept id overflow".to_string())?);
+    }
+    if let Some(bottom) = bottom {
+        for subject in result.unsatisfiable {
+            if subject >= concept_count {
+                return Err("bridge unsatisfiable concept id out of range".to_string());
+            }
+            grouped[subject].push(bottom);
+        }
+    }
+    let rows = grouped
+        .into_iter()
+        .enumerate()
+        .filter_map(|(subject, supers)| {
+            (!supers.is_empty()).then(|| {
+                u32::try_from(subject)
+                    .map(|subject| (subject, supers))
+                    .map_err(|_| "bridge concept id overflow".to_string())
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(crate::json_io::CompactElcOutput {
+        names,
+        rows,
+        inconsistent: !result.consistent,
+        dropped: 0,
+    })
+}
+
 fn producer_id(value: usize, field: &str) -> Result<u32, String> {
     u32::try_from(value).map_err(|_| format!("{field} id exceeds the tableau wire range"))
 }
@@ -5557,6 +6544,9 @@ fn producer_input(input: crate::orchestrate::cb_to_ht::TInput) -> Result<TInput,
             .collect::<Result<Vec<_>, String>>()
     };
     Ok(TInput {
+        rule_data_roles: input.rule_data_roles,
+        rule_source_classes: input.rule_source_classes,
+        rule_source_abox: input.rule_source_abox,
         concepts: input.concepts,
         roles: input.roles,
         clauses,
@@ -6947,6 +7937,22 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
     "KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
     "KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER",
+    "KM_HT_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER",
+    "KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+    "KM_HT_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+    "KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER",
+    "KM_HT_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+    "KM_HT_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER",
+    "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER",
+    "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER",
+    "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_GLOBAL_CHECKER",
+    "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
+    "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER",
+    "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER",
+    "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER",
+    "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
 ];
 
 pub(crate) fn ht_lean_certification_requested() -> bool {
@@ -7950,6 +8956,192 @@ pub(crate) fn run_json_for_native_ht_test(input: &str) -> Result<String, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selective_join_matches_complete_substitution_sets_and_seeds() {
+        let mut graph = Graph::new();
+        for _ in 0..6 { graph.new_node(None, false); }
+        for node in 0..6 { graph.add_concept(node, CLit::pos(0)); }
+        graph.add_concept(0, CLit::pos(1));
+        graph.add_concept(4, CLit::pos(2));
+        graph.add_edge(10, 0, 1);
+        graph.add_edge(10, 0, 3);
+        graph.add_edge(11, 1, 4);
+        graph.add_edge(11, 3, 5);
+        let clause = Clause::new(vec![
+            con(false, 0, 0), con(false, 0, 1), con(false, 0, 2),
+            con(false, 1, 0), Atom::Role { r: 10, s: 0, t: 1 },
+            Atom::Role { r: 11, s: 1, t: 2 }, con(false, 2, 2),
+        ], vec![con(false, 3, 3)]);
+        let tableau = Tableau::new(Vec::new());
+        let collect = |cl: &Clause, graph: &Graph, seed: &Subst| {
+            let mut result = std::collections::BTreeSet::new();
+            tableau.match_rec(cl, graph, 0, &mut seed.clone(), &clause_vars(cl), &mut |binding| {
+                let mut pairs = binding.v.to_vec(); pairs.sort_unstable(); result.insert(pairs); true
+            });
+            result
+        };
+        for extra_edge in [false, true] {
+            if extra_edge { graph.add_edge(11, 3, 4); }
+            for bound in [None, Some(1), Some(3)] {
+                let mut seed = Subst::new();
+                if let Some(node) = bound { seed.insert(1, node); }
+                let ordered = Tableau::selective_match_clause(&clause, &graph, &seed).unwrap();
+                if bound.is_none() {
+                    assert!(matches!(ordered.body.first(), Some(Atom::Concept { lit, .. }) if lit.c == 1 || lit.c == 2));
+                }
+                assert_eq!(collect(&clause, &graph, &seed), collect(&ordered, &graph, &seed));
+                if bound.is_none() { assert_eq!(collect(&ordered, &graph, &seed).len(), if extra_edge { 12 } else { 6 }); }
+            }
+        }
+        for unsupported in [Atom::Eq { s: 0, t: 1 }, Atom::Exists { r: 10, fil: CLit::pos(0), t: 0 }, Atom::Role { r: 10, s: 0, t: 0 }] {
+            let mut guarded = clause.clone(); guarded.body.push(unsupported);
+            assert!(Tableau::selective_match_clause(&guarded, &graph, &Subst::new()).is_none());
+        }
+    }
+
+
+    // Several worker-contract tests below temporarily alter process-wide
+    // routing variables.  Serialize those tests so a parallel test cannot
+    // observe another test's intermediate environment.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn compact_bridge_transport_preserves_pairs_unsat_and_consistency() {
+        let compact = compact_bridge_classification(
+            vec!["A".into(), "B".into(), "owl:Nothing".into()],
+            crate::konclude_ht::bridge::BridgedClassification {
+                consistent: false,
+                unsatisfiable: vec![1],
+                subsumptions: vec![(0, 1), (0, 2)],
+            },
+        )
+        .unwrap();
+        assert!(compact.inconsistent);
+        assert_eq!(compact.dropped, 0);
+        assert_eq!(compact.rows, vec![(0, vec![1, 2]), (1, vec![2])]);
+
+        let mut wire = Vec::new();
+        crate::json_io::write_compact_elc_output_binary(&mut wire, &compact).unwrap();
+        assert_eq!(
+            crate::json_io::decode_elc_output_binary(&wire)
+                .unwrap()
+                .unwrap(),
+            compact
+        );
+    }
+
+    #[test]
+    fn compact_bridge_transport_adds_bottom_once_and_rejects_bad_ids() {
+        let compact = compact_bridge_classification(
+            vec!["A".into()],
+            crate::konclude_ht::bridge::BridgedClassification {
+                consistent: true,
+                unsatisfiable: vec![0],
+                subsumptions: Vec::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            compact
+                .names
+                .iter()
+                .map(|name| name.as_ref())
+                .collect::<Vec<_>>(),
+            ["A", "owl:Nothing"]
+        );
+        assert_eq!(compact.rows, vec![(0, vec![1])]);
+
+        assert!(compact_bridge_classification(
+            vec!["A".into()],
+            crate::konclude_ht::bridge::BridgedClassification {
+                consistent: true,
+                unsatisfiable: Vec::new(),
+                subsumptions: vec![(0, 1)],
+            },
+        )
+        .is_err());
+        assert!(compact_bridge_classification(
+            vec!["A".into()],
+            crate::konclude_ht::bridge::BridgedClassification {
+                consistent: true,
+                unsatisfiable: vec![1],
+                subsumptions: Vec::new(),
+            },
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn compact_bridge_entry_requires_the_exclusive_contract() {
+        let _environment = lock_environment();
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::remove_var("KM_HT_BRIDGE");
+        std::env::remove_var("KM_HT_BRIDGE_ONLY");
+        assert!(run_bridge_json_owned_compact(String::new())
+            .unwrap_err()
+            .contains("bridge-exclusive"));
+    }
+
+    #[test]
+    fn compact_bridge_entry_matches_the_legacy_json_worker() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+
+        let _environment = lock_environment();
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_HT", "1");
+        std::env::set_var("KM_HT_BRIDGE", "1");
+        std::env::set_var("KM_HT_BRIDGE_ONLY", "1");
+        let producer = TInput {
+            concepts: vec!["A".into(), "B".into()],
+            clauses: vec![HtClause {
+                body: vec![HAtom::Concept {
+                    neg: false,
+                    c: 0,
+                    t: 0,
+                }],
+                head: vec![HAtom::Concept {
+                    neg: false,
+                    c: 1,
+                    t: 0,
+                }],
+            }],
+            queries: vec![0, 1],
+            ..Default::default()
+        };
+        let wire = serde_json::to_string(&producer).unwrap();
+        let legacy: TOutput = serde_json::from_str(&run_json_owned(wire.clone()).unwrap()).unwrap();
+        let compact = run_bridge_json_owned_compact(wire).unwrap();
+
+        let mut compact_pairs = Vec::new();
+        let mut compact_unsat = Vec::new();
+        for (subject, supers) in &compact.rows {
+            let subject = compact.names[*subject as usize].to_string();
+            for superclass in supers {
+                let superclass = compact.names[*superclass as usize].to_string();
+                if superclass == "owl:Nothing" {
+                    compact_unsat.push(subject.clone());
+                } else {
+                    compact_pairs.push([subject.clone(), superclass]);
+                }
+            }
+        }
+        compact_pairs.sort();
+        compact_unsat.sort();
+        let mut legacy_pairs = legacy.subsumptions;
+        let mut legacy_unsat = legacy.unsatisfiable;
+        legacy_pairs.sort();
+        legacy_unsat.sort();
+        assert_eq!(compact_pairs, legacy_pairs);
+        assert_eq!(compact_unsat, legacy_unsat);
+        assert_eq!(compact.inconsistent, !legacy.consistent);
+    }
 
     #[test]
     fn typed_producer_handoff_matches_the_json_worker_contract() {
@@ -10960,5 +12152,282 @@ mod tests {
         t.set_nominals(vec![N]);
         assert!(!t.consistent(&[])); // KB inconsistent
         assert!(!t.consistent(&[CLit::pos(A)])); // hence A unsat too
+    }
+}
+
+#[cfg(test)]
+mod finite_rule_model_tests {
+    use super::*;
+    fn concept(c: C, t: Var, neg: bool) -> Atom { Atom::Concept { lit: CLit { c, neg }, t } }
+    #[test]
+    fn pruned_source_rule_join_matches_exhaustive_two_object_models() {
+        let source = "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>)) ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<y>)))))";
+        let classes = HashMap::from([("A".into(),0), ("B".into(),1)]);
+        let roles = HashMap::from([("r".into(),0)]);
+        let individuals = HashMap::from([("a".into(),0), ("b".into(),1)]);
+        for mask in 0..256u32 {
+            let mut graph = Graph::new(); graph.new_node(None,false); graph.new_node(None,false);
+            for n in 0..2 { for c in 0..2 {
+                if mask & (1 << (n*2+c)) != 0 { graph.add_concept(n,CLit::pos(c as C)); }
+            }}
+            for a in 0..2 { for b in 0..2 {
+                if mask & (1 << (4+a*2+b)) != 0 { graph.add_edge(0,a,b); }
+            }}
+            let expected = (0..2).all(|a| (0..2).all(|b|
+                !graph.concepts[a].contains(&CLit::pos(0)) || !graph.edges.contains(&(0,a,b))
+                    || graph.concepts[b].contains(&CLit::pos(1))));
+            assert_eq!(verify_finite_source_rules(&graph,source,&classes,&roles,&individuals,&HashMap::new()).is_ok(), expected, "model {mask}");
+        }
+    }
+
+    #[test]
+    fn original_rules_check_concrete_guards_and_named_head_obligations() {
+        let mut graph = Graph::new(); let a = graph.new_node(None,false); let b = graph.new_node(None,false);
+        let data = graph.new_node(None,false); graph.add_edge(0,a,data);
+        let classes = HashMap::from([("Bad".into(),0)]); let roles = HashMap::from([("p".into(),0)]);
+        let individuals = HashMap::from([("a".into(),a), ("b".into(),b)]);
+        let values = HashMap::from([(data,"\"1\"^^xsd:float".into())]);
+        let rule = "Ontology(DLSafeRule(Body(DataPropertyAtom(<p> Variable(<x>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<v>) \"0\"^^xsd:float)) Head(ClassAtom(<Bad> Variable(<x>)))))";
+        assert!(verify_finite_source_rules(&graph,rule,&classes,&roles,&individuals,&values).is_err());
+        graph.add_concept(a,CLit::pos(0));
+        assert!(verify_finite_source_rules(&graph,rule,&classes,&roles,&individuals,&values).is_ok());
+        let false_guard = rule.replace("greaterThan", "lessThan").replace("<Bad>", "<Absent>");
+        assert!(verify_finite_source_rules(&graph,&false_guard,&classes,&roles,&individuals,&values).is_ok());
+        let unbound_head = rule.replace("ClassAtom(<Bad> Variable(<x>))", "ClassAtom(<Bad> Variable(<fresh>))");
+        assert!(verify_finite_source_rules(&graph,&unbound_head,&classes,&roles,&individuals,&values).is_err());
+        let unknown = rule.replace("greaterThan", "unknownRelation");
+        assert!(verify_finite_source_rules(&graph,&unknown,&classes,&roles,&individuals,&values).is_err());
+        let malformed = "Ontology(DLSafeRule(Body(UnrecognizedAtom(<a>)) Head(ClassAtom(<Bad> <a>))))";
+        assert!(verify_finite_source_rules(&graph,malformed,&classes,&roles,&individuals,&values).is_err());
+    }
+
+    #[test]
+    fn original_data_axioms_use_concrete_values_and_object_domains() {
+        let mut graph = Graph::new(); let a = graph.new_node(None, false);
+        let value = graph.new_node(None, false); let other = graph.new_node(None, false);
+        graph.add_concept(a, CLit::pos(0)); graph.add_edge(0,a,value);
+        let classes = HashMap::from([("A".into(),0)]);
+        let roles = HashMap::from([("p".into(),0)]);
+        let individuals = HashMap::from([("a".into(),a)]);
+        let values = HashMap::from([(value, "\"16777216\"^^xsd:float".into()), (other,"\"text\"^^xsd:string".into())]);
+        let check = |axiom: &str| verify_finite_source_data(&graph, &format!("Ontology({axiom})"),
+            &classes, &roles, &individuals, &values);
+        for axiom in [
+            "DataPropertyAssertion(<p> <a> \"16777217\"^^xsd:float)",
+            "DataPropertyRange(<p> xsd:float)", "DataPropertyDomain(<p> <A>)", "FunctionalDataProperty(<p>)",
+        ] { assert!(check(axiom).is_ok(), "{axiom}: {:?}", check(axiom)); }
+        for axiom in [
+            "DataPropertyAssertion(<p> <a> \"text\"^^xsd:string)",
+            "DataPropertyAssertion(<p> <missing> \"16777216\"^^xsd:float)",
+            "DataPropertyAssertion(<p> <a> \"NULL\"^^rdfs:Literal)",
+            "DataPropertyRange(<p> xsd:string)", "DataPropertyDomain(<p> owl:Nothing)",
+            "DataPropertyRange(<p> <unknown>)", "ClassAssertion(<A> <a>)",
+        ] { assert!(check(axiom).is_err(), "{axiom}"); }
+        graph.add_edge(0,a,other);
+        assert!(verify_finite_source_data(&graph, "Ontology(FunctionalDataProperty(<p>))",
+            &classes, &roles, &individuals, &values).is_err());
+    }
+
+    #[test]
+    fn original_property_axioms_check_chain_orientation_and_constraints() {
+        let mut graph = Graph::new();
+        let a = graph.new_node(None, false); let b = graph.new_node(None, false); let c = graph.new_node(None, false);
+        graph.add_concept(a, CLit::pos(0)); graph.add_concept(c, CLit::pos(1));
+        for (r,x,y) in [(0,a,b),(1,b,c),(2,a,c),(3,b,a),(4,a,b),(4,a,c),(5,a,c),(5,b,c)] {
+            graph.add_edge(r,x,y);
+        }
+        let classes = HashMap::from([("A".into(),0), ("C".into(),1)]);
+        let roles = HashMap::from([("r".into(),0), ("s".into(),1), ("t".into(),2),
+            ("inv".into(),3), ("u".into(),4), ("v".into(),5)]);
+        let check = |axiom: &str| verify_finite_source_properties(&graph, &HashSet::new(),
+            &format!("Ontology({axiom})"), &classes, &roles);
+        for axiom in [
+            "SubObjectPropertyOf(ObjectPropertyChain(ObjectInverseOf(<inv>) <s>) <t>)",
+            "InverseObjectProperties(<r> <inv>)",
+            "EquivalentObjectProperties(<r> ObjectInverseOf(<inv>))",
+            "ObjectPropertyDomain(<r> ObjectUnionOf(<A> <C>))",
+            "ObjectPropertyRange(<t> <C>)", "FunctionalObjectProperty(<r>)",
+            "InverseFunctionalObjectProperty(<r>)", "TransitiveObjectProperty(<r>)",
+            "AsymmetricObjectProperty(<r>)", "IrreflexiveObjectProperty(<r>)",
+            "DisjointObjectProperties(<r> <s> <t>)", "ReflexiveObjectProperty(owl:topObjectProperty)",
+        ] { assert!(check(axiom).is_ok(), "{axiom}: {:?}", check(axiom)); }
+        for axiom in [
+            "SubObjectPropertyOf(ObjectPropertyChain(ObjectInverseOf(<inv>) <s>) <r>)",
+            "InverseObjectProperties(<r> <s>)", "EquivalentObjectProperties(<r> <s>)",
+            "DisjointObjectProperties(<r> <r>)", "FunctionalObjectProperty(<u>)",
+            "InverseFunctionalObjectProperty(<v>)", "SymmetricObjectProperty(<r>)",
+            "AsymmetricObjectProperty(owl:topObjectProperty)", "ReflexiveObjectProperty(<r>)",
+            "IrreflexiveObjectProperty(owl:topObjectProperty)", "ObjectPropertyDomain(<r> <C>)",
+            "ObjectPropertyRange(<r> <A>)", "SubObjectPropertyOf(<r> owl:bottomObjectProperty)",
+            "ObjectPropertyDomain(<empty> ObjectSomeValuesFrom(<r> <A>))",
+            "ClassAssertion(<A> <a>)",
+        ] { assert!(check(axiom).is_err(), "{axiom}"); }
+        graph.add_edge(0,b,c);
+        assert!(verify_finite_source_properties(&graph, &HashSet::new(),
+            "Ontology(TransitiveObjectProperty(<r>))", &classes, &roles).is_err());
+    }
+
+    #[test]
+    fn original_abox_checks_aliases_inverse_edges_and_negative_assertions() {
+        use crate::frontend::profile::RuleSourceAbox;
+        let mut graph = Graph::new(); let a = graph.new_node(None, false); let b = graph.new_node(None, false);
+        for class in [0, 1, 3] { graph.add_concept(a, CLit::pos(class)); }
+        graph.add_concept(b, CLit::pos(2)); graph.add_edge(0, a, b);
+        let make = |source: &str| RuleSourceAbox { source: source.into(), object_properties: None, data_axioms: None, rules: None,
+            concept_iris: vec![None, None, None, Some("https://example/C".into())],
+            role_iris: vec![Some("https://example/r".into())],
+            nominal_iris: vec![Some("https://example/a".into()), Some("https://example/alias".into()), Some("https://example/b".into()), None] };
+        let valid = make("Ontology(ClassAssertion(<https://example/C> <https://example/a>) SameIndividual(<https://example/a> <https://example/alias>) DifferentIndividuals(<https://example/a> <https://example/b>) ObjectPropertyAssertion(ObjectInverseOf(<https://example/r>) <https://example/b> <https://example/a>) NegativeObjectPropertyAssertion(<https://example/r> <https://example/b> <https://example/a>))");
+        let checked = verify_finite_source_abox(&graph, &HashSet::new(), &valid, None);
+        assert!(checked.is_ok(), "{checked:?}");
+        for assertion in [
+            "ObjectPropertyAssertion(owl:bottomObjectProperty <https://example/a> <https://example/b>)",
+            "NegativeObjectPropertyAssertion(owl:topObjectProperty <https://example/a> <https://example/b>)",
+            "DifferentIndividuals(<https://example/a> <https://example/alias>)",
+            "SameIndividual(<https://example/a> <https://example/b>)",
+            "NegativeObjectPropertyAssertion(<https://example/r> <https://example/a> <https://example/b>)",
+            "ClassAssertion(<https://example/C> <https://example/b>)",
+            "ClassAssertion(<https://example/C> <https://example/missing>)",
+        ] { assert!(verify_finite_source_abox(&graph, &HashSet::new(), &make(&format!("Ontology({assertion})")), None).is_err(), "{assertion}"); }
+        assert!(verify_finite_source_abox(&graph, &HashSet::from([a]), &valid, None).is_err());
+    }
+
+    #[test]
+    fn source_boolean_model_uses_constants_complements_and_full_iris() {
+        use crate::frontend::profile::RuleSourceClasses;
+        let mut graph = Graph::new(); let object = graph.new_node(None, false);
+        graph.add_concept(object, CLit::pos(0));
+        let make = |source: &str| RuleSourceClasses { source: source.into(),
+            concept_iris: vec![Some("https://one/A".into()), Some("https://two/A".into())] };
+        let valid = make("Ontology(SubClassOf(owl:Thing <https://one/A>) SubClassOf(<https://one/A> ObjectComplementOf(<https://two/A>)))");
+        assert!(verify_finite_source_classes(&graph, &HashSet::new(), &valid).is_ok());
+        for source in [
+            "Ontology(SubClassOf(owl:Thing owl:Nothing))",
+            "Ontology(SubClassOf(owl:Thing <https://two/A>))",
+            "Ontology(EquivalentClasses(<https://one/A> <https://two/A>))",
+            "Ontology(DisjointClasses(<https://one/A> owl:Thing))",
+            "Ontology(SubClassOf(<https://one/A> ObjectSomeValuesFrom(<r> <https://one/A>)))",
+            "Ontology(TransitiveObjectProperty(<r>))",
+        ] { assert!(verify_finite_source_classes(&graph, &HashSet::new(), &make(source)).is_err(), "{source}"); }
+        let mut duplicate = valid.clone(); duplicate.concept_iris[1] = duplicate.concept_iris[0].clone();
+        assert!(verify_finite_source_classes(&graph, &HashSet::new(), &duplicate).is_err());
+        assert!(verify_finite_source_classes(&graph, &HashSet::from([object]), &valid).is_err());
+    }
+
+    #[test]
+    fn source_model_check_rejects_converter_omissions_before_search() {
+        for (dropped, fenced) in [(1, serde_json::json!([])),
+            (0, serde_json::json!([{"kind": "unsupported"}]))] {
+            let input: TInput = serde_json::from_value(serde_json::json!({
+                "concepts": [], "roles": [], "clauses": [],
+                "dropped": dropped, "fenced": fenced, "rule_data_roles": []
+            })).unwrap();
+            let error = rules_consistency_verdict(&input, vec![]).unwrap_err();
+            assert!(error.contains("zero converter omissions"), "{error}");
+        }
+    }
+
+    #[test]
+    fn source_role_sorts_check_edges_and_named_individuals() {
+        let mut g = Graph::new();
+        let a = g.new_node(None, false); let b = g.new_node(None, false);
+        let value = g.new_node(None, false);
+        g.add_concept(a, CLit::pos(7));
+        g.add_edge(0, a, b); g.add_edge(1, a, value);
+        let data = HashSet::from([value]);
+        assert!(verify_finite_role_sorts(&g, &data, &[7], &[false, true]).is_ok());
+        assert!(verify_finite_role_sorts(&g, &data, &[7], &[true, false]).is_err());
+        assert!(verify_finite_role_sorts(&g, &data, &[7], &[false]).is_err());
+        assert!(verify_finite_role_sorts(&g, &HashSet::new(), &[7], &[false, true]).is_err());
+        g.add_concept(value, CLit::pos(8));
+        assert!(verify_finite_role_sorts(&g, &data, &[7, 8], &[false, true]).is_err());
+        g.add_edge(1, value, value);
+        assert!(verify_finite_role_sorts(&g, &data, &[7], &[false, true]).is_err());
+        assert!(verify_finite_role_sorts(&g, &HashSet::from([a, b, value]), &[], &[false, true]).is_err());
+    }
+    #[test]
+    fn datatype_realization_checks_absence_and_preserves_distinct_nodes() {
+        let names = vec!["__dt__val__\"x\"^^xsd:string".into(), "__dt__string".into()];
+        let mut g = Graph::new(); let a = g.new_node(None, false);
+        g.add_concept(a, CLit::pos(0));
+        // A real string also belongs to xsd:string; absence is part of the
+        // finite interpretation, not permission to add an unchecked fact.
+        assert!(verify_finite_datatype_realization(&g, &names).is_err());
+        g.add_concept(a, CLit::pos(1));
+        assert_eq!(verify_finite_datatype_realization(&g, &names), Ok(HashSet::from([a])));
+        let b = g.new_node(None, false);
+        g.add_concept(b, CLit::pos(0)); g.add_concept(b, CLit::pos(1));
+        assert!(verify_finite_datatype_realization(&g, &names).is_err());
+    }
+    #[test]
+    fn pruned_verification_matches_exhaustive_two_object_interpretations() {
+        let atoms = vec![concept(1, 0, false), concept(1, 0, true),
+            concept(2, 1, false), concept(2, 1, true),
+            Atom::Role { r: 3, s: 0, t: 1 }, Atom::Eq { s: 0, t: 1 },
+            Atom::Exists { r: 3, fil: CLit::pos(2), t: 0 }];
+        for mask in 0..256usize {
+            let mut g = Graph::new(); g.new_node(None, false); g.new_node(None, false);
+            for node in 0..2 {
+                for c in 1..=2 {
+                    if mask & (1 << (node * 2 + c - 1)) != 0 { g.add_concept(node, CLit::pos(c as C)); }
+                }
+                for target in 0..2 {
+                    if mask & (1 << (4 + node * 2 + target)) != 0 { g.add_edge(3, node, target); }
+                }
+            }
+            for left in &atoms { for right in &atoms { for head in &atoms {
+                let clause = Clause::new(vec![left.clone(), right.clone()], vec![head.clone()]);
+                let exhaustive = (0..2).all(|x| (0..2).all(|y| {
+                    let assignment = [x, y];
+                    let eval = |a: &Atom| match a {
+                        Atom::Concept { lit, t } => g.concepts[assignment[*t as usize]].contains(&CLit::pos(lit.c)) != lit.neg,
+                        Atom::Role { r, s, t } => g.edges.contains(&(*r, assignment[*s as usize], assignment[*t as usize])),
+                        Atom::Eq { s, t } => assignment[*s as usize] == assignment[*t as usize],
+                        Atom::Exists { r, fil, t } => (0..2).any(|z| g.edges.contains(&(*r, assignment[*t as usize], z))
+                            && (g.concepts[z].contains(&CLit::pos(fil.c)) != fil.neg)),
+                    };
+                    !eval(left) || !eval(right) || eval(head)
+                }));
+                assert_eq!(verify_finite_rule_model(&g, &[clause], &[], 1000).is_ok(), exhaustive,
+                    "mask={mask} body={left:?},{right:?} head={head:?}");
+            } } }
+        }
+    }
+    #[test]
+    fn negative_atoms_use_complements_without_negative_labels() {
+        let mut g = Graph::new(); let a = g.new_node(None, false);
+        let c = Clause::new(vec![concept(1, 0, true)], vec![concept(2, 0, false)]);
+        assert!(verify_finite_rule_model(&g, &[c.clone()], &[], 100).is_err());
+        g.add_concept(a, CLit::pos(2));
+        assert!(verify_finite_rule_model(&g, &[c], &[], 100).is_ok());
+    }
+    #[test]
+    fn checks_all_bindings_and_actual_existential_edges() {
+        let mut g = Graph::new(); let a = g.new_node(None, false); let b = g.new_node(None, false);
+        g.add_concept(a, CLit::pos(1)); g.add_concept(b, CLit::pos(2));
+        let c = Clause::new(vec![concept(1, 0, false)], vec![Atom::Exists { r: 3, fil: CLit::pos(2), t: 0 }]);
+        assert!(verify_finite_rule_model(&g, &[c.clone()], &[], 100).is_err());
+        g.add_edge(3, a, b);
+        assert!(verify_finite_rule_model(&g, &[c], &[], 100).is_ok());
+        let c = Clause::new(vec![Atom::Role { r: 3, s: 4, t: 9 }], vec![concept(5, 9, false)]);
+        assert!(verify_finite_rule_model(&g, &[c.clone()], &[], 100).is_err());
+        g.add_concept(b, CLit::pos(5));
+        assert!(verify_finite_rule_model(&g, &[c], &[], 100).is_ok());
+    }
+    #[test]
+    fn rejects_nonsingleton_nominals_and_exhausted_budget() {
+        let mut g = Graph::new(); let a = g.new_node(None, false); let b = g.new_node(None, false);
+        g.add_concept(a, CLit::pos(7));
+        assert!(verify_finite_rule_model(&g, &[], &[7], 100).is_ok());
+        g.add_concept(b, CLit::pos(7));
+        assert!(verify_finite_rule_model(&g, &[], &[7], 100).is_err());
+        assert!(verify_finite_rule_model(&g, &[Clause::new(vec![], vec![Atom::Eq { s: 0, t: 0 }])], &[], 0).is_err());
+    }
+    #[test]
+    fn equality_respects_shared_denotations() {
+        let mut g = Graph::new(); let a = g.new_node(None, false);
+        g.add_concept(a, CLit::pos(7)); g.add_concept(a, CLit::pos(8));
+        let c = Clause::new(vec![concept(7, 0, false), concept(8, 1, false)], vec![Atom::Eq { s: 0, t: 1 }]);
+        assert!(verify_finite_rule_model(&g, &[c], &[7, 8], 100).is_ok());
     }
 }

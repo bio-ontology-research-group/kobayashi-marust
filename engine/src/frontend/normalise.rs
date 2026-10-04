@@ -52,8 +52,90 @@ pub struct GroundHooks {
     /// `KM_TRIGGER_ABSORB` is enabled, preserving the default JSON contract.
     pub definers: Vec<crate::json_io::DefinerMeta>,
     /// Normalized source TBox consumed by Konclude-style pre-clausal
-    /// absorption. Empty unless `KM_TRIGGER_ABSORB` is enabled.
+    /// absorption or symbolic-cardinality source binding. Empty unless trigger
+    /// absorption or native-only cardinality normalization is active.
     pub source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
+}
+
+impl GroundHooks {
+    /// Check symbolic bounds against structural definer provenance. This is
+    /// only the metadata correspondence check, not a publication certificate.
+    pub fn native_cardinalities_match_provenance(&self) -> bool {
+        let mut definitions = HashMap::new();
+        for definition in &self.definers {
+            if definitions.insert(definition.marker.as_str(), definition).is_some() {
+                return false;
+            }
+        }
+        // Validate constructor shape and require a finite, acyclic expression
+        // graph. Unknown operands may be atomic source names; defined operands
+        // must terminate rather than referring to themselves through a cycle.
+        let mut pending = HashMap::new();
+        let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
+        for definition in &self.definers {
+            let arity = definition.operands.len();
+            let role = definition.role.as_deref().is_some_and(|r| !r.is_empty());
+            let shape = match definition.kind {
+                DefinerKind::Top | DefinerKind::Bottom => arity == 0 && definition.role.is_none() && definition.n.is_none(),
+                DefinerKind::Not => arity == 1 && definition.role.is_none() && definition.n.is_none(),
+                DefinerKind::And | DefinerKind::Or => arity >= 2 && definition.role.is_none() && definition.n.is_none(),
+                DefinerKind::Exists | DefinerKind::Forall => arity == 1 && role && definition.n.is_none(),
+                DefinerKind::SelfRestriction | DefinerKind::NotSelf => arity == 0 && role && definition.n.is_none(),
+                DefinerKind::AtLeast | DefinerKind::AtMost => arity == 1 && role && definition.n.is_some_and(|n| n >= 0),
+            };
+            if !shape || definition.marker.is_empty() || definition.operands.iter().any(String::is_empty) { return false; }
+            let mut count = 0;
+            for operand in &definition.operands {
+                if definitions.contains_key(operand.as_str()) {
+                    count += 1;
+                    dependents.entry(operand.as_str()).or_default().push(definition.marker.as_str());
+                }
+            }
+            pending.insert(definition.marker.as_str(), count);
+        }
+        let mut ready: Vec<_> = pending.iter().filter_map(|(&name, &count)| (count == 0).then_some(name)).collect();
+        let mut visited = 0;
+        while let Some(name) = ready.pop() {
+            visited += 1;
+            for dependent in dependents.get(name).into_iter().flatten() {
+                let count = pending.get_mut(dependent).expect("definer indexed above");
+                *count -= 1;
+                if *count == 0 { ready.push(*dependent); }
+            }
+        }
+        if visited != definitions.len() { return false; }
+        let mut bounds = HashMap::new();
+        for bound in &self.cardinalities {
+            if bounds.insert(bound.marker.as_str(), bound).is_some() {
+                return false;
+            }
+        }
+        fn direct_matches(bound: &crate::json_io::CardMeta, definition: &crate::json_io::DefinerMeta) -> bool {
+            definition.kind == if bound.min { DefinerKind::AtLeast } else { DefinerKind::AtMost }
+                && definition.n == Some(i64::from(bound.n))
+                && definition.role.as_deref() == Some(bound.role.as_str())
+                && definition.operands == [bound.filler.clone()]
+        }
+        for bound in &self.cardinalities {
+            let Some(definition) = definitions.get(bound.marker.as_str()) else { return false; };
+            if direct_matches(bound, definition) { continue; }
+            if definition.kind != DefinerKind::Not || definition.operands.len() != 1
+                || definition.role.is_some() || definition.n.is_some() { return false; }
+            let parent = definition.operands[0].as_str();
+            let (Some(parent_bound), Some(parent_definition)) = (bounds.get(parent), definitions.get(parent))
+                else { return false; };
+            if !direct_matches(parent_bound, parent_definition) { return false; }
+            let expected = if parent_bound.min { parent_bound.n.checked_sub(1) }
+                else { parent_bound.n.checked_add(1) };
+            if expected != Some(bound.n) || bound.min == parent_bound.min
+                || bound.role != parent_bound.role || bound.filler != parent_bound.filler { return false; }
+        }
+        // Every original restriction must be represented, even if unused by
+        // the polarity-specific complement-recognition clauses.
+        self.definers.iter().filter(|d| matches!(d.kind, DefinerKind::AtLeast | DefinerKind::AtMost))
+            .all(|d| bounds.get(d.marker.as_str()).is_some_and(|b| direct_matches(b, d)))
+            && !bounds.is_empty()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +288,9 @@ pub struct Clausifier {
     /// remain present.  This is deliberately opt-in until its route gate and
     /// differential benchmark have been validated.
     native_cardinality_only: bool,
+    /// Experimental conservative role-label encoding of number restrictions.
+    /// Labels depend on the parent, rather than globally coloring successors.
+    color_cardinality: bool,
     /// Compile structurally triggerable subclass antecedents directly into
     /// guarded DL-clause bodies and retain fresh-concept provenance.
     trigger_absorb: bool,
@@ -239,6 +324,7 @@ impl Clausifier {
             def_neg: FxHashSet::default(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             native_cardinality_only,
+            color_cardinality: std::env::var_os("KM_CARDINALITY_COLORS").is_some(),
             trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
         }
     }
@@ -251,7 +337,7 @@ impl Clausifier {
         role: Option<String>,
         n: Option<i64>,
     ) {
-        if self.trigger_absorb {
+        if self.trigger_absorb || (self.native_cardinality_only && self.card) {
             self.hooks.definers.push(crate::json_io::DefinerMeta {
                 marker: marker.to_string(),
                 kind,
@@ -523,6 +609,89 @@ impl Clausifier {
         let name = format!("__chain__{}", self.role_counter);
         self.role_counter += 1;
         name
+    }
+
+    fn fresh_cardinality_role(&mut self) -> String {
+        let name = format!("__cardinality_color__{}", self.role_counter);
+        self.role_counter += 1;
+        name
+    }
+
+    fn color_minimum_distinctness(&mut self, marker: &str, n: i64, guard: &Atom) {
+        if n <= 1 { return; }
+        // For 2..=7 witnesses, pairwise inequalities use fewer clauses than
+        // the bit encoding (n*(n-1)/2 versus ceil(log2(n))*(n+1)). They also
+        // avoid propagating extra colour roles through an accompanying maximum
+        // bound's equality rules. Keep the linear-logarithmic encoding for
+        // larger bounds, where avoiding the quadratic expansion matters.
+        if n <= 7 {
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    let witness = |index| Term::Fun(
+                        format!("f_{}_{}", marker, index), Box::new(var_x()),
+                    );
+                    self.clauses.push(clause(
+                        [guard.clone(), Atom::Eq(witness(i), witness(j))], [],
+                    ));
+                }
+            }
+            return;
+        }
+        let bits = u64::BITS - ((n - 1) as u64).leading_zeros();
+        let x = var_x();
+        let y = var_y();
+        for bit in 0..bits {
+            let zero = self.fresh_cardinality_role();
+            let one = self.fresh_cardinality_role();
+            self.clauses.push(constraint([
+                Atom::Role(zero.clone(), x.clone(), y.clone()),
+                Atom::Role(one.clone(), x.clone(), y.clone()),
+            ]));
+            for index in 0..n {
+                let role = if ((index as u64 >> bit) & 1) == 0 { &zero } else { &one };
+                self.clauses.push(clause([guard.clone()], [Atom::Role(
+                    role.clone(), x.clone(),
+                    Term::Fun(format!("f_{}_{}", marker, index), Box::new(x.clone())),
+                )]));
+            }
+        }
+    }
+
+    fn color_maximum(&mut self, marker: &str, role: &str, filler: &str, n: i64) {
+        let x = var_x();
+        let y = var_y();
+        let z = Term::Var("z".to_string());
+        // Bounds zero and one have no quadratic expansion. Keep their
+        // direct constraint/equality rule instead of introducing a fresh role.
+        if n <= 1 {
+            let mut body = vec![
+                Atom::Concept(marker.to_owned(), x.clone()),
+                Atom::Role(role.to_owned(), x.clone(), y.clone()),
+                Atom::Concept(filler.to_owned(), y.clone()),
+            ];
+            let mut head = Vec::new();
+            if n == 1 {
+                body.push(Atom::Role(role.to_owned(), x, z.clone()));
+                body.push(Atom::Concept(filler.to_owned(), z.clone()));
+                head.push(Atom::Eq(y, z));
+            }
+            self.clauses.push(clause(body, head));
+            return;
+        }
+        let mut choices = Vec::new();
+        for _ in 0..n {
+            let bucket = self.fresh_cardinality_role();
+            choices.push(Atom::Role(bucket.clone(), x.clone(), y.clone()));
+            self.clauses.push(clause([
+                Atom::Role(bucket.clone(), x.clone(), y.clone()),
+                Atom::Role(bucket, x.clone(), z.clone()),
+            ], [Atom::Eq(y.clone(), z.clone())]));
+        }
+        self.clauses.push(clause([
+            Atom::Concept(marker.to_owned(), x.clone()),
+            Atom::Role(role.to_owned(), x, y.clone()),
+            Atom::Concept(filler.to_owned(), y),
+        ], choices));
     }
 
     fn nominal_name(individual: &str) -> String {
@@ -838,7 +1007,7 @@ impl Clausifier {
                         filler: filler_name.clone(),
                     });
                 }
-                if !self.native_cardinality_only {
+                if !self.native_cardinality_only || !self.card {
                     for i in 0..*n {
                         let f_name = format!("f_{}_{}", q, i);
                         let fxi = Term::Fun(f_name, Box::new(x.clone()));
@@ -851,14 +1020,16 @@ impl Clausifier {
                             [Atom::Concept(filler_name.clone(), fxi)],
                         ));
                     }
-                    for i in 0..*n {
+                    if self.color_cardinality && *n > 2 {
+                        self.color_minimum_distinctness(q, *n, &qx);
+                    } else { for i in 0..*n {
                         for j in (i + 1)..*n {
                             let fxi = Term::Fun(format!("f_{}_{}", q, i), Box::new(x.clone()));
                             let fxj = Term::Fun(format!("f_{}_{}", q, j), Box::new(x.clone()));
                             self.clauses
                                 .push(clause([qx.clone(), Atom::Eq(fxi, fxj)], []));
                         }
-                    }
+                    } }
                 }
                 if *n == 1 {
                     self.clauses.push(clause(
@@ -876,6 +1047,27 @@ impl Clausifier {
                     // Skipped only when the polarity pre-pass PROVED the concept
                     // occurs positively only (then Q is never needed in a body
                     // and the clause is pure cost — the ore_ont_15672 blow-up).
+                    if ((self.native_cardinality_only && self.card) && *n > 1)
+                        || (self.color_cardinality && *n > 2) {
+                        // Exactly complement ≥n with ≤n-1. Native cardinality
+                        // rules enforce both sides without a quadratic equality head.
+                        let nq = self.fresh();
+                        self.record_definer(&nq, DefinerKind::Not, vec![q.to_string()], None, None);
+                        if self.card { self.hooks.cardinalities.push(crate::json_io::CardMeta {
+                            marker: nq.clone(),
+                            min: false,
+                            n: (*n - 1) as u32,
+                            role: role_name.clone(),
+                            filler: filler_name.clone(),
+                        }); }
+                        if self.color_cardinality && (!self.native_cardinality_only || !self.card) {
+                            self.color_maximum(&nq, &role_name, &filler_name, *n - 1);
+                        }
+                        let nqx = Atom::Concept(nq, x.clone());
+                        self.clauses.push(clause([], [qx.clone(), nqx.clone()]));
+                        self.clauses.push(clause([qx, nqx], []));
+                        return;
+                    }
                     let ys: Vec<Term> = (0..*n).map(|i| Term::Var(format!("y{}", i))).collect();
                     let mut body_atoms: Vec<Atom> = Vec::new();
                     for yi in &ys {
@@ -911,7 +1103,10 @@ impl Clausifier {
                         filler: filler_name.clone(),
                     });
                 }
-                if !self.native_cardinality_only {
+                if !self.native_cardinality_only || !self.card {
+                    if self.color_cardinality {
+                        self.color_maximum(q, &role_name, &filler_name, *n);
+                    } else {
                     let ys: Vec<Term> = (0..=*n).map(|i| Term::Var(format!("y{}", i))).collect();
                     let mut body_atoms: Vec<Atom> = vec![qx.clone()];
                     for yi in &ys {
@@ -925,6 +1120,7 @@ impl Clausifier {
                         }
                     }
                     self.clauses.push(clause(body_atoms, head_atoms));
+                    }
                 }
                 // Recognition: `≤n r.F ⊑ Q` via excluded middle — NQ stands for
                 // ¬Q ≡ ≥(n+1) r.F (n+1 pairwise-distinct witnesses), so a
@@ -952,7 +1148,7 @@ impl Clausifier {
                     self.clauses.push(clause([], [qx.clone(), nqx.clone()]));
                     self.clauses.push(clause([qx, nqx.clone()], []));
                     let g = |i: i64| Term::Fun(format!("f_{}_{}", nq, i), Box::new(x.clone()));
-                    if !self.native_cardinality_only {
+                    if !self.native_cardinality_only || !self.card {
                         for i in 0..=*n {
                             self.clauses.push(clause(
                                 [nqx.clone()],
@@ -963,12 +1159,14 @@ impl Clausifier {
                                 [Atom::Concept(filler_name.clone(), g(i))],
                             ));
                         }
-                        for i in 0..=*n {
+                        if self.color_cardinality && *n + 1 > 2 {
+                            self.color_minimum_distinctness(&nq, *n + 1, &nqx);
+                        } else { for i in 0..=*n {
                             for j in (i + 1)..=*n {
                                 self.clauses
                                     .push(clause([nqx.clone(), Atom::Eq(g(i), g(j))], []));
                             }
-                        }
+                        } }
                     }
                 }
             }
@@ -1107,6 +1305,7 @@ mod tests {
         assert!(ordinary.clauses.len() > 8_000);
 
         let mut native = Clausifier::new_with_native_cardinality_only(true);
+        native.card = true;
         native.mark_polarity(&restriction, false);
         let native_marker = native.q(&restriction);
         assert_eq!(native_marker, ordinary_marker);
@@ -1118,6 +1317,178 @@ mod tests {
         assert_eq!(definition.n, 128);
         assert_eq!(definition.role, "r");
         assert_eq!(definition.filler, "J");
+    }
+
+    #[test]
+    fn native_handoff_without_metadata_preserves_ordinary_obligations() {
+        for restriction in [
+            Concept::AtLeast(3, Role::Name("r".to_string()), Box::new(Concept::Name("J".to_string()))),
+            Concept::AtMost(2, Role::Name("r".to_string()), Box::new(Concept::Name("J".to_string()))),
+        ] {
+            let mut ordinary = Clausifier::new();
+            ordinary.card = false;
+            ordinary.mark_polarity(&restriction, true);
+            ordinary.q(&restriction);
+            let mut native = Clausifier::new_with_native_cardinality_only(true);
+            native.card = false;
+            native.mark_polarity(&restriction, true);
+            native.q(&restriction);
+            assert_eq!(format!("{:?}", native.clauses), format!("{:?}", ordinary.clauses));
+            assert!(!native.clauses.is_empty());
+            assert!(native.hooks.cardinalities.is_empty());
+        }
+    }
+
+    #[test]
+    fn role_colors_avoid_quadratic_lower_and_upper_expansions() {
+        for restriction in [
+            Concept::AtLeast(1024, Role::Name("r".into()), Box::new(Concept::Name("J".into()))),
+            Concept::AtMost(1024, Role::Name("r".into()), Box::new(Concept::Name("J".into()))),
+        ] {
+            let mut colored = Clausifier::new();
+            colored.color_cardinality = true;
+            colored.mark_polarity(&restriction, true); // include recognition too
+            colored.q(&restriction);
+            assert!(colored.clauses.len() < 20_000, "{}", colored.clauses.len());
+            assert!(colored.clauses.iter().all(|c| c.body.len() <= 3));
+            assert!(colored.clauses.iter().all(|c|
+                !c.body.iter().any(|atom| matches!(atom, Atom::Eq(..)))));
+            assert!(colored.clauses.iter().any(|c| c.body.is_empty() && c.head.len() == 2));
+        }
+    }
+
+    #[test]
+    fn checked_symbolic_normalization_preserves_large_source_bounds() {
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::SubClassOf(Concept::Name("A".into()), Concept::AtLeast(
+            1_000_000, Role::Name("r".into()), Box::new(Concept::Name("F".into())))));
+        let (clauses, _, hooks) = normalise_symbolic_cardinality(&ontology).unwrap();
+        assert!(clauses.len() < 16);
+        assert_eq!(hooks.source_axioms.len(), 1);
+        assert!(hooks.native_cardinalities_match_provenance());
+        assert!(hooks.cardinalities.iter().any(|bound| bound.min && bound.n == 1_000_000));
+        assert!(normalise_symbolic_cardinality(&Ontology::new()).is_err());
+    }
+
+    #[test]
+    fn native_cardinality_provenance_rejects_corrupted_bounds() {
+        let restriction = Concept::AtLeast(3, Role::Name("r".into()), Box::new(Concept::Name("F".into())));
+        let mut native = Clausifier::new_with_native_cardinality_only(true);
+        native.card = true;
+        native.mark_polarity(&restriction, true);
+        native.q(&restriction);
+        assert!(native.hooks.native_cardinalities_match_provenance());
+        let saved = native.hooks.cardinalities.clone();
+        for corruption in 0..6 {
+            native.hooks.cardinalities = saved.clone();
+            match corruption {
+                0 => { native.hooks.cardinalities.remove(0); }
+                1 => native.hooks.cardinalities.push(saved[0].clone()),
+                2 => native.hooks.cardinalities[0].n += 1,
+                3 => native.hooks.cardinalities[1].filler = "other".into(),
+                4 => native.hooks.cardinalities[1].role = "other".into(),
+                5 => native.hooks.cardinalities[1].min = true,
+                _ => unreachable!(),
+            }
+            assert!(!native.hooks.native_cardinalities_match_provenance(), "corruption={corruption}");
+        }
+        native.hooks.cardinalities = saved;
+        native.hooks.definers.push(native.hooks.definers[0].clone());
+        assert!(!native.hooks.native_cardinalities_match_provenance());
+        native.hooks.definers.pop();
+        let original_definers = native.hooks.definers.clone();
+        let index = native.hooks.definers.iter().position(|d| d.kind == DefinerKind::AtLeast).unwrap();
+        let marker = native.hooks.definers[index].marker.clone();
+        native.hooks.definers[index].operands = vec![marker.clone()];
+        for bound in &mut native.hooks.cardinalities { bound.filler = marker.clone(); }
+        assert!(!native.hooks.native_cardinalities_match_provenance(), "self-recursive filler");
+        native.hooks.definers = original_definers;
+        native.hooks.definers.clear();
+        assert!(!native.hooks.native_cardinalities_match_provenance());
+    }
+
+    #[test]
+    fn native_cardinality_keeps_source_tbox_provenance() {
+        let mut ontology = Ontology::new();
+        let a = Concept::Name("A".into());
+        let b = Concept::Name("B".into());
+        let filler = Concept::Name("F".into());
+        ontology.add(Axiom::SubClassOf(a.clone(), Concept::AtLeast(
+            3, Role::Name("r".into()), Box::new(filler.clone()))));
+        ontology.add(Axiom::EquivalentClasses(b.clone(), Concept::AtMost(
+            3, Role::Name("r".into()), Box::new(filler))));
+        ontology.add(Axiom::DisjointClasses(a, b));
+        let (_, _, native) = normalise_with_native_cardinality(&ontology, true);
+        assert_eq!(native.source_axioms.len(), 3);
+        assert!(native.source_axioms.iter().any(|a| matches!(a.kind, crate::json_io::SourceAxiomKind::SubClass)));
+        assert!(native.source_axioms.iter().any(|a| matches!(a.kind, crate::json_io::SourceAxiomKind::Equivalent)));
+        assert!(native.source_axioms.iter().any(|a| matches!(a.kind, crate::json_io::SourceAxiomKind::Disjoint)));
+        assert!(!native.definers.is_empty());
+        assert!(native.native_cardinalities_match_provenance());
+    }
+
+    #[test]
+    fn native_qualified_million_bounds_keep_fillers_and_recognition() {
+        let filler = mk_and(vec![Concept::Name("F".into()), Concept::Name("G".into())]);
+        for restriction in [
+            Concept::AtLeast(1_000_000, Role::Name("r".into()), Box::new(filler.clone())),
+            Concept::AtMost(1_000_000, Role::Name("r".into()), Box::new(filler.clone())),
+        ] {
+            let mut native = Clausifier::new_with_native_cardinality_only(true);
+            native.card = true;
+            native.trigger_absorb = false;
+            native.mark_polarity(&restriction, true);
+            native.mark_polarity(&restriction, false);
+            let marker = native.q(&restriction);
+            assert!(native.clauses.len() < 16, "{}", native.clauses.len());
+            assert_eq!(native.hooks.cardinalities.len(), 2);
+            let primary = native.hooks.cardinalities.iter().find(|d| d.marker == marker).unwrap();
+            let complement = native.hooks.cardinalities.iter().find(|d| d.marker != marker).unwrap();
+            assert_eq!(primary.n, 1_000_000);
+            assert_eq!(primary.filler, complement.filler);
+            assert_eq!(primary.role, complement.role);
+            assert_ne!(primary.min, complement.min);
+            assert_eq!(complement.n, if primary.min { 999_999 } else { 1_000_001 });
+            let provenance = native.hooks.definers.iter().find(|d| d.marker == marker).unwrap();
+            assert_eq!(provenance.kind, if primary.min { DefinerKind::AtLeast } else { DefinerKind::AtMost });
+            assert_eq!(provenance.n, Some(1_000_000));
+            assert_eq!(provenance.role.as_deref(), Some(primary.role.as_str()));
+            assert_eq!(provenance.operands, vec![primary.filler.clone()]);
+            let negative = native.hooks.definers.iter().find(|d| d.marker == complement.marker).unwrap();
+            assert_eq!(negative.kind, DefinerKind::Not);
+            assert_eq!(negative.operands, vec![marker.clone()]);
+            assert!(native.hooks.native_cardinalities_match_provenance());
+            assert!(native.clauses.iter().any(|c| c.body.iter().any(|a|
+                matches!(a, Atom::Concept(name, _) if name == "F"))));
+            assert!(native.clauses.iter().any(|c| c.body.iter().any(|a|
+                matches!(a, Atom::Concept(name, _) if name == "G"))));
+        }
+    }
+
+    #[test]
+    fn native_negative_minimum_uses_constant_size_complement() {
+        let restriction = Concept::AtLeast(
+            1_000_000,
+            Role::Name("r".to_string()),
+            Box::new(Concept::Name("J".to_string())),
+        );
+        let mut native = Clausifier::new_with_native_cardinality_only(true);
+        native.card = true;
+        native.mark_polarity(&restriction, true);
+        let marker = native.q(&restriction);
+        assert_eq!(native.clauses.len(), 2);
+        assert_eq!(native.hooks.cardinalities.len(), 2);
+        let minimum = &native.hooks.cardinalities[0];
+        let complement = &native.hooks.cardinalities[1];
+        assert_eq!(minimum.marker, marker);
+        assert!(minimum.min);
+        assert_eq!(minimum.n, 1_000_000);
+        assert!(!complement.min);
+        assert_eq!(complement.n, 999_999);
+        assert_eq!(minimum.role, complement.role);
+        assert_eq!(minimum.filler, complement.filler);
+        assert!(native.clauses.iter().any(|c| c.body.is_empty() && c.head.len() == 2));
+        assert!(native.clauses.iter().any(|c| c.body.len() == 2 && c.head.is_empty()));
     }
 
     /// AtMost recognition (`≤n r.F ⊑ Q` via excluded middle + n+1 distinct
@@ -1360,10 +1731,27 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
     normalise_with_native_cardinality(ontology, false)
 }
 
+/// Checked symbolic-bound normalization for a future certified native worker.
+/// This does not authorize classification or ordinary CB/EL consumption.
+/// In particular, synthetic functionality bounds without matching provenance
+/// are declined rather than admitted through the source correspondence gate.
+pub fn normalise_symbolic_cardinality(
+    ontology: &Ontology,
+) -> Result<(Vec<DLClause>, Vec<DLClause>, GroundHooks), &'static str> {
+    if std::env::var_os("KM_NO_HT_CARD").is_some() {
+        return Err("symbolic cardinality requires native bound metadata");
+    }
+    let output = normalise_with_native_cardinality(ontology, true);
+    if !output.2.native_cardinalities_match_provenance() {
+        return Err("symbolic cardinality metadata does not match definer provenance");
+    }
+    Ok(output)
+}
+
 /// Normalize while handing qualified number restrictions to the selected
 /// native SHOQ consumer through `CardMeta`. This representation omits only the
-/// redundant witness/distinctness expansion; marker and recognition clauses
-/// remain available for exact-cardinality provenance.
+/// redundant witness/distinctness expansion. Recognition uses complementary
+/// native number restrictions and marker clauses for exact provenance.
 pub fn normalise_with_native_cardinality(
     ontology: &Ontology,
     native_cardinality_only: bool,
@@ -1402,7 +1790,7 @@ pub fn normalise_with_native_cardinality(
             Axiom::SubClassOf(sub, sup) => {
                 let s = nnf_cow(sub);
                 let p = nnf_cow(sup);
-                if clausifier.trigger_absorb {
+                if clausifier.trigger_absorb || (clausifier.native_cardinality_only && clausifier.card) {
                     clausifier
                         .hooks
                         .source_axioms
@@ -1417,7 +1805,7 @@ pub fn normalise_with_native_cardinality(
             Axiom::EquivalentClasses(l, r) => {
                 let nl = nnf_cow(l);
                 let nr = nnf_cow(r);
-                if clausifier.trigger_absorb {
+                if clausifier.trigger_absorb || (clausifier.native_cardinality_only && clausifier.card) {
                     clausifier
                         .hooks
                         .source_axioms
@@ -1433,7 +1821,7 @@ pub fn normalise_with_native_cardinality(
             Axiom::DisjointClasses(l, r) => {
                 let nl = nnf(l);
                 let nr = nnf(r);
-                if clausifier.trigger_absorb {
+                if clausifier.trigger_absorb || (clausifier.native_cardinality_only && clausifier.card) {
                     clausifier
                         .hooks
                         .source_axioms
@@ -1461,9 +1849,12 @@ pub fn normalise_with_native_cardinality(
             }
             Axiom::RoleChain(chain, sup) => {
                 debug_assert!(chain.len() >= 2, "parser rejects short role chains");
-                let x0 = Term::Var("x0".to_string());
-                let x1 = Term::Var("x1".to_string());
-                let x2 = Term::Var("x2".to_string());
+                // Center the binary join on its shared variable. Both body
+                // roles must mention x for the CB normal-form loader. This is
+                // alpha-renaming of the same universally quantified axiom.
+                let x0 = Term::Var("y".to_string());
+                let x1 = Term::Var("x".to_string());
+                let x2 = Term::Var("z1".to_string());
                 let mut suffix = chain[chain.len() - 1].clone();
                 for role in chain[1..chain.len() - 1].iter().rev() {
                     let combined = clausifier.fresh_chain_role();
@@ -1485,13 +1876,16 @@ pub fn normalise_with_native_cardinality(
                 ));
             }
             Axiom::TransitiveRole(role) => {
-                let z = Term::Var("z".to_string());
+                // Like a binary RoleChain, center the shared join on x.
+                // The old R(x,y), R(y,z) body was rejected by the CB loader
+                // whenever ABox consumers required retaining this axiom.
+                let z = Term::Var("z1".to_string());
                 clausifier.clauses.push(clause(
                     [
-                        Atom::Role(role.clone(), x.clone(), y.clone()),
-                        Atom::Role(role.clone(), y.clone(), z.clone()),
+                        Atom::Role(role.clone(), y.clone(), x.clone()),
+                        Atom::Role(role.clone(), x.clone(), z.clone()),
                     ],
-                    [Atom::Role(role.clone(), x.clone(), z)],
+                    [Atom::Role(role.clone(), y.clone(), z)],
                 ));
             }
             Axiom::SymmetricRole(role) => {

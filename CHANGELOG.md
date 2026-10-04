@@ -226,6 +226,55 @@
   target. ORE 6722 improved from 3.59 to 3.42 seconds. The strict score remains
   524/589.
 
+## [1.4.4] - 2026-10-04
+
+### Inverse chains, DL-safe rules, and input validation
+
+- Support inverse object-property expressions in role chains, including
+  inverse superproperties, with direction and source-name collision tests.
+- Extend DL-safe rule normalization and execution. Preserve the consistency
+  precheck when normalization moves rule obligations into ordinary clauses.
+- Reject detected OWL 2 DL input violations with an explanation and exit code
+  2, without repairing the source or returning a classification. Keep support
+  refusals distinct (exit code 3). DL-safe SWRL remains admitted by the input
+  contract. For anonymous-individual trees, follow the explicit named-neighbour
+  condition in OWL 2 section 11.2, including isolated vertices. The following
+  named-star example conflicts with that formal condition and is not treated
+  as an exception. Count distinct assertions, including incoming assertions,
+  and require one qualifying vertex per component.
+- Fix validation memory growth in the functional-syntax grammar and correct
+  `DataPropertyAtom` subject typing and empty IRI paths. The final 1,920-input
+  inventory has 1,708 inputs passing the implemented checks and 212 refusals,
+  with no validation errors or timeouts. Independent source-witness audits
+  confirmed all 212 violations, including the 33 new anonymous-tree diagnoses.
+- Use direct witness inequalities for minimum cardinalities up to seven,
+  where they need fewer clauses than role colours. Keep colours for larger
+  minima and for maximum bounds. This resolves the shared-successor regression
+  without relaxing its assertions or time limit.
+- The final candidate passed 2,822 Rust tests (8 ignored), all four production
+  Lean gates with no `sorryAx` in the audited surfaces, 31 Java tests, plugin
+  packaging, and the Protégé installation smoke test. Certification and builds
+  use the same 863-file source manifest. The final 592-input Konclude
+  comparison has 552 matches, two successes without gold, 35 independently
+  verified invalid-input refusals, two memory-limit failures, and one timeout.
+  No successful taxonomy disagrees with gold. All 554 successful signatures
+  match the preceding candidate. The final 1,920-input classification run
+  reports 1,622 successes, 212 input rejections, and 86 non-completions under
+  the unchanged 240-second / 20-GiB / one-CPU protocol. The final output audit
+  verifies all successful output hashes, zero dropped axioms, and all 212
+  invalid-input diagnoses. There are no unsupported-input outcomes or
+  unexplained engine errors in this run. All eight differences from the
+  v1.4.3 baseline match independently checked reference outputs.
+- Original errors 15687 and 9890 complete in 109.6 and 7.3 seconds on the final
+  candidate, with actual output hashes verified against independent references.
+  Three preceding successes (13229, 14817, 5162) now hit the
+  240-second limit, compared with preceding times of 227.0, 211.7, and 230.6
+  seconds. Retain those outcomes in the final totals.
+
+- Release evidence: `results/benchmarks/2026-10-02-v1.4.4-support/validation/`
+  contains the final source manifest, test and certification logs, corpus
+  inventories, gold comparison, full output audit, and adjudication.
+
 ## [1.3.0] - 2026-08-30
 
 ### Incremental reasoning and explanations

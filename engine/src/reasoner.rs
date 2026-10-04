@@ -212,6 +212,23 @@ impl Builder {
     /// Parse a JClause to an OntologyClause; None if unsupported / non-normal.
     fn clause(&mut self, c: &JClause) -> Option<OntologyClause> {
         let mut varmap: HashMap<String, Term> = HashMap::new();
+        // A ground negative role assertion is equivalently
+        // forall x, R(x,b) -> x != a. The central-variable guard puts the
+        // constraint in the normal form consumed by nominal Hyper without
+        // discarding it. Keep the source JSON intact for typed certificates.
+        if self.nominals && c.head.is_empty() {
+            if let [JAtom::Role { role, source: JTerm::Ind { name: source },
+                target: JTerm::Ind { name: target } }] = c.body.as_slice()
+            {
+                let source = ind_term(self.individual(source));
+                let target = ind_term(self.individual(target));
+                let iri = self.sig.role(role);
+                return Some(OntologyClause::new(
+                    vec![Pred::Role { iri, s: X, t: target }],
+                    vec![Lit::ineq(X, source)],
+                ));
+            }
+        }
         let mut body: Vec<Pred> = Vec::new();
         // A body equality `a ≈ b` is a negative equality literal: the clause
         // `{a≈b} ∧ Γ → Δ` is logically `Γ → Δ ∨ a ≉ b`.  We move such body
@@ -418,17 +435,31 @@ impl Reasoner {
         }
     }
 
-    /// Desired worker count: `KM_THREADS` env if set (clamped >=1), else the
-    /// machine's available parallelism.
+    fn requested_threads() -> usize {
+        std::env::var("KM_THREADS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(1)
+            })
+            .max(1)
+    }
+
+    /// Independent saturation tasks needed for the available CPU budget.
+    /// Rayon bounds active threads already, but scheduling sixteen separate
+    /// engines on one worker repeats the same nominal ground saturation.
     fn want_threads() -> usize {
-        if let Ok(v) = std::env::var("KM_THREADS") {
-            if let Ok(n) = v.trim().parse::<usize>() {
-                return n.max(1);
-            }
-        }
-        std::thread::available_parallelism()
+        let available = std::thread::available_parallelism()
             .map(|n| n.get())
-            .unwrap_or(1)
+            .unwrap_or(1);
+        let budget = std::env::var("RAYON_NUM_THREADS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(available);
+        Self::requested_threads().min(available).min(budget)
     }
 
     /// Finalize the ontology once per classification.  Every engine built from
@@ -862,6 +893,20 @@ impl Reasoner {
             let want: std::collections::HashSet<&str> = qs.split(',').collect();
             queries.retain(|&iri| want.contains(self.sig0.concept_names[iri as usize].as_str()));
         }
+        // File-backed form for large certificate residues.  A contemporary
+        // biomedical ontology can leave tens of thousands of exact-CB query
+        // subjects, which exceeds the operating system's environment/argument
+        // limit when encoded as one comma-separated `KM_QUERIES` value.
+        if let Some(path) = std::env::var_os("KM_QUERIES_FILE") {
+            let text = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+                panic!(
+                    "KM_QUERIES_FILE {} cannot be read: {err}",
+                    path.to_string_lossy()
+                )
+            });
+            let want: std::collections::HashSet<&str> = text.lines().collect();
+            queries.retain(|&iri| want.contains(self.sig0.concept_names[iri as usize].as_str()));
+        }
         if let Ok(prefix) = std::env::var("KM_QUERY_EXCLUDE_PREFIX") {
             let retained = std::env::var_os("KM_QUERY_RETAIN_FILE")
                 .map(|path| {
@@ -923,14 +968,33 @@ impl Reasoner {
         }
         let retain_certificate_engine = std::env::var_os("KM_CB_LIVE_STATE").is_some()
             || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some();
+        let nominal_static = std::env::var_os("KM_NOMINALS").is_some()
+            && std::env::var_os("KM_NOMINAL_DYNAMIC").is_none();
+        // Query-task size controls context lifetime independently of the Rayon
+        // CPU pool. Certificate emission must retain one engine containing the
+        // whole classification and therefore overrides this scheduling hint.
+        let query_task_size = (!retain_certificate_engine).then(|| {
+            std::env::var("KM_QUERY_TASK_SIZE").ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .filter(|&value| value > 0)
+        }).flatten();
         let threads = if retain_certificate_engine {
             1
         } else {
-            Self::want_threads().min(queries.len().max(1))
+            // Preserve the established schedule outside small static nominal
+            // inputs. Large query partitions bound conditional labels, while
+            // non-nominal engines also rely on the parallel-path context
+            // lifecycle even when Rayon executes its tasks on one CPU.
+            let tasks = if !nominal_static || queries.len() > 4_096 {
+                Self::requested_threads()
+            } else {
+                Self::want_threads()
+            };
+            tasks.min(queries.len().max(1))
         };
         // Sequential path: one engine over all queries (preserves cross-query
         // context sharing -- fastest when single-threaded).
-        if threads <= 1 || queries.len() <= 1 {
+        if (threads <= 1 && query_task_size.is_none()) || queries.len() <= 1 {
             let mut e = Engine::from_prepared(&prepared);
             e.run_for(&queries);
             let (subs, inc, incomplete, n) = (
@@ -959,10 +1023,8 @@ impl Reasoner {
         // KM_STATIC_SCHED selects this schedule for any mechanism.  The nominal
         // route selects it automatically; KM_NOMINAL_DYNAMIC restores the
         // general work-stealing scheduler for direct A/B measurements.
-        let nominal_static = std::env::var_os("KM_NOMINALS").is_some()
-            && std::env::var_os("KM_NOMINAL_DYNAMIC").is_none();
-        if std::env::var_os("KM_STATIC_SCHED").is_some() || nominal_static {
-            let chunk_len = queries.len().div_ceil(threads);
+        if query_task_size.is_some() || std::env::var_os("KM_STATIC_SCHED").is_some() || nominal_static {
+            let chunk_len = query_task_size.unwrap_or_else(|| queries.len().div_ceil(threads));
             let chunks: Vec<&[Iri]> = queries.chunks(chunk_len).collect();
             // Diagnostic scheduling gate: finish the inter-context message
             // fixpoint periodically instead of accumulating one queue over an

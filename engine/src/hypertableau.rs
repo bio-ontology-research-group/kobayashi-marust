@@ -11913,6 +11913,8 @@ impl Ht {
             "definitions": full["definitions"],
             "query": query.wire_json(),
             "frontiers": frontiers,
+            "exact_maximums": full.get("exact_maximums").cloned().unwrap_or_else(|| serde_json::json!([])),
+            "exact_definitions": full.get("exact_definitions").cloned().unwrap_or_else(|| serde_json::json!([])),
             "terminal": self.lean_cardinality_taxonomy_query_payload(terminal_document)?,
         }))
         .map_err(|error| error.to_string())?;
@@ -28818,7 +28820,10 @@ mod tests {
             vec![(0, Vec::new()), (1, Vec::new()), (2, Vec::new())]
         );
 
-        let reasoner = ht(Vec::new());
+        let mut reasoner = ht(Vec::new());
+        // The empty TBox cannot supply the signature of the ABox-only classes.
+        // Preserve their declared dimensions just as the source adapter does.
+        reasoner.set_certificate_signature_floor((A.max(B) as usize) + 1, 0, 0);
         let document = reasoner
             .lean_rooted_cardinality_address_frontier_json(&frontier)
             .expect("serialize all native roots");
@@ -28843,7 +28848,7 @@ mod tests {
         );
 
         let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
-        duplicate["addresses"][2]["root"] = serde_json::json!(1);
+        duplicate["frontier"]["addresses"][2]["root"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
         let rejected = std::process::Command::new(checker)
             .arg(&path)
@@ -30417,6 +30422,32 @@ mod tests {
         let payload = wire.get("certificate").unwrap_or(&wire);
         assert_eq!(payload["exact_maximums"], serde_json::json!([1]));
         assert_eq!(payload["exact_definitions"], serde_json::json!([0]));
+        let bound = &wire["source_bound_publication"];
+        let runs = &bound["runs"];
+        for run in runs["concept_runs"].as_array().unwrap().iter().chain(
+            runs["subsumption_runs"].as_array().unwrap().iter()
+                .flat_map(|row| row.as_array().unwrap().iter())) {
+            assert_eq!(run["exact_maximums"], payload["exact_maximums"]);
+            assert_eq!(run["exact_definitions"], payload["exact_definitions"]);
+        }
+        let checker = std::env::var_os("KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER")
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER"))
+            .expect("the successful publication used a source-bound checker");
+        let mut forged = bound.clone();
+        forged["runs"]["concept_runs"][0]["exact_definitions"] = serde_json::json!([]);
+        assert!(!tableau.lean_candidate_passes_with(&forged.to_string(), &checker).unwrap(),
+            "one cell cannot substitute different exactness metadata");
+        let mut forged = bound.clone();
+        for run in forged["runs"]["concept_runs"].as_array_mut().unwrap() {
+            run["exact_maximums"] = serde_json::json!([]);
+        }
+        for row in forged["runs"]["subsumption_runs"].as_array_mut().unwrap() {
+            for run in row.as_array_mut().unwrap() {
+                run["exact_maximums"] = serde_json::json!([]);
+            }
+        }
+        assert!(!tableau.lean_candidate_passes_with(&forged.to_string(), &checker).unwrap(),
+            "uniform run metadata must still match the source certificate");
     }
 
     #[test]

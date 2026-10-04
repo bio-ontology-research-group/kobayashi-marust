@@ -205,6 +205,21 @@ fn deregister(pid: u32) {
     }
 }
 
+/// Preserve Unix signal termination instead of collapsing every signal to -1.
+pub(crate) fn exit_status_code(status: &std::process::ExitStatus) -> i32 {
+    status.code().unwrap_or_else(|| {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            -status.signal().unwrap_or(1)
+        }
+        #[cfg(not(unix))]
+        {
+            -1
+        }
+    })
+}
+
 pub struct EngineResult {
     pub code: i32,
     /// temp file holding the worker's stdout; parse with `serde_json::from_reader`
@@ -212,6 +227,24 @@ pub struct EngineResult {
     pub stderr: String,
     pub oom: bool,
     pub timed_out: bool,
+}
+
+impl EngineResult {
+    pub(crate) fn worker_error(&self, bin: &str) -> OrchestrateError {
+        let bin = bin.to_owned();
+        let stderr = self.stderr.clone();
+        if self.timed_out {
+            OrchestrateError::WorkerTimeout { bin, stderr }
+        } else if self.oom {
+            OrchestrateError::WorkerMemoryLimit { bin, stderr }
+        } else {
+            OrchestrateError::Worker {
+                bin,
+                code: self.code,
+                stderr,
+            }
+        }
+    }
 }
 
 /// Resident set size of `pid` in bytes, from `/proc/<pid>/statm` field 2 (pages)
@@ -331,7 +364,7 @@ pub fn run_engine(
     };
 
     deregister(pid);
-    let code = status.code().unwrap_or(-1); // signal-killed -> negative-ish; we branch on oom/timed/rc anyway
+    let code = exit_status_code(&status);
     let stderr = std::fs::read_to_string(stderr_tmp.path()).unwrap_or_default();
     Ok(EngineResult {
         code,
@@ -466,6 +499,31 @@ mod tests {
         .unwrap();
         assert!(result.timed_out);
         assert!(!result.oom);
+        assert_eq!(result.code, -libc::SIGKILL);
+        let error = result.worker_error("engine");
+        assert!(matches!(error, OrchestrateError::WorkerTimeout { .. }));
+        assert_eq!(error.exit_code(), 124);
+    }
+
+    #[test]
+    fn signal_death_is_not_reported_as_a_timeout() {
+        let input = empty_input();
+        let result = run_engine(
+            Path::new("/bin/sh"),
+            &["-c".into(), "kill -TERM $$".into()],
+            input.path(),
+            None,
+            None,
+            Some(1.0),
+            &[],
+            false,
+        )
+        .unwrap();
+        assert_eq!(result.code, -libc::SIGTERM);
+        assert!(!result.timed_out && !result.oom);
+        let error = result.worker_error("engine");
+        assert_eq!(error.exit_code(), 1);
+        assert!(error.to_string().contains("terminated by signal 15"));
     }
 
     #[test]
@@ -538,5 +596,8 @@ mod tests {
         .unwrap();
         assert!(result.oom);
         assert!(!result.timed_out);
+        let error = result.worker_error("engine");
+        assert!(matches!(error, OrchestrateError::WorkerMemoryLimit { .. }));
+        assert_eq!(error.exit_code(), 1);
     }
 }

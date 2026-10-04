@@ -192,6 +192,7 @@ pub struct SourceIncrementalClassifier {
 
 impl SourceIncrementalClassifier {
     pub fn new(source: &str) -> Result<Self, String> {
+        validate_incremental_source(source)?;
         let frontend = normalize_automatic(source)?;
         let route = frontend.route.clone();
         if let Some((classifier, classification)) = IncrementalMirrorClassifier::new(source)? {
@@ -442,6 +443,7 @@ impl SourceIncrementalClassifier {
 
     /// Atomically replace the complete flattened source ontology.
     pub fn replace_source(&mut self, source: &str) -> Result<SourceIncrementalReceipt, String> {
+        validate_incremental_source(source)?;
         let mut candidate = normalize_automatic(source)?;
         let route_before = self.route.clone();
         let mut route_after = candidate.route.clone();
@@ -1371,9 +1373,21 @@ fn generic_ht_adapter_allowed(route: &str) -> bool {
     route != "ht_bridge"
 }
 
+fn validate_incremental_source(source: &str) -> Result<(), String> {
+    if crate::frontend::conformance::has_imports(source)? {
+        return Err("cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into());
+    }
+    crate::frontend::conformance::check_source(source)?;
+    crate::frontend::conformance::check_iri_prefixes(source)?;
+    crate::frontend::conformance::check_declarations(source)
+}
+
 fn normalize_automatic(source: &str) -> Result<FrontendResult, String> {
     let _guard = crate::routing::EnvironmentGuard::capture();
     std::env::set_var("KM_ROUTE", "auto");
+    // Batch classification can discard a certified separable ABox. A retained
+    // session needs its typed individuals and assertions to apply later edits.
+    std::env::set_var("KM_NO_SEPARABLE_ABOX_ELISION", "1");
     crate::frontend::ofn_to_clauses(source).map_err(|error| error.0)
 }
 
@@ -1384,6 +1398,7 @@ fn normalize_selected(source: &str, route: &str) -> Result<FrontendResult, Strin
         .map_err(|error| format!("invalid selected incremental route {route:?}: {error}"))?;
     selected.apply_environment();
     std::env::set_var("KM_ROUTE", route);
+    std::env::set_var("KM_NO_SEPARABLE_ABOX_ELISION", "1");
     crate::frontend::ofn_to_clauses(source).map_err(|error| error.0)
 }
 
@@ -1557,14 +1572,18 @@ fn map_incremental_result(
             }
         }
     }
+    // Source prechecks can certify a global ABox clash that is not represented
+    // in a retained backend's taxonomy clauses. Preserve that verdict just as
+    // the ordinary classification supervisor does before invoking its worker.
+    let source_abox_inconsistent = frontend.abox_inconsistent || asserted_unsat;
     Classification {
-        consistent: !result.inconsistent && !asserted_unsat,
-        subsumptions: if asserted_unsat {
+        consistent: !result.inconsistent && !source_abox_inconsistent,
+        subsumptions: if source_abox_inconsistent {
             Vec::new()
         } else {
             subsumptions.into_iter().collect()
         },
-        unsatisfiable: if asserted_unsat {
+        unsatisfiable: if source_abox_inconsistent {
             Vec::new()
         } else {
             unsatisfiable.into_iter().collect()
@@ -1750,6 +1769,55 @@ mod tests {
         }
     }
 
+    #[test]
+    fn invalid_source_replacement_preserves_the_existing_session() {
+        let _environment = lock_environment();
+        let valid = "Prefix(:=<urn:test:>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) SubClassOf(:A :B))";
+        let invalid = "Prefix(:=<urn:test:>) Ontology(SubClassOf(:A :B))";
+        assert!(SourceIncrementalClassifier::new(invalid).err().unwrap().contains("no matching declaration"));
+        let mut session = SourceIncrementalClassifier::new(valid).unwrap();
+        let before = session.classification().clone();
+        let revision = session.revision();
+        for source in [invalid, "Ontology(Import(<urn:unresolved>))"] {
+            assert!(session.replace_source(source).is_err());
+            assert_eq!(session.revision(), revision);
+            assert_eq!(session.classification(), &before);
+        }
+    }
+
+    #[test]
+    fn direct_abox_clash_is_preserved_across_source_revisions() {
+        let _environment = lock_environment();
+        let consistent = r#"Ontology(
+Declaration(Class(<http://example.org/A>)) Declaration(Class(<http://example.org/B>)) Declaration(Class(<http://example.org/C>))
+DisjointClasses(<http://example.org/A> <http://example.org/B>)
+SubClassOf(<http://example.org/A> <http://example.org/C>)
+ClassAssertion(<http://example.org/A> <http://example.org/a>)
+)"#;
+        let inconsistent = r#"Ontology(
+Declaration(Class(<http://example.org/A>)) Declaration(Class(<http://example.org/B>)) Declaration(Class(<http://example.org/C>))
+DisjointClasses(<http://example.org/A> <http://example.org/B>)
+SubClassOf(<http://example.org/A> <http://example.org/C>)
+ClassAssertion(<http://example.org/A> <http://example.org/a>)
+ClassAssertion(<http://example.org/B> <http://example.org/a>)
+)"#;
+        let fresh = SourceIncrementalClassifier::new(inconsistent).unwrap();
+        assert!(fresh.frontend.abox_inconsistent);
+        assert!(!fresh.classification().consistent);
+        assert!(fresh.classification().subsumptions.is_empty());
+        assert!(fresh.classification().unsatisfiable.is_empty());
+        let mut session = SourceIncrementalClassifier::new(consistent).unwrap();
+        let initial = session.classification().clone();
+        assert!(initial.consistent);
+        assert!(!initial.subsumptions.is_empty());
+        session.replace_source(inconsistent).unwrap();
+        assert!(!session.classification().consistent);
+        assert!(session.classification().subsumptions.is_empty());
+        assert!(session.classification().unsatisfiable.is_empty());
+        session.replace_source(consistent).unwrap();
+        assert_eq!(session.classification(), &initial);
+    }
+
     fn compact_general_ht_source(extended: bool) -> String {
         let mut source = String::from(
             r#"Prefix(:=<http://example.org/general-incremental#>)
@@ -1903,9 +1971,9 @@ Ontology(
     #[test]
     fn jsonl_session_publishes_a_transaction_receipt() {
         let _environment = lock_environment();
-        let before = "Prefix(:=<http://example.org/>)\nOntology(\nSubClassOf(:A :B)\n)";
+        let before = "Prefix(:=<http://example.org/>)\nOntology(\nDeclaration(Class(:A)) Declaration(Class(:B))\nSubClassOf(:A :B)\n)";
         let after =
-            "Prefix(:=<http://example.org/>)\nOntology(\nSubClassOf(:A :B)\nSubClassOf(:B :C)\n)";
+            "Prefix(:=<http://example.org/>)\nOntology(\nDeclaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\nSubClassOf(:A :B)\nSubClassOf(:B :C)\n)";
         let commands = format!(
             "{}\n{}\n",
             serde_json::json!({"op": "init", "functional_syntax": before}),
@@ -1996,35 +2064,39 @@ Ontology(
     #[test]
     fn positive_el_abox_updates_reuse_typed_completion_state() {
         let _environment = lock_environment();
+        let prior_elision = std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION");
         let terminology = (0..1_000)
             .map(|index| {
-                format!("SubClassOf(<Seed{index}> ObjectSomeValuesFrom(<r> <Leaf{index}>))")
+                format!("Declaration(Class(<urn:Seed{index}>)) Declaration(Class(<urn:Leaf{index}>)) SubClassOf(<urn:Seed{index}> ObjectSomeValuesFrom(<urn:r> <urn:Leaf{index}>))")
             })
             .collect::<Vec<_>>()
             .join("\n");
         let consistent = format!(
             r#"Ontology(
- Declaration(Class(<A>)) Declaration(Class(<B>)) Declaration(Class(<C>))
- Declaration(Class(<X>)) Declaration(Class(<Y>))
- Declaration(NamedIndividual(<a>))
- SubClassOf(<A> <B>) DisjointClasses(<B> <C>) SubClassOf(<X> <Y>)
+ Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) Declaration(Class(<urn:C>))
+ Declaration(Class(<urn:X>)) Declaration(Class(<urn:Y>))
+ Declaration(NamedIndividual(<urn:a>)) Declaration(ObjectProperty(<urn:r>))
+ SubClassOf(<urn:A> <urn:B>) DisjointClasses(<urn:B> <urn:C>) SubClassOf(<urn:X> <urn:Y>)
  {terminology}
- ClassAssertion(<A> <a>)
+ ClassAssertion(<urn:A> <urn:a>)
 )"#
         );
         let inconsistent = format!(
             r#"Ontology(
- Declaration(Class(<A>)) Declaration(Class(<B>)) Declaration(Class(<C>))
- Declaration(Class(<X>)) Declaration(Class(<Y>))
- Declaration(NamedIndividual(<a>))
- SubClassOf(<A> <B>) DisjointClasses(<B> <C>) SubClassOf(<X> <Y>)
+ Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) Declaration(Class(<urn:C>))
+ Declaration(Class(<urn:X>)) Declaration(Class(<urn:Y>))
+ Declaration(NamedIndividual(<urn:a>)) Declaration(ObjectProperty(<urn:r>))
+ SubClassOf(<urn:A> <urn:B>) DisjointClasses(<urn:B> <urn:C>) SubClassOf(<urn:X> <urn:Y>)
  {terminology}
- ClassAssertion(<A> <a>) ClassAssertion(<C> <a>)
+ ClassAssertion(<urn:A> <urn:a>) ClassAssertion(<urn:C> <urn:a>)
 )"#
         );
         let mut session = SourceIncrementalClassifier::new(&consistent).unwrap();
+        assert_eq!(std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION"), prior_elision);
         assert_eq!(session.route(), "elc");
         assert!(session.retained_backend());
+        assert!(matches!(session.backend, super::SourceBackend::PositiveAbox(_)));
+        assert!(!session.frontend.nominal_abox.individuals.is_empty());
         assert!(session.classification().consistent);
         let initial = session.classification().clone();
 
@@ -2037,18 +2109,23 @@ Ontology(
         assert_eq!(removal.strategy, ChangeStrategy::ElDelta);
         assert!(removal.meaningful_incremental_update);
         assert_eq!(session.classification(), &initial);
+        assert_eq!(std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION"), prior_elision);
     }
 
     #[test]
     fn automatic_production_portfolio_reuses_its_complete_cb_state() {
         let _environment = lock_environment();
         let before = r#"Ontology(
+ Declaration(Class(<http://example.org/A>)) Declaration(Class(<http://example.org/B>)) Declaration(Class(<http://example.org/C>))
+ Declaration(Class(<http://example.org/D>))
  SubClassOf(<http://example.org/A>
    ObjectUnionOf(<http://example.org/B> <http://example.org/C>))
  SubClassOf(<http://example.org/B> <http://example.org/D>)
  SubClassOf(<http://example.org/C> <http://example.org/D>)
 )"#;
         let after = r#"Ontology(
+ Declaration(Class(<http://example.org/A>)) Declaration(Class(<http://example.org/B>)) Declaration(Class(<http://example.org/C>))
+ Declaration(Class(<http://example.org/D>)) Declaration(Class(<http://example.org/E>))
  SubClassOf(<http://example.org/A>
    ObjectUnionOf(<http://example.org/B> <http://example.org/C>))
  SubClassOf(<http://example.org/B> <http://example.org/D>)

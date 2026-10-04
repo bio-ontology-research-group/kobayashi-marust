@@ -1,0 +1,12 @@
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(
+ Declaration(Class(<http://km.test/C>))
+ Declaration(Class(<http://km.test/Bad>))
+ Declaration(ObjectProperty(<http://km.test/linked>))
+ Declaration(DataProperty(<http://km.test/value>))
+ SubClassOf(<http://km.test/C> ObjectOneOf(<http://km.test/b>))
+ ObjectPropertyAssertion(<http://km.test/linked> <http://km.test/a> <http://km.test/b>)
+ DataPropertyAssertion(<http://km.test/value> <http://km.test/a> "1"^^xsd:float)
+ DataPropertyAssertion(<http://km.test/value> <http://km.test/b> "2"^^xsd:float)
+ DLSafeRule(Body(ObjectPropertyAtom(<http://km.test/linked> Variable(<http://km.test/x>) Variable(<http://km.test/y>)) DataPropertyAtom(<http://km.test/value> Variable(<http://km.test/x>) Variable(<http://km.test/av>)) DataPropertyAtom(<http://km.test/value> Variable(<http://km.test/y>) Variable(<http://km.test/bv>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#subtract> Variable(<http://km.test/d>) Variable(<http://km.test/bv>) Variable(<http://km.test/av>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<http://km.test/d>) "0"^^xsd:int)) Head(ClassAtom(<http://km.test/Bad> Variable(<http://km.test/y>))))
+)

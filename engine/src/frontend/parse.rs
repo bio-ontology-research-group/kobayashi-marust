@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use super::iri::IriRegistry;
 use super::sexpr::{Node, Parser};
-use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm};
+use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm, RuleDataTerm};
 
 /// Out-of-fragment marker (port of `OutOfFragment`).
 #[derive(Debug)]
@@ -25,6 +25,28 @@ fn role_str(reg: &mut IriRegistry, node: &Node) -> Result<String, OutOfFragment>
             "named role expected, got {:?}",
             node
         ))),
+    }
+}
+
+/// Resolve a chain role using the same converse proxy as `resolve_role`.
+/// The registry escapes source names beginning with `__`, so these proxies
+/// cannot alias a source role, including a source IRI named `__inv__r`.
+/// The returned definition must be installed in both clauses and typed RBox.
+pub(super) fn chain_role(
+    reg: &mut IriRegistry,
+    node: &Node,
+) -> Result<(String, Option<(String, String)>), OutOfFragment> {
+    match node {
+        Node::Atom(_) => Ok((role_str(reg, node)?, None)),
+        Node::List("ObjectInverseOf", args) => {
+            let [Node::Atom(base)] = args.as_slice() else {
+                return Err(OutOfFragment("chain inverse requires exactly one named role".into()));
+            };
+            let base = reg.short(base);
+            let inverse = format!("__inv__{base}");
+            Ok((inverse.clone(), Some((base, inverse))))
+        }
+        _ => Err(OutOfFragment(format!("unsupported chain role: {node:?}"))),
     }
 }
 
@@ -44,7 +66,7 @@ fn role_cls(reg: &mut IriRegistry, node: &Node) -> Result<Role, OutOfFragment> {
 /// atoms.  Re-glue them: returns the joined literal when `args[i]` is a
 /// string atom whose successor is a `^^`/`@` suffix (and how many atoms were
 /// consumed).
-pub(super) fn glue_literal(args: &[&Node], i: usize) -> Option<(String, usize)> {
+pub(crate) fn glue_literal(args: &[&Node], i: usize) -> Option<(String, usize)> {
     let first = args.get(i)?.as_atom()?;
     if !first.starts_with('"') {
         return None;
@@ -121,7 +143,7 @@ fn dt_value_concept(args: &[&Node], i: usize) -> Concept {
 }
 
 /// Port of `cls`.
-fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
+pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
     match node {
         Node::Atom(s) => {
             let sh = reg.short(s);
@@ -249,7 +271,7 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
 /// removed. Almost every axiom has at most four operands, so the filtered
 /// view lives on the stack: this runs once per source axiom in the parser and
 /// once more in the ABox observer, and used to be two heap vectors per axiom.
-pub(super) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> SmallVec<[&'n Node<'a>; 4]> {
+pub(crate) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> SmallVec<[&'n Node<'a>; 4]> {
     args.iter()
         .filter(|a| a.head() != Some("Annotation"))
         .collect()
@@ -259,26 +281,51 @@ pub(super) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> SmallVec<[&'n N
 /// ⟶ a named individual. Anything else (a nested expression) is unrepresentable.
 fn parse_rule_term(reg: &mut IriRegistry, node: &Node) -> Option<RuleTerm> {
     match node {
-        Node::List(h, a) if *h == "Variable" => {
+        Node::List(h, a) if *h == "Variable" && a.len() == 1 => {
             Some(RuleTerm::Var(reg.short(a.first()?.as_atom()?)))
         }
-        Node::Atom(s) => Some(RuleTerm::Ind(reg.short(s))),
+        Node::Atom(s) if !s.starts_with('"') => Some(RuleTerm::Ind(reg.short(s))),
         _ => None,
     }
 }
 
+fn parse_rule_data_terms(reg: &mut IriRegistry, args: &[Node<'_>]) -> Option<Vec<RuleDataTerm>> {
+    let refs: Vec<_> = args.iter().collect();
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < refs.len() {
+        if let Some((literal, used)) = glue_literal(&refs, i) {
+            result.push(RuleDataTerm::Literal(literal));
+            i += used;
+            continue;
+        }
+        result.push(match refs[i] {
+            Node::List("Variable", values) if values.len() == 1 =>
+                RuleDataTerm::Var(reg.short(values[0].as_atom()?)),
+            Node::Atom(value) if !value.starts_with("^^") && !value.starts_with('@') =>
+                RuleDataTerm::Iri((*value).to_string()),
+            _ => return None,
+        });
+        i += 1;
+    }
+    Some(result)
+}
+
 /// Parse a `Body(...)` / `Head(...)` node into rule atoms. Returns `None` if any
-/// atom is of a kind we do not represent (datatype/builtin/data-range atom) or is
-/// malformed. The parser omits that AST rule, and the rule-aware frontend later
-/// detects the source/AST count mismatch and declines classification. This
-/// keeps parsing streaming while preventing a silent incomplete rule answer.
-fn parse_rule_atoms(reg: &mut IriRegistry, node: &Node) -> Option<Vec<RuleAtom>> {
+/// atom is unknown or malformed. Concrete-domain atoms are retained separately
+/// as `DataRule` obligations rather than passed to the object-only worker.
+pub(crate) fn parse_rule_atoms(reg: &mut IriRegistry, node: &Node) -> Option<Vec<RuleAtom>> {
     let args = match node {
         Node::List(_, a) => a,
         _ => return None,
     };
     let mut out = Vec::new();
     for atom in args.iter().filter(|a| a.head() != Some("Annotation")) {
+        // Result observers are not logical head constraints. Keep the body
+        // and every logical conjunct; unknown built-ins remain unsupported.
+        if node.head() == Some("Head") && super::rule_certificate::observer_atom(atom) {
+            continue;
+        }
         let (h, aa) = match atom {
             Node::List(h, aa) => (*h, aa),
             _ => return None,
@@ -301,7 +348,19 @@ fn parse_rule_atoms(reg: &mut IriRegistry, node: &Node) -> Option<Vec<RuleAtom>>
                 parse_rule_term(reg, aa.first()?)?,
                 parse_rule_term(reg, aa.get(1)?)?,
             )),
-            // DataPropertyAtom / BuiltInAtom / DataRangeAtom: drop the whole rule.
+            "DataPropertyAtom" if aa.len() >= 3 => {
+                let values = parse_rule_data_terms(reg, &aa[2..])?;
+                let [value] = values.as_slice() else { return None };
+                out.push(RuleAtom::Data(role_str(reg, &aa[0]).ok()?,
+                    parse_rule_term(reg, &aa[1])?, value.clone()));
+            }
+            "BuiltInAtom" if !aa.is_empty() => out.push(RuleAtom::Builtin(
+                aa[0].as_atom()?.to_string(), parse_rule_data_terms(reg, &aa[1..])?)),
+            "DataRangeAtom" if aa.len() >= 2 => {
+                let values = parse_rule_data_terms(reg, &aa[1..])?;
+                let [value] = values.as_slice() else { return None };
+                out.push(RuleAtom::DataRange(serialize_node(&aa[0]), value.clone()));
+            }
             _ => return None,
         }
     }
@@ -365,14 +424,22 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 if *h == "ObjectPropertyChain" {
                     let mut chain = Vec::new();
                     for r in chain_args {
-                        chain.push(role_str(reg, r)?);
+                        let (role, inverse) = chain_role(reg, r)?;
+                        if let Some((base, proxy)) = inverse {
+                            o.add(Axiom::InverseRoles(base, proxy));
+                        }
+                        chain.push(role);
                     }
                     if chain.len() < 2 {
                         return Err(OutOfFragment(
                             "ObjectPropertyChain requires at least two roles".to_string(),
                         ));
                     }
-                    o.add(Axiom::RoleChain(chain, role_str(reg, args[1])?));
+                    let (sup, inverse) = chain_role(reg, args[1])?;
+                    if let Some((base, proxy)) = inverse {
+                        o.add(Axiom::InverseRoles(base, proxy));
+                    }
+                    o.add(Axiom::RoleChain(chain, sup));
                     return Ok(());
                 }
             }
@@ -417,11 +484,18 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             ));
         }
         "ObjectPropertyAssertion" => {
-            o.add(Axiom::RoleAssertion(
-                role_str(reg, args[0])?,
-                reg.short(args[1].as_atom().unwrap_or("")),
-                reg.short(args[2].as_atom().unwrap_or("")),
-            ));
+            let (role, inverse) = match args[0] {
+                Node::Atom(_) => (role_str(reg, args[0])?, false),
+                Node::List("ObjectInverseOf", inner) => match inner.as_slice() {
+                    [Node::Atom(name)] => (reg.short(name), true),
+                    _ => return Err(OutOfFragment("inverse assertion requires one named role".into())),
+                },
+                _ => return Err(OutOfFragment("unsupported assertion role expression".into())),
+            };
+            let a = reg.short(args[1].as_atom().unwrap_or(""));
+            let b = reg.short(args[2].as_atom().unwrap_or(""));
+            o.add(if inverse { Axiom::RoleAssertion(role, b, a) }
+                else { Axiom::RoleAssertion(role, a, b) });
         }
         "NegativeObjectPropertyAssertion" if args.len() >= 3 => {
             // ¬R(a,b): previously hit the silent catch-all, so an ontology
@@ -467,17 +541,26 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         }
         "DLSafeRule" => {
             // DLSafeRule(Body(...) Head(...)). DL-safe: variables range only over
-            // named individuals. A rule with any atom we cannot represent
-            // (datatype/builtin) is omitted here; the rule-aware frontend
-            // compares source and AST counts and rejects the route explicitly.
+            // named individuals. Concrete-domain obligations are retained in
+            // their own partition until an exact lowering handles them. The
+            // object-worker admission still refuses uncovered source rules.
             let body = args.iter().find(|a| a.head() == Some("Body"));
             let head_n = args.iter().find(|a| a.head() == Some("Head"));
             if let (Some(b), Some(hd)) = (body, head_n) {
                 if let (Some(bvec), Some(hvec)) =
                     (parse_rule_atoms(reg, b), parse_rule_atoms(reg, hd))
                 {
-                    if !hvec.is_empty() {
-                        o.add(Axiom::Rule(bvec, hvec));
+                    // An explicit empty head is false, unlike a nonempty
+                    // SQWRL-only head whose observers project to no constraint.
+                    if !hvec.is_empty()
+                        || matches!(hd, Node::List("Head", atoms) if atoms.is_empty())
+                    {
+                        if bvec.iter().chain(&hvec).any(|a| matches!(a,
+                            RuleAtom::Data(..) | RuleAtom::Builtin(..) | RuleAtom::DataRange(..))) {
+                            o.add(Axiom::DataRule(bvec, hvec));
+                        } else {
+                            o.add(Axiom::Rule(bvec, hvec));
+                        }
                     }
                 }
             }
@@ -805,6 +888,18 @@ mod axiom_drop_regression_tests {
     }
 
     #[test]
+    fn positive_inverse_assertion_matches_swapped_named_assertion() {
+        let mut registry = IriRegistry::new();
+        let inverse = parse_axioms(&mut registry,
+            "Ontology(ObjectPropertyAssertion(ObjectInverseOf(<r>) <a> <b>))").unwrap();
+        let named = parse_axioms(&mut registry,
+            "Ontology(ObjectPropertyAssertion(<r> <b> <a>))").unwrap();
+        assert_eq!(inverse.abox().collect::<Vec<_>>(), named.abox().collect::<Vec<_>>());
+        assert!(parse_axioms(&mut registry,
+            "Ontology(ObjectPropertyAssertion(ObjectInverseOf(<r> <s>) <a> <b>))").is_err());
+    }
+
+    #[test]
     fn filtered_parser_observes_but_does_not_materialize_abox_nodes() {
         let text = "Ontology(SubClassOf(<A> <B>) ClassAssertion(<A> <a>) \
                     ObjectPropertyAssertion(<r> <a> <b>))";
@@ -1007,6 +1102,18 @@ mod rule_tests {
     use crate::frontend::syntax::{Axiom, RuleAtom, RuleTerm};
 
     #[test]
+    fn empty_rule_head_is_a_constraint_but_observer_head_is_not() {
+        let empty = parse_axioms(&mut IriRegistry::new(),
+            "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head()))").unwrap();
+        assert!(matches!(empty.rules().next(), Some(Axiom::Rule(body, head))
+            if body.len() == 1 && head.is_empty()));
+        let observer = parse_axioms(&mut IriRegistry::new(),
+            "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(BuiltInAtom(<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#select> Variable(<x>)))))").unwrap();
+        assert_eq!(observer.rules().count(), 0);
+        assert_eq!(observer.datatype_rules().count(), 0);
+    }
+
+    #[test]
     fn dlsafe_star_rule_parses() {
         // the ore_ont_2669 shape: br has two predecessors op1,op2 (not tree-shaped)
         let txt = "Ontology(\
@@ -1040,8 +1147,7 @@ Head(ObjectPropertyAtom(<http://e#inv> Variable(<http://e#op1>) Variable(<http:/
     }
 
     #[test]
-    fn dlsafe_rule_with_builtin_atom_is_dropped() {
-        // soundness: a rule with an unrepresentable atom is dropped wholesale
+    fn dlsafe_rule_with_builtin_atom_retains_concrete_obligation() {
         let txt = "Ontology(\
 DLSafeRule(Body(\
 ClassAtom(<http://e#C> Variable(<http://e#x>)) \
@@ -1049,14 +1155,12 @@ BuiltInAtom(<http://e#gt> Variable(<http://e#x>) \"5\"))\
 Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
         let mut reg = IriRegistry::new();
         let o = parse_axioms(&mut reg, txt).expect("parse");
-        assert_eq!(o.rules().count(), 0, "rule with builtin atom dropped");
+        assert_eq!(o.rules().count(), 0, "outside the object-only worker");
+        assert_eq!(o.datatype_rules().count(), 1, "complete rule retained");
     }
 
     #[test]
-    fn dlsafe_rule_with_data_atoms_is_dropped() {
-        // DataPropertyAtom / DataRangeAtom are concrete-domain obligations with no
-        // DL encoding; either drops the whole rule at the parser (so the frontend
-        // count mismatch later DECLINES the route rather than approximating it).
+    fn dlsafe_rule_with_data_atoms_retains_concrete_obligation() {
         for data_atom in [
             "DataPropertyAtom(<http://e#p> Variable(<http://e#x>) Variable(<http://e#v>))",
             "DataRangeAtom(<http://www.w3.org/2001/XMLSchema#integer> Variable(<http://e#v>))",
@@ -1068,7 +1172,8 @@ Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))"
             );
             let mut reg = IriRegistry::new();
             let o = parse_axioms(&mut reg, &txt).expect("parse");
-            assert_eq!(o.rules().count(), 0, "rule with {data_atom} dropped");
+            assert_eq!(o.rules().count(), 0, "not an object-only rule");
+            assert_eq!(o.datatype_rules().count(), 1, "{data_atom} retained");
         }
     }
 
@@ -1093,5 +1198,29 @@ Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
             ),
             _ => panic!("not a rule"),
         }
+    }
+
+    #[test]
+    fn datatype_rule_retains_typed_values_and_arithmetic_operands() {
+        let text = "Ontology(DLSafeRule(Body(DataPropertyAtom(<age> Variable(<x>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#add> Variable(<sum>) Variable(<v>) \"1\"^^xsd:integer)) Head(DataPropertyAtom(<nextAge> Variable(<x>) Variable(<sum>)))))";
+        let ontology = parse_axioms(&mut IriRegistry::new(), text).unwrap();
+        assert_eq!(ontology.rules().count(), 0, "not an object-only rule");
+        let rules: Vec<_> = ontology.datatype_rules().collect();
+        assert_eq!(rules.len(), 1);
+        let Axiom::DataRule(body, head) = rules[0] else { panic!("datatype obligation missing") };
+        assert_eq!(body.len(), 2);
+        assert!(matches!(&body[0], RuleAtom::Data(p, RuleTerm::Var(x), RuleDataTerm::Var(v)) if p == "age" && x == "x" && v == "v"));
+        let RuleAtom::Builtin(name, operands) = &body[1] else { panic!("operator missing") };
+        assert_eq!(name, "<http://www.w3.org/2003/11/swrlb#add>");
+        assert_eq!(operands.len(), 3, "typed suffix belongs to its literal");
+        assert_eq!(operands[2], RuleDataTerm::Literal("\"1\"^^xsd:integer".into()));
+        assert!(matches!(&head[0], RuleAtom::Data(p, _, RuleDataTerm::Var(v)) if p == "nextAge" && v == "sum"));
+    }
+
+    #[test]
+    fn data_rule_literal_is_never_an_object_individual() {
+        let ontology = parse_axioms(&mut IriRegistry::new(), "Ontology(DLSafeRule(Body(ClassAtom(<A> \"literal\")) Head(ClassAtom(<B> Variable(<x>)))))").unwrap();
+        assert_eq!(ontology.rules().count(), 0);
+        assert_eq!(ontology.datatype_rules().count(), 0);
     }
 }

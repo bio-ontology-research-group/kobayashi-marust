@@ -1052,6 +1052,9 @@ pub struct CompletionTaskHandleAlgorithm {
     /// empty on ontologies without such clauses — the rule is then inert.
     pub singleton_concepts: Vec<ConceptId>,
     pub applied_singleton_merge_count: Cint64,
+    /// Optional early preparation has run for this calculation job.
+    /// Final-fixpoint singleton processing is independent of this flag.
+    pub singleton_base_prepared: bool,
     /// Node-arena index intervals `[at_push, at_pop)` created by REFUTED
     /// alternatives that were advanced/discarded WITHOUT a complete restore
     /// (no in-process COW): chronological backtracking leaves those nodes in
@@ -1173,7 +1176,7 @@ pub struct CompletionTaskHandleAlgorithm {
     pub conf_cache_oriented_or_ordering: bool,
     /// Typed bridge associations used by the lazy nominal materializer. Empty
     /// outside the native-ABox route.
-    pub native_nominal_backend_replay: HashMap<Cint64, NativeNominalBackendReplay>,
+    pub native_nominal_backend_replay: std::sync::Arc<HashMap<Cint64, NativeNominalBackendReplay>>,
     /// Set by the typed neighbour expansion when a SELECTED cached neighbour
     /// cannot be installed exactly (a non-deterministic cached role value has no
     /// branch dependency in a fresh task, or the merge chain to the neighbour is
@@ -1654,6 +1657,7 @@ impl CompletionTaskHandleAlgorithm {
 
             singleton_concepts: Vec::new(),
             applied_singleton_merge_count: 0,
+            singleton_base_prepared: false,
             phantom_node_intervals: Vec::new(),
 
             stat_var_binding_created_count: 0,
@@ -1723,7 +1727,7 @@ impl CompletionTaskHandleAlgorithm {
             or_branch_open_count: 0,
             or_branch_learning_stats: HashMap::new(),
             conf_cache_oriented_or_ordering: false,
-            native_nominal_backend_replay: HashMap::new(),
+            native_nominal_backend_replay: std::sync::Arc::new(HashMap::new()),
             native_selective_neighbour_expansion_declined: false,
             ddb_root_cancelled: false,
             drive_deadline: None,

@@ -80,10 +80,262 @@ fn gcd(mut a: u128, mut b: u128) -> u128 {
     }
 }
 
+pub(super) fn swrl_math_has_non_numeric_argument(iri: &str, literals: &[&str]) -> bool {
+    let iri = iri.strip_prefix('<').and_then(|s| s.strip_suffix('>')).unwrap_or(iri);
+    matches!(iri.strip_prefix("http://www.w3.org/2003/11/swrlb#"), Some("add" | "subtract"))
+        && literals.iter().any(|literal| matches!(parse_literal(literal),
+            Some((Val::Bool(_) | Val::Str(..) | Val::DateTime(_), _))))
+}
+
+/// Evaluate a fully bound SWRL numeric relation using datatype-specific arithmetic.
+/// `None` is an unsupported or unrepresentable obligation, never a false body.
+/// This helper does not license dropping a rule or assuming its data properties
+/// are closed: the rule backend must still consider all model bindings.
+pub fn swrl_numeric_relation(iri: &str, literals: &[&str]) -> Option<bool> {
+    let iri = if iri.starts_with('<') { iri.strip_prefix('<')?.strip_suffix('>')? } else { iri };
+    let operator = iri.strip_prefix("http://www.w3.org/2003/11/swrlb#")?;
+    fn numeric(token: &str) -> Option<Rat> {
+        let close = token.rfind('"')?;
+        if !token.starts_with('"') || close == 0 { return None; }
+        let datatype = builtin_datatype_key(token[close + 1..].strip_prefix("^^")?)?;
+        let domain = named_dt_kind(datatype)?;
+        // IEEE values need their own arithmetic/promotion implementation.
+        // Decimal and integer-derived literals share exact rational values,
+        // but each integer datatype's lexical and value bounds must be checked.
+        if datatype != "decimal" && !domain.integral { return None; }
+        let lex = token[1..close].trim();
+        if lex.contains(['e', 'E']) || (domain.integral && lex.contains('.')) {
+            return None;
+        }
+        let digits = lex.strip_prefix(['+', '-']).unwrap_or(lex);
+        if !digits.chars().any(|c| c.is_ascii_digit())
+            || digits.chars().any(|c| !c.is_ascii_digit() && c != '.') {
+            return None;
+        }
+        let value = parse_decimal(lex)?;
+        if domain.min.is_some_and(|bound| value.num < bound)
+            || domain.max.is_some_and(|bound| value.num > bound) {
+            return None;
+        }
+        Some(value)
+    }
+    if swrl_math_has_non_numeric_argument(iri, literals) {
+        return Some(false);
+    }
+    if literals.iter().any(|literal| exact_ieee_literal(literal)) {
+        return swrl_ieee_relation(operator, literals);
+    }
+    let values: Vec<Rat> = literals.iter().map(|value| numeric(value)).collect::<Option<_>>()?;
+    fn sum(left: Rat, right: Rat, subtract: bool) -> Option<Rat> {
+        let left_num = left.num.checked_mul(right.den)?;
+        let right_num = right.num.checked_mul(left.den)?;
+        let numerator = if subtract { left_num.checked_sub(right_num)? }
+            else { left_num.checked_add(right_num)? };
+        Rat::new(numerator, left.den.checked_mul(right.den)?)
+    }
+    match (operator, values.as_slice()) {
+        ("equal", [a, b]) => Some(a == b),
+        ("notEqual", [a, b]) => Some(a != b),
+        ("lessThan", [a, b]) => a.lt(b),
+        ("lessThanOrEqual", [a, b]) => a.le(b),
+        ("greaterThan", [a, b]) => b.lt(a),
+        ("greaterThanOrEqual", [a, b]) => b.le(a),
+        ("subtract", [result, a, b]) => Some(*result == sum(*a, *b, true)?),
+        ("add", [result, a, rest @ ..]) if !rest.is_empty() => {
+            let mut value = *a;
+            for operand in rest { value = sum(value, *operand, false)?; }
+            Some(*result == value)
+        }
+        _ => None,
+    }
+}
+
+// IEEE operators preserve the selected width. OWL literal identity remains
+// separate from numeric comparison (notably signed zero and NaN).
+fn swrl_ieee_relation(operator: &str, literals: &[&str]) -> Option<bool> {
+    let values: Vec<_> = literals.iter().map(|literal| parse_literal(literal).map(|v| v.0)).collect::<Option<_>>()?;
+    let wide = values.iter().any(|value| matches!(value, Val::Float64(_)));
+    if matches!(operator, "add" | "subtract") && wide
+        && values.iter().any(|value| matches!(value, Val::Float32(_))) {
+        // Arithmetic promotion depends on operands, not the result slot.
+        // Mixed-width arithmetic is deferred until that distinction is modeled.
+        return None;
+    }
+    macro_rules! evaluate {
+        ($ty:ty, $variant:ident) => {{
+            let mut numbers: Vec<$ty> = Vec::new();
+            for (value, literal) in values.iter().zip(literals) {
+                let number = match value {
+                    Val::$variant(bits) => <$ty>::from_bits(*bits),
+                    Val::Float32(bits) if wide => f32::from_bits(*bits) as $ty,
+                    // Zero promotes exactly at either IEEE width. Other decimal
+                    // promotions await a correctly rounded conversion backend.
+                    Val::Num(value) if value.num == 0 &&
+                        swrl_numeric_relation("http://www.w3.org/2003/11/swrlb#equal", &[literal, literal]) == Some(true) => 0.0,
+                    _ => return None,
+                };
+                numbers.push(number);
+            }
+            match (operator, numbers.as_slice()) {
+                ("equal", [a, b]) => Some(a == b),
+                ("notEqual", [a, b]) => Some(a != b),
+                ("lessThan", [a, b]) => Some(a < b),
+                ("lessThanOrEqual", [a, b]) => Some(a <= b),
+                ("greaterThan", [a, b]) => Some(a > b),
+                ("greaterThanOrEqual", [a, b]) => Some(a >= b),
+                ("subtract", [result, a, b]) => Some(*result == *a - *b),
+                ("add", [result, a, rest @ ..]) if !rest.is_empty() => {
+                    Some(*result == rest.iter().fold(*a, |sum, value| sum + *value))
+                }
+                _ => None,
+            }
+        }};
+    }
+    if wide { evaluate!(f64, Float64) } else { evaluate!(f32, Float32) }
+}
+
+/// Bind known numeric operands, preserving IEEE width or exact decimal value.
+/// This does not assert completeness of any data-property extension.
+pub fn swrl_numeric_output(iri: &str, operands: &[&str]) -> Option<String> {
+    let operator = iri.trim_start_matches('<').trim_end_matches('>')
+        .strip_prefix("http://www.w3.org/2003/11/swrlb#")?;
+    if !matches!((operator, operands.len()), ("add", 2..) | ("subtract", 2)) {
+        return None;
+    }
+    if operands.iter().any(|operand| exact_ieee_literal(operand)) {
+        let values: Vec<_> = operands.iter().map(|operand| parse_literal(operand).map(|v| v.0)).collect::<Option<_>>()?;
+        macro_rules! output {
+            ($ty:ty, $variant:ident, $datatype:literal) => {{
+                let numbers: Vec<$ty> = values.iter().map(|value| match value {
+                    Val::$variant(bits) => Some(<$ty>::from_bits(*bits)),
+                    _ => None,
+                }).collect::<Option<_>>()?;
+                let value = numbers[1..].iter().fold(numbers[0], |value, operand|
+                    if operator == "subtract" { value - *operand } else { value + *operand });
+                let lexical = if value.is_nan() { "NaN".to_string() }
+                    else if value == <$ty>::INFINITY { "INF".to_string() }
+                    else if value == <$ty>::NEG_INFINITY { "-INF".to_string() }
+                    else { value.to_string() };
+                let result = format!("\"{lexical}\"^^<http://www.w3.org/2001/XMLSchema#{}>", $datatype);
+                let mut args = vec![result.as_str()];
+                args.extend_from_slice(operands);
+                return (swrl_numeric_relation(iri, &args) == Some(true)).then_some(result);
+            }};
+        }
+        if matches!(values[0], Val::Float32(_)) { output!(f32, Float32, "float"); }
+        else { output!(f64, Float64, "double"); }
+    }
+    let mut values = Vec::with_capacity(operands.len());
+    for operand in operands {
+        // Reuse the strict lexical, datatype and derived-bound checks.
+        if swrl_numeric_relation("http://www.w3.org/2003/11/swrlb#equal",
+            &[operand, operand]) != Some(true) { return None }
+        let (Val::Num(value), _) = parse_literal(operand)? else { return None };
+        values.push(value);
+    }
+    let mut result = values[0];
+    for value in &values[1..] {
+        let left = result.num.checked_mul(value.den)?;
+        let right = value.num.checked_mul(result.den)?;
+        let numerator = if operator == "subtract" { left.checked_sub(right)? }
+            else { left.checked_add(right)? };
+        result = Rat::new(numerator, result.den.checked_mul(value.den)?)?;
+    }
+    let magnitude = result.num.unsigned_abs();
+    let denominator = result.den as u128;
+    let mut lexical = format!("{}{}", if result.num < 0 { "-" } else { "" },
+        magnitude / denominator);
+    let mut remainder = magnitude % denominator;
+    if remainder != 0 {
+        lexical.push('.');
+        while remainder != 0 {
+            remainder = remainder.checked_mul(10)?;
+            lexical.push(char::from(b'0' + (remainder / denominator) as u8));
+            remainder %= denominator;
+        }
+    }
+    let output = format!("\"{lexical}\"^^<http://www.w3.org/2001/XMLSchema#decimal>");
+    let mut args = vec![output.as_str()];
+    args.extend_from_slice(operands);
+    (swrl_numeric_relation(iri, &args) == Some(true)).then_some(output)
+}
+
+#[cfg(test)]
+mod swrl_numeric_tests {
+    use super::swrl_numeric_relation;
+    fn relation(operator: &str, args: &[&str]) -> Option<bool> {
+        swrl_numeric_relation(&format!("<http://www.w3.org/2003/11/swrlb#{operator}>"), args)
+    }
+    #[test]
+    fn arithmetic_output_binds_exact_values_and_defers_invalid_operands() {
+        let output = |op: &str, args: &[&str]| super::swrl_numeric_output(
+            &format!("http://www.w3.org/2003/11/swrlb#{op}"), args);
+        let a = "\"0.1\"^^xsd:decimal";
+        let b = "\"0.2\"^^xsd:decimal";
+        let value = output("add", &[a, b]).unwrap();
+        assert_eq!(relation("equal", &[&value, "\"0.3\"^^xsd:decimal"]), Some(true));
+        let value = output("subtract", &[a, b]).unwrap();
+        assert_eq!(relation("equal", &[&value, "\"-0.1\"^^xsd:decimal"]), Some(true));
+        let value = output("add", &["\"9007199254740993\"^^xsd:integer", "\"1\"^^xsd:integer"]).unwrap();
+        assert_eq!(relation("equal", &[&value, "\"9007199254740994\"^^xsd:integer"]), Some(true));
+        assert!(output("add", &["\"256\"^^xsd:unsignedByte", a]).is_none());
+        assert!(output("add", &["\"0.1\"^^xsd:double", b]).is_none());
+        assert!(output("add", &[a]).is_none());
+        assert!(output("subtract", &[a, b, a]).is_none());
+    }
+    #[test]
+    fn ieee_graph_subtraction_preserves_width_and_numeric_comparison() {
+        let a = "\"102.92\"^^xsd:float";
+        let b = "\"100.89\"^^xsd:float";
+        let result = super::swrl_numeric_output("http://www.w3.org/2003/11/swrlb#subtract", &[a, b]).unwrap();
+        assert!(result.ends_with("#float>"));
+        assert_eq!(relation("subtract", &[&result, a, b]), Some(true));
+        assert_eq!(relation("greaterThan", &[&result, "\"0\"^^xsd:int"]), Some(true));
+        assert_eq!(relation("equal", &["\"-0\"^^xsd:float", "\"0\"^^xsd:float"]), Some(true));
+        assert_eq!(relation("greaterThan", &["\"NaN\"^^xsd:float", "\"0\"^^xsd:int"]), Some(false));
+        assert_eq!(relation("equal", &["\"16777217\"^^xsd:float", "\"16777216\"^^xsd:double"]), Some(true));
+        assert_eq!(relation("equal", &[a, "\"102.92\"^^xsd:decimal"]), None);
+        assert_eq!(relation("add", &["\"16777216\"^^xsd:float", "\"16777216\"^^xsd:float", "\"1\"^^xsd:float"]), Some(true));
+        assert_eq!(relation("add", &["\"16777217\"^^xsd:double", "\"16777216\"^^xsd:double", "\"1\"^^xsd:double"]), Some(true));
+        assert_eq!(relation("subtract", &["\"2.03\"^^xsd:double", a, b]), None);
+        assert_eq!(relation("greaterThan", &["\"INF\"^^xsd:float", "\"0\"^^xsd:int"]), Some(true));
+        assert!(super::swrl_numeric_output("http://www.w3.org/2003/11/swrlb#subtract", &["\"INF\"^^xsd:float", "\"INF\"^^xsd:float"]).is_none());
+    }
+
+    #[test]
+    fn decimal_arithmetic_and_result_position_are_exact() {
+        assert_eq!(relation("add", &["\"0.3\"^^xsd:decimal", "\"0.1\"^^xsd:decimal", "\"0.2\"^^xsd:decimal"]), Some(true));
+        assert_eq!(relation("subtract", &["\"-2\"^^xsd:integer", "\"1\"^^xsd:integer", "\"3\"^^xsd:integer"]), Some(true));
+        assert_eq!(relation("subtract", &["\"2\"^^xsd:integer", "\"1\"^^xsd:integer", "\"3\"^^xsd:integer"]), Some(false));
+        assert_eq!(relation("greaterThan", &["\"9007199254740993\"^^xsd:integer", "\"9007199254740992\"^^xsd:integer"]), Some(true));
+        assert_eq!(relation("equal", &["\"1\"^^xsd:integer", "\"1.00\"^^xsd:decimal"]), Some(true));
+    }
+    #[test]
+    fn unsupported_or_invalid_values_are_obligations_not_false() {
+        assert_eq!(relation("add", &["\"1\"^^xsd:integer"]), None);
+        assert_eq!(relation("equal", &["\"1.1\"^^xsd:integer", "\"1.1\"^^xsd:decimal"]), None);
+        assert_eq!(relation("equal", &["\"--1\"^^xsd:integer", "\"-1\"^^xsd:integer"]), None);
+        assert_eq!(relation("equal", &["\"1E2\"^^xsd:decimal", "\"100\"^^xsd:integer"]), None);
+        assert_eq!(relation("equal", &["\"NaN\"^^xsd:double", "\"NaN\"^^xsd:double"]), Some(false));
+        assert_eq!(swrl_numeric_relation("http://example.org/swrlb#equal", &["\"1\"^^xsd:integer", "\"1\"^^xsd:integer"]), None);
+    }
+    #[test]
+    fn integer_derived_literals_validate_their_value_bounds() {
+        assert_eq!(relation("greaterThan", &["\"18\"^^xsd:int", "\"17\"^^xsd:long"]), Some(true));
+        assert_eq!(relation("equal", &["\"255\"^^xsd:unsignedByte", "\"255\"^^xsd:integer"]), Some(true));
+        assert_eq!(relation("equal", &["\"256\"^^xsd:unsignedByte", "\"256\"^^xsd:integer"]), None);
+        assert_eq!(relation("equal", &["\"0\"^^xsd:positiveInteger", "\"0\"^^xsd:integer"]), None);
+        assert_eq!(relation("equal", &["\"1.0\"^^xsd:int", "\"1\"^^xsd:integer"]), None);
+    }
+}
+
 /// A parsed literal value in the OWL 2 datatype map.
 #[derive(Clone, PartialEq, Debug)]
 enum Val {
     Num(Rat),
+    Float32(u32),
+    Float64(u64),
+    DateTime(super::datetime_value::DateTimeValue),
     Bool(bool),
     /// string with optional language tag
     Str(String, Option<String>),
@@ -98,6 +350,8 @@ enum Val {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Partition {
     Numeric,
+    Float32,
+    Float64,
     Strings,
     Boolean,
     Uri,
@@ -274,12 +528,10 @@ fn named_dt_kind(local: &str) -> Option<NamedDt> {
             str_level: None,
             finite_bool: false,
         },
-        // float/double: finite values are rationals; specials live alongside.
-        // Modelled as the numeric partition without bounds or integrality;
-        // see `dt_subsumed` for the (non-)relations with decimal.
+        // OWL gives each IEEE width its own disjoint value space.
         "float" | "double" => NamedDt {
             kind: if local == "float" { "float" } else { "double" },
-            part: Partition::Numeric,
+            part: if local == "float" { Partition::Float32 } else { Partition::Float64 },
             min: None,
             max: None,
             integral: false,
@@ -393,6 +645,9 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
             _ => return Some((Val::Opaque(tok.to_string()), Some(dt))),
         },
         Some("string") => Val::Str(lex.to_string(), None),
+        Some("dateTime" | "dateTimeStamp") => super::datetime_value::parse(
+            lex, builtin == Some("dateTimeStamp"),
+        ).map(Val::DateTime).unwrap_or_else(|| Val::Opaque(tok.to_string())),
         // XML Schema's derived string types apply whitespace replacement or
         // collapse before entering the value space.  Until that canonical
         // mapping is represented exactly, preserve the token opaquely: raw
@@ -402,9 +657,30 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
         }
         // OWL uses IEEE binary32/binary64 value spaces.  Parsing a decimal
         // lexical form as an exact rational (or directly as f64 for xsd:float)
-        // can distinguish two spellings that round to the same value.  Keep
-        // both widths opaque until their exact value canonicalisation exists.
-        Some("float" | "double") => Val::Opaque(tok.to_string()),
+        // can distinguish two spellings that round to the same value. Parse
+        // directly at the declared width and retain its exact identity bits.
+        Some("float" | "double") => {
+            let text = lex.trim_matches([' ', '\t', '\r', '\n']);
+            let numeric = text.bytes().all(|byte| byte.is_ascii_digit()
+                || matches!(byte, b'+' | b'-' | b'.' | b'e' | b'E'));
+            if !numeric && !matches!(text, "INF" | "-INF" | "NaN") {
+                Val::Opaque(tok.to_string())
+            } else if builtin == Some("float") {
+                let value = match text {
+                    "INF" => Some(f32::INFINITY), "-INF" => Some(f32::NEG_INFINITY),
+                    "NaN" => Some(f32::NAN), _ => text.parse::<f32>().ok(),
+                };
+                value.map(|value| Val::Float32(value.to_bits()))
+                    .unwrap_or_else(|| Val::Opaque(tok.to_string()))
+            } else {
+                let value = match text {
+                    "INF" => Some(f64::INFINITY), "-INF" => Some(f64::NEG_INFINITY),
+                    "NaN" => Some(f64::NAN), _ => text.parse::<f64>().ok(),
+                };
+                value.map(|value| Val::Float64(value.to_bits()))
+                    .unwrap_or_else(|| Val::Opaque(tok.to_string()))
+            }
+        },
         Some(kind) if named_dt_kind(kind).is_some_and(|d| d.part == Partition::Numeric) => {
             match parse_decimal(lex.trim()) {
                 Some(r) => Val::Num(r),
@@ -461,6 +737,47 @@ fn parse_decimal(s: &str) -> Option<Rat> {
     Rat::new(num, den)
 }
 
+/// Decode an exactly validated integral SWRL numeric value.
+pub(crate) fn exact_swrl_integer(token: &str) -> Option<i128> {
+    if swrl_numeric_relation("http://www.w3.org/2003/11/swrlb#equal", &[token, token]) != Some(true) {
+        return None;
+    }
+    let (Val::Num(value), _) = parse_literal(token)? else { return None };
+    value.is_integer().then_some(value.num)
+}
+
+pub(crate) fn integer_datatype_bounds(name: &str) -> Option<(Option<i128>, Option<i128>)> {
+    let datatype = named_dt_kind(builtin_datatype_key(name)?)?;
+    datatype.integral.then_some((datatype.min, datatype.max))
+}
+
+pub(crate) enum IntegerPredicate {
+    Minimum(i128), Maximum(i128), Equal(i128), NotEqual(i128), Always, Never,
+}
+
+/// Exact restriction of a numeric comparison to mathematical integers.
+/// Fractional decimal thresholds use floor/ceiling, including negative values.
+pub(crate) fn swrl_integer_predicate(operator: &str, token: &str) -> Option<IntegerPredicate> {
+    if swrl_numeric_relation("http://www.w3.org/2003/11/swrlb#equal", &[token, token]) != Some(true) {
+        return None;
+    }
+    let (Val::Num(value), _) = parse_literal(token)? else { return None };
+    let floor = value.num.div_euclid(value.den);
+    let integral = value.is_integer();
+    let ceiling = || if integral { Some(floor) } else { floor.checked_add(1) };
+    Some(match operator {
+        "lessThan" => IntegerPredicate::Maximum(ceiling()?.checked_sub(1)?),
+        "lessThanOrEqual" => IntegerPredicate::Maximum(floor),
+        "greaterThan" => IntegerPredicate::Minimum(floor.checked_add(1)?),
+        "greaterThanOrEqual" => IntegerPredicate::Minimum(ceiling()?),
+        "equal" if integral => IntegerPredicate::Equal(value.num),
+        "equal" => IntegerPredicate::Never,
+        "notEqual" if integral => IntegerPredicate::NotEqual(value.num),
+        "notEqual" => IntegerPredicate::Always,
+        _ => return None,
+    })
+}
+
 /// A facet-restricted numeric interval (the decidable core of
 /// `DatatypeRestriction` over numeric base types).
 #[derive(Clone, Debug)]
@@ -484,6 +801,8 @@ enum DRange {
     Num(NumRange),
     /// explicit enumeration
     OneOf(Vec<Val>),
+    /// Complement in the data-value universe, with unknown decisions retained.
+    Complement(Box<DRange>),
     /// recognised structure but no decision support — emit nothing
     Unknown,
 }
@@ -549,6 +868,8 @@ fn range_from_node(node: &Node) -> DRange {
     match node {
         Node::Atom(s) => range_of_named(s),
         Node::List(h, args) => match *h {
+            "DataComplementOf" if args.len() == 1 =>
+                DRange::Complement(Box::new(range_from_node(&args[0]))),
             "DataOneOf" => {
                 let toks = match glued_atoms(args) {
                     Some(t) => t,
@@ -644,6 +965,9 @@ fn range_from_node(node: &Node) -> DRange {
 fn val_eq(v: &Val, w: &Val) -> Option<bool> {
     match (v, w) {
         (Val::Num(a), Val::Num(b)) => Some(a == b),
+        (Val::Float32(a), Val::Float32(b)) => Some(a == b),
+        (Val::Float64(a), Val::Float64(b)) => Some(a == b),
+        (Val::DateTime(a), Val::DateTime(b)) => Some(a == b),
         (Val::Bool(a), Val::Bool(b)) => Some(a == b),
         (Val::Str(a, la), Val::Str(b, lb)) => Some(a == b && la == lb),
         // cross-partition values are always distinct
@@ -651,13 +975,19 @@ fn val_eq(v: &Val, w: &Val) -> Option<bool> {
         | (Val::Bool(_), Val::Num(_) | Val::Str(..))
         | (Val::Str(..), Val::Num(_) | Val::Bool(_)) => Some(false),
         (Val::Opaque(a), Val::Opaque(b)) if a == b => Some(true),
-        _ => None,
+        _ => match (val_partition(v), val_partition(w)) {
+            (Some(a), Some(b)) if a != b => Some(false),
+            _ => None,
+        },
     }
 }
 
 fn val_partition(v: &Val) -> Option<Partition> {
     match v {
         Val::Num(_) => Some(Partition::Numeric),
+        Val::Float32(_) => Some(Partition::Float32),
+        Val::Float64(_) => Some(Partition::Float64),
+        Val::DateTime(_) => Some(Partition::Time),
         Val::Bool(_) => Some(Partition::Boolean),
         Val::Str(..) => Some(Partition::Strings),
         Val::Opaque(_) => None,
@@ -709,6 +1039,7 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
     match d {
         DRange::Top => Some(true),
         DRange::Unknown => None,
+        DRange::Complement(inner) => val_in_range(v, inner).map(|member| !member),
         DRange::OneOf(vals) => {
             let mut any_unknown = false;
             for w in vals {
@@ -726,10 +1057,14 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
         }
         DRange::Num(r) => match v {
             Val::Num(rv) => in_num_range(rv, r),
-            Val::Bool(_) | Val::Str(..) => Some(false),
+            Val::Bool(_) | Val::Str(..) | Val::Float32(_) | Val::Float64(_) | Val::DateTime(_) => Some(false),
             Val::Opaque(_) => None,
         },
         DRange::Named(nd) => match v {
+            Val::Float32(_) => Some(nd.part == Partition::Float32),
+            Val::Float64(_) => Some(nd.part == Partition::Float64),
+            Val::DateTime(value) => Some(nd.kind == "dateTime"
+                || (nd.kind == "dateTimeStamp" && value.offset.is_some())),
             Val::Num(rv) => {
                 if nd.part != Partition::Numeric {
                     return Some(false);
@@ -806,7 +1141,9 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
         // subsumption INTO an enumeration: only decidable by enumerating the
         // left side, which the cover machinery handles separately — unknown
         (_, DRange::OneOf(_)) => None,
+        (DRange::Complement(_), _) | (_, DRange::Complement(_)) => None,
         (DRange::Named(a), DRange::Named(b)) => {
+            if a.kind == b.kind { return Some(true); }
             if a.part != b.part {
                 // distinct partitions are disjoint, so subsumption only for
                 // empty ranges, which named types are not
@@ -1002,6 +1339,7 @@ fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
                 None
             }
         }
+        (DRange::Complement(_), _) | (_, DRange::Complement(_)) => None,
         (DRange::Named(a), DRange::Named(b)) => {
             if a.part != b.part {
                 return Some(true);
@@ -1165,8 +1503,12 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
         let builtin = datatype.as_deref().and_then(builtin_datatype_key);
         return match (value, builtin) {
             (Val::Bool(_), Some("boolean")) => Some("boolean"),
-            (Val::Num(value), Some("integer")) if value.is_integer() => Some("integer"),
+            (Val::Num(value), Some("integer" | "int" | "nonNegativeInteger" | "positiveInteger"))
+                if value.is_integer() && exact_swrl_integer(literal).is_some() => Some("integer"),
             (Val::Str(_, None), Some("string")) => Some("string"),
+            (Val::Str(_, None), None) if datatype.is_none() => Some("string"),
+            (Val::Float32(_), Some("float")) => Some("float"),
+            (Val::DateTime(_), Some("dateTime")) => Some("dateTime"),
             _ => None,
         };
     }
@@ -1185,7 +1527,7 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
         {
             return Some("boolean");
         }
-        return None;
+        return bridge_exact_finite_values(name).map(|_| "finite");
     }
     if matches!(rest, "opaque" | "val") {
         return None;
@@ -1218,6 +1560,30 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
         }
         _ => None,
     }
+}
+
+/// Explicit finite ranges whose literals all have validated exact values.
+/// The bridge must additionally verify an exhaustive cover in its own input.
+pub(crate) fn bridge_exact_finite_values(name: &str) -> Option<Vec<String>> {
+    let text = name.strip_prefix("__dt__c__")?;
+    let mut parser = Parser::new(text);
+    let Node::List("DataOneOf", args) = parser.parse().ok()? else { return None };
+    let literals = glued_atoms(&args)?;
+    if literals.is_empty() { return None; }
+    literals.into_iter().map(|literal| {
+        let name = format!("__dt__val__{literal}");
+        bridge_exact_atomic_name(&name).then_some(name)
+    }).collect()
+}
+
+/// Compare a finite range with a proposed value-concept cover extensionally.
+/// Lexical aliases can repeat a value, but cannot omit or add a value.
+pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
+    let Some(values) = bridge_exact_finite_values(range) else { return false };
+    values.iter().all(|value| head.iter().any(|other|
+        bridge_exact_value_equal(value, other) == Some(true)))
+        && head.iter().all(|value| values.iter().any(|other|
+            bridge_exact_value_equal(value, other) == Some(true)))
 }
 
 pub(crate) fn bridge_exact_atomic_name(name: &str) -> bool {
@@ -1275,6 +1641,9 @@ pub(crate) fn exact_literal_value_equal(left: &str, right: &str) -> Option<bool>
             (Val::Bool(_), Some("boolean")) => Some(value),
             (Val::Num(number), Some("integer")) if number.is_integer() => Some(value),
             (Val::Str(_, None), Some("string")) => Some(value),
+            // OWL functional syntax abbreviates xsd:string literals by
+            // omitting the datatype; language-tagged literals stay separate.
+            (Val::Str(_, None), None) if datatype.is_none() => Some(value),
             _ => None,
         }
     }
@@ -1284,12 +1653,27 @@ pub(crate) fn exact_literal_value_equal(left: &str, right: &str) -> Option<bool>
     val_eq(&left, &right)
 }
 
+pub(crate) fn exact_ieee_literal(literal: &str) -> bool {
+    matches!(parse_literal(literal), Some((Val::Float32(_) | Val::Float64(_), _)))
+}
+pub(crate) fn exact_datetime_literal(literal: &str) -> bool {
+    matches!(parse_literal(literal), Some((Val::DateTime(_), _)))
+}
+
 pub(crate) fn bridge_exact_value_equal(left: &str, right: &str) -> Option<bool> {
     if !bridge_exact_atomic_name(left) || !bridge_exact_atomic_name(right) {
         return None;
     }
     let left = left.strip_prefix("__dt__val__")?;
     let right = right.strip_prefix("__dt__val__")?;
+    let left_value = parse_literal(left)?.0;
+    let right_value = parse_literal(right)?.0;
+    // Atomic admission above has checked integer lexical forms and subtype
+    // bounds. Their exact rational values preserve cross-datatype identity.
+    if matches!(left_value, Val::Float32(_) | Val::Num(_) | Val::DateTime(_))
+        || matches!(right_value, Val::Float32(_) | Val::Num(_) | Val::DateTime(_)) {
+        return val_eq(&left_value, &right_value);
+    }
     exact_literal_value_equal(left, right)
 }
 
@@ -1315,9 +1699,71 @@ fn singleton_clause(name: &str) -> DLClause {
     )
 }
 
+/// Check that the relation generator can decide every pair in this vocabulary.
+/// This checks value equality, membership and range relations only. It does not
+/// certify a concrete-domain model, source coverage, or worker admission.
+pub fn datatype_relations_decidable(names: &BTreeSet<String>) -> Result<(), String> {
+    let entries: Vec<_> = names.iter().map(|name| classify_name(name)
+        .ok_or_else(|| format!("unrecognized datatype concept: {name}")))
+        .collect::<Result<_, _>>()?;
+    for (i, left) in entries.iter().enumerate() {
+        for right in entries.iter().skip(i) {
+            let decided = match (left, right) {
+                (DtEntry::Value(_, a), DtEntry::Value(_, b)) => val_eq(a, b).is_some(),
+                (DtEntry::Value(_, value), DtEntry::Range(_, range))
+                | (DtEntry::Range(_, range), DtEntry::Value(_, value)) =>
+                    val_in_range(value, range).is_some(),
+                (DtEntry::Range(_, a), DtEntry::Range(_, b)) =>
+                    range_subsumed(a, b).is_some() && range_subsumed(b, a).is_some()
+                        && range_disjoint(a, b).is_some(),
+            };
+            if !decided {
+                return Err(format!("undecided datatype relation at vocabulary indices {i}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Exact truth of this vocabulary at one concrete literal value. Restrict the
+/// literal decoder to the bridge's exact value fragment; unknown membership
+/// or an opaque vocabulary value yields no realization evidence.
+pub(crate) fn finite_literal_datatype_truth(literal: &str, names: &[String]) -> Option<Vec<bool>> {
+    if !bridge_exact_atomic_name(&format!("__dt__val__{literal}")) { return None; }
+    let (value, _) = parse_literal(literal)?;
+    names.iter().map(|name| match classify_name(name)? {
+        DtEntry::Value(_, other) => {
+            if !bridge_exact_atomic_name(name) { return None; }
+            val_eq(&value, &other)
+        }
+        DtEntry::Range(_, range) => val_in_range(&value, &range),
+    }).collect()
+}
+
+#[cfg(test)]
+mod finite_literal_realization_tests {
+    use super::*;
+    #[test]
+    fn concrete_profiles_preserve_rounding_signed_zero_and_range_membership() {
+        let names = vec!["__dt__val__\"16777217\"^^xsd:float".into(),
+            "__dt__val__\"0\"^^xsd:float".into(), "__dt__val__\"-0\"^^xsd:float".into(),
+            "__dt__float".into(), "__dt__double".into(), "__dt__string".into()];
+        assert_eq!(finite_literal_datatype_truth("\"16777216\"^^xsd:float", &names), Some(vec![true,false,false,true,false,false]));
+        assert_eq!(finite_literal_datatype_truth("\"0\"^^xsd:float", &names), Some(vec![false,true,false,true,false,false]));
+        assert_eq!(finite_literal_datatype_truth("\"-0\"^^xsd:float", &names), Some(vec![false,false,true,true,false,false]));
+        assert_eq!(finite_literal_datatype_truth("\"text\"^^xsd:string", &names), Some(vec![false,false,false,false,false,true]));
+    }
+    #[test]
+    fn opaque_values_and_unknown_ranges_do_not_produce_evidence() {
+        assert!(finite_literal_datatype_truth("\"NULL\"^^rdfs:Literal", &[]).is_none());
+        assert!(finite_literal_datatype_truth("\"x\"^^xsd:string", &["__dt__unknown".into()]).is_none());
+        assert!(finite_literal_datatype_truth("\"x\"^^xsd:string", &["__dt__val__\"x\"^^rdfs:Literal".into()]).is_none());
+    }
+}
+
 /// The datatype-relation clauses for the `__dt__` concepts in `names`
-/// (collected from the clause set).  Every emitted clause is justified by the
-/// OWL 2 datatype map; unknown relations emit nothing.  `cap` bounds the
+/// (collected from the clause set). Every emitted clause is justified by the
+/// OWL 2 datatype map; unknown relations emit nothing. `cap` bounds the
 /// finite-cover enumeration width.
 pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DLClause> {
     let entries: Vec<DtEntry> = names.iter().filter_map(|n| classify_name(n)).collect();
@@ -1392,7 +1838,10 @@ pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DL
                     _ => enumerate_range(ar, cap),
                 };
                 if let Some(vals) = cover {
-                    if vals.len() <= cap {
+                    // Explicit enumerations already occur in full in the input.
+                    // The cap limits synthesized interval enumeration, not the
+                    // semantics of an explicitly listed finite value space.
+                    if vals.len() <= cap || matches!(ar, DRange::OneOf(_)) {
                         let head: Vec<Atom> = vals
                             .iter()
                             .map(|lit| {
@@ -1467,7 +1916,53 @@ pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DL
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn relation_decidability_rejects_unknowns_and_accepts_concrete_values() {
+        let names = ["__dt__string", "__dt__float",
+            "__dt__val__\"label\"^^xsd:string", "__dt__val__\"1.0\"^^xsd:float",
+            "__dt__val__\"2.0\"^^xsd:float"].into_iter().map(str::to_owned).collect();
+        assert!(super::datatype_relations_decidable(&names).is_ok());
+        let unknown = ["__dt__opaque".to_owned()].into_iter().collect();
+        assert!(super::datatype_relations_decidable(&unknown).is_err());
+        let unknown_range = ["__dt__unrecognized".to_owned()].into_iter().collect();
+        assert!(super::datatype_relations_decidable(&unknown_range).is_err());
+    }
     use super::*;
+
+    #[test]
+    fn complement_membership_negates_only_decided_value_relations() {
+        let value = parse_literal("\"list error\"").unwrap().0;
+        let excluded = parse_complex("DataComplementOf(DataOneOf(\"list error\"))");
+        assert_eq!(val_in_range(&value, &excluded), Some(false));
+        let other = parse_literal("\"other error\"^^xsd:string").unwrap().0;
+        assert_eq!(val_in_range(&other, &excluded), Some(true));
+        let unknown = parse_complex("DataComplementOf(ex:unknown)");
+        assert_eq!(val_in_range(&value, &unknown), None);
+        let double = parse_complex("DataComplementOf(DataComplementOf(DataOneOf(\"list error\")))");
+        assert_eq!(val_in_range(&value, &double), Some(true));
+        assert_eq!(exact_literal_value_equal("\"list error\"", "\"list error\"^^xsd:string"), Some(true));
+    }
+
+
+    #[test]
+    fn ieee_literal_identity_preserves_width_rounding_and_signed_zero() {
+        let value = |token: &str| parse_literal(token).unwrap().0;
+        assert_eq!(val_eq(&value("\"16777216\"^^xsd:float"),
+            &value("\"16777217\"^^xsd:float")), Some(true));
+        assert_eq!(val_eq(&value("\"16777216\"^^xsd:double"),
+            &value("\"16777217\"^^xsd:double")), Some(false));
+        assert_eq!(val_eq(&value("\"0\"^^xsd:float"),
+            &value("\"-0\"^^xsd:float")), Some(false));
+        assert_eq!(val_eq(&value("\"1\"^^xsd:float"),
+            &value("\"1\"^^xsd:double")), Some(false));
+        assert_eq!(val_eq(&value("\"1\"^^xsd:float"),
+            &value("\"1\"^^xsd:integer")), Some(false));
+        let names = names(&["__dt__float", "__dt__integer", "__dt__val__\"17\"^^xsd:float"]);
+        let clauses = datatype_relation_clauses(&names, 8);
+        assert!(clauses.iter().any(|clause| clause.head.is_empty()
+            && format!("{:?}", clause.body).contains("val__")
+            && format!("{:?}", clause.body).contains("integer")));
+    }
 
     fn names(v: &[&str]) -> BTreeSet<String> {
         v.iter().map(|s| s.to_string()).collect()
@@ -1609,8 +2104,12 @@ mod tests {
                 &value("\"16777216\"^^xsd:float"),
                 &value("\"16777217\"^^xsd:float")
             ),
-            None
+            Some(true)
         );
+        assert_eq!(bridge_exact_value_equal(&value("\"0\"^^xsd:float"),
+            &value("\"-0\"^^xsd:float")), Some(false));
+        assert_eq!(bridge_exact_value_equal(&value("\"1\"^^xsd:float"),
+            &value("\"2\"^^xsd:float")), Some(false));
     }
 
     #[test]
@@ -1704,7 +2203,7 @@ mod tests {
             "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"0\"^^xsd:integer)";
         for value in [
             "__dt__val__\"5\"^^ex:integer",
-            "__dt__val__\"16777217\"^^xsd:float",
+            "__dt__val__\"not-a-number\"^^xsd:float",
         ] {
             let clauses = datatype_relation_clauses(&names(&[value, numeric]), 8);
             assert!(
@@ -1722,6 +2221,21 @@ mod tests {
                 .any(|clause| clause.body.len() == 1 && clause.head.len() == 1),
             "a custom facet IRI must keep the restriction opaque: {clauses:#?}"
         );
+    }
+
+    #[test]
+    fn explicit_finite_cover_is_not_truncated_by_interval_enumeration_cap() {
+        let literals: Vec<_> = (0..17).map(|i| format!("\"v{i}\"^^xsd:string")).collect();
+        let range = format!("__dt__c__DataOneOf({})", literals.join(" "));
+        let clauses = datatype_relation_clauses(&[range.clone()].into_iter().collect(), 8);
+        let expected: BTreeSet<_> = literals.iter().map(|v| format!("__dt__val__{v}")).collect();
+        let cover = clauses.iter().find(|cl| cl.body == vec![cx(&range)]
+            && cl.head.len() == expected.len()).expect("complete explicit cover");
+        let actual: BTreeSet<_> = cover.head.iter().map(|atom| match atom {
+            Atom::Concept(name, _) => name.clone(), _ => panic!("non-value cover atom"),
+        }).collect();
+        assert_eq!(actual, expected);
+        for value in expected { assert!(clauses.contains(&singleton_clause(&value))); }
     }
 
     #[test]
@@ -1842,6 +2356,74 @@ mod tests {
     }
 
     #[test]
+    fn bridge_finite_cover_checks_exact_values_and_aliases() {
+        let range = "__dt__c__DataOneOf(\"1\"^^xsd:int \"2\"^^xsd:int)";
+        let one = "__dt__val__\"01\"^^xsd:positiveInteger";
+        let two = "__dt__val__\"2\"^^xsd:integer";
+        let three = "__dt__val__\"3\"^^xsd:integer";
+        assert!(bridge_exact_atomic_name(range));
+        assert!(bridge_exact_finite_cover(range, &[two, one, one]));
+        assert!(!bridge_exact_finite_cover(range, &[one]));
+        assert!(!bridge_exact_finite_cover(range, &[one, two, three]));
+        assert!(!bridge_exact_atomic_name("__dt__c__DataOneOf(\"0\"^^xsd:positiveInteger)"));
+        assert!(bridge_exact_atomic_name("__dt__c__DataOneOf(\"true\"^^xsd:boolean)"));
+    }
+
+    #[test]
+    fn bridge_integer_literals_preserve_value_identity_and_declared_bounds() {
+        let integer = "__dt__val__\"1\"^^xsd:integer";
+        for datatype in ["integer", "int", "nonNegativeInteger", "positiveInteger"] {
+            let literal = format!("__dt__val__\"+01\"^^xsd:{datatype}");
+            assert!(bridge_exact_atomic_name(&literal));
+            assert_eq!(bridge_exact_value_equal(&literal, integer), Some(true));
+            assert_eq!(bridge_exact_atomic_subsumed(&literal, "__dt__positiveInteger"), Some(true));
+        }
+        for literal in [
+            "__dt__val__\"0\"^^xsd:positiveInteger",
+            "__dt__val__\"-1\"^^xsd:nonNegativeInteger",
+            "__dt__val__\"2147483648\"^^xsd:int",
+            "__dt__val__\"-2147483649\"^^xsd:int",
+            "__dt__val__\"1.0\"^^xsd:integer",
+            "__dt__val__\"1e0\"^^xsd:positiveInteger",
+        ] {
+            assert!(!bridge_exact_atomic_name(literal), "invalid literal admitted: {literal}");
+        }
+    }
+
+    #[test]
+    fn bridge_plain_string_literal_is_the_xsd_string_abbreviation() {
+        let plain = "__dt__val__\"makesStmtsAbout\"";
+        let typed = "__dt__val__\"makesStmtsAbout\"^^xsd:string";
+        assert!(bridge_exact_atomic_name(plain));
+        assert_eq!(bridge_exact_value_equal(plain, typed), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed(plain, "__dt__string"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(plain, "__dt__boolean"), Some(true));
+        assert!(!bridge_exact_atomic_name("__dt__val__\"makesStmtsAbout\"@en"));
+        assert!(!bridge_exact_atomic_name("__dt__val__\"makesStmtsAbout\"^^<http://km.test/string>"));
+    }
+
+    #[test]
+    fn bridge_datetime_literals_preserve_owl_value_identity() {
+        let value = |text: &str| format!("__dt__val__\"{text}\"^^xsd:dateTime");
+        let midnight = value("2000-03-01T00:00:00Z");
+        let alias = value("2000-02-29T24:00:00.000+00:00");
+        assert!(bridge_exact_atomic_name(&midnight));
+        assert_eq!(bridge_exact_value_equal(&midnight, &alias), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed(&midnight, "__dt__dateTime"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(&midnight, "__dt__string"), Some(true));
+        // OWL uses XML Schema value identity, retaining the timezone offset.
+        let est = value("1956-06-25T04:00:00-05:00");
+        let cet = value("1956-06-25T10:00:00+01:00");
+        assert_eq!(bridge_exact_value_equal(&est, &cet), Some(false));
+        assert_eq!(bridge_exact_atomic_disjoint(&est, &cet), Some(true));
+        assert_eq!(bridge_exact_value_equal(&midnight, &value("2000-03-01T00:00:00")), Some(false));
+        for invalid in ["1900-02-29T00:00:00Z", "2000-01-01T00:00:00+14:01", "2000-01-01T24:00:01"] {
+            assert!(!bridge_exact_atomic_name(&value(invalid)));
+            assert_eq!(bridge_exact_value_equal(&midnight, &value(invalid)), None);
+        }
+    }
+
+    #[test]
     fn bridge_atomic_gate_matches_the_exact_10621_fragment() {
         for supported in [
             "__dt__boolean",
@@ -1856,6 +2438,7 @@ mod tests {
             "__dt__val__\"true\"^^xsd:boolean",
             "__dt__val__\"23\"^^xsd:integer",
             "__dt__val__\"McNeal\"^^xsd:string",
+            "__dt__val__\"1.5\"^^xsd:float",
             "__dt__c__DataOneOf(\"true\"^^xsd:boolean \"false\"^^xsd:boolean)",
             "__dt__c__DataOneOf(\"false\"^^xsd:boolean \"true\"^^xsd:boolean)",
         ] {
@@ -1867,9 +2450,7 @@ mod tests {
         for unsupported in [
             "__dt__opaque",
             "__dt__val__opaque",
-            "__dt__val__\"1.5\"^^xsd:float",
-            "__dt__c__DataOneOf(\"true\"^^xsd:boolean)",
-            "__dt__c__DataOneOf(\"true\"^^xsd:boolean \"true\"^^xsd:boolean)",
+            "__dt__val__\"1.5\"^^xsd:double",
             "__dt__c__DataUnionOf(xsd:string xsd:boolean)",
             "__dt__dateTimeStamp",
         ] {
@@ -1900,3 +2481,5 @@ mod tests {
         );
     }
 }
+
+pub(crate) mod numeric_cells;

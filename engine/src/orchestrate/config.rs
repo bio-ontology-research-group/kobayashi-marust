@@ -65,7 +65,8 @@ pub struct Config {
     pub threads: Option<usize>,
     /// KM_PAR_MEM_GB RSS cap for the parallel attempt (default 18.0)
     pub par_mem_gb: f64,
-    /// KM_CENTRAL_TIME_CAP wall cap for the central strategy (default 190.0)
+    /// KM_CENTRAL_TIME_CAP wall cap for the central strategy. Default 190s
+    /// reserves fallback time; isolated no-retry routes can use 235s.
     pub central_time_cap: f64,
     /// KM_NO_RETRY: disable the single-threaded adaptive retry
     pub no_retry: bool,
@@ -190,7 +191,8 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok()),
             par_mem_gb: env_f64("KM_PAR_MEM_GB", 18.0),
-            central_time_cap: env_f64("KM_CENTRAL_TIME_CAP", 190.0),
+            central_time_cap: env_f64("KM_CENTRAL_TIME_CAP",
+                if std::env::var_os("KM_NO_RETRY").is_some() { 235.0 } else { 190.0 }),
             no_retry: std::env::var_os("KM_NO_RETRY").is_some(),
             no_central: std::env::var_os("KM_NO_CENTRAL").is_some(),
             elc: std::env::var_os("KM_NO_ELC").is_none(),

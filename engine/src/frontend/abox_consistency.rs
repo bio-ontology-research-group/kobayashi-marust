@@ -9,9 +9,9 @@
 //! unsatisfiable (the ontology is inconsistent) but KM emitted the full
 //! taxonomy of subsumptions.
 //!
-//! Conservative and sound: only NAMED classes participate. Complex operands of
-//! `DisjointClasses`/`EquivalentClasses`/`SubClassOf` and complex assertion
-//! concepts are skipped, so every detected clash is a genuine entailment
+//! Conservative and sound: only NAMED classes participate in the closure.
+//! Union antecedents and intersection consequents supply entailed named edges;
+//! other complex operands and complex assertion concepts are skipped. Every clash is an entailment
 //! (`a : C`, `a : C'`, `C ⊑* D`, `C' ⊑* D'`, `DisjointClasses(D, D')`). It is
 //! incomplete by design: existential-, datatype-, or complex-concept-driven
 //! clashes are not detected here (the engine/tableau own those).
@@ -194,12 +194,12 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
     let mut sup: HashMap<String, Vec<String>> = HashMap::new();
     for ax in ont.tbox() {
         match ax {
-            Axiom::SubClassOf(Concept::Name(a), Concept::Name(b)) => {
-                sup.entry(a.clone()).or_default().push(b.clone());
+            Axiom::SubClassOf(a, b) => {
+                collect_named_inclusion_edges(a, b, &mut sup);
             }
-            Axiom::EquivalentClasses(Concept::Name(a), Concept::Name(b)) => {
-                sup.entry(a.clone()).or_default().push(b.clone());
-                sup.entry(b.clone()).or_default().push(a.clone());
+            Axiom::EquivalentClasses(a, b) => {
+                collect_named_inclusion_edges(a, b, &mut sup);
+                collect_named_inclusion_edges(b, a, &mut sup);
             }
             _ => {}
         }
@@ -229,6 +229,25 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
         neg_roles,
         same,
     })
+}
+
+/// Each union operand is below the union; an intersection is below each of
+/// its operands. Never split an intersection antecedent or union consequent:
+/// those directions would introduce consequences absent from the source.
+fn collect_named_inclusion_edges(left: &Concept, right: &Concept,
+    edges: &mut HashMap<String, Vec<String>>) {
+    match (left, right) {
+        (Concept::Or(parts), _) => {
+            for part in parts { collect_named_inclusion_edges(part, right, edges); }
+        }
+        (_, Concept::And(parts)) => {
+            for part in parts { collect_named_inclusion_edges(left, part, edges); }
+        }
+        (Concept::Name(a), Concept::Name(b)) => {
+            edges.entry(a.clone()).or_default().push(b.clone());
+        }
+        _ => {}
+    }
 }
 
 /// Named classes directly asserted on some individual, plus the set of roles
@@ -474,6 +493,34 @@ mod tests {
     }
 
     #[test]
+    fn union_equivalence_reveals_asserted_disjointness_without_rules() {
+        let mut registry = super::super::iri::IriRegistry::new();
+        let ontology = super::super::parse::parse_axioms(&mut registry, r#"Ontology(
+            DisjointClasses(<Key> <NonKey>)
+            EquivalentClasses(<NonPrimary> ObjectUnionOf(
+                ObjectIntersectionOf(ObjectComplementOf(<Primary>) <Attribute>) <NonKey>))
+            SubClassOf(<NonPrimary> <Key>)
+            ClassAssertion(<NonKey> <salary>)
+        )"#).unwrap();
+        assert!(collect(&ontology).unwrap().is_inconsistent(&[]));
+    }
+
+    #[test]
+    fn named_projection_respects_boolean_polarity() {
+        let name = |n: &str| Concept::Name(n.into());
+        let mut edges = HashMap::new();
+        collect_named_inclusion_edges(&Concept::And([name("A"), name("B")].into_iter().collect()),
+            &name("C"), &mut edges);
+        collect_named_inclusion_edges(&name("A"),
+            &Concept::Or([name("B"), name("C")].into_iter().collect()), &mut edges);
+        assert!(edges.is_empty());
+        collect_named_inclusion_edges(&Concept::Or([name("A"), name("B")].into_iter().collect()),
+            &Concept::And([name("C"), name("D")].into_iter().collect()), &mut edges);
+        assert_eq!(edges["A"], vec!["C".to_string(), "D".to_string()]);
+        assert_eq!(edges["B"], vec!["C".to_string(), "D".to_string()]);
+    }
+
+    #[test]
     fn complement_subclass_clash_is_detected() {
         let o = ont(vec![
             Axiom::SubClassOf(
@@ -600,8 +647,9 @@ mod gated_projection_tests {
     use super::*;
     use crate::frontend::syntax::Role;
 
-    /// The pre-optimisation projection: the named hierarchy was built before
-    /// the disjointness gate. Kept as the oracle for the gated version.
+    /// Ungated reference: build the hierarchy before the disjointness gate.
+    /// Include the fixture's named intersection consequences independently
+    /// of the production recursive Boolean-inclusion collector.
     fn collect_reference(ont: &Ontology) -> Option<AboxData> {
         let mut sup: HashMap<String, Vec<String>> = HashMap::new();
         let mut disjoint: Vec<(String, String)> = Vec::new();
@@ -621,6 +669,13 @@ mod gated_projection_tests {
                 Axiom::EquivalentClasses(Concept::Name(a), Concept::Name(b)) => {
                     sup.entry(a.clone()).or_default().push(b.clone());
                     sup.entry(b.clone()).or_default().push(a.clone());
+                }
+                Axiom::EquivalentClasses(Concept::Name(a), Concept::And(parts)) => {
+                    for part in parts {
+                        if let Concept::Name(b) = part {
+                            sup.entry(a.clone()).or_default().push(b.clone());
+                        }
+                    }
                 }
                 Axiom::DisjointClasses(Concept::Name(a), Concept::Name(b)) => {
                     disjoint.push((a.clone(), b.clone()));

@@ -49,6 +49,7 @@ use super::super::model::substrate::{Arena, Cint64, Id};
 use super::super::model::RoleId;
 use super::edge::{DisjointEdge, DistinctEdge};
 use super::{DisjointEdgeId, DistinctEdgeId, TrackPointId};
+use super::distinct_group::{DistinctGroup, DistinctGroupView};
 
 /// `CINT64_MIN`, Konclude's "no ancestor connection id" sentinel for
 /// `CConnectionSuccessorSet::mAncConnID` (distinct from any valid id, which is
@@ -82,6 +83,7 @@ pub type DisjointSuccessorRoleHashId = Id<DisjointSuccessorRoleHash>;
 pub struct DistinctHash {
     /// The underlying `CPROCESSHASH<cint64, CDistinctEdge*>`.
     hash: HashMap<Cint64, DistinctEdgeId>,
+    groups: Option<DistinctGroupView>,
 }
 
 impl DistinctHash {
@@ -89,24 +91,33 @@ impl DistinctHash {
     pub fn new() -> Self {
         DistinctHash {
             hash: HashMap::new(),
+            groups: None,
         }
     }
 
     /// Port of `CDistinctHash::initDistinctHash`.
     ///
-    /// `*this = *prevHash` (the QHash implicitly-shared assignment) → an eager
-    /// clone; `clear()` otherwise.
+    /// Clone explicit pairs and localized group overrides; immutable group
+    /// member vectors remain shared. Clear both representations otherwise.
     pub fn init_distinct_hash(&mut self, prev_hash: Option<&DistinctHash>) -> &mut Self {
         if let Some(prev_hash) = prev_hash {
             self.hash = prev_hash.hash.clone();
+            self.groups = prev_hash.groups.clone();
         } else {
             self.hash.clear();
+            self.groups = None;
         }
         self
     }
 
     /// Port of `CDistinctHash::getIndividualDistinctEdge` (`value(indiID, nullptr)`).
+    pub fn materialized_distinct_edge(&self, indi_id: Cint64) -> Option<DistinctEdgeId> {
+        self.hash.get(&indi_id).copied()
+    }
+
     pub fn get_individual_distinct_edge(&self, indi_id: Cint64) -> DistinctEdgeId {
+        assert!(!self.groups.as_ref().is_some_and(|group| group.dependency(indi_id).is_some()),
+            "compact distinct evidence requires actual pair-edge materialization");
         self.hash
             .get(&indi_id)
             .copied()
@@ -116,6 +127,27 @@ impl DistinctHash {
     /// Port of `CDistinctHash::isIndividualDistinct` (`contains(indiID)`).
     pub fn is_individual_distinct(&self, indi_id: Cint64) -> bool {
         self.hash.contains_key(&indi_id)
+            || self.groups.as_ref().is_some_and(|group| group.dependency(indi_id).is_some())
+    }
+
+    /// Query provenance without inventing an edge for a compressed pair.
+    pub fn distinct_dependency(&self, indi_id: Cint64,
+        edges: &Arena<DistinctEdge>) -> Option<TrackPointId> {
+        if let Some(edge) = self.hash.get(&indi_id) {
+            return Some(edges.get(*edge).get_dependency_track_point());
+        }
+        self.groups.as_ref().and_then(|group| group.dependency(indi_id))
+    }
+
+    /// Opt-in producers share immutable member sets and preserve localized
+    /// provenance; clash consumers materialize the actual requested pair.
+    pub fn install_distinct_group(&mut self, owner: Cint64, group: DistinctGroup) -> bool {
+        if !self.can_install_distinct_group(owner, &group) { return false; }
+        self.hash.retain(|partner, _| *partner == owner || !group.contains(*partner));
+        self.groups.get_or_insert_with(|| DistinctGroupView::new(owner)).install(group)
+    }
+    pub fn can_install_distinct_group(&self, owner: Cint64, group: &DistinctGroup) -> bool {
+        group.contains(owner) && !self.groups.as_ref().is_some_and(|view| view.owner() != owner)
     }
 
     /// Port of `CDistinctHash::insertDistinctIndividual` (C++ default
@@ -125,6 +157,7 @@ impl DistinctHash {
         indi_id: Cint64,
         dis_edge: DistinctEdgeId,
     ) -> &mut Self {
+        if let Some(groups) = &mut self.groups { groups.remove_pair(indi_id); }
         self.hash.insert(indi_id, dis_edge);
         self
     }
@@ -132,12 +165,13 @@ impl DistinctHash {
     /// Port of `CDistinctHash::removeDistinctIndividual` (`remove(indiID)`).
     pub fn remove_distinct_individual(&mut self, indi_id: Cint64) -> &mut Self {
         self.hash.remove(&indi_id);
+        if let Some(groups) = &mut self.groups { groups.remove_pair(indi_id); }
         self
     }
 
     /// Port of `CDistinctHash::getDistinctCount` (`count()`).
     pub fn get_distinct_count(&self) -> Cint64 {
-        self.hash.len() as Cint64
+        (self.hash.len() + self.groups.as_ref().map_or(0, DistinctGroupView::len)) as Cint64
     }
 
     /// Port of `CDistinctHash::getDistinctIterator`.
@@ -147,7 +181,15 @@ impl DistinctHash {
     /// `Vec` so the iterator is self-contained (QHash iteration order is itself
     /// unspecified, so the snapshot is content-faithful).
     pub fn get_distinct_iterator(&self) -> DistinctIterator {
-        DistinctIterator::from_entries(self.hash.iter().map(|(k, v)| (*k, *v)).collect())
+        let mut iterator = DistinctIterator::from_entries(self.hash.iter().map(|(k, v)| (*k, *v)).collect());
+        if let Some(groups) = &self.groups {
+            iterator.dependencies.resize(iterator.entries.len(), None);
+            for (partner, dependency) in groups.partners() {
+                iterator.entries.push((partner, DistinctEdgeId::NONE));
+                iterator.dependencies.push(Some(dependency));
+            }
+        }
+        iterator
     }
 }
 
@@ -160,6 +202,7 @@ pub struct DistinctIterator {
     /// Snapshot of `CPROCESSHASH<cint64,CDistinctEdge*>` `[begin,end)` as
     /// `(mBeginIt.key(), mBeginIt.value())` pairs.
     entries: Vec<(Cint64, DistinctEdgeId)>,
+    dependencies: Vec<Option<TrackPointId>>,
     /// Cursor (`mBeginIt` advance == `++pos`).
     pos: usize,
 }
@@ -169,13 +212,15 @@ impl DistinctIterator {
     pub fn new() -> Self {
         DistinctIterator {
             entries: Vec::new(),
+            dependencies: Vec::new(),
             pos: 0,
         }
     }
 
     /// Port of `CDistinctIterator::CDistinctIterator(beginIt, endIt)`.
     pub fn from_entries(entries: Vec<(Cint64, DistinctEdgeId)>) -> Self {
-        DistinctIterator { entries, pos: 0 }
+        let dependencies = Vec::new();
+        DistinctIterator { entries, dependencies, pos: 0 }
     }
 
     /// Port of `CDistinctIterator::hasNext` (`mBeginIt != mEndIt`).
@@ -212,7 +257,8 @@ impl DistinctIterator {
         if self.pos != self.entries.len() {
             let (key, edge) = self.entries[self.pos];
             indi = key;
-            dep_track_point = distinct_edges.get(edge).get_dependency_track_point();
+            dep_track_point = self.dependencies.get(self.pos).copied().flatten()
+                .unwrap_or_else(|| distinct_edges.get(edge).get_dependency_track_point());
             if move_next {
                 self.pos += 1;
             }
@@ -225,6 +271,8 @@ impl DistinctIterator {
         let mut dis_edge = DistinctEdgeId::NONE;
         if self.pos != self.entries.len() {
             dis_edge = self.entries[self.pos].1;
+            assert!(!self.dependencies.get(self.pos).is_some_and(Option::is_some),
+                "compact distinct evidence requires actual pair-edge materialization");
             if move_next {
                 self.pos += 1;
             }
@@ -236,6 +284,179 @@ impl DistinctIterator {
 impl Default for DistinctIterator {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod compact_distinct_tests {
+    use super::*;
+
+    #[test]
+    fn shared_distinct_producer_installs_complete_pair_evidence_without_pair_edges() {
+        use super::super::context::ProcessContext;
+        use super::super::node::IndividualProcessNode;
+        let mut context = ProcessContext::new();
+        let nodes: Vec<_> = (0..128).map(|id| {
+            let node = context.alloc_node(IndividualProcessNode::default());
+            context.node_mut(node).set_individual_node_id(id);
+            node
+        }).collect();
+        let dependency = TrackPointId::new(9);
+        assert!(context.nodes_install_distinct_group(&nodes, dependency));
+        assert_eq!(context.distinct_edges().len(), 0);
+        for (owner, &node) in nodes.iter().enumerate() {
+            let hash = context.distinct_hash(context.node_distinct_hash_existing(node));
+            assert_eq!(hash.get_distinct_count(), 127);
+            for partner in 0..128 {
+                assert_eq!(hash.distinct_dependency(partner, context.distinct_edges()),
+                    (partner != owner as Cint64).then_some(dependency));
+            }
+        }
+        let edge = context.node_materialize_distinct_edge(nodes[3], nodes[5]);
+        assert!(edge.is_some());
+        assert_eq!(context.distinct_edges().len(), 1);
+        assert_eq!(context.node_materialize_distinct_edge(nodes[5], nodes[3]), edge);
+        assert_eq!(context.distinct_edges().len(), 1);
+    }
+
+    #[test]
+    fn duplicate_distinct_witnesses_defer_before_changing_any_hash() {
+        use super::super::context::ProcessContext;
+        use super::super::node::IndividualProcessNode;
+        let mut context = ProcessContext::new();
+        let node = context.alloc_node(IndividualProcessNode::default());
+        context.node_mut(node).set_individual_node_id(3);
+        assert!(!context.nodes_install_distinct_group(&[node, node], TrackPointId::NONE));
+        assert!(context.node_distinct_hash_existing(node).is_none());
+        assert_eq!(context.distinct_edges().len(), 0);
+    }
+
+    #[test]
+    fn lazy_distinct_edge_has_actual_endpoints_and_is_cached_symmetrically() {
+        use super::super::context::ProcessContext;
+        use super::super::node::IndividualProcessNode;
+        let mut context = ProcessContext::new();
+        let a = context.alloc_node(IndividualProcessNode::default());
+        let b = context.alloc_node(IndividualProcessNode::default());
+        context.node_mut(a).set_individual_node_id(1);
+        context.node_mut(b).set_individual_node_id(2);
+        let dependency = TrackPointId::new(7);
+        let group = DistinctGroup::new(vec![1, 2], dependency);
+        for (node, owner) in [(a, 1), (b, 2)] {
+            let hash = context.node_distinct_hash(node);
+            assert!(context.distinct_hash_mut(hash).install_distinct_group(owner, group.clone()));
+        }
+        let edge = context.node_materialize_distinct_edge(a, b);
+        assert!(edge.is_some());
+        assert_eq!(context.distinct_edge(edge).get_source_individual(), a);
+        assert_eq!(context.distinct_edge(edge).get_destination_individual(), b);
+        assert_eq!(context.distinct_edge(edge).get_dependency_track_point(), dependency);
+        assert_eq!(context.node_materialize_distinct_edge(b, a), edge);
+        assert_eq!(context.node_materialize_distinct_edge(a, b), edge);
+        assert_eq!(context.node_materialize_distinct_edge(a, a), DistinctEdgeId::NONE);
+        assert_eq!(context.distinct_hash(context.node_distinct_hash_existing(a)).get_distinct_count(), 1);
+        assert_eq!(context.distinct_hash(context.node_distinct_hash_existing(b)).get_distinct_count(), 1);
+    }
+
+    #[test]
+    fn localized_group_edge_cache_does_not_change_restored_parent_evidence() {
+        use super::super::context::ProcessContext;
+        use super::super::node::IndividualProcessNode;
+        let mut context = ProcessContext::new();
+        let a = context.alloc_node(IndividualProcessNode::default());
+        let b = context.alloc_node(IndividualProcessNode::default());
+        context.node_mut(a).set_individual_node_id(1);
+        context.node_mut(b).set_individual_node_id(2);
+        let dependency = TrackPointId::new(7);
+        assert!(context.nodes_install_distinct_group(&[a, b], dependency));
+        let parent_a_hash = context.node_distinct_hash_existing(a);
+        let parent_b_hash = context.node_distinct_hash_existing(b);
+        let mut children = Vec::new();
+        for parent in [a, b] {
+            let hash = context.node_distinct_hash_existing(parent);
+            let mut child = context.node(parent).clone();
+            child.prev_distinct_hash = hash;
+            child.use_distinct_hash = hash;
+            child.distinct_hash = DistinctHashId::NONE;
+            children.push(context.alloc_node(child));
+        }
+        let child_edge = context.node_materialize_distinct_edge(children[0], children[1]);
+        assert_eq!(context.distinct_edge(child_edge).get_source_individual(), children[0]);
+        assert_eq!(context.distinct_edge(child_edge).get_destination_individual(), children[1]);
+        assert_eq!(context.distinct_edge(child_edge).get_dependency_track_point(), dependency);
+        let child_hash = context.node_distinct_hash_existing(children[0]);
+        context.distinct_hash_mut(child_hash).remove_distinct_individual(2);
+        assert!(!context.distinct_hash(child_hash).is_individual_distinct(2));
+        assert!(context.distinct_hash(parent_a_hash).is_individual_distinct(2));
+        assert!(context.distinct_hash(parent_b_hash).is_individual_distinct(1));
+        assert_eq!(context.distinct_hash(parent_a_hash).materialized_distinct_edge(2), None);
+        assert_eq!(context.distinct_hash(parent_b_hash).materialized_distinct_edge(1), None);
+        let restored_edge = context.node_materialize_distinct_edge(a, b);
+        assert_ne!(restored_edge, child_edge);
+        assert_eq!(context.distinct_edge(restored_edge).get_source_individual(), a);
+        assert_eq!(context.distinct_edge(restored_edge).get_destination_individual(), b);
+        assert_eq!(context.distinct_edge(restored_edge).get_dependency_track_point(), dependency);
+    }
+
+    #[test]
+    fn distinct_hash_mixes_group_and_pair_provenance_and_localizes_removals() {
+        let first = TrackPointId::new(1);
+        let second = TrackPointId::new(2);
+        let mut edges = Arena::new();
+        let mut edge = DistinctEdge::new();
+        edge.set_dependency_track_point(second);
+        let pair = edges.push(edge);
+        let mut parent = DistinctHash::new();
+        parent.insert_distinct_individual(2, pair);
+        assert!(parent.install_distinct_group(1, DistinctGroup::new(vec![1, 2, 3], first)));
+        assert_eq!(parent.distinct_dependency(2, &edges), Some(first));
+        assert_eq!(parent.get_distinct_count(), 2);
+        let mut child = DistinctHash::new();
+        child.init_distinct_hash(Some(&parent));
+        child.remove_distinct_individual(3);
+        child.insert_distinct_individual(2, pair);
+        child.insert_distinct_individual(4, pair);
+        assert_eq!(child.distinct_dependency(2, &edges), Some(second));
+        assert!(!child.is_individual_distinct(3));
+        assert!(parent.is_individual_distinct(3));
+        assert_eq!(parent.distinct_dependency(2, &edges), Some(first));
+        let mut iterator = child.get_distinct_iterator();
+        let mut observed = HashMap::new();
+        while iterator.has_next() {
+            let (partner, dep) = iterator.next_distinct_individual_id_dep(&edges, true);
+            observed.insert(partner, dep);
+        }
+        assert_eq!(observed, HashMap::from([(2, second), (4, second)]));
+        assert_eq!(child.get_distinct_count(), 2);
+        assert!(child.install_distinct_group(1, DistinctGroup::new(vec![1, 2, 3], first)));
+        assert_eq!(child.distinct_dependency(2, &edges), Some(first));
+        assert_eq!(child.distinct_dependency(3, &edges), Some(first));
+        assert_eq!(child.distinct_dependency(4, &edges), Some(second));
+        assert_eq!(child.get_distinct_count(), 3);
+        assert!(!child.install_distinct_group(2, DistinctGroup::new(vec![1, 2, 3], second)));
+        assert_eq!(child.distinct_dependency(2, &edges), Some(first));
+        child.init_distinct_hash(None);
+        assert_eq!(child.get_distinct_count(), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "actual pair-edge materialization")]
+    fn compressed_pair_cannot_silently_look_like_an_absent_edge() {
+        let mut distinct = DistinctHash::new();
+        distinct.install_distinct_group(1, DistinctGroup::new(vec![1, 2], TrackPointId::NONE));
+        distinct.get_individual_distinct_edge(2);
+    }
+
+    #[test]
+    fn group_installation_preserves_explicit_self_inequality() {
+        let mut edges = Arena::new();
+        let edge = edges.push(DistinctEdge::new());
+        let mut distinct = DistinctHash::new();
+        distinct.insert_distinct_individual(1, edge);
+        distinct.install_distinct_group(1, DistinctGroup::new(vec![1, 2], TrackPointId::new(4)));
+        assert!(distinct.is_individual_distinct(1));
+        assert_eq!(distinct.get_individual_distinct_edge(1), edge);
+        assert_eq!(distinct.get_distinct_count(), 2);
     }
 }
 

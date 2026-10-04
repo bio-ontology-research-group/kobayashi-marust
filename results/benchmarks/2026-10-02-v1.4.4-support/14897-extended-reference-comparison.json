@@ -1,0 +1,22 @@
+{
+  "job": 53143764,
+  "mode": "full-sweep-original-input",
+  "reference_job": 53146490,
+  "consistent": true,
+  "dropped": 0,
+  "source_classes": 4274,
+  "reference_classes": 4276,
+  "observed_relations": 33775,
+  "expected_relations": 33775,
+  "missing_count": 0,
+  "extra_count": 0,
+  "candidate_unsat_count": 0,
+  "reference_unsat_count": 0,
+  "missing_unsat": [],
+  "extra_unsat": [],
+  "reference_thing_equiv": [],
+  "missing_sample": [],
+  "extra_sample": [],
+  "candidate_sha256": "6f73e5d2710f3f40478cc4d19b8c93efca023a9dde35613881672b5ded8bc7ee",
+  "reference_sha256": "3732a7a6e15e05cab5d10b0d5acd21b3fc19a406e7317257284877e2e1e8a3d6"
+}

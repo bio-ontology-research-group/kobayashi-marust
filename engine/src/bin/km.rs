@@ -496,7 +496,7 @@ fn classify_cmd(rest: &[String]) {
             }
             Err(e) => {
                 eprintln!("{e}");
-                exit(1);
+                exit(e.exit_code());
             }
         }
     }
@@ -518,7 +518,7 @@ fn classify_cmd(rest: &[String]) {
         }
         Err(e) => {
             eprintln!("{e}");
-            exit(1);
+            exit(e.exit_code());
         }
     }
 }

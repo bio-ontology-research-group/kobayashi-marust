@@ -2,10 +2,10 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn snapshot_path(label: &str) -> std::path::PathBuf {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join(".work/artifacts");
+    let root = std::env::var_os("KM_WORK_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("km-cb-live-state"))
+        .join("artifacts");
     std::fs::create_dir_all(&root).unwrap();
     root.join(format!("cb-live-{label}-{}.json", std::process::id()))
 }

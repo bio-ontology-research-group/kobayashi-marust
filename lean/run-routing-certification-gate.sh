@@ -5,8 +5,9 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lean_root="$repo_root/lean"
 engine_root="$repo_root/engine"
 bin_path="$lean_root/.lake/build/bin/km-automatic-routing-check"
-target_root="$repo_root/.work/target"
-artifact_root="$repo_root/.work/artifacts"
+work_root="${KM_WORK_ROOT:-$repo_root/.work}"
+target_root="$work_root/target"
+artifact_root="$work_root/artifacts"
 surface_log="$artifact_root/routing-certification-surface.log"
 lean_threads=${KM_CERT_LEAN_THREADS:-1}
 lean_cpuset=${KM_CERT_LEAN_CPUSET:-0-3}
@@ -37,6 +38,17 @@ trap cleanup_checker EXIT
         ContextCalculus.KMConcreteWorkerAdapters \
         ContextCalculus.KMConcreteAutomaticSupervisor \
         ContextCalculus.KMIncrementalExplanationCertification \
+        ContextCalculus.KMAtomicABoxPublication \
+        ContextCalculus.ABoxBooleanInclusion \
+        ContextCalculus.EndpointTransitivity \
+        ContextCalculus.EndpointRoleHierarchy \
+        ContextCalculus.GuardedTransitivity \
+        ContextCalculus.AbsorbingTransitivity \
+        ContextCalculus.DLSafeAtomicTaxonomyExtension \
+        ContextCalculus.DLSafeRuleJoinOrdering \
+        ContextCalculus.DLSafeGroundRuleNormalization \
+        ContextCalculus.InverseRoleChainNormalization \
+        ContextCalculus.NativeCardinalityNormalization \
         ContextCalculus.ELCheckerTermEmbedding \
         ContextCalculus.ELNormalCheckerTermEmbedding \
         ContextCalculus.ELCommonSourceWire \
@@ -64,6 +76,47 @@ if grep -q 'sorryAx' "$surface_log"; then
 fi
 
 for theorem in \
+    ABoxBooleanInclusion.union_operand_included \
+    ABoxBooleanInclusion.intersection_operand_included \
+    ABoxBooleanInclusion.equivalence_directions \
+    ABoxBooleanInclusion.inclusion_transitive \
+    ABoxBooleanInclusion.asserted_disjoint_clash \
+    ABoxBooleanInclusion.inconsistent_subset \
+    EndpointTransitivity.reach_transitive \
+    EndpointTransitivity.domain_preserved \
+    EndpointTransitivity.range_preserved \
+    EndpointTransitivity.transitive_model_extension \
+    EndpointTransitivity.reach_inclusion \
+    EndpointTransitivity.reach_inverse_inclusion \
+    EndpointTransitivity.selective_inclusion \
+    EndpointTransitivity.selective_inverse_inclusion \
+    EndpointTransitivity.recognition_reaches \
+    EndpointTransitivity.guarded_consumer_preserved \
+    EndpointTransitivity.recognition_extension \
+    EndpointTransitivity.left_reach_absorption \
+    EndpointTransitivity.left_absorption_reach_target \
+    EndpointTransitivity.left_absorption_both_reach \
+    EndpointTransitivity.selective_left_absorption \
+    NativeCardinalityNormalization.minimum_definition_extension_iff \
+    NativeCardinalityNormalization.maximum_definition_extension_iff \
+    DLSafeAtomicTaxonomyExtension.boolean_query_projection_exact \
+    DLSafeAtomicTaxonomyExtension.guarded_named_rules_preserved \
+    DLSafeAtomicTaxonomyExtension.role_chain_preserved \
+    DLSafeRuleJoinOrdering.reject_false_premise \
+    DLSafeRuleJoinOrdering.accept_true_head \
+    DLSafeRuleJoinOrdering.class_domain_restriction \
+    DLSafeGroundRuleNormalization.ground_atom_exact \
+    DLSafeGroundRuleNormalization.grounded_rule_exact \
+    DLSafeGroundRuleNormalization.ground_family_extension_iff \
+    InverseRoleChainNormalization.theory_consequences_preserved \
+    InverseRoleChainNormalization.centered_binary_chain \
+    InverseRoleChainNormalization.reciprocal_bridges_preserve_transitivity \
+    SQWRLClassificationProjection.models_preserved \
+    DLSafeEmptyNamedDomain.guarded_rule_vacuous \
+    DLSafeEmptyNamedDomain.theory_models_preserved \
+    DLSafeEmptyNamedDomain.rule_family_models_preserved \
+    SQWRLClassificationProjection.consequences_preserved \
+    SQWRLClassificationProjection.mixed_rule_preserved \
     SourceBoundWorker.erase_soundAt \
     SourceBoundWorker.liftTranslation \
     SourceBoundWorker.liftTranslation_completeAt \
@@ -134,6 +187,18 @@ for theorem in \
     satisfiable_of_included \
     CertifiedInconsistencyExplanation.inconsistent \
     CertifiedInconsistencyExplanation.subsetMinimal \
+    singleClass_of_oneClass \
+    conflicting_rows_decline \
+    singleClass_map_of_injective \
+    atomicSatisfiable_of_singleClass \
+    atomicSatisfiable_iff_classes \
+    nativeAtomic_models \
+    nativeAtomic_fullSatisfiable \
+    nativeAtomic_taxonomy_exact \
+    publish_frontend_false \
+    publish_frontend_clash \
+    publish_consistent_iff \
+    direct_disjoint_assertions_inconsistent \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
     WireDirectTaxonomyPublication.check_sound \
@@ -189,19 +254,35 @@ fi
 
 (
     cd "$engine_root"
-    CARGO_TARGET_DIR="$target_root" cargo test --release \
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         routing::tests::large_horn_functional_terminology_retains_exact_fallback
-    CARGO_TARGET_DIR="$target_root" cargo test --release \
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         routing::tests::automatic_atomic_declines_retain_source_appropriate_fallbacks
     CARGO_TARGET_DIR="$target_root" cargo test --release --test elc_certificate \
         automatic_el_decline_retries_exactly_but_forced_el_remains_atomic
-    CARGO_TARGET_DIR="$target_root" cargo test --release \
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         source_incremental::tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
+        frontend::separable_abox_elision_tests::
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_reasoning
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_cb_reasoning
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_ht_reasoning
     CARGO_TARGET_DIR="$target_root" cargo test --release --test source_incremental_nominals
     CARGO_TARGET_DIR="$target_root" cargo test --release --test source_incremental_rules
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test finite_rule_taxonomy
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test finite_data_rule_normalization
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test constant_data_rule_normalization
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test inverse_role_chains
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib endpoint_transitivity_tests
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test endpoint_transitivity
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test ground_rule_source
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test rule_independent_abox_clash
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test symbolic_source_classification
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib initialized_queue_less_node_does_not_starve_other_completion_work
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib orchestrate::symbolic_source::tests
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib full_symbolic_source_bounds_execute_with_float_data
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib finite_rule_model_tests
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib empty_grounding_model_tests
     CARGO_TARGET_DIR="$target_root" cargo test --release --test explain_cli
 )
 

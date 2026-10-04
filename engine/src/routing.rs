@@ -524,6 +524,22 @@ pub(crate) fn compact_typed_bridge_first_candidate(profile: &OntologyProfile) ->
         && profile.expressivity.nominal
 }
 
+/// Schedule a checked native bridge attempt for small functional-data ABoxes.
+/// The frontend must independently prove its string-value projection and
+/// retain all entailed owner inequalities; unsupported interactions leave the
+/// native payload incomplete and the bridge declines to the exact CB route.
+pub(crate) fn functional_data_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |kind: &str| source.axiom_types.get(kind).copied().unwrap_or(0);
+    count("FunctionalDataProperty") > 0
+        && (1..=256).contains(&count("DataPropertyAssertion"))
+        && source.logical_axioms <= 4_000
+        && source.distinct_individuals <= 256
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
 /// Automatic nominal routes that replaced the historical TBox-only production
 /// schedule because its CB fallback did not carry singleton/ABox semantics.
 ///
@@ -880,6 +896,24 @@ pub(crate) fn small_nominal_heap_trim_candidate(profile: &OntologyProfile) -> bo
         && !profile.expressivity.datatype
 }
 
+/// Bound nominal ground-context accumulation by classifying one query per
+/// engine for small assertion-only ABoxes with inverse functional roles.
+/// This is a scheduling hint: every task retains the entire ontology and the
+/// existing calculus. Rayon still enforces the caller's CPU budget.
+pub(crate) fn isolated_nominal_query_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    (1..=16).contains(&source.abox_axioms)
+        && source.abox_axioms == source.class_assertions
+        && source.distinct_classes <= 4_096
+        && profile.expressivity.inverse
+        && (source.functional_role_axioms > 0 || source.inverse_functional_role_axioms > 0)
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
 /// Compact, assertion-bearing nominal inputs whose exact singleton-aware CB
 /// classification cannot amortize the default sixteen worker arenas.
 ///
@@ -1201,6 +1235,66 @@ fn compact_nominal_general_ht_candidate(profile: &OntologyProfile) -> bool {
         && (source.unions > 0 || source.role_assertions >= 400)
 }
 
+/// Native completion handles inverse-chain singleton constraints without the
+/// conditional labels accumulated by shared CB query contexts. The bridge
+/// checks complete source coverage; automatic dispatch retains nominal CB.
+fn nominal_chain_native_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.nominals > 0
+        && source.role_chain_axioms > 0
+        && profile.expressivity.inverse
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.datatype_constructors == 0
+        && !profile.expressivity.datatype
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+}
+
+/// Horn-shaped reflexive terminologies can use native global SELF completion.
+/// The bridge independently verifies the retained reflexivity clause and
+/// declines any remaining conversion gap to the production fallback.
+fn reflexive_horn_native_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.axiom_types.get("ReflexiveObjectProperty").copied().unwrap_or(0) > 0
+        && profile.expressivity.inverse
+        && (source.functional_role_axioms > 0 || source.inverse_functional_role_axioms > 0)
+        && source.abox_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.unions == 0
+        && source.complements == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && !profile.expressivity.datatype
+        && !profile.expressivity.nominal_individual
+}
+
+/// Bound the native bridge attempt for data-assertion ABoxes over small
+/// terminologies. The frontend still has to certify its exact data projection;
+/// an incomplete native payload defers to the unchanged nominal calculus.
+fn data_assertion_native_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.axiom_types.get("DataPropertyAssertion").copied().unwrap_or(0) > 0
+        && source.abox_axioms >= 1_000
+        && source.abox_axioms <= 20_000
+        && source.tbox_axioms <= 1_000
+        && source.max_cardinality <= 1
+        && source.qualified_cardinalities == 0
+        && source.has_values == 0
+        && source.role_chain_axioms == 0
+        && profile.expressivity.inverse
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
 /// Large SRIQ terminology with a small positive ABox for which the general HT
 /// conversion is complete and avoids the more expensive cardinality-proxy
 /// portfolio. The source gate only schedules the certified attempt; a
@@ -1451,14 +1545,7 @@ fn inverse_chain_el_bridge_candidate(profile: &OntologyProfile) -> bool {
     let separable_class_abox = independent_large_abox_candidate(profile);
 
     (no_abox || separable_class_abox)
-        && source.logical_axioms >= 10_000
-        && source.logical_axioms <= 70_000
-        && source.tbox_axioms >= 10_000
-        && (8_000..=8_100).contains(&source.distinct_classes)
-        && source.disjoint_class_axioms == 65
-        && source.existentials >= 5_000
         && source.role_chain_axioms > 0
-        && source.role_chain_axioms <= 12
         && source.imports == 0
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
@@ -2037,6 +2124,30 @@ fn small_class_identity_abox_production_candidate(profile: &OntologyProfile) -> 
         && !profile.expressivity.universal_role
 }
 
+/// Try the typed nominal bridge for compact class/inequality ABoxes with
+/// functional roles and small unqualified number restrictions. The converted
+/// input gate remains authoritative, and the portfolio retains nominal CB
+/// after any defer. These bounds control scheduling, not ontology semantics.
+fn compact_functional_identity_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    source.abox_axioms > 0
+        && source.abox_axioms == source.class_assertions.saturating_add(count("DifferentIndividuals"))
+        && source.logical_axioms <= 2_000
+        && source.distinct_classes <= 1_000
+        && source.distinct_individuals <= 500
+        && source.max_cardinality <= 8
+        && source.functional_role_axioms > 0
+        && source.role_assertions == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.datatype_constructors == 0
+        && profile.expressivity.nominal
+        && !profile.expressivity.qualified_cardinality
+        && !profile.expressivity.datatype
+}
+
 /// Very large terminologies with a tiny class/identity-only ABox try the typed
 /// bridge before entering the nominal root-context engine. The
 /// `certified_nominals` bundle retains that exact singleton-aware fallback.
@@ -2142,6 +2253,15 @@ fn sriq_policy_eligible(route: Route) -> bool {
 }
 
 pub fn select(profile: &OntologyProfile) -> Route {
+    if profile.normalized_unary_rules > 0
+        && profile.normalized_unary_rules == profile.source.rule_axioms
+        && profile.source.unsupported_rule_axioms == 0
+    {
+        // Every logical rule is now an equivalent nominal-guarded inclusion;
+        // any observer-only query rules have an identity projection,
+        // so its consequences must participate in the taxonomy calculation.
+        return Route::Nominals;
+    }
     // The parsed frontend has replaced every individual's asserted named-type
     // conjunction by a fresh internal satisfiability probe and proved that
     // ground role edges and explicit inequalities are otherwise inert.
@@ -2155,10 +2275,18 @@ pub fn select(profile: &OntologyProfile) -> Route {
     if profile.existential_witness_abox_candidate {
         return Route::ProductionAll;
     }
+    if reflexive_horn_native_bridge_candidate(profile) {
+        return Route::HtBridge;
+    }
     if certified_el_production_candidate(profile) {
         return Route::CertifiedElProduction;
     }
     if inverse_chain_el_bridge_candidate(profile) {
+        return Route::HtBridge;
+    }
+    if nominal_chain_native_bridge_candidate(profile)
+        || data_assertion_native_bridge_candidate(profile)
+    {
         return Route::HtBridge;
     }
     if compact_role_rich_ht_bridge_candidate(profile)
@@ -2178,6 +2306,9 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::UnsupportedRules => Route::HtRules,
         SemanticFragment::Rules => Route::HtRules,
         SemanticFragment::NativeBridgeAbox => Route::CertifiedNominals,
+        SemanticFragment::Nominal if compact_functional_identity_bridge_candidate(profile) => {
+            Route::CertifiedNominals
+        }
         SemanticFragment::Nominal if independent_large_abox_el_candidate(profile) => Route::Elc,
         SemanticFragment::Nominal if independent_large_abox_candidate(profile) => {
             Route::ProductionAll
@@ -2387,7 +2518,13 @@ impl EnvironmentGuard {
     pub(crate) fn capture() -> Self {
         let values = std::iter::once("KM_ROUTE")
             .chain(std::iter::once("KM_COMP_IND_BITS"))
+            .chain(std::iter::once("KM_TRANSITIVE_RULE_REDUCE"))
+            .chain(std::iter::once("KM_GROUND_RULE_SOURCE"))
+            .chain(std::iter::once("KM_GROUND_PRIVATE_CLASS_FILE"))
+            .chain(std::iter::once("KM_BRIDGE_PUBLIC_SUBJECT_FILE"))
+            .chain(std::iter::once("KM_DATA_ABOX_PROJECT"))
             .chain(std::iter::once("KM_EL_ABOX_CHECK"))
+            .chain(std::iter::once("KM_NO_SEPARABLE_ABOX_ELISION"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
             .chain(ROUTE_KEYS.iter().copied())
@@ -2874,6 +3011,7 @@ const SEQ_OFF: &[(&str, &str)] = &[
 const ROUTE_KEYS: &[&str] = &[
     "KM_MECHANISM",
     "KM_THREADS",
+    "KM_QUERY_TASK_SIZE",
     "KM_PAR_MEM_GB",
     "KM_HT_MEM_GB",
     "KM_KEEP_CHAIN_AXIOMS",
@@ -2952,6 +3090,36 @@ const ROUTE_KEYS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_functional_identity_abox_uses_exact_nominal_portfolio() {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.nominal = true;
+        profile.expressivity.nominal_individual = true;
+        profile.expressivity.functionality = true;
+        profile.source.abox_axioms = 3;
+        profile.source.class_assertions = 2;
+        profile.source.functional_role_axioms = 1;
+        profile.source.max_cardinality = 2;
+        profile.source.role_chain_axioms = 1;
+        profile.source.axiom_types.insert("DifferentIndividuals".into(), 1);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
+        profile.expressivity.qualified_cardinality = true;
+        assert!(!compact_functional_identity_bridge_candidate(&profile));
+        profile.expressivity.qualified_cardinality = false;
+        profile.source.abox_axioms += 1;
+        profile.source.axiom_types.insert("DataPropertyAssertion".into(), 1);
+        assert!(!compact_functional_identity_bridge_candidate(&profile));
+    }
+
+    #[test]
+    fn parsed_functional_nominal_fixture_uses_exact_portfolio_with_class_abox() {
+        let text = include_str!("../tests/fixtures/nominal_wine_absorption.ofn");
+        let closing = text.rfind(')').unwrap();
+        let input = format!("{}\nDeclaration(NamedIndividual(<http://km.test/sample>))\nClassAssertion(<http://www.ifomis.org/bfo/1.1#WhiteTableWine> <http://km.test/sample>)\n)", &text[..closing]);
+        let frontend = crate::frontend::ofn_to_clauses(&input).unwrap();
+        assert_eq!(select(&frontend.profile), Route::CertifiedNominals);
+    }
 
     fn wine_nominal_ni_profile() -> OntologyProfile {
         let mut profile = OntologyProfile::default();
@@ -4106,6 +4274,91 @@ mod tests {
     }
 
     #[test]
+    fn isolated_nominal_queries_keep_the_complete_nominal_route() {
+        let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 4;
+        profile.source.class_assertions = 4;
+        profile.source.distinct_classes = 509;
+        profile.source.functional_role_axioms = 1;
+        profile.expressivity.inverse = true;
+        assert!(isolated_nominal_query_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+        assert!(ROUTE_KEYS.contains(&"KM_QUERY_TASK_SIZE"));
+        profile.source.abox_axioms += 1;
+        assert!(!isolated_nominal_query_candidate(&profile), "mixed ABox outside measured schedule");
+        profile.source.abox_axioms -= 1;
+        profile.source.nominals = 1;
+        assert!(!isolated_nominal_query_candidate(&profile));
+    }
+
+    #[test]
+    fn reflexive_horn_bridge_retains_complete_production_fallback() {
+        let mut profile = OntologyProfile::default();
+        profile.source.axiom_types.insert("ReflexiveObjectProperty".into(), 1);
+        profile.source.functional_role_axioms = 1;
+        profile.expressivity.inverse = true;
+        assert_eq!(select(&profile), Route::HtBridge);
+        assert_eq!(automatic_atomic_fallback(select(&profile), &profile), Some(Route::ProductionAll));
+        // Leave ordinary EL reflexivity on its existing completion route.
+        profile.expressivity.inverse = false;
+        assert!(!reflexive_horn_native_bridge_candidate(&profile));
+        profile.expressivity.inverse = true;
+        profile.source.functional_role_axioms = 0;
+        assert!(!reflexive_horn_native_bridge_candidate(&profile));
+        profile.source.inverse_functional_role_axioms = 1;
+        assert!(reflexive_horn_native_bridge_candidate(&profile));
+        profile.source.abox_axioms = 1;
+        assert!(!reflexive_horn_native_bridge_candidate(&profile));
+        profile.source.abox_axioms = 0;
+        profile.source.rule_axioms = 1;
+        assert_eq!(select(&profile), Route::HtRules);
+        profile.source.rule_axioms = 0;
+        profile.expressivity.datatype = true;
+        assert!(!reflexive_horn_native_bridge_candidate(&profile));
+    }
+
+    #[test]
+    fn nominal_chain_bridge_keeps_nominal_fallback_and_semantic_fences() {
+        let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 2;
+        profile.source.nominals = 2;
+        profile.source.role_chain_axioms = 3;
+        profile.expressivity.inverse = true;
+        assert_eq!(select(&profile), Route::HtBridge);
+        assert_eq!(automatic_atomic_fallback(select(&profile), &profile), Some(Route::Nominals));
+        profile.source.functional_role_axioms = 2;
+        assert!(nominal_chain_native_bridge_candidate(&profile));
+        profile.source.max_cardinalities = 1;
+        assert!(!nominal_chain_native_bridge_candidate(&profile));
+        profile.source.max_cardinalities = 0;
+        profile.expressivity.datatype = true;
+        assert!(!nominal_chain_native_bridge_candidate(&profile));
+        profile.expressivity.datatype = false;
+        profile.source.rule_axioms = 1;
+        assert_eq!(select(&profile), Route::HtRules);
+    }
+
+    #[test]
+    fn data_assertion_bridge_attempt_is_bounded_and_has_nominal_fallback() {
+        let mut profile = OntologyProfile::default();
+        profile.source.tbox_axioms = 300;
+        profile.source.abox_axioms = 2_000;
+        profile.source.max_cardinality = 1;
+        profile.source.axiom_types.insert("DataPropertyAssertion".into(), 500);
+        profile.expressivity.inverse = true;
+        assert_eq!(select(&profile), Route::HtBridge);
+        assert_eq!(automatic_atomic_fallback(select(&profile), &profile), Some(Route::Nominals));
+        profile.source.max_cardinality = 2;
+        assert!(!data_assertion_native_bridge_candidate(&profile));
+        profile.source.max_cardinality = 1;
+        profile.source.abox_axioms = 20_001;
+        assert!(!data_assertion_native_bridge_candidate(&profile));
+        profile.source.abox_axioms = 2_000;
+        profile.source.rule_axioms = 1;
+        assert_eq!(select(&profile), Route::HtRules);
+    }
+
+    #[test]
     fn compact_nominal_profile_schedules_certified_general_ht() {
         let mut profile = OntologyProfile::default();
         profile.expressivity.nominal_individual = true;
@@ -5234,6 +5487,32 @@ mod tests {
         let mut disjunctive = profile;
         disjunctive.source.unions = 1;
         assert!(!inverse_chain_el_bridge_candidate(&disjunctive));
+    }
+
+    #[test]
+    fn inverse_chain_bridge_selection_does_not_depend_on_taxonomy_size() {
+        for classes in [2, 7_802, 43_917, 89_930] {
+            for disjoint in [0, 1, 65, 100] {
+                let mut profile = OntologyProfile::default();
+                profile.expressivity.inverse = true;
+                profile.expressivity.complex_subrole = true;
+                profile.source.distinct_classes = classes;
+                profile.source.disjoint_class_axioms = disjoint;
+                profile.source.role_chain_axioms = 13;
+                assert_eq!(select(&profile), Route::HtBridge);
+                assert_eq!(automatic_atomic_fallback(Route::HtBridge, &profile),
+                    Some(Route::ProductionAll));
+                profile.source.abox_axioms = 10_000;
+                profile.source.class_assertions = 10_000;
+                profile.source.distinct_individuals = 10_000;
+                assert_eq!(select(&profile), Route::HtBridge);
+                profile.source.functional_role_axioms = 1;
+                assert!(!inverse_chain_el_bridge_candidate(&profile));
+                profile.source.functional_role_axioms = 0;
+                profile.source.rule_axioms = 1;
+                assert!(!inverse_chain_el_bridge_candidate(&profile));
+            }
+        }
     }
 
     #[test]

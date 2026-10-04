@@ -1,0 +1,1 @@
+invalid OWL 2 DL input at line 354: literal "NULL"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.

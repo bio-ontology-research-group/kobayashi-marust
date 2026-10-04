@@ -2278,13 +2278,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// CDependencyTrackPoint*)`. cpp 22413–22430.
     ///
     /// Makes every pair in `indi_list` distinct (one `CDistinctEdge` per unordered
-    /// pair, inserted into both nodes' distinct hashes).
+    /// pair, inserted into both nodes' distinct hashes). The opt-in shared-group
+    /// path stores equivalent dependencies and materializes edges for clashes.
     pub fn create_individuals_distinct(
         &mut self,
         indi_list: &mut Vec<NodeId>,
         dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        if indi_list.len() >= 128 && super::compact_distinct_groups_enabled()
+            && calc_alg_context.process_context_mut().nodes_install_distinct_group(indi_list, dep_track_point) {
+            return;
+        }
         for source_index in 0..indi_list.len() {
             let indi_source = indi_list[source_index];
             for indi_destination in indi_list.iter().skip(source_index + 1).copied() {

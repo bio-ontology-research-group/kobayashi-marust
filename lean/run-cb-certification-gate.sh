@@ -5,8 +5,9 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lean_root="$repo_root/lean"
 engine_root="$repo_root/engine"
 bin_root="$lean_root/.lake/build/bin"
-target_root="$repo_root/.work/target"
-artifact_root="$repo_root/.work/artifacts"
+work_root="${KM_WORK_ROOT:-$repo_root/.work}"
+target_root="$work_root/target"
+artifact_root="$work_root/artifacts"
 surface_log="$artifact_root/cb-certification-surface.log"
 lean_threads=${KM_CERT_LEAN_THREADS:-4}
 
@@ -62,6 +63,8 @@ if grep -q 'sorryAx' "$surface_log"; then
 fi
 
 surface_theorems=(
+    InverseRoleChainNormalization.centered_binary_chain
+    InverseRoleChainNormalization.reciprocal_bridges_preserve_transitivity
     certifiedCBGlobalProductionClosure
     certifiedCBClashFreeGlobalProductionModel
     certifiedCBStandaloneContextProof
@@ -124,6 +127,10 @@ done
     export KM_CB_TEST_ALLOW_EXTERNAL_SOURCE=1
 
     cargo test --test cb_live_state
+    cargo test --test inverse_predecessor_propagation
+    cargo test --lib inverse_transitivity_probe_tests
+    cargo test --lib rsucc
+    cargo test --lib terminal_snapshot_is_exact_stable_and_complete
     cargo test --lib certified_typed_source
     cargo test --lib source_exact_taxonomy_uses_real_production_traces_and_models
     cargo test --lib pred_standalone_dag_passes_the_real_lean_checker

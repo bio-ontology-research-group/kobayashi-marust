@@ -32,6 +32,7 @@ pub mod dep2; // DEP-2: track-point / branch-tree-node / branching-instruction /
 pub mod dependency; // SD-5: the DependencyNode tagged enum + track points / branch tree
 pub mod descriptor; // SD-1: CConceptDescriptor / CConceptProcessDescriptor / clash
 pub mod distinct; // W2.7: distinct / connection-successor / disjoint-role satellites (4 arenas)
+pub mod distinct_group;
 pub mod edge; // SD-1: CIndividualLinkEdge + distinct/disjoint edges
 pub mod grounding_hash; // W43: CConceptNominalSchemaGroundingData/Hasher/Hash
 pub mod individual_process_linker; // CIndividualProcessNodeLinker

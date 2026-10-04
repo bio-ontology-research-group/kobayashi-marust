@@ -205,28 +205,25 @@ pub fn role_chain(clause: &JClause) -> Option<NamedRoleChain> {
         return None;
     }
     let mut body = Vec::with_capacity(clause.body.len());
-    let mut path_variables = Vec::with_capacity(clause.body.len() + 1);
-    for (index, atom) in clause.body.iter().enumerate() {
-        let (body_role, source, target) = role(atom)?;
-        if index == 0 {
-            if source != path_start {
-                return None;
-            }
-            path_variables.push(source);
-        } else if path_variables.last().copied() != Some(source) {
+    // Clause bodies are conjunctions, and the normalizer sorts their atoms.
+    // Recover the path from its endpoints rather than from storage order.
+    let mut remaining = clause.body.iter().map(role).collect::<Option<Vec<_>>>()?;
+    let mut current = path_start;
+    let mut distinct = std::collections::BTreeSet::from([current]);
+    while !remaining.is_empty() {
+        let mut outgoing = remaining.iter().enumerate().filter(|(_, edge)| edge.1 == current);
+        let (index, _) = outgoing.next()?;
+        if outgoing.next().is_some() {
             return None;
         }
-        path_variables.push(target);
+        let (body_role, _, target) = remaining.remove(index);
+        if !distinct.insert(target) {
+            return None;
+        }
         body.push(body_role.to_string());
+        current = target;
     }
-    if path_variables.last().copied() != Some(path_end) {
-        return None;
-    }
-    let mut distinct = std::collections::BTreeSet::new();
-    if !path_variables
-        .iter()
-        .all(|variable| distinct.insert(*variable))
-    {
+    if current != path_end {
         return None;
     }
     Some(NamedRoleChain {
@@ -1160,9 +1157,27 @@ mod tests {
                 body: vec![r("R", "x", "y"), r("S", "y", "x")],
                 head: vec![r("T", "x", "x")],
             },
+            JClause {
+                body: vec![r("R", "x", "y"), r("S", "x", "z")],
+                head: vec![r("T", "x", "z")],
+            },
         ];
         for clause in cases {
             assert_eq!(role_chain(&clause), None);
+        }
+    }
+
+    #[test]
+    fn role_chain_follows_edges_independently_of_atom_order() {
+        let edges = [r("R", "y", "x"), r("S", "x", "z"), r("R", "z", "w")];
+        for order in [[0,1,2], [0,2,1], [1,0,2], [1,2,0], [2,0,1], [2,1,0]] {
+            let clause = JClause {
+                body: order.iter().map(|&i| edges[i].clone()).collect(),
+                head: vec![r("T", "y", "w")],
+            };
+            let recovered = role_chain(&clause).expect("same directed path");
+            assert_eq!(recovered.body, vec!["R", "S", "R"]);
+            assert_eq!(recovered.sup, "T");
         }
     }
 

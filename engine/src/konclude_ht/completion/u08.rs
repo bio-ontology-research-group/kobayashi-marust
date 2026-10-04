@@ -1238,6 +1238,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        if indis.len() >= 128 && super::compact_distinct_groups_enabled()
+            && calc_alg_context.process_context_mut().nodes_install_distinct_group(indis, dep_track_point) {
+            return;
+        }
         for i in 0..indis.len() {
             for j in (i + 1)..indis.len() {
                 let a = indis[i];
@@ -1698,24 +1702,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         clash_descriptors: &mut ClashDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let (distinct_edge, distinct_tp) = {
-            let pc = calc_alg_context.process_context();
-            let distinct_hash = pc.node(indi1).use_distinct_hash;
-            if distinct_hash.is_none() {
-                (Id::NONE, TrackPointId::NONE)
-            } else {
-                let indi2_id = pc.node(indi2).individual_node_id();
-                let edge = pc
-                    .distinct_hash(distinct_hash)
-                    .get_individual_distinct_edge(indi2_id);
-                let tp = if edge.is_some() {
-                    pc.distinct_edge(edge).get_dependency_track_point()
-                } else {
-                    TrackPointId::NONE
-                };
-                (edge, tp)
-            }
-        };
+        let distinct_edge = calc_alg_context.process_context_mut()
+            .node_materialize_distinct_edge(indi1, indi2);
+        let distinct_tp = if distinct_edge.is_some() {
+            calc_alg_context.process_context().distinct_edge(distinct_edge)
+                .get_dependency_track_point()
+        } else { TrackPointId::NONE };
         if distinct_edge.is_some() {
             *clash_descriptors = self.create_clashed_individual_distinct_descriptor(
                 *clash_descriptors,
@@ -2806,14 +2798,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     if dh.is_none() {
                         continue;
                     }
-                    let other_id = calc_alg_context
-                        .process_context()
-                        .node(other)
-                        .individual_node_id();
                     let dis_edge = calc_alg_context
-                        .process_context()
-                        .distinct_hash(dh)
-                        .get_individual_distinct_edge(other_id);
+                        .process_context_mut()
+                        .node_materialize_distinct_edge(cand, other);
                     if dis_edge.is_none() {
                         continue;
                     }

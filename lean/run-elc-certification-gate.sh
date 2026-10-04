@@ -5,8 +5,9 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lean_root="$repo_root/lean"
 engine_root="$repo_root/engine"
 bin_root="$lean_root/.lake/build/bin"
-target_root="$repo_root/.work/target"
-artifact_root="$repo_root/.work/artifacts"
+work_root="${KM_WORK_ROOT:-$repo_root/.work}"
+target_root="$work_root/target"
+artifact_root="$work_root/artifacts"
 surface_log="$artifact_root/elc-certification-surface.log"
 
 mkdir -p "$artifact_root"

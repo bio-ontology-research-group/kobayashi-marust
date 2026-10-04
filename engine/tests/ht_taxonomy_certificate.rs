@@ -1,6 +1,55 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+
+// These tests exercise checker invocation/rejection protocols. Real native
+// checker acceptance is covered by the library and production Lean gates.
+fn unconfigured_command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    for (key, _) in std::env::vars() {
+        if key.starts_with("KM_HT_LEAN_") || key == "KM_HT_GLOBAL" {
+            command.env_remove(key);
+        }
+    }
+    command
+}
+
+fn protocol_command() -> Command {
+    let mut command = unconfigured_command();
+    for checker in [
+        "KM_HT_LEAN_FRONTIER_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
+        "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
+        "KM_HT_LEAN_DOUBLING_TRACE_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
+        "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+        "KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
+        "KM_HT_LEAN_PRODUCTION_TRACE_CHECKER",
+        "KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
+        "KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
+        "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+        "KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
+        "KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER",
+        "KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER",
+        "KM_HT_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER",
+    ] {
+        command.env(checker, "/bin/true");
+    }
+    command
+}
+
 const WIRE: &str = r#"{
   "concepts":["A","B"],
   "roles":[],
@@ -185,7 +234,7 @@ fn run_with_input_and_executable_checker(
     ));
     let global_out = root.with_extension("global.json");
     let taxonomy_out = root.with_extension("taxonomy.json");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+    let mut child = protocol_command()
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
@@ -300,7 +349,7 @@ fn run(global_checker: &str, taxonomy_checker: &str, output_stem: &str) -> std::
 }
 
 fn run_raw_certified(input: &str, projection_checker: Option<&str>) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    let mut command = protocol_command();
     command
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
@@ -372,7 +421,7 @@ fn run_certification_bypass_probe(
         {"body":[], "head":[{"k":"c", "neg":true, "c":0, "t":0}]}
     ]);
     install_direct_projection_fixture(&mut input);
-    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    let mut command = protocol_command();
     if enable_ht {
         command.env("KM_HT", "1").env("KM_HT_FORCE", "1");
     }
@@ -435,7 +484,7 @@ fn run_certification_bypass_probe(
 }
 
 fn run_isolated_certification_interface(interface: &str) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    let mut command = unconfigured_command();
     command
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
@@ -456,7 +505,7 @@ fn run_isolated_certification_interface(interface: &str) -> std::process::Output
 fn run_projection_only_certification() -> std::process::Output {
     let mut input: serde_json::Value = serde_json::from_str(WIRE).unwrap();
     install_direct_projection_fixture(&mut input);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+    let mut child = protocol_command()
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
@@ -538,7 +587,7 @@ fn run_native_abox_taxonomy_certification(
     }
     install_direct_projection_fixture(&mut input);
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    let mut command = protocol_command();
     command
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
@@ -667,7 +716,7 @@ fn run_frontier_gated_certification(frontier_checker: &str) -> std::process::Out
         "transitive": []
     });
     install_direct_projection_fixture(&mut input);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+    let mut child = protocol_command()
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
@@ -735,7 +784,7 @@ fn run_rejected_cyclic_fold_probe() -> std::process::Output {
         }
     ]);
     install_direct_projection_fixture(&mut input);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+    let mut child = protocol_command()
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
@@ -899,6 +948,17 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
         "KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER",
         "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
         "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+        "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
+        "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER",
+        "KM_HT_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
     ] {
         let output = run_isolated_certification_interface(interface);
         assert!(
@@ -1126,7 +1186,7 @@ fn first_class_cardinality_global_result_is_checker_gated() {
     let input = serde_json::to_vec(&input).unwrap();
     let projection_checker = std::env::var("KM_HT_TEST_LEAN_PROJECTION_CHECKER")
         .unwrap_or_else(|_| "/bin/true".to_string());
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+    let mut child = protocol_command()
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")

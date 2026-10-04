@@ -418,6 +418,35 @@ fn pred_product_threshold() -> Option<usize> {
     })
 }
 
+fn pred_join_wide_first() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("KM_PRED_JOIN_ORDER").as_deref() == Ok("wide-first"))
+}
+
+fn order_pred_dimensions(candidates: &mut [Vec<(usize, Pred)>], wide_first: bool) {
+    // Only permutation changes: unions and their strengthening relation are
+    // independent of premise order. Retain every provider in every dimension.
+    if wide_first {
+        candidates.sort_by_key(|dimension| std::cmp::Reverse(dimension.len()));
+    } else {
+        candidates.sort_by_key(Vec::len);
+    }
+}
+
+fn pred_join_trace_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("KM_PRED_JOIN_TRACE").is_some())
+}
+
+fn trace_pred_join_progress(
+    id: usize, stage: usize, width: usize, pairs: u64, buffer: &PredResultBuffer,
+) {
+    eprintln!(
+        "KM_PRED_JOIN ctx={id} stage={stage} width={width} pairs={pairs} live={} slots={} free={}",
+        buffer.clauses.len() - buffer.free.len(), buffer.clauses.len(), buffer.free.len(),
+    );
+}
+
 fn trace_pred_product(
     phase: &str,
     id: usize,
@@ -635,18 +664,18 @@ fn root_succ_form(p: &Pred) -> Option<(Pred, Term)> {
     }
 }
 
-/// r-Succ reach extraction: the CENTRAL reachability predicates
-/// (`__trans__`/`__chain__(x)`) contributed by the clauses at arena ids `pool`,
+/// r-Succ extraction: maximal CENTRAL concept predicates contributed by
+/// the clauses at arena ids `pool`, including ordinary class labels,
 /// in first-occurrence order, WITHOUT cross-call dedup (the caller folds the
 /// result into a persistent ordered-unique accumulator).  Shared by
 /// `propagate_inner`'s semi-naive r-Succ scan and its invariance test, so the
 /// test certifies the exact predicate production uses.
-fn rsucc_reach_tail(arena: &[ContextClause], pool: &[u32], sig: &Sig) -> Vec<Pred> {
+fn rsucc_reach_tail(arena: &[ContextClause], pool: &[u32], _sig: &Sig) -> Vec<Pred> {
     let mut out: Vec<Pred> = Vec::new();
     for &ci in pool {
         for (p, _) in arena[ci as usize].max_head_predicates() {
-            if let Pred::Concept { iri, t } = p {
-                if is_central(t) && sig.is_reach(iri) {
+            if let Pred::Concept { t, .. } = p {
+                if is_central(t) {
                     out.push(p);
                 }
             }
@@ -2867,10 +2896,17 @@ struct PredOrigin {
 /// equal clause) rejects the new result; otherwise the new strengthening
 /// removes every weaker buffered result.  Therefore `into_vec` contains exactly
 /// the same antichain and the context fixpoint is unchanged.
+/// Removed slots are reused. A live insertion-order list preserves the former
+/// arrival order independently of slot ids, bounding storage by the largest
+/// live antichain rather than all previously accepted intermediate results.
 #[derive(Default)]
 struct PredResultBuffer {
     clauses: Vec<Option<ContextClause>>,
     redundancy_trie: RedundancyTrie,
+    free: Vec<u32>,
+    links: Option<Vec<(Option<u32>, Option<u32>)>>,
+    first: Option<u32>,
+    last: Option<u32>,
 }
 
 impl PredResultBuffer {
@@ -2878,16 +2914,68 @@ impl PredResultBuffer {
         if self.redundancy_trie.contains_subset(&clause, None) {
             return;
         }
-        for removed in self.redundancy_trie.remove_supersets(&clause) {
-            self.clauses[removed as usize] = None;
+        let removed = self.redundancy_trie.remove_supersets(&clause);
+        // Most result batches never remove a clause. Retain their original
+        // flat representation without allocating ordering metadata.
+        if removed.is_empty() && self.links.is_none() {
+            let id = u32::try_from(self.clauses.len()).expect("Pred result buffer exhausted u32 ids");
+            self.redundancy_trie.insert(&clause, id);
+            self.clauses.push(Some(clause));
+            return;
         }
-        let id = u32::try_from(self.clauses.len()).expect("Pred result buffer exhausted u32 ids");
+        if self.links.is_none() {
+            let length = self.clauses.len();
+            self.links = Some((0..length).map(|index| (
+                index.checked_sub(1).map(|previous| previous as u32),
+                (index + 1 < length).then_some((index + 1) as u32),
+            )).collect());
+            self.first = (length > 0).then_some(0);
+            self.last = length.checked_sub(1).map(|last| last as u32);
+        }
+        let links = self.links.as_mut().unwrap();
+        for removed in removed {
+            let (previous, next) = links[removed as usize];
+            if let Some(previous) = previous {
+                links[previous as usize].1 = next;
+            } else {
+                self.first = next;
+            }
+            if let Some(next) = next {
+                links[next as usize].0 = previous;
+            } else {
+                self.last = previous;
+            }
+            self.clauses[removed as usize] = None;
+            self.free.push(removed);
+        }
+        let id = if let Some(id) = self.free.pop() { id } else {
+            let id = u32::try_from(self.clauses.len()).expect("Pred result buffer exhausted u32 ids");
+            self.clauses.push(None);
+            links.push((None, None));
+            id
+        };
         self.redundancy_trie.insert(&clause, id);
-        self.clauses.push(Some(clause));
+        self.clauses[id as usize] = Some(clause);
+        links[id as usize] = (self.last, None);
+        if let Some(last) = self.last {
+            links[last as usize].1 = Some(id);
+        } else {
+            self.first = Some(id);
+        }
+        self.last = Some(id);
     }
 
-    fn into_vec(self) -> Vec<ContextClause> {
-        self.clauses.into_iter().flatten().collect()
+    fn into_vec(mut self) -> Vec<ContextClause> {
+        let Some(links) = self.links else {
+            return self.clauses.into_iter().flatten().collect();
+        };
+        let mut result = Vec::with_capacity(self.clauses.len() - self.free.len());
+        let mut current = self.first;
+        while let Some(id) = current {
+            current = links[id as usize].1;
+            result.push(self.clauses[id as usize].take().expect("live Pred result slot"));
+        }
+        result
     }
 }
 
@@ -2942,21 +3030,28 @@ fn content_hash<T: std::hash::Hash>(t: &T) -> u64 {
 
 // ------------------------------- messages ----------------------------------
 
+type MsgContext = u32;
+
+#[inline]
+fn pack_msg_context(id: usize) -> MsgContext {
+    MsgContext::try_from(id).expect("context id exceeds compact message range")
+}
+
 #[derive(Clone)]
 enum Msg {
     Succ {
-        from: usize,
+        from: MsgContext,
         f: Term,
         p: Pred, // already forward-substituted (over successor's x/y)
-        target: usize,
+        target: MsgContext,
     },
     /// A pushed-back clause, by reference into the sender's append-only
     /// `pred_pool` (both the pool entry and the sender's core are immutable
     /// once created, so resolving them at apply time reads exactly what a
     /// send-time snapshot would have carried).
     Pred {
-        to: usize,
-        from: usize,
+        to: MsgContext,
+        from: MsgContext,
         edge_label: Term,
         pool_idx: u32,
     },
@@ -3114,6 +3209,7 @@ pub struct Engine {
     /// clears a context's todo once it derives ⊥ (the empty clause subsumes all,
     /// so the rest is redundant — sound).
     core_cap: usize,
+    minimal_core: bool,
     seed_from_subset: bool,
     todo_units_first: bool,
     early_unsat: bool,
@@ -3125,6 +3221,9 @@ pub struct Engine {
     /// caching is behaviour-identical.
     prof: bool,
     trace_sat: bool,
+    /// Opt-in retained-storage diagnostic. Counts are logical entries, not an
+    /// allocator byte estimate; ordinary classification never scans them.
+    storage_probe: Option<std::time::Instant>,
     trigskip: bool,
     /// KM_PROF_TIME: accumulate per-rule wall time in the saturation loop
     /// (SUBSUME/HYPER/ADDCLAUSE/PREDLOCAL/EQRULE thread-locals), printed under
@@ -3517,6 +3616,51 @@ mod cb_live_snapshot_tests {
     use super::*;
 
     #[test]
+    fn optional_hyper_evidence_preserves_terminal_state() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let pred = |iri| Pred::Concept { iri, t: X };
+        let clauses = vec![
+            OntologyClause::new(vec![pred(a)], vec![Lit::P(pred(b))]),
+            OntologyClause::new(vec![pred(a)], vec![Lit::P(pred(c))]),
+            OntologyClause::new(vec![pred(b), pred(c)], vec![Lit::P(pred(d))]),
+        ];
+        let mut ordinary = Engine::new(sig, clauses, 0);
+        ordinary.certificate_history = None;
+        let mut certified = ordinary.clone();
+        certified.certificate_history = Some(Vec::new());
+        ordinary.run_for(&[a]);
+        certified.run_for(&[a]);
+        let plain = ordinary.live_terminal_snapshot();
+        let mut recorded = certified.live_terminal_snapshot();
+        let hyper = recorded
+            .insertion_history
+            .iter()
+            .filter_map(|event| match event.rule_evidence.as_ref() {
+                Some(CbLiveRuleEvidence::Hyper {
+                    instantiated_source,
+                    context_clause_ids,
+                    matched_predicates,
+                    ..
+                }) => Some((instantiated_source, context_clause_ids, matched_predicates)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(!hyper.is_empty());
+        assert!(hyper.iter().any(|(source, _, _)| source.body.len() == 2));
+        for (source, premises, matches) in hyper {
+            assert_eq!(source.body.len(), premises.len());
+            assert_eq!(source.body.len(), matches.len());
+        }
+        recorded.insertion_history.clear();
+        assert_eq!(plain, recorded);
+        assert_eq!(ordinary.subsumptions(), certified.subsumptions());
+    }
+
+    #[test]
     fn terminal_snapshot_is_exact_stable_and_complete() {
         let mut sig = Sig::default();
         let query = sig.concept("A");
@@ -3552,6 +3696,7 @@ mod cb_live_snapshot_tests {
         assert_eq!(first.role_count, engine.sig.role_names.len());
         assert_eq!(first.source_ontology.len(), engine.ont.clauses.len());
         assert!(first.rsucc_enabled);
+        assert_eq!(first.reach_concept_ids, (0..first.concept_count as Iri).collect::<Vec<_>>());
         assert!(first.pending_messages == 0);
         assert!(!first.message_truncated && !first.nominal_truncated);
         assert!(first.contexts.iter().all(|context| {
@@ -3605,7 +3750,18 @@ impl Engine {
     /// set.
     pub fn prepare(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> PreparedOntology {
         let mut sig = sig;
-        sig.rsucc = std::env::var_os("KM_RSUCC").is_some();
+        // A role pointing into the central variable can consume a parent
+        // label in a successor context. Enable edge-conditioned label offers
+        // for these ontologies without requiring an external tuning flag.
+        let backward_role = |p: &Pred| matches!(p, Pred::Role { s, t, .. } if *t == X && *s != X);
+        sig.rsucc = std::env::var_os("KM_RSUCC").is_some()
+            || ont_clauses.iter().any(|clause| {
+                clause.body.iter().any(backward_role)
+                    || clause.head.iter().any(|literal| match literal {
+                        Lit::P(p) => backward_role(p),
+                        _ => false,
+                    })
+            });
         let (ont_clauses, max_input_ind, ground_merge) =
             merge_asserted_ground_equalities(ont_clauses);
         if std::env::var_os("KM_PROF").is_some() && ground_merge.asserted_pairs != 0 {
@@ -3708,9 +3864,12 @@ impl Engine {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0),
+            minimal_core: std::env::var_os("KM_MINIMAL_CORE").is_some(),
             seed_from_subset: std::env::var_os("KM_SEED_FROM_SUBSET").is_some(),
             prof: std::env::var_os("KM_PROF").is_some(),
             trace_sat: std::env::var_os("KM_SAT").is_some(),
+            storage_probe: std::env::var_os("KM_STORAGE_PROBE")
+                .map(|_| std::time::Instant::now()),
             trigskip: std::env::var_os("KM_NO_TRIGSKIP").is_none(),
             prof_time: std::env::var_os("KM_PROF_TIME").is_some(),
             // Default ON (sound: units-first is confluent scheduling, early-unsat
@@ -3981,7 +4140,7 @@ impl Engine {
                 let maxima: Vec<Pred> = side.max_head_predicates().map(|(p, _)| p).collect();
                 for max in maxima {
                     for (result, evidence) in self.hyper_with_evidence(id, cid, &side, max, root) {
-                        self.add_clause_with_rule(id, result, Some("hyper"), Some(evidence));
+                        self.add_clause_with_rule(id, result, Some("hyper"), evidence);
                     }
                 }
             }
@@ -4455,12 +4614,40 @@ impl Engine {
 
     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
     fn saturate(&mut self, id: usize) {
+        self.probe_retained_storage();
         if !self.prof_time {
             return self.saturate_inner(id);
         }
         let t = std::time::Instant::now();
         self.saturate_inner(id);
         prof_add(&SATURATE_NS, t);
+    }
+
+    fn probe_retained_storage(&mut self) {
+        let Some(last) = self.storage_probe else { return };
+        if last.elapsed() < std::time::Duration::from_secs(10) { return }
+        self.storage_probe = Some(std::time::Instant::now());
+        let mut active = 0usize;
+        let mut pending = 0usize;
+        let mut delta_slots = 0usize;
+        let mut pred_seen = 0usize;
+        let mut pred_postings = 0usize;
+        for context in &self.contexts {
+            active += context.delta.clause_keys.len();
+            pending += context.todo.len();
+            delta_slots += context.delta.worked_off.len();
+            pred_seen += context.neighbor_pred_seen.len();
+            pred_postings += context.neighbor_pred_body_index.values()
+                .map(Vec::len).sum::<usize>();
+        }
+        let arena_atoms: usize = self.cc_arena.iter().flatten()
+            .map(|clause| clause.body.len() + clause.head.len()).sum();
+        eprintln!(
+            "KM_STORAGE contexts={} arena_nonroot={} arena_root={} arena_atoms={} delta_active={} delta_worked_slots={} todo={} pred_interned={} pred_seen={} pred_postings={}",
+            self.contexts.len(), self.cc_arena[0].len(), self.cc_arena[1].len(),
+            arena_atoms, active, delta_slots, pending, self.pred_interned.len(),
+            pred_seen, pred_postings,
+        );
     }
 
     fn saturate_inner(&mut self, id: usize) {
@@ -4479,6 +4666,7 @@ impl Engine {
         ) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
         let d = self.contexts[id].root as usize;
         loop {
+            self.probe_retained_storage();
             let cid = match self.contexts[id].todo.pop_front() {
                 Some(c) => c,
                 None => break,
@@ -4549,9 +4737,7 @@ impl Engine {
                             nhyper += results.len() as u64;
                         }
                         for (r, evidence) in results {
-                            if self.add_clause_with_rule(id, r, Some("hyper"), Some(evidence))
-                                && prof
-                            {
+                            if self.add_clause_with_rule(id, r, Some("hyper"), evidence) && prof {
                                 nadded += 1;
                             }
                         }
@@ -4585,7 +4771,11 @@ impl Engine {
                                     }
                                 }
                             }
-                        } else if p.is_ground() {
+                        } else if p.is_ground()
+                            || (self.sig.rsucc && matches!(*p, Pred::Concept { t: X, .. }))
+                        {
+                            // Predecessor labels also occur in received Pred bodies.
+                            // A new maximal central concept must re-fire those joins.
                             // Join via the Pred pipeline (nominal calculus): a
                             // ground maximal head atom resolves the verbatim-
                             // copied ground body atoms (C_i) of neighbour pred
@@ -4707,11 +4897,11 @@ impl Engine {
             let succ_eligible = clause
                 .max_head_predicates()
                 .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
-            // r-Succ: a maximal head CENTRAL reachability fact `__trans/__chain(x)`
-            // is forwarded to successors as a neighbour fact (see `rsucc_pool`).
+            // r-Succ: a maximal head CENTRAL concept is offered to successors
+            // as an edge-conditioned neighbour hypothesis (see `rsucc_pool`).
             let rsucc_eligible = self.sig.rsucc
                 && clause.max_head_predicates().any(|(p, _)| match p {
-                    Pred::Concept { iri, t } => is_central(t) && self.sig.is_reach(iri),
+                    Pred::Concept { t, .. } => is_central(t),
                     _ => false,
                 });
             {
@@ -4786,7 +4976,7 @@ impl Engine {
         side: &ContextClause,
         max: Pred,
         root: bool,
-    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
+    ) -> Vec<(ContextClause, Option<CbLiveRuleEvidence>)> {
         if !self.prof_time {
             return self.hyper_results(id, Some(side_id), side, max, root);
         }
@@ -4803,7 +4993,7 @@ impl Engine {
         side: &ContextClause,
         max: Pred,
         root: bool,
-    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
+    ) -> Vec<(ContextClause, Option<CbLiveRuleEvidence>)> {
         HYPER_CALLS.with(|c| c.set(c.get() + 1));
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
@@ -5082,58 +5272,65 @@ impl Engine {
         chosen: &mut Vec<usize>,
         root: bool,
         determined: &mut DeterminedIndex,
-        out: &mut Vec<(ContextClause, CbLiveRuleEvidence)>,
+        out: &mut Vec<(ContextClause, Option<CbLiveRuleEvidence>)>,
     ) {
         if depth == order.len() {
             if let Some(c) =
                 self.build_hyper_resolvent(id, side, oc, sigma, candidates, chosen, root)
             {
-                let context_clause_ids = candidates
-                    .iter()
-                    .enumerate()
-                    .map(|(position, choices)| {
-                        let selected = choices[chosen[position]].0;
-                        if selected == usize::MAX {
-                            side_id.unwrap_or(u32::MAX)
-                        } else {
-                            selected as u32
-                        }
-                    })
-                    .collect();
-                let matched_predicates = candidates
-                    .iter()
-                    .enumerate()
-                    .map(|(position, choices)| choices[chosen[position]].1.into())
-                    .collect();
-                let substitution = sigma
-                    .map
-                    .iter()
-                    .map(|&(variable_id, value)| CbLiveSubstitution { variable_id, value })
-                    .collect();
-                let instantiated_source = CbLiveClause {
-                    body: oc
-                        .body
+                // Ordinary runs do not retain certificate history. Constructing
+                // several owned provenance vectors for every prospective
+                // resolvent only to discard them adds allocations to nominal joins.
+                // The resolvent and enumeration order are identical; certified
+                // runs retain the exact same evidence as before.
+                let evidence = self.certificate_history.as_ref().map(|_| {
+                    let context_clause_ids = candidates
                         .iter()
-                        .map(|predicate| {
-                            CbLiveLit::from(predicate.apply(&|term| sigma.apply(term)))
+                        .enumerate()
+                        .map(|(position, choices)| {
+                            let selected = choices[chosen[position]].0;
+                            if selected == usize::MAX {
+                                side_id.unwrap_or(u32::MAX)
+                            } else {
+                                selected as u32
+                            }
                         })
-                        .collect(),
-                    head: oc
-                        .head
+                        .collect();
+                    let matched_predicates = candidates
                         .iter()
-                        .map(|literal| CbLiveLit::from(literal.apply(&|term| sigma.apply(term))))
-                        .collect(),
-                };
-                out.push((
-                    c,
+                        .enumerate()
+                        .map(|(position, choices)| choices[chosen[position]].1.into())
+                        .collect();
+                    let substitution = sigma
+                        .map
+                        .iter()
+                        .map(|&(variable_id, value)| CbLiveSubstitution { variable_id, value })
+                        .collect();
+                    let instantiated_source = CbLiveClause {
+                        body: oc
+                            .body
+                            .iter()
+                            .map(|predicate| {
+                                CbLiveLit::from(predicate.apply(&|term| sigma.apply(term)))
+                            })
+                            .collect(),
+                        head: oc
+                            .head
+                            .iter()
+                            .map(|literal| {
+                                CbLiveLit::from(literal.apply(&|term| sigma.apply(term)))
+                            })
+                            .collect(),
+                    };
                     CbLiveRuleEvidence::Hyper {
                         ontology_index,
                         instantiated_source,
                         context_clause_ids,
                         matched_predicates,
                         substitution,
-                    },
-                ));
+                    }
+                });
+                out.push((c, evidence));
             }
             return;
         }
@@ -5519,7 +5716,7 @@ impl Engine {
             // A smaller dimension first normally minimizes the live antichain;
             // dimension order cannot affect the set union represented by a
             // complete selection from the product.
-            candidates.sort_by_key(Vec::len);
+            order_pred_dimensions(&mut candidates, pred_join_wide_first());
             // `filter_head` is a per-literal filter with a single whole-head
             // veto (a `s ≈ s` tautology), so filtering each prefix agrees with
             // filtering the concatenation once at the end.
@@ -6479,10 +6676,10 @@ impl Engine {
             for (p, o) in ground_succ {
                 if self.contexts[id].pushed_succ.insert(p) {
                     self.msgs.push_back(Msg::Succ {
-                        from: id,
+                        from: pack_msg_context(id),
                         f: o,
                         p,
-                        target,
+                        target: pack_msg_context(target),
                     });
                 }
             }
@@ -6502,10 +6699,10 @@ impl Engine {
                     self.contexts[id].rsucc_edges_grew = true;
                 }
                 self.msgs.push_back(Msg::Succ {
-                    from: id,
+                    from: pack_msg_context(id),
                     f,
                     p: psigma,
-                    target,
+                    target: pack_msg_context(target),
                 });
             }
         } else {
@@ -6575,6 +6772,9 @@ impl Engine {
                     .unwrap_or_default();
                 core.sort();
                 core.dedup();
+                if self.minimal_core {
+                    self.minimize_successor_core(&mut core);
+                }
                 // KM_CORE_CAP: bound the successor core size. The excess fact
                 // triggers stay in `raw` and arrive as `p→p` hypotheses at the
                 // target (their consequences come back conditioned on `p` alone),
@@ -6608,10 +6808,10 @@ impl Engine {
                     // predicate.
                     for p in &raw {
                         self.msgs.push_back(Msg::Succ {
-                            from: id,
+                            from: pack_msg_context(id),
                             f,
                             p: p.apply(&|v| forwards(f, v)),
-                            target,
+                            target: pack_msg_context(target),
                         });
                     }
                 } else {
@@ -6620,10 +6820,10 @@ impl Engine {
                     // hypothesis clauses.
                     for p in &new_by_f[&f] {
                         self.msgs.push_back(Msg::Succ {
-                            from: id,
+                            from: pack_msg_context(id),
                             f,
                             p: p.apply(&|v| forwards(f, v)),
-                            target,
+                            target: pack_msg_context(target),
                         });
                     }
                 }
@@ -6709,10 +6909,10 @@ impl Engine {
                 for (f, target, p) in fired {
                     let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
                     self.msgs.push_back(Msg::Succ {
-                        from: id,
+                        from: pack_msg_context(id),
                         f,
                         p: psigma,
-                        target,
+                        target: pack_msg_context(target),
                     });
                 }
             }
@@ -6904,8 +7104,8 @@ impl Engine {
                 .or_default()
                 .insert(pool_idx);
             self.msgs.push_back(Msg::Pred {
-                to: edge.0,
-                from: id,
+                to: pack_msg_context(edge.0),
+                from: pack_msg_context(id),
                 edge_label: edge.1,
                 pool_idx,
             });
@@ -7008,7 +7208,68 @@ impl Engine {
     /// `todo`; batch-end saturation both processes them and fires local Pred
     /// against every neighbor clause received in this batch. Mutates only
     /// context `to` (plus the shared arena / intern tables). Returns `to`.
+    /// Choose a smaller core with the same unary-source closure. Remove one
+    /// predicate at a time so implication cycles retain a generating member.
+    /// Only source clauses C(x) -> D(x) are used; ground and neighbor atoms
+    /// cannot authorize a deletion. Raw Succ triggers remain unchanged.
+    fn minimize_successor_core(&self, core: &mut Vec<Pred>) {
+        let mut index = core.len();
+        while index > 0 {
+            index -= 1;
+            let Pred::Concept { iri: target, t: X } = core[index] else { continue };
+            let mut known = HashSet::default();
+            let mut queue = Vec::new();
+            for (other, predicate) in core.iter().enumerate() {
+                if other == index { continue }
+                if let Pred::Concept { iri, t: X } = *predicate {
+                    if known.insert(iri) { queue.push(iri); }
+                }
+            }
+            while let Some(source) = queue.pop() {
+                if known.contains(&target) { break }
+                for &cid in self.ont.concept_clauses.get(&source).into_iter().flatten() {
+                    let clause = &self.ont.clauses[cid];
+                    if clause.body.as_slice() != [Pred::Concept { iri: source, t: X }] {
+                        continue;
+                    }
+                    if let [Lit::P(Pred::Concept { iri, t: X })] = clause.head.as_slice() {
+                        if known.insert(*iri) { queue.push(*iri); }
+                    }
+                }
+            }
+            if known.contains(&target) { core.remove(index); }
+        }
+    }
+
+    #[cfg(test)]
+    fn check_minimal_core_example() {
+        let mut sig = Sig::default();
+        let cx = |iri, t| Pred::Concept { iri, t };
+        let a = cx(sig.concept("A"), X);
+        let b = cx(sig.concept("B"), X);
+        let c = cx(sig.concept("C"), X);
+        let d = cx(sig.concept("D"), X);
+        let neighbor = cx(sig.concept("Neighbor"), Y);
+        let implications = vec![
+            OntologyClause::new(vec![a], vec![Lit::P(b)]),
+            OntologyClause::new(vec![b], vec![Lit::P(a)]),
+            OntologyClause::new(vec![b], vec![Lit::P(c)]),
+            // An implication with an extra premise cannot remove D.
+            OntologyClause::new(vec![a, neighbor], vec![Lit::P(d)]),
+        ];
+        let engine = Engine::new(sig, implications, 0);
+        let mut core = vec![a, b, c, d, neighbor];
+        engine.minimize_successor_core(&mut core);
+        assert_eq!(core, vec![a, d, neighbor]);
+        // The retained A generates the removed B and C through source clauses;
+        // D and the neighbor survive because the restricted proof cannot
+        // establish them from the other central predicates.
+    }
+
     fn apply_pred_payload(&mut self, to: usize, pc: PredClause, origin: PredOrigin) -> usize {
+        // Pred batches can grow storage for a long interval before the next
+        // saturation boundary. Sample there as well as during clause workoff.
+        self.probe_retained_storage();
         let pid = self.intern_pred(pc);
         if self.certificate_history.is_some() {
             if self.pred_origins.len() < self.pred_interned.len() {
@@ -7067,9 +7328,15 @@ impl Engine {
     /// joining the next premise. If partial P strengthens Q, then P union R
     /// strengthens Q union R for every choice R from all remaining premises.
     /// Consequently every extension pruned here has a stronger extension in the
-    /// final product. This changes join order and allocation only, not the Pred
+/// final product. This changes join order and allocation only, not the Pred
     /// conclusions admitted to the context fixpoint.
     fn pred_from_neighbor(&self, id: usize, pc: &PredClause, root: bool) -> Vec<ContextClause> {
+        self.pred_from_neighbor_ordered(id, pc, root, pred_join_wide_first())
+    }
+
+    fn pred_from_neighbor_ordered(
+        &self, id: usize, pc: &PredClause, root: bool, wide_first: bool,
+    ) -> Vec<ContextClause> {
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
         let mut ground: Vec<Pred> = Vec::new();
@@ -7090,14 +7357,16 @@ impl Engine {
         // A smaller dimension first normally minimizes the live partial
         // antichain. Dimension order cannot affect the set union represented by
         // a complete selection from the Cartesian product.
-        candidates.sort_by_key(Vec::len);
+        order_pred_dimensions(&mut candidates, wide_first);
 
         let Some(head) = self.filter_head(pc.head.clone()) else {
             return Vec::new();
         };
         let mut partials = vec![ContextClause::new(ground, head, root, &self.sig)];
-        for dimension in candidates {
+        let trace_join = pred_join_trace_enabled();
+        for (stage, dimension) in candidates.into_iter().enumerate() {
             let mut next = PredResultBuffer::default();
+            let mut pairs = 0u64;
             for partial in partials {
                 for &(ci, matched) in &dimension {
                     let provider = &arena[ci];
@@ -7110,7 +7379,16 @@ impl Engine {
                             ContextClause::from_sorted_unique(body, head, root, &self.sig),
                         );
                     }
+                    if trace_join {
+                        pairs = pairs.saturating_add(1);
+                        if pairs >= 65_536 && pairs.is_power_of_two() {
+                            trace_pred_join_progress(id, stage, dimension.len(), pairs, &next);
+                        }
+                    }
                 }
+            }
+            if trace_join {
+                trace_pred_join_progress(id, stage, dimension.len(), pairs, &next);
             }
             partials = next.into_vec();
             if partials.is_empty() {
@@ -7410,11 +7688,30 @@ impl Engine {
         // schedule for byte/result A/B checks of batched completion.
         let batch_completion = std::env::var_os("KM_NO_BATCH_COMPLETION").is_none();
         let mut truncated = false;
+        // Context ids are dense vector indices. Record first touch in a round
+        // with an epoch mark instead of hashing every delivered message into a
+        // freshly allocated set. The accompanying list retains exactly the
+        // former first-touch order used for saturation and propagation.
+        let mut touched: Vec<usize> = Vec::new();
+        let mut touched_epoch: Vec<u32> = vec![0; self.contexts.len()];
+        let mut round_epoch = 0u32;
         while !self.msgs.is_empty() {
-            let batch: Vec<Msg> = self.msgs.drain(..).collect();
-            let mut touched: Vec<usize> = Vec::new();
-            let mut seen: HashSet<usize> = HashSet::default();
-            for msg in batch {
+            // Apply this round directly from the pending deque. The previous
+            // `drain(..).collect::<Vec<_>>()` retained the deque allocation and
+            // allocated a second full message buffer, then copied every message
+            // into it. Large role-chain rounds can contain millions of messages.
+            // Taking the deque preserves FIFO order and leaves `self.msgs`
+            // empty while messages are applied (application itself never
+            // enqueues). Once consumed, swap its allocation back before
+            // propagation so the next round reuses the same storage.
+            let mut batch = std::mem::take(&mut self.msgs);
+            touched.clear();
+            round_epoch = round_epoch.wrapping_add(1);
+            if round_epoch == 0 {
+                touched_epoch.fill(0);
+                round_epoch = 1;
+            }
+            while let Some(msg) = batch.pop_front() {
                 guard += 1;
                 if guard > msg_cap {
                     // Hard safety cap on the inter-context message fixpoint.
@@ -7425,7 +7722,8 @@ impl Engine {
                     eprintln!(
                         "WARNING: kobayashi-marust message fixpoint hit the {} cap; \
                          classification may be incomplete (truncated). {} pending messages dropped.",
-                        msg_cap, self.msgs.len()
+                        msg_cap,
+                        batch.len() + self.msgs.len()
                     );
                     truncated = true;
                     self.message_truncated = true;
@@ -7503,7 +7801,7 @@ impl Engine {
                 let t = match msg {
                     Msg::Succ { from, f, p, target } => {
                         nsucc_msgs += 1;
-                        self.apply_succ(from, f, p, target)
+                        self.apply_succ(from as usize, f, p, target as usize)
                     }
                     Msg::Pred {
                         to,
@@ -7512,19 +7810,25 @@ impl Engine {
                         pool_idx,
                     } => {
                         npred_msgs += 1;
-                        self.apply_pred(to, from, edge_label, pool_idx)
+                        self.apply_pred(to as usize, from as usize, edge_label, pool_idx)
                     }
                 };
                 if !batch_completion {
                     self.saturate(t);
                 }
-                if seen.insert(t) {
+                if t >= touched_epoch.len() {
+                    touched_epoch.resize(self.contexts.len().max(t + 1), 0);
+                }
+                if touched_epoch[t] != round_epoch {
+                    touched_epoch[t] = round_epoch;
                     touched.push(t);
                 }
             }
             if truncated {
                 break;
             }
+            debug_assert!(batch.is_empty());
+            std::mem::swap(&mut self.msgs, &mut batch);
             // Message application above only accumulates edge data and local
             // clauses. Complete each touched context once for this round, then
             // propagate its combined delta. Saturation is monotone and local
@@ -7536,7 +7840,7 @@ impl Engine {
                     self.saturate(id);
                 }
             }
-            for id in touched {
+            for &id in &touched {
                 self.propagate(id);
             }
         }
@@ -8148,7 +8452,9 @@ impl Engine {
             .concept_reach
             .iter()
             .enumerate()
-            .filter_map(|(iri, &reach)| reach.then_some(iri as Iri))
+            // The wire field retains its historical name, but must enumerate
+            // every concept eligible for the runtime predecessor-label offer.
+            .filter_map(|(iri, &reach)| (self.sig.rsucc || reach).then_some(iri as Iri))
             .collect();
         reach_concept_ids.sort_unstable();
 
@@ -8443,11 +8749,18 @@ impl Engine {
         let prof = std::env::var_os("KM_PROF").is_some();
         let batch_completion = std::env::var_os("KM_NO_BATCH_COMPLETION").is_none();
         let mut guard = 0usize;
+        let mut touched: Vec<usize> = Vec::new();
+        let mut touched_epoch: Vec<u32> = vec![0; self.contexts.len()];
+        let mut round_epoch = 0u32;
         while !self.msgs.is_empty() {
-            let batch: Vec<Msg> = self.msgs.drain(..).collect();
-            let mut touched: Vec<usize> = Vec::new();
-            let mut seen: HashSet<usize> = HashSet::default();
-            for msg in batch {
+            let mut batch = std::mem::take(&mut self.msgs);
+            touched.clear();
+            round_epoch = round_epoch.wrapping_add(1);
+            if round_epoch == 0 {
+                touched_epoch.fill(0);
+                round_epoch = 1;
+            }
+            while let Some(msg) = batch.pop_front() {
                 guard += 1;
                 if prof && guard % 50000 == 0 {
                     eprintln!(
@@ -8460,30 +8773,39 @@ impl Engine {
                 if guard > msg_cap {
                     self.message_truncated = true;
                     self.msgs.clear();
+                    batch.clear();
                     break;
                 }
                 let t = match msg {
-                    Msg::Succ { from, f, p, target } => self.apply_succ(from, f, p, target),
+                    Msg::Succ { from, f, p, target } => {
+                        self.apply_succ(from as usize, f, p, target as usize)
+                    }
                     Msg::Pred {
                         to,
                         from,
                         edge_label,
                         pool_idx,
-                    } => self.apply_pred(to, from, edge_label, pool_idx),
+                    } => self.apply_pred(to as usize, from as usize, edge_label, pool_idx),
                 };
                 if !batch_completion {
                     self.saturate(t);
                 }
-                if seen.insert(t) {
+                if t >= touched_epoch.len() {
+                    touched_epoch.resize(self.contexts.len().max(t + 1), 0);
+                }
+                if touched_epoch[t] != round_epoch {
+                    touched_epoch[t] = round_epoch;
                     touched.push(t);
                 }
             }
+            debug_assert!(batch.is_empty());
+            std::mem::swap(&mut self.msgs, &mut batch);
             if batch_completion {
                 for &id in &touched {
                     self.saturate(id);
                 }
             }
-            for id in touched {
+            for &id in &touched {
                 self.propagate(id);
             }
         }
@@ -8609,6 +8931,7 @@ impl Engine {
         not_of: &std::collections::HashMap<Iri, Iri, S>,
     ) -> Vec<(Iri, Iri)> {
         let mut out = Vec::new();
+        let mut tasks: Vec<(usize, Iri, Iri, Iri)> = Vec::new();
         let roots: Vec<(usize, Iri)> = self
             .contexts
             .iter()
@@ -8663,6 +8986,79 @@ impl Engine {
                     continue;
                 }
                 let Some(&nb) = not_of.get(&b) else { continue };
+                tasks.push((cid, q, b, nb));
+            }
+        }
+
+        // `NotB` occurs only in its local complement guard and never in an
+        // ontology head.  First try the refutation inside a transient copy of
+        // the already-complete query root.  A local empty-clause derivation is
+        // an ordinary sound engine derivation.  Failure proves nothing, so the
+        // candidate stays in the complete structural fallback below.
+        if std::env::var_os("KM_ROOT_ORDERED_LOCAL").is_some() {
+            let before = tasks.len();
+            tasks.retain(|&(source, q, b, nb)| {
+                let id = self.contexts.len();
+                let mut ctx = self.contexts[source].clone();
+                ctx.id = id;
+                ctx.query = None;
+                ctx.core.push(Pred::Concept { iri: nb, t: X });
+                ctx.core.sort();
+                ctx.core.dedup();
+                ctx.todo.clear();
+                self.contexts.push(ctx);
+                let assumption = ContextClause::new(
+                    vec![],
+                    vec![Lit::P(Pred::Concept { iri: nb, t: X })],
+                    true,
+                    &self.sig,
+                );
+                self.add_clause_with_rule(id, assumption, Some("ordered-local-negation"), None);
+                self.saturate(id);
+                let closed = {
+                    let ctx = &self.contexts[id];
+                    let arena = &self.cc_arena[1];
+                    ctx.worked_off().iter().any(|ci| {
+                        let clause = &arena[ci as usize];
+                        clause.body.is_empty() && clause.head.is_empty()
+                    })
+                };
+                debug_assert_eq!(id + 1, self.contexts.len());
+                self.contexts.pop();
+                if closed {
+                    out.push((q, b));
+                }
+                !closed
+            });
+            if std::env::var_os("KM_PROF").is_some() {
+                eprintln!(
+                    "KM_PROF root-ordered local: closed={} fallback={}",
+                    before - tasks.len(),
+                    tasks.len()
+                );
+            }
+        }
+
+        // Refutation contexts are independent roots in one monotone engine.
+        // Running a complete global message fixpoint after every single root
+        // repeatedly scans the same shared successor graph.  Seed a bounded
+        // batch, then close all its messages together.  This changes only the
+        // fair schedule: each context has the same core, receives the same
+        // messages and is inspected only after the same global fixpoint.
+        let batch_size = std::env::var("KM_ROOT_ORDERED_BATCH")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(1)
+            .max(1);
+        if std::env::var_os("KM_PROF").is_some() {
+            eprintln!(
+                "KM_PROF root-ordered candidates={} batch_size={batch_size}",
+                tasks.len()
+            );
+        }
+        for batch in tasks.chunks(batch_size) {
+            let mut active: Vec<(Iri, Iri, usize)> = Vec::with_capacity(batch.len());
+            for &(_, q, b, nb) in batch {
                 let mut core = vec![
                     Pred::Concept { iri: q, t: X },
                     Pred::Concept { iri: nb, t: X },
@@ -8672,7 +9068,10 @@ impl Engine {
                 let rid = self.get_or_create_context(core, true, None);
                 self.saturate(rid);
                 self.propagate(rid);
-                self.run_msg_fixpoint_min();
+                active.push((q, b, rid));
+            }
+            self.run_msg_fixpoint_min();
+            for (q, b, rid) in active {
                 let ctx = &self.contexts[rid];
                 let arena = &self.cc_arena[ctx.root as usize];
                 let closed = ctx.worked_off().iter().any(|ci| {
@@ -8691,6 +9090,18 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn minimal_core_retains_cycle_generator_and_unproved_constraints() {
+        Engine::check_minimal_core_example();
+    }
+
+    #[test]
+    fn inter_context_message_uses_compact_context_endpoints() {
+        assert_eq!(std::mem::size_of::<MsgContext>(), 4);
+        assert_eq!(std::mem::size_of::<Msg>(), 28);
+        assert_eq!(pack_msg_context(u32::MAX as usize), u32::MAX);
+    }
 
     #[test]
     fn compact_posting_preserves_order_across_inline_and_spill() {
@@ -10574,9 +10985,9 @@ mod tests {
         let h = Lit::P(cx(sig.concept("H"), X));
         let mut e = Engine::new(sig, vec![], 0);
         e.contexts.push(Context::new(0, vec![], false, None));
-        // Each premise has two incomparable providers. The raw product has
-        // eight selections, but its final strengthening antichain has only the
-        // two unit bodies {A} and {B}; every mixed body is redundant.
+        // Two premises have two providers; the third has an additional mixed
+        // provider. Both width orders retain the same two unit bodies {A}
+        // and {B} from all twelve selections; mixed bodies are redundant.
         e.cc_arena[0] = vec![
             ContextClause::new(vec![a], vec![Lit::P(p1)], false, &e.sig),
             ContextClause::new(vec![b], vec![Lit::P(p1)], false, &e.sig),
@@ -10584,6 +10995,7 @@ mod tests {
             ContextClause::new(vec![b], vec![Lit::P(p2)], false, &e.sig),
             ContextClause::new(vec![a], vec![Lit::P(p3)], false, &e.sig),
             ContextClause::new(vec![b], vec![Lit::P(p3)], false, &e.sig),
+            ContextClause::new(vec![a, b], vec![Lit::P(p3)], false, &e.sig),
         ];
         for cid in 0..e.cc_arena[0].len() as u32 {
             e.contexts[0].delta.worked_off.push(cid);
@@ -10594,11 +11006,12 @@ mod tests {
             head: vec![h],
         };
 
-        let incremental = e.pred_from_neighbor(0, &pred, false);
+        let incremental = e.pred_from_neighbor_ordered(0, &pred, false, false);
+        let wide = e.pred_from_neighbor_ordered(0, &pred, false, true);
         let mut cartesian = PredResultBuffer::default();
         for first in [0usize, 1] {
             for second in [2usize, 3] {
-                for third in [4usize, 5] {
+                for third in [4usize, 5, 6] {
                     let mut body = Vec::new();
                     body.extend_from_slice(&e.cc_arena[0][first].body);
                     body.extend_from_slice(&e.cc_arena[0][second].body);
@@ -10616,7 +11029,9 @@ mod tests {
                 .map(|clause| (clause.body, clause.head))
                 .collect::<BTreeSet<_>>()
         };
-        assert_eq!(canonical(incremental), canonical(cartesian.into_vec()));
+        let expected = canonical(cartesian.into_vec());
+        assert_eq!(canonical(incremental), expected);
+        assert_eq!(canonical(wide), expected);
     }
 
     /// The left-deep antichain join in `pred_local_inner` must retain exactly
@@ -10859,6 +11274,31 @@ mod tests {
     }
 
     #[test]
+    fn pred_result_buffer_reuses_slots_and_preserves_survivor_order() {
+        let sig = Sig::default();
+        let a = Lit::P(cx(1, X));
+        let c = Lit::P(cx(3, X));
+        let mut out = PredResultBuffer::default();
+        out.push_nonredundant(ContextClause::new(vec![cx(2, X)], vec![a], false, &sig));
+        out.push_nonredundant(ContextClause::new(vec![], vec![c], false, &sig));
+        out.push_nonredundant(ContextClause::new(vec![], vec![a], false, &sig));
+        assert_eq!(out.clauses.len(), 2, "the removed slot must be reused");
+        let clauses = out.into_vec();
+        assert_eq!(clauses.iter().map(|clause| clause.head.clone()).collect::<Vec<_>>(),
+            vec![vec![c], vec![a]], "survivors retain accepted arrival order");
+
+        let mut out = PredResultBuffer::default();
+        for length in (0..=64).rev() {
+            let body = (2..length + 2).map(|iri| cx(iri, X)).collect();
+            out.push_nonredundant(ContextClause::new(body, vec![a], false, &sig));
+            assert_eq!(out.clauses.len(), 1, "strengthening history must not accumulate");
+        }
+        let clauses = out.into_vec();
+        assert_eq!(clauses.len(), 1);
+        assert!(clauses[0].body.is_empty());
+    }
+
+    #[test]
     fn nominal_enumeration_reuses_complete_ground_labels() {
         let mut sig = Sig::default();
         let a = sig.concept("A");
@@ -10995,7 +11435,7 @@ mod rsucc_rolechain_tests {
         let mk = |p: Pred| ContextClause::new(vec![], vec![Lit::P(p)], false, &sig);
         let arena: Vec<ContextClause> = vec![
             mk(cx(t1, X)),    // 0: reach t1
-            mk(cx(plain, X)), // 1: filtered (not a reach concept)
+            mk(cx(plain, X)), // 1: ordinary central concept must also cross the edge
             mk(cx(t2, X)),    // 2: reach t2
             mk(cx(t1, X)),    // 3: duplicate t1
             mk(cx(ch, X)),    // 4: reach ch
@@ -11014,8 +11454,8 @@ mod rsucc_rolechain_tests {
         };
         assert_eq!(
             full,
-            vec![cx(t1, X), cx(t2, X), cx(ch, X)],
-            "full rescan must be the ordered-unique central reach preds"
+            vec![cx(t1, X), cx(plain, X), cx(t2, X), cx(ch, X)],
+            "full rescan must be the ordered-unique central concept predicates"
         );
 
         // For EVERY 2-way split point the incremental fold reproduces `full`

@@ -24,6 +24,13 @@ use rayon::prelude::*;
 
 use crate::json_io::{JAtom, JClause, JTerm};
 
+// Narrow, opt-in insertion trace used to diagnose one cyclic Uberon definer.
+// Both atomics remain inert unless KM_ELC_DEBUG_DERIVATION is set and the
+// concept is present in the current input.
+static DEBUG_ADD_SUB_CONCEPT: AtomicUsize = AtomicUsize::new(usize::MAX);
+static DEBUG_ADD_SUB_NODE: AtomicUsize = AtomicUsize::new(usize::MAX);
+static DEBUG_ADD_SUB_COUNT: AtomicUsize = AtomicUsize::new(0);
+
 // ---------------------------------------------------------------------------
 // Fast hashing for the integer-keyed saturation state
 // ---------------------------------------------------------------------------
@@ -134,6 +141,16 @@ impl Interner {
 
     fn name(&self, id: u32) -> &str {
         self.names[id as usize].as_ref()
+    }
+
+    fn maybe_name(&self, id: u32) -> Option<&str> {
+        self.names.get(id as usize).map(AsRef::as_ref)
+    }
+
+    fn debug_name(&self, id: u32) -> String {
+        self.maybe_name(id)
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("#fresh_node_{id}"))
     }
 
     /// Non-creating lookup (P1 hoisting reads ids of already-seen concepts only).
@@ -1860,6 +1877,126 @@ struct State {
     edge_epoch: u64,
 }
 
+/// Source-specific witnesses for selected existential roles. Canonical EL
+/// completion may share one filler context across sources. That sharing is a
+/// useful least-model optimization, but a rooted countermodel sometimes needs
+/// the standard EL unravelling even without inverse functionality: unrelated
+/// obligations attached to the shared filler can otherwise kill every legal
+/// side of a covering choice. This allocator is enabled only in the
+/// fail-closed rooted certificate route.
+#[derive(Clone)]
+struct FreshInverseWitnesses {
+    roles: HashSet<u32>,
+    unrestricted_roles: HashSet<u32>,
+    selected_pairs: HashSet<(u32, u32)>,
+    deep_unrestricted_roles: HashSet<u32>,
+    deep_selected_pairs: HashSet<(u32, u32)>,
+    selective_deep: bool,
+    active_sources: HashSet<u32>,
+    depth: HashMap<u32, usize>,
+    max_depth: Option<usize>,
+    existential_pairs: HashSet<(u32, u32)>,
+    nodes: HashMap<(u32, u32, u32), u32>,
+    origins: HashMap<u32, (u32, u32, u32)>,
+    limit: usize,
+    exhausted: bool,
+}
+
+impl FreshInverseWitnesses {
+    /// Inspect a failed search candidate without affecting allocation or closure.
+    /// Redirect counts cover only existing edges; NF3 can allocate many more
+    /// witnesses during closure, so report the actual allocator population.
+    fn report_population(&self, st: &State, it: &Interner) {
+        let mut groups: HashMap<(usize, u32, u32), (usize, usize)> = HashMap::default();
+        let mut depths: HashMap<usize, usize> = HashMap::default();
+        for (&node, &(source, role, filler)) in &self.origins {
+            let depth = self.depth[&node];
+            *depths.entry(depth).or_default() += 1;
+            let group = groups.entry((depth, role, filler)).or_default();
+            group.0 += 1;
+            group.1 += usize::from(st.sub_super[source as usize].contains(&BOTTOM));
+        }
+        let mut depths: Vec<_> = depths.into_iter().collect();
+        depths.sort_unstable();
+        eprintln!(
+            "KM_ELC_CERT fresh population: allocated={} active_sources={} by_depth={depths:?}",
+            self.nodes.len(), self.active_sources.len(),
+        );
+        let mut groups: Vec<_> = groups.into_iter().collect();
+        groups.sort_unstable_by_key(|&(key, (count, _))| (std::cmp::Reverse(count), key));
+        for ((depth, role, filler), (count, dead_sources)) in groups.into_iter().take(20) {
+            eprintln!(
+                "KM_ELC_CERT fresh population group: depth={depth} role={} filler={} count={count} bottom_sources={dead_sources}",
+                it.debug_name(role), it.debug_name(filler),
+            );
+        }
+    }
+
+    #[inline]
+    fn route_selected(&self, source: u32, role: u32, filler: u32) -> bool {
+        let source_depth = self.depth.get(&source).copied().unwrap_or(0);
+        let (unrestricted_roles, selected_pairs) =
+            if self.selective_deep && source_depth > 0 {
+                (&self.deep_unrestricted_roles, &self.deep_selected_pairs)
+            } else {
+                (&self.unrestricted_roles, &self.selected_pairs)
+            };
+        self.active_sources.contains(&source)
+            && self.roles.contains(&role)
+            && (unrestricted_roles.contains(&role) || selected_pairs.contains(&(role, filler)))
+    }
+
+    #[inline]
+    fn selected(&self, source: u32, role: u32, filler: u32) -> bool {
+        self.route_selected(source, role, filler)
+            && self
+                .max_depth
+                .is_none_or(|limit| self.depth.get(&source).copied().unwrap_or(0) < limit)
+    }
+
+    fn target(&mut self, st: &mut State, source: u32, role: u32, filler: u32) -> u32 {
+        if !self.selected(source, role, filler) {
+            return filler;
+        }
+        let key = (source, role, filler);
+        if let Some(&node) = self.nodes.get(&key) {
+            return node;
+        }
+        // This allocator constructs a candidate model, not the EL lower bound.
+        // A source containing bottom cannot inhabit that model. Keep existing
+        // witness identities above, but spend no new allocations on its other
+        // existential edges. Returning the canonical filler still lets normal
+        // closure propagate bottom and lets the protected-root check reject
+        // the candidate. Live sources retain the ordinary allocation/cap path.
+        if st.sub_super[source as usize].contains(&BOTTOM) {
+            return filler;
+        }
+        if self.nodes.len() >= self.limit {
+            self.exhausted = true;
+            return filler;
+        }
+        let node = st.sub_super.len() as u32;
+        st.sub_super.push(HashSet::default());
+        st.edges.push(HashSet::default());
+        st.in_roles.push(Vec::new());
+        st.worklist.grow(st.sub_super.len());
+        st.add_sub(node, TOP);
+        st.add_sub(node, filler);
+        self.nodes.insert(key, node);
+        self.origins.insert(node, (source, role, filler));
+        self.depth
+            .insert(node, self.depth.get(&source).copied().unwrap_or(0) + 1);
+        // The witness participates in the same closure invocation that created
+        // it.  Activate it immediately so a depth-N unravelling also freshens
+        // existential edges generated while closing levels 1..N-1.  Waiting
+        // for the later rooted-domain expansion made a dying level-1 witness
+        // ineligible for admission and silently collapsed every finite depth
+        // greater than one back to depth one.
+        self.active_sources.insert(node);
+        node
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Lean ELC certificate wire model
 // ---------------------------------------------------------------------------
@@ -2531,11 +2668,28 @@ fn build_lean_el_certificate(
             .iter()
             .map(|compilation| compilation.raw.clone()),
     );
-    let witness_variable_count = witness_records
-        .iter()
-        .flat_map(|record| [record.role_variable, record.filler_variable])
-        .max()
-        .map_or(0, |maximum| maximum + 1);
+    // The wire variable universe covers the complete source partition, not
+    // only the direct clauses and canonical witnesses. Residual raw clauses
+    // can introduce additional variables, including below function terms.
+    fn variable_bound(term: &LeanRawTerm) -> Result<u32, String> {
+        match term {
+            LeanRawTerm::Var { name } => name.checked_add(1)
+                .ok_or_else(|| "source variable id exceeds certificate range".into()),
+            LeanRawTerm::Fun { argument, .. } => variable_bound(argument),
+        }
+    }
+    let variable_count = source_ontology.iter()
+        .flat_map(|clause| clause.body.iter().chain(&clause.head))
+        .try_fold(0u32, |bound, atom| -> Result<u32, String> {
+            let count = match atom {
+                LeanResidualAtom::Concept { term, .. } => variable_bound(term)?,
+                LeanResidualAtom::Role { source, target, .. } =>
+                    variable_bound(source)?.max(variable_bound(target)?),
+                LeanResidualAtom::Eq { left, right } =>
+                    variable_bound(left)?.max(variable_bound(right)?),
+            };
+            Ok(bound.max(count))
+        })?;
     let mut concept_origins = vec![LeanConceptOrigin::Source; symbol_count];
     for (&id, prefix_ids) in &nfs.conjunction_origins {
         let slot = concept_origins
@@ -2550,7 +2704,7 @@ fn build_lean_el_certificate(
         symbol_count: symbol_count as u32,
         top: TOP,
         bottom: BOTTOM,
-        variable_count: (variables.len() as u32).max(witness_variable_count),
+        variable_count,
         source_ontology,
         raw_ontology,
         witness_records,
@@ -2578,6 +2732,7 @@ impl State {
     /// conclusions while another field of the state (e.g. `prop`) is still
     /// immutably borrowed.
     #[inline]
+    #[track_caller]
     fn add_sub_parts(
         sub_super: &mut [HashSet<u32>],
         worklist: &mut Worklist,
@@ -2586,6 +2741,17 @@ impl State {
         d: u32,
     ) {
         if sub_super[c as usize].insert(d) {
+            if c as usize == DEBUG_ADD_SUB_NODE.load(Ordering::Relaxed)
+                && d as usize == DEBUG_ADD_SUB_CONCEPT.load(Ordering::Relaxed)
+                && DEBUG_ADD_SUB_COUNT.fetch_add(1, Ordering::Relaxed) < 32
+            {
+                let caller = std::panic::Location::caller();
+                eprintln!(
+                    "KM_ELC_CERT target insertion: concept={d} node={c} caller={}:{}",
+                    caller.file(),
+                    caller.line(),
+                );
+            }
             worklist.push(Item::Sub(c, d));
             if let Some(j) = journal {
                 // A round that adds more than this is cheaper to re-index by a
@@ -2599,6 +2765,7 @@ impl State {
     }
 
     #[inline]
+    #[track_caller]
     fn add_sub(&mut self, c: u32, d: u32) {
         Self::add_sub_parts(
             &mut self.sub_super,
@@ -2646,6 +2813,24 @@ impl State {
             parents.push(c);
             self.worklist.push(Item::Edge(c, r, d));
         }
+    }
+
+    fn remove_edge(&mut self, c: u32, r: u32, d: u32) -> bool {
+        if !self.edges[c as usize].remove(&(r, d)) {
+            return false;
+        }
+        self.edge_epoch += 1;
+        let key = (d, r);
+        let mut empty = false;
+        if let Some(parents) = self.in_by_role.get_mut(&key) {
+            parents.retain(|&parent| parent != c);
+            empty = parents.is_empty();
+        }
+        if empty {
+            self.in_by_role.remove(&key);
+            self.in_roles[d as usize].retain(|&role| role != r);
+        }
+        true
     }
 
     /// Deep copy for a certificate-repair pass. Only valid at fixpoint (empty
@@ -3134,6 +3319,24 @@ fn release<T: Send + 'static>(value: T, background: bool) {
 /// The order in which items are processed is the worklist's discipline (see
 /// `Worklist`); the rule code below is the same under either.
 fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
+    run_inner(idx, st, prof, None);
+}
+
+fn run_with_fresh_inverse(
+    idx: &Idx,
+    st: &mut State,
+    prof: &mut Prof,
+    fresh: &mut FreshInverseWitnesses,
+) {
+    run_inner(idx, st, prof, Some(fresh));
+}
+
+fn run_inner(
+    idx: &Idx,
+    st: &mut State,
+    prof: &mut Prof,
+    mut fresh: Option<&mut FreshInverseWitnesses>,
+) {
     // Empty fallback so an unindexed role still yields the empty super-set
     // without a per-lookup allocation (it never occurs for edge roles in
     // practice, but keeps the borrow simple).
@@ -3170,6 +3373,14 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                     // R⊑ : C ⊑ D, D ⊑ E ⟹ C ⊑ E  (NF1)
                     prof.nf1_scan += rules.nf1_sups.len() as u64;
                     for &sup in rules.nf1_sups.iter() {
+                        if c as usize == DEBUG_ADD_SUB_NODE.load(Ordering::Relaxed)
+                            && sup as usize == DEBUG_ADD_SUB_CONCEPT.load(Ordering::Relaxed)
+                            && !st.sub_super[c as usize].contains(&sup)
+                        {
+                            eprintln!(
+                                "KM_ELC_CERT target NF1 trigger: node={c} sub={d} sup={sup}"
+                            );
+                        }
                         st.add_sub(c, sup);
                     }
                     // R⊓ : C ⊑ D, C ⊑ D', D ⊓ D' ⊑ E ⟹ C ⊑ E  (NF2)
@@ -3183,7 +3394,11 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                     // R∃ : C ⊑ D, D ⊑ ∃R.E ⟹ edge (C,R,E)  (NF3)
                     prof.nf3_scan += rules.nf3_edges.len() as u64;
                     for &[role, filler] in rules.nf3_edges {
-                        st.add_edge(c, role, filler);
+                        let target = match fresh.as_deref_mut() {
+                            Some(fresh) => fresh.target(st, c, role, filler),
+                            None => filler,
+                        };
+                        st.add_edge(c, role, target);
                     }
                 }
                 // R⊥-edge : C ⊑ ⊥ propagates backwards along edges into C. This
@@ -3262,6 +3477,17 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                                     prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
                                     for &parent in parents {
                                         for &[_, e] in &axs[lo..hi] {
+                                            if parent as usize
+                                                == DEBUG_ADD_SUB_NODE.load(Ordering::Relaxed)
+                                                && e as usize
+                                                    == DEBUG_ADD_SUB_CONCEPT.load(Ordering::Relaxed)
+                                                && !sub_super[parent as usize].contains(&e)
+                                            {
+                                                eprintln!(
+                                                    "KM_ELC_CERT target NF4 trigger: parent={parent} \
+                                                     role={role} filler_node={c} filler_sup={d} sup={e}"
+                                                );
+                                            }
                                             State::add_sub_parts(
                                                 sub_super,
                                                 worklist,
@@ -4511,6 +4737,313 @@ struct RClause {
     head: Vec<RAtom>,
     /// (variable index, canonical node) fixed before evaluation
     pins: Vec<(usize, u32)>,
+    /// (pinned variable, generating concept, source-argument variable).
+    /// The pin is active only where its source existential is active.
+    pin_guards: Vec<(usize, u32, usize)>,
+}
+
+#[derive(Clone, Debug)]
+struct LazyComplement {
+    cover_clause: usize,
+    positive: u32,
+    negative: u32,
+    consumers: HashMap<u32, Vec<u32>>,
+    local_consumers: Vec<(u32, u32)>,
+}
+
+/// Recognize the narrow complement fragment whose negative extension can stay
+/// implicit in a rooted model. The negative definer may occur only in its
+/// universal cover, its exact disjointness clause, explicit producer rules,
+/// an existential filler, and NF2/NF4 body consumers that the rooted closure
+/// handles below. Every other occurrence rejects the optimization.
+fn regular_lazy_complements(
+    rcs: &[RClause],
+    nfs: &Nfs,
+    known_bottom: &HashSet<u32>,
+    it: &Interner,
+) -> Vec<LazyComplement> {
+    let mut out = Vec::new();
+    for (cover_clause, rc) in rcs.iter().enumerate() {
+        if !(rc.body.is_empty()
+            || rc
+                .body
+                .iter()
+                .all(|atom| matches!(atom, RAtom::C { cid, .. } if *cid == TOP)))
+            || rc.head.len() != 2
+        {
+            continue;
+        }
+        let (RAtom::C { cid: left, v: lv }, RAtom::C { cid: right, v: rv }) =
+            (rc.head[0], rc.head[1])
+        else {
+            continue;
+        };
+        if lv != rv {
+            continue;
+        }
+        let left_internal = crate::calc::is_internal_concept(it.name(left));
+        let right_internal = crate::calc::is_internal_concept(it.name(right));
+        let (positive, negative) = match (left_internal, right_internal) {
+            (false, true) => (left, right),
+            (true, false) => (right, left),
+            _ => continue,
+        };
+        let exact_residual_disjoint = |other: &RClause| {
+            if !other.head.is_empty() || other.body.len() != 2 || !other.pins.is_empty() {
+                return false;
+            }
+            let (RAtom::C { cid: a, v: av }, RAtom::C { cid: b, v: bv }) =
+                (other.body[0], other.body[1])
+            else {
+                return false;
+            };
+            av == bv && ((a == positive && b == negative) || (a == negative && b == positive))
+        };
+        let residual_disjoint_count = rcs
+            .iter()
+            .enumerate()
+            .filter(|(rci, other)| *rci != cover_clause && exact_residual_disjoint(other))
+            .count();
+        let residual_body_occurs_elsewhere = rcs.iter().enumerate().any(|(rci, other)| {
+            rci != cover_clause
+                && !exact_residual_disjoint(other)
+                && other
+                    .body
+                    .iter()
+                    .any(|atom| matches!(atom, RAtom::C { cid, .. } if *cid == negative))
+        });
+        // Producers of the negative concept remain explicit EL rules. Only
+        // body occurrences consume its implicit extension and need support.
+        let bad_nf1 = nfs.nf1.iter().any(|nf| nf.sub == negative);
+        let bad_nf2 = nfs
+            .nf2
+            .iter()
+            .any(|nf| nf.sub1 == negative && nf.sub2 == negative);
+        let bad_nf3 = nfs.nf3.iter().any(|nf| nf.sub == negative);
+        let bad_nf5 = nfs.nf5.contains(&negative);
+        if residual_body_occurs_elsewhere || bad_nf1 || bad_nf2 || bad_nf3 || bad_nf5 {
+            continue;
+        }
+        let has_disjointness = nfs.nf2.iter().any(|nf| {
+            ((nf.sub1 == positive && nf.sub2 == negative)
+                || (nf.sub1 == negative && nf.sub2 == positive))
+                && known_bottom.contains(&nf.sup)
+        });
+        let mut consumers: HashMap<u32, Vec<u32>> = HashMap::default();
+        for nf in &nfs.nf4 {
+            if nf.filler == negative {
+                consumers.entry(nf.role).or_default().push(nf.sup);
+            }
+        }
+        let local_consumers: Vec<(u32, u32)> = nfs
+            .nf2
+            .iter()
+            .filter_map(|nf| {
+                let exact_disjoint = known_bottom.contains(&nf.sup)
+                    && ((nf.sub1 == positive && nf.sub2 == negative)
+                        || (nf.sub1 == negative && nf.sub2 == positive));
+                if exact_disjoint {
+                    None
+                } else if nf.sub1 == negative {
+                    Some((nf.sub2, nf.sup))
+                } else if nf.sub2 == negative {
+                    Some((nf.sub1, nf.sup))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if residual_disjoint_count <= 1 && (has_disjointness || residual_disjoint_count == 1) {
+            out.push(LazyComplement {
+                cover_clause,
+                positive,
+                negative,
+                consumers,
+                local_consumers,
+            });
+        }
+    }
+    out
+}
+
+/// Fire exactly the observable part of a recognized implicit complement. In
+/// the rooted interpretation `negative` denotes the complement of `positive`;
+/// outside explicit producers the supported observations of the negative
+/// extension are local NF2 and role-target NF4 tests. Those conclusions are
+/// queued directly when the relevant carrier node lacks `positive`. The
+/// implicit negative label is deliberately not stored on shared targets.
+///
+/// Returns the number of newly queued labels. The caller closes them under all
+/// EL rules and repeats until this operation adds nothing. Representatives are
+/// used after repair merges, and dead targets are outside the model domain.
+fn fire_lazy_complement_consumers(
+    lazy: &[LazyComplement],
+    domain: &HashSet<u32>,
+    st: &mut State,
+    repr: &mut [u32],
+    nfs: &Nfs,
+    known_bottom: &HashSet<u32>,
+    banned: &HashSet<(u32, usize, u32)>,
+    prov: &mut HashMap<(u32, u32), usize>,
+    chrono: &mut Vec<(u32, usize, u32)>,
+    choose_clash_avoiding_positive: bool,
+    it: &Interner,
+) -> usize {
+    let mut by_role: HashMap<u32, Vec<(u32, u32, usize)>> = HashMap::default();
+    for complement in lazy {
+        for (&role, supers) in &complement.consumers {
+            for &sup in supers {
+                by_role
+                    .entry(role)
+                    .or_default()
+                    .push((complement.positive, sup, complement.cover_clause));
+            }
+        }
+    }
+    // Do not store the implicit Q label on a shared canonical target: ordinary
+    // NF4 propagation would then wake every full-model predecessor of that
+    // target, including parents outside this rooted interpretation. Fire the
+    // equivalent NF4 conclusion only at source edges in the rooted carrier.
+    let mut additions: Vec<(u32, u32)> = Vec::new();
+    let mut positive_choices: Vec<(u32, usize, u32)> = Vec::new();
+    for &raw_source in domain {
+        let source = uf_find(repr, raw_source);
+        if st.sub_super[source as usize].contains(&BOTTOM) {
+            continue;
+        }
+        for &(role, raw_target) in &st.edges[source as usize] {
+            let Some(consumers) = by_role.get(&role) else {
+                continue;
+            };
+            let target = uf_find(repr, raw_target);
+            if st.sub_super[target as usize].contains(&BOTTOM) {
+                continue;
+            }
+            for &(positive, sup, cover_clause) in consumers {
+                if !st.sub_super[target as usize].contains(&positive)
+                    && !st.sub_super[source as usize].contains(&sup)
+                {
+                    // `negative` is represented by absence of `positive` in
+                    // this rooted model. Materialising a negative consumer is
+                    // non-monotone: a later closure step may add `positive`.
+                    // If the negative conclusion would immediately complete
+                    // a conjunction already known to be bottom, choose the
+                    // positive side of the exact cover instead. This is an
+                    // ordinary model choice with provenance and can be
+                    // backtracked; it is not treated as a logical consequence.
+                    let negative_clashes = known_bottom.contains(&sup)
+                        || nfs.nf2.iter().any(|nf| {
+                            known_bottom.contains(&nf.sup)
+                                && (nf.sub1 == sup || nf.sub2 == sup)
+                        });
+                    let positive_choice = (target, cover_clause, positive);
+                    if std::env::var_os("KM_ELC_DEBUG_DERIVATION").is_some()
+                        && it.name(sup) == "Q_36024"
+                    {
+                        eprintln!(
+                            "KM_ELC_CERT lazy Q_36024 decision: source={} target={} \
+                             positive={} structural_clash={} choose={} banned={}",
+                            it.debug_name(source),
+                            it.debug_name(target),
+                            it.name(positive),
+                            negative_clashes,
+                            choose_clash_avoiding_positive,
+                            banned.contains(&positive_choice),
+                        );
+                    }
+                    if negative_clashes {
+                        if choose_clash_avoiding_positive
+                            && !banned.contains(&positive_choice)
+                        {
+                            positive_choices.push(positive_choice);
+                        }
+                    } else {
+                        additions.push((source, sup));
+                    }
+                }
+            }
+        }
+    }
+    // Local conjunction consumer: G(x) & negative(x) -> S(x). Under the
+    // implicit interpretation this fires exactly when G is explicit and the
+    // same carrier node lacks `positive`.
+    for &raw_node in domain {
+        let node = uf_find(repr, raw_node);
+        if st.sub_super[node as usize].contains(&BOTTOM) {
+            continue;
+        }
+        for complement in lazy {
+            if st.sub_super[node as usize].contains(&complement.positive) {
+                continue;
+            }
+            for &(guard, sup) in &complement.local_consumers {
+                if st.sub_super[node as usize].contains(&guard)
+                    && !st.sub_super[node as usize].contains(&sup)
+                {
+                    let negative_clashes = known_bottom.contains(&sup)
+                        || nfs.nf2.iter().any(|nf| {
+                            known_bottom.contains(&nf.sup)
+                                && (nf.sub1 == sup || nf.sub2 == sup)
+                        });
+                    let positive_choice =
+                        (node, complement.cover_clause, complement.positive);
+                    if negative_clashes {
+                        if choose_clash_avoiding_positive
+                            && !banned.contains(&positive_choice)
+                        {
+                            positive_choices.push(positive_choice);
+                        }
+                    } else {
+                        additions.push((node, sup));
+                    }
+                }
+            }
+        }
+    }
+    additions.sort_unstable();
+    additions.dedup();
+    positive_choices.sort_unstable();
+    positive_choices.dedup();
+    let mut before = additions.len();
+    for (target, cover_clause, positive) in positive_choices {
+        if !st.sub_super[target as usize].contains(&positive) {
+            st.add_sub(target, positive);
+            prov.entry((target, positive)).or_insert(cover_clause);
+            chrono.push((target, cover_clause, positive));
+            before += 1;
+        }
+    }
+    for (source, sup) in additions {
+        st.add_sub(source, sup);
+    }
+    before
+}
+
+/// Recognize `R(x,z) ∧ R(y,z) → x=y`. Such a residual makes canonical
+/// EL sharing of one existential filler across distinct sources observable.
+fn inverse_functional_role(rc: &RClause) -> Option<u32> {
+    if rc.body.len() != 2 || rc.head.len() != 1 || !rc.pins.is_empty() {
+        return None;
+    }
+    let RAtom::Eq { s: es, t: et } = rc.head[0] else {
+        return None;
+    };
+    let (
+        RAtom::R {
+            rid: r1,
+            s: s1,
+            t: t1,
+        },
+        RAtom::R {
+            rid: r2,
+            s: s2,
+            t: t2,
+        },
+    ) = (rc.body[0], rc.body[1])
+    else {
+        return None;
+    };
+    (r1 == r2 && t1 == t2 && ((s1 == es && s2 == et) || (s1 == et && s2 == es))).then_some(r1)
 }
 
 struct CompiledResidual {
@@ -4563,6 +5096,7 @@ fn compile_residual(
     for c in residual {
         let mut vars: Vec<ResidualVarKey<'_>> = Vec::new();
         let mut pins: Vec<(usize, u32)> = Vec::new();
+        let mut pin_guards: Vec<(usize, u32, usize)> = Vec::new();
         let mut body = Vec::with_capacity(c.body.len());
         let mut head = Vec::with_capacity(c.head.len());
         // a term: plain variable, or a skolem `f(x)` pinned to its filler node
@@ -4571,9 +5105,9 @@ fn compile_residual(
                 match $t {
                     JTerm::Var { name } => vid(&mut vars, ResidualVarKey::Source(name)),
                     JTerm::Fun { function, arg } => {
-                        if !matches!(arg.as_ref(), JTerm::Var { .. }) {
+                        let JTerm::Var { name: arg_name } = arg.as_ref() else {
                             bail!(c, "nested fun term");
-                        }
+                        };
                         let fnid = it.intern(function);
                         let (sub, role, filler) = match skolem_target.get(&fnid) {
                             Some(&target) => target,
@@ -4602,6 +5136,10 @@ fn compile_residual(
                         let v = vid(&mut vars, ResidualVarKey::Function(function));
                         if !pins.iter().any(|&(pv, _)| pv == v) {
                             pins.push((v, witness));
+                        }
+                        let arg_v = vid(&mut vars, ResidualVarKey::Source(arg_name));
+                        if !pin_guards.iter().any(|&(pv, _, _)| pv == v) {
+                            pin_guards.push((v, sub, arg_v));
                         }
                         v
                     }
@@ -4666,6 +5204,20 @@ fn compile_residual(
         if !eq_ok {
             bail!(c, "body equality over unbound variable");
         }
+        // Every Skolem occurrence we conditionally pin must retain the exact
+        // generating concept on its source argument in this clause's body.
+        // Decline otherwise: treating an unguarded function occurrence as
+        // vacuous when its original existential source is bottom is unsound.
+        if pin_guards.iter().any(|&(_, guard, arg_v)| {
+            !body
+                .iter()
+                .any(|a| matches!(*a, RAtom::C { cid, v } if cid == guard && v == arg_v))
+        }) {
+            bail!(
+                c,
+                "fun term without its generating source guard in the body"
+            );
+        }
         out.push(RClause {
             nvars: vars.len(),
             origins: vars
@@ -4686,6 +5238,7 @@ fn compile_residual(
             body,
             head,
             pins,
+            pin_guards,
         });
     }
     Some(CompiledResidual {
@@ -5126,6 +5679,9 @@ const SUCC_PROBE_MARGIN: usize = 8;
 struct CardGuide {
     /// canonical node pairs a `≥n` clause pins apart, as stored (unordered)
     pinned_apart: Vec<(u32, u32)>,
+    /// Source guards that make the corresponding pinned pair semantically
+    /// relevant. Empty means unconditionally active.
+    pinned_guards: Vec<Vec<u32>>,
     /// qualified at-most bounds recovered from the residual
     bounds: Vec<AtMostBound>,
     /// guard concept -> the bounds it helps activate. Only bounds with at
@@ -5137,6 +5693,7 @@ struct CardGuide {
 impl CardGuide {
     fn new(rcs: &[RClause]) -> CardGuide {
         let mut pinned_apart: Vec<(u32, u32)> = Vec::new();
+        let mut pinned_guards: Vec<Vec<u32>> = Vec::new();
         let mut bounds: Vec<AtMostBound> = Vec::new();
         let mut by_guard: HashMap<u32, Vec<usize>> = HashMap::default();
         for rc in rcs {
@@ -5148,10 +5705,12 @@ impl CardGuide {
                 bounds.push(b);
             } else if let Some((a, b)) = recognize_distinct_pins(rc) {
                 pinned_apart.push((a, b));
+                pinned_guards.push(rc.pin_guards.iter().map(|&(_, guard, _)| guard).collect());
             }
         }
         CardGuide {
             pinned_apart,
+            pinned_guards,
             bounds,
             by_guard,
         }
@@ -5161,6 +5720,126 @@ impl CardGuide {
     /// exactly as it did before this guidance existed.
     fn is_inert(&self) -> bool {
         self.pinned_apart.is_empty() && self.by_guard.is_empty()
+    }
+
+    /// Materialize a legal at-most partition side when the current quotient
+    /// already has no more qualifying successors than its bound. These are
+    /// model choices, not logical consequences. Record their cover-clause
+    /// provenance and chronology so conflict search can revisit them.
+    /// If later closure creates more
+    /// successors, the ordinary residual at-most clause must merge them or
+    /// the final certificate fails.
+    fn choose_low_sides(
+        &self,
+        domain: &HashSet<u32>,
+        st: &mut State,
+        repr: &mut [u32],
+        it: &Interner,
+        complement_covers: &HashMap<u32, (u32, usize)>,
+        prefer_positive_guards: &HashSet<u32>,
+        globally_avoided_sides: &HashSet<(usize, u32)>,
+        banned: &HashSet<(u32, usize, u32)>,
+        eager_seeded: bool,
+        pass_label: usize,
+        prov: &mut HashMap<(u32, u32), usize>,
+        chrono: &mut Vec<(u32, usize, u32)>,
+    ) -> usize {
+        let mut additions = Vec::new();
+        for (&guard, bounds) in &self.by_guard {
+            if !crate::calc::is_internal_concept(it.name(guard)) {
+                continue;
+            }
+            let Some(&(positive, cover_clause)) = complement_covers.get(&guard) else {
+                // Without an exact binary complement cover there is no sound
+                // alternative to attribute and revisit. Leave this guard to
+                // the ordinary residual search.
+                continue;
+            };
+            for &candidate in domain {
+                let node = uf_find(repr, candidate);
+                if st.sub_super[node as usize].contains(&BOTTOM)
+                    || st.sub_super[node as usize].contains(&guard)
+                    || st.sub_super[node as usize].contains(&positive)
+                {
+                    continue;
+                }
+                let legal = bounds.iter().all(|&bi| {
+                    let bound = &self.bounds[bi];
+                    bound
+                        .guards
+                        .iter()
+                        .all(|&g| g == guard || st.sub_super[node as usize].contains(&g))
+                        && qualifying_successor_count(st, repr, node, bound) <= bound.bound
+                });
+                if legal {
+                    let low = (node, cover_clause, guard);
+                    let high = (node, cover_clause, positive);
+                    let exhausted = banned.contains(&(node, cover_clause, u32::MAX));
+                    let available = |choice: &(u32, usize, u32)| {
+                        !banned.contains(choice)
+                            && !globally_avoided_sides.contains(&(choice.1, choice.2))
+                    };
+                    let locally_available = |choice: &(u32, usize, u32)| {
+                        !banned.contains(choice)
+                    };
+                    let choice = if exhausted {
+                        // Checkpoint compaction replaces a fully tried local
+                        // binary cover with a sentinel. Reconstruct a stable
+                        // node-mixed assignment here; otherwise the cardinality
+                        // preselector ignores the sentinel and recreates one
+                        // uniform polarity on every restart.
+                        let alternatives = [low, high];
+                        Some(alternatives[repair_choice_mix(node, cover_clause, pass_label) % 2])
+                    } else if prefer_positive_guards.contains(&guard) {
+                        // A regular lazy-complement guard is the negative side
+                        // of an exact cover.  Choosing it here can seed the
+                        // very cyclic negative existential that the lazy
+                        // consumer deliberately left implicit.  Try the
+                        // positive side first; if conflict learning later bans
+                        // it, retain the negative side as the complete-search
+                        // fallback rather than excluding a model.
+                        [high, low]
+                            .into_iter()
+                            .find(available)
+                            .or_else(|| [high, low].into_iter().find(locally_available))
+                    } else if eager_seeded {
+                        let alternatives = [low, high];
+                        let start = repair_choice_mix(node, cover_clause, pass_label) % 2;
+                        (0..2)
+                            .map(|offset| alternatives[(start + offset) % 2])
+                            .find(available)
+                            .or_else(|| {
+                                (0..2)
+                                    .map(|offset| alternatives[(start + offset) % 2])
+                                    .find(locally_available)
+                            })
+                    } else if available(&low) {
+                        Some(low)
+                    } else if available(&high) {
+                        Some(high)
+                    } else if !banned.contains(&low) {
+                        Some(low)
+                    } else if !banned.contains(&high) {
+                        Some(high)
+                    } else {
+                        // Both sides have already failed in learned contexts.
+                        // The ordinary residual chooser retains its established
+                        // tier-3 fallback and causal backjump path.
+                        None
+                    };
+                    if let Some(choice) = choice {
+                        additions.push(choice);
+                    }
+                }
+            }
+        }
+        let before = additions.len();
+        for (node, cover_clause, choice) in additions {
+            st.add_sub(node, choice);
+            prov.entry((node, choice)).or_insert(cover_clause);
+            chrono.push((node, cover_clause, choice));
+        }
+        before
     }
 
     /// May the pass model identify `x` and `y`?
@@ -5297,6 +5976,29 @@ impl CardGuide {
     }
 }
 
+fn qualifying_successor_count(
+    st: &State,
+    repr: &mut [u32],
+    node: u32,
+    bound: &AtMostBound,
+) -> usize {
+    let mut successors = HashSet::default();
+    for &(role, target) in &st.edges[node as usize] {
+        if role != bound.role {
+            continue;
+        }
+        let target = uf_find(repr, target);
+        if bound
+            .fillers
+            .iter()
+            .all(|filler| st.sub_super[target as usize].contains(filler))
+        {
+            successors.insert(target);
+        }
+    }
+    successors.len()
+}
+
 /// The quotient-dependent half of [`CardGuide`], valid for one repair round.
 ///
 /// `apart` lifts the pinned pairs to the current union-find representatives
@@ -5323,11 +6025,61 @@ impl CardRound {
             }
         }
     }
+
+    /// Rooted-model variant of [`Self::resync`]. A Skolem disequality guarded
+    /// by an empty source class is vacuous in this carrier, so it must not
+    /// prevent an equality required by inverse functionality or an at-most
+    /// restriction. The complete residual check remains authoritative.
+    fn resync_active(
+        &mut self,
+        guide: &CardGuide,
+        repr: &mut [u32],
+        st: &State,
+        domain: &HashSet<u32>,
+    ) {
+        self.apart.clear();
+        self.memo.clear();
+        for (i, &(x, y)) in guide.pinned_apart.iter().enumerate() {
+            let active = guide.pinned_guards[i].iter().all(|&guard| {
+                domain.iter().any(|&candidate| {
+                    let node = uf_find(repr, candidate);
+                    !st.sub_super[node as usize].contains(&BOTTOM)
+                        && st.sub_super[node as usize].contains(&guard)
+                })
+            });
+            if !active {
+                continue;
+            }
+            let (a, b) = (uf_find(repr, x), uf_find(repr, y));
+            if a != b {
+                self.apart.insert((a.min(b), a.max(b)));
+            }
+        }
+    }
 }
 
-/// Hard cap on violations recorded per repair round: bounds round memory; the
-/// uncollected remainder is caught by the recheck after this round's repairs.
+/// Default cap on violations recorded per repair round. The uncollected
+/// remainder is caught by the recheck after this round's repairs.
 const REPAIR_VIOL_CAP: usize = 100_000;
+
+/// Repair-frontier cap for one residual check. Larger values amortize an EL
+/// re-closure over more independent choices on very large covering theories;
+/// smaller values bound the temporary binding vector more tightly. This is a
+/// schedule/resource choice only: every recorded instance receives the same
+/// repair, and acceptance still requires a complete residual recheck after EL
+/// closure. Keep the established cap by default and bound explicit overrides
+/// so a malformed environment cannot request an unbounded allocation.
+fn repair_viol_cap_from(value: Option<&str>) -> usize {
+    value
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(REPAIR_VIOL_CAP)
+        .clamp(1, 5_000_000)
+}
+
+fn repair_viol_cap() -> usize {
+    let value = std::env::var("KM_ELC_REPAIR_VIOL_CAP").ok();
+    repair_viol_cap_from(value.as_deref())
+}
 
 /// How many conflict-driven restarts one repair pass may spend before it gives
 /// up on its polarity. Each restart re-derives the pass from the base model, so
@@ -5361,7 +6113,7 @@ const REPAIR_RESTART_CAP: usize = 64;
 /// index this hands to the join is thus the one a full rebuild would produce,
 /// which is what keeps the violation enumeration order, and with it the repair
 /// choices and the accepted models, unchanged.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct CertIdx {
     alive: Vec<bool>,
     nodes: Vec<u32>,
@@ -5556,12 +6308,128 @@ fn cert_audit() -> bool {
 /// to [`REPAIR_VIOL_CAP`] per round. Returns `true` iff no violation was found
 /// and the budget survived. On `false`: an empty `out` means budget exhaustion
 /// (the caller must fail conservatively); a non-empty `out` is repair work.
-fn residual_pins_are_alive(rcs: &[RClause], alive: &[bool]) -> bool {
-    rcs.iter().all(|rc| {
-        rc.pins
-            .iter()
-            .all(|&(_, node)| alive.get(node as usize).copied().unwrap_or(false))
+fn residual_clause_active_in(
+    rc: &RClause,
+    alive: &[bool],
+    members: Option<&HashMap<u32, Vec<u32>>>,
+) -> bool {
+    rc.pin_guards.iter().all(|&(_, guard, _)| match members {
+        Some(members) => members.get(&guard).is_some_and(|nodes| !nodes.is_empty()),
+        None => alive.get(guard as usize).copied().unwrap_or(false),
     })
+}
+
+#[cfg(test)]
+fn residual_clause_active(rc: &RClause, alive: &[bool]) -> bool {
+    residual_clause_active_in(rc, alive, None)
+}
+
+fn residual_pins_are_alive_in(
+    rcs: &[RClause],
+    alive: &[bool],
+    members: Option<&HashMap<u32, Vec<u32>>>,
+) -> bool {
+    rcs.iter().all(|rc| {
+        !residual_clause_active_in(rc, alive, members)
+            || rc
+                .pins
+                .iter()
+                .all(|&(_, node)| alive.get(node as usize).copied().unwrap_or(false))
+    })
+}
+
+/// Extend a rooted certificate carrier until it is closed under outgoing
+/// model edges and under witnesses of residual clauses whose exact source
+/// guards are inhabited in that carrier. Returns the number of admitted raw
+/// node ids. This is used only by the publication-disabled rooted diagnostic.
+fn expand_rooted_domain(
+    domain: &mut HashSet<u32>,
+    st: &State,
+    rcs: &[RClause],
+    repr: &mut [u32],
+) -> usize {
+    let before = domain.len();
+    loop {
+        let mut additions: Vec<u32> = Vec::new();
+        for &candidate in domain.iter() {
+            let node = uf_find(repr, candidate);
+            if st.sub_super[node as usize].contains(&BOTTOM) {
+                continue;
+            }
+            additions.extend(st.edges[node as usize].iter().map(|&(_, target)| target));
+        }
+        for rc in rcs {
+            let active = rc.pin_guards.iter().all(|&(_, guard, _)| {
+                domain.iter().any(|&candidate| {
+                    let node = uf_find(repr, candidate);
+                    !st.sub_super[node as usize].contains(&BOTTOM)
+                        && st.sub_super[node as usize].contains(&guard)
+                })
+            });
+            if active {
+                additions.extend(rc.pins.iter().map(|&(_, node)| node));
+            }
+        }
+        let old_len = domain.len();
+        domain.extend(additions.into_iter().filter(|&node| node != BOTTOM));
+        if domain.len() == old_len {
+            break;
+        }
+    }
+    domain.len() - before
+}
+
+/// Redirect inverse-functional existential edges that came from the canonical
+/// base model before fresh-witness mode was enabled. Returns the number of
+/// redirected edges. New NF3 firings already allocate fresh targets in
+/// [`run_with_fresh_inverse`].
+fn freshen_rooted_inverse_edges(
+    domain: &HashSet<u32>,
+    st: &mut State,
+    fresh: &mut FreshInverseWitnesses,
+    role_supers: &[HashSet<u32>],
+) -> usize {
+    let mut rewrite: Vec<(u32, u32, u32)> = Vec::new();
+    for &source in domain {
+        // `target` intentionally reuses canonical fillers for a bottom source.
+        // Rewriting those edges would remove and reinsert exactly the same
+        // targets, reporting progress forever to the carrier-expansion loop.
+        if st.sub_super[source as usize].contains(&BOTTOM) {
+            continue;
+        }
+        rewrite.extend(
+            st.edges[source as usize]
+                .iter()
+                .copied()
+                .filter(|&(role, target)| {
+                    fresh.selected(source, role, target)
+                        && fresh.existential_pairs.contains(&(role, target))
+                })
+                .map(|(role, target)| (source, role, target)),
+        );
+    }
+    for &(source, role, filler) in &rewrite {
+        if st.remove_edge(source, role, filler) {
+            // The cloned base fixpoint already contains every role-super edge
+            // derived from this existential. Remove those stale consequences
+            // with the generating edge; ordinary edge closure below recreates
+            // them at the fresh target. An independently generated edge is
+            // reintroduced by its own NF3 firing.
+            for &super_role in role_supers.get(role as usize).into_iter().flatten() {
+                if super_role != role {
+                    st.remove_edge(source, super_role, filler);
+                }
+            }
+            let target = fresh.target(st, source, role, filler);
+            st.add_edge(source, role, target);
+        }
+    }
+    rewrite.len()
+}
+
+#[cfg(test)]
+fn residual_pins_are_alive(rcs: &[RClause], alive: &[bool]) -> bool {
+    residual_pins_are_alive_in(rcs, alive, None)
 }
 
 fn cert_round(
@@ -5578,7 +6446,14 @@ fn cert_round(
     debug: bool,
     // the caller's cross-round enumeration index; `None` builds a throwaway one
     reuse: Option<CertReuse<'_>>,
+    // Universal covers discharged by an implicit-complement interpretation.
+    // Only rooted repair supplies this set, after the narrow occurrence audit
+    // in `regular_lazy_complements` and observable-target materialization.
+    implicit_covers: Option<&HashSet<usize>>,
+    // Negative concept -> paired positive concept for implicit head truth.
+    implicit_positive: Option<&HashMap<u32, u32>>,
 ) -> bool {
+    let repair_viol_cap = repair_viol_cap();
     // enumeration indexes for the body atoms, over the domain of satisfiable
     // concept nodes
     let mut scratch = CertIdx::default();
@@ -5601,7 +6476,7 @@ fn cert_round(
     // alive concept nodes. A dead witness cannot interpret a source Skolem
     // function. Decline instead of evaluating over a bottom-containing
     // pseudo-domain that is larger than the certified model.
-    if !residual_pins_are_alive(rcs, alive) {
+    if !residual_pins_are_alive_in(rcs, alive, Some(members)) {
         if debug {
             eprintln!("KM_ELC_CERT fail: pinned witness is outside the alive canonical domain");
         }
@@ -5621,6 +6496,7 @@ fn cert_round(
         nodes: &[u32],
         alive: &[bool],
         sub_super: &[HashSet<u32>],
+        implicit_positive: Option<&HashMap<u32, u32>>,
         edges: &[HashSet<(u32, u32)>],
         repr: Option<&[u32]>,
         members: &HashMap<u32, Vec<u32>>,
@@ -5629,6 +6505,7 @@ fn cert_round(
         empty_e: &Vec<(u32, u32)>,
         budget: &mut u64,
         collect: &mut Option<&mut Vec<(usize, Vec<u32>)>>,
+        collect_limit: usize,
     ) -> bool {
         if *budget == 0 {
             return false;
@@ -5652,6 +6529,7 @@ fn cert_round(
                         nodes,
                         alive,
                         sub_super,
+                        implicit_positive,
                         edges,
                         repr,
                         members,
@@ -5660,6 +6538,7 @@ fn cert_round(
                         empty_e,
                         budget,
                         collect,
+                        collect_limit,
                     ) {
                         asg[free] = None;
                         return false;
@@ -5669,7 +6548,13 @@ fn cert_round(
                 return true;
             }
             let ok = rc.head.iter().any(|a| match *a {
-                RAtom::C { cid, v } => sub_super[asg[v].unwrap() as usize].contains(&cid),
+                RAtom::C { cid, v } => {
+                    let labels = &sub_super[asg[v].unwrap() as usize];
+                    labels.contains(&cid)
+                        || implicit_positive
+                            .and_then(|pairs| pairs.get(&cid))
+                            .is_some_and(|positive| !labels.contains(positive))
+                }
                 RAtom::R { rid, s, t } => {
                     edges[asg[s].unwrap() as usize].contains(&(rid, asg[t].unwrap()))
                 }
@@ -5687,7 +6572,7 @@ fn cert_round(
             if let Some(out) = collect.as_deref_mut() {
                 out.push((rci, asg.iter().map(|b| b.unwrap()).collect()));
                 // Under the cap, keep enumerating this round's violations.
-                return out.len() < REPAIR_VIOL_CAP;
+                return out.len() < collect_limit;
             }
             return false;
         }
@@ -5708,6 +6593,7 @@ fn cert_round(
                         nodes,
                         alive,
                         sub_super,
+                        implicit_positive,
                         edges,
                         repr,
                         members,
@@ -5716,6 +6602,7 @@ fn cert_round(
                         empty_e,
                         budget,
                         collect,
+                        collect_limit,
                     )
                 }
                 None => {
@@ -5734,6 +6621,7 @@ fn cert_round(
                             nodes,
                             alive,
                             sub_super,
+                            implicit_positive,
                             edges,
                             repr,
                             members,
@@ -5742,6 +6630,7 @@ fn cert_round(
                             empty_e,
                             budget,
                             collect,
+                            collect_limit,
                         ) {
                             asg[v] = None;
                             return false;
@@ -5766,6 +6655,7 @@ fn cert_round(
                         nodes,
                         alive,
                         sub_super,
+                        implicit_positive,
                         edges,
                         repr,
                         members,
@@ -5774,6 +6664,7 @@ fn cert_round(
                         empty_e,
                         budget,
                         collect,
+                        collect_limit,
                     )
                 }
                 (Some(sn), None) => {
@@ -5795,6 +6686,7 @@ fn cert_round(
                             nodes,
                             alive,
                             sub_super,
+                            implicit_positive,
                             edges,
                             repr,
                             members,
@@ -5803,6 +6695,7 @@ fn cert_round(
                             empty_e,
                             budget,
                             collect,
+                            collect_limit,
                         ) {
                             asg[t] = None;
                             return false;
@@ -5842,6 +6735,7 @@ fn cert_round(
                             nodes,
                             alive,
                             sub_super,
+                            implicit_positive,
                             edges,
                             repr,
                             members,
@@ -5850,6 +6744,7 @@ fn cert_round(
                             empty_e,
                             budget,
                             collect,
+                            collect_limit,
                         ) {
                             asg[s] = os;
                             asg[t] = ot;
@@ -5883,6 +6778,7 @@ fn cert_round(
                         nodes,
                         alive,
                         sub_super,
+                        implicit_positive,
                         edges,
                         repr,
                         members,
@@ -5891,6 +6787,7 @@ fn cert_round(
                         empty_e,
                         budget,
                         collect,
+                        collect_limit,
                     )
                 }
                 // unbound side: cannot evaluate — fail conservatively
@@ -5899,7 +6796,44 @@ fn cert_round(
         }
     }
 
-    for (i, rc) in rcs.iter().enumerate() {
+    let mut clause_order: Vec<usize> = (0..rcs.len()).collect();
+    if collect.is_some() && std::env::var_os("KM_ELC_REPAIR_GUARDED_FIRST").is_some() {
+        clause_order.sort_by_key(|&i| {
+            let rc = &rcs[i];
+            let head_width = rc
+                .head
+                .iter()
+                .filter(|atom| !matches!(atom, RAtom::Eq { .. }))
+                .count();
+            let universal_cover = head_width > 1
+                && (rc.body.is_empty()
+                    || rc
+                        .body
+                        .iter()
+                        .all(|atom| matches!(atom, RAtom::C { cid, .. } if *cid == TOP)));
+            let concept_guarded = !universal_cover
+                && !rc.body.is_empty()
+                && rc.body.iter().all(|atom| matches!(atom, RAtom::C { .. }));
+            if concept_guarded {
+                0u8
+            } else if universal_cover {
+                1
+            } else {
+                2
+            }
+        });
+    }
+    for i in clause_order {
+        if implicit_covers.is_some_and(|covers| covers.contains(&i)) {
+            continue;
+        }
+        let rc = &rcs[i];
+        // A Skolemized consequence A(x) -> ...f(x)... has no instances when
+        // A is empty. Its dedicated completion witness may then be bottom,
+        // but the source clause is vacuous and imposes no pin requirement.
+        if !residual_clause_active_in(rc, alive, Some(members)) {
+            continue;
+        }
         // static atom order: bound-first greedy (atoms whose vars are already
         // bound act as filters; among generators prefer the smaller list).
         // Pinned (skolem) variables start bound to their filler node.
@@ -5948,6 +6882,20 @@ fn cert_round(
         for &(v, node) in &rc.pins {
             asg[v] = Some(node);
         }
+        // A global collection cap used to let the first universal covering
+        // clause consume the entire round on a large canonical domain. Later
+        // guarded clauses then never contributed consequences until many stale
+        // complement choices had already been made. Give every residual clause
+        // a bounded slice of a repair round. Repeated rounds still enumerate all
+        // remaining instances, while no clause can starve the rest.
+        let fair_collect = std::env::var_os("KM_ELC_REPAIR_FAIR").is_some();
+        let per_clause = if fair_collect {
+            (repair_viol_cap / rcs.len().max(1)).max(1)
+        } else {
+            repair_viol_cap
+        };
+        let before = collect.as_deref().map_or(0, |out| out.len());
+        let collect_limit = (before + per_clause).min(repair_viol_cap);
         let ok = join(
             rc,
             i,
@@ -5957,6 +6905,7 @@ fn cert_round(
             nodes,
             alive,
             sub_super,
+            implicit_positive,
             edges,
             repr,
             members,
@@ -5965,8 +6914,15 @@ fn cert_round(
             &empty_e,
             budget,
             &mut collect,
+            collect_limit,
         );
         if !ok {
+            let slice_full = collect
+                .as_deref()
+                .is_some_and(|out| out.len() >= collect_limit);
+            if *budget > 0 && slice_full && collect_limit < repair_viol_cap {
+                continue;
+            }
             if debug {
                 eprintln!(
                     "KM_ELC_CERT fail at residual clause {} of {} (budget_left={})",
@@ -6011,6 +6967,8 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, st: &State, debug: bool) -> boo
         &mut budget,
         None,
         debug,
+        None,
+        None,
         None,
     )
 }
@@ -6086,10 +7044,51 @@ fn merge_nodes(st: &mut State, repr: &mut [u32], merged: &mut Vec<u32>, x: u32, 
 /// Attribute a local contradiction to the repair choice that caused it: the
 /// direct choice that put a body concept at the conflicting node, else the
 /// most recent unbanned choice at a node this clause instance mentions, else
-/// the most recent unbanned choice anywhere (chronological backtracking).
+/// the most recent unbanned choice anywhere (chronological backtracking). When
+/// a resumed soft-ban checkpoint has exhausted an instance, the tier-3 chooser
+/// may reuse a banned side; return that actual choice as a final fallback so
+/// the conflict application can reopen its siblings.
 ///
 /// `None` means no choice was made at all, so the contradiction is entailed by
 /// the base model and the certificate must fail rather than restart.
+#[inline]
+fn repair_choice_untried(
+    banned: &HashSet<(u32, usize, u32)>,
+    choice: (u32, usize, u32),
+) -> bool {
+    !banned.contains(&choice) && !banned.contains(&(choice.0, choice.1, u32::MAX))
+}
+
+#[inline]
+fn repair_exhausted_choice_instances(
+    banned: &HashSet<(u32, usize, u32)>,
+    choices: &[(u32, usize, u32)],
+    rcs: &[RClause],
+) -> HashSet<(u32, usize)> {
+    let instances: HashSet<(u32, usize)> = choices
+        .iter()
+        .map(|&(node, clause, _)| (node, clause))
+        .collect();
+    instances
+        .into_iter()
+        .filter(|&(node, clause)| {
+            banned.contains(&(node, clause, u32::MAX))
+                || rcs.get(clause).is_some_and(|rc| {
+                    !rc.head.is_empty()
+                        && rc.head.iter().all(|atom| match *atom {
+                            RAtom::C { cid, .. } => {
+                                banned.contains(&(node, clause, cid))
+                                    || choices.iter().any(|&choice| {
+                                        (choice.0, choice.1, choice.2) == (node, clause, cid)
+                                    })
+                            }
+                            _ => false,
+                        })
+                })
+        })
+        .collect()
+}
+
 fn blame_choice(
     rc: &RClause,
     asg: &[u32],
@@ -6102,7 +7101,7 @@ fn blame_choice(
         if let RAtom::C { cid, v } = *a {
             let nd = uf_find(repr, asg[v]);
             if let Some(&src) = prov.get(&(nd, cid)) {
-                if !banned.contains(&(nd, src, cid)) {
+                if repair_choice_untried(banned, (nd, src, cid)) {
                     return Some((nd, src, cid));
                 }
             }
@@ -6117,9 +7116,450 @@ fn blame_choice(
     chrono
         .iter()
         .rev()
-        .find(|t| conf_nodes.contains(&uf_find(repr, t.0)) && !banned.contains(*t))
+        .find(|&&t| conf_nodes.contains(&uf_find(repr, t.0)) && repair_choice_untried(banned, t))
         .copied()
-        .or_else(|| chrono.iter().rev().find(|t| !banned.contains(*t)).copied())
+        .or_else(|| {
+            chrono
+                .iter()
+                .rev()
+                .find(|&&t| repair_choice_untried(banned, t))
+                .copied()
+        })
+        .or_else(|| chrono.last().copied())
+}
+
+/// Walk an EL-closure explanation backwards until it reaches a direct
+/// residual-model choice. Repair provenance records only those direct choices,
+/// while a protected root commonly reaches bottom several NF1/NF2/NF4 steps
+/// later, or because one of its existential successors dies. This bounded
+/// reconstruction is used only by the publication-disabled rooted diagnostic.
+#[derive(Default)]
+struct RepairTraceIdx {
+    bottom_subs: Vec<u32>,
+    nf1_by_sup: HashMap<u32, Vec<u32>>,
+    nf2_by_sup: HashMap<u32, Vec<(u32, u32)>>,
+    nf3_by_pair: HashMap<(u32, u32), Vec<u32>>,
+    nf3_by_role: HashMap<u32, Vec<(u32, u32)>>,
+    nf4_by_sup: HashMap<u32, Vec<(u32, u32)>>,
+}
+
+impl RepairTraceIdx {
+    fn new(nfs: &Nfs) -> Self {
+        let mut out = RepairTraceIdx {
+            bottom_subs: nfs.nf5.clone(),
+            nf1_by_sup: HashMap::default(),
+            nf2_by_sup: HashMap::default(),
+            nf3_by_pair: HashMap::default(),
+            nf3_by_role: HashMap::default(),
+            nf4_by_sup: HashMap::default(),
+        };
+        for nf in &nfs.nf1 {
+            out.nf1_by_sup.entry(nf.sup).or_default().push(nf.sub);
+        }
+        for nf in &nfs.nf2 {
+            out.nf2_by_sup
+                .entry(nf.sup)
+                .or_default()
+                .push((nf.sub1, nf.sub2));
+        }
+        for nf in &nfs.nf3 {
+            out.nf3_by_pair
+                .entry((nf.role, nf.filler))
+                .or_default()
+                .push(nf.sub);
+            out.nf3_by_role
+                .entry(nf.role)
+                .or_default()
+                .push((nf.sub, nf.filler));
+        }
+        for nf in &nfs.nf4 {
+            out.nf4_by_sup
+                .entry(nf.sup)
+                .or_default()
+                .push((nf.role, nf.filler));
+        }
+        out
+    }
+}
+
+fn trace_repair_choice(
+    node: u32,
+    concept: u32,
+    st: &State,
+    nfs: &Nfs,
+    trace: &RepairTraceIdx,
+    it: &Interner,
+    repr: &mut [u32],
+    prov: &HashMap<(u32, u32), usize>,
+    banned: &HashSet<(u32, usize, u32)>,
+    seen: &mut HashSet<(u32, u32)>,
+    depth: usize,
+) -> Option<(u32, usize, u32)> {
+    // This is a search-order diagnostic, not part of model acceptance.  On a
+    // large rooted carrier an already-tried explanation can fan out through
+    // millions of equivalent EL derivations before reaching another direct
+    // choice.  Bound that reconstruction work and let the caller fall back to
+    // its chronological untried choice.  The selected branch remains a soft
+    // ban, and every candidate still has to pass the complete residual-model
+    // check, so this cap cannot weaken the certificate.
+    const STATE_CAP: usize = 1_000;
+    if depth == 0 {
+        return None;
+    }
+    let node = uf_find(repr, node);
+    if let Some(&rci) = prov.get(&(node, concept)) {
+        let choice = (node, rci, concept);
+        if repair_choice_untried(banned, choice) {
+            return Some(choice);
+        }
+    }
+    if seen.len() >= STATE_CAP || !seen.insert((node, concept)) {
+        return None;
+    }
+
+    if concept == BOTTOM {
+        for &(_, target0) in &st.edges[node as usize] {
+            let target = uf_find(repr, target0);
+            if st.sub_super[target as usize].contains(&BOTTOM) {
+                if let Some(generator) = dedicated_witness_generator(target, node, st, it) {
+                    if let Some(choice) = trace_repair_choice(
+                        node, generator, st, nfs, trace, it, repr, prov, banned, seen, depth - 1,
+                    ) {
+                        return Some(choice);
+                    }
+                }
+            }
+        }
+        for &sub in &trace.bottom_subs {
+            if st.sub_super[node as usize].contains(&sub) {
+                if let Some(choice) = trace_repair_choice(
+                    node, sub, st, nfs, trace, it, repr, prov, banned, seen, depth - 1,
+                ) {
+                    return Some(choice);
+                }
+            }
+        }
+    }
+    for &sub in trace.nf1_by_sup.get(&concept).into_iter().flatten() {
+        if st.sub_super[node as usize].contains(&sub) {
+            if let Some(choice) = trace_repair_choice(
+                node, sub, st, nfs, trace, it, repr, prov, banned, seen, depth - 1,
+            ) {
+                return Some(choice);
+            }
+        }
+    }
+    for &(sub1, sub2) in trace.nf2_by_sup.get(&concept).into_iter().flatten() {
+        if st.sub_super[node as usize].contains(&sub1)
+            && st.sub_super[node as usize].contains(&sub2)
+        {
+            for sub in [sub1, sub2] {
+                if let Some(choice) = trace_repair_choice(
+                    node, sub, st, nfs, trace, it, repr, prov, banned, seen, depth - 1,
+                ) {
+                    return Some(choice);
+                }
+            }
+        }
+    }
+    for &(nf_role, nf_filler) in trace.nf4_by_sup.get(&concept).into_iter().flatten() {
+        for &(role, target0) in &st.edges[node as usize] {
+            let target = uf_find(repr, target0);
+            if role != nf_role || !st.sub_super[target as usize].contains(&nf_filler) {
+                continue;
+            }
+            if let Some(generator) = dedicated_witness_generator(target, node, st, it) {
+                if let Some(choice) = trace_repair_choice(
+                    node, generator, st, nfs, trace, it, repr, prov, banned, seen, depth - 1,
+                ) {
+                    return Some(choice);
+                }
+            }
+            for &producer_sub in trace
+                .nf3_by_pair
+                .get(&(role, nf_filler))
+                .into_iter()
+                .flatten()
+            {
+                if st.sub_super[node as usize].contains(&producer_sub) {
+                    if let Some(choice) = trace_repair_choice(
+                        node,
+                        producer_sub,
+                        st,
+                        nfs,
+                        trace,
+                        it,
+                        repr,
+                        prov,
+                        banned,
+                        seen,
+                        depth - 1,
+                    ) {
+                        return Some(choice);
+                    }
+                }
+            }
+            if let Some(choice) = trace_repair_choice(
+                target,
+                nf_filler,
+                st,
+                nfs,
+                trace,
+                it,
+                repr,
+                prov,
+                banned,
+                seen,
+                depth - 1,
+            ) {
+                return Some(choice);
+            }
+        }
+    }
+    if concept == BOTTOM {
+        for &(role, target0) in &st.edges[node as usize] {
+            let target = uf_find(repr, target0);
+            if !st.sub_super[target as usize].contains(&BOTTOM) {
+                continue;
+            }
+            if let Some(generator) = dedicated_witness_generator(target, node, st, it) {
+                if let Some(choice) = trace_repair_choice(
+                    node, generator, st, nfs, trace, it, repr, prov, banned, seen, depth - 1,
+                ) {
+                    return Some(choice);
+                }
+            }
+            for &(producer_sub, producer_filler) in trace
+                .nf3_by_role
+                .get(&role)
+                .into_iter()
+                .flatten()
+            {
+                if st.sub_super[target as usize].contains(&producer_filler)
+                    && st.sub_super[node as usize].contains(&producer_sub)
+                {
+                    if let Some(choice) = trace_repair_choice(
+                        node,
+                        producer_sub,
+                        st,
+                        nfs,
+                        trace,
+                        it,
+                        repr,
+                        prov,
+                        banned,
+                        seen,
+                        depth - 1,
+                    ) {
+                        return Some(choice);
+                    }
+                }
+            }
+            if let Some(choice) = trace_repair_choice(
+                target,
+                BOTTOM,
+                st,
+                nfs,
+                trace,
+                it,
+                repr,
+                prov,
+                banned,
+                seen,
+                depth - 1,
+            ) {
+                return Some(choice);
+            }
+        }
+    }
+    None
+}
+
+/// Emit a bounded explanation tree for one closed EL membership. This is a
+/// diagnostic only: it neither records provenance in the production state nor
+/// affects rule firing. It reconstructs direct NF1/NF2/NF4/NF5 producers from
+/// the final fixpoint so a real large-ontology clash can identify the rule
+/// family that needs exact provenance.
+fn debug_el_membership_producers(
+    node: u32,
+    concept: u32,
+    st: &State,
+    nfs: &Nfs,
+    it: &Interner,
+    prov: &HashMap<(u32, u32), usize>,
+    seen: &mut HashSet<(u32, u32)>,
+    depth: usize,
+    lines: &mut usize,
+) {
+    const LINE_CAP: usize = 40;
+    if depth == 0 || *lines >= LINE_CAP || !seen.insert((node, concept)) {
+        return;
+    }
+    let indent = "  ".repeat(5usize.saturating_sub(depth));
+    if let Some(&rci) = prov.get(&(node, concept)) {
+        eprintln!(
+            "KM_ELC_CERT target derivation: {indent}{}@{} direct residual choice clause={rci}",
+            it.name(concept),
+            it.debug_name(node),
+        );
+        *lines += 1;
+    }
+    if concept == BOTTOM {
+        for &sub in nfs
+            .nf5
+            .iter()
+            .filter(|&&sub| st.sub_super[node as usize].contains(&sub))
+            .take(6)
+        {
+            eprintln!(
+                "KM_ELC_CERT target derivation: {indent}{} -> bottom (NF5)",
+                it.name(sub),
+            );
+            *lines += 1;
+            debug_el_membership_producers(
+                node, sub, st, nfs, it, prov, seen, depth - 1, lines,
+            );
+        }
+    }
+    for nf in nfs
+        .nf1
+        .iter()
+        .filter(|nf| nf.sup == concept && st.sub_super[node as usize].contains(&nf.sub))
+        .take(6)
+    {
+        eprintln!(
+            "KM_ELC_CERT target derivation: {indent}{} -> {} (NF1)",
+            it.name(nf.sub),
+            it.name(concept),
+        );
+        *lines += 1;
+        debug_el_membership_producers(
+            node, nf.sub, st, nfs, it, prov, seen, depth - 1, lines,
+        );
+    }
+    for nf in nfs
+        .nf2
+        .iter()
+        .filter(|nf| {
+            nf.sup == concept
+                && st.sub_super[node as usize].contains(&nf.sub1)
+                && st.sub_super[node as usize].contains(&nf.sub2)
+        })
+        .take(6)
+    {
+        eprintln!(
+            "KM_ELC_CERT target derivation: {indent}{} & {} -> {} (NF2)",
+            it.name(nf.sub1),
+            it.name(nf.sub2),
+            it.name(concept),
+        );
+        *lines += 1;
+        for sub in [nf.sub1, nf.sub2] {
+            debug_el_membership_producers(
+                node, sub, st, nfs, it, prov, seen, depth - 1, lines,
+            );
+        }
+    }
+    for nf in nfs.nf4.iter().filter(|nf| nf.sup == concept).take(4) {
+        let mut matching_edges = 0usize;
+        for &(role, target) in &st.edges[node as usize] {
+            if role != nf.role || !st.sub_super[target as usize].contains(&nf.filler) {
+                continue;
+            }
+            if matching_edges >= 2 {
+                break;
+            }
+            matching_edges += 1;
+            eprintln!(
+                "KM_ELC_CERT target derivation: {indent}exists {}.{} via {} -> {} (NF4); \
+                 filler_choice={:?}",
+                it.name(role),
+                it.name(nf.filler),
+                it.debug_name(target),
+                it.name(concept),
+                prov.get(&(target, nf.filler)),
+            );
+            *lines += 1;
+            debug_el_membership_producers(
+                target,
+                nf.filler,
+                st,
+                nfs,
+                it,
+                prov,
+                seen,
+                depth - 1,
+                lines,
+            );
+            for producer in nfs.nf3.iter().filter(|producer| {
+                producer.role == role
+                    && st.sub_super[target as usize].contains(&producer.filler)
+                    && st.sub_super[node as usize].contains(&producer.sub)
+            }) {
+                eprintln!(
+                    "KM_ELC_CERT target edge origin: {indent}{} -> exists {}.{} (NF3)",
+                    it.name(producer.sub),
+                    it.name(role),
+                    it.debug_name(target),
+                );
+                *lines += 1;
+                debug_el_membership_producers(
+                    node,
+                    producer.sub,
+                    st,
+                    nfs,
+                    it,
+                    prov,
+                    seen,
+                    depth - 1,
+                    lines,
+                );
+            }
+            for inclusion in nfs.nf6.iter().filter(|inclusion| inclusion.sup == role) {
+                if st.edges[node as usize].contains(&(inclusion.sub, target)) {
+                    eprintln!(
+                        "KM_ELC_CERT target edge origin: {indent}{} edge lifted to {} (NF6)",
+                        it.name(inclusion.sub),
+                        it.name(role),
+                    );
+                    *lines += 1;
+                }
+            }
+            for chain in nfs.nf7.iter().filter(|chain| chain.sup == role) {
+                for &(first, middle) in &st.edges[node as usize] {
+                    if first == chain.r1
+                        && st.edges[middle as usize].contains(&(chain.r2, target))
+                    {
+                        eprintln!(
+                            "KM_ELC_CERT target edge origin: {indent}{} o {} via {} -> {} (NF7)",
+                            it.name(chain.r1),
+                            it.name(chain.r2),
+                            it.debug_name(middle),
+                            it.name(role),
+                        );
+                        *lines += 1;
+                        if *lines >= LINE_CAP {
+                            return;
+                        }
+                    }
+                }
+            }
+            debug_el_membership_producers(
+                target, nf.filler, st, nfs, it, prov, seen, depth - 1, lines,
+            );
+            if *lines >= LINE_CAP {
+                return;
+            }
+        }
+    }
+}
+
+fn dedicated_witness_generator(target: u32, source: u32, st: &State, it: &Interner) -> Option<u32> {
+    it.maybe_name(target)?
+        .strip_prefix("__cert_witness__f_")
+        .and_then(|name| name.rsplit_once('_').map(|(concept, _)| concept))
+        .and_then(|concept| it.id(concept))
+        .filter(|&generator| st.sub_super[source as usize].contains(&generator))
 }
 
 /// Human-readable residual clause for certificate-search diagnostics. This is
@@ -6147,6 +7587,23 @@ fn describe_residual_clause(rc: &RClause, it: &Interner) -> String {
     format!("{} -> {}", side(&rc.body, " ∧ "), side(&rc.head, " ∨ "))
 }
 
+/// Stable avalanche mixer for deterministic repair-portfolio choices.
+///
+/// Taking an odd multiply/add expression directly modulo a binary head only
+/// observes its low bit.  That made every nominally different model seed
+/// collapse to one of two node-parity assignments.  SplitMix64's finalizer
+/// diffuses the node, clause, and pass bits before the modulo operation, so
+/// each pass explores a genuinely different deterministic assignment.
+fn repair_choice_mix(node: u32, clause: usize, pass: usize) -> usize {
+    let mut x = (node as u64)
+        .wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        ^ (clause as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9)
+        ^ (pass as u64).wrapping_mul(0x94d0_49bb_1331_11eb);
+    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    (x ^ (x >> 31)) as usize
+}
+
 /// Certificate verdict: `Pass` answers everything; `Partial(subjects)`
 /// answers every named subject EXCEPT the listed ones (their truth could not
 /// be pinned between the EL lower bound and the model upper bounds — the
@@ -6165,6 +7622,7 @@ fn repair_certify(
     base: &State,
     it: &Interner,
     debug: bool,
+    preserve_override: Option<&[String]>,
 ) -> CertOutcome {
     const MAX_ROUNDS: usize = 64;
     const PASS_BUDGET: u64 = 400_000_000;
@@ -6175,12 +7633,35 @@ fn repair_certify(
             is_named[c as usize] = true;
         }
     }
-    // disjointness pairs (NF2 with a ⊥ head), for greedy choice avoidance:
-    // when repairing a covering disjunction at a node, prefer a disjunct that
-    // is not already disjoint with the node's labels
+    // Concepts known empty through a unary NF1 chain. Normalisation commonly
+    // represents disjointness as `A & B -> Q`, `Q -> Qbot`, `Qbot -> bottom`
+    // rather than giving the NF2 rule a literal bottom head. Recovering this
+    // chain lets greedy repair avoid the same impossible choice without adding
+    // any consequence to the model.
+    let mut known_bottom: HashSet<u32> = nfs.nf5.iter().copied().collect();
+    // Bottom is itself known empty. Omitting it made direct normal forms such
+    // as A & B -> bottom invisible both to disjointness guidance and to the
+    // exact complement recognizer; only proxy concepts chained to bottom were
+    // previously discovered.
+    known_bottom.insert(BOTTOM);
+    loop {
+        let mut changed = false;
+        for nf in &nfs.nf1 {
+            if known_bottom.contains(&nf.sup) {
+                changed |= known_bottom.insert(nf.sub);
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    // disjointness pairs (NF2 whose head is known bottom), for greedy choice
+    // avoidance: prefer a disjunct that is not already incompatible with the
+    // node's labels. This remains guidance only; banned choices remain
+    // available in the final tier and the complete residual model is checked.
     let mut disj: HashMap<u32, HashSet<u32>> = HashMap::default();
     for f in &nfs.nf2 {
-        if f.sup == BOTTOM {
+        if known_bottom.contains(&f.sup) {
             disj.entry(f.sub1).or_default().insert(f.sub2);
             disj.entry(f.sub2).or_default().insert(f.sub1);
         }
@@ -6189,6 +7670,27 @@ fn repair_certify(
     // qualified-cardinality guidance: which node pairs a `≥n` clause pins
     // apart, and which concepts activate a `≤n` bound when chosen
     let guide = CardGuide::new(rcs);
+    let bulk_root_card_conflicts =
+        std::env::var_os("KM_ELC_REPAIR_BULK_ROOT_CARD").is_some();
+    let bulk_causal_clause_conflicts =
+        std::env::var_os("KM_ELC_REPAIR_BULK_CAUSAL_CLAUSE").is_some();
+    let bulk_causal_node_conflicts =
+        std::env::var_os("KM_ELC_REPAIR_BULK_CAUSAL_NODE").is_some();
+    let eager_causal_mix =
+        std::env::var_os("KM_ELC_REPAIR_EAGER_CAUSAL_MIX").is_some();
+    // Keep eager causal backtracking while independently preferring an
+    // already-satisfied cardinality bound. This only orders candidate choices:
+    // banned low sides, lazy-complement preferences, and exhausted covers keep
+    // their existing alternatives. Publication still requires model checks.
+    let cardinality_seeded = eager_causal_mix
+        && std::env::var_os("KM_ELC_REPAIR_CARD_LOW_FIRST").is_none();
+    let eager_continuation = eager_causal_mix
+        && std::env::var_os("KM_ELC_REPAIR_EAGER_CONTINUATION").is_some();
+    let causal_mix_batch: usize = std::env::var("KM_ELC_REPAIR_MIX_BATCH")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(64)
+        .clamp(1, 4_096);
     if debug {
         eprintln!(
             "KM_ELC_CERT repair guidance: {} pinned witness pair(s), {} at-most bound(s), \
@@ -6209,6 +7711,221 @@ fn repair_certify(
     let base_alive_named: Vec<u32> = (0..n as u32)
         .filter(|&c| is_named[c as usize] && !base.sub_super[c as usize].contains(&BOTTOM))
         .collect();
+    // Diagnostic/portfolio hook: require selected named subjects to remain in
+    // the domain of death-tolerant model passes. This does not certify them by
+    // itself; any accepted pass still receives the complete residual-model
+    // check, and failure remains fail-closed. It lets a model portfolio cover
+    // satisfiable subjects that both default polarity models happen to kill.
+    let configured_preserve = std::env::var("KM_ELC_PRESERVE").ok();
+    let preserve_names: Vec<&str> = preserve_override
+        .map(|names| names.iter().map(String::as_str).collect())
+        .unwrap_or_else(|| {
+            configured_preserve
+                .as_deref()
+                .into_iter()
+                .flat_map(|names| names.split(','))
+                .collect()
+        });
+    let preserve_named: Vec<u32> = preserve_names
+        .into_iter()
+        .filter_map(|name| it.id(name))
+        .filter(|&c| is_named[c as usize] && !base.sub_super[c as usize].contains(&BOTTOM))
+        .collect();
+
+    // Diagnostic precursor to a rooted countermodel certificate. A model for
+    // one negative taxonomy row needs only a nonempty subinterpretation rooted
+    // at that subject, but it must remain closed under every existential edge
+    // and retain every source pin. Build a conservative static carrier: all
+    // requested roots, then admit only outgoing-edge targets and witnesses of
+    // residual clauses whose exact source guards are inhabited. The carrier is
+    // expanded again after every repair closure, so a newly enabled
+    // existential target enters before the next residual check.
+    //
+    // This mode is deliberately diagnostic-only below. The existing
+    // all-subject exactness proof expects one canonical node per named concept;
+    // a rooted model needs a separate per-row countermodel wire before it may
+    // publish anything.
+    let rooted_domain =
+        std::env::var_os("KM_ELC_REPAIR_ROOT_DOMAIN").is_some() && !preserve_named.is_empty();
+    let mut fresh_inverse_roles: HashSet<u32> =
+        if rooted_domain && std::env::var_os("KM_ELC_REPAIR_FRESH_ALL").is_some() {
+            // Full source-specific unravelling for the rooted model.  NF3 is the
+            // complete list of existential generators in the EL subset, so no
+            // ordinary role edge is rewritten unless it has an existential
+            // (role, filler) witness shape below.
+            nfs.nf3.iter().map(|nf| nf.role).collect()
+        } else if rooted_domain && std::env::var_os("KM_ELC_REPAIR_FRESH_INV").is_some() {
+            rcs.iter().filter_map(inverse_functional_role).collect()
+        } else {
+            HashSet::default()
+        };
+    let mut unrestricted_fresh_roles = fresh_inverse_roles.clone();
+    let mut selected_fresh_pairs = HashSet::default();
+    let mut deep_unrestricted_fresh_roles = HashSet::default();
+    let mut deep_selected_fresh_pairs = HashSet::default();
+    let selective_deep = rooted_domain
+        && (std::env::var_os("KM_ELC_REPAIR_FRESH_DEEP_ROLES").is_some()
+            || std::env::var_os("KM_ELC_REPAIR_FRESH_DEEP_PAIRS").is_some());
+    if rooted_domain {
+        // A diagnostic may request the much smaller causal unravelling
+        // frontier discovered from a failed rooted model. Unknown role names
+        // are ignored, and `target` still rewrites only indexed NF3 witness
+        // pairs, so this cannot capture asserted or residual-only edges.
+        if let Ok(names) = std::env::var("KM_ELC_REPAIR_FRESH_ROLES") {
+            for role in names
+                .split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .filter_map(|name| it.id(name))
+            {
+                fresh_inverse_roles.insert(role);
+                unrestricted_fresh_roles.insert(role);
+            }
+        }
+        // Exact `role=filler` pairs support causal unravelling without
+        // recursively freshening every existential carried by a common role.
+        if let Ok(pairs) = std::env::var("KM_ELC_REPAIR_FRESH_PAIRS") {
+            for pair in pairs.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+                let Some((role, filler)) = pair.split_once('=') else {
+                    continue;
+                };
+                let Some(role) = it.id(role.trim()) else {
+                    continue;
+                };
+                let Some(filler) = it.id(filler.trim()) else {
+                    continue;
+                };
+                fresh_inverse_roles.insert(role);
+                selected_fresh_pairs.insert((role, filler));
+            }
+        }
+        // Keep a complete source-specific first layer while restricting
+        // recursive unravelling to a causal frontier. Merely defining either
+        // variable enables the split; an empty value intentionally disables
+        // all freshening below depth one.
+        if let Ok(names) = std::env::var("KM_ELC_REPAIR_FRESH_DEEP_ROLES") {
+            for role in names
+                .split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .filter_map(|name| it.id(name))
+            {
+                fresh_inverse_roles.insert(role);
+                deep_unrestricted_fresh_roles.insert(role);
+            }
+        }
+        if let Ok(pairs) = std::env::var("KM_ELC_REPAIR_FRESH_DEEP_PAIRS") {
+            for pair in pairs.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+                let Some((role, filler)) = pair.split_once('=') else {
+                    continue;
+                };
+                let Some(role) = it.id(role.trim()) else {
+                    continue;
+                };
+                let Some(filler) = it.id(filler.trim()) else {
+                    continue;
+                };
+                fresh_inverse_roles.insert(role);
+                deep_selected_fresh_pairs.insert((role, filler));
+            }
+        }
+    }
+    let repair_concept_names: HashSet<u32> = if rooted_domain {
+        let mut domain: HashSet<u32> = preserve_named.iter().copied().collect();
+        let mut identity: Vec<u32> = (0..n as u32).collect();
+        expand_rooted_domain(&mut domain, base, rcs, &mut identity);
+        if debug {
+            eprintln!(
+                "KM_ELC_CERT rooted-domain diagnostic: roots={} carrier={} full={}",
+                preserve_named.len(),
+                domain.len(),
+                nfs.concept_names.len(),
+            );
+        }
+        domain
+    } else {
+        nfs.concept_names.clone()
+    };
+    // Explicit opt-in for per-row rooted certificates. A successful rooted
+    // run may publish only its protected subjects; every other base-alive
+    // named subject is marked unresolved and therefore omitted from output.
+    let rooted_publish = rooted_domain && std::env::var_os("KM_ELC_REPAIR_ROOT_PUBLISH").is_some();
+    let lazy_complements = if rooted_domain {
+        regular_lazy_complements(rcs, nfs, &known_bottom, it)
+    } else {
+        Vec::new()
+    };
+    let implicit_covers: HashSet<usize> = lazy_complements
+        .iter()
+        .map(|complement| complement.cover_clause)
+        .collect();
+    let implicit_positive: HashMap<u32, u32> = lazy_complements
+        .iter()
+        .map(|complement| (complement.negative, complement.positive))
+        .collect();
+    let prefer_positive_guards: HashSet<u32> = implicit_positive.keys().copied().collect();
+    // Every unambiguous universal binary concept cover gives either side a
+    // concrete opposite branch. Cardinality partitions are commonly Q/Q
+    // covers rather than the named/Q complements recognized above, so build
+    // this map directly from the residual theory. Ambiguous concepts are
+    // omitted and remain on the ordinary chooser.
+    let mut cover_candidates: HashMap<u32, Option<(u32, usize)>> = HashMap::default();
+    for (rci, rc) in rcs.iter().enumerate() {
+        if !rc.pins.is_empty()
+            || !(rc.body.is_empty()
+                || rc
+                    .body
+                    .iter()
+                    .all(|atom| matches!(atom, RAtom::C { cid, .. } if *cid == TOP)))
+            || rc.head.len() != 2
+        {
+            continue;
+        }
+        let (RAtom::C { cid: left, v: lv }, RAtom::C { cid: right, v: rv }) =
+            (rc.head[0], rc.head[1])
+        else {
+            continue;
+        };
+        if lv != rv || left == right {
+            continue;
+        }
+        for (side, other) in [(left, right), (right, left)] {
+            cover_candidates
+                .entry(side)
+                .and_modify(|slot| {
+                    if *slot != Some((other, rci)) {
+                        *slot = None;
+                    }
+                })
+                .or_insert(Some((other, rci)));
+        }
+    }
+    let universal_cover_alternatives: HashMap<u32, (u32, usize)> = cover_candidates
+        .into_iter()
+        .filter_map(|(side, alternative)| alternative.map(|value| (side, value)))
+        .collect();
+    // Causal reconstruction is a rooted-route facility.  Keep its reverse
+    // indexes out of the ordinary certificate path so an Uberon-specific
+    // search aid cannot tax the ORE routes that never consult it.
+    let repair_trace = rooted_domain
+        .then(|| RepairTraceIdx::new(nfs))
+        .unwrap_or_default();
+    if debug && !lazy_complements.is_empty() {
+        eprintln!(
+            "KM_ELC_CERT rooted-domain: {} regular complement cover(s) implicit",
+            lazy_complements.len()
+        );
+    }
+    let rooted_unverified = || {
+        let protected: HashSet<u32> = preserve_named.iter().copied().collect();
+        let mut unresolved: Vec<u32> = base_alive_named
+            .iter()
+            .copied()
+            .filter(|c| !protected.contains(c))
+            .collect();
+        unresolved.sort_unstable();
+        CertOutcome::Partial(unresolved)
+    };
 
     enum PassOut {
         /// the base model already satisfies everything (plain certificate)
@@ -6218,7 +7935,7 @@ fn repair_certify(
         Model(State, HashMap<(u32, u32), usize>),
         /// a ⊥-clause fired on a repair choice: ban that (node, clause,
         /// disjunct) triple and retry
-        Conflict((u32, usize, u32)),
+        Conflict(Vec<(u32, usize, u32)>, Option<usize>),
         Fail,
     }
 
@@ -6227,18 +7944,106 @@ fn repair_certify(
     // the polarity as the tie-break, and every direct concept addition is
     // recorded so a later ⊥-violation can be traced back to the choice that
     // caused it (conflict-driven restart).
-    let run_pass = |polv: &[bool],
+    // Rooted biomedical repairs can spend most of every conflict restart
+    // rebuilding the same deterministic closure (lazy complement consumers,
+    // low-cardinality partition sides, and their fresh existential witnesses).
+    // That prefix is independent of polarity and the banned-choice set.  Keep
+    // one fixpoint checkpoint and fork it for later attempts; only residual
+    // disjunct choices are replayed.  The checkpoint contains no pending work,
+    // and every accepted fork still passes the complete residual recheck.
+    let mut deterministic_scaffold: Option<(
+        State,
+        HashSet<u32>,
+        FreshInverseWitnesses,
+        Vec<u32>,
+    )> = None;
+    let mut deterministic_scaffold_idx: Option<CertIdx> = None;
+    // Rooted proof-neighbor backjumps operate on a causal chain of covering
+    // clauses. Once both sides of one clause have killed the protected root,
+    // trying the same clause at every isomorphic fresh carrier only repeats
+    // the same failed partition. Remember that clause for this repair pass so
+    // the next backjump crosses to the preceding proof decision. This is only
+    // a search-order exclusion: accepted models still undergo full closure,
+    // residual checking, and protected-root checking.
+    let mut rooted_exhausted_backjump_clauses: HashSet<usize> = HashSet::default();
+    // Number of distinct failed repair attempts that blamed each causal
+    // clause. Covers represented by one explicit and one implicit-complement
+    // side do not naturally acquire a per-instance "both sides tried"
+    // sentinel. Remember recurrence across attempts so a two-clause cycle can
+    // use the same proof-neighbor backjump path as an explicit sentinel.
+    let mut rooted_clause_conflict_counts: HashMap<usize, usize> = HashMap::default();
+    let mut run_pass = |polv: &[bool],
                     pass_label: usize,
                     banned: &HashSet<(u32, usize, u32)>,
                     tolerate_deaths: bool,
                     prebuilt: Option<CertIdx>|
      -> PassOut {
-        let mut st = base.fork();
+        let using_scaffold = deterministic_scaffold.is_some();
+        let (mut st, mut repair_domain, mut fresh_inverse, mut repr) =
+            if let Some((cached, domain, fresh, cached_repr)) = &deterministic_scaffold {
+                (
+                    cached.fork(),
+                    domain.clone(),
+                    fresh.clone(),
+                    cached_repr.clone(),
+                )
+            } else {
+                let repair_domain = repair_concept_names.clone();
+                (
+                    base.fork(),
+                    repair_domain.clone(),
+                    FreshInverseWitnesses {
+                        roles: fresh_inverse_roles.clone(),
+                        unrestricted_roles: unrestricted_fresh_roles.clone(),
+                        selected_pairs: selected_fresh_pairs.clone(),
+                        deep_unrestricted_roles: deep_unrestricted_fresh_roles.clone(),
+                        deep_selected_pairs: deep_selected_fresh_pairs.clone(),
+                        selective_deep,
+                        active_sources: repair_domain,
+                        depth: HashMap::default(),
+                        max_depth: std::env::var("KM_ELC_REPAIR_FRESH_DEPTH")
+                            .ok()
+                            .and_then(|value| value.parse().ok()),
+                        existential_pairs: nfs
+                            .nf3
+                            .iter()
+                            .map(|nf| (nf.role, nf.filler))
+                            .collect(),
+                        nodes: HashMap::default(),
+                        origins: HashMap::default(),
+                        limit: std::env::var("KM_ELC_REPAIR_FRESH_INV_CAP")
+                            .ok()
+                            .and_then(|value| value.parse().ok())
+                            .unwrap_or(100_000usize)
+                            // Keep the ordinary 100k guard, but permit an
+                            // explicitly memory-capped large-ontology route
+                            // to unravel a second inverse-witness layer. Full
+                            // Uberon reaches the former 1M ceiling before its
+                            // complete residual check can run.
+                            .clamp(1, 2_000_000),
+                        exhausted: false,
+                    },
+                    (0..n as u32).collect(),
+                )
+            };
         // Journal label additions and reuse one enumeration index for the whole
         // pass: every round would otherwise rescan the entire structure to
         // rebuild an index a round changes only marginally (see [`CertIdx`]).
         st.start_journal();
-        let mut cidx = prebuilt.unwrap_or_default();
+        let mut cidx = if using_scaffold {
+            deterministic_scaffold_idx.clone().unwrap_or_default()
+        } else {
+            prebuilt.unwrap_or_default()
+        };
+        // Optional scheduling knob for large residual repairs: re-close the EL
+        // structure after this many additions instead of assigning an entire
+        // stale violation batch first. Zero retains the established schedule.
+        // This changes enumeration order only; a published model still reaches
+        // the same EL fixpoint and passes the complete residual recheck.
+        let close_batch: u64 = std::env::var("KM_ELC_REPAIR_CLOSE_BATCH")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
         // The default bounds ordinary certificate attempts. Large biomedical
         // terminologies can have a compact residual but hundreds of thousands
         // of violating canonical-model instances per round. Permit a routed
@@ -6250,26 +8055,283 @@ fn repair_certify(
             .and_then(|s| s.parse().ok())
             .unwrap_or(PASS_BUDGET);
         let mut adds: u64 = 0;
-        let mut repr: Vec<u32> = (0..n as u32).collect();
         let mut merged: Vec<u32> = Vec::new();
         let mut prov: HashMap<(u32, u32), usize> = HashMap::default();
         // chronological choice log (node, clause, disjunct) for blame when
         // the direct lookup misses (conflicting facts often arrive via the
         // closure, not directly)
         let mut chrono: Vec<(u32, usize, u32)> = Vec::new();
+        // Promote repeated node-local conflicts into a clause-side search
+        // preference. Uberon's unravelled witnesses are structurally
+        // isomorphic, so learning the same bad side at hundreds of nodes one
+        // full closure at a time is redundant. This set only affects preferred
+        // tiers: exact node bans still govern backtracking and tier 3 still
+        // admits every side before a model can be accepted.
+        let global_side_threshold: usize = std::env::var("KM_ELC_REPAIR_GLOBAL_SIDE_LEARN")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0);
+        let globally_avoided_sides: HashSet<(usize, u32)> = if global_side_threshold == 0 {
+            HashSet::default()
+        } else {
+            let mut counts: HashMap<(usize, u32), usize> = HashMap::default();
+            for &(_, clause, concept) in banned {
+                if concept != u32::MAX {
+                    *counts.entry((clause, concept)).or_default() += 1;
+                }
+            }
+            counts
+                .into_iter()
+                .filter_map(|(side, count)| (count >= global_side_threshold).then_some(side))
+                .collect()
+        };
+        if debug && !globally_avoided_sides.is_empty() {
+            eprintln!(
+                "KM_ELC_CERT repair pass {pass_label}: globally avoiding {} repeatedly failing clause side(s)",
+                globally_avoided_sides.len(),
+            );
+        }
         // quotient-dependent half of the cardinality guidance, re-lifted to the
         // current union-find representatives at the head of every round and
         // after every merge inside one
         let mut cround = CardRound::default();
-        for round in 1..=MAX_ROUNDS {
+        // A small close batch deliberately trades more EL fixpoints for fewer
+        // stale residual choices.  Keep the production ceiling unchanged, but
+        // let a routed large-ontology attempt supply enough rounds to spend its
+        // configured repair budget.  This is only a search-schedule bound: a
+        // successful pass still has to reach a fixpoint and satisfy the full
+        // residual check.
+        let max_rounds: usize = std::env::var("KM_ELC_REPAIR_MAX_ROUNDS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(MAX_ROUNDS)
+            .max(1);
+
+        // With cardinality guidance present, the old checkpoint guard had to
+        // disable caching altogether: the combined loop below interleaves
+        // deterministic lazy-complement consequences with revisable low/high
+        // partition choices.  Build and cache the choice-free prefix first.
+        // Later passes fork exactly this fixpoint, then replay every partition
+        // choice under their current banned set and still undergo the ordinary
+        // complete residual check.
+        if rooted_domain
+            && !guide.by_guard.is_empty()
+            && !using_scaffold
+            && deterministic_scaffold.is_none()
+            && !lazy_complements.is_empty()
+        {
+            // Redirect canonical existential edges before any implicit
+            // complement fires. Otherwise a negative label added to a shared
+            // canonical filler can trigger NF4 back into the protected root;
+            // redirecting the edge afterwards cannot retract that monotone
+            // conclusion. This unravelling depends only on the choice-free
+            // base state and remains deterministic across conflict restarts.
+            loop {
+                let admitted =
+                    expand_rooted_domain(&mut repair_domain, &st, rcs, &mut repr);
+                fresh_inverse
+                    .active_sources
+                    .extend(repair_domain.iter().copied());
+                let redirected = if fresh_inverse.roles.is_empty() {
+                    0
+                } else {
+                    freshen_rooted_inverse_edges(
+                        &repair_domain,
+                        &mut st,
+                        &mut fresh_inverse,
+                        &idx.role_sub,
+                    )
+                };
+                if redirected == 0 {
+                    break;
+                }
+                run_with_fresh_inverse(idx, &mut st, &mut Prof::default(), &mut fresh_inverse);
+                if fresh_inverse.exhausted {
+                    if debug {
+                        eprintln!(
+                            "KM_ELC_CERT repair pass {pass_label}: fresh inverse-witness cap \
+                             {} exhausted during pre-complement redirection",
+                            fresh_inverse.limit,
+                        );
+                    }
+                    return PassOut::Fail;
+                }
+                if repr.len() < st.sub_super.len() {
+                    repr.extend(repr.len() as u32..st.sub_super.len() as u32);
+                }
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT repair pass {pass_label}: pre-complement scaffold carrier \
+                         +{admitted}, redirected {redirected} existential edge(s)"
+                    );
+                }
+            }
+            loop {
+                let complement_added = fire_lazy_complement_consumers(
+                    &lazy_complements,
+                    &repair_domain,
+                    &mut st,
+                    &mut repr,
+                    nfs,
+                    &known_bottom,
+                    banned,
+                    &mut prov,
+                    &mut chrono,
+                    false,
+                    it,
+                );
+                if complement_added == 0 {
+                    break;
+                }
+                run_with_fresh_inverse(idx, &mut st, &mut Prof::default(), &mut fresh_inverse);
+                if fresh_inverse.exhausted {
+                    if debug {
+                        eprintln!(
+                            "KM_ELC_CERT repair pass {pass_label}: fresh inverse-witness cap \
+                             {} exhausted during lazy-complement closure",
+                            fresh_inverse.limit,
+                        );
+                    }
+                    return PassOut::Fail;
+                }
+                if repr.len() < st.sub_super.len() {
+                    repr.extend(repr.len() as u32..st.sub_super.len() as u32);
+                }
+                let admitted =
+                    expand_rooted_domain(&mut repair_domain, &st, rcs, &mut repr);
+                fresh_inverse
+                    .active_sources
+                    .extend(repair_domain.iter().copied());
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT repair pass {pass_label}: deterministic prefix \
+                         (complements +{complement_added}, carrier +{admitted})"
+                    );
+                }
+            }
+            deterministic_scaffold = Some((
+                st.fork(),
+                repair_domain.clone(),
+                fresh_inverse.clone(),
+                repr.clone(),
+            ));
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT repair: cached choice-free scaffold (nodes={}, carrier={})",
+                    st.sub_super.len(),
+                    repair_domain.len(),
+                );
+            }
+        }
+        for round in 1..=max_rounds {
+            if !lazy_complements.is_empty() || (rooted_domain && !guide.by_guard.is_empty()) {
+                loop {
+                    let complement_added = fire_lazy_complement_consumers(
+                        &lazy_complements,
+                        &repair_domain,
+                        &mut st,
+                        &mut repr,
+                        nfs,
+                        &known_bottom,
+                        banned,
+                        &mut prov,
+                        &mut chrono,
+                        true,
+                        it,
+                    );
+                    let cardinality_added = guide.choose_low_sides(
+                        &repair_domain,
+                        &mut st,
+                        &mut repr,
+                        it,
+                        &universal_cover_alternatives,
+                        &prefer_positive_guards,
+                        &globally_avoided_sides,
+                        banned,
+                        cardinality_seeded,
+                        pass_label,
+                        &mut prov,
+                        &mut chrono,
+                    );
+                    let added = complement_added + cardinality_added;
+                    if added == 0 {
+                        break;
+                    }
+                    // These insertions change the candidate model even though
+                    // they occur before ordinary residual-head repair. Count
+                    // them so a clean first certificate round returns Model,
+                    // not Pristine: the latter bypasses the per-subject model
+                    // intersection and is valid only when no repair fact was
+                    // added at all.
+                    adds = adds.saturating_add(added as u64);
+                    run_with_fresh_inverse(idx, &mut st, &mut Prof::default(), &mut fresh_inverse);
+                    if fresh_inverse.exhausted {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {pass_label}: fresh inverse-witness cap \
+                             {} exhausted during eager causal closure",
+                                fresh_inverse.limit,
+                            );
+                            fresh_inverse.report_population(&st, it);
+                        }
+                        return PassOut::Fail;
+                    }
+                    if repr.len() < st.sub_super.len() {
+                        repr.extend(repr.len() as u32..st.sub_super.len() as u32);
+                    }
+                    let admitted = expand_rooted_domain(&mut repair_domain, &st, rcs, &mut repr);
+                    fresh_inverse
+                        .active_sources
+                        .extend(repair_domain.iter().copied());
+                    if debug {
+                        eprintln!(
+                            "KM_ELC_CERT repair pass {pass_label} round {round}: implicit \
+                             complements +{complement_added}, low-cardinality sides \
+                             +{cardinality_added}, carrier +{admitted}"
+                        );
+                    }
+                }
+                if round == 1
+                    && (!rooted_domain || guide.by_guard.is_empty())
+                    && !using_scaffold
+                    && deterministic_scaffold.is_none()
+                {
+                    deterministic_scaffold = Some((
+                        st.fork(),
+                        repair_domain.clone(),
+                        fresh_inverse.clone(),
+                        repr.clone(),
+                    ));
+                    if debug {
+                        eprintln!(
+                            "KM_ELC_CERT repair: cached deterministic scaffold (nodes={}, \
+                             carrier={})",
+                            st.sub_super.len(),
+                            repair_domain.len(),
+                        );
+                    }
+                }
+            }
             let mut viols: Vec<(usize, Vec<u32>)> = Vec::new();
-            let crep: Vec<u32> = (0..n as u32).map(|i| uf_find(&mut repr, i)).collect();
-            cround.resync(&guide, &mut repr);
+            // Repair can allocate source-specific witnesses beyond the
+            // ontology interner's original concept domain. Residual equality
+            // heads range over those live nodes too, so their representative
+            // snapshot must cover the complete repaired state rather than
+            // only `0..n`. The union-find is extended whenever fresh nodes are
+            // admitted immediately above.
+            let crep: Vec<u32> = (0..st.sub_super.len() as u32)
+                .map(|i| uf_find(&mut repr, i))
+                .collect();
+            if rooted_domain {
+                cround.resync_active(&guide, &mut repr, &st, &repair_domain);
+            } else {
+                cround.resync(&guide, &mut repr);
+            }
             let delta = st.drain_journal();
             let epoch = st.edge_epoch;
             let clean = cert_round(
                 rcs,
-                &nfs.concept_names,
+                &repair_domain,
                 &st.sub_super,
                 &st.edges,
                 Some(&crep),
@@ -6281,27 +8343,172 @@ fn repair_certify(
                     delta: delta.as_deref(),
                     edge_epoch: epoch,
                 }),
+                Some(&implicit_covers),
+                Some(&implicit_positive),
             );
-            if clean {
-                if adds == 0 {
-                    return PassOut::Pristine;
-                }
-                if debug {
-                    eprintln!(
-                        "KM_ELC_CERT repair pass {pass_label}: model complete after {} rounds, \
-                         {adds} additions (budget_left={budget})",
-                        round - 1
-                    );
-                }
-                return PassOut::Model(st, prov);
+            if round == 1
+                && (!rooted_domain || guide.by_guard.is_empty())
+                && !using_scaffold
+                && deterministic_scaffold_idx.is_none()
+            {
+                deterministic_scaffold_idx = Some(cidx.clone());
             }
-            if viols.is_empty() {
+            // A complete residual model can still have killed a protected
+            // rooted subject: bottom nodes satisfy clauses vacuously. Delay
+            // acceptance until after the protected-death check below, where
+            // its causal choice is learned. This also keeps a repaired model
+            // from bypassing the exact per-subject intersection criterion.
+            if !clean && viols.is_empty() {
+                // `cert_round` also returns false without violations when a
+                // pinned Skolem witness has died. This is a choice conflict,
+                // not budget exhaustion: a certified model must interpret
+                // every source Skolem function. Feed all choices made at
+                // newly dead nodes back into the next attempt, including in a
+                // death-tolerant pass (which tolerates named-query deaths but
+                // never dead canonical witnesses).
+                let mut dead_pin = None;
+                'find_dead_pin: for rc in rcs {
+                    let mut active = true;
+                    for &(_, guard, _) in &rc.pin_guards {
+                        let guard_has_member = repair_domain.iter().any(|&candidate| {
+                            let node = uf_find(&mut repr, candidate);
+                            !st.sub_super[node as usize].contains(&BOTTOM)
+                                && st.sub_super[node as usize].contains(&guard)
+                        });
+                        if !guard_has_member {
+                            active = false;
+                            break;
+                        }
+                    }
+                    if !active {
+                        continue;
+                    }
+                    for &(_, pin) in &rc.pins {
+                        let node = uf_find(&mut repr, pin);
+                        if st.sub_super[node as usize].contains(&BOTTOM) {
+                            dead_pin = Some(pin);
+                            break 'find_dead_pin;
+                        }
+                    }
+                }
+                if let Some(pin) = dead_pin {
+                    let mut seen: HashSet<(u32, usize, u32)> = HashSet::default();
+                    let pin_rep = uf_find(&mut repr, pin);
+                    // Learn one local decision, not every historical decision
+                    // at the dead representative.  The latter over-learns:
+                    // several residual clauses may have been repaired at the
+                    // same node before one later choice closes it to bottom.
+                    // Prefer a directly disjoint chosen concept, which is an
+                    // actual local explanation of the death.
+                    let mut blame: Vec<(u32, usize, u32)> = chrono
+                        .iter()
+                        .rev()
+                        .filter_map(|&triple| {
+                            if !repair_choice_untried(banned, triple) {
+                                return None;
+                            }
+                            let node = uf_find(&mut repr, triple.0);
+                            (node == pin_rep
+                                && disj.get(&triple.2).is_some_and(|ds| {
+                                    ds.iter().any(|d| st.sub_super[node as usize].contains(d))
+                                })
+                                && seen.insert(triple))
+                            .then_some(triple)
+                        })
+                        .take(1)
+                        .collect();
+                    if blame.is_empty() {
+                        if let Some(triple) = chrono.iter().rev().find_map(|&triple| {
+                            if !repair_choice_untried(banned, triple) {
+                                return None;
+                            }
+                            (uf_find(&mut repr, triple.0) == pin_rep).then_some(triple)
+                        }) {
+                            blame.push(triple);
+                        }
+                    }
+                    if blame.is_empty() {
+                        let exhausted_local = chrono
+                            .iter()
+                            .rev()
+                            .find(|&&triple| uf_find(&mut repr, triple.0) == pin_rep)
+                            .copied();
+                        let backjump = exhausted_local
+                            .and_then(|local| {
+                                chrono.iter().rev().find(|&&triple| {
+                                    (triple.0, triple.1) != (local.0, local.1)
+                                })
+                            })
+                            .copied()
+                            .or(exhausted_local);
+                        if let Some(triple) = backjump {
+                            blame.push(triple);
+                        }
+                    }
+                    if !blame.is_empty() {
+                        if debug {
+                            let first = blame[0];
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {pass_label}: pinned witness {} died, \
+                                 batching {} choice ban(s); first={:?} (node={}, concept={}); \
+                                 choice_clause={}",
+                                it.name(pin),
+                                blame.len(),
+                                first,
+                                it.debug_name(first.0),
+                                it.name(first.2),
+                                describe_residual_clause(&rcs[first.1], it),
+                            );
+                        }
+                        return PassOut::Conflict(blame, None);
+                    }
+                    if debug {
+                        let chosen_here: Vec<String> = chrono
+                            .iter()
+                            .filter(|t| uf_find(&mut repr, t.0) == pin_rep)
+                            .map(|t| {
+                                format!(
+                                    "{:?}:{}:{}",
+                                    t,
+                                    if banned.contains(t) { "banned" } else { "live" },
+                                    describe_residual_clause(&rcs[t.1], it),
+                                )
+                            })
+                            .collect();
+                        eprintln!(
+                            "KM_ELC_CERT repair pass {pass_label}: pinned witness {} died \
+                             without a repair choice; choices_here=[{}]",
+                            it.name(pin),
+                            chosen_here.join(" | "),
+                        );
+                    }
+                    return PassOut::Fail;
+                }
                 if debug {
                     eprintln!(
                         "KM_ELC_CERT repair pass {pass_label}: budget exhausted (round {round})"
                     );
                 }
                 return PassOut::Fail;
+            }
+            if debug && (round == 1 || round % 64 == 0) {
+                let mut counts: HashMap<usize, usize> = HashMap::default();
+                for &(rci, _) in &viols {
+                    *counts.entry(rci).or_default() += 1;
+                }
+                let mut counts: Vec<(usize, usize)> = counts.into_iter().collect();
+                counts.sort_unstable_by_key(|&(rci, count)| (std::cmp::Reverse(count), rci));
+                let summary = counts
+                    .into_iter()
+                    .take(8)
+                    .map(|(rci, count)| {
+                        format!("{rci}:{count}:{}", describe_residual_clause(&rcs[rci], it))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                eprintln!(
+                    "KM_ELC_CERT repair pass {pass_label} round {round}: top violations: {summary}"
+                );
             }
             // `cert_round` reports violations against the state at the start
             // of this repair round. Process forced (single addable-head)
@@ -6319,6 +8526,7 @@ fn repair_certify(
                     .filter(|atom| !matches!(atom, RAtom::Eq { .. }))
                     .count()
             });
+            let mut round_adds = 0u64;
             for (rci, asg) in &viols {
                 let head = &rcs[*rci].head;
                 let already_satisfied = head.iter().any(|atom| match *atom {
@@ -6347,6 +8555,137 @@ fn repair_certify(
                         .filter(|a| !matches!(a, RAtom::Eq { .. }))
                         .collect()
                 };
+                let concept_is_free = |nd: u32, cid: u32| {
+                    let candidate_supers = &base.sub_super[cid as usize];
+                    !candidate_supers.iter().any(|candidate_super| {
+                        disj.get(candidate_super).is_some_and(|partners| {
+                            st.sub_super[nd as usize].iter().any(|present| {
+                                partners.contains(present)
+                                    || base.sub_super[*present as usize]
+                                        .iter()
+                                        .any(|present_super| partners.contains(present_super))
+                            })
+                        })
+                    })
+                };
+                // Universal covers introduced for negated definers commonly
+                // have the shape `top -> Named(x) | Q_not_Named(x)`. Choosing
+                // the named side at every carrier node activates an unrelated
+                // taxonomy and can turn a 74-node rooted model into millions
+                // of closure facts. In a rooted countermodel, prefer a legal
+                // internal side regardless of seed polarity. This is only a
+                // model-search heuristic: bans still redirect a bad choice,
+                // EL closure still follows every selected label, and the full
+                // residual theory is checked before publication.
+                let universal_cover = head.len() > 1
+                    && (rcs[*rci].body.is_empty()
+                        || rcs[*rci]
+                            .body
+                            .iter()
+                            .all(|atom| matches!(atom, RAtom::C { cid, .. } if *cid == TOP)));
+                // A rooted ontology can contain a long sequence of universal
+                // binary partitions whose uniform choices kill different
+                // fresh witnesses.  Waiting until every node has tried both
+                // sides reveals those partitions one at a time.  The opt-in
+                // eager portfolio starts same-variable covers with a stable
+                // node-dependent side instead.  This is only a candidate-model
+                // schedule: explicit conflict bans still take precedence, EL
+                // closure is unchanged, and publication still requires the
+                // exhaustive residual check.
+                let eager_mixed = if rooted_domain
+                    && bulk_causal_clause_conflicts
+                    && eager_causal_mix
+                    && universal_cover
+                    && !cands.is_empty()
+                {
+                    let first_var = cands.first().and_then(|atom| match **atom {
+                        RAtom::C { v, .. } => Some(v),
+                        _ => None,
+                    });
+                    first_var.and_then(|v| {
+                        cands
+                            .iter()
+                            .all(|atom| matches!(**atom, RAtom::C { v: av, .. } if av == v))
+                            .then(|| {
+                                let nd = uf_find(&mut repr, asg[v]);
+                                let mixed = repair_choice_mix(nd, *rci, pass_label);
+                                (0..cands.len()).find_map(|offset| {
+                                    let canonical_index = (mixed + offset) % cands.len();
+                                    // `cands` follows the ordinary polarity
+                                    // seed and is reversed when `polv[rci]` is
+                                    // true. Recover canonical head order here:
+                                    // otherwise polarity reversal and a changed
+                                    // binary hash bit can cancel one another,
+                                    // producing the same eager assignment.
+                                    let atom = if polv[*rci] {
+                                        cands[cands.len() - 1 - canonical_index]
+                                    } else {
+                                        cands[canonical_index]
+                                    };
+                                    let RAtom::C { cid, .. } = *atom else {
+                                        unreachable!()
+                                    };
+                                    // Unlike the ordinary greedy tiers, an
+                                    // eager portfolio seed must be allowed to
+                                    // sample either unbanned side. Applying
+                                    // local cardinality guidance here reduced
+                                    // some binary covers to one candidate and
+                                    // made every seed identical. Any bad side
+                                    // still dies during closure or fails the
+                                    // exhaustive residual-model check.
+                                    (!banned.contains(&(nd, *rci, cid))
+                                        && !globally_avoided_sides.contains(&(*rci, cid)))
+                                        .then_some(atom)
+                                })
+                            })
+                            .flatten()
+                    })
+                } else {
+                    None
+                };
+                let preferred_rooted_definer = if rooted_domain && universal_cover {
+                    cands.iter().find_map(|atom| match **atom {
+                        RAtom::C { cid, v } => {
+                            let nd = uf_find(&mut repr, asg[v]);
+                            (!banned.contains(&(nd, *rci, cid))
+                                && !globally_avoided_sides.contains(&(*rci, cid))
+                                && crate::calc::is_internal_concept(it.name(cid))
+                                && concept_is_free(nd, cid)
+                                && !guide.locally_incompatible(
+                                    &mut cround,
+                                    &st,
+                                    &mut repr,
+                                    nd,
+                                    cid,
+                                ))
+                            .then_some(*atom)
+                        }
+                        _ => None,
+                    })
+                } else {
+                    None
+                };
+                // In the rooted fresh-witness diagnostic, prefer a legal,
+                // nonclashing equality branch of a mixed cardinality head.
+                // Choosing its concept alternative first commonly activates a
+                // complement definer and creates an avoidable root clash. This
+                // is search order only; the complete residual check is still
+                // required before accepting the model.
+                let preferred_eq = if preferred_rooted_definer.is_none()
+                    && rooted_domain
+                    && !fresh_inverse.roles.is_empty()
+                {
+                    head.iter().find(|atom| match **atom {
+                        RAtom::Eq { s, t } => {
+                            let (u, w) = (asg[s], asg[t]);
+                            guide.merge_legal(&cround, &mut repr, u, w)
+                                && !guide.merge_clashes(&st, &disj, &mut repr, u, w)
+                        }
+                        _ => false,
+                    })
+                } else {
+                    None
+                };
                 // Choice tiers, most constrained first, scanned in the
                 // polarity order so the two seed passes still diverge:
                 //   0  unbanned, not disjoint with the node's labels, and not
@@ -6357,22 +8696,62 @@ fn repair_certify(
                 // Tiers 1-3 are the previous behaviour. Tier 0 coincides with
                 // tier 1 whenever the residual holds no cardinality partition,
                 // so ontologies without one search exactly as before.
-                let mut pick: Option<&RAtom> = None;
+                // A clause can exhaust both uniform polarities at every
+                // carrier node.  Its bans are deliberately soft, but falling
+                // through to tier 3 used to choose the same first disjunct at
+                // every instance again.  For the explicit rooted causal
+                // portfolio, use a stable node-dependent tie-break once every
+                // concept alternative at this instance has already been
+                // tried.  This exposes non-uniform models without asserting
+                // any fact or weakening the final complete residual check.
+                let mixed_exhausted = if rooted_domain
+                    && bulk_causal_clause_conflicts
+                    && !cands.is_empty()
+                    && {
+                        let sentinel = cands.first().is_some_and(|atom| match **atom {
+                            RAtom::C { v, .. } => {
+                                let nd = uf_find(&mut repr, asg[v]);
+                                banned.contains(&(nd, *rci, u32::MAX))
+                            }
+                            _ => false,
+                        });
+                        sentinel
+                            || cands.iter().all(|atom| match **atom {
+                                RAtom::C { cid, v } => {
+                                    let nd = uf_find(&mut repr, asg[v]);
+                                    banned.contains(&(nd, *rci, cid))
+                                }
+                                _ => false,
+                            })
+                    }
+                {
+                    let RAtom::C { v, .. } = *cands[0] else {
+                        unreachable!()
+                    };
+                    let nd = uf_find(&mut repr, asg[v]);
+                    let mixed = repair_choice_mix(nd, *rci, pass_label);
+                    cands.get(mixed % cands.len()).copied()
+                } else {
+                    None
+                };
+                let mut pick: Option<&RAtom> = mixed_exhausted
+                    .or(eager_mixed)
+                    .or(preferred_rooted_definer)
+                    .or(preferred_eq);
                 for tier in 0..4u8 {
+                    if pick.is_some() {
+                        break;
+                    }
                     for a in &cands {
                         let ok = match **a {
                             RAtom::C { cid, v } => {
                                 let nd = uf_find(&mut repr, asg[v]);
-                                let unbanned = !banned.contains(&(nd, *rci, cid));
-                                let free = || {
-                                    !disj.get(&cid).is_some_and(|ds| {
-                                        ds.iter().any(|d| st.sub_super[nd as usize].contains(d))
-                                    })
-                                };
+                                let unbanned = !banned.contains(&(nd, *rci, cid))
+                                    && !globally_avoided_sides.contains(&(*rci, cid));
                                 match tier {
                                     0 => {
                                         unbanned
-                                            && free()
+                                            && concept_is_free(nd, cid)
                                             && !guide.locally_incompatible(
                                                 &mut cround,
                                                 &st,
@@ -6381,7 +8760,7 @@ fn repair_certify(
                                                 cid,
                                             )
                                     }
-                                    1 => unbanned && free(),
+                                    1 => unbanned && concept_is_free(nd, cid),
                                     2 => unbanned,
                                     _ => true,
                                 }
@@ -6401,15 +8780,30 @@ fn repair_certify(
                     Some(&RAtom::C { cid, v }) => {
                         let nd = uf_find(&mut repr, asg[v]);
                         st.add_sub(nd, cid);
-                        prov.entry((nd, cid)).or_insert(*rci);
-                        chrono.push((nd, *rci, cid));
+                        // A singleton head is a forced consequence, not a
+                        // branch the repair search may revise.  Recording it
+                        // as provenance made protected-root conflict learning
+                        // "ban" the same unavoidable consequence at one fresh
+                        // node after another.  Only a genuinely disjunctive
+                        // head denotes a model choice.  Forced memberships
+                        // remain available to EL closure, but attribution
+                        // walks past them (or falls back to an earlier real
+                        // choice) instead of learning a no-op ban.
+                        if head.len() > 1 {
+                            prov.entry((nd, cid)).or_insert(*rci);
+                            chrono.push((nd, *rci, cid));
+                        }
                     }
                     Some(&RAtom::R { rid, s, t }) => {
                         let sn = uf_find(&mut repr, asg[s]);
                         let tn = uf_find(&mut repr, asg[t]);
                         st.add_edge(sn, rid, tn);
                     }
-                    Some(&RAtom::Eq { .. }) => unreachable!("eq filtered from cands"),
+                    Some(&RAtom::Eq { s, t }) => {
+                        let (u, w) = (asg[s], asg[t]);
+                        merge_nodes(&mut st, &mut repr, &mut merged, u, w);
+                        cround.resync_active(&guide, &mut repr, &st, &repair_domain);
+                    }
                     None => {
                         // Every head atom is an equality: a qualified at-most
                         // bound bit at this node and one of the enumerated
@@ -6440,7 +8834,11 @@ fn repair_certify(
                                     continue;
                                 }
                                 merge_nodes(&mut st, &mut repr, &mut merged, u, w);
-                                cround.resync(&guide, &mut repr);
+                                if rooted_domain {
+                                    cround.resync_active(&guide, &mut repr, &st, &repair_domain);
+                                } else {
+                                    cround.resync(&guide, &mut repr);
+                                }
                                 merged_now = true;
                                 break;
                             }
@@ -6470,11 +8868,11 @@ fn repair_certify(
                                              {rci} conflict ({why}), banning choice {:?} \
                                              (node={}, concept={})",
                                             triple,
-                                            it.name(triple.0),
+                                            it.debug_name(triple.0),
                                             it.name(triple.2),
                                         );
                                     }
-                                    return PassOut::Conflict(triple);
+                                    return PassOut::Conflict(vec![triple], Some(viols.len()));
                                 }
                                 None => {
                                     if debug {
@@ -6486,7 +8884,11 @@ fn repair_certify(
                                         eprintln!(
                                             "KM_ELC_CERT repair pass {pass_label}: clause \
                                              {rci} violated ({why}, no choices made \
-                                             — genuine inconsistency)"
+                                             — genuine inconsistency); clause={}; binding={:?}",
+                                            describe_residual_clause(&rcs[*rci], it),
+                                            asg.iter()
+                                                .map(|&node| it.debug_name(node))
+                                                .collect::<Vec<_>>(),
                                         );
                                     }
                                     return PassOut::Fail;
@@ -6496,6 +8898,10 @@ fn repair_certify(
                     }
                 }
                 adds += 1;
+                round_adds += 1;
+                if close_batch != 0 && round_adds >= close_batch {
+                    break;
+                }
             }
             if debug {
                 eprintln!(
@@ -6508,7 +8914,24 @@ fn repair_certify(
             }
             // Re-close under the EL rules: the repaired structure must again
             // be a model of the EL clause set before the next recheck.
-            run(idx, &mut st, &mut Prof::default());
+            if fresh_inverse.roles.is_empty() {
+                run(idx, &mut st, &mut Prof::default());
+            } else {
+                run_with_fresh_inverse(idx, &mut st, &mut Prof::default(), &mut fresh_inverse);
+                if fresh_inverse.exhausted {
+                    if debug {
+                        eprintln!(
+                            "KM_ELC_CERT repair pass {pass_label}: fresh inverse-witness cap \
+                             {} exhausted",
+                            fresh_inverse.limit,
+                        );
+                    }
+                    return PassOut::Fail;
+                }
+                if repr.len() < st.sub_super.len() {
+                    repr.extend(repr.len() as u32..st.sub_super.len() as u32);
+                }
+            }
             // Re-sync merged ids as mirrors of their (closed) representative,
             // so every concept's canonical witness remains in the domain with
             // exactly the representative's labels and edges.
@@ -6557,68 +8980,1335 @@ fn repair_certify(
                     }
                 }
             }
-            // a repair choice cascaded a base-satisfiable named witness to ⊥:
-            // the killing choice was made at SOME newly-⊥ node (the cascade
-            // travels the closure, e.g. a poisoned existential filler kills
-            // its sources) — blame the most recent unbanned choice at any
-            // newly-dead node, else at the witness itself, else anywhere
-            for &c in &base_alive_named {
-                if tolerate_deaths {
-                    break;
-                }
-                let cr = uf_find(&mut repr, c);
-                if st.sub_super[cr as usize].contains(&BOTTOM) {
-                    let blame = chrono
-                        .iter()
-                        .rev()
-                        .find(|t| {
-                            !banned.contains(*t) && {
-                                let nd = uf_find(&mut repr, t.0);
-                                st.sub_super[nd as usize].contains(&BOTTOM)
-                                    && !base.sub_super[nd as usize].contains(&BOTTOM)
-                            }
-                        })
-                        .copied()
-                        .or_else(|| {
-                            chrono
-                                .iter()
-                                .rev()
-                                .find(|t| uf_find(&mut repr, t.0) == cr && !banned.contains(*t))
-                                .copied()
-                        })
-                        .or_else(|| chrono.iter().rev().find(|t| !banned.contains(*t)).copied());
-                    match blame {
-                        Some(triple) => {
-                            if debug {
-                                eprintln!(
-                                    "KM_ELC_CERT repair pass {pass_label}: witness {} died, \
-                                     banning choice {:?} (node={}, concept={}); choice_clause={}",
-                                    c,
-                                    triple,
-                                    it.name(triple.0),
-                                    it.name(triple.2),
-                                    describe_residual_clause(&rcs[triple.1], it),
-                                );
-                            }
-                            return PassOut::Conflict(triple);
-                        }
-                        None => {
-                            if debug {
-                                eprintln!(
-                                    "KM_ELC_CERT repair pass {pass_label}: witness {} died \
-                                     with no choices made (genuinely unsatisfiable?)",
-                                    c
-                                );
-                            }
-                            return PassOut::Fail;
+            if rooted_domain {
+                loop {
+                    let admitted = expand_rooted_domain(&mut repair_domain, &st, rcs, &mut repr);
+                    fresh_inverse
+                        .active_sources
+                        .extend(repair_domain.iter().copied());
+                    let redirected = if fresh_inverse.roles.is_empty() {
+                        0
+                    } else {
+                        freshen_rooted_inverse_edges(
+                            &repair_domain,
+                            &mut st,
+                            &mut fresh_inverse,
+                            &idx.role_sub,
+                        )
+                    };
+                    if admitted != 0 || redirected != 0 {
+                        cidx.invalidate();
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {pass_label} round {round}: rooted \
+                                 carrier +{admitted} -> {} node(s), redirected {redirected} \
+                                 inverse-functional existential edge(s)",
+                                repair_domain.len(),
+                            );
                         }
                     }
+                    if redirected == 0 {
+                        break;
+                    }
+                    run_with_fresh_inverse(idx, &mut st, &mut Prof::default(), &mut fresh_inverse);
+                    if fresh_inverse.exhausted {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {pass_label}: fresh inverse-witness cap \
+                                 {} exhausted during rooted carrier expansion",
+                                fresh_inverse.limit,
+                            );
+                        }
+                        return PassOut::Fail;
+                    }
+                    if repr.len() < st.sub_super.len() {
+                        repr.extend(repr.len() as u32..st.sub_super.len() as u32);
+                    }
                 }
+            }
+            // A repair choice can cascade several base-satisfiable named
+            // witnesses to bottom in the same closure. The old restart fed
+            // back only one choice, then rebuilt the identical 100k-instance
+            // round for every other dead node. Collect every unbanned direct
+            // choice made at a newly dead node. A ban is only a preference:
+            // tier 3 can still select it, and the final complete residual
+            // recheck is unchanged, so batching changes search order only.
+            // A rooted countermodel is required to preserve its requested
+            // subject, not every unrelated canonical named witness. Requiring
+            // the latter recreates the all-subject model and triggers restarts
+            // for deaths outside the carrier's proof obligation. This branch
+            // remains diagnostic-only and cannot publish below.
+            let protected_named = if rooted_domain || tolerate_deaths {
+                &preserve_named
+            } else {
+                &base_alive_named
+            };
+            if !protected_named.is_empty() {
+                let first_dead = protected_named.iter().copied().find(|&c| {
+                    let cr = uf_find(&mut repr, c);
+                    st.sub_super[cr as usize].contains(&BOTTOM)
+                });
+                if let Some(c) = first_dead {
+                    let mut seen: HashSet<(u32, usize, u32)> = HashSet::default();
+                    let dead_reps: HashSet<u32> = protected_named
+                        .iter()
+                        .filter_map(|&named| {
+                            let rep = uf_find(&mut repr, named);
+                            (st.sub_super[rep as usize].contains(&BOTTOM)
+                                && !base.sub_super[rep as usize].contains(&BOTTOM))
+                            .then_some(rep)
+                        })
+                        .collect();
+                    // At most one learned choice per dead representative.
+                    // Prefer a chosen concept with a direct disjoint partner
+                    // in that representative's closed label.  This retains
+                    // the ontology-wide batching win without banning earlier,
+                    // unrelated repairs made at the same node.
+                    let mut explained: HashSet<u32> = HashSet::default();
+                    let mut blame: Vec<(u32, usize, u32)> = chrono
+                        .iter()
+                        .rev()
+                        .filter_map(|&triple| {
+                            if !repair_choice_untried(banned, triple) {
+                                return None;
+                            }
+                            let nd = uf_find(&mut repr, triple.0);
+                            (dead_reps.contains(&nd)
+                                && (rooted_domain || !explained.contains(&nd))
+                                && base.sub_super[triple.2 as usize].iter().any(
+                                    |candidate_super| {
+                                        disj.get(candidate_super).is_some_and(|partners| {
+                                            st.sub_super[nd as usize].iter().any(|present| {
+                                                partners.contains(present)
+                                                    || base.sub_super[*present as usize].iter().any(
+                                                        |present_super| {
+                                                            partners.contains(present_super)
+                                                        },
+                                                    )
+                                            })
+                                        })
+                                    },
+                                )
+                                && seen.insert(triple))
+                            .then_some(triple)
+                        })
+                        .collect();
+                    for &triple in &blame {
+                        explained.insert(uf_find(&mut repr, triple.0));
+                    }
+                    let mut direct_dead_conflict = false;
+                    let mut direct_dead_clauses: HashSet<usize> = HashSet::default();
+                    let mut recurrence_counted_clauses: HashSet<usize> = HashSet::default();
+                    let mut proof_path_reopen = false;
+                    if rooted_domain {
+                        let mut causal = Vec::new();
+                        let mut causal_seen = HashSet::default();
+                        for &root in &dead_reps {
+                            // A fresh witness can become the representative of
+                            // a protected root after an equality repair. Trace
+                            // through its generating existential before
+                            // blaming a later choice made on the witness.
+                            if let Some(&(source0, role, filler)) = fresh_inverse.origins.get(&root)
+                            {
+                                let source = uf_find(&mut repr, source0);
+                                for producer in nfs.nf3.iter().filter(|nf| {
+                                    nf.role == role
+                                        && nf.filler == filler
+                                        && st.sub_super[source as usize].contains(&nf.sub)
+                                }) {
+                                    let mut trace_seen = HashSet::default();
+                                    if let Some(upstream) = trace_repair_choice(
+                                        source,
+                                        producer.sub,
+                                        &st,
+                                        nfs,
+                                        &repair_trace,
+                                        it,
+                                        &mut repr,
+                                        &prov,
+                                        banned,
+                                        &mut trace_seen,
+                                        96,
+                                    ) {
+                                        proof_path_reopen = true;
+                                        if causal_seen.insert(upstream) {
+                                            causal.push(upstream);
+                                        }
+                                    }
+                                }
+                            }
+                            for &(role, target0) in &st.edges[root as usize] {
+                                let target = uf_find(&mut repr, target0);
+                                if !st.sub_super[target as usize].contains(&BOTTOM) {
+                                    continue;
+                                }
+                                // Explain the dead successor at the point
+                                // where bottom was actually derived before
+                                // considering any of the root's many possible
+                                // existential producers. On Uberon the latter
+                                // picked an incidental source path, while this
+                                // target-local walk reaches the partition
+                                // choice that contaminated the fresh copy.
+                                let mut target_seen = HashSet::default();
+                                if let Some(upstream) = trace_repair_choice(
+                                    target,
+                                    BOTTOM,
+                                    &st,
+                                    nfs,
+                                    &repair_trace,
+                                    it,
+                                    &mut repr,
+                                    &prov,
+                                    banned,
+                                    &mut target_seen,
+                                    128,
+                                ) {
+                                    proof_path_reopen = true;
+                                    if causal_seen.insert(upstream) {
+                                        causal.push(upstream);
+                                    }
+                                }
+                                let mut generators = Vec::new();
+                                if let Some(generator) =
+                                    dedicated_witness_generator(target, root, &st, it)
+                                {
+                                    generators.push(generator);
+                                } else {
+                                    // A shared canonical target can have many
+                                    // independent NF3 producers. The edge dies
+                                    // only after every active producer is
+                                    // avoided, so learn all source decisions in
+                                    // the same closed state.
+                                    generators.extend(nfs.nf3.iter().filter_map(|nf| {
+                                        (nf.role == role
+                                            && st.sub_super[target as usize].contains(&nf.filler)
+                                            && st.sub_super[root as usize].contains(&nf.sub))
+                                        .then_some(nf.sub)
+                                    }));
+                                }
+                                for generator in generators {
+                                    let mut trace_seen = HashSet::default();
+                                    if let Some(upstream) = trace_repair_choice(
+                                        root,
+                                        generator,
+                                        &st,
+                                        nfs,
+                                        &repair_trace,
+                                        it,
+                                        &mut repr,
+                                        &prov,
+                                        banned,
+                                        &mut trace_seen,
+                                        96,
+                                    ) {
+                                        proof_path_reopen = true;
+                                        if causal_seen.insert(upstream) {
+                                            causal.push(upstream);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Prefer an actual local cause of bottom over the
+                        // broader existential-path explanation.  A covering
+                        // choice can close to its explicitly disjoint sibling
+                        // on a fresh successor.  The previous path expansion
+                        // then returned every partition selected on that
+                        // successor (80 bans on Uberon), sentinelized the
+                        // whole assignment, and advanced to the next fresh
+                        // node without ever flipping just the conflicting
+                        // side.  Charge the most recent chosen concept whose
+                        // closed representative contains a disjoint partner.
+                        // This is ordinary conflict-directed search: the ban
+                        // remains soft, and accepted models still undergo the
+                        // complete residual and protected-root checks.
+                        let direct_dead_choices: Vec<(u32, usize, u32)> = chrono
+                            .iter()
+                            .rev()
+                            .copied()
+                            .filter(|&triple| {
+                                let node = uf_find(&mut repr, triple.0);
+                                if !st.sub_super[node as usize].contains(&BOTTOM) {
+                                    return false;
+                                }
+                                let directly_clashing = base.sub_super[triple.2 as usize]
+                                    .iter()
+                                    .any(|candidate_super| {
+                                        disj.get(candidate_super).is_some_and(|partners| {
+                                            st.sub_super[node as usize].iter().any(|present| {
+                                                partners.contains(present)
+                                                    || base.sub_super[*present as usize]
+                                                        .iter()
+                                                        .any(|present_super| {
+                                                            partners.contains(present_super)
+                                                        })
+                                            })
+                                        })
+                                    });
+                                directly_clashing
+                                    && !repair_exhausted_choice_instances(
+                                        banned,
+                                        std::slice::from_ref(&triple),
+                                        rcs,
+                                    )
+                                    .contains(&(triple.0, triple.1))
+                            })
+                            .collect();
+                        if let Some(&direct) = direct_dead_choices.first() {
+                            direct_dead_conflict = true;
+                            direct_dead_clauses
+                                .extend(direct_dead_choices.iter().map(|triple| triple.1));
+                            causal.clear();
+                            causal_seen.clear();
+                            // A large unravelled model can expose several
+                            // independently bad universal-cover sides in the
+                            // same closed state. Group direct clashes by clause
+                            // side and learn every cohort represented at least
+                            // `GLOBAL_SIDE_LEARN` times. Without this batching,
+                            // conflict-directed repair rediscovers one cohort
+                            // per full closure. These remain soft bans and the
+                            // complete fallback/final checks are unchanged.
+                            let mut cohort_counts: HashMap<(usize, u32), usize> =
+                                HashMap::default();
+                            for &(_, clause, concept) in &direct_dead_choices {
+                                *cohort_counts.entry((clause, concept)).or_default() += 1;
+                            }
+                            let cohort_sides: HashSet<(usize, u32)> =
+                                if global_side_threshold == 0 {
+                                    HashSet::default()
+                                } else {
+                                    cohort_counts
+                                        .into_iter()
+                                        .filter_map(|(side, count)| {
+                                            (count >= global_side_threshold).then_some(side)
+                                        })
+                                        .collect()
+                                };
+                            if debug && !cohort_sides.is_empty() {
+                                eprintln!(
+                                    "KM_ELC_CERT repair pass {pass_label}: batching {} repeated direct-clash side cohort(s)",
+                                    cohort_sides.len(),
+                                );
+                            }
+                            // Learn this exact side at every already-dead
+                            // instance visible in the closed pass. Future
+                            // witnesses remain untouched until their own
+                            // conflict is observed; this conservative schedule
+                            // avoids destabilising a zero-residual assignment.
+                            for &candidate in &direct_dead_choices {
+                                if !cohort_sides.is_empty()
+                                    && !cohort_sides.contains(&(candidate.1, candidate.2))
+                                {
+                                    continue;
+                                }
+                                if cohort_sides.is_empty()
+                                    && (candidate.1 != direct.1 || candidate.2 != direct.2)
+                                {
+                                    continue;
+                                }
+                                if repair_exhausted_choice_instances(
+                                    banned,
+                                    std::slice::from_ref(&candidate),
+                                    rcs,
+                                )
+                                .contains(&(candidate.0, candidate.1))
+                                {
+                                    continue;
+                                }
+                                let node = uf_find(&mut repr, candidate.0);
+                                if st.sub_super[node as usize].contains(&BOTTOM)
+                                    && causal_seen.insert(candidate)
+                                {
+                                    causal.push(candidate);
+                                }
+                            }
+                            if causal.is_empty() {
+                                causal.push(direct);
+                                causal_seen.insert(direct);
+                            }
+                        }
+                        if causal.is_empty() {
+                            let mut trace_seen = HashSet::default();
+                            let mut upstream = trace_repair_choice(
+                                c,
+                                BOTTOM,
+                                &st,
+                                nfs,
+                                &repair_trace,
+                                it,
+                                &mut repr,
+                                &prov,
+                                banned,
+                                &mut trace_seen,
+                                96,
+                            );
+                            if upstream.is_none() {
+                                // A resumed frontier can mark every choice on
+                                // the real bottom derivation as exhausted. The
+                                // ordinary trace then correctly finds no
+                                // *untried* cause, but falling straight through
+                                // to the global sentinel walk loses the proof
+                                // path and scans the whole carrier. Reconstruct
+                                // the currently selected provenance without
+                                // the search-preference filter and let
+                                // `apply_conflicts` reopen its siblings. This
+                                // only chooses the next branch: closure and the
+                                // complete residual/root checks are unchanged.
+                                trace_seen.clear();
+                                upstream = trace_repair_choice(
+                                    c,
+                                    BOTTOM,
+                                    &st,
+                                    nfs,
+                                    &repair_trace,
+                                    it,
+                                    &mut repr,
+                                    &prov,
+                                    &HashSet::default(),
+                                    &mut trace_seen,
+                                    96,
+                                );
+                                // This is the selected choice on the actual
+                                // bottom proof, recovered after every choice
+                                // on that proof had already been marked tried.
+                                // Pass it straight to chronological reopening.
+                                // Treating it as an ordinary exhausted
+                                // candidate below discards the proof path and
+                                // enters the ontology-wide sentinel cursor.
+                                proof_path_reopen = upstream.is_some();
+                            }
+                            if let Some(upstream) = upstream {
+                                // Whether the proof trace found a new side or
+                                // recovered a selected exhausted side, this is
+                                // an exact cause on the protected root's
+                                // bottom derivation. Do not replace it with
+                                // the generic global exhausted-instance
+                                // cursor below. The bounded same-clause
+                                // expansion may still add sibling instances.
+                                proof_path_reopen = true;
+                                causal.push(upstream);
+                            }
+                        }
+                        // Preserve the clauses reached by proof tracing before
+                        // the root-cardinality portfolio broadens `causal` with
+                        // every selected partition at the root. Only these
+                        // directly implicated clauses should advance to a
+                        // node-mixed assignment in this restart; mixing every
+                        // root partition at once creates a much larger closure.
+                        let directly_traced_clauses: HashSet<usize> =
+                            causal.iter().map(|triple| triple.1).collect();
+                        if bulk_root_card_conflicts
+                            && !direct_dead_conflict
+                            && !proof_path_reopen
+                        {
+                            // Routed search option for terminology roots with
+                            // many independent cardinality partitions. Once a
+                            // closed pass kills the protected root, flip every
+                            // currently selected low-cardinality side at that
+                            // root together instead of paying one full closure
+                            // per partition. This is choice scheduling only:
+                            // opposite sides are selected on restart and the
+                            // resulting model still receives the complete
+                            // residual check.
+                            let root = uf_find(&mut repr, c);
+                            for &triple in chrono.iter().rev() {
+                                if !repair_choice_untried(banned, triple)
+                                    || uf_find(&mut repr, triple.0) != root
+                                    || !guide.by_guard.contains_key(&triple.2)
+                                {
+                                    continue;
+                                }
+                                if causal_seen.insert(triple) {
+                                    causal.push(triple);
+                                }
+                            }
+                        }
+                        if bulk_causal_clause_conflicts
+                            && (!eager_causal_mix || eager_continuation)
+                            && !causal.is_empty()
+                            && !direct_dead_conflict
+                        {
+                            // Portfolio schedule for a universal partition
+                            // whose independently instantiated choices produce
+                            // the same rooted clash. Flip all currently chosen
+                            // instances of each causal clause in one restart.
+                            // This does not assert or discharge anything; a
+                            // candidate model still passes the exhaustive
+                            // residual checker. The ordinary route remains the
+                            // mixed-assignment fallback if this coarse schedule
+                            // cannot produce a model.
+                            let clauses: HashSet<usize> =
+                                causal.iter().map(|triple| triple.1).collect();
+                            let mut mixed_per_clause: HashMap<usize, usize> = HashMap::default();
+                            for &triple in chrono.iter().rev() {
+                                if !clauses.contains(&triple.1) {
+                                    continue;
+                                }
+                                // A covering partition whose alternatives are
+                                // all concepts of the same variable otherwise
+                                // spends another closure selecting its opposite
+                                // side uniformly. Advance only a bounded number
+                                // of its instances to node-mixed search in each
+                                // restart: mixing an ontology-wide partition at
+                                // every node at once can make the next closure
+                                // needlessly large. These remain soft search
+                                // bans; model acceptance is still decided by the
+                                // complete residual check.
+                                let rc = &rcs[triple.1];
+                                let selected_var = rc.head.iter().find_map(|atom| match *atom {
+                                    RAtom::C { cid, v } if cid == triple.2 => Some(v),
+                                    _ => None,
+                                });
+                                let same_var_partition = directly_traced_clauses
+                                    .contains(&triple.1)
+                                    && selected_var.is_some_and(|v| {
+                                        rc.head.iter().all(
+                                        |atom| matches!(*atom, RAtom::C { v: av, .. } if av == v),
+                                        )
+                                    });
+                                if same_var_partition {
+                                    // `u32::MAX` is a checkpoint-only sentinel:
+                                    // this instance was already included in an
+                                    // earlier bounded mixed window. It is never
+                                    // a concept id, so it cannot affect choice
+                                    // lookup or model checking.
+                                    if banned.contains(&(triple.0, triple.1, u32::MAX)) {
+                                        continue;
+                                    }
+                                    let fully_tried = rc.head.iter().all(|atom| {
+                                        let RAtom::C { cid, .. } = *atom else {
+                                            unreachable!()
+                                        };
+                                        banned.contains(&(triple.0, triple.1, cid))
+                                    });
+                                    let mixed = mixed_per_clause.entry(triple.1).or_default();
+                                    if fully_tried || *mixed >= causal_mix_batch {
+                                        continue;
+                                    }
+                                    *mixed += 1;
+                                    for atom in &rc.head {
+                                        let RAtom::C { cid, .. } = *atom else {
+                                            unreachable!()
+                                        };
+                                        let alternative = (triple.0, triple.1, cid);
+                                        if !banned.contains(&alternative)
+                                            && causal_seen.insert(alternative)
+                                        {
+                                            causal.push(alternative);
+                                        }
+                                    }
+                                } else if !banned.contains(&triple)
+                                    && causal_seen.insert(triple)
+                                {
+                                    causal.push(triple);
+                                }
+                            }
+                        }
+                        if bulk_causal_node_conflicts && !causal.is_empty() {
+                            // A protected-root explanation can identify one
+                            // fresh node whose current universal-partition
+                            // assignment kills the same existential witness.
+                            // Trying the other selected covers at that node
+                            // one closure at a time repeats an otherwise
+                            // identical large model. Advance the whole local
+                            // assignment together. These are still soft bans:
+                            // exhausted alternatives fall through to the
+                            // ordinary mixed chooser, and publication still
+                            // requires the complete residual and root-survival
+                            // checks below.
+                            let causal_nodes: HashSet<u32> = causal
+                                .iter()
+                                .map(|&(node, _, _)| uf_find(&mut repr, node))
+                                .collect();
+                            let mut added_per_node: HashMap<u32, usize> = HashMap::default();
+                            for &triple in chrono.iter().rev() {
+                                let node = uf_find(&mut repr, triple.0);
+                                let rc = &rcs[triple.1];
+                                let first_var = rc.head.first().and_then(|atom| match *atom {
+                                    RAtom::C { v, .. } => Some(v),
+                                    _ => None,
+                                });
+                                let same_var_universal_cover = rc.head.len() > 1
+                                    && (rc.body.is_empty()
+                                        || rc.body.iter().all(|atom| {
+                                            matches!(atom, RAtom::C { cid, .. } if *cid == TOP)
+                                        }))
+                                    && first_var.is_some_and(|v| {
+                                        rc.head.iter().all(
+                                            |atom| matches!(*atom, RAtom::C { v: av, .. } if av == v),
+                                        )
+                                    });
+                                if !causal_nodes.contains(&node)
+                                    || !repair_choice_untried(banned, triple)
+                                    || !same_var_universal_cover
+                                {
+                                    continue;
+                                }
+                                let added = added_per_node.entry(node).or_default();
+                                if *added >= causal_mix_batch {
+                                    continue;
+                                }
+                                if causal_seen.insert(triple) {
+                                    causal.push(triple);
+                                    *added += 1;
+                                }
+                            }
+                        }
+                        if !causal.is_empty() {
+                            // Prefer all reconstructed causal source paths over
+                            // merely recent choices at the same root.
+                            blame.clear();
+                            blame.extend(causal);
+                            explained.clear();
+                            for &(node, _, _) in &blame {
+                                explained.insert(uf_find(&mut repr, node));
+                            }
+                        }
+                    }
+                    for &triple in chrono.iter().rev() {
+                        if !repair_choice_untried(banned, triple) {
+                            continue;
+                        }
+                        let nd = uf_find(&mut repr, triple.0);
+                        if dead_reps.contains(&nd) && explained.insert(nd) && seen.insert(triple) {
+                            blame.push(triple);
+                        }
+                    }
+                    if blame.is_empty() {
+                        let cr = uf_find(&mut repr, c);
+                        if let Some(triple) = chrono
+                            .iter()
+                            .rev()
+                            .find(|&&t| {
+                                uf_find(&mut repr, t.0) == cr
+                                    && repair_choice_untried(banned, t)
+                            })
+                            .copied()
+                            .or_else(|| {
+                                chrono
+                                    .iter()
+                                    .rev()
+                                    .find(|&&t| repair_choice_untried(banned, t))
+                                    .copied()
+                            })
+                        {
+                            blame.push(triple);
+                        } else {
+                            // Every local side can already be soft-banned in
+                            // a resumed frontier. Reusing and reopening that
+                            // same exhausted partition merely cycles through
+                            // its finite alternatives. Backjump to the most
+                            // recent different choice instance instead; if no
+                            // such instance exists, retain the local fallback.
+                            let exhausted_local = chrono
+                                .iter()
+                                .rev()
+                                .find(|&&t| uf_find(&mut repr, t.0) == cr)
+                                .copied();
+                            let backjump = exhausted_local
+                                .and_then(|local| {
+                                    chrono.iter().rev().find(|&&triple| {
+                                        (triple.0, triple.1) != (local.0, local.1)
+                                    })
+                                })
+                                .copied()
+                                .or(exhausted_local)
+                                .or_else(|| chrono.last().copied());
+                            if let Some(triple) = backjump {
+                                blame.push(triple);
+                            }
+                        }
+                    }
+                    if rooted_domain {
+                        // Count clauses observed in direct clashes as well as
+                        // clauses retained by proof-neighbour blame. Fresh
+                        // witness redirection can change the node identifier
+                        // on every attempt; in that case proof tracing may
+                        // backjump to an older upstream choice and otherwise
+                        // miss a partition whose every side closes the same
+                        // witness. Clause-level recurrence is independent of
+                        // that unstable node identity and lets the existing
+                        // fallback move above the exhausted partition.
+                        let mut blamed_clauses: HashSet<usize> =
+                            blame.iter().map(|triple| triple.1).collect();
+                        blamed_clauses.extend(direct_dead_clauses.iter().copied());
+                        recurrence_counted_clauses.extend(blamed_clauses.iter().copied());
+                        for clause in blamed_clauses {
+                            let count = rooted_clause_conflict_counts.entry(clause).or_default();
+                            if *count == 0
+                                && banned.iter().any(|&(_, prior_clause, concept)| {
+                                    prior_clause == clause && concept != u32::MAX
+                                })
+                            {
+                                *count = 1;
+                            }
+                            *count += 1;
+                            if *count >= 2
+                                && rooted_exhausted_backjump_clauses.insert(clause)
+                                && debug
+                            {
+                                eprintln!(
+                                    "KM_ELC_CERT repair pass {pass_label}: causal clause {clause} recurred; backjumping past it"
+                                );
+                            }
+                        }
+                    }
+                    if rooted_domain && !rooted_exhausted_backjump_clauses.is_empty() {
+                        let before = blame.len();
+                        blame.retain(|&(_, clause, _)| {
+                            !rooted_exhausted_backjump_clauses.contains(&clause)
+                        });
+                        if debug && blame.len() != before {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {pass_label}: omitted {} choice(s) \
+                                 from exhausted proof clause(s)",
+                                before - blame.len(),
+                            );
+                        }
+                        if blame.is_empty() {
+                            let predecessor = chrono
+                                .iter()
+                                .rev()
+                                .find(|&&choice| {
+                                    !rooted_exhausted_backjump_clauses.contains(&choice.1)
+                                        && repair_choice_untried(banned, choice)
+                                })
+                                .or_else(|| {
+                                    chrono.iter().rev().find(|&&choice| {
+                                        !rooted_exhausted_backjump_clauses.contains(&choice.1)
+                                    })
+                                })
+                                .copied();
+                            let from_checkpoint = predecessor.is_none();
+                            let checkpoint_predecessor = predecessor.or_else(|| {
+                                let mut sentinels: Vec<(u32, usize)> = banned
+                                    .iter()
+                                    .filter_map(|&(node, clause, cid)| {
+                                        (cid == u32::MAX
+                                            && (node as usize) < st.sub_super.len()
+                                            && !rooted_exhausted_backjump_clauses
+                                                .contains(&clause))
+                                        .then_some((node, clause))
+                                    })
+                                    .collect();
+                                sentinels.sort_unstable();
+                                let sentinel_choice = sentinels.into_iter().find_map(|(node, clause)| {
+                                    let alternatives: Vec<u32> = rcs
+                                        .get(clause)?
+                                        .head
+                                        .iter()
+                                        .filter_map(|atom| match *atom {
+                                            RAtom::C { cid, .. } => Some(cid),
+                                            _ => None,
+                                        })
+                                        .collect();
+                                    if alternatives.is_empty() {
+                                        return None;
+                                    }
+                                    let pick = repair_choice_mix(node, clause, pass_label)
+                                        % alternatives.len();
+                                    Some((node, clause, alternatives[pick]))
+                                });
+                                sentinel_choice.or_else(|| {
+                                    // Older compact checkpoints may retain
+                                    // failed sides without a sentinel for the
+                                    // same causal clause. Use one such valid
+                                    // instance only after the sentinel cursor
+                                    // is empty, preferring an untried sibling.
+                                    let mut regular: Vec<(u32, usize)> = banned
+                                        .iter()
+                                        .filter_map(|&(node, clause, cid)| {
+                                            (cid != u32::MAX
+                                                && (node as usize) < st.sub_super.len()
+                                                && !rooted_exhausted_backjump_clauses
+                                                    .contains(&clause))
+                                            .then_some((node, clause))
+                                        })
+                                        .collect();
+                                    regular.sort_unstable();
+                                    regular.dedup();
+                                    regular.into_iter().find_map(|(node, clause)| {
+                                        let alternatives: Vec<u32> = rcs
+                                            .get(clause)?
+                                            .head
+                                            .iter()
+                                            .filter_map(|atom| match *atom {
+                                                RAtom::C { cid, .. } => Some(cid),
+                                                _ => None,
+                                            })
+                                            .collect();
+                                        let chosen = alternatives
+                                            .iter()
+                                            .copied()
+                                            .find(|&cid| !banned.contains(&(node, clause, cid)))
+                                            .or_else(|| {
+                                                (!alternatives.is_empty()).then(|| {
+                                                    let pick = repair_choice_mix(
+                                                        node,
+                                                        clause,
+                                                        pass_label,
+                                                    ) % alternatives.len();
+                                                    alternatives[pick]
+                                                })
+                                            })?;
+                                        Some((node, clause, chosen))
+                                    })
+                                })
+                            });
+                            if let Some(predecessor) = checkpoint_predecessor {
+                                if from_checkpoint {
+                                    // A sentinel records that every side of
+                                    // this local cover was already tried. One
+                                    // explicit recheck is enough to reconnect
+                                    // the resumed proof path; do not then scan
+                                    // the same exhausted clause at every other
+                                    // ontology node.
+                                    rooted_exhausted_backjump_clauses.insert(predecessor.1);
+                                }
+                                if debug && from_checkpoint {
+                                    eprintln!(
+                                        "KM_ELC_CERT repair pass {pass_label}: checkpoint \
+                                         proof-neighbor backjump {:?}",
+                                        predecessor,
+                                    );
+                                }
+                                blame.push(predecessor);
+                            }
+                        }
+                    }
+                    let mut exhausted = if direct_dead_conflict || proof_path_reopen {
+                        HashSet::default()
+                    } else {
+                        repair_exhausted_choice_instances(banned, &blame, rcs)
+                    };
+                    if debug && !blame.is_empty() {
+                        let instances: Vec<String> = blame
+                            .iter()
+                            .map(|&(node, clause, cid)| {
+                                format!(
+                                    "({node},{clause},{cid};banned={})",
+                                    banned.contains(&(node, clause, cid))
+                                )
+                            })
+                            .collect();
+                        eprintln!(
+                            "KM_ELC_CERT repair pass {pass_label}: exhaustion probe [{}] -> {:?}",
+                            instances.join(","),
+                            exhausted,
+                        );
+                    }
+                    if rooted_domain && !exhausted.is_empty() {
+                        // The final side of a directly clashing partition can
+                        // make that local instance fully tried. Reopening it
+                        // toggles; treating it as a generic exhausted frontier
+                        // enters the ontology-wide cursor. Remove that local
+                        // provenance from the reconstructed proof and ask for
+                        // the nearest upstream decision instead. This changes
+                        // only chronological search order; the replacement
+                        // assignment still undergoes complete closure,
+                        // residual checking, and protected-root checking.
+                        let exhausted_reps: HashSet<(u32, usize)> = exhausted
+                            .iter()
+                            .map(|&(node, clause)| (uf_find(&mut repr, node), clause))
+                            .collect();
+                        let mut upstream_prov = prov.clone();
+                        upstream_prov.retain(|&(node, _), clause| {
+                            let node = uf_find(&mut repr, node);
+                            !exhausted_reps.contains(&(node, *clause))
+                        });
+                        let mut trace_seen = HashSet::default();
+                        if let Some(upstream) = trace_repair_choice(
+                            c,
+                            BOTTOM,
+                            &st,
+                            nfs,
+                            &repair_trace,
+                            it,
+                            &mut repr,
+                            &upstream_prov,
+                            &HashSet::default(),
+                            &mut trace_seen,
+                            96,
+                        ) {
+                            if debug {
+                                eprintln!(
+                                    "KM_ELC_CERT repair pass {pass_label}: proof backjump \
+                                     {:?} after exhausting {:?}",
+                                    upstream, exhausted_reps,
+                                );
+                            }
+                            blame.clear();
+                            blame.push(upstream);
+                            exhausted.clear();
+                        }
+                    }
+                    if !exhausted.is_empty() {
+                        let local_exhausted = exhausted.clone();
+                        if rooted_domain {
+                            rooted_exhausted_backjump_clauses
+                                .extend(local_exhausted.iter().map(|&(_, clause)| clause));
+                        }
+                        let mut persist_exhausted = exhausted.clone();
+                        let mut previous = None;
+                        let mut global_reopen = Vec::new();
+                        for &candidate in chrono.iter().rev() {
+                            if exhausted.contains(&(candidate.0, candidate.1)) {
+                                continue;
+                            }
+                            if rooted_domain
+                                && rooted_exhausted_backjump_clauses.contains(&candidate.1)
+                            {
+                                continue;
+                            }
+                            let newly_exhausted = repair_exhausted_choice_instances(
+                                banned,
+                                std::slice::from_ref(&candidate),
+                                rcs,
+                            );
+                            if newly_exhausted.is_empty() {
+                                previous = Some(candidate);
+                                break;
+                            }
+                            persist_exhausted.extend(
+                                newly_exhausted.iter().copied().filter(|&(node, clause)| {
+                                    !banned.contains(&(node, clause, u32::MAX))
+                                }),
+                            );
+                            if rooted_domain {
+                                rooted_exhausted_backjump_clauses
+                                    .extend(newly_exhausted.iter().map(|&(_, clause)| clause));
+                            }
+                            exhausted.extend(newly_exhausted);
+                        }
+                        if previous.is_none() && rooted_domain {
+                            // If proof reconstruction cannot cross a fully
+                            // tried local partition, reopen the nearest
+                            // different chronological choice as one exact
+                            // backjump. The former global fallback selected a
+                            // window of nodes and every cover at each node
+                            // (216 choices at Uberon's zero-residual boundary),
+                            // losing causal locality. An exhausted soft choice
+                            // is safe to revisit: `apply_conflicts` reopens its
+                            // siblings, and the resulting model still passes
+                            // every acceptance check.
+                            previous = chrono
+                                .iter()
+                                .rev()
+                                .find(|&&(node, clause, _)| {
+                                    !local_exhausted.contains(&(node, clause))
+                                        && !rooted_exhausted_backjump_clauses.contains(&clause)
+                                })
+                                .copied();
+                            if let Some(previous) = previous {
+                                persist_exhausted.clear();
+                                if debug {
+                                    eprintln!(
+                                        "KM_ELC_CERT repair pass {pass_label}: chronological \
+                                         proof-neighbor backjump {:?}",
+                                        previous,
+                                    );
+                                }
+                            }
+                        }
+                        if previous.is_none() {
+                            // A compact resumed frontier can consist entirely
+                            // of sentinels, so this pass has no open
+                            // chronological predecessor. Reopen a different
+                            // exhausted instances globally. Reopen all concept
+                            // covers for a bounded window of nodes and keep one
+                            // side of each failed; their siblings become the
+                            // next assignment. This remains a search
+                            // preference, never a model-acceptance shortcut.
+                            let mut global: Vec<(u32, usize, Vec<u32>)> = banned
+                                .iter()
+                                .filter(|&&(node, clause, cid)| {
+                                    cid == u32::MAX
+                                        && !persist_exhausted.contains(&(node, clause))
+                                })
+                                .filter_map(|&(node, clause, _)| {
+                                    let rc = rcs.get(clause)?;
+                                    let alternatives: Vec<u32> = rc
+                                        .head
+                                        .iter()
+                                        .filter_map(|atom| match *atom {
+                                            RAtom::C { cid, .. } => Some(cid),
+                                            _ => None,
+                                        })
+                                        .collect();
+                                    (!alternatives.is_empty())
+                                        .then_some((node, clause, alternatives))
+                                })
+                                .collect();
+                            global.sort_unstable_by_key(|(node, clause, _)| (*node, *clause));
+                            let pivot = persist_exhausted.iter().copied().max();
+                            let selected = pivot
+                                .and_then(|pivot| {
+                                    global.iter().position(|(node, clause, _)| {
+                                        (*node, *clause) > pivot
+                                    })
+                                })
+                                .unwrap_or(0);
+                            // This is the least informed fallback: neither
+                            // proof reconstruction nor live chronology found
+                            // a predecessor. Reopen one deterministic cover,
+                            // not every cover at its node. The latter injected
+                            // 146--216 unrelated choices into Uberon's
+                            // chronology and obscured the causal path again.
+                            // Repeated restarts still enumerate the finite
+                            // cursor, while each accepted candidate receives
+                            // the unchanged complete validation below.
+                            global_reopen = global.get(selected).map_or_else(Vec::new, |entry| {
+                                let (node, clause, alternatives) = entry;
+                                let pick = repair_choice_mix(*node, *clause, pass_label)
+                                    % alternatives.len();
+                                vec![(*node, *clause, alternatives[pick])]
+                            });
+                            previous = global_reopen.first().copied();
+                        }
+                        if let Some(previous) = previous {
+                            blame.clear();
+                            if global_reopen.is_empty() {
+                                blame.push(previous);
+                            } else {
+                                blame.extend(global_reopen);
+                            }
+                            // Persist every skipped finite instance as a
+                            // complete frontier.  The explicit sentinel keeps
+                            // the sliding clause window from deleting these
+                            // alternatives when a later node of the same
+                            // partition is explored.
+                            for &(node, clause) in &persist_exhausted {
+                                if let Some(rc) = rcs.get(clause) {
+                                    for atom in &rc.head {
+                                        if let RAtom::C { cid, .. } = *atom {
+                                            blame.push((node, clause, cid));
+                                        }
+                                    }
+                                }
+                                blame.push((node, clause, u32::MAX));
+                            }
+                        }
+                    }
+                    if blame.is_empty() {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {pass_label}: witness {c} died \
+                                 with no choices made (genuinely unsatisfiable?)"
+                            );
+                        }
+                        return PassOut::Fail;
+                    }
+                    if rooted_domain {
+                        // Exhaustion/backjump processing above can replace the
+                        // proof-derived blame with the concrete choice that is
+                        // finally going to be banned. Count that final clause
+                        // too. In particular, an indirect four-way cover can
+                        // repeatedly kill freshly renamed witnesses while the
+                        // proof trace keeps pointing at an older predecessor.
+                        // Counting only the pre-backjump blame then misses the
+                        // actual cycle. Do not double-count clauses already
+                        // charged earlier in this same failed closure.
+                        let final_clauses: HashSet<usize> =
+                            blame.iter().map(|triple| triple.1).collect();
+                        for clause in final_clauses
+                            .difference(&recurrence_counted_clauses)
+                            .copied()
+                        {
+                            let count = rooted_clause_conflict_counts.entry(clause).or_default();
+                            // A resumed exact-side ban is evidence that this
+                            // causal partition already failed in an earlier
+                            // process. Recover that one bit of recurrence from
+                            // the existing checkpoint so process boundaries do
+                            // not force another pair of full Uberon closures.
+                            // We only consult it after the clause has again
+                            // become the final cause in the current closure.
+                            if *count == 0
+                                && banned.iter().any(|&(_, prior_clause, concept)| {
+                                    prior_clause == clause && concept != u32::MAX
+                                })
+                            {
+                                *count = 1;
+                            }
+                            *count += 1;
+                            if *count >= 2
+                                && rooted_exhausted_backjump_clauses.insert(clause)
+                                && debug
+                            {
+                                eprintln!(
+                                    "KM_ELC_CERT repair pass {pass_label}: final causal clause \
+                                     {clause} recurred; backjumping past it"
+                                );
+                            }
+                        }
+                        if final_clauses
+                            .iter()
+                            .any(|clause| rooted_exhausted_backjump_clauses.contains(clause))
+                        {
+                            blame.retain(|&(_, clause, _)| {
+                                !rooted_exhausted_backjump_clauses.contains(&clause)
+                            });
+                            if blame.is_empty() {
+                                if let Some(previous) = chrono.iter().rev().find(|&&choice| {
+                                    repair_choice_untried(banned, choice)
+                                        && !rooted_exhausted_backjump_clauses
+                                            .contains(&choice.1)
+                                }) {
+                                    blame.push(*previous);
+                                }
+                            }
+                        }
+                    }
+                    if blame.is_empty() {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {pass_label}: recurrent final clause \
+                                 had no earlier choice to backjump to"
+                            );
+                        }
+                        return PassOut::Fail;
+                    }
+                    if debug {
+                        let first = blame[0];
+                        eprintln!(
+                            "KM_ELC_CERT repair pass {pass_label}: witness {c} died, \
+                             batching {} choice ban(s); first={:?} (node={}, concept={}); \
+                             choice_clause={}",
+                            blame.len(),
+                            first,
+                            it.debug_name(first.0),
+                            it.name(first.2),
+                            describe_residual_clause(&rcs[first.1], it),
+                        );
+                        if rooted_domain {
+                            for &(node0, rci, chosen) in &blame {
+                                if chosen == u32::MAX {
+                                    continue;
+                                }
+                                let node = uf_find(&mut repr, node0);
+                                let partners = disj
+                                    .get(&chosen)
+                                    .into_iter()
+                                    .flatten()
+                                    .filter(|&&partner| {
+                                        st.sub_super[node as usize].contains(&partner)
+                                    })
+                                    .map(|&partner| {
+                                        format!(
+                                            "{}(choice={:?})",
+                                            it.name(partner),
+                                            prov.get(&(node, partner)),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>();
+                                eprintln!(
+                                    "KM_ELC_CERT rooted conflict detail: node={} choice={} \
+                                     clause={} disjoint_present=[{}]",
+                                    it.debug_name(node),
+                                    it.name(chosen),
+                                    rci,
+                                    partners.join(","),
+                                );
+                            }
+                            let root = uf_find(&mut repr, c);
+                            if let Some(nf) = nfs.nf2.iter().find(|nf| {
+                                nf.sup == BOTTOM
+                                    && st.sub_super[root as usize].contains(&nf.sub1)
+                                    && st.sub_super[root as usize].contains(&nf.sub2)
+                            }) {
+                                eprintln!(
+                                    "KM_ELC_CERT rooted bottom detail: NF2 {} & {} -> bottom; \
+                                     choices={:?},{:?}",
+                                    it.name(nf.sub1),
+                                    it.name(nf.sub2),
+                                    prov.get(&(root, nf.sub1)),
+                                    prov.get(&(root, nf.sub2)),
+                                );
+                            }
+                            for &sub in nfs
+                                .nf5
+                                .iter()
+                                .filter(|&&sub| st.sub_super[root as usize].contains(&sub))
+                                .take(4)
+                            {
+                                eprintln!(
+                                    "KM_ELC_CERT rooted bottom detail: NF5 {} -> bottom; choice={:?}",
+                                    it.name(sub),
+                                    prov.get(&(root, sub)),
+                                );
+                            }
+                            if std::env::var_os("KM_ELC_DEBUG_DERIVATION").is_some() {
+                                let mut root_derivation_seen = HashSet::default();
+                                let mut root_derivation_lines = 0usize;
+                                debug_el_membership_producers(
+                                    root,
+                                    BOTTOM,
+                                    &st,
+                                    nfs,
+                                    it,
+                                    &prov,
+                                    &mut root_derivation_seen,
+                                    8,
+                                    &mut root_derivation_lines,
+                                );
+                                if let Some(q36024) = it.id("Q_36024") {
+                                    if st.sub_super[root as usize].contains(&q36024) {
+                                        eprintln!(
+                                            "KM_ELC_CERT rooted diagnostic: tracing Q_36024 \
+                                             complement-side taxon witness"
+                                        );
+                                        let mut branch_seen = HashSet::default();
+                                        let mut branch_lines = 0usize;
+                                        debug_el_membership_producers(
+                                            root,
+                                            q36024,
+                                            &st,
+                                            nfs,
+                                            it,
+                                            &prov,
+                                            &mut branch_seen,
+                                            8,
+                                            &mut branch_lines,
+                                        );
+                                    }
+                                }
+                            }
+                            if let Some(&(role, target)) =
+                                st.edges[root as usize].iter().find(|(_, target)| {
+                                    st.sub_super[*target as usize].contains(&BOTTOM)
+                                })
+                            {
+                                eprintln!(
+                                    "KM_ELC_CERT rooted bottom detail: dead successor -{}->{}",
+                                    it.name(role),
+                                    it.debug_name(target),
+                                );
+                                if let Some(&(source, generated_role, filler)) =
+                                    fresh_inverse.origins.get(&target)
+                                {
+                                    if std::env::var_os("KM_ELC_DEBUG_DERIVATION").is_some() {
+                                        let mut extra: Vec<u32> = st.sub_super[target as usize]
+                                            .iter()
+                                            .copied()
+                                            .filter(|concept| {
+                                                !base.sub_super[filler as usize].contains(concept)
+                                            })
+                                            .collect();
+                                        extra.sort_unstable();
+                                        eprintln!(
+                                            "KM_ELC_CERT rooted fresh origin: {} -{}-> {} as {}; \
+                                             canonical_bottom={} fresh_only_labels={} [{}]",
+                                            it.debug_name(source),
+                                            it.name(generated_role),
+                                            it.debug_name(target),
+                                            it.name(filler),
+                                            base.sub_super[filler as usize].contains(&BOTTOM),
+                                            extra.len(),
+                                            extra
+                                                .iter()
+                                                .take(24)
+                                                .map(|&concept| it.name(concept))
+                                                .collect::<Vec<_>>()
+                                                .join(","),
+                                        );
+                                    } else {
+                                        eprintln!(
+                                            "KM_ELC_CERT rooted fresh origin: {} -{}-> {} as {}",
+                                            it.debug_name(source),
+                                            it.name(generated_role),
+                                            it.debug_name(target),
+                                            it.name(filler),
+                                        );
+                                    }
+                                }
+                                for nf in nfs.nf3.iter().filter(|nf| {
+                                    st.sub_super[root as usize].contains(&nf.sub)
+                                        && st.sub_super[target as usize].contains(&nf.filler)
+                                        && (nf.role == role
+                                            || idx.role_supers(nf.role).contains(&role))
+                                }) {
+                                    eprintln!(
+                                        "KM_ELC_CERT rooted bottom producer: {} -> exists {}.{} \
+                                         (observed as {})",
+                                        it.name(nf.sub),
+                                        it.name(nf.role),
+                                        it.name(nf.filler),
+                                        it.name(role),
+                                    );
+                                }
+                                if let Some(nf) = nfs.nf2.iter().find(|nf| {
+                                    nf.sup == BOTTOM
+                                        && st.sub_super[target as usize].contains(&nf.sub1)
+                                        && st.sub_super[target as usize].contains(&nf.sub2)
+                                }) {
+                                    eprintln!(
+                                        "KM_ELC_CERT rooted bottom detail: target NF2 {} & {} -> \
+                                         bottom; choices={:?},{:?}",
+                                        it.name(nf.sub1),
+                                        it.name(nf.sub2),
+                                        prov.get(&(target, nf.sub1)),
+                                        prov.get(&(target, nf.sub2)),
+                                    );
+                                }
+                                if std::env::var_os("KM_ELC_DEBUG_DERIVATION").is_some() {
+                                    let mut derivation_seen = HashSet::default();
+                                    let mut derivation_lines = 0usize;
+                                    debug_el_membership_producers(
+                                        target,
+                                        BOTTOM,
+                                        &st,
+                                        nfs,
+                                        it,
+                                        &prov,
+                                        &mut derivation_seen,
+                                        5,
+                                        &mut derivation_lines,
+                                    );
+                                    let mut target_trace_seen = HashSet::default();
+                                    let target_choice = trace_repair_choice(
+                                        target,
+                                        BOTTOM,
+                                        &st,
+                                        nfs,
+                                        &repair_trace,
+                                        it,
+                                        &mut repr,
+                                        &prov,
+                                        banned,
+                                        &mut target_trace_seen,
+                                        128,
+                                    );
+                                    eprintln!(
+                                        "KM_ELC_CERT target causal choice: {:?}",
+                                        target_choice.map(|(node, clause, chosen)| (
+                                            it.debug_name(node),
+                                            clause,
+                                            it.name(chosen),
+                                        )),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    return PassOut::Conflict(blame, Some(viols.len()));
+                }
+            }
+            if clean {
+                if adds == 0 {
+                    return PassOut::Pristine;
+                }
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT repair pass {pass_label}: model complete after {} rounds, \
+                         {adds} additions (budget_left={budget})",
+                        round - 1
+                    );
+                }
+                return PassOut::Model(st, prov);
             }
         }
         if debug {
             eprintln!(
-                "KM_ELC_CERT repair pass {pass_label}: no convergence in {MAX_ROUNDS} rounds"
+                "KM_ELC_CERT repair pass {pass_label}: no convergence in {max_rounds} rounds"
             );
         }
         PassOut::Fail
@@ -6630,14 +10320,14 @@ fn repair_certify(
     // enumeration index to the first fork; refreshing it with that fork's
     // empty journal produces the same index as rebuilding it from scratch.
     let mut base_idx = CertIdx::default();
-    {
+    if lazy_complements.is_empty() {
         let mut budget: u64 = std::env::var("KM_ELC_REPAIR_BUDGET")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(PASS_BUDGET);
         let clean = cert_round(
             rcs,
-            &nfs.concept_names,
+            &repair_concept_names,
             &base.sub_super,
             &base.edges,
             None,
@@ -6649,12 +10339,22 @@ fn repair_certify(
                 delta: None,
                 edge_epoch: base.edge_epoch,
             }),
+            None,
+            None,
         );
         if clean {
             if debug {
                 eprintln!("KM_ELC_CERT repair: base model already complete");
             }
-            return CertOutcome::Pass;
+            return if rooted_domain {
+                if rooted_publish {
+                    rooted_unverified()
+                } else {
+                    CertOutcome::Fail
+                }
+            } else {
+                CertOutcome::Pass
+            };
         }
     }
     let mut base_idx = Some(base_idx);
@@ -6663,10 +10363,287 @@ fn repair_certify(
     let mut pass_states: Vec<(State, HashMap<(u32, u32), usize>)> = Vec::new();
     let polv0 = vec![false; rcs.len()];
     let mut banned0: HashSet<(u32, usize, u32)> = HashSet::default();
-    for seed in 0..2usize {
-        let polv = vec![seed == 1; rcs.len()];
-        let mut banned: HashSet<(u32, usize, u32)> = HashSet::default();
+    let model_passes: usize = std::env::var("KM_ELC_MODEL_PASSES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2)
+        // One complete countermodel is sufficient for a single rooted row
+        // when its named label equals the EL lower bound. Whole-taxonomy
+        // repair retains the two-polarity minimum.
+        .clamp(if rooted_domain { 1 } else { 2 }, 8);
+    // Resumed rooted searches must be able to sample assignments beyond the
+    // original eight-pass portfolio. The offset changes only deterministic
+    // choice order; every candidate still undergoes the unchanged closure and
+    // complete residual-model checks. Ordinary and non-rooted routes retain
+    // offset zero.
+    let model_seed_offset: usize = if rooted_domain {
+        std::env::var("KM_ELC_MODEL_SEED_OFFSET")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let strict_restart_limit = if bulk_causal_clause_conflicts {
+        4_096
+    } else {
+        RESTART_CAP
+    };
+    let strict_restart_cap: usize = std::env::var("KM_ELC_STRICT_RESTARTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(strict_restart_limit)
+        .min(strict_restart_limit);
+    let tolerant_restart_cap: usize = std::env::var("KM_ELC_TOLERANT_RESTARTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(RESTART_CAP)
+        .min(RESTART_CAP);
+    // The non-eager rooted bulk-causal route deliberately exhausts whole clause
+    // partitions before trying node-mixed assignments. Rebuilding that same
+    // frontier for every polarity seed is duplicate search, so that route
+    // carries its checkpoint between seeds. The eager portfolio instead takes
+    // a common checkpoint snapshot below and keeps later conflicts seed-local.
+    // Bans only influence choice order; closure and complete model checking are
+    // unchanged in both schedules.
+    let rooted_ban_checkpoint = if bulk_causal_clause_conflicts {
+        std::env::var_os("KM_ELC_REPAIR_BAN_CHECKPOINT").map(std::path::PathBuf::from)
+    } else {
+        None
+    };
+    let checkpoint_header = format!("v1\t{n}\t{}", rcs.len());
+    let mut rooted_shared_bans: HashSet<(u32, usize, u32)> = rooted_ban_checkpoint
+        .as_ref()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| {
+            let mut lines = text.lines();
+            (lines.next() == Some(checkpoint_header.as_str())).then(|| {
+                lines
+                    .filter_map(|line| {
+                        let mut fields = line.split('\t');
+                        let node = fields.next()?.parse().ok()?;
+                        let clause = fields.next()?.parse().ok()?;
+                        let concept = fields.next()?.parse().ok()?;
+                        fields.next().is_none().then_some((node, clause, concept))
+                    })
+                    .collect()
+            })
+        })
+        .unwrap_or_default();
+    if debug && !rooted_shared_bans.is_empty() {
+        eprintln!(
+            "KM_ELC_CERT repair: resumed {} rooted causal choice ban(s)",
+            rooted_shared_bans.len()
+        );
+    }
+    let write_bans = |path: &std::path::Path,
+                      bans: &HashSet<(u32, usize, u32)>|
+     -> std::io::Result<()> {
+        let mut triples: Vec<_> = bans.iter().copied().collect();
+        triples.sort_unstable();
+        let mut text = String::with_capacity(32 + triples.len() * 24);
+        text.push_str(&checkpoint_header);
+        text.push('\n');
+        for (node, clause, concept) in triples {
+            use std::fmt::Write as _;
+            let _ = writeln!(text, "{node}\t{clause}\t{concept}");
+        }
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, path))
+    };
+    let save_rooted_bans = |bans: &HashSet<(u32, usize, u32)>| {
+        let Some(path) = &rooted_ban_checkpoint else {
+            return;
+        };
+        let result = write_bans(path, bans);
+        if debug {
+            if let Err(error) = result {
+                eprintln!(
+                    "KM_ELC_CERT repair: could not update ban checkpoint {}: {error}",
+                    path.display()
+                );
+            }
+        }
+    };
+    // Eager model passes are a portfolio, not a continuation of one unary-ban
+    // walk.  Every pass starts from the same previously established frontier
+    // and keeps conflicts local to that pass, allowing the pass hash to vary
+    // all still-uncommitted choices together.  The non-eager route continues
+    // to persist and share its monotone exploration frontier between passes.
+    let mut rooted_seed_base_bans = rooted_shared_bans.clone();
+    if eager_causal_mix && !eager_continuation {
+        // A checkpoint can end between the two alternatives of one covering
+        // clause instance. Carrying that one-sided preference into every seed
+        // fixes the same choice before the seeded mixer can act. Keep only
+        // completed per-node covering frontiers (plus sentinels and clauses
+        // that are not same-variable concept covers); seed-local repair may
+        // still add a temporary one-sided preference during its own retry.
+        let checkpoint = rooted_seed_base_bans.clone();
+        rooted_seed_base_bans.retain(|&(node, rci, cid)| {
+            if cid == u32::MAX {
+                return true;
+            }
+            let Some(rc) = rcs.get(rci) else {
+                return true;
+            };
+            let Some(first_var) = rc.head.first().and_then(|atom| match *atom {
+                RAtom::C { v, .. } => Some(v),
+                _ => None,
+            }) else {
+                return true;
+            };
+            let same_var_cover = rc.head.len() > 1
+                && rc
+                    .head
+                    .iter()
+                    .all(|atom| matches!(*atom, RAtom::C { v, .. } if v == first_var));
+            !same_var_cover
+                || rc.head.iter().all(|atom| {
+                    let RAtom::C { cid: alternative, .. } = *atom else {
+                        unreachable!()
+                    };
+                    checkpoint.contains(&(node, rci, alternative))
+                })
+        });
+        if debug && rooted_seed_base_bans.len() != rooted_shared_bans.len() {
+            eprintln!(
+                "KM_ELC_CERT repair: eager seed base dropped {} incomplete checkpoint ban(s)",
+                rooted_shared_bans.len() - rooted_seed_base_bans.len()
+            );
+        }
+    }
+    let apply_conflicts =
+        |banned: &mut HashSet<(u32, usize, u32)>, triples: Vec<(u32, usize, u32)>| {
+            // A large same-variable covering clause is explored through a
+            // sliding mixed window. Sentinels remember nodes visited by older
+            // windows, while their actual alternative bans are removed before
+            // the next window. This bounds the number of simultaneous mixed
+            // assignments without revisiting nodes after a restart.
+            let homogeneous_causal = triples.first().is_some_and(|first| {
+                triples
+                    .iter()
+                    .all(|triple| (triple.1, triple.2) == (first.1, first.2))
+            });
+            let mut window_nodes: HashMap<usize, HashSet<u32>> = HashMap::default();
+            // A homogeneous set is one precise local conflict repeated at
+            // several nodes, not a sliding mixed window. Preserve it when the
+            // same clause later fails elsewhere; deleting older bans made two
+            // Uberon witnesses alternate forever. Batches spanning alternatives
+            // retain the bounded-window compaction that controls checkpoint size.
+            if bulk_causal_clause_conflicts && !homogeneous_causal {
+                for &(node, clause, _) in &triples {
+                    let Some(rc) = rcs.get(clause) else {
+                        continue;
+                    };
+                    let Some(first_var) = rc.head.first().and_then(|atom| match *atom {
+                        RAtom::C { v, .. } => Some(v),
+                        _ => None,
+                    }) else {
+                        continue;
+                    };
+                    if rc
+                        .head
+                        .iter()
+                        .all(|atom| matches!(*atom, RAtom::C { v, .. } if v == first_var))
+                    {
+                        window_nodes.entry(clause).or_default().insert(node);
+                    }
+                }
+                window_nodes.retain(|&clause, nodes| {
+                    nodes.len() >= causal_mix_batch
+                        || banned
+                            .iter()
+                            .any(|&(_, rci, cid)| rci == clause && cid == u32::MAX)
+                });
+                for (&clause, nodes) in &window_nodes {
+                    banned.retain(|&(node, rci, cid)| {
+                        rci != clause || cid == u32::MAX || nodes.contains(&node)
+                    });
+                }
+            }
+            let mut inserted = 0usize;
+            for triple in triples {
+                if triple.2 == u32::MAX {
+                    inserted += usize::from(banned.insert(triple));
+                    continue;
+                }
+                // Bans are search preferences, not learned logical clauses.
+                // Once every side of one covering instance has been tried,
+                // the ordinary tier-3 chooser may deliberately reuse a
+                // banned side.  If that reused side causes the next conflict,
+                // keeping all sides banned would make the conflict appear
+                // non-actionable and repeat the same assignment forever.
+                // Reopen the sibling sides and retain only the side that just
+                // failed.  This is chronological backtracking for an
+                // exhausted finite choice; the complete residual-model check
+                // remains the sole acceptance criterion.
+                let exhausted = rcs.get(triple.1).is_some_and(|rc| {
+                    !rc.head.is_empty()
+                        && rc.head.iter().all(|atom| match *atom {
+                            RAtom::C { cid, .. } => {
+                                banned.contains(&(triple.0, triple.1, cid))
+                            }
+                            _ => false,
+                        })
+                });
+                if exhausted
+                    || banned.contains(&(triple.0, triple.1, u32::MAX))
+                {
+                    let before = banned.len();
+                    banned.retain(|&(node, clause, cid)| {
+                        node != triple.0
+                            || clause != triple.1
+                            || (cid != u32::MAX && cid == triple.2)
+                    });
+                    inserted += usize::from(banned.len() != before);
+                }
+                inserted += usize::from(banned.insert(triple));
+            }
+            for (&clause, nodes) in &window_nodes {
+                let rc = &rcs[clause];
+                for &node in nodes {
+                    let fully_tried = rc.head.iter().all(|atom| {
+                        let RAtom::C { cid, .. } = *atom else {
+                            unreachable!()
+                        };
+                        banned.contains(&(node, clause, cid))
+                    });
+                    if fully_tried {
+                        banned.insert((node, clause, u32::MAX));
+                    }
+                }
+            }
+            inserted
+        };
+    let mut best_conflict_score = usize::MAX;
+    for model_index in 0..model_passes {
+        let seed = model_seed_offset.saturating_add(model_index);
+        let polv: Vec<bool> = match seed {
+            0 => vec![false; rcs.len()],
+            1 => vec![true; rcs.len()],
+            // Deterministic mixed polarities. Each pass remains an ordinary
+            // complete residual model; diversity only strengthens the model
+            // intersection by keeping more satisfiable subjects alive in at
+            // least one checked model.
+            _ => (0..rcs.len())
+                .map(|rci| {
+                    let x = (rci as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                        ^ (seed as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+                    (x ^ (x >> 29) ^ (x >> 47)) & 1 != 0
+                })
+                .collect(),
+        };
+        let mut banned: HashSet<(u32, usize, u32)> = if bulk_causal_clause_conflicts {
+            if eager_causal_mix && !eager_continuation {
+                rooted_seed_base_bans.clone()
+            } else {
+                rooted_shared_bans.clone()
+            }
+        } else {
+            HashSet::default()
+        };
         let mut restarts = 0usize;
+        let mut bulk_conflicts = 0usize;
         let mut got_model = false;
         loop {
             match run_pass(&polv, seed, &banned, false, base_idx.take()) {
@@ -6674,18 +10651,81 @@ fn repair_certify(
                     if debug {
                         eprintln!("KM_ELC_CERT repair: base model already complete");
                     }
-                    return CertOutcome::Pass;
+                    return if rooted_domain {
+                        if rooted_publish {
+                            rooted_unverified()
+                        } else {
+                            CertOutcome::Fail
+                        }
+                    } else {
+                        CertOutcome::Pass
+                    };
                 }
                 PassOut::Model(st, prov) => {
-                    if seed == 0 {
+                    if model_index == 0 {
                         banned0 = banned.clone();
                     }
                     pass_states.push((st, prov));
                     got_model = true;
                     break;
                 }
-                PassOut::Conflict(triple) => {
-                    if restarts >= RESTART_CAP || !banned.insert(triple) {
+                PassOut::Conflict(triples, score) => {
+                    if let (Some(score), Some(path)) = (score, rooted_ban_checkpoint.as_ref()) {
+                        // A zero-length violation vector can accompany a dead
+                        // canonical witness or protected root. It is not a
+                        // better search frontier than a low nonzero residual
+                        // batch, so do not let it overwrite that checkpoint.
+                        if score != 0 && score < best_conflict_score {
+                            best_conflict_score = score;
+                            let best_path = path.with_extension("best.tsv");
+                            if let Err(error) = write_bans(&best_path, &banned) {
+                                if debug {
+                                    eprintln!(
+                                        "KM_ELC_CERT repair: could not update best checkpoint {}: {error}",
+                                        best_path.display(),
+                                    );
+                                }
+                            } else if debug {
+                                eprintln!(
+                                    "KM_ELC_CERT repair pass {seed}: retained best score {score} at {}",
+                                    best_path.display(),
+                                );
+                            }
+                        }
+                    }
+                    let inserted = apply_conflicts(&mut banned, triples);
+                    if bulk_causal_clause_conflicts
+                        && (!eager_causal_mix || eager_continuation)
+                        && inserted != 0
+                    {
+                        rooted_shared_bans = banned.clone();
+                        save_rooted_bans(&rooted_shared_bans);
+                    }
+                    // Two ontology-wide conflict waves establish that this
+                    // polarity cannot preserve every base-alive witness. The
+                    // death-tolerant pass computes a complete model and leaves
+                    // only the affected subjects for exact discharge.
+                    if inserted >= 1_024 {
+                        bulk_conflicts += 1;
+                    }
+                    // The historical death-tolerant fallback is useful when
+                    // broad witness deaths show that a strict polarity is a
+                    // poor global model.  A rooted causal-clause schedule is
+                    // different: each bulk wave can discharge one independent
+                    // universal partition on the path to the protected root.
+                    // Preserve those accumulated bans and continue through
+                    // later causal clauses instead of discarding the strict
+                    // search after the second large batch.
+                    if bulk_conflicts >= 2 && !bulk_causal_clause_conflicts {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {seed}: two bulk conflict waves; \
+                                 switching to the exact partial-certificate pass"
+                            );
+                        }
+                        break;
+                    }
+                    if restarts >= strict_restart_cap || inserted == 0 {
                         if debug {
                             eprintln!(
                                 "KM_ELC_CERT repair pass {seed}: conflicts persist after \
@@ -6699,21 +10739,76 @@ fn repair_certify(
                 PassOut::Fail => break,
             }
         }
+        if bulk_causal_clause_conflicts && (!eager_causal_mix || eager_continuation) {
+            rooted_shared_bans = banned.clone();
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT repair pass {seed}: retained {} rooted causal choice ban(s)",
+                    rooted_shared_bans.len()
+                );
+            }
+        }
         if !got_model {
             // strict passes kept dying: accept a model that lets witnesses
-            // die — their subjects become unresolved residue for the engine
-            if let PassOut::Model(st, prov) = run_pass(&polv, seed + 10, &banned, true, None) {
-                if debug {
-                    eprintln!("KM_ELC_CERT repair pass {seed}: death-tolerant model accepted");
+            // die — their subjects become unresolved residue for the engine.
+            // Canonical Skolem witnesses remain mandatory, so retry batched
+            // conflicts that report one of those dying.
+            let mut tolerant_banned = banned.clone();
+            for _ in 0..=tolerant_restart_cap {
+                match run_pass(&polv, seed + 10, &tolerant_banned, true, None) {
+                    PassOut::Pristine => {
+                        return if rooted_domain {
+                            if rooted_publish {
+                                rooted_unverified()
+                            } else {
+                                CertOutcome::Fail
+                            }
+                        } else {
+                            CertOutcome::Pass
+                        };
+                    }
+                    PassOut::Model(st, prov) => {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {seed}: death-tolerant model accepted"
+                            );
+                        }
+                        if model_index == 0 {
+                            banned0 = tolerant_banned.clone();
+                        }
+                        pass_states.push((st, prov));
+                        break;
+                    }
+                    PassOut::Conflict(triples, _score) => {
+                        let inserted = apply_conflicts(&mut tolerant_banned, triples);
+                        if bulk_causal_clause_conflicts
+                            && (!eager_causal_mix || eager_continuation)
+                            && inserted != 0
+                        {
+                            rooted_shared_bans = tolerant_banned.clone();
+                            save_rooted_bans(&rooted_shared_bans);
+                        }
+                        if inserted == 0 {
+                            break;
+                        }
+                    }
+                    PassOut::Fail => break,
                 }
-                if seed == 0 {
-                    banned0 = banned.clone();
-                }
-                pass_states.push((st, prov));
+            }
+            if bulk_causal_clause_conflicts && (!eager_causal_mix || eager_continuation) {
+                rooted_shared_bans = tolerant_banned.clone();
             }
         }
     }
     if pass_states.is_empty() {
+        return CertOutcome::Fail;
+    }
+    if rooted_domain && !rooted_publish {
+        if debug {
+            eprintln!(
+                "KM_ELC_CERT rooted-domain diagnostic: complete model found; refusing publication"
+            );
+        }
         return CertOutcome::Fail;
     }
     // Per-subject intersection criterion with refinement.  Subjects whose
@@ -6725,7 +10820,13 @@ fn repair_certify(
     loop {
         let mut unsat_subjects: Vec<u32> = Vec::new();
         let mut undet: Vec<(u32, u32)> = Vec::new();
-        for c in 0..n {
+        let subjects: Vec<u32> = if rooted_domain {
+            preserve_named.clone()
+        } else {
+            (0..n as u32).collect()
+        };
+        for c in subjects {
+            let c = c as usize;
             if !is_named[c] || base.sub_super[c].contains(&BOTTOM) {
                 continue;
             }
@@ -6757,8 +10858,113 @@ fn repair_certify(
             }
         }
         if undet.is_empty() || refine >= REFINE_CAP {
+            let unsat_subject_count = unsat_subjects.len();
+            if debug && !unsat_subjects.is_empty() {
+                for &(ref st, ref prov) in pass_states.iter().take(1) {
+                    for &start in unsat_subjects.iter().take(5) {
+                        let mut node = start;
+                        let mut path = vec![it.debug_name(node)];
+                        let mut cause = "no local bottom cause found".to_string();
+                        for _ in 0..64 {
+                            if let Some(&sub) = nfs
+                                .nf5
+                                .iter()
+                                .find(|&&sub| st.sub_super[node as usize].contains(&sub))
+                            {
+                                let derivation = if let Some(rci) = prov.get(&(node, sub)) {
+                                    format!("direct residual choice {rci}")
+                                } else if let Some(nf) = nfs.nf1.iter().find(|nf| {
+                                    nf.sup == sub && st.sub_super[node as usize].contains(&nf.sub)
+                                }) {
+                                    format!(
+                                        "NF1 {} (choice={:?})",
+                                        it.name(nf.sub),
+                                        prov.get(&(node, nf.sub))
+                                    )
+                                } else if let Some(nf) = nfs.nf2.iter().find(|nf| {
+                                    nf.sup == sub
+                                        && st.sub_super[node as usize].contains(&nf.sub1)
+                                        && st.sub_super[node as usize].contains(&nf.sub2)
+                                }) {
+                                    format!(
+                                        "NF2 {} & {} (choices={:?},{:?})",
+                                        it.name(nf.sub1),
+                                        it.name(nf.sub2),
+                                        prov.get(&(node, nf.sub1)),
+                                        prov.get(&(node, nf.sub2))
+                                    )
+                                } else if let Some((nf, target)) = nfs.nf4.iter().find_map(|nf| {
+                                    (nf.sup == sub).then(|| {
+                                        st.edges[node as usize]
+                                            .iter()
+                                            .find(|(role, target)| {
+                                                *role == nf.role
+                                                    && st.sub_super[*target as usize]
+                                                        .contains(&nf.filler)
+                                            })
+                                            .map(|(_, target)| (nf, *target))
+                                    })?
+                                }) {
+                                    format!(
+                                        "NF4 edge -{}->{} with filler {}",
+                                        it.name(nf.role),
+                                        it.debug_name(target),
+                                        it.name(nf.filler)
+                                    )
+                                } else {
+                                    "derivation not reconstructed".to_string()
+                                };
+                                cause =
+                                    format!("NF5 {} <= bottom via {}", it.name(sub), derivation);
+                                break;
+                            }
+                            if let Some(nf) = nfs.nf2.iter().find(|nf| {
+                                nf.sup == BOTTOM
+                                    && st.sub_super[node as usize].contains(&nf.sub1)
+                                    && st.sub_super[node as usize].contains(&nf.sub2)
+                            }) {
+                                cause = format!(
+                                    "NF2 {} & {} <= bottom (choices={:?},{:?})",
+                                    it.name(nf.sub1),
+                                    it.name(nf.sub2),
+                                    prov.get(&(node, nf.sub1)),
+                                    prov.get(&(node, nf.sub2)),
+                                );
+                                break;
+                            }
+                            if let Some((role, target)) = st.edges[node as usize]
+                                .iter()
+                                .find(|(_, target)| {
+                                    st.sub_super[*target as usize].contains(&BOTTOM)
+                                })
+                                .copied()
+                            {
+                                node = target;
+                                path.push(format!("-{}->{}", it.name(role), it.debug_name(node)));
+                                continue;
+                            }
+                            break;
+                        }
+                        eprintln!(
+                            "KM_ELC_CERT dead trace {}: {} ; {}",
+                            it.name(start),
+                            path.join(" "),
+                            cause
+                        );
+                    }
+                }
+            }
             let mut unresolved: Vec<u32> = unsat_subjects;
             unresolved.extend(undet.iter().map(|p| p.0));
+            if rooted_domain {
+                let protected: HashSet<u32> = preserve_named.iter().copied().collect();
+                unresolved.extend(
+                    base_alive_named
+                        .iter()
+                        .copied()
+                        .filter(|c| !protected.contains(c)),
+                );
+            }
             unresolved.sort_unstable();
             unresolved.dedup();
             if unresolved.is_empty() {
@@ -6774,20 +10980,30 @@ fn repair_certify(
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(64);
-            if unresolved.len() <= cap {
+            if rooted_domain || unresolved.len() <= cap {
                 if debug {
                     eprintln!(
                         "KM_ELC_CERT partial: {} unresolved subject(s) left for the \
-                         context engine",
-                        unresolved.len()
+                         context engine (unsat_in_all_models={}, undetermined_pairs={}, \
+                         models={}, refine={})",
+                        unresolved.len(),
+                        unsat_subject_count,
+                        undet.len(),
+                        pass_states.len(),
+                        refine,
                     );
                 }
                 return CertOutcome::Partial(unresolved);
             }
             if debug {
                 eprintln!(
-                    "KM_ELC_CERT repair fail: {} unresolved subjects exceed the residue cap",
-                    unresolved.len()
+                    "KM_ELC_CERT repair fail: {} unresolved subjects exceed the residue cap \
+                     (unsat_in_all_models={}, undetermined_pairs={}, models={}, refine={})",
+                    unresolved.len(),
+                    unsat_subject_count,
+                    undet.len(),
+                    pass_states.len(),
+                    refine,
                 );
             }
             return CertOutcome::Fail;
@@ -6812,13 +11028,27 @@ fn repair_certify(
         let mut restarts = 0usize;
         loop {
             match run_pass(&polv0, 20 + refine, &banned0, true, None) {
-                PassOut::Pristine => return CertOutcome::Pass,
+                PassOut::Pristine => {
+                    return if rooted_domain {
+                        if rooted_publish {
+                            rooted_unverified()
+                        } else {
+                            CertOutcome::Fail
+                        }
+                    } else {
+                        CertOutcome::Pass
+                    };
+                }
                 PassOut::Model(st, prov) => {
                     pass_states.push((st, prov));
                     break;
                 }
-                PassOut::Conflict(triple) => {
-                    if restarts >= RESTART_CAP || !banned0.insert(triple) {
+                PassOut::Conflict(triples, _score) => {
+                    let mut inserted = 0usize;
+                    for triple in triples {
+                        inserted += usize::from(banned0.insert(triple));
+                    }
+                    if restarts >= RESTART_CAP || inserted == 0 {
                         refine = REFINE_CAP;
                         break;
                     }
@@ -8007,6 +12237,54 @@ fn acyclic_nf1_taxonomy(
     compact_output: bool,
     force_compact_output: bool,
 ) -> Option<ElResult> {
+    if std::env::var_os("KM_ELC_DEBUG_DERIVATION").is_some() {
+        let trace_concept = std::env::var("KM_ELC_DEBUG_CONCEPT")
+            .unwrap_or_else(|_| "Q_36024".to_string());
+        let trace_node = std::env::var("KM_ELC_DEBUG_NODE")
+            .unwrap_or_else(|_| "CL_0000540".to_string());
+        DEBUG_ADD_SUB_CONCEPT.store(
+            it.id(&trace_concept).map_or(usize::MAX, |id| id as usize),
+            Ordering::Relaxed,
+        );
+        DEBUG_ADD_SUB_NODE.store(
+            it.id(&trace_node).map_or(usize::MAX, |id| id as usize),
+            Ordering::Relaxed,
+        );
+        DEBUG_ADD_SUB_COUNT.store(0, Ordering::Relaxed);
+        if let Some(target) = it.id(&trace_concept) {
+            for nf in nfs.nf1.iter().filter(|nf| nf.sup == target) {
+                eprintln!(
+                    "KM_ELC_CERT target NF1 predecessor: {}({}) -> {}({})",
+                    it.name(nf.sub),
+                    nf.sub,
+                    it.name(nf.sup),
+                    nf.sup,
+                );
+            }
+            for nf in nfs.nf2.iter().filter(|nf| nf.sup == target) {
+                eprintln!(
+                    "KM_ELC_CERT target NF2 predecessor: {}({}) & {}({}) -> {}({})",
+                    it.name(nf.sub1),
+                    nf.sub1,
+                    it.name(nf.sub2),
+                    nf.sub2,
+                    it.name(nf.sup),
+                    nf.sup,
+                );
+            }
+            for nf in nfs.nf4.iter().filter(|nf| nf.sup == target) {
+                eprintln!(
+                    "KM_ELC_CERT target NF4 predecessor: exists {}({}).{}({}) -> {}({})",
+                    it.name(nf.role),
+                    nf.role,
+                    it.name(nf.filler),
+                    nf.filler,
+                    it.name(nf.sup),
+                    nf.sup,
+                );
+            }
+        }
+    }
     if !residual_is_empty
         || lean_cert_requested
         || std::env::var_os("KM_ELC_NO_ACYCLIC_NF1").is_some()
@@ -8178,6 +12456,33 @@ fn classify_inner_mode(
     let clauses = clauses;
     let mut it = Interner::new();
     let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
+    let rooted_batch_names: Option<Vec<String>> = match std::env::var_os("KM_ELC_PRESERVE_FILE") {
+        Some(path) => {
+            let text = match std::fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(error) => {
+                    eprintln!(
+                        "KM_ELC_CERT fail closed: cannot read preserve file {}: {error}",
+                        std::path::Path::new(&path).display()
+                    );
+                    return None;
+                }
+            };
+            let names: Vec<String> = text
+                .lines()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .collect();
+            let unique: HashSet<&str> = names.iter().map(String::as_str).collect();
+            if names.is_empty() || unique.len() != names.len() {
+                eprintln!("KM_ELC_CERT fail closed: preserve file is empty or has duplicates");
+                return None;
+            }
+            Some(names)
+        }
+        None => None,
+    };
     elc_timing_lap(elc_timing, &mut elc_lap, "to_nf");
     // TOP is always a semantic concept context, even when no normalized axiom
     // mentions it explicitly. The inconsistency readout queries TOP ⊑ BOTTOM,
@@ -8240,6 +12545,21 @@ fn classify_inner_mode(
             }
         }
     };
+    if std::env::var_os("KM_ELC_DEBUG_DERIVATION").is_some() {
+        let trace_concept = std::env::var("KM_ELC_DEBUG_CONCEPT")
+            .unwrap_or_else(|_| "Q_36024".to_string());
+        let trace_node = std::env::var("KM_ELC_DEBUG_NODE")
+            .unwrap_or_else(|_| "CL_0000540".to_string());
+        DEBUG_ADD_SUB_CONCEPT.store(
+            it.id(&trace_concept).map_or(usize::MAX, |id| id as usize),
+            Ordering::Relaxed,
+        );
+        DEBUG_ADD_SUB_NODE.store(
+            it.id(&trace_node).map_or(usize::MAX, |id| id as usize),
+            Ordering::Relaxed,
+        );
+        DEBUG_ADD_SUB_COUNT.store(0, Ordering::Relaxed);
+    }
     let n = it.len();
     elc_sub = std::time::Instant::now();
     let idx = build_idx(&nfs, n);
@@ -8301,6 +12621,34 @@ fn classify_inner_mode(
         (None, None) => unreachable!("the serial path seeds its state"),
     };
     elc_timing_lap(elc_timing, &mut elc_lap, "saturate");
+    if std::env::var_os("KM_ELC_DEBUG_DERIVATION").is_some() {
+        if let (Ok(trace_name), Ok(node_name)) = (
+            std::env::var("KM_ELC_DEBUG_CONCEPT"),
+            std::env::var("KM_ELC_DEBUG_NODE"),
+        ) {
+            if let (Some(concept), Some(node)) = (it.id(&trace_name), it.id(&node_name)) {
+                if st.sub_super[node as usize].contains(&concept) {
+                    eprintln!(
+                        "KM_ELC_CERT base target present: {}@{}",
+                        trace_name, node_name
+                    );
+                    let mut seen = HashSet::default();
+                    let mut lines = 0;
+                    debug_el_membership_producers(
+                        node,
+                        concept,
+                        &st,
+                        &nfs,
+                        &it,
+                        &HashMap::default(),
+                        &mut seen,
+                        5,
+                        &mut lines,
+                    );
+                }
+            }
+        }
+    }
     if lean_cert_requested {
         let source_clauses = certificate_clauses
             .as_deref()
@@ -8442,7 +12790,66 @@ fn classify_inner_mode(
                     CertOutcome::Fail
                 }
             }
-            CertMode::Repair => repair_certify(&rcs, &nfs, &idx, &res, &it, debug),
+            CertMode::Repair => {
+                if let Some(batch) = rooted_batch_names.as_deref() {
+                    if std::env::var_os("KM_ELC_REPAIR_ROOT_DOMAIN").is_none()
+                        || std::env::var_os("KM_ELC_REPAIR_ROOT_PUBLISH").is_none()
+                        || std::env::var_os("KM_ELC_PRESERVE").is_some()
+                    {
+                        eprintln!(
+                            "KM_ELC_CERT fail closed: preserve-file batching requires rooted publication and no KM_ELC_PRESERVE"
+                        );
+                        return None;
+                    }
+                    let mut intersection: Option<HashSet<u32>> = None;
+                    for root in batch {
+                        let Some(root_id) = it.id(root) else {
+                            eprintln!("KM_ELC_CERT fail closed: unknown batch root {root}");
+                            return None;
+                        };
+                        if !nfs.concept_names.contains(&root_id)
+                            || crate::calc::is_internal_concept(it.name(root_id))
+                            || res.sub_super[root_id as usize].contains(&BOTTOM)
+                        {
+                            eprintln!("KM_ELC_CERT fail closed: invalid batch root {root}");
+                            return None;
+                        }
+                        match repair_certify(
+                            &rcs,
+                            &nfs,
+                            &idx,
+                            &res,
+                            &it,
+                            debug,
+                            Some(std::slice::from_ref(root)),
+                        ) {
+                            CertOutcome::Partial(subjects)
+                                if !subjects.iter().any(|&subject| subject == root_id) =>
+                            {
+                                let subjects: HashSet<u32> = subjects.into_iter().collect();
+                                match &mut intersection {
+                                    Some(current) => {
+                                        current.retain(|subject| subjects.contains(subject))
+                                    }
+                                    None => intersection = Some(subjects),
+                                }
+                            }
+                            _ => {
+                                eprintln!(
+                                    "KM_ELC_CERT fail closed: batch root {root} was not independently certified"
+                                );
+                                return None;
+                            }
+                        }
+                    }
+                    let mut unresolved: Vec<u32> =
+                        intersection.unwrap_or_default().into_iter().collect();
+                    unresolved.sort_unstable();
+                    CertOutcome::Partial(unresolved)
+                } else {
+                    repair_certify(&rcs, &nfs, &idx, &res, &it, debug, None)
+                }
+            }
             CertMode::Off => unreachable!("residual with cert off returns early"),
         };
         match outcome {
@@ -8468,6 +12875,19 @@ fn classify_inner_mode(
 
     let unresolved_set: std::collections::BTreeSet<&str> =
         unresolved.iter().map(|s| s.as_str()).collect();
+    let rooted_output_names: Option<HashSet<String>> =
+        std::env::var_os("KM_ELC_REPAIR_ROOT_PUBLISH").and_then(|_| {
+            rooted_batch_names
+                .clone()
+                .or_else(|| std::env::var("KM_ELC_PRESERVE").ok().map(|name| vec![name]))
+                .map(|names| {
+                    names
+                        .into_iter()
+                        .flat_map(|name| name.split(',').map(str::to_owned).collect::<Vec<_>>())
+                        .filter(|name| !name.is_empty())
+                        .collect()
+                })
+        });
     // Everything below reads only the completed relation (`sub_super`) and the
     // interner names. The rule indexes, the normal forms, the residual, the
     // compiled residual clauses, and the role graph (`edges` / `in_by_role` /
@@ -8550,6 +12970,16 @@ fn classify_inner_mode(
         if cid == TOP || cid == BOTTOM {
             continue;
         }
+        // A rooted worker publishes only the subjects whose carriers and
+        // countermodels it checked. Base-derived rows outside that set remain
+        // exact, but repeating them in every array task would turn a compact
+        // per-row proof into terabytes of redundant output.
+        if rooted_output_names
+            .as_ref()
+            .is_some_and(|names| !names.contains(it.name(cid)))
+        {
+            continue;
+        }
         // unresolved subjects are answered by the context engine instead
         if unresolved_set.contains(it.name(cid)) {
             continue;
@@ -8569,7 +12999,7 @@ fn classify_inner_mode(
                 it.name(d).to_string()
             });
         }
-        if !out.is_empty() {
+        if !out.is_empty() || rooted_output_names.is_some() {
             subsumptions.insert(it.name(cid).to_string(), out);
         }
     }
@@ -8590,6 +13020,54 @@ fn classify_inner_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static ROOTED_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvRestore(&'static str, Option<std::ffi::OsString>);
+
+    impl EnvRestore {
+        fn set(name: &'static str, value: &str) -> Self {
+            let old = std::env::var_os(name);
+            std::env::set_var(name, value);
+            Self(name, old)
+        }
+
+        fn remove(name: &'static str) -> Self {
+            let old = std::env::var_os(name);
+            std::env::remove_var(name);
+            Self(name, old)
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.1.take() {
+                Some(value) => std::env::set_var(self.0, value),
+                None => std::env::remove_var(self.0),
+            }
+        }
+    }
+
+    #[test]
+    fn repair_violation_cap_override_is_bounded_and_fail_safe() {
+        assert_eq!(repair_viol_cap_from(None), REPAIR_VIOL_CAP);
+        assert_eq!(repair_viol_cap_from(Some("invalid")), REPAIR_VIOL_CAP);
+        assert_eq!(repair_viol_cap_from(Some("0")), 1);
+        assert_eq!(repair_viol_cap_from(Some("750000")), 750_000);
+        assert_eq!(repair_viol_cap_from(Some("999999999")), 5_000_000);
+    }
+
+    #[test]
+    fn repair_choice_mixer_gives_binary_heads_distinct_seed_assignments() {
+        let assignments: HashSet<Vec<usize>> = (0..8)
+            .map(|pass| {
+                (100_000..100_064)
+                    .map(|node| repair_choice_mix(node, 119, pass) % 2)
+                    .collect()
+            })
+            .collect();
+        assert_eq!(assignments.len(), 8);
+    }
 
     #[test]
     fn lean_certificate_reconstructs_and_audits_the_production_fixpoint() {
@@ -8747,6 +13225,7 @@ mod tests {
     }
 
     fn positive_abox_consistency(ofn: &str) -> Option<bool> {
+        let _environment_lock = crate::frontend::lock_test_environment();
         crate::frontend::with_ofn_to_clauses_requested_route(
             ofn,
             crate::routing::Route::ProductionAll,
@@ -8758,18 +13237,18 @@ mod tests {
     #[test]
     fn positive_abox_completion_respects_identity_and_conjunction_clashes() {
         let consistent = r#"Ontology(
-            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
-            ClassAssertion(<A> <a>)
-            ClassAssertion(<B> <b>)
-            DifferentIndividuals(<a> <b>)
+            SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
+            ClassAssertion(<urn:A> <urn:a>)
+            ClassAssertion(<urn:B> <urn:b>)
+            DifferentIndividuals(<urn:a> <urn:b>)
         )"#;
         assert_eq!(positive_abox_consistency(consistent), Some(true));
 
         let inconsistent = r#"Ontology(
-            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
-            ClassAssertion(<A> <a>)
-            ClassAssertion(<B> <b>)
-            SameIndividual(<a> <b>)
+            SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
+            ClassAssertion(<urn:A> <urn:a>)
+            ClassAssertion(<urn:B> <urn:b>)
+            SameIndividual(<urn:a> <urn:b>)
         )"#;
         assert_eq!(positive_abox_consistency(inconsistent), Some(false));
     }
@@ -8777,9 +13256,9 @@ mod tests {
     #[test]
     fn positive_abox_completion_materializes_ground_role_edges() {
         let inconsistent = r#"Ontology(
-            SubClassOf(ObjectSomeValuesFrom(<r> <B>) owl:Nothing)
-            ObjectPropertyAssertion(<r> <a> <b>)
-            ClassAssertion(<B> <b>)
+            SubClassOf(ObjectSomeValuesFrom(<urn:r> <urn:B>) owl:Nothing)
+            ObjectPropertyAssertion(<urn:r> <urn:a> <urn:b>)
+            ClassAssertion(<urn:B> <urn:b>)
         )"#;
         assert_eq!(positive_abox_consistency(inconsistent), Some(false));
     }
@@ -8787,13 +13266,14 @@ mod tests {
     #[test]
     fn positive_abox_completion_retains_the_exact_named_taxonomy() {
         let ofn = r#"Ontology(
-            Declaration(Class(<A>))
-            Declaration(Class(<B>))
-            Declaration(Class(<C>))
-            SubClassOf(<A> <B>)
-            SubClassOf(<B> <C>)
-            ClassAssertion(<A> <a>)
+            Declaration(Class(<urn:A>))
+            Declaration(Class(<urn:B>))
+            Declaration(Class(<urn:C>))
+            SubClassOf(<urn:A> <urn:B>)
+            SubClassOf(<urn:B> <urn:C>)
+            ClassAssertion(<urn:A> <urn:a>)
         )"#;
+        let _environment_lock = crate::frontend::lock_test_environment();
         crate::frontend::with_ofn_to_clauses_requested_route(
             ofn,
             crate::routing::Route::ProductionAll,
@@ -8820,15 +13300,16 @@ mod tests {
     #[test]
     fn compact_positive_abox_completion_matches_string_result() {
         let ofn = r#"Ontology(
-            Declaration(Class(<A>))
-            Declaration(Class(<B>))
-            Declaration(Class(<C>))
-            SubClassOf(<A> <B>)
-            SubClassOf(<B> <C>)
-            ClassAssertion(<A> <a>)
-            SameIndividual(<a> <b>)
-            DifferentIndividuals(<a> <c>)
+            Declaration(Class(<urn:A>))
+            Declaration(Class(<urn:B>))
+            Declaration(Class(<urn:C>))
+            SubClassOf(<urn:A> <urn:B>)
+            SubClassOf(<urn:B> <urn:C>)
+            ClassAssertion(<urn:A> <urn:a>)
+            SameIndividual(<urn:a> <urn:b>)
+            DifferentIndividuals(<urn:a> <urn:c>)
         )"#;
+        let _environment_lock = crate::frontend::lock_test_environment();
         crate::frontend::with_ofn_to_clauses_requested_route(
             ofn,
             crate::routing::Route::ProductionAll,
@@ -8870,11 +13351,12 @@ mod tests {
     #[test]
     fn merged_positive_abox_proves_safe_separated_individuals() {
         let ofn = r#"Ontology(
-            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
-            ClassAssertion(<A> <a>)
-            ClassAssertion(<A> <b>)
-            DifferentIndividuals(<a> <b>)
+            SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
+            ClassAssertion(<urn:A> <urn:a>)
+            ClassAssertion(<urn:A> <urn:b>)
+            DifferentIndividuals(<urn:a> <urn:b>)
         )"#;
+        let _environment_lock = crate::frontend::lock_test_environment();
         crate::frontend::with_ofn_to_clauses_requested_route(
             ofn,
             crate::routing::Route::ProductionAll,
@@ -8897,11 +13379,12 @@ mod tests {
     #[test]
     fn merged_positive_abox_declines_a_spurious_cross_individual_clash() {
         let ofn = r#"Ontology(
-            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
-            ClassAssertion(<A> <a>)
-            ClassAssertion(<B> <b>)
-            DifferentIndividuals(<a> <b>)
+            SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
+            ClassAssertion(<urn:A> <urn:a>)
+            ClassAssertion(<urn:B> <urn:b>)
+            DifferentIndividuals(<urn:a> <urn:b>)
         )"#;
+        let _environment_lock = crate::frontend::lock_test_environment();
         crate::frontend::with_ofn_to_clauses_requested_route(
             ofn,
             crate::routing::Route::ProductionAll,
@@ -8923,10 +13406,11 @@ mod tests {
     #[test]
     fn compact_positive_abox_detects_node_local_bottom() {
         let ofn = r#"Ontology(
-            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
-            ClassAssertion(<A> <a>)
-            ClassAssertion(<B> <a>)
+            SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
+            ClassAssertion(<urn:A> <urn:a>)
+            ClassAssertion(<urn:B> <urn:a>)
         )"#;
+        let _environment_lock = crate::frontend::lock_test_environment();
         crate::frontend::with_ofn_to_clauses_requested_route(
             ofn,
             crate::routing::Route::ProductionAll,
@@ -9861,7 +14345,10 @@ mod tests {
             "[{},{},{}]",
             cl(&[c("A", "u")], &[rf("R", "u", "x")]),
             cl(&[c("A", "u")], &[cf("B", "x", "u")]),
-            cl(&[c("A", "x")], &[cf("C", "x", "u")]),
+            cl(
+                &[c("A", "x"), c("A", "u")],
+                &[cf("C", "x", "u")],
+            ),
         ));
         let mut interner = Interner::new();
         let (mut nfs, residual, skolem_target) =
@@ -9869,7 +14356,7 @@ mod tests {
         assert_eq!(residual.len(), 1);
         let compiled = compile_residual(&residual, &mut interner, &mut nfs, &skolem_target)
             .expect("supported residual");
-        assert_eq!(compiled.clauses[0].nvars, 2);
+        assert_eq!(compiled.clauses[0].nvars, 3);
         assert_eq!(compiled.clauses[0].pins.len(), 1);
         assert_ne!(
             compiled.clauses[0].pins[0].0, 0,
@@ -9884,7 +14371,10 @@ mod tests {
             "[{},{},{},{}]",
             cl(&[c("A", "u")], &[rf("R", "u", "x")]),
             cl(&[c("A", "u")], &[cf("B", "x", "u")]),
-            cl(&[c("A", "x")], &[cf("C", "x", "u")]),
+            cl(
+                &[c("A", "x"), c("A", "u")],
+                &[cf("C", "x", "u")],
+            ),
             cl(&[c("B", "z")], &[c("C", "z")]),
         ));
         let mut interner = Interner::new();
@@ -9923,6 +14413,8 @@ mod tests {
             payloads.clone(),
         )
         .expect("whole residual certificate");
+        assert_eq!(certificate.variable_count, 2,
+            "the source variable used only by the residual clause must be in range");
 
         let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
             return;
@@ -10397,6 +14889,7 @@ mod tests {
             body,
             head,
             pins,
+            pin_guards: Vec::new(),
         }
     }
 
@@ -10422,6 +14915,529 @@ mod tests {
             &[clause],
             &[true, false, true, false]
         ));
+    }
+
+    #[test]
+    fn residual_pin_is_vacuous_when_its_exact_source_guard_is_empty() {
+        let mut clause = rc(
+            2,
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![RAtom::C { cid: 4, v: 1 }],
+            vec![(1, 3)],
+        );
+        clause.pin_guards.push((1, 2, 0));
+        assert!(residual_pins_are_alive(
+            &[clause],
+            // guard 2 is empty and pin 3 is empty: the guarded clause has no
+            // instances, so the dead dedicated witness is irrelevant.
+            &[true, false, false, false, true]
+        ));
+    }
+
+    #[test]
+    fn rooted_pin_guard_activation_uses_domain_members_not_canonical_node() {
+        let mut clause = rc(
+            2,
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![RAtom::C { cid: 4, v: 1 }],
+            vec![(1, 3)],
+        );
+        clause.pin_guards.push((1, 2, 0));
+
+        // In a rooted carrier the canonical node numbered like the guard is
+        // irrelevant.  A different carrier node labelled with the guard makes
+        // the source class nonempty and activates its dedicated witness.
+        let mut members: HashMap<u32, Vec<u32>> = HashMap::default();
+        members.insert(2, vec![7]);
+        assert!(residual_clause_active_in(
+            &clause,
+            &[true, false, false, true],
+            Some(&members),
+        ));
+        assert!(residual_pins_are_alive_in(
+            std::slice::from_ref(&clause),
+            &[true, false, false, true],
+            Some(&members),
+        ));
+
+        // Conversely, merely retaining canonical node 2 does not activate the
+        // guard when no carrier element is labelled with concept 2.
+        members.remove(&2);
+        assert!(!residual_clause_active_in(
+            &clause,
+            &[true, false, true, false],
+            Some(&members),
+        ));
+        assert!(residual_pins_are_alive_in(
+            &[clause],
+            &[true, false, true, false],
+            Some(&members),
+        ));
+    }
+
+    #[test]
+    fn rooted_domain_expands_edges_and_only_active_guarded_witnesses() {
+        let mut guarded = rc(
+            2,
+            vec![RAtom::C { cid: 7, v: 0 }],
+            vec![RAtom::C { cid: 8, v: 1 }],
+            vec![(1, 4)],
+        );
+        guarded.pin_guards.push((1, 7, 0));
+        let mut inactive = rc(
+            2,
+            vec![RAtom::C { cid: 9, v: 0 }],
+            vec![RAtom::C { cid: 8, v: 1 }],
+            vec![(1, 5)],
+        );
+        inactive.pin_guards.push((1, 9, 0));
+
+        let st = state_of(12, &[(1, &[7])], &[(1, 3, 2), (2, 3, 3), (4, 3, 6)]);
+        let mut domain: HashSet<u32> = HashSet::default();
+        domain.insert(1);
+        let mut repr: Vec<u32> = (0..12).collect();
+        assert_eq!(
+            expand_rooted_domain(&mut domain, &st, &[guarded, inactive], &mut repr),
+            4,
+        );
+        assert_eq!(domain, HashSet::from_iter([1, 2, 3, 4, 6]));
+        assert!(!domain.contains(&5));
+    }
+
+    #[test]
+    fn inverse_functional_existentials_get_source_specific_fresh_targets() {
+        let ifun = rc(
+            3,
+            vec![
+                RAtom::R { rid: 8, s: 0, t: 2 },
+                RAtom::R { rid: 8, s: 1, t: 2 },
+            ],
+            vec![RAtom::Eq { s: 0, t: 1 }],
+            vec![],
+        );
+        assert_eq!(inverse_functional_role(&ifun), Some(8));
+
+        let mut st = state_of(16, &[], &[]);
+        let mut fresh = FreshInverseWitnesses {
+            roles: HashSet::from_iter([8]),
+            unrestricted_roles: HashSet::from_iter([8]),
+            selected_pairs: HashSet::default(),
+            deep_unrestricted_roles: HashSet::default(),
+            deep_selected_pairs: HashSet::default(),
+            selective_deep: false,
+            active_sources: HashSet::from_iter([1, 2]),
+            depth: HashMap::default(),
+            max_depth: None,
+            existential_pairs: HashSet::from_iter([(8, 9)]),
+            nodes: HashMap::default(),
+            origins: HashMap::default(),
+            limit: 8,
+            exhausted: false,
+        };
+        let a = fresh.target(&mut st, 1, 8, 9);
+        let b = fresh.target(&mut st, 2, 8, 9);
+        assert_ne!(a, b);
+        assert_eq!(fresh.target(&mut st, 1, 8, 9), a);
+        assert!(st.sub_super[a as usize].contains(&TOP));
+        assert!(st.sub_super[a as usize].contains(&9));
+        assert_eq!(fresh.target(&mut st, 1, 7, 9), 9);
+        assert!(!fresh.exhausted);
+    }
+
+    #[test]
+    fn rooted_existing_inverse_existential_edge_is_redirected() {
+        let mut st = state_of(16, &[], &[(1, 8, 9)]);
+        let mut fresh = FreshInverseWitnesses {
+            roles: HashSet::from_iter([8]),
+            unrestricted_roles: HashSet::from_iter([8]),
+            selected_pairs: HashSet::default(),
+            deep_unrestricted_roles: HashSet::default(),
+            deep_selected_pairs: HashSet::default(),
+            selective_deep: false,
+            active_sources: HashSet::from_iter([1]),
+            depth: HashMap::default(),
+            max_depth: None,
+            existential_pairs: HashSet::from_iter([(8, 9)]),
+            nodes: HashMap::default(),
+            origins: HashMap::default(),
+            limit: 8,
+            exhausted: false,
+        };
+        let domain = HashSet::from_iter([1]);
+        assert_eq!(
+            freshen_rooted_inverse_edges(
+                &domain,
+                &mut st,
+                &mut fresh,
+                &vec![HashSet::default(); 9],
+            ),
+            1,
+        );
+        assert!(!st.edges[1].contains(&(8, 9)));
+        let target = st.edges[1]
+            .iter()
+            .find_map(|&(role, target)| (role == 8).then_some(target))
+            .expect("redirected edge");
+        assert!(target >= 16);
+        assert_eq!(st.in_by_role.get(&(target, 8)), Some(&vec![1]));
+        assert!(!st.in_by_role.contains_key(&(9, 8)));
+        // A cached, already-freshened scaffold must be reusable: replaying the
+        // redirect phase sees no canonical generating edge and changes
+        // nothing.
+        assert_eq!(
+            freshen_rooted_inverse_edges(
+                &domain,
+                &mut st,
+                &mut fresh,
+                &vec![HashSet::default(); 9],
+            ),
+            0,
+        );
+        assert!(st.edges[1].contains(&(8, target)));
+    }
+
+    #[test]
+    fn rooted_fresh_pair_is_limited_to_active_sources_and_exact_fillers() {
+        let mut st = state_of(16, &[], &[]);
+        let mut fresh = FreshInverseWitnesses {
+            roles: HashSet::from_iter([8]),
+            unrestricted_roles: HashSet::default(),
+            selected_pairs: HashSet::from_iter([(8, 9)]),
+            deep_unrestricted_roles: HashSet::default(),
+            deep_selected_pairs: HashSet::default(),
+            selective_deep: false,
+            active_sources: HashSet::from_iter([1]),
+            depth: HashMap::default(),
+            max_depth: None,
+            existential_pairs: HashSet::from_iter([(8, 9), (8, 10)]),
+            nodes: HashMap::default(),
+            origins: HashMap::default(),
+            limit: 8,
+            exhausted: false,
+        };
+        assert!(fresh.target(&mut st, 1, 8, 9) >= 16);
+        assert_eq!(fresh.target(&mut st, 1, 8, 10), 10);
+        assert_eq!(fresh.target(&mut st, 2, 8, 9), 9);
+    }
+
+    #[test]
+    fn rooted_fresh_depth_reuses_canonical_filler_at_cutoff() {
+        let mut st = state_of(16, &[], &[]);
+        let mut fresh = FreshInverseWitnesses {
+            roles: HashSet::from_iter([8]),
+            unrestricted_roles: HashSet::from_iter([8]),
+            selected_pairs: HashSet::default(),
+            deep_unrestricted_roles: HashSet::default(),
+            deep_selected_pairs: HashSet::default(),
+            selective_deep: false,
+            active_sources: HashSet::from_iter([1]),
+            depth: HashMap::default(),
+            max_depth: Some(2),
+            existential_pairs: HashSet::from_iter([(8, 9)]),
+            nodes: HashMap::default(),
+            origins: HashMap::default(),
+            limit: 8,
+            exhausted: false,
+        };
+        let child = fresh.target(&mut st, 1, 8, 9);
+        assert!(child >= 16);
+        let grandchild = fresh.target(&mut st, child, 8, 9);
+        assert!(grandchild > child);
+        assert_eq!(fresh.target(&mut st, grandchild, 8, 9), 9);
+    }
+
+    #[test]
+    fn rooted_fresh_deep_frontier_can_differ_from_first_layer() {
+        let mut st = state_of(16, &[], &[]);
+        let mut fresh = FreshInverseWitnesses {
+            roles: HashSet::from_iter([8, 11]),
+            unrestricted_roles: HashSet::from_iter([8, 11]),
+            selected_pairs: HashSet::default(),
+            deep_unrestricted_roles: HashSet::from_iter([11]),
+            deep_selected_pairs: HashSet::default(),
+            selective_deep: true,
+            active_sources: HashSet::from_iter([1]),
+            depth: HashMap::default(),
+            max_depth: Some(2),
+            existential_pairs: HashSet::from_iter([(8, 9), (11, 12)]),
+            nodes: HashMap::default(),
+            origins: HashMap::default(),
+            limit: 8,
+            exhausted: false,
+        };
+        let child = fresh.target(&mut st, 1, 8, 9);
+        assert!(child >= 16);
+        assert_eq!(fresh.target(&mut st, child, 8, 9), 9);
+        assert!(fresh.target(&mut st, child, 11, 12) > child);
+    }
+
+    #[test]
+    fn rooted_fresh_bottom_sources_do_not_consume_live_witness_budget() {
+        // A doomed source has two existential obligations, with room for only
+        // one fresh witness. Its obligations must not prevent the unrelated
+        // live source from getting that witness and deriving its NF4 result.
+        let nfs = Nfs {
+            nf1: Vec::new(), nf2: Vec::new(),
+            nf3: vec![
+                Nf3 { sub: 3, role: 8, filler: 10 },
+                Nf3 { sub: 3, role: 8, filler: 11 },
+                Nf3 { sub: 5, role: 8, filler: 9 },
+            ],
+            nf4: vec![Nf4 { role: 8, filler: 9, sup: 12 }],
+            nf5: vec![3], nf6: Vec::new(), nf7: Vec::new(),
+            reflexive_roles: HashSet::default(),
+            concept_names: HashSet::default(), role_names: HashSet::default(),
+            conjunction_origins: HashMap::default(),
+        };
+        let idx = build_idx(&nfs, 16);
+        let mut st = state_of(16, &[], &[]);
+        st.add_sub(2, 3);
+        st.add_sub(4, 5);
+        st.add_edge(6, 8, 2);
+        let mut fresh = FreshInverseWitnesses {
+            roles: HashSet::from_iter([8]),
+            unrestricted_roles: HashSet::from_iter([8]),
+            selected_pairs: HashSet::default(),
+            deep_unrestricted_roles: HashSet::default(),
+            deep_selected_pairs: HashSet::default(),
+            selective_deep: false,
+            active_sources: HashSet::from_iter([2, 4]),
+            depth: HashMap::default(), max_depth: Some(1),
+            existential_pairs: HashSet::from_iter([(8, 9), (8, 10), (8, 11)]),
+            nodes: HashMap::default(), origins: HashMap::default(),
+            limit: 1, exhausted: false,
+        };
+        run_with_fresh_inverse(&idx, &mut st, &mut Prof::default(), &mut fresh);
+        assert!(st.sub_super[2].contains(&BOTTOM));
+        assert!(st.sub_super[6].contains(&BOTTOM), "bottom must still propagate");
+        assert!(!st.sub_super[4].contains(&BOTTOM));
+        assert!(st.sub_super[4].contains(&12), "live NF4 consequence must remain");
+        assert!(!fresh.exhausted);
+        assert_eq!(fresh.nodes.len(), 1);
+        let witness = fresh.nodes[&(4, 8, 9)];
+        assert!(st.edges[4].contains(&(8, witness)));
+        assert!(st.sub_super[witness as usize].contains(&9));
+        // A subsequent carrier scan must not repeatedly "redirect" the dead
+        // source's canonical edges back to themselves (the Uberon-154 loop).
+        for _ in 0..2 {
+            assert_eq!(
+                freshen_rooted_inverse_edges(
+                    &HashSet::from_iter([2, 4, 6]),
+                    &mut st,
+                    &mut fresh,
+                    &vec![HashSet::default(); 9],
+                ),
+                0,
+            );
+        }
+        // Learning bottom later must not replace a previously issued identity.
+        st.add_sub(4, BOTTOM);
+        assert_eq!(fresh.target(&mut st, 4, 8, 9), witness);
+    }
+
+    #[test]
+    fn rooted_trace_blames_existential_source_before_successor_choice() {
+        // Root 1 reaches bottom because its R-successor 2 is dead. Both nodes
+        // carry direct repair choices, but banning the target-local choice can
+        // repeat once per generated successor. The source choice that enabled
+        // the existential is the causal and reusable conflict.
+        let qbottom = 25;
+        let source_guard = 9;
+        let distracting_local_choice = 10;
+        let role = 8;
+        let mut it = Interner::new();
+        for id in 2..32u32 {
+            let name = match id {
+                2 => "__cert_witness__f_Q_GEN_0".to_owned(),
+                9 => "Q_GEN".to_owned(),
+                _ => format!("X_{id}"),
+            };
+            assert_eq!(it.intern(&name), id);
+        }
+        let st = state_of(
+            32,
+            &[
+                (
+                    1,
+                    &[source_guard, distracting_local_choice, qbottom, BOTTOM],
+                ),
+                (2, &[BOTTOM]),
+            ],
+            &[(1, role, 2)],
+        );
+        let nfs = Nfs {
+            nf1: vec![Nf1 {
+                sub: distracting_local_choice,
+                sup: qbottom,
+            }],
+            nf2: Vec::new(),
+            nf3: vec![Nf3 {
+                sub: source_guard,
+                role,
+                filler: BOTTOM,
+            }],
+            nf4: vec![Nf4 {
+                role,
+                filler: BOTTOM,
+                sup: qbottom,
+            }],
+            nf5: vec![qbottom],
+            nf6: Vec::new(),
+            nf7: Vec::new(),
+            reflexive_roles: HashSet::default(),
+            concept_names: HashSet::default(),
+            role_names: HashSet::default(),
+            conjunction_origins: HashMap::default(),
+        };
+        let prov = HashMap::from_iter([
+            ((1, source_guard), 3),
+            ((2, BOTTOM), 4),
+            ((1, distracting_local_choice), 5),
+        ]);
+        let mut repr: Vec<u32> = (0..32).collect();
+        let mut seen = HashSet::default();
+        let trace = RepairTraceIdx::new(&nfs);
+        let exhausted = HashSet::from_iter([
+            (1, 3, u32::MAX),
+            (2, 4, u32::MAX),
+            (1, 5, u32::MAX),
+        ]);
+        assert_eq!(
+            trace_repair_choice(
+                1,
+                BOTTOM,
+                &st,
+                &nfs,
+                &trace,
+                &it,
+                &mut repr,
+                &prov,
+                &exhausted,
+                &mut seen,
+                16,
+            ),
+            None,
+            "the ordinary trace must respect exhausted search frontiers",
+        );
+        seen.clear();
+        assert_eq!(
+            trace_repair_choice(
+                1,
+                BOTTOM,
+                &st,
+                &nfs,
+                &trace,
+                &it,
+                &mut repr,
+                &prov,
+                &HashSet::default(),
+                &mut seen,
+                16,
+            ),
+            Some((1, 3, source_guard)),
+        );
+    }
+
+    #[test]
+    fn rooted_publication_emits_only_the_checked_subject() {
+        let _lock = ROOTED_ENV_LOCK.lock().expect("rooted environment lock");
+        let _cert = EnvRestore::set("KM_ELC_CERT", "2");
+        let _domain = EnvRestore::set("KM_ELC_REPAIR_ROOT_DOMAIN", "1");
+        let _publish = EnvRestore::set("KM_ELC_REPAIR_ROOT_PUBLISH", "1");
+        let _preserve = EnvRestore::set("KM_ELC_PRESERVE", "C");
+
+        // The residual cover is satisfied at C by its already-derived A label.
+        // The rooted certificate checks C only; A, B, and D are deliberately
+        // outside its claim even though the EL lower bound contains their rows.
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[c("C", "x")], &[c("A", "x")]),
+            cl(&[c("A", "x")], &[c("D", "x")]),
+            cl(&[], &[c("A", "x"), c("B", "x")]),
+            cl(&[c("A", "x"), c("B", "x")], &[]),
+        ));
+        let result = classify(cs).expect("rooted certificate should publish C");
+
+        assert_eq!(
+            result
+                .subsumptions
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec!["C"]
+        );
+        assert_eq!(
+            result.subsumptions["C"]
+                .iter()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from(["A".to_string(), "D".to_string()])
+        );
+        assert!(!result.unresolved.iter().any(|name| name == "C"));
+        for name in ["A", "B", "D"] {
+            assert!(
+                result
+                    .unresolved
+                    .iter()
+                    .any(|unresolved| unresolved == name),
+                "unchecked subject {name} must remain unresolved"
+            );
+            assert!(!result.subsumptions.contains_key(name));
+        }
+        assert!(!result.inconsistent);
+    }
+
+    #[test]
+    fn rooted_batch_reuses_one_fixpoint_but_certifies_each_subject() {
+        let _lock = ROOTED_ENV_LOCK.lock().expect("rooted environment lock");
+        let preserve_file = std::env::temp_dir().join(format!(
+            "km-root-batch-{}-{}.txt",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&preserve_file, "C\nE\n").expect("write preserve fixture");
+        let _cert = EnvRestore::set("KM_ELC_CERT", "2");
+        let _domain = EnvRestore::set("KM_ELC_REPAIR_ROOT_DOMAIN", "1");
+        let _publish = EnvRestore::set("KM_ELC_REPAIR_ROOT_PUBLISH", "1");
+        let _single = EnvRestore::remove("KM_ELC_PRESERVE");
+        let _batch = EnvRestore::set(
+            "KM_ELC_PRESERVE_FILE",
+            preserve_file.to_str().expect("UTF-8 temporary path"),
+        );
+
+        let cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            cl(&[c("C", "x")], &[c("A", "x")]),
+            cl(&[c("A", "x")], &[c("D", "x")]),
+            cl(&[c("E", "x")], &[c("B", "x")]),
+            cl(&[], &[c("A", "x"), c("B", "x")]),
+            cl(&[c("A", "x"), c("B", "x")], &[]),
+        ));
+        let result = classify(cs).expect("both roots should certify independently");
+        std::fs::remove_file(&preserve_file).expect("remove preserve fixture");
+
+        assert_eq!(
+            result
+                .subsumptions
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec!["C", "E"]
+        );
+        assert!(result.subsumptions["C"].contains(&"A".to_string()));
+        assert!(result.subsumptions["C"].contains(&"D".to_string()));
+        assert_eq!(result.subsumptions["E"], vec!["B".to_string()]);
+        assert!(!result
+            .unresolved
+            .iter()
+            .any(|name| name == "C" || name == "E"));
+        for name in ["A", "B", "D"] {
+            assert!(result
+                .unresolved
+                .iter()
+                .any(|unresolved| unresolved == name));
+        }
+        assert!(!result.inconsistent);
     }
 
     /// `≤1 R.C` guarded by concept `g`, over variables `x, y1, y2`.
@@ -10641,6 +15657,25 @@ mod tests {
     }
 
     #[test]
+    fn rooted_card_guide_enforces_only_nonempty_guarded_pins() {
+        let mut clause = pin_apart(7, 11, 12);
+        clause.pin_guards.push((0, 7, 0));
+        let guide = CardGuide::new(&[clause]);
+        let mut repr: Vec<u32> = (0..16).collect();
+        let mut domain: HashSet<u32> = HashSet::default();
+        domain.insert(5);
+        let mut round = CardRound::default();
+
+        let empty_guard = state_of(16, &[], &[]);
+        round.resync_active(&guide, &mut repr, &empty_guard, &domain);
+        assert!(guide.merge_legal(&round, &mut repr, 11, 12));
+
+        let inhabited_guard = state_of(16, &[(5, &[7])], &[]);
+        round.resync_active(&guide, &mut repr, &inhabited_guard, &domain);
+        assert!(!guide.merge_legal(&round, &mut repr, 11, 12));
+    }
+
+    #[test]
     fn card_guide_demotes_only_over_full_all_pinned_choices() {
         // node 0 --R--> {1, 2}, both in filler 9; bound is ≤1 R.9 guarded by 7
         let guide = CardGuide::new(&[at_most_one(7, 3, 9), pin_apart(7, 1, 2)]);
@@ -10833,6 +15868,374 @@ mod tests {
             role_names: HashSet::default(),
             conjunction_origins: HashMap::default(),
         }
+    }
+
+    fn lazy_complement_fixture() -> (Vec<RClause>, Nfs, HashSet<u32>, Interner, u32, u32, u32) {
+        let mut it = Interner::new();
+        let positive = it.intern("A");
+        let negative = it.intern("Q_1");
+        let source = it.intern("Source");
+        let role = it.intern("R");
+        let consequence = it.intern("Consequence");
+        let cover = RClause {
+            nvars: 1,
+            origins: Vec::new(),
+            body: Vec::new(),
+            head: vec![
+                RAtom::C {
+                    cid: positive,
+                    v: 0,
+                },
+                RAtom::C {
+                    cid: negative,
+                    v: 0,
+                },
+            ],
+            pins: Vec::new(),
+            pin_guards: Vec::new(),
+        };
+        let mut nfs = empty_nfs();
+        nfs.nf2.push(Nf2 {
+            sub1: positive,
+            sub2: negative,
+            sup: BOTTOM,
+        });
+        // The explicit existential witness is allowed to carry Q_1.
+        nfs.nf3.push(Nf3 {
+            sub: source,
+            role,
+            filler: negative,
+        });
+        // Q_1 is otherwise observed only as the target test in ∃R.Q_1 ⊑ C.
+        nfs.nf4.push(Nf4 {
+            role,
+            filler: negative,
+            sup: consequence,
+        });
+        let known_bottom = [BOTTOM].into_iter().collect();
+        (vec![cover], nfs, known_bottom, it, positive, negative, role)
+    }
+
+    #[test]
+    fn lazy_complement_recognizer_accepts_only_the_regular_fragment() {
+        let (rcs, mut nfs, known_bottom, it, positive, negative, role) = lazy_complement_fixture();
+        // An unrelated conjunction must not reject the candidate. This pins
+        // the boolean grouping in the NF2 occurrence check.
+        nfs.nf2.push(Nf2 {
+            sub1: positive,
+            sub2: TOP,
+            sup: positive,
+        });
+        let found = regular_lazy_complements(&rcs, &nfs, &known_bottom, &it);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].cover_clause, 0);
+        assert_eq!((found[0].positive, found[0].negative), (positive, negative));
+        assert_eq!(
+            found[0].consumers.get(&role),
+            Some(&vec![it.id("Consequence").unwrap()])
+        );
+
+        // Uberon keeps the exact disjointness as an empty-head residual rather
+        // than an NF2-to-bottom rule. That single occurrence is equivalent and
+        // is the only additional residual occurrence this fragment accepts.
+        let (mut residual_rcs, mut residual_nfs, _, residual_it, _, _, _) =
+            lazy_complement_fixture();
+        residual_nfs.nf2.clear();
+        residual_rcs.push(RClause {
+            nvars: 1,
+            origins: Vec::new(),
+            body: vec![
+                RAtom::C {
+                    cid: positive,
+                    v: 0,
+                },
+                RAtom::C {
+                    cid: negative,
+                    v: 0,
+                },
+            ],
+            head: Vec::new(),
+            pins: Vec::new(),
+            pin_guards: Vec::new(),
+        });
+        assert_eq!(
+            regular_lazy_complements(&residual_rcs, &residual_nfs, &known_bottom, &residual_it)
+                .len(),
+            1
+        );
+
+        // Explicit producers remain ordinary EL rules. A local NF2 consumer
+        // is recorded for sparse rooted firing; this is Uberon's Q_3 shape.
+        let (producer_rcs, mut producer_nfs, _, producer_it, _, _, _) = lazy_complement_fixture();
+        let producer = producer_it.id("Source").unwrap();
+        let guard = producer_it.id("Consequence").unwrap();
+        producer_nfs.nf1.push(Nf1 {
+            sub: producer,
+            sup: negative,
+        });
+        producer_nfs.nf2.push(Nf2 {
+            sub1: guard,
+            sub2: negative,
+            sup: producer,
+        });
+        let producer_found =
+            regular_lazy_complements(&producer_rcs, &producer_nfs, &known_bottom, &producer_it);
+        assert_eq!(producer_found.len(), 1);
+        assert_eq!(producer_found[0].local_consumers, vec![(guard, producer)]);
+
+        let rejects = |mut bad: Nfs| {
+            assert!(
+                regular_lazy_complements(&rcs, &bad, &known_bottom, &it).is_empty(),
+                "an unsupported occurrence of the negative definer was accepted"
+            );
+            // Keep the closure's argument observably mutable so each caller
+            // supplies an independent fixture rather than sharing state.
+            bad.nf1.clear();
+        };
+
+        let (_, mut bad, _, _, _, _, _) = lazy_complement_fixture();
+        bad.nf1.push(Nf1 {
+            sub: negative,
+            sup: positive,
+        });
+        rejects(bad);
+        let (_, mut bad, _, _, _, _, _) = lazy_complement_fixture();
+        bad.nf3.push(Nf3 {
+            sub: negative,
+            role,
+            filler: positive,
+        });
+        rejects(bad);
+        let (_, mut bad, _, _, _, _, _) = lazy_complement_fixture();
+        bad.nf5.push(negative);
+        rejects(bad);
+
+        let (mut bad_rcs, good, _, _, _, _, _) = lazy_complement_fixture();
+        bad_rcs.push(RClause {
+            nvars: 1,
+            origins: Vec::new(),
+            body: vec![RAtom::C {
+                cid: negative,
+                v: 0,
+            }],
+            head: vec![RAtom::C {
+                cid: positive,
+                v: 0,
+            }],
+            pins: Vec::new(),
+            pin_guards: Vec::new(),
+        });
+        assert!(regular_lazy_complements(&bad_rcs, &good, &known_bottom, &it).is_empty());
+    }
+
+    #[test]
+    fn lazy_complement_fires_only_observable_rooted_consumers() {
+        let (rcs, mut nfs, known_bottom, mut it, positive, negative, role) =
+            lazy_complement_fixture();
+        // Isolate implicit-target firing here. The recognizer test separately
+        // proves that an explicit NF3 negative witness is allowed.
+        nfs.nf3.clear();
+        let source = it.id("Source").unwrap();
+        let consequence = it.id("Consequence").unwrap();
+        let local = it.intern("LocalConsequence");
+        nfs.nf2.push(Nf2 {
+            sub1: source,
+            sub2: negative,
+            sup: local,
+        });
+        nfs.concept_names = [TOP, BOTTOM, positive, negative, source, consequence, local]
+            .into_iter()
+            .collect();
+        nfs.role_names.insert(role);
+        let lazy = regular_lazy_complements(&rcs, &nfs, &known_bottom, &it);
+        let idx = build_idx(&nfs, it.len());
+        let mut st = init_state(&nfs, it.len());
+        run(&idx, &mut st, &mut Prof::default());
+
+        // `consequence` is an ordinary target with no A label. The implicit
+        // complement must fire ∃R.Q_1 ⊑ Consequence at the source without
+        // storing Q_1 on this globally shared target.
+        st.add_edge(source, role, consequence);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(!st.sub_super[consequence as usize].contains(&negative));
+        assert!(!st.sub_super[source as usize].contains(&consequence));
+        let domain = [source, negative, consequence].into_iter().collect();
+        let mut repr: Vec<u32> = (0..it.len() as u32).collect();
+        let banned = HashSet::default();
+        let mut prov = HashMap::default();
+        let mut chrono = Vec::new();
+        assert_eq!(
+            fire_lazy_complement_consumers(
+                &lazy,
+                &domain,
+                &mut st,
+                &mut repr,
+                &nfs,
+                &known_bottom,
+                &banned,
+                &mut prov,
+                &mut chrono,
+                true,
+                &it,
+            ),
+            2
+        );
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(!st.sub_super[consequence as usize].contains(&negative));
+        assert!(st.sub_super[source as usize].contains(&consequence));
+        assert!(st.sub_super[source as usize].contains(&local));
+        assert_eq!(
+            fire_lazy_complement_consumers(
+                &lazy,
+                &domain,
+                &mut st,
+                &mut repr,
+                &nfs,
+                &known_bottom,
+                &banned,
+                &mut prov,
+                &mut chrono,
+                true,
+                &it,
+            ),
+            0,
+            "the sparse closure reaches a fixpoint"
+        );
+
+        // A positive target is outside Q's complement and is never labelled Q.
+        st.add_sub(positive, positive);
+        st.add_edge(source, role, positive);
+        run(&idx, &mut st, &mut Prof::default());
+        assert_eq!(
+            fire_lazy_complement_consumers(
+                &lazy,
+                &domain,
+                &mut st,
+                &mut repr,
+                &nfs,
+                &known_bottom,
+                &banned,
+                &mut prov,
+                &mut chrono,
+                true,
+                &it,
+            ),
+            0
+        );
+        assert!(!st.sub_super[positive as usize].contains(&negative));
+    }
+
+    #[test]
+    fn lazy_complement_prefers_exact_positive_cover_before_known_bottom() {
+        let (rcs, mut nfs, known_bottom, mut it, positive, _negative, role) =
+            lazy_complement_fixture();
+        let source = it.id("Source").unwrap();
+        let consequence = it.id("Consequence").unwrap();
+        let target = it.intern("Target");
+        let guard = it.intern("Guard");
+        nfs.nf2.push(Nf2 {
+            sub1: consequence,
+            sub2: guard,
+            sup: BOTTOM,
+        });
+        nfs.concept_names.extend([target, guard]);
+        let lazy = regular_lazy_complements(&rcs, &nfs, &known_bottom, &it);
+        assert_eq!(lazy.len(), 1);
+        let mut st = init_state(&nfs, it.len());
+        st.add_edge(source, role, target);
+        let domain = [source, target].into_iter().collect();
+        let mut repr: Vec<u32> = (0..it.len() as u32).collect();
+        let banned = HashSet::default();
+        let mut prov = HashMap::default();
+        let mut chrono = Vec::new();
+
+        assert_eq!(
+            fire_lazy_complement_consumers(
+                &lazy,
+                &domain,
+                &mut st,
+                &mut repr,
+                &nfs,
+                &known_bottom,
+                &banned,
+                &mut prov,
+                &mut chrono,
+                true,
+                &it,
+            ),
+            1
+        );
+        assert!(st.sub_super[target as usize].contains(&positive));
+        assert!(!st.sub_super[source as usize].contains(&consequence));
+        assert_eq!(prov.get(&(target, positive)), Some(&0));
+        assert_eq!(chrono, vec![(target, 0, positive)]);
+    }
+
+    #[test]
+    fn lazy_local_complement_consumer_is_deferred_before_known_bottom() {
+        let (rcs, mut nfs, known_bottom, mut it, positive, negative, _role) =
+            lazy_complement_fixture();
+        let source = it.id("Source").unwrap();
+        let consequence = it.id("Consequence").unwrap();
+        let sibling = it.intern("LaterSibling");
+        nfs.nf2.push(Nf2 {
+            sub1: source,
+            sub2: negative,
+            sup: consequence,
+        });
+        nfs.nf2.push(Nf2 {
+            sub1: consequence,
+            sub2: sibling,
+            sup: BOTTOM,
+        });
+        nfs.concept_names.extend([source, sibling]);
+        let lazy = regular_lazy_complements(&rcs, &nfs, &known_bottom, &it);
+        assert_eq!(lazy.len(), 1);
+        assert!(lazy[0].local_consumers.contains(&(source, consequence)));
+        let mut st = init_state(&nfs, it.len());
+        let domain = [source].into_iter().collect();
+        let mut repr: Vec<u32> = (0..it.len() as u32).collect();
+        let banned = HashSet::default();
+        let mut prov = HashMap::default();
+        let mut chrono = Vec::new();
+
+        assert_eq!(
+            fire_lazy_complement_consumers(
+                &lazy,
+                &domain,
+                &mut st,
+                &mut repr,
+                &nfs,
+                &known_bottom,
+                &banned,
+                &mut prov,
+                &mut chrono,
+                false,
+                &it,
+            ),
+            0,
+            "the choice-free scaffold must not commit the cyclic negative side"
+        );
+        assert!(!st.sub_super[source as usize].contains(&consequence));
+
+        assert_eq!(
+            fire_lazy_complement_consumers(
+                &lazy,
+                &domain,
+                &mut st,
+                &mut repr,
+                &nfs,
+                &known_bottom,
+                &banned,
+                &mut prov,
+                &mut chrono,
+                true,
+                &it,
+            ),
+            1
+        );
+        assert!(st.sub_super[source as usize].contains(&positive));
+        assert!(!st.sub_super[source as usize].contains(&consequence));
     }
 
     #[test]
@@ -12082,6 +17485,7 @@ mod tests {
             body,
             head,
             pins: Vec::new(),
+            pin_guards: Vec::new(),
         }
     }
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
-work_root="$repo_root/.work"
+work_root="${KM_WORK_ROOT:-$repo_root/.work}"
 minimum_gib=${KM_MIN_FREE_GIB:-20}
 minimum_kib=$((minimum_gib * 1024 * 1024))
 available_kib=$(df -Pk "$repo_root" | awk 'NR == 2 { print $4 }')

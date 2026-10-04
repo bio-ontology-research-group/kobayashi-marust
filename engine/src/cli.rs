@@ -5218,6 +5218,13 @@ fn cb_terminal_state_candidate(
 
 #[cfg(test)]
 mod cb_derivation_candidate_tests {
+
+    fn cb_test_artifact_root() -> std::path::PathBuf {
+        std::env::var_os("KM_WORK_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::env::temp_dir().join("km-cb-certification"))
+            .join("artifacts")
+    }
     use super::*;
 
     fn live_context(
@@ -5567,10 +5574,7 @@ mod cb_derivation_candidate_tests {
             "nominal_allocation": null
         }});
         let candidate = cb_pred_send_coverage_candidate(&global, &live).unwrap();
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join(".work/artifacts");
+        let root = cb_test_artifact_root();
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
@@ -5722,10 +5726,7 @@ mod cb_derivation_candidate_tests {
             candidate["root_sender"]["transfer_indices"],
             serde_json::json!([0, 1])
         );
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join(".work/artifacts");
+        let root = cb_test_artifact_root();
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-root-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
@@ -6114,10 +6115,7 @@ mod cb_derivation_candidate_tests {
         let (mut candidate, unresolved) = cb_source_exact_taxonomy_candidate(&publication)
             .expect("construct the standalone source-exact taxonomy");
         assert_eq!(unresolved, 0);
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join(".work/artifacts")
+        let path = cb_test_artifact_root()
             .join(format!("cb-source-exact-test-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let proof_path = path.with_extension("context.json");
@@ -6274,10 +6272,7 @@ mod cb_derivation_candidate_tests {
             "sup": 1,
             "countermodel": countermodel,
         });
-        let artifact_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("engine has a repository parent")
-            .join(".work/artifacts");
+        let artifact_root = cb_test_artifact_root();
         std::fs::create_dir_all(&artifact_root).unwrap();
         let path = artifact_root.join(format!(
             "cb-regular-arbitrary-chain-test-{}.json",
@@ -6578,10 +6573,7 @@ mod cb_derivation_candidate_tests {
             "sup": sup,
             "countermodel": countermodel,
         });
-        let artifact_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("engine has a repository parent")
-            .join(".work/artifacts");
+        let artifact_root = cb_test_artifact_root();
         std::fs::create_dir_all(&artifact_root).unwrap();
         let path = artifact_root.join(format!(
             "cb-typed-regular-cardinality-test-{}.json",
@@ -7148,10 +7140,7 @@ mod cb_derivation_candidate_tests {
         ];
         let candidate = cb_source_live_derivation_candidate(&source, &live, &evidence)
             .expect("source-bound live candidate");
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join(".work/artifacts")
+        let path = cb_test_artifact_root()
             .join(format!("cb-source-live-pred-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
@@ -7423,10 +7412,7 @@ mod cb_derivation_candidate_tests {
         let (document, event_nodes) =
             cb_standalone_context_proof_document(&publication, &[2]).unwrap();
         assert_eq!(event_nodes.len(), 3);
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join(".work/artifacts")
+        let path = cb_test_artifact_root()
             .join(format!("cb-standalone-pred-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
@@ -7545,19 +7531,37 @@ pub fn run_tableau() {
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(2048);
+    enum WorkerOutput {
+        Json(String),
+        Compact(crate::json_io::CompactElcOutput),
+    }
+    let compact_bridge = std::env::var_os("KM_HT_BRIDGE_OUTPUT_BINARY").is_some();
     let worker = std::thread::Builder::new()
         .stack_size(stack_mb * 1024 * 1024)
         // The wire text is released inside `run_json_owned` as soon as its
         // clause graph is parsed (unless the bridge route re-reads it), so the
         // complete stdin document does not sit under the classification peak.
-        .spawn(move || crate::tableau::run_json_owned(buf))
+        .spawn(move || {
+            if compact_bridge {
+                crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
+            } else {
+                crate::tableau::run_json_owned(buf).map(WorkerOutput::Json)
+            }
+        })
         .expect("spawn tableau worker thread");
     match worker.join() {
-        Ok(Ok(s)) => {
+        Ok(Ok(WorkerOutput::Json(s))) => {
             let stdout = std::io::stdout();
             let mut h = stdout.lock();
             h.write_all(s.as_bytes()).expect("write stdout");
             h.write_all(b"\n").expect("write newline");
+        }
+        Ok(Ok(WorkerOutput::Compact(output))) => {
+            let stdout = std::io::stdout();
+            let mut h = std::io::BufWriter::new(stdout.lock());
+            crate::json_io::write_compact_elc_output_binary(&mut h, &output)
+                .expect("write compact bridge output");
+            h.flush().expect("flush compact bridge output");
         }
         Ok(Err(e)) => {
             eprintln!("tableau error: {e}");

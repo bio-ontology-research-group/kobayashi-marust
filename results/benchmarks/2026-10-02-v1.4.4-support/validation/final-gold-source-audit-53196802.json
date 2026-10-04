@@ -1,0 +1,3558 @@
+{
+  "cases": 592,
+  "all_sources_match_inventory": true,
+  "results": [
+    {
+      "ontology": "ore_ont_10016.owl",
+      "expected_sha256": "d81479fddbac64da3ca397e5613b95517956dd855143ce15f42c8cfd86a61a3b",
+      "actual_sha256": "d81479fddbac64da3ca397e5613b95517956dd855143ce15f42c8cfd86a61a3b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10032.owl",
+      "expected_sha256": "50c596c97932dc0eaa285b65d9772bbe4608893ee4c06d8007e608c8bc9d5533",
+      "actual_sha256": "50c596c97932dc0eaa285b65d9772bbe4608893ee4c06d8007e608c8bc9d5533",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10056.owl",
+      "expected_sha256": "69327f84883bf30d3b2422daf4c6e94b915405a9d5c72ebf39f164f6643c1353",
+      "actual_sha256": "69327f84883bf30d3b2422daf4c6e94b915405a9d5c72ebf39f164f6643c1353",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10073.owl",
+      "expected_sha256": "ad0146f453b0f4f75c4a0e91730fe136cda8387b1563b6f8596c882707d6d1b6",
+      "actual_sha256": "ad0146f453b0f4f75c4a0e91730fe136cda8387b1563b6f8596c882707d6d1b6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1012.owl",
+      "expected_sha256": "e65a41b49c6fbc40c0e279fbcf7c14feaa0b2b2ae480c85660c510beda940413",
+      "actual_sha256": "e65a41b49c6fbc40c0e279fbcf7c14feaa0b2b2ae480c85660c510beda940413",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10123.owl",
+      "expected_sha256": "bb945220e1c76846b4459b43214a044e6673c9c7a589ea0658a7c5b0db31d04e",
+      "actual_sha256": "bb945220e1c76846b4459b43214a044e6673c9c7a589ea0658a7c5b0db31d04e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10127.owl",
+      "expected_sha256": "fc3b31f19ca7e8d872d937042c7e04cc92636ac26983f80b3daabef252df3cee",
+      "actual_sha256": "fc3b31f19ca7e8d872d937042c7e04cc92636ac26983f80b3daabef252df3cee",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10134.owl",
+      "expected_sha256": "99eb35cb2237b3ec38573b506b60672158d0e61ec5bc8274df60a52675903e72",
+      "actual_sha256": "99eb35cb2237b3ec38573b506b60672158d0e61ec5bc8274df60a52675903e72",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10146.owl",
+      "expected_sha256": "a8010edd524d846f9b38b0601c5582b586e60031ef337bcb687c815eb68c4d08",
+      "actual_sha256": "a8010edd524d846f9b38b0601c5582b586e60031ef337bcb687c815eb68c4d08",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1016.owl",
+      "expected_sha256": "496d3db55f2389230de4cd487d012ac99d81af38fdc9879e7c038bacc5a4ccb3",
+      "actual_sha256": "496d3db55f2389230de4cd487d012ac99d81af38fdc9879e7c038bacc5a4ccb3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10160.owl",
+      "expected_sha256": "9a2aa352d89af2f03cdea34e843c9894cd5ca42845ba67ef952ed7196bc9b3ec",
+      "actual_sha256": "9a2aa352d89af2f03cdea34e843c9894cd5ca42845ba67ef952ed7196bc9b3ec",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1017.owl",
+      "expected_sha256": "6ff250353b749255a087117c261f9aa7306f163c2e8ed65c829956b54abd8179",
+      "actual_sha256": "6ff250353b749255a087117c261f9aa7306f163c2e8ed65c829956b54abd8179",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10175.owl",
+      "expected_sha256": "995199e9e55bde95733d42598ea0218444fbbe6a8086285a0a31378e9d2624c1",
+      "actual_sha256": "995199e9e55bde95733d42598ea0218444fbbe6a8086285a0a31378e9d2624c1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10212.owl",
+      "expected_sha256": "42f93d15a2175565d6759bbee506291eb709595cbd590de3e5bc48d632dab0bf",
+      "actual_sha256": "42f93d15a2175565d6759bbee506291eb709595cbd590de3e5bc48d632dab0bf",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10242.owl",
+      "expected_sha256": "f96f51b735f6d031cfc93d9134d10bdfa61c0bfe682c2bf17525c12d865caa82",
+      "actual_sha256": "f96f51b735f6d031cfc93d9134d10bdfa61c0bfe682c2bf17525c12d865caa82",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10248.owl",
+      "expected_sha256": "c4558d286c446874471837f50bc86e1ca4f4c7f1f6c308c792db79e0b3dafb5d",
+      "actual_sha256": "c4558d286c446874471837f50bc86e1ca4f4c7f1f6c308c792db79e0b3dafb5d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10280.owl",
+      "expected_sha256": "f9a4493e6c08658985cc42f5100d43435851ce8c9a8f046118ba07f01d15ff15",
+      "actual_sha256": "f9a4493e6c08658985cc42f5100d43435851ce8c9a8f046118ba07f01d15ff15",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10283.owl",
+      "expected_sha256": "b80c40dbf18ffcbd8b72e1f94ecee011a8026bd60748bfdab391ae197cca4bc3",
+      "actual_sha256": "b80c40dbf18ffcbd8b72e1f94ecee011a8026bd60748bfdab391ae197cca4bc3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10309.owl",
+      "expected_sha256": "73408bd56dd63ddef8ec91e11a9d9b48ce3ff34a8e205385c9e752f486542bbb",
+      "actual_sha256": "73408bd56dd63ddef8ec91e11a9d9b48ce3ff34a8e205385c9e752f486542bbb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10314.owl",
+      "expected_sha256": "68045b43105ae80b8957bcc51b9aad395b0e6c7d8b91f044e85b78fab1107a34",
+      "actual_sha256": "68045b43105ae80b8957bcc51b9aad395b0e6c7d8b91f044e85b78fab1107a34",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10321.owl",
+      "expected_sha256": "40e25711aa581fb877b5d31078e86f702d0b9ddd9f4e0f4865ffe8784a6d206b",
+      "actual_sha256": "40e25711aa581fb877b5d31078e86f702d0b9ddd9f4e0f4865ffe8784a6d206b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1034.owl",
+      "expected_sha256": "c3631777d7e857d2935cb6d91eba8b43e6178395b8946dde753437e20f986b09",
+      "actual_sha256": "c3631777d7e857d2935cb6d91eba8b43e6178395b8946dde753437e20f986b09",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10362.owl",
+      "expected_sha256": "3aee4a2db6156965ebe1ca3e9210faf5ca48e494c31b0b987bf8dec3cb0646eb",
+      "actual_sha256": "3aee4a2db6156965ebe1ca3e9210faf5ca48e494c31b0b987bf8dec3cb0646eb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10389.owl",
+      "expected_sha256": "b1cb89ab206f885ce0ec8e5aaed9e4d1ff3a4082b5cf1d864516edd1c403784a",
+      "actual_sha256": "b1cb89ab206f885ce0ec8e5aaed9e4d1ff3a4082b5cf1d864516edd1c403784a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10413.owl",
+      "expected_sha256": "d9a58b2167a304b0c9b79cb31b39977878de3a97cffa9b39f6e8c129a286539e",
+      "actual_sha256": "d9a58b2167a304b0c9b79cb31b39977878de3a97cffa9b39f6e8c129a286539e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10445.owl",
+      "expected_sha256": "0cf600704fc6aa67f63a2336165175525a2170f9c7ce182b34d9bcd666f1ecdd",
+      "actual_sha256": "0cf600704fc6aa67f63a2336165175525a2170f9c7ce182b34d9bcd666f1ecdd",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_105.owl",
+      "expected_sha256": "c16ffc7478b92a85579d599de1459fbb59c975712c7e9240bb04f020c3c813d4",
+      "actual_sha256": "c16ffc7478b92a85579d599de1459fbb59c975712c7e9240bb04f020c3c813d4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10516.owl",
+      "expected_sha256": "7467e2868f374102696b7a6c02c1128627f05378b1535f51ba0a48846a4cd702",
+      "actual_sha256": "7467e2868f374102696b7a6c02c1128627f05378b1535f51ba0a48846a4cd702",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10536.owl",
+      "expected_sha256": "13071ff56ff52ee4408789916ebcdda76138f58172068cc98d6d61e62e0c01f7",
+      "actual_sha256": "13071ff56ff52ee4408789916ebcdda76138f58172068cc98d6d61e62e0c01f7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10594.owl",
+      "expected_sha256": "0d2fc604447b56834140fe5a6d7549dbe11f179dddc8a3e1b1d6d0310e4306b9",
+      "actual_sha256": "0d2fc604447b56834140fe5a6d7549dbe11f179dddc8a3e1b1d6d0310e4306b9",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10621.owl",
+      "expected_sha256": "5d6abde6b2f6e9ebc5c7161c524178749fb165d1885babfb01ce13a997308167",
+      "actual_sha256": "5d6abde6b2f6e9ebc5c7161c524178749fb165d1885babfb01ce13a997308167",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10689.owl",
+      "expected_sha256": "7f8292bea124fb29e961b40226d491453c453d95ff1bd7058a776f1d8b709e8d",
+      "actual_sha256": "7f8292bea124fb29e961b40226d491453c453d95ff1bd7058a776f1d8b709e8d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10697.owl",
+      "expected_sha256": "aa8e15d4758d38ee1ced3e84127371e7b586a9745da99ab5b9f7d8e40ff195a3",
+      "actual_sha256": "aa8e15d4758d38ee1ced3e84127371e7b586a9745da99ab5b9f7d8e40ff195a3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10702.owl",
+      "expected_sha256": "380b3bb8a2d7d3f626053bc69cf5f9096120115556da4df4d52c89ef2e4f490c",
+      "actual_sha256": "380b3bb8a2d7d3f626053bc69cf5f9096120115556da4df4d52c89ef2e4f490c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10742.owl",
+      "expected_sha256": "e42772c5c72329dac1c8332e3df9e033e6414c5bf898443c678db747204bb4c4",
+      "actual_sha256": "e42772c5c72329dac1c8332e3df9e033e6414c5bf898443c678db747204bb4c4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10749.owl",
+      "expected_sha256": "97fea7f29aa689ee27b5f6f09117b8e16688c4fcb87cdf2ef467b849ab869be1",
+      "actual_sha256": "97fea7f29aa689ee27b5f6f09117b8e16688c4fcb87cdf2ef467b849ab869be1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10750.owl",
+      "expected_sha256": "600829100297044fd4a722a7135e16543cd4f3cdf83f83275aabbfba530fc186",
+      "actual_sha256": "600829100297044fd4a722a7135e16543cd4f3cdf83f83275aabbfba530fc186",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10769.owl",
+      "expected_sha256": "a63a447519d862df09498b74b154918ec5b24bd923fcdee46d85eebcda3dabda",
+      "actual_sha256": "a63a447519d862df09498b74b154918ec5b24bd923fcdee46d85eebcda3dabda",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10778.owl",
+      "expected_sha256": "dccc13df289e5cb8436fe2aeab5e9507efa1b00edf91f7d5cb2cc3e8965998b4",
+      "actual_sha256": "dccc13df289e5cb8436fe2aeab5e9507efa1b00edf91f7d5cb2cc3e8965998b4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10781.owl",
+      "expected_sha256": "7bbc09016af706f1742e24838e1d833143a6c285b743b65f6ccb27b2882797a4",
+      "actual_sha256": "7bbc09016af706f1742e24838e1d833143a6c285b743b65f6ccb27b2882797a4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10806.owl",
+      "expected_sha256": "0c4896572fd9a4e23bce56a10e66e6fa77427e8a1f6e9e32c941f0ff6276dcc4",
+      "actual_sha256": "0c4896572fd9a4e23bce56a10e66e6fa77427e8a1f6e9e32c941f0ff6276dcc4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1082.owl",
+      "expected_sha256": "9a504b8f27eb5f32b19e5633babd42f04402ca1033366b9a9093143bb2c8b145",
+      "actual_sha256": "9a504b8f27eb5f32b19e5633babd42f04402ca1033366b9a9093143bb2c8b145",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10833.owl",
+      "expected_sha256": "931adbb559450440233ed59737d9c24494d33fecb65f7db5b98f75bc969882c8",
+      "actual_sha256": "931adbb559450440233ed59737d9c24494d33fecb65f7db5b98f75bc969882c8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10860.owl",
+      "expected_sha256": "480139a6018bc4eb0d35e47edf00a6d257dd87137c1d0f93a27021cf154f4a2d",
+      "actual_sha256": "480139a6018bc4eb0d35e47edf00a6d257dd87137c1d0f93a27021cf154f4a2d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10890.owl",
+      "expected_sha256": "f1918f4fd691690fbd48234062e0418054f39a0e1d87b17d8d590366b120835f",
+      "actual_sha256": "f1918f4fd691690fbd48234062e0418054f39a0e1d87b17d8d590366b120835f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10908.owl",
+      "expected_sha256": "5788e70476654c043188de0ba2ed344cedb70d93a5179c171b3f79be37ea21a1",
+      "actual_sha256": "5788e70476654c043188de0ba2ed344cedb70d93a5179c171b3f79be37ea21a1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10951.owl",
+      "expected_sha256": "cb814e4020b7c45892ff45a781c1530014721f2f293a4f7f0049fbb4461597ae",
+      "actual_sha256": "cb814e4020b7c45892ff45a781c1530014721f2f293a4f7f0049fbb4461597ae",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_10968.owl",
+      "expected_sha256": "9bc412ce1d40673917e0268eebacdf57fae62a8cfe78ec53f6d8f94a3340bd18",
+      "actual_sha256": "9bc412ce1d40673917e0268eebacdf57fae62a8cfe78ec53f6d8f94a3340bd18",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11009.owl",
+      "expected_sha256": "a96882b342b27955da65a24efa4dded2da1d93521b00f37f8cc81349529d5b8d",
+      "actual_sha256": "a96882b342b27955da65a24efa4dded2da1d93521b00f37f8cc81349529d5b8d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11010.owl",
+      "expected_sha256": "3a2b30e9cc13fc94d39000c4fc35283fdddfec0e235dc9f9c1a49fae3a33466d",
+      "actual_sha256": "3a2b30e9cc13fc94d39000c4fc35283fdddfec0e235dc9f9c1a49fae3a33466d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11014.owl",
+      "expected_sha256": "2f8cdfb947f7696c42e9d3982b9e0e7c99f12adc0257716021ae5b798f68f373",
+      "actual_sha256": "2f8cdfb947f7696c42e9d3982b9e0e7c99f12adc0257716021ae5b798f68f373",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11016.owl",
+      "expected_sha256": "30adf66aba29de762676d956f803349103c2ffe56f6e4630028b3cd721c7964a",
+      "actual_sha256": "30adf66aba29de762676d956f803349103c2ffe56f6e4630028b3cd721c7964a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11081.owl",
+      "expected_sha256": "ca12dbabd9b68ecb1aa717b41ec46974ec37c2e89e5d22c8c1421ddb82eb284c",
+      "actual_sha256": "ca12dbabd9b68ecb1aa717b41ec46974ec37c2e89e5d22c8c1421ddb82eb284c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11140.owl",
+      "expected_sha256": "dd4203619412025e8f14eaf7391f90fe83a925baf93ec868c31780fd682cd07c",
+      "actual_sha256": "dd4203619412025e8f14eaf7391f90fe83a925baf93ec868c31780fd682cd07c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11207.owl",
+      "expected_sha256": "c2e9b2669ab63d1d73dc907c7c8f078313ea8f12914eaa0bae4140435551a00c",
+      "actual_sha256": "c2e9b2669ab63d1d73dc907c7c8f078313ea8f12914eaa0bae4140435551a00c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11291.owl",
+      "expected_sha256": "d7a5bd6e08f858f0221c0236c703775e9501837b64941ed666f93e8189e9ae73",
+      "actual_sha256": "d7a5bd6e08f858f0221c0236c703775e9501837b64941ed666f93e8189e9ae73",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11293.owl",
+      "expected_sha256": "ef455707e85510ec54a6c4bcc46181044ffb2a36de25648cf602a7d4cb5c8e8f",
+      "actual_sha256": "ef455707e85510ec54a6c4bcc46181044ffb2a36de25648cf602a7d4cb5c8e8f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11311.owl",
+      "expected_sha256": "aa0785635411a03790804d7f64959bf497a03a7be217ff6d6aa0a904e45b1697",
+      "actual_sha256": "aa0785635411a03790804d7f64959bf497a03a7be217ff6d6aa0a904e45b1697",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11315.owl",
+      "expected_sha256": "1ba40991317ec49d3e90f3c1edc3e629813012b8742dc6feb33996282eb0e6de",
+      "actual_sha256": "1ba40991317ec49d3e90f3c1edc3e629813012b8742dc6feb33996282eb0e6de",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11316.owl",
+      "expected_sha256": "6ee9ad1cbf5fa22834be4c86950cc90e8027c04be495cfa42560530048e7f883",
+      "actual_sha256": "6ee9ad1cbf5fa22834be4c86950cc90e8027c04be495cfa42560530048e7f883",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11389.owl",
+      "expected_sha256": "454a93380803fe94ccbf40e2b9b04b9e21a00c8eeb2e5a00796142e4c68d39b8",
+      "actual_sha256": "454a93380803fe94ccbf40e2b9b04b9e21a00c8eeb2e5a00796142e4c68d39b8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11395.owl",
+      "expected_sha256": "f7aeeb87b0f15e0ef96ee6c87fa1faf2275b9175949c4ec5b3ff10f4a2a8e362",
+      "actual_sha256": "f7aeeb87b0f15e0ef96ee6c87fa1faf2275b9175949c4ec5b3ff10f4a2a8e362",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11452.owl",
+      "expected_sha256": "69a6e37f0243a0af67ccf12c3bcf1c61ba633e198df1321fdcbc344d9c4df07b",
+      "actual_sha256": "69a6e37f0243a0af67ccf12c3bcf1c61ba633e198df1321fdcbc344d9c4df07b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11460.owl",
+      "expected_sha256": "03f8eaa25b1b24292f760d16881350145c3325d271552000e34b6e2808e8798c",
+      "actual_sha256": "03f8eaa25b1b24292f760d16881350145c3325d271552000e34b6e2808e8798c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11497.owl",
+      "expected_sha256": "b72d60a956e8f2f1606416430cace56fd5025cfa9fc093ea740edc81d4f3dd48",
+      "actual_sha256": "b72d60a956e8f2f1606416430cace56fd5025cfa9fc093ea740edc81d4f3dd48",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11502.owl",
+      "expected_sha256": "bed929dc53212ffb8ee9685ad25de55611c508ec52eb4c757ccc924ceceab196",
+      "actual_sha256": "bed929dc53212ffb8ee9685ad25de55611c508ec52eb4c757ccc924ceceab196",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11504.owl",
+      "expected_sha256": "0508fd4703398394d42e0acd7aa160c32edb527358bd1def3a584a1661c756ce",
+      "actual_sha256": "0508fd4703398394d42e0acd7aa160c32edb527358bd1def3a584a1661c756ce",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11519.owl",
+      "expected_sha256": "65a2332b2dd65f8cd1e3cf7d09336254a6b4298ddeb25cc5b5144a817c1a7f73",
+      "actual_sha256": "65a2332b2dd65f8cd1e3cf7d09336254a6b4298ddeb25cc5b5144a817c1a7f73",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11522.owl",
+      "expected_sha256": "3e0465983cdd5a06c29edc96821339188fe09e09f9628a083d69d1f45ac613e3",
+      "actual_sha256": "3e0465983cdd5a06c29edc96821339188fe09e09f9628a083d69d1f45ac613e3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11523.owl",
+      "expected_sha256": "dfe2795fa054571080cf99a7af87f2c03088e4584c28b0d911fc26d52b6259ca",
+      "actual_sha256": "dfe2795fa054571080cf99a7af87f2c03088e4584c28b0d911fc26d52b6259ca",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11526.owl",
+      "expected_sha256": "527951ac5892eea8817d77c3f15a628360d71517c153f38c54c13f1f408c6f1c",
+      "actual_sha256": "527951ac5892eea8817d77c3f15a628360d71517c153f38c54c13f1f408c6f1c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11559.owl",
+      "expected_sha256": "535fc07f6de52eed979d57abb59fd9dc787e46f91b5e77c3fa3f6178088c6d51",
+      "actual_sha256": "535fc07f6de52eed979d57abb59fd9dc787e46f91b5e77c3fa3f6178088c6d51",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11577.owl",
+      "expected_sha256": "ec26f7e47d19b067c7a33d52373fec421f9307b4490668b0465d71ca96343f81",
+      "actual_sha256": "ec26f7e47d19b067c7a33d52373fec421f9307b4490668b0465d71ca96343f81",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11619.owl",
+      "expected_sha256": "50ccd4dbe39fb032efac74621bb93dfc3521647d2365029108056170e7db793e",
+      "actual_sha256": "50ccd4dbe39fb032efac74621bb93dfc3521647d2365029108056170e7db793e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11623.owl",
+      "expected_sha256": "a250a27ae16484e2d4412289ab50aa6a5b54d249b8dc05c0796d368f6dd7612a",
+      "actual_sha256": "a250a27ae16484e2d4412289ab50aa6a5b54d249b8dc05c0796d368f6dd7612a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11639.owl",
+      "expected_sha256": "76594a6e446ffe23f558619263adeca1c1fc64f00ec638c14e439afd2b510d94",
+      "actual_sha256": "76594a6e446ffe23f558619263adeca1c1fc64f00ec638c14e439afd2b510d94",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11739.owl",
+      "expected_sha256": "efdacafe38d6a42b223cc4b530da853a2c86c7c8c3d728363a69798c4032023e",
+      "actual_sha256": "efdacafe38d6a42b223cc4b530da853a2c86c7c8c3d728363a69798c4032023e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11745.owl",
+      "expected_sha256": "70ea4d679a49557a859efb5d8946ab3c270b21c3e634f34b817cc49a3407c5a6",
+      "actual_sha256": "70ea4d679a49557a859efb5d8946ab3c270b21c3e634f34b817cc49a3407c5a6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11778.owl",
+      "expected_sha256": "3ce52282deabc786c6d1ed6b285fe04f0fe9634a18432a31626fb836ce2ebb02",
+      "actual_sha256": "3ce52282deabc786c6d1ed6b285fe04f0fe9634a18432a31626fb836ce2ebb02",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11866.owl",
+      "expected_sha256": "7b6a0d4c60a4643700bfac65b4bc9a4a30d9e111aa21f44de45b2c2a953f416e",
+      "actual_sha256": "7b6a0d4c60a4643700bfac65b4bc9a4a30d9e111aa21f44de45b2c2a953f416e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11889.owl",
+      "expected_sha256": "3929f6b6fcc45b76e3e9821e3e3469c3e7bf30df5bbb83db885c91c4817e2e1b",
+      "actual_sha256": "3929f6b6fcc45b76e3e9821e3e3469c3e7bf30df5bbb83db885c91c4817e2e1b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1194.owl",
+      "expected_sha256": "72082c4ce0e5008589256eba0aa50957c04d294ff1e065b18cf014cc59b870e2",
+      "actual_sha256": "72082c4ce0e5008589256eba0aa50957c04d294ff1e065b18cf014cc59b870e2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_11978.owl",
+      "expected_sha256": "a7564a78a39f4c1d5b30a5b42629379904285947b96617b70640e62e5720277f",
+      "actual_sha256": "a7564a78a39f4c1d5b30a5b42629379904285947b96617b70640e62e5720277f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12007.owl",
+      "expected_sha256": "9de8370ab3ebf3a18e5aec3509684fb29daa9f337c2ffcbcf8570c0705b81b44",
+      "actual_sha256": "9de8370ab3ebf3a18e5aec3509684fb29daa9f337c2ffcbcf8570c0705b81b44",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12009.owl",
+      "expected_sha256": "281897128362a02a7376a6643a030988230b5bc76326c186e22b8f3022cbdb43",
+      "actual_sha256": "281897128362a02a7376a6643a030988230b5bc76326c186e22b8f3022cbdb43",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12087.owl",
+      "expected_sha256": "4b2f8df98ed08eae5f141f8284355bad6eb21d2eba848d02e53be90a753d5c6e",
+      "actual_sha256": "4b2f8df98ed08eae5f141f8284355bad6eb21d2eba848d02e53be90a753d5c6e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1212.owl",
+      "expected_sha256": "275718fd772cb77724e02c4d794665eab71dd6e96aebd536ce38f7187c159a96",
+      "actual_sha256": "275718fd772cb77724e02c4d794665eab71dd6e96aebd536ce38f7187c159a96",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12141.owl",
+      "expected_sha256": "608315409b470595b1c6febfff51a88ca8041e4adaaa9560d6e71abf1ede5dd2",
+      "actual_sha256": "608315409b470595b1c6febfff51a88ca8041e4adaaa9560d6e71abf1ede5dd2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12149.owl",
+      "expected_sha256": "297d7f7739c858527e79aa7dd863fecbc5eecf5cd52718776fd3ac2e4f3dee10",
+      "actual_sha256": "297d7f7739c858527e79aa7dd863fecbc5eecf5cd52718776fd3ac2e4f3dee10",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12161.owl",
+      "expected_sha256": "8e993fc4b7dc30a7c9eef5b93833333cd5912dd0a92834c4c40922d107e711a9",
+      "actual_sha256": "8e993fc4b7dc30a7c9eef5b93833333cd5912dd0a92834c4c40922d107e711a9",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12194.owl",
+      "expected_sha256": "e163a9d167651119585d7e513468da86b28f1c8101d147a002d8167605362088",
+      "actual_sha256": "e163a9d167651119585d7e513468da86b28f1c8101d147a002d8167605362088",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12281.owl",
+      "expected_sha256": "c4bdac7713637588f4d1644729afe38c5004dda82829ddfb1c7d14fcc045698c",
+      "actual_sha256": "c4bdac7713637588f4d1644729afe38c5004dda82829ddfb1c7d14fcc045698c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12387.owl",
+      "expected_sha256": "eccdfe41aeb54b20cc701cae9fafa4c45527c844187d5df9911fb2a0ff912374",
+      "actual_sha256": "eccdfe41aeb54b20cc701cae9fafa4c45527c844187d5df9911fb2a0ff912374",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12397.owl",
+      "expected_sha256": "005ea8f86dfcc7c2861c9c94785ad84d1d1aa8b76877dcec79f326dd2502d038",
+      "actual_sha256": "005ea8f86dfcc7c2861c9c94785ad84d1d1aa8b76877dcec79f326dd2502d038",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12405.owl",
+      "expected_sha256": "5b95b635fa56a5914088ccf0e0a12bf54e03f1502c6c25f483eefe27404634a0",
+      "actual_sha256": "5b95b635fa56a5914088ccf0e0a12bf54e03f1502c6c25f483eefe27404634a0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12414.owl",
+      "expected_sha256": "74222767cf34acb29b511bd46517adfb021be04c33239eea3567a59dde24cd36",
+      "actual_sha256": "74222767cf34acb29b511bd46517adfb021be04c33239eea3567a59dde24cd36",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12528.owl",
+      "expected_sha256": "d73d15611284234a2f3b135d79127562d283e18476002411dafe9898567279ad",
+      "actual_sha256": "d73d15611284234a2f3b135d79127562d283e18476002411dafe9898567279ad",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12653.owl",
+      "expected_sha256": "7481eb071fc35452645c88cf1ac9c4b65eda9bdfa9d8d898720ea4c43c6f6a60",
+      "actual_sha256": "7481eb071fc35452645c88cf1ac9c4b65eda9bdfa9d8d898720ea4c43c6f6a60",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12698.owl",
+      "expected_sha256": "d1cc20f4464214f12e229e5eeff8b2da72003d46d91c2b17c0d6b62f21500fc6",
+      "actual_sha256": "d1cc20f4464214f12e229e5eeff8b2da72003d46d91c2b17c0d6b62f21500fc6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1272.owl",
+      "expected_sha256": "8a2803b1d1e1f7dee767731f0ede11f108d3009ff67df7782173234fcf4a9e2e",
+      "actual_sha256": "8a2803b1d1e1f7dee767731f0ede11f108d3009ff67df7782173234fcf4a9e2e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12776.owl",
+      "expected_sha256": "f167ff687a03211afe9b3763c218445f1c51c19994a2df6c2939df8d3f2e9205",
+      "actual_sha256": "f167ff687a03211afe9b3763c218445f1c51c19994a2df6c2939df8d3f2e9205",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12802.owl",
+      "expected_sha256": "0638478ae8d8e03cb83be86addf476f83c243ef04875524994c10806edb9f61d",
+      "actual_sha256": "0638478ae8d8e03cb83be86addf476f83c243ef04875524994c10806edb9f61d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12831.owl",
+      "expected_sha256": "a5d9e54757996cd8a45e397fb2b447cf2c01bd2575d4fc416a4b06fe17bc3d4f",
+      "actual_sha256": "a5d9e54757996cd8a45e397fb2b447cf2c01bd2575d4fc416a4b06fe17bc3d4f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_12906.owl",
+      "expected_sha256": "3f4770e47b4454f709f9b6e03881599d6df34201f26534e5b0b04c52352b8566",
+      "actual_sha256": "3f4770e47b4454f709f9b6e03881599d6df34201f26534e5b0b04c52352b8566",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13000.owl",
+      "expected_sha256": "8dda4c6fc6574d6d08040199d7fce42101c050d98d44b6e83f369bf90aa57afc",
+      "actual_sha256": "8dda4c6fc6574d6d08040199d7fce42101c050d98d44b6e83f369bf90aa57afc",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13035.owl",
+      "expected_sha256": "928d80b509e864f90623c554d047db091af777710187fed00ed82e3f0d65b509",
+      "actual_sha256": "928d80b509e864f90623c554d047db091af777710187fed00ed82e3f0d65b509",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13053.owl",
+      "expected_sha256": "65a6ee0433e9207158fa2560be0922b011c122c0d0098889b819631ad86a7179",
+      "actual_sha256": "65a6ee0433e9207158fa2560be0922b011c122c0d0098889b819631ad86a7179",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1306.owl",
+      "expected_sha256": "f0795183342e355946a7cd02845b42ce2d82001b13235989693b493917d9cb49",
+      "actual_sha256": "f0795183342e355946a7cd02845b42ce2d82001b13235989693b493917d9cb49",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13066.owl",
+      "expected_sha256": "036d0c91b71bf8d132a5d260fec81bf32b622399d98ba2252f2df6338ec19589",
+      "actual_sha256": "036d0c91b71bf8d132a5d260fec81bf32b622399d98ba2252f2df6338ec19589",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13071.owl",
+      "expected_sha256": "78c59d08c27776049c74dbe30251aa76e11126b2cb40b8f2103258de4fbccc80",
+      "actual_sha256": "78c59d08c27776049c74dbe30251aa76e11126b2cb40b8f2103258de4fbccc80",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13113.owl",
+      "expected_sha256": "45ad4c26eb911b450d671caddd0ad39083a0b90ad009541e0d23c8d825ea83e5",
+      "actual_sha256": "45ad4c26eb911b450d671caddd0ad39083a0b90ad009541e0d23c8d825ea83e5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13132.owl",
+      "expected_sha256": "f20974b9ed086828ab15fa6990aa3e0fbd6b280649f3ef294889c203f39b821d",
+      "actual_sha256": "f20974b9ed086828ab15fa6990aa3e0fbd6b280649f3ef294889c203f39b821d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13141.owl",
+      "expected_sha256": "62e13b4afdd10ec28e8861fc73545ccd6d5e766bb83b8b62f09fa8d416d01e94",
+      "actual_sha256": "62e13b4afdd10ec28e8861fc73545ccd6d5e766bb83b8b62f09fa8d416d01e94",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13204.owl",
+      "expected_sha256": "7be9ccd75db8b9701c2084385bc7344b166ef2303c699caadb4663a144f44d58",
+      "actual_sha256": "7be9ccd75db8b9701c2084385bc7344b166ef2303c699caadb4663a144f44d58",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13224.owl",
+      "expected_sha256": "3781d34ddb6fb4b98ff32c5a1be2b78d5a2b3cf3d57efb00f8b915a761be9add",
+      "actual_sha256": "3781d34ddb6fb4b98ff32c5a1be2b78d5a2b3cf3d57efb00f8b915a761be9add",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13234.owl",
+      "expected_sha256": "b3d0c6569ae905cd176d22848f99d4028dc668c3dba886fd9b18bb820d6369a5",
+      "actual_sha256": "b3d0c6569ae905cd176d22848f99d4028dc668c3dba886fd9b18bb820d6369a5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13243.owl",
+      "expected_sha256": "cbfbc59f98192bf26bbc7379488d74ba9385df4d9b44542e1e9604a17840e202",
+      "actual_sha256": "cbfbc59f98192bf26bbc7379488d74ba9385df4d9b44542e1e9604a17840e202",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1325.owl",
+      "expected_sha256": "02e714c4275d168c13bb5287d520defe5af084a2c258ce6b2fb2bad11920a571",
+      "actual_sha256": "02e714c4275d168c13bb5287d520defe5af084a2c258ce6b2fb2bad11920a571",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13277.owl",
+      "expected_sha256": "76c88fb7429fb52bdc560ac025dff644cb2631e1562630f6ff67ca0256ff4a6b",
+      "actual_sha256": "76c88fb7429fb52bdc560ac025dff644cb2631e1562630f6ff67ca0256ff4a6b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13301.owl",
+      "expected_sha256": "2656d5854922c2b30bc4e97c02c960ae7132cff55e5cad6bc70818d8eddee2d4",
+      "actual_sha256": "2656d5854922c2b30bc4e97c02c960ae7132cff55e5cad6bc70818d8eddee2d4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13355.owl",
+      "expected_sha256": "a533e4088924654e2dfb499278692587a792b692fe3e79adaba80786f341fac6",
+      "actual_sha256": "a533e4088924654e2dfb499278692587a792b692fe3e79adaba80786f341fac6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13383.owl",
+      "expected_sha256": "aba08dd223034eaed9d52d449018ecf4e0740d54a0dd513a4b8db5432a299879",
+      "actual_sha256": "aba08dd223034eaed9d52d449018ecf4e0740d54a0dd513a4b8db5432a299879",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13392.owl",
+      "expected_sha256": "54b4e9f346d6507fe911e0eb081acd9855aac9e46db2a80927f54ad9be3e960c",
+      "actual_sha256": "54b4e9f346d6507fe911e0eb081acd9855aac9e46db2a80927f54ad9be3e960c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1340.owl",
+      "expected_sha256": "cbf7b394291f831342a68ee79a3aa077d3555976dbce03f088dcb0ae4f53ee8f",
+      "actual_sha256": "cbf7b394291f831342a68ee79a3aa077d3555976dbce03f088dcb0ae4f53ee8f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13429.owl",
+      "expected_sha256": "e76acf76d87791de0617306a347befbdea49615d134378445bc29a0ca0e2bf1a",
+      "actual_sha256": "e76acf76d87791de0617306a347befbdea49615d134378445bc29a0ca0e2bf1a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13444.owl",
+      "expected_sha256": "3437445d6b9002dbd2d683e26e70b530aa6e88d7d6fa575b3327c5498f237e2d",
+      "actual_sha256": "3437445d6b9002dbd2d683e26e70b530aa6e88d7d6fa575b3327c5498f237e2d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13482.owl",
+      "expected_sha256": "f732cc7d4ebdb45099e421d062e05d64837b22e60b53d6848a723aa8f0e8d971",
+      "actual_sha256": "f732cc7d4ebdb45099e421d062e05d64837b22e60b53d6848a723aa8f0e8d971",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13503.owl",
+      "expected_sha256": "319fa7ff1858ed5c0547156479621b028ba6779b9f3c2b43889abdcb46ae0626",
+      "actual_sha256": "319fa7ff1858ed5c0547156479621b028ba6779b9f3c2b43889abdcb46ae0626",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13530.owl",
+      "expected_sha256": "c2deb1587b1c8164a2aa5626a8a4cf024087c2c59f71446fd5ebd65bbf884723",
+      "actual_sha256": "c2deb1587b1c8164a2aa5626a8a4cf024087c2c59f71446fd5ebd65bbf884723",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1357.owl",
+      "expected_sha256": "58898a85f5c099be28a045af420bd4e680fa816fad6bff40a8a2e792ed323c12",
+      "actual_sha256": "58898a85f5c099be28a045af420bd4e680fa816fad6bff40a8a2e792ed323c12",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13578.owl",
+      "expected_sha256": "4312994af6bb1c30f0f50d0e8366ac691ca33fafaf737d45d5fef238591af1c9",
+      "actual_sha256": "4312994af6bb1c30f0f50d0e8366ac691ca33fafaf737d45d5fef238591af1c9",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13621.owl",
+      "expected_sha256": "f1f6bb14b8ce323c692880283a15401a91612e79d4db7d74d5d1c774a9516dbb",
+      "actual_sha256": "f1f6bb14b8ce323c692880283a15401a91612e79d4db7d74d5d1c774a9516dbb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13643.owl",
+      "expected_sha256": "4e0a01192ad7fe80ff3c3251a8824595b12c1c40edf5415e98ac762a35e8f2c1",
+      "actual_sha256": "4e0a01192ad7fe80ff3c3251a8824595b12c1c40edf5415e98ac762a35e8f2c1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13664.owl",
+      "expected_sha256": "eb393ab81459606252e0ce3d43642cacec9ec06598aefc145d6b02b29a1f3e89",
+      "actual_sha256": "eb393ab81459606252e0ce3d43642cacec9ec06598aefc145d6b02b29a1f3e89",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1370.owl",
+      "expected_sha256": "984580a8e09cbad8a44b0413a28dae22c0e49cff296e8bd00ac71af1077af75e",
+      "actual_sha256": "984580a8e09cbad8a44b0413a28dae22c0e49cff296e8bd00ac71af1077af75e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13752.owl",
+      "expected_sha256": "7cadae16e41fcba33e572599c0196f68bd23d41aa6f769ca2f5f22ed080a4bc7",
+      "actual_sha256": "7cadae16e41fcba33e572599c0196f68bd23d41aa6f769ca2f5f22ed080a4bc7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13755.owl",
+      "expected_sha256": "c95426ccc761d62e20f468d1653619d33d9e68825c469116d9960bfc8f5c9210",
+      "actual_sha256": "c95426ccc761d62e20f468d1653619d33d9e68825c469116d9960bfc8f5c9210",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13759.owl",
+      "expected_sha256": "61a618640215b0726d4c903c6321dac3d54af9d01e6517c0159ca54c0538d3b1",
+      "actual_sha256": "61a618640215b0726d4c903c6321dac3d54af9d01e6517c0159ca54c0538d3b1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13762.owl",
+      "expected_sha256": "a6fda119b56d62846401f961445222685fa3ba83b76f49b27b44f0cf33154a64",
+      "actual_sha256": "a6fda119b56d62846401f961445222685fa3ba83b76f49b27b44f0cf33154a64",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13772.owl",
+      "expected_sha256": "4a1e1b31620331f43c455fbd5885bd7181392a20bf71bc50c6416bb8f85ebd3d",
+      "actual_sha256": "4a1e1b31620331f43c455fbd5885bd7181392a20bf71bc50c6416bb8f85ebd3d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13840.owl",
+      "expected_sha256": "0abecdc0049467b508cf53f17eb2cb06416f1ad7b92a87c28ba53e5d7eae2d9e",
+      "actual_sha256": "0abecdc0049467b508cf53f17eb2cb06416f1ad7b92a87c28ba53e5d7eae2d9e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13852.owl",
+      "expected_sha256": "f7710dbded6f97065c868837090c37c8c447736024dc6166d4e3a9ce89f43ae1",
+      "actual_sha256": "f7710dbded6f97065c868837090c37c8c447736024dc6166d4e3a9ce89f43ae1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13887.owl",
+      "expected_sha256": "6ca28aa16f9a452a6892b556ef78ca582332f2ea4b65d57a8fd355d866be9ef6",
+      "actual_sha256": "6ca28aa16f9a452a6892b556ef78ca582332f2ea4b65d57a8fd355d866be9ef6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13902.owl",
+      "expected_sha256": "4b2eadfc202705a38b933b48c1920e523a6dd57331e86088c59956b43d1dbaa2",
+      "actual_sha256": "4b2eadfc202705a38b933b48c1920e523a6dd57331e86088c59956b43d1dbaa2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13912.owl",
+      "expected_sha256": "02caf44741b646579c1ce84dfa5ebca1b657ef32d7d52d3277058373ce015ee5",
+      "actual_sha256": "02caf44741b646579c1ce84dfa5ebca1b657ef32d7d52d3277058373ce015ee5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13964.owl",
+      "expected_sha256": "04fb6f755f5c66a8df960dbf962109ea4898863de9f4def861a3fcf2c677969a",
+      "actual_sha256": "04fb6f755f5c66a8df960dbf962109ea4898863de9f4def861a3fcf2c677969a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_13969.owl",
+      "expected_sha256": "63143e307acbcd89ec9d5a17b5278aa8cce4d2e4a6914532f2f7f9f30dec2dd4",
+      "actual_sha256": "63143e307acbcd89ec9d5a17b5278aa8cce4d2e4a6914532f2f7f9f30dec2dd4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14027.owl",
+      "expected_sha256": "507d170fea03f4a301989a96fc617091dad924f66e963ee2d56e68ef3907b0bf",
+      "actual_sha256": "507d170fea03f4a301989a96fc617091dad924f66e963ee2d56e68ef3907b0bf",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14031.owl",
+      "expected_sha256": "c3167153ec122ade40a676546a4b9b4f3a984c926d812771a043f268d199c1e0",
+      "actual_sha256": "c3167153ec122ade40a676546a4b9b4f3a984c926d812771a043f268d199c1e0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14042.owl",
+      "expected_sha256": "70c3bac7570384fb2a0c6f3d085a93ac779e1e3980979496a95bf331af07ad4a",
+      "actual_sha256": "70c3bac7570384fb2a0c6f3d085a93ac779e1e3980979496a95bf331af07ad4a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14123.owl",
+      "expected_sha256": "a70ab99a598fdd6a6a51b6174247fbcc81f44e8d4b59bde8bed00f85030303e4",
+      "actual_sha256": "a70ab99a598fdd6a6a51b6174247fbcc81f44e8d4b59bde8bed00f85030303e4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14153.owl",
+      "expected_sha256": "07011b130a33715d091dfb4061711c3833780deef23f8ddb067bafced7d7187b",
+      "actual_sha256": "07011b130a33715d091dfb4061711c3833780deef23f8ddb067bafced7d7187b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14194.owl",
+      "expected_sha256": "cb7b103d91ee87c2187e2f5abf39a3f3fc342def9c54acfcfe2a12fd08089d85",
+      "actual_sha256": "cb7b103d91ee87c2187e2f5abf39a3f3fc342def9c54acfcfe2a12fd08089d85",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1420.owl",
+      "expected_sha256": "3ff5e972ce0e4a98659a95cb543d2d32efa3d404f33099072580cdbe87564642",
+      "actual_sha256": "3ff5e972ce0e4a98659a95cb543d2d32efa3d404f33099072580cdbe87564642",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14216.owl",
+      "expected_sha256": "99277a4ecedaad16ea2855ad9896887c6339fdf7cfa40bb3cfa8adce32ae9227",
+      "actual_sha256": "99277a4ecedaad16ea2855ad9896887c6339fdf7cfa40bb3cfa8adce32ae9227",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14273.owl",
+      "expected_sha256": "5ff90c6c929e247eca83b3c1e0030dd299ad5dbe8bcf3a5ca3901a1f37f969b0",
+      "actual_sha256": "5ff90c6c929e247eca83b3c1e0030dd299ad5dbe8bcf3a5ca3901a1f37f969b0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14280.owl",
+      "expected_sha256": "8f4ff8f155d9223bd300f08434fa2821efb915d1a7c81a018d50611a47f41cad",
+      "actual_sha256": "8f4ff8f155d9223bd300f08434fa2821efb915d1a7c81a018d50611a47f41cad",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14312.owl",
+      "expected_sha256": "538dccbf6247ff24e2ee09c93579119bac8c436fe8e05317b22f715a811e319b",
+      "actual_sha256": "538dccbf6247ff24e2ee09c93579119bac8c436fe8e05317b22f715a811e319b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14327.owl",
+      "expected_sha256": "a9dea4f6f7d76f78e9bf34226af6056b43980d02b4b780bb34adf0f49c9f0984",
+      "actual_sha256": "a9dea4f6f7d76f78e9bf34226af6056b43980d02b4b780bb34adf0f49c9f0984",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14375.owl",
+      "expected_sha256": "021b73ea8a49c9ecce3323c98ac3ce83353e797d5906338d3f2229ffda886660",
+      "actual_sha256": "021b73ea8a49c9ecce3323c98ac3ce83353e797d5906338d3f2229ffda886660",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14450.owl",
+      "expected_sha256": "9e1d03d2a50c5f5e7656eb632d2bead7cc0df64961854d493fcd2770b3a9d928",
+      "actual_sha256": "9e1d03d2a50c5f5e7656eb632d2bead7cc0df64961854d493fcd2770b3a9d928",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14459.owl",
+      "expected_sha256": "9c7e687cf7c77af414dc41dfc4f7baeef4f782f51d6bc186f6e9d60cca34ce0e",
+      "actual_sha256": "9c7e687cf7c77af414dc41dfc4f7baeef4f782f51d6bc186f6e9d60cca34ce0e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14499.owl",
+      "expected_sha256": "fb40e6f424a7c94bf90f8d171c73ffc1a194a091c468c28474bb11224a99202b",
+      "actual_sha256": "fb40e6f424a7c94bf90f8d171c73ffc1a194a091c468c28474bb11224a99202b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14508.owl",
+      "expected_sha256": "c5ff648bea30e660d2a4a84032ac5e143a52afb20a3931c8d3903cdad0a3c930",
+      "actual_sha256": "c5ff648bea30e660d2a4a84032ac5e143a52afb20a3931c8d3903cdad0a3c930",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14518.owl",
+      "expected_sha256": "8182fe29879c5c0be14fd3b35990d1e91b8ea18643f09e13df1ac0fa315e0253",
+      "actual_sha256": "8182fe29879c5c0be14fd3b35990d1e91b8ea18643f09e13df1ac0fa315e0253",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14543.owl",
+      "expected_sha256": "38eb1dc32feda6e65323e3f66fb8bfdc10f92cd02494da1fce666f2be17fb7d6",
+      "actual_sha256": "38eb1dc32feda6e65323e3f66fb8bfdc10f92cd02494da1fce666f2be17fb7d6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14574.owl",
+      "expected_sha256": "419527a21c214284c90b8360280c58600d670d3225bc1704f3e064837c45465a",
+      "actual_sha256": "419527a21c214284c90b8360280c58600d670d3225bc1704f3e064837c45465a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14587.owl",
+      "expected_sha256": "60be7c0337f06beb983d19404ff8d72cfaf5eb45d4205347875e65c7c5de76f8",
+      "actual_sha256": "60be7c0337f06beb983d19404ff8d72cfaf5eb45d4205347875e65c7c5de76f8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14607.owl",
+      "expected_sha256": "8bea8cbe9a246013e4fe098805f62c45e278df99b6b82f8680e8eb45c7587eb4",
+      "actual_sha256": "8bea8cbe9a246013e4fe098805f62c45e278df99b6b82f8680e8eb45c7587eb4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1473.owl",
+      "expected_sha256": "35c5e51d7a0b6f903560869bb2e2c98ca41c54614b730de18a29ba64937babc1",
+      "actual_sha256": "35c5e51d7a0b6f903560869bb2e2c98ca41c54614b730de18a29ba64937babc1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_148.owl",
+      "expected_sha256": "976196736f79f9e5fd3f20a5523ce764ad34d6614b4833aea9592de9a27c2699",
+      "actual_sha256": "976196736f79f9e5fd3f20a5523ce764ad34d6614b4833aea9592de9a27c2699",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1481.owl",
+      "expected_sha256": "10768871c06f7bac78cc8b5cf02da037fbc0474f3738a216919f4026e465fa6e",
+      "actual_sha256": "10768871c06f7bac78cc8b5cf02da037fbc0474f3738a216919f4026e465fa6e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14817.owl",
+      "expected_sha256": "c9ef59caad989ff6ab355038030256b9ac6409c1dd11265fa28e8266b63c100f",
+      "actual_sha256": "c9ef59caad989ff6ab355038030256b9ac6409c1dd11265fa28e8266b63c100f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14826.owl",
+      "expected_sha256": "0930dd73a861281717e31e463204760c61c317b4d1595c093974a32831e4be0b",
+      "actual_sha256": "0930dd73a861281717e31e463204760c61c317b4d1595c093974a32831e4be0b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14840.owl",
+      "expected_sha256": "7e6cea5602c93f3e6519f70e6b40e80dc57a560749a322cf9e84bf7262cfebc0",
+      "actual_sha256": "7e6cea5602c93f3e6519f70e6b40e80dc57a560749a322cf9e84bf7262cfebc0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14848.owl",
+      "expected_sha256": "25ed79f38b372b0fceffe19ec392f70f9dceadb3175817bcb8c86fb513001b70",
+      "actual_sha256": "25ed79f38b372b0fceffe19ec392f70f9dceadb3175817bcb8c86fb513001b70",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14896.owl",
+      "expected_sha256": "923bb1961fc3065c4c2f219bfadcfee70387f3aa8d5e0794a7b0c5ed65809b59",
+      "actual_sha256": "923bb1961fc3065c4c2f219bfadcfee70387f3aa8d5e0794a7b0c5ed65809b59",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14901.owl",
+      "expected_sha256": "404f9d072b24b5488fcc36d848d19369bf0a938cf58ce30834d395af4f11e160",
+      "actual_sha256": "404f9d072b24b5488fcc36d848d19369bf0a938cf58ce30834d395af4f11e160",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14926.owl",
+      "expected_sha256": "994f5ba79a86bc464dfbf100980d2bd83717c03bce630222fb09d6e37dd89339",
+      "actual_sha256": "994f5ba79a86bc464dfbf100980d2bd83717c03bce630222fb09d6e37dd89339",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1493.owl",
+      "expected_sha256": "4e224df1dd55fec712ad597ed56b53b7156c1380368fec6e0b98a78436f8cd85",
+      "actual_sha256": "4e224df1dd55fec712ad597ed56b53b7156c1380368fec6e0b98a78436f8cd85",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_14934.owl",
+      "expected_sha256": "0c882a44f158e2fe61d3909f8dfbb1e566bd6a1e19f5145c27b8d1ec5a812795",
+      "actual_sha256": "0c882a44f158e2fe61d3909f8dfbb1e566bd6a1e19f5145c27b8d1ec5a812795",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1494.owl",
+      "expected_sha256": "a1bc8c0714c09f97e885ed46a600de3b4f058606a1753b3f38357190a0e6a3f3",
+      "actual_sha256": "a1bc8c0714c09f97e885ed46a600de3b4f058606a1753b3f38357190a0e6a3f3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1501.owl",
+      "expected_sha256": "051c9551e20a02631ed607a7b80ccf3d0274aab0c2b440883528a29b5e3108f0",
+      "actual_sha256": "051c9551e20a02631ed607a7b80ccf3d0274aab0c2b440883528a29b5e3108f0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15059.owl",
+      "expected_sha256": "903db098c81789f0359b659b0d1c854626d46b3ab4b9d11f8fe56ffdcd3d07fb",
+      "actual_sha256": "903db098c81789f0359b659b0d1c854626d46b3ab4b9d11f8fe56ffdcd3d07fb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15068.owl",
+      "expected_sha256": "6b24c3abdfffe56b1d2e59183076ec3e1a213072cd3923a9afff99b65577971b",
+      "actual_sha256": "6b24c3abdfffe56b1d2e59183076ec3e1a213072cd3923a9afff99b65577971b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15098.owl",
+      "expected_sha256": "d0bf9dc9aea491c2e22a40a758a2d3a933fdf7aae3c42b415ed3653dfd116326",
+      "actual_sha256": "d0bf9dc9aea491c2e22a40a758a2d3a933fdf7aae3c42b415ed3653dfd116326",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15099.owl",
+      "expected_sha256": "bb7025a77a72e9257a844dde04b17cfcb6cb6d2848eea1934337436e8ebe60ec",
+      "actual_sha256": "bb7025a77a72e9257a844dde04b17cfcb6cb6d2848eea1934337436e8ebe60ec",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15145.owl",
+      "expected_sha256": "ec31688db157b2cc739d9a9e0c9176a4747cd6cc7c8179e30e64f0459ecc4852",
+      "actual_sha256": "ec31688db157b2cc739d9a9e0c9176a4747cd6cc7c8179e30e64f0459ecc4852",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15152.owl",
+      "expected_sha256": "e89cca938de1fa53bd33d4a8ac6748b5c0ef41194f47c2e77d54d6279f400bce",
+      "actual_sha256": "e89cca938de1fa53bd33d4a8ac6748b5c0ef41194f47c2e77d54d6279f400bce",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15172.owl",
+      "expected_sha256": "8d84d53dc69aec049aefa15e9a3a3f89fcd13234e9db544b1f72ea243f28dd36",
+      "actual_sha256": "8d84d53dc69aec049aefa15e9a3a3f89fcd13234e9db544b1f72ea243f28dd36",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15178.owl",
+      "expected_sha256": "cd4534860bc40f87db9ba3ed0b1015f24fb23ff65a6edee04c2cf6c7bc3b0ae1",
+      "actual_sha256": "cd4534860bc40f87db9ba3ed0b1015f24fb23ff65a6edee04c2cf6c7bc3b0ae1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15222.owl",
+      "expected_sha256": "0a378d03e5f095efa4f71c0558ba974a413631509a33e3bfb8c561803f46d902",
+      "actual_sha256": "0a378d03e5f095efa4f71c0558ba974a413631509a33e3bfb8c561803f46d902",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15231.owl",
+      "expected_sha256": "625e9e77b0ad07ac0f3f49ebaebefa52f0bcd6ada9cf6e741437424735736f03",
+      "actual_sha256": "625e9e77b0ad07ac0f3f49ebaebefa52f0bcd6ada9cf6e741437424735736f03",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15260.owl",
+      "expected_sha256": "4208b5b158aae7c37fe13d9535053fef6cf59de39ce2612355372f6328bb3416",
+      "actual_sha256": "4208b5b158aae7c37fe13d9535053fef6cf59de39ce2612355372f6328bb3416",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15280.owl",
+      "expected_sha256": "df15230569af9f68257a87b802ac6deed5b9c167224f005170a9d268dc999133",
+      "actual_sha256": "df15230569af9f68257a87b802ac6deed5b9c167224f005170a9d268dc999133",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15288.owl",
+      "expected_sha256": "21f7b64bee0f1cc84d86551a56c3506164e72da391d6d3c50f1d16680f8d50d6",
+      "actual_sha256": "21f7b64bee0f1cc84d86551a56c3506164e72da391d6d3c50f1d16680f8d50d6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15292.owl",
+      "expected_sha256": "d1fb5fa8509e42779928c8865751501ffc65d0db7a55f4f12f7148f688e61d73",
+      "actual_sha256": "d1fb5fa8509e42779928c8865751501ffc65d0db7a55f4f12f7148f688e61d73",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15341.owl",
+      "expected_sha256": "83a9e406ae804f52e9af9543b8de49381c78955403e4d29f53c814e28009cd15",
+      "actual_sha256": "83a9e406ae804f52e9af9543b8de49381c78955403e4d29f53c814e28009cd15",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15388.owl",
+      "expected_sha256": "1e1e90699defb2edc5484a565d408af844fd2b363f95ad0d50b9cafe9c11f7f4",
+      "actual_sha256": "1e1e90699defb2edc5484a565d408af844fd2b363f95ad0d50b9cafe9c11f7f4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15397.owl",
+      "expected_sha256": "4555de2474f772b234d582e1e6948249a46b2e0616cc6a08c70254c6a9704a1a",
+      "actual_sha256": "4555de2474f772b234d582e1e6948249a46b2e0616cc6a08c70254c6a9704a1a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15399.owl",
+      "expected_sha256": "0a479a304a3b8603e300fda4a7148cfc9ec9ecfb1a7fab2b2c08c2a9a2b58884",
+      "actual_sha256": "0a479a304a3b8603e300fda4a7148cfc9ec9ecfb1a7fab2b2c08c2a9a2b58884",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15461.owl",
+      "expected_sha256": "402d52f66e938cc6bfe94935eb0b2fff6b20644c25ff910b935d5c2596a353e1",
+      "actual_sha256": "402d52f66e938cc6bfe94935eb0b2fff6b20644c25ff910b935d5c2596a353e1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15491.owl",
+      "expected_sha256": "284187c9ef34fd104f35217e10be6badff05d297fbc9f2c32cb8801986da88b6",
+      "actual_sha256": "284187c9ef34fd104f35217e10be6badff05d297fbc9f2c32cb8801986da88b6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15516.owl",
+      "expected_sha256": "fe36410fa273546ee38e7a77ae2879f3f95aa1ac93cc021909c680f5fb036d62",
+      "actual_sha256": "fe36410fa273546ee38e7a77ae2879f3f95aa1ac93cc021909c680f5fb036d62",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15536.owl",
+      "expected_sha256": "69ce84100290df0a3e0ee006637ac75bd62dc7f8a87bbdefc1501964cdf7abef",
+      "actual_sha256": "69ce84100290df0a3e0ee006637ac75bd62dc7f8a87bbdefc1501964cdf7abef",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1555.owl",
+      "expected_sha256": "0e0e629d3ddac2ba2f53298d196fdeb1f4c825526027fcf7eba0f35408a6f125",
+      "actual_sha256": "0e0e629d3ddac2ba2f53298d196fdeb1f4c825526027fcf7eba0f35408a6f125",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15576.owl",
+      "expected_sha256": "ee071b8365e8213fd9c43d1f26b2529c40109a3cccedb670636670d8bb54521a",
+      "actual_sha256": "ee071b8365e8213fd9c43d1f26b2529c40109a3cccedb670636670d8bb54521a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1559.owl",
+      "expected_sha256": "1e65b8add2b5a38441e832dd090922a05cd89cbb5198c8a481a2e2991b9b30b4",
+      "actual_sha256": "1e65b8add2b5a38441e832dd090922a05cd89cbb5198c8a481a2e2991b9b30b4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15615.owl",
+      "expected_sha256": "555451de0ff5c27998815dd7e30cace9b9cbd9710356506ee98480e72fcecf4f",
+      "actual_sha256": "555451de0ff5c27998815dd7e30cace9b9cbd9710356506ee98480e72fcecf4f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15672.owl",
+      "expected_sha256": "8db0bea666ab3df9f81860d03d183380119ad578ef808009fa9f6272814b5130",
+      "actual_sha256": "8db0bea666ab3df9f81860d03d183380119ad578ef808009fa9f6272814b5130",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15696.owl",
+      "expected_sha256": "114557285f1c6daf53617eca14aef495cdbe955b87cebd5548b0368632f75cbc",
+      "actual_sha256": "114557285f1c6daf53617eca14aef495cdbe955b87cebd5548b0368632f75cbc",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15703.owl",
+      "expected_sha256": "4b4cfcd05dde8dbf4aee52e361fe1a7b8b05f1693a0f0b588fe72f7f5afd3e03",
+      "actual_sha256": "4b4cfcd05dde8dbf4aee52e361fe1a7b8b05f1693a0f0b588fe72f7f5afd3e03",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15725.owl",
+      "expected_sha256": "90916e5a9ac1a4298955466d29ff95a7f152bf2258d605dcd144486a3062de1f",
+      "actual_sha256": "90916e5a9ac1a4298955466d29ff95a7f152bf2258d605dcd144486a3062de1f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1579.owl",
+      "expected_sha256": "232b3c7de1b3bfbb8f323ff234ac9d1ef9cd4c54b78a023c22e22ca21936db99",
+      "actual_sha256": "232b3c7de1b3bfbb8f323ff234ac9d1ef9cd4c54b78a023c22e22ca21936db99",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15790.owl",
+      "expected_sha256": "e1297a90ebc049dc41a042e8d8ff1114864a8853224188b3e7836a00e6741fc4",
+      "actual_sha256": "e1297a90ebc049dc41a042e8d8ff1114864a8853224188b3e7836a00e6741fc4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15791.owl",
+      "expected_sha256": "fed2582fbb42a548d813fe730319d1a50c0f5c9a3ac113174930168a5279108c",
+      "actual_sha256": "fed2582fbb42a548d813fe730319d1a50c0f5c9a3ac113174930168a5279108c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15793.owl",
+      "expected_sha256": "fd2447cfabd203677b88fa9606f29b63617a277d3f0f87d2d4aacb91d67c5b91",
+      "actual_sha256": "fd2447cfabd203677b88fa9606f29b63617a277d3f0f87d2d4aacb91d67c5b91",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15803.owl",
+      "expected_sha256": "a793be55c7a0318a788c3fe95e576dacc676fd120b66e70bc057cbce9429d71a",
+      "actual_sha256": "a793be55c7a0318a788c3fe95e576dacc676fd120b66e70bc057cbce9429d71a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15846.owl",
+      "expected_sha256": "46312d6ae73d1f0ea602ad68d1468f4f585918ab4f69e946e8757492b53bbd36",
+      "actual_sha256": "46312d6ae73d1f0ea602ad68d1468f4f585918ab4f69e946e8757492b53bbd36",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15860.owl",
+      "expected_sha256": "f27be8f5a2dde81ce840c6f54f0c4ecf8195a6b209d65bc39d243b16e216c894",
+      "actual_sha256": "f27be8f5a2dde81ce840c6f54f0c4ecf8195a6b209d65bc39d243b16e216c894",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15882.owl",
+      "expected_sha256": "4372d357c6bcd5a14d34992e583d7f13138e67e86735b46ceafe0247a4afed02",
+      "actual_sha256": "4372d357c6bcd5a14d34992e583d7f13138e67e86735b46ceafe0247a4afed02",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15917.owl",
+      "expected_sha256": "bb708e7fa97267766f68cc1a5dbc957e21c3218b5146e35fe36f870b691e206e",
+      "actual_sha256": "bb708e7fa97267766f68cc1a5dbc957e21c3218b5146e35fe36f870b691e206e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15929.owl",
+      "expected_sha256": "7ac80d48ad1546e4ebd69d981ff0aa2d4882e36b60957892fe2751390d11e034",
+      "actual_sha256": "7ac80d48ad1546e4ebd69d981ff0aa2d4882e36b60957892fe2751390d11e034",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15932.owl",
+      "expected_sha256": "7ba60a5ad393f9bea7aa7da6f4e38843b74deb21fab366ea10c754a7ca82edef",
+      "actual_sha256": "7ba60a5ad393f9bea7aa7da6f4e38843b74deb21fab366ea10c754a7ca82edef",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15944.owl",
+      "expected_sha256": "718eadecdccfc59a26fc96e4419a1c91c137f768421966267316c19c9070caaa",
+      "actual_sha256": "718eadecdccfc59a26fc96e4419a1c91c137f768421966267316c19c9070caaa",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15950.owl",
+      "expected_sha256": "ebd200876a8d436ffd30f0694615f039e8f5747470dd80ccc686d0f8efffea92",
+      "actual_sha256": "ebd200876a8d436ffd30f0694615f039e8f5747470dd80ccc686d0f8efffea92",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15968.owl",
+      "expected_sha256": "ca5286082077f2c27c0b9a2ed163945f28bf0dda0c8f69926b92bd3b70444c38",
+      "actual_sha256": "ca5286082077f2c27c0b9a2ed163945f28bf0dda0c8f69926b92bd3b70444c38",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15976.owl",
+      "expected_sha256": "18d26352b73c65bd7de377e01da582e070841613103b81d9c0106d514fefc72e",
+      "actual_sha256": "18d26352b73c65bd7de377e01da582e070841613103b81d9c0106d514fefc72e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_15985.owl",
+      "expected_sha256": "03344c13039bbb912a5da73896e1b3dfa3b49ed6a9a0fa84ba4a72641eb76edc",
+      "actual_sha256": "03344c13039bbb912a5da73896e1b3dfa3b49ed6a9a0fa84ba4a72641eb76edc",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16008.owl",
+      "expected_sha256": "0208050f1b294436ed401f624366f655129fdf78a360dc7107925c8bca26927c",
+      "actual_sha256": "0208050f1b294436ed401f624366f655129fdf78a360dc7107925c8bca26927c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1603.owl",
+      "expected_sha256": "2cf7ab865db72d35f3fef82b40c70414ca0105da3cddd91ebbc3fd2a141373be",
+      "actual_sha256": "2cf7ab865db72d35f3fef82b40c70414ca0105da3cddd91ebbc3fd2a141373be",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16076.owl",
+      "expected_sha256": "7d21384184580abd17c2878cd1f3d9924f0c723d7c59a38b32da74a5042739c4",
+      "actual_sha256": "7d21384184580abd17c2878cd1f3d9924f0c723d7c59a38b32da74a5042739c4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16114.owl",
+      "expected_sha256": "3e91e03b54f88ec1392be54e9e7762a3d8a863661ce5a1ca0bdebfc3bffe0a17",
+      "actual_sha256": "3e91e03b54f88ec1392be54e9e7762a3d8a863661ce5a1ca0bdebfc3bffe0a17",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16167.owl",
+      "expected_sha256": "6616ce30b1db18cc89aed71ac703cce773cb6021d14123d0f79b85115536a603",
+      "actual_sha256": "6616ce30b1db18cc89aed71ac703cce773cb6021d14123d0f79b85115536a603",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1618.owl",
+      "expected_sha256": "45dce15fb2c24eeafcae93973f30e7a04cb71b93b0c397f633e205cb3dca9e99",
+      "actual_sha256": "45dce15fb2c24eeafcae93973f30e7a04cb71b93b0c397f633e205cb3dca9e99",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16299.owl",
+      "expected_sha256": "93e91748841fc28a9e0198da30e8f14459b3c13763b4d445a1156dcd60f2831f",
+      "actual_sha256": "93e91748841fc28a9e0198da30e8f14459b3c13763b4d445a1156dcd60f2831f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16303.owl",
+      "expected_sha256": "af66cecf2005a7637b0c1290d739711d6a31f13708510070fcba61843c574369",
+      "actual_sha256": "af66cecf2005a7637b0c1290d739711d6a31f13708510070fcba61843c574369",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16312.owl",
+      "expected_sha256": "cbd81d66194a2048a6035d1b159d6ed7dff91d1caab7b148f228378d14a7da93",
+      "actual_sha256": "cbd81d66194a2048a6035d1b159d6ed7dff91d1caab7b148f228378d14a7da93",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16351.owl",
+      "expected_sha256": "8123fafada64ddf62e443636621074e522226ae663932f22538d714dfe4e801d",
+      "actual_sha256": "8123fafada64ddf62e443636621074e522226ae663932f22538d714dfe4e801d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16444.owl",
+      "expected_sha256": "149a0acdd45c6bce9fad6472e51cbe43bb1977b4a10cee33131bc2e2d736e4aa",
+      "actual_sha256": "149a0acdd45c6bce9fad6472e51cbe43bb1977b4a10cee33131bc2e2d736e4aa",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16461.owl",
+      "expected_sha256": "26bd224426d789d47dbe6e58ae4414bd9fdb71f6f7eae632ef6551277a90814b",
+      "actual_sha256": "26bd224426d789d47dbe6e58ae4414bd9fdb71f6f7eae632ef6551277a90814b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16462.owl",
+      "expected_sha256": "4f2924a43ba98d9c607bd52ab4f566ef4319ea3016b1308f50a2c7ef90b44d2b",
+      "actual_sha256": "4f2924a43ba98d9c607bd52ab4f566ef4319ea3016b1308f50a2c7ef90b44d2b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16501.owl",
+      "expected_sha256": "3178de71855c1e96c8934c7aa794faa056c90297c7df41a7a254e04a4f0cb78e",
+      "actual_sha256": "3178de71855c1e96c8934c7aa794faa056c90297c7df41a7a254e04a4f0cb78e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16558.owl",
+      "expected_sha256": "24d02b17786a4e7d9d39a64c368def780322e1f99fca643a849838b83163c3d9",
+      "actual_sha256": "24d02b17786a4e7d9d39a64c368def780322e1f99fca643a849838b83163c3d9",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16559.owl",
+      "expected_sha256": "0342a8622c7c242f91cb00fdbed129dee5e213b15bbd8d395ae170329ac23586",
+      "actual_sha256": "0342a8622c7c242f91cb00fdbed129dee5e213b15bbd8d395ae170329ac23586",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16596.owl",
+      "expected_sha256": "34b55890b192cbba5b310afd7a356b9e58463c07d2fa8d399e8a4bed6da1c37a",
+      "actual_sha256": "34b55890b192cbba5b310afd7a356b9e58463c07d2fa8d399e8a4bed6da1c37a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16619.owl",
+      "expected_sha256": "cf52fe61a3aaa3c49014921069715152da79f33eda03e9b428f1bb570b2c8e44",
+      "actual_sha256": "cf52fe61a3aaa3c49014921069715152da79f33eda03e9b428f1bb570b2c8e44",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16626.owl",
+      "expected_sha256": "9844160178524cd383de8767dcbf5ecfbb6f699f9525ca1806b346079ebd4076",
+      "actual_sha256": "9844160178524cd383de8767dcbf5ecfbb6f699f9525ca1806b346079ebd4076",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1666.owl",
+      "expected_sha256": "313e00a63e4a8b6f039a57b52f9df6b6c42c5e83dde8ca3d0e6777e503e6c107",
+      "actual_sha256": "313e00a63e4a8b6f039a57b52f9df6b6c42c5e83dde8ca3d0e6777e503e6c107",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16684.owl",
+      "expected_sha256": "fc0f5916bf3eb5c169464f3451d9b6d0477684848ac4140f3fd41d95400c2f18",
+      "actual_sha256": "fc0f5916bf3eb5c169464f3451d9b6d0477684848ac4140f3fd41d95400c2f18",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16687.owl",
+      "expected_sha256": "d6c38bb6b10d218e74cd39386bae49b83cd56b41cd18de3dee096db6fa94aaf5",
+      "actual_sha256": "d6c38bb6b10d218e74cd39386bae49b83cd56b41cd18de3dee096db6fa94aaf5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16730.owl",
+      "expected_sha256": "c926d0d6296a6a84b59f69f1ba6bc7892790e1b96a8ddb1c261633bd7bbe21a7",
+      "actual_sha256": "c926d0d6296a6a84b59f69f1ba6bc7892790e1b96a8ddb1c261633bd7bbe21a7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16744.owl",
+      "expected_sha256": "14e1d911dddd8863c088733a4c27ed66a9323e6ea4e12af7b9c3ac3bf816a4fc",
+      "actual_sha256": "14e1d911dddd8863c088733a4c27ed66a9323e6ea4e12af7b9c3ac3bf816a4fc",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16777.owl",
+      "expected_sha256": "0ba40565d8a54be419649717b6b66af48c29d3de1b22e96c576797451b1a5442",
+      "actual_sha256": "0ba40565d8a54be419649717b6b66af48c29d3de1b22e96c576797451b1a5442",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_16821.owl",
+      "expected_sha256": "b47769e78063abc9e52e724af1be6a3f5823c8c8f889483ee2c8843106cedbc7",
+      "actual_sha256": "b47769e78063abc9e52e724af1be6a3f5823c8c8f889483ee2c8843106cedbc7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_178.owl",
+      "expected_sha256": "bed01ec66516d256b7723adf2871e046cd9ed48ed9cf47983dae974e8ef5ebb4",
+      "actual_sha256": "bed01ec66516d256b7723adf2871e046cd9ed48ed9cf47983dae974e8ef5ebb4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1790.owl",
+      "expected_sha256": "a2bf8b5bd1d09681a292bfd042acc8a0a0b04c39a7827da85c195600a9fe7527",
+      "actual_sha256": "a2bf8b5bd1d09681a292bfd042acc8a0a0b04c39a7827da85c195600a9fe7527",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1793.owl",
+      "expected_sha256": "2391ea4a80f81db5d0bf5f3f3fddc0a8e085601291280988ecf8c885ccfcfecd",
+      "actual_sha256": "2391ea4a80f81db5d0bf5f3f3fddc0a8e085601291280988ecf8c885ccfcfecd",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1902.owl",
+      "expected_sha256": "f74ecf902dc976a0d8829151dd475067c5f59d7327a03fb918a283440c16079d",
+      "actual_sha256": "f74ecf902dc976a0d8829151dd475067c5f59d7327a03fb918a283440c16079d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1967.owl",
+      "expected_sha256": "55675523555c6a5b8d2034524c1188000c68e3e98389c974e471def92cb89806",
+      "actual_sha256": "55675523555c6a5b8d2034524c1188000c68e3e98389c974e471def92cb89806",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_1970.owl",
+      "expected_sha256": "4be2bb52e1a55c759ca0d58c4369c81d456059617e3a23866a0565ef48dfc91d",
+      "actual_sha256": "4be2bb52e1a55c759ca0d58c4369c81d456059617e3a23866a0565ef48dfc91d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2011.owl",
+      "expected_sha256": "86433a7ec988fe141cd5955e6905561182567a43ca4e649a623dfa730bb56f1a",
+      "actual_sha256": "86433a7ec988fe141cd5955e6905561182567a43ca4e649a623dfa730bb56f1a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2036.owl",
+      "expected_sha256": "efd52c2e4c21387564b15b70e622396771797eb623ff3cec43c4de833079388f",
+      "actual_sha256": "efd52c2e4c21387564b15b70e622396771797eb623ff3cec43c4de833079388f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2046.owl",
+      "expected_sha256": "c69bee7c71782c1ea7690a136f7172697d689d86440d782ae21ee5b0df7c98a1",
+      "actual_sha256": "c69bee7c71782c1ea7690a136f7172697d689d86440d782ae21ee5b0df7c98a1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2066.owl",
+      "expected_sha256": "17549c699dff2e4e2699f158b832a95ae7ad0c48b5b4598337fb14a182b90d45",
+      "actual_sha256": "17549c699dff2e4e2699f158b832a95ae7ad0c48b5b4598337fb14a182b90d45",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2105.owl",
+      "expected_sha256": "b0302fd1c8077bda0bb23869578947862c42e372d2499ff023434c107def9edf",
+      "actual_sha256": "b0302fd1c8077bda0bb23869578947862c42e372d2499ff023434c107def9edf",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2128.owl",
+      "expected_sha256": "68e6e4dc054faf13c85a0ade54f43e569d4bf34c6b0cb16b6da7c5f8438f91c0",
+      "actual_sha256": "68e6e4dc054faf13c85a0ade54f43e569d4bf34c6b0cb16b6da7c5f8438f91c0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2129.owl",
+      "expected_sha256": "a5ca1c644dd746ff8bc5d66f4bdae37329a7a1c4aea537d9d5f133e6f69222c2",
+      "actual_sha256": "a5ca1c644dd746ff8bc5d66f4bdae37329a7a1c4aea537d9d5f133e6f69222c2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2195.owl",
+      "expected_sha256": "37c48ab8f581541940bf6da33e488c4ffbacb8b9b736cb9eebff44b6617db8e2",
+      "actual_sha256": "37c48ab8f581541940bf6da33e488c4ffbacb8b9b736cb9eebff44b6617db8e2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2228.owl",
+      "expected_sha256": "72476f38742d2c94950465415adbf506a19f747903398e20c7b6c9b30a80aaca",
+      "actual_sha256": "72476f38742d2c94950465415adbf506a19f747903398e20c7b6c9b30a80aaca",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2237.owl",
+      "expected_sha256": "a9104de506a05f0e88e5851e44161718fc4239120af629ec11c618a5d8983a81",
+      "actual_sha256": "a9104de506a05f0e88e5851e44161718fc4239120af629ec11c618a5d8983a81",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2243.owl",
+      "expected_sha256": "dd4084df48982cd1cbaf91ecd347988500854774cecc96043a4c5d84f964ac34",
+      "actual_sha256": "dd4084df48982cd1cbaf91ecd347988500854774cecc96043a4c5d84f964ac34",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2253.owl",
+      "expected_sha256": "0eb3c03283d691cf9925e3b152a3cab0132ff56efa42cebbf8217eb36d84c1eb",
+      "actual_sha256": "0eb3c03283d691cf9925e3b152a3cab0132ff56efa42cebbf8217eb36d84c1eb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2266.owl",
+      "expected_sha256": "bc0b7ee1c222ba249b8850b405b726bd568366e5310b8c2f8668d61826a1099a",
+      "actual_sha256": "bc0b7ee1c222ba249b8850b405b726bd568366e5310b8c2f8668d61826a1099a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2313.owl",
+      "expected_sha256": "ab8ec70e619b3c5cae588200cf947b42faabee57746c639cece9a62891971889",
+      "actual_sha256": "ab8ec70e619b3c5cae588200cf947b42faabee57746c639cece9a62891971889",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2317.owl",
+      "expected_sha256": "06c2fb3c98975d209a4ed88f1e1995c5eca0572a68c67038fe542dc7f5c15fad",
+      "actual_sha256": "06c2fb3c98975d209a4ed88f1e1995c5eca0572a68c67038fe542dc7f5c15fad",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2333.owl",
+      "expected_sha256": "ff7f9203c07a0d9a6220e5e1c8a8f66aaaa69c72dcbcfd330b6f0a01b1aa1909",
+      "actual_sha256": "ff7f9203c07a0d9a6220e5e1c8a8f66aaaa69c72dcbcfd330b6f0a01b1aa1909",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2361.owl",
+      "expected_sha256": "ed245eb884eaf7acf26853b7c5f98abdd7ec85b4ff9679b5ec95796c34247855",
+      "actual_sha256": "ed245eb884eaf7acf26853b7c5f98abdd7ec85b4ff9679b5ec95796c34247855",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2377.owl",
+      "expected_sha256": "ac8b7e5f424c73bfdb67889b65de971c7d93a20b33285806f5a639fb99d003b1",
+      "actual_sha256": "ac8b7e5f424c73bfdb67889b65de971c7d93a20b33285806f5a639fb99d003b1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2378.owl",
+      "expected_sha256": "9fbb68c518196b2486a13169ecd941911810eb0d1ee9dd4c74cd8459772f41da",
+      "actual_sha256": "9fbb68c518196b2486a13169ecd941911810eb0d1ee9dd4c74cd8459772f41da",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2397.owl",
+      "expected_sha256": "42d48511b20610272a0ab53a50ec101deb575f7a8662bd74b84e58fd42dbd0b5",
+      "actual_sha256": "42d48511b20610272a0ab53a50ec101deb575f7a8662bd74b84e58fd42dbd0b5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2440.owl",
+      "expected_sha256": "1653827fd7658f6aa9b41da2ae340405d2604550ba81d44ee29211e6dddc0c34",
+      "actual_sha256": "1653827fd7658f6aa9b41da2ae340405d2604550ba81d44ee29211e6dddc0c34",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2453.owl",
+      "expected_sha256": "7349e934d400490d2455800b3f1dbb744eed12a8cc7427e2c7c115f2c5a95d05",
+      "actual_sha256": "7349e934d400490d2455800b3f1dbb744eed12a8cc7427e2c7c115f2c5a95d05",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2469.owl",
+      "expected_sha256": "ed79757789769aab8ef350d09e44ced2de8d92fe69af2ab50be62a255c233cc0",
+      "actual_sha256": "ed79757789769aab8ef350d09e44ced2de8d92fe69af2ab50be62a255c233cc0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2485.owl",
+      "expected_sha256": "2d130789793630b293e211c70d8907e8a9ac8ac1c3783b8f680b0d8efdfb2754",
+      "actual_sha256": "2d130789793630b293e211c70d8907e8a9ac8ac1c3783b8f680b0d8efdfb2754",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2491.owl",
+      "expected_sha256": "eed01f964bb6a3d599afcd2a995a1e469a2c7cf5b37933948b9eb52a6603f8af",
+      "actual_sha256": "eed01f964bb6a3d599afcd2a995a1e469a2c7cf5b37933948b9eb52a6603f8af",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2496.owl",
+      "expected_sha256": "7710d9f89b1b0a0bdb8601466e9f631310a2f817b1eec03d3e68f982eee8ad8a",
+      "actual_sha256": "7710d9f89b1b0a0bdb8601466e9f631310a2f817b1eec03d3e68f982eee8ad8a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2497.owl",
+      "expected_sha256": "957d575cf18296bcb2d2bab60e572bc4f0a3db726bff09374b2aa5de2363f966",
+      "actual_sha256": "957d575cf18296bcb2d2bab60e572bc4f0a3db726bff09374b2aa5de2363f966",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2557.owl",
+      "expected_sha256": "f396f2d269c23c2ea16c06e65fcc0f05d700aa9b70a2123fbde085dd8b7830fb",
+      "actual_sha256": "f396f2d269c23c2ea16c06e65fcc0f05d700aa9b70a2123fbde085dd8b7830fb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2569.owl",
+      "expected_sha256": "e1016fa09c64e34ec67d70d47919e8b8dc18cb57e3d77ac8d117b66a8290d09c",
+      "actual_sha256": "e1016fa09c64e34ec67d70d47919e8b8dc18cb57e3d77ac8d117b66a8290d09c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_258.owl",
+      "expected_sha256": "a6594c4ab361e223a49a99a5da700313d9f7dbb8d9e9112de7eb831c5692897a",
+      "actual_sha256": "a6594c4ab361e223a49a99a5da700313d9f7dbb8d9e9112de7eb831c5692897a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2591.owl",
+      "expected_sha256": "b95dd44ba61cecbc45f6c86ed0bde71cf6c1e9115f489f78f74595fde6fb0e82",
+      "actual_sha256": "b95dd44ba61cecbc45f6c86ed0bde71cf6c1e9115f489f78f74595fde6fb0e82",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2627.owl",
+      "expected_sha256": "9fc4b32992ab863aadcd0bb74f6cf5d0178f0e1c713f5e1f4e75f865be5a4bd2",
+      "actual_sha256": "9fc4b32992ab863aadcd0bb74f6cf5d0178f0e1c713f5e1f4e75f865be5a4bd2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2632.owl",
+      "expected_sha256": "1ec077fdbc68b5d9eb3d2aae13a0457fe8bfcdd828cebb3b782974346fe746d6",
+      "actual_sha256": "1ec077fdbc68b5d9eb3d2aae13a0457fe8bfcdd828cebb3b782974346fe746d6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2654.owl",
+      "expected_sha256": "146381607d20b5d795cabc85f801d7bb3535fdc44b1e033b176b7acff5df7de2",
+      "actual_sha256": "146381607d20b5d795cabc85f801d7bb3535fdc44b1e033b176b7acff5df7de2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2661.owl",
+      "expected_sha256": "d7ba1e8752eedabef68b2d462159dc660f8f6e6366bbbeef44633c2f03da36ae",
+      "actual_sha256": "d7ba1e8752eedabef68b2d462159dc660f8f6e6366bbbeef44633c2f03da36ae",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2662.owl",
+      "expected_sha256": "33cbfbc1efa059a13ecef645a6b46b989f9c96799310a7edade1db39e6fab480",
+      "actual_sha256": "33cbfbc1efa059a13ecef645a6b46b989f9c96799310a7edade1db39e6fab480",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2669.owl",
+      "expected_sha256": "e0c5414452959475ca00a63761af6869310d43e12d9d7a29f42f2ade2f0b395e",
+      "actual_sha256": "e0c5414452959475ca00a63761af6869310d43e12d9d7a29f42f2ade2f0b395e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2672.owl",
+      "expected_sha256": "ca20544536315a09452d913b3fdb78aeb70f72cf423d99d21c4664550c8f6c92",
+      "actual_sha256": "ca20544536315a09452d913b3fdb78aeb70f72cf423d99d21c4664550c8f6c92",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2678.owl",
+      "expected_sha256": "b877e12f0f33e47412fe7e021ff9f462acda6d995e2b72d7831de1a642179668",
+      "actual_sha256": "b877e12f0f33e47412fe7e021ff9f462acda6d995e2b72d7831de1a642179668",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_269.owl",
+      "expected_sha256": "f5f863258764a721284bc12317b9d55fd02a0e24a83fe6b8c91baed12f596a96",
+      "actual_sha256": "f5f863258764a721284bc12317b9d55fd02a0e24a83fe6b8c91baed12f596a96",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2713.owl",
+      "expected_sha256": "f838f4ff67ba90cb127620aa234f075ee2929d9f4b8cab97030ad2831f822e51",
+      "actual_sha256": "f838f4ff67ba90cb127620aa234f075ee2929d9f4b8cab97030ad2831f822e51",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2720.owl",
+      "expected_sha256": "cf7665341909529d7cc49dd9fba55e5141ee1389876b016ae94ed71819641379",
+      "actual_sha256": "cf7665341909529d7cc49dd9fba55e5141ee1389876b016ae94ed71819641379",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2744.owl",
+      "expected_sha256": "44fe69d58ba0ca106b2ec20337fb9e13f0033f1dea177f81280d58f03e958e57",
+      "actual_sha256": "44fe69d58ba0ca106b2ec20337fb9e13f0033f1dea177f81280d58f03e958e57",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2753.owl",
+      "expected_sha256": "8bd5f1f3df90ef0fb87de5593b977a640d1d2745c4d2ad42176d9207f541bde1",
+      "actual_sha256": "8bd5f1f3df90ef0fb87de5593b977a640d1d2745c4d2ad42176d9207f541bde1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2803.owl",
+      "expected_sha256": "5b0e036e3b70ebe1b02367ede43c78a7e50d44ba80edcf727840eeaaa583a506",
+      "actual_sha256": "5b0e036e3b70ebe1b02367ede43c78a7e50d44ba80edcf727840eeaaa583a506",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2828.owl",
+      "expected_sha256": "92904986903648178baf9eaf134ea6101aa6dd214ddb2aa74a0824c3cd72b094",
+      "actual_sha256": "92904986903648178baf9eaf134ea6101aa6dd214ddb2aa74a0824c3cd72b094",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2860.owl",
+      "expected_sha256": "62792e5bf689e104c0768dc8051b8db62104dfc0ef3f6fb716a738c694325fb4",
+      "actual_sha256": "62792e5bf689e104c0768dc8051b8db62104dfc0ef3f6fb716a738c694325fb4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_2876.owl",
+      "expected_sha256": "bf50c8c6395f75228e3398eb03c9a15e6ee1a45d8b86d0a8ef29460ba40b5a9a",
+      "actual_sha256": "bf50c8c6395f75228e3398eb03c9a15e6ee1a45d8b86d0a8ef29460ba40b5a9a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3050.owl",
+      "expected_sha256": "a1381c508b9ad37364c28de76e64f55cc2281d4321b25761b8db1e79a037a5c4",
+      "actual_sha256": "a1381c508b9ad37364c28de76e64f55cc2281d4321b25761b8db1e79a037a5c4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3082.owl",
+      "expected_sha256": "fa8208855efc35d6b3053818abb9a85361e377aba85bc6cd4cd03f835ab5dda4",
+      "actual_sha256": "fa8208855efc35d6b3053818abb9a85361e377aba85bc6cd4cd03f835ab5dda4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3106.owl",
+      "expected_sha256": "b0c2200ff72980af175b35a7da00b8556d2c2b93639b58ffe53854a56acc6fff",
+      "actual_sha256": "b0c2200ff72980af175b35a7da00b8556d2c2b93639b58ffe53854a56acc6fff",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3164.owl",
+      "expected_sha256": "a71c1eb9b7399cb9000fc74bdf440cdef75364ce9d817cce2e1345c1e8cceba8",
+      "actual_sha256": "a71c1eb9b7399cb9000fc74bdf440cdef75364ce9d817cce2e1345c1e8cceba8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3177.owl",
+      "expected_sha256": "ddec090afc3438f07432f64685728e2aca8d35f5e66c0aa947b16a159d2917f7",
+      "actual_sha256": "ddec090afc3438f07432f64685728e2aca8d35f5e66c0aa947b16a159d2917f7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3215.owl",
+      "expected_sha256": "7e324ec97091c7c71c40edc44268a6d49c5db817458ceaadefe6bc7ee3d49aaa",
+      "actual_sha256": "7e324ec97091c7c71c40edc44268a6d49c5db817458ceaadefe6bc7ee3d49aaa",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3231.owl",
+      "expected_sha256": "f8e63362c7c7448362bd701bd170478da239b3cdc334d8c1436c7b3d1aff4304",
+      "actual_sha256": "f8e63362c7c7448362bd701bd170478da239b3cdc334d8c1436c7b3d1aff4304",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3259.owl",
+      "expected_sha256": "9e1203c3195c983f86c25716adaf1b5922ff3e7dcf7591d0ea1a474788c99054",
+      "actual_sha256": "9e1203c3195c983f86c25716adaf1b5922ff3e7dcf7591d0ea1a474788c99054",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3260.owl",
+      "expected_sha256": "8d49d1364c311e6274f0ff6e3b8e7a083a6f9dbc5a774ba83ca12d928c7328a8",
+      "actual_sha256": "8d49d1364c311e6274f0ff6e3b8e7a083a6f9dbc5a774ba83ca12d928c7328a8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_33.owl",
+      "expected_sha256": "72b18087c7af47ead5994c537aa664aafb8a69741c0b04e7c84d03656f17d87f",
+      "actual_sha256": "72b18087c7af47ead5994c537aa664aafb8a69741c0b04e7c84d03656f17d87f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3313.owl",
+      "expected_sha256": "37b834b55e7d909798c9be024cdee522d3487992bbdf00f2c055fd4f32ef6ce7",
+      "actual_sha256": "37b834b55e7d909798c9be024cdee522d3487992bbdf00f2c055fd4f32ef6ce7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3349.owl",
+      "expected_sha256": "7c826acf85c6bf93937f8e06a787c6dcf91aadbec66b240df2352dbaee37378b",
+      "actual_sha256": "7c826acf85c6bf93937f8e06a787c6dcf91aadbec66b240df2352dbaee37378b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3377.owl",
+      "expected_sha256": "b335137d4c387a27aed43b1dfe553d4426d67d187f8a3b33dc91c0650b11a348",
+      "actual_sha256": "b335137d4c387a27aed43b1dfe553d4426d67d187f8a3b33dc91c0650b11a348",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_338.owl",
+      "expected_sha256": "ae95801112280850fda401c8a714193f523f99b89f0754b2f536f91f8e4bdbcb",
+      "actual_sha256": "ae95801112280850fda401c8a714193f523f99b89f0754b2f536f91f8e4bdbcb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3406.owl",
+      "expected_sha256": "bbf946193fbbc6db7719bfa87015384bb614e0a603343642d5f3a684460dcbdf",
+      "actual_sha256": "bbf946193fbbc6db7719bfa87015384bb614e0a603343642d5f3a684460dcbdf",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3414.owl",
+      "expected_sha256": "947e0776637ce17d7acdccc2d7d5a20d6a444786a3d90ac6527eaed5ebed75dd",
+      "actual_sha256": "947e0776637ce17d7acdccc2d7d5a20d6a444786a3d90ac6527eaed5ebed75dd",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3418.owl",
+      "expected_sha256": "518dcfeebe0f44e2b40a3b716bdbee13b9beef727035e4631e8ee8f5d197764c",
+      "actual_sha256": "518dcfeebe0f44e2b40a3b716bdbee13b9beef727035e4631e8ee8f5d197764c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3463.owl",
+      "expected_sha256": "f1fe9592a8d48eca155b4f20a274ac17b8b1a099b46214c72e5a6fdb51a836ce",
+      "actual_sha256": "f1fe9592a8d48eca155b4f20a274ac17b8b1a099b46214c72e5a6fdb51a836ce",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3480.owl",
+      "expected_sha256": "5e49bcbc071f493b307f61a0322a9a2e863e10fff7803f1b3888ce212e292c13",
+      "actual_sha256": "5e49bcbc071f493b307f61a0322a9a2e863e10fff7803f1b3888ce212e292c13",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3524.owl",
+      "expected_sha256": "00c1b5dd0106e077813b8998eff80f14bc4b43ac1a83a95ccc4ad5a216ad85a2",
+      "actual_sha256": "00c1b5dd0106e077813b8998eff80f14bc4b43ac1a83a95ccc4ad5a216ad85a2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3560.owl",
+      "expected_sha256": "7552e3ce6452b8f8f17c70ad467fa5d963731278d6b20cea6e4e967fc73301d9",
+      "actual_sha256": "7552e3ce6452b8f8f17c70ad467fa5d963731278d6b20cea6e4e967fc73301d9",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3635.owl",
+      "expected_sha256": "5112d23c668d7d6ddfba89894e9456d953e0aee32d875bc58ad4f5e450540040",
+      "actual_sha256": "5112d23c668d7d6ddfba89894e9456d953e0aee32d875bc58ad4f5e450540040",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3640.owl",
+      "expected_sha256": "bdcabced6a8a33718c8df5ec87ebc59f27f00effa8af75c927caf7fbd905f69f",
+      "actual_sha256": "bdcabced6a8a33718c8df5ec87ebc59f27f00effa8af75c927caf7fbd905f69f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3658.owl",
+      "expected_sha256": "c8084740875f30011ff2fb62c325e0dcbaec0faa15ae02df6742f58affa50a60",
+      "actual_sha256": "c8084740875f30011ff2fb62c325e0dcbaec0faa15ae02df6742f58affa50a60",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3712.owl",
+      "expected_sha256": "4441d4da388a327f8db11d1b41529089d1550ae645a643207ad96cacb3633ad7",
+      "actual_sha256": "4441d4da388a327f8db11d1b41529089d1550ae645a643207ad96cacb3633ad7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3770.owl",
+      "expected_sha256": "fd78c08866c84a47fcc2672e731e6e7c494e100017b29658e7125d3ef31d92ba",
+      "actual_sha256": "fd78c08866c84a47fcc2672e731e6e7c494e100017b29658e7125d3ef31d92ba",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3784.owl",
+      "expected_sha256": "da872dbc6a64218218b251b8797fd4ffe6de039bcf4c250186b1237454f9de7b",
+      "actual_sha256": "da872dbc6a64218218b251b8797fd4ffe6de039bcf4c250186b1237454f9de7b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3795.owl",
+      "expected_sha256": "f91b648dd9e78bb37424a254f052071680562bf89824082dfb66dbbf2842d79e",
+      "actual_sha256": "f91b648dd9e78bb37424a254f052071680562bf89824082dfb66dbbf2842d79e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3797.owl",
+      "expected_sha256": "e2d96048ae5c84dfbf777096758fceb89771c0e61d3628b2680bae1deaa02bc9",
+      "actual_sha256": "e2d96048ae5c84dfbf777096758fceb89771c0e61d3628b2680bae1deaa02bc9",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_380.owl",
+      "expected_sha256": "5f08017e82eb832b304d3206a73293724c45e80a87bf178d9c37462174e4cf71",
+      "actual_sha256": "5f08017e82eb832b304d3206a73293724c45e80a87bf178d9c37462174e4cf71",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3836.owl",
+      "expected_sha256": "fc559045f566b2837188505b707480dc3416b3e699c5188632fa5be3d4cf2473",
+      "actual_sha256": "fc559045f566b2837188505b707480dc3416b3e699c5188632fa5be3d4cf2473",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3842.owl",
+      "expected_sha256": "7b00c22c4ffcb5e80017ddd756938ec1e2cb10ccc1db0057423311498b077459",
+      "actual_sha256": "7b00c22c4ffcb5e80017ddd756938ec1e2cb10ccc1db0057423311498b077459",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3905.owl",
+      "expected_sha256": "b1b381b8c3be7337c166145f30a894762e26f91ef38ab0a418d5da78b4b97046",
+      "actual_sha256": "b1b381b8c3be7337c166145f30a894762e26f91ef38ab0a418d5da78b4b97046",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3909.owl",
+      "expected_sha256": "3f6cafafd9dfdb6e3959324784f64f3b71b9a8d8fcee69e8640495c1f8eb5b5d",
+      "actual_sha256": "3f6cafafd9dfdb6e3959324784f64f3b71b9a8d8fcee69e8640495c1f8eb5b5d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3931.owl",
+      "expected_sha256": "3f29b1a79634dfc5292183e7c316921edadf19ffb300fcfcd75dc9df3230cb0c",
+      "actual_sha256": "3f29b1a79634dfc5292183e7c316921edadf19ffb300fcfcd75dc9df3230cb0c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_394.owl",
+      "expected_sha256": "957384bba4a91be4b5bce0747347285fd239f3a75795bc210ceca7240cf8d415",
+      "actual_sha256": "957384bba4a91be4b5bce0747347285fd239f3a75795bc210ceca7240cf8d415",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3954.owl",
+      "expected_sha256": "7d22d0aa3ba15735711079c577586df493254b978b446ad06fbd0cacfb6f4ad5",
+      "actual_sha256": "7d22d0aa3ba15735711079c577586df493254b978b446ad06fbd0cacfb6f4ad5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_3978.owl",
+      "expected_sha256": "12579691d00e7d66a1294135bcae940e4fecab497bd3878e5019d0556e51dea5",
+      "actual_sha256": "12579691d00e7d66a1294135bcae940e4fecab497bd3878e5019d0556e51dea5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4033.owl",
+      "expected_sha256": "1a5994309edc8d3e032dd2690856b1080b3f18d45f9484223bf6492607abb5bc",
+      "actual_sha256": "1a5994309edc8d3e032dd2690856b1080b3f18d45f9484223bf6492607abb5bc",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4054.owl",
+      "expected_sha256": "ab7540953c1afb9b8624c3933a96324b30cfa132faccdb202a112e831cbfdee3",
+      "actual_sha256": "ab7540953c1afb9b8624c3933a96324b30cfa132faccdb202a112e831cbfdee3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_412.owl",
+      "expected_sha256": "3750b8222b6e0917f872527c9f1b23005d8bb006d98d7be78ef18cc05f031af0",
+      "actual_sha256": "3750b8222b6e0917f872527c9f1b23005d8bb006d98d7be78ef18cc05f031af0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4187.owl",
+      "expected_sha256": "49ab8adca440ee2752a56a854647ff50fd4f4919b9e12d3a7b2004dbb05fcdc8",
+      "actual_sha256": "49ab8adca440ee2752a56a854647ff50fd4f4919b9e12d3a7b2004dbb05fcdc8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4205.owl",
+      "expected_sha256": "bebf8850d8c58b54dfedcce27bc30b2690ce0ae4660662a2763a25ae44fd04e0",
+      "actual_sha256": "bebf8850d8c58b54dfedcce27bc30b2690ce0ae4660662a2763a25ae44fd04e0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4226.owl",
+      "expected_sha256": "6a1d84963497e83515758a7bf77f15c41eaed6895187e0f1b7363de470cfb794",
+      "actual_sha256": "6a1d84963497e83515758a7bf77f15c41eaed6895187e0f1b7363de470cfb794",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4235.owl",
+      "expected_sha256": "db98eeb10ae6abc59f3107f997c0dd2d0393fb0fe137c591118c93e935b19927",
+      "actual_sha256": "db98eeb10ae6abc59f3107f997c0dd2d0393fb0fe137c591118c93e935b19927",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4382.owl",
+      "expected_sha256": "160d54a55b35a7293dbc588fee12a42f6a7d7fe4c0161efdb01a23c6d628f3ef",
+      "actual_sha256": "160d54a55b35a7293dbc588fee12a42f6a7d7fe4c0161efdb01a23c6d628f3ef",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4383.owl",
+      "expected_sha256": "0bcf4100f19509266de2769009a5976986938e655a6e5c0b8f62ed65bd162e9b",
+      "actual_sha256": "0bcf4100f19509266de2769009a5976986938e655a6e5c0b8f62ed65bd162e9b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4400.owl",
+      "expected_sha256": "c1a86600ade2fe51bbf1124362efb62a2a0780ff051c9d7ff26693e7c12394e2",
+      "actual_sha256": "c1a86600ade2fe51bbf1124362efb62a2a0780ff051c9d7ff26693e7c12394e2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_443.owl",
+      "expected_sha256": "ce279e65d1ca0e2d27aa8ec26bc34f665b3ced9ba440ac309593fc66ca1ee695",
+      "actual_sha256": "ce279e65d1ca0e2d27aa8ec26bc34f665b3ced9ba440ac309593fc66ca1ee695",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4460.owl",
+      "expected_sha256": "17c8eb4d4f98734442535b2c98800ffef2a94cbe29de449b88abf0d6c14eba0d",
+      "actual_sha256": "17c8eb4d4f98734442535b2c98800ffef2a94cbe29de449b88abf0d6c14eba0d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4487.owl",
+      "expected_sha256": "92c5f41b0a29f75b77f85010e124af423e260114d820b22e85d82fed8b00343d",
+      "actual_sha256": "92c5f41b0a29f75b77f85010e124af423e260114d820b22e85d82fed8b00343d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4527.owl",
+      "expected_sha256": "3a3b96afc4cf79659512fc2911d09444dae8b8d8ae4d36fbeb64f30f780a4269",
+      "actual_sha256": "3a3b96afc4cf79659512fc2911d09444dae8b8d8ae4d36fbeb64f30f780a4269",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4557.owl",
+      "expected_sha256": "c9c2ca58ff8f4b1f91338f098a616009c2a8228bce22998901c4750cea1aeb17",
+      "actual_sha256": "c9c2ca58ff8f4b1f91338f098a616009c2a8228bce22998901c4750cea1aeb17",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_457.owl",
+      "expected_sha256": "8c9e7296824bacde18692979d94961e23b648e3ec8f0606808c1a16a48fd4207",
+      "actual_sha256": "8c9e7296824bacde18692979d94961e23b648e3ec8f0606808c1a16a48fd4207",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4572.owl",
+      "expected_sha256": "b08b653cca5f336c9b278bc8af0111ffba9be0900264f5a7d664ac345e611077",
+      "actual_sha256": "b08b653cca5f336c9b278bc8af0111ffba9be0900264f5a7d664ac345e611077",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4578.owl",
+      "expected_sha256": "29b27569fefe2cc4fbb3b20e817256dc7928baea4e167631af3d0c1aa316c6c6",
+      "actual_sha256": "29b27569fefe2cc4fbb3b20e817256dc7928baea4e167631af3d0c1aa316c6c6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4604.owl",
+      "expected_sha256": "e62e3121722b195624e3ec5e210df25aee0957814fe3d69838e27a13f0edb24f",
+      "actual_sha256": "e62e3121722b195624e3ec5e210df25aee0957814fe3d69838e27a13f0edb24f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4617.owl",
+      "expected_sha256": "90f7e0e7ce0753aa4eb035dd4761b660130ab272df79cbfdacf453aa12130ddb",
+      "actual_sha256": "90f7e0e7ce0753aa4eb035dd4761b660130ab272df79cbfdacf453aa12130ddb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4655.owl",
+      "expected_sha256": "cb5a26217edca8c3fec570d5f444ef40b250732a3d691a159559c815c5e886ab",
+      "actual_sha256": "cb5a26217edca8c3fec570d5f444ef40b250732a3d691a159559c815c5e886ab",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4662.owl",
+      "expected_sha256": "47193532902e850b9c3d645d72e0fba1f6e2080998b954a5f4a2ca901f43c6a5",
+      "actual_sha256": "47193532902e850b9c3d645d72e0fba1f6e2080998b954a5f4a2ca901f43c6a5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4669.owl",
+      "expected_sha256": "2b15dc9535ed50c4dc9eae05067df4e6525b69c7bf1913192715b79ad550b3eb",
+      "actual_sha256": "2b15dc9535ed50c4dc9eae05067df4e6525b69c7bf1913192715b79ad550b3eb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4671.owl",
+      "expected_sha256": "870c7c2ca5b2cc9a71566756a54caf5253293f17a67bf2d670d93923d7ab4a28",
+      "actual_sha256": "870c7c2ca5b2cc9a71566756a54caf5253293f17a67bf2d670d93923d7ab4a28",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4724.owl",
+      "expected_sha256": "5744dd14c6f3cde077aee92cc592e12129b4179f434503e6bf0d45c3cd177959",
+      "actual_sha256": "5744dd14c6f3cde077aee92cc592e12129b4179f434503e6bf0d45c3cd177959",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4732.owl",
+      "expected_sha256": "947799e24acbe660e58b4a834f5b807897a943c8e98af72c5f185b36ba185eed",
+      "actual_sha256": "947799e24acbe660e58b4a834f5b807897a943c8e98af72c5f185b36ba185eed",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4755.owl",
+      "expected_sha256": "c631f0603e48d4f9330d1787616ed189a98c1752b4555cb562db6e328952c709",
+      "actual_sha256": "c631f0603e48d4f9330d1787616ed189a98c1752b4555cb562db6e328952c709",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4767.owl",
+      "expected_sha256": "d41b59447b617d1b0f7a89a8d811ce5c6d708c8c36c80ea35888a9559ce18a04",
+      "actual_sha256": "d41b59447b617d1b0f7a89a8d811ce5c6d708c8c36c80ea35888a9559ce18a04",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4782.owl",
+      "expected_sha256": "c673612d541539313a97c9b2ddbda91004c33db5dd3f97964a18438b00009863",
+      "actual_sha256": "c673612d541539313a97c9b2ddbda91004c33db5dd3f97964a18438b00009863",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4798.owl",
+      "expected_sha256": "67aa36a4f7cd42e58ee841fa8570a0f30b386baf79da24f802e4c7f3b4870e30",
+      "actual_sha256": "67aa36a4f7cd42e58ee841fa8570a0f30b386baf79da24f802e4c7f3b4870e30",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4802.owl",
+      "expected_sha256": "14267402ff20fdacdc3a32443ad4cc457911349b9e98764111541e15a00a82a5",
+      "actual_sha256": "14267402ff20fdacdc3a32443ad4cc457911349b9e98764111541e15a00a82a5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4827.owl",
+      "expected_sha256": "8eabd64b9ac8b59222b159b8ded0ae85d0196e59f4ee0f7bef9813bc9ee7bc78",
+      "actual_sha256": "8eabd64b9ac8b59222b159b8ded0ae85d0196e59f4ee0f7bef9813bc9ee7bc78",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4834.owl",
+      "expected_sha256": "40804b294628af2cc4d6c6b8aa0ecbb87b1378f750277b8264da12e5ccfb3210",
+      "actual_sha256": "40804b294628af2cc4d6c6b8aa0ecbb87b1378f750277b8264da12e5ccfb3210",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4856.owl",
+      "expected_sha256": "e0d62c6e65a4bbf5f5d069fd2347fed31d25ddba0bf0eb4bbb1a3d7859859a3e",
+      "actual_sha256": "e0d62c6e65a4bbf5f5d069fd2347fed31d25ddba0bf0eb4bbb1a3d7859859a3e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_4897.owl",
+      "expected_sha256": "6a43616b4e265e935253075110b4c0d5cfddfaf05b91a12d6b184c4ca43bdd2a",
+      "actual_sha256": "6a43616b4e265e935253075110b4c0d5cfddfaf05b91a12d6b184c4ca43bdd2a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5002.owl",
+      "expected_sha256": "493881fe1e74aec4b62c6c68558977ee75406e82f89bea7061035b807dbe563d",
+      "actual_sha256": "493881fe1e74aec4b62c6c68558977ee75406e82f89bea7061035b807dbe563d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5057.owl",
+      "expected_sha256": "6a9cd4e698cfdbc76f428b72807eb8b1d8e215b49444f1bdd582714f03aef90f",
+      "actual_sha256": "6a9cd4e698cfdbc76f428b72807eb8b1d8e215b49444f1bdd582714f03aef90f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_508.owl",
+      "expected_sha256": "6377ecd94e7dd3b2c5b9e9e7285a8d69c3264c82f796d980e2ff9cb485508aed",
+      "actual_sha256": "6377ecd94e7dd3b2c5b9e9e7285a8d69c3264c82f796d980e2ff9cb485508aed",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5080.owl",
+      "expected_sha256": "09c50e4539be8e942e11079a2a4d42f1f63ba050ae0c979138f306abc640b3ff",
+      "actual_sha256": "09c50e4539be8e942e11079a2a4d42f1f63ba050ae0c979138f306abc640b3ff",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5089.owl",
+      "expected_sha256": "d8922fdbfbaa53e067171630f26ca6c3c5cc73675916bfbe479cffed9b5f2c0e",
+      "actual_sha256": "d8922fdbfbaa53e067171630f26ca6c3c5cc73675916bfbe479cffed9b5f2c0e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5090.owl",
+      "expected_sha256": "af6a0bcfff26126e8491c4a54beb1c4dc39eafce214ffd6370aced85c82c13ce",
+      "actual_sha256": "af6a0bcfff26126e8491c4a54beb1c4dc39eafce214ffd6370aced85c82c13ce",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5103.owl",
+      "expected_sha256": "7ee96bc7befaf0b8007436c48d42677c4591963281301f663ac124e6f4397e5a",
+      "actual_sha256": "7ee96bc7befaf0b8007436c48d42677c4591963281301f663ac124e6f4397e5a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5107.owl",
+      "expected_sha256": "9a7bf409cedb2068535751272d189f8afaa432a58e2615baf657ac50c24c9552",
+      "actual_sha256": "9a7bf409cedb2068535751272d189f8afaa432a58e2615baf657ac50c24c9552",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5164.owl",
+      "expected_sha256": "94ed848eea182ebd7320e1f9848c5771a4b03671342cb7265cf6ccde2349720a",
+      "actual_sha256": "94ed848eea182ebd7320e1f9848c5771a4b03671342cb7265cf6ccde2349720a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5184.owl",
+      "expected_sha256": "fdff343c27c95fee39d00fed9c5af25b3a1dc7c32455e84274a6087170dcd9e0",
+      "actual_sha256": "fdff343c27c95fee39d00fed9c5af25b3a1dc7c32455e84274a6087170dcd9e0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5197.owl",
+      "expected_sha256": "3b113fe163513f5bdd1de216560de1ce82fa962c9e2d8aca2a659ecdf02d842e",
+      "actual_sha256": "3b113fe163513f5bdd1de216560de1ce82fa962c9e2d8aca2a659ecdf02d842e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5220.owl",
+      "expected_sha256": "01b506a5f0939c70903d4cd26883b6eaf0cb6fd9163baeb8f273cb03681eb4bc",
+      "actual_sha256": "01b506a5f0939c70903d4cd26883b6eaf0cb6fd9163baeb8f273cb03681eb4bc",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5255.owl",
+      "expected_sha256": "ea155948a49152d88c3c05a6dee4d1c749df0d0e68badc2020bc6140b4dfdfd7",
+      "actual_sha256": "ea155948a49152d88c3c05a6dee4d1c749df0d0e68badc2020bc6140b4dfdfd7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5266.owl",
+      "expected_sha256": "07b345ea22b18a634cb4801a58f41a81d60a912323d1e31b666f6b1b4d97c06c",
+      "actual_sha256": "07b345ea22b18a634cb4801a58f41a81d60a912323d1e31b666f6b1b4d97c06c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5292.owl",
+      "expected_sha256": "9bc48ca20ab6b8082d6e7bc7bfc32c13d27d98e35480b4d158d1382ac7990fae",
+      "actual_sha256": "9bc48ca20ab6b8082d6e7bc7bfc32c13d27d98e35480b4d158d1382ac7990fae",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5303.owl",
+      "expected_sha256": "0282426b919cc1993b3994d00167232d7882e28938d9d49b48e2248848ef8f50",
+      "actual_sha256": "0282426b919cc1993b3994d00167232d7882e28938d9d49b48e2248848ef8f50",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5404.owl",
+      "expected_sha256": "0a58526504aaabf218cb362535f9317b56429ee892a398836602f1f2a09177e2",
+      "actual_sha256": "0a58526504aaabf218cb362535f9317b56429ee892a398836602f1f2a09177e2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_541.owl",
+      "expected_sha256": "7b7490a4aef6e55ce3c8ae3b7e96fc82db0010f38a9cadaf7c8746848c9bcca5",
+      "actual_sha256": "7b7490a4aef6e55ce3c8ae3b7e96fc82db0010f38a9cadaf7c8746848c9bcca5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_544.owl",
+      "expected_sha256": "bb59374009c8d320bbc843c3ea216c0496354ec83c8bb94d8e95d138f304fc75",
+      "actual_sha256": "bb59374009c8d320bbc843c3ea216c0496354ec83c8bb94d8e95d138f304fc75",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5462.owl",
+      "expected_sha256": "b0d22fd2c17528d5547e10a6d43b28e911ecc5bcc91b74224272dca99fdcef91",
+      "actual_sha256": "b0d22fd2c17528d5547e10a6d43b28e911ecc5bcc91b74224272dca99fdcef91",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5485.owl",
+      "expected_sha256": "b723825dbabbe460c49824c759e242bd83967ae725ddd8cf5d5ecf5537b9ec2c",
+      "actual_sha256": "b723825dbabbe460c49824c759e242bd83967ae725ddd8cf5d5ecf5537b9ec2c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5487.owl",
+      "expected_sha256": "afd3ebc5fb48cf0bd7e819ce62f40e47edd3a559f1e7290778bf8738a4af1c5d",
+      "actual_sha256": "afd3ebc5fb48cf0bd7e819ce62f40e47edd3a559f1e7290778bf8738a4af1c5d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5519.owl",
+      "expected_sha256": "d4c58aaede97e45c848258669dab61f718aa5355923bf86a97e4bf2553a800a0",
+      "actual_sha256": "d4c58aaede97e45c848258669dab61f718aa5355923bf86a97e4bf2553a800a0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5549.owl",
+      "expected_sha256": "20cb1deeafad263eec808ecedd9e1b056e5f6019b5cb8f12562bd1824d9cf078",
+      "actual_sha256": "20cb1deeafad263eec808ecedd9e1b056e5f6019b5cb8f12562bd1824d9cf078",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5564.owl",
+      "expected_sha256": "2ed733ac71f6991f9e4fce403a57982ecb4af83021dd0387ae053cb20f78ce63",
+      "actual_sha256": "2ed733ac71f6991f9e4fce403a57982ecb4af83021dd0387ae053cb20f78ce63",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5566.owl",
+      "expected_sha256": "34bb061414690441602afbde59f51da707172a9f298658d95c8a4bf36a9bbce6",
+      "actual_sha256": "34bb061414690441602afbde59f51da707172a9f298658d95c8a4bf36a9bbce6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5572.owl",
+      "expected_sha256": "75930c161b3dc4f4c4fd67c0239e73dabc0a7dfb4c62e20b5ff104d8fe038224",
+      "actual_sha256": "75930c161b3dc4f4c4fd67c0239e73dabc0a7dfb4c62e20b5ff104d8fe038224",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5602.owl",
+      "expected_sha256": "d6dcc66af110889301fbaaa7f8dc5764487f218392030f7b2387e9d5d672e0fd",
+      "actual_sha256": "d6dcc66af110889301fbaaa7f8dc5764487f218392030f7b2387e9d5d672e0fd",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5612.owl",
+      "expected_sha256": "b446f344642062b848921d553f195d97d3fe7d90df478e0b1731e73d89304f0c",
+      "actual_sha256": "b446f344642062b848921d553f195d97d3fe7d90df478e0b1731e73d89304f0c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_566.owl",
+      "expected_sha256": "8ef8e230d8e3440b0f5d614ee52b5fd3c66ff0e956812dbf94438a8326e3f993",
+      "actual_sha256": "8ef8e230d8e3440b0f5d614ee52b5fd3c66ff0e956812dbf94438a8326e3f993",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5665.owl",
+      "expected_sha256": "f889735012bd3a6c0d9d92ee2d9427f7c7ab956ff6aea663bbadc05253bba32d",
+      "actual_sha256": "f889735012bd3a6c0d9d92ee2d9427f7c7ab956ff6aea663bbadc05253bba32d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5742.owl",
+      "expected_sha256": "4e2d8c1128be45f7e74f896ac7dc621dbe15fe761dc06c3a1ddc57cb441e2ec5",
+      "actual_sha256": "4e2d8c1128be45f7e74f896ac7dc621dbe15fe761dc06c3a1ddc57cb441e2ec5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5755.owl",
+      "expected_sha256": "2673909d5562ad697c31b170468cec7dab60892002f828405c7ea75c3f3ada9c",
+      "actual_sha256": "2673909d5562ad697c31b170468cec7dab60892002f828405c7ea75c3f3ada9c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5760.owl",
+      "expected_sha256": "6d22a710c073f8ba86e95efd7881c4393afc5857e4cf66bd2cbf3872686c0344",
+      "actual_sha256": "6d22a710c073f8ba86e95efd7881c4393afc5857e4cf66bd2cbf3872686c0344",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5781.owl",
+      "expected_sha256": "ffaeed77208c9296db9076e17a4efa23b0e5f64831535f6787aa34c3d791c438",
+      "actual_sha256": "ffaeed77208c9296db9076e17a4efa23b0e5f64831535f6787aa34c3d791c438",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5792.owl",
+      "expected_sha256": "c70f90fbcc290411f9cb578fc9c3b0b83ed65fc3068ba7e9c1e42cfada307058",
+      "actual_sha256": "c70f90fbcc290411f9cb578fc9c3b0b83ed65fc3068ba7e9c1e42cfada307058",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5815.owl",
+      "expected_sha256": "39e1b12e0890c51e9ffb4b2e5f3798a8a812a360d5a487bbc132fb9d580aea96",
+      "actual_sha256": "39e1b12e0890c51e9ffb4b2e5f3798a8a812a360d5a487bbc132fb9d580aea96",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5852.owl",
+      "expected_sha256": "fe251b426f4b031d102a5101e245c5f25ac5fd1f11a73c60b8434c1322104ca9",
+      "actual_sha256": "fe251b426f4b031d102a5101e245c5f25ac5fd1f11a73c60b8434c1322104ca9",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5927.owl",
+      "expected_sha256": "fc59b53476cf8aa46bc6c6cd59617fec380262f5aaa3e056f23648ff6c1eb861",
+      "actual_sha256": "fc59b53476cf8aa46bc6c6cd59617fec380262f5aaa3e056f23648ff6c1eb861",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5940.owl",
+      "expected_sha256": "e0911595e0782a559889d8ac62cc5a8f6f69219eb8dd58bff4bb27bd1f0c856e",
+      "actual_sha256": "e0911595e0782a559889d8ac62cc5a8f6f69219eb8dd58bff4bb27bd1f0c856e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5943.owl",
+      "expected_sha256": "9d061aaa87c25a68dc89cc78376229a9246b18f7cb2b6d2fa38701be78ba39ed",
+      "actual_sha256": "9d061aaa87c25a68dc89cc78376229a9246b18f7cb2b6d2fa38701be78ba39ed",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5965.owl",
+      "expected_sha256": "d4165022b0c5287074821594e99df4f9dba966561f5b0298cb6a4b9f04b33d23",
+      "actual_sha256": "d4165022b0c5287074821594e99df4f9dba966561f5b0298cb6a4b9f04b33d23",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5966.owl",
+      "expected_sha256": "00fff9ba7415a047eb140edc98f55eb60494d5b5d137bf66e9e46fb292c14ab8",
+      "actual_sha256": "00fff9ba7415a047eb140edc98f55eb60494d5b5d137bf66e9e46fb292c14ab8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_5974.owl",
+      "expected_sha256": "4fc6982667ff99233f4d0528fb75262a114536b0d5353ada0903d74e9e510b83",
+      "actual_sha256": "4fc6982667ff99233f4d0528fb75262a114536b0d5353ada0903d74e9e510b83",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6024.owl",
+      "expected_sha256": "51fd05a38613a27c12ff597369583b634a7d99c12bd9116fd458a9ce6a93e466",
+      "actual_sha256": "51fd05a38613a27c12ff597369583b634a7d99c12bd9116fd458a9ce6a93e466",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6060.owl",
+      "expected_sha256": "ea759863a6e37dac2f3207bb34089aba06b600b4b3390058c7d82710a36dacc3",
+      "actual_sha256": "ea759863a6e37dac2f3207bb34089aba06b600b4b3390058c7d82710a36dacc3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6076.owl",
+      "expected_sha256": "46049222c0d7ddc6ebe0f7fc525de246ff98b1f3070fb55c03f9b00a6f18de2b",
+      "actual_sha256": "46049222c0d7ddc6ebe0f7fc525de246ff98b1f3070fb55c03f9b00a6f18de2b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6102.owl",
+      "expected_sha256": "5336182f54501c702b710ae9c0f082b42bad2183e5c6ebc1c874f68cb8eefaa1",
+      "actual_sha256": "5336182f54501c702b710ae9c0f082b42bad2183e5c6ebc1c874f68cb8eefaa1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6198.owl",
+      "expected_sha256": "ec7d1e154e39f342cdd67497c1999b1dec3a48f393270b2ec61fb64b8ca14cb4",
+      "actual_sha256": "ec7d1e154e39f342cdd67497c1999b1dec3a48f393270b2ec61fb64b8ca14cb4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6207.owl",
+      "expected_sha256": "c5dfdb47f44368d7747bf859a8ba8c64691c69c629f4903db874c6c90c2f780a",
+      "actual_sha256": "c5dfdb47f44368d7747bf859a8ba8c64691c69c629f4903db874c6c90c2f780a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6212.owl",
+      "expected_sha256": "dfaaa980c977870515402666fddaf88c46774cdfecbd81cf4ceeeaeaf57e9699",
+      "actual_sha256": "dfaaa980c977870515402666fddaf88c46774cdfecbd81cf4ceeeaeaf57e9699",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6223.owl",
+      "expected_sha256": "d58a93652d892b6059217611cc424951e29d3bd201b293cd807788b06852b023",
+      "actual_sha256": "d58a93652d892b6059217611cc424951e29d3bd201b293cd807788b06852b023",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6226.owl",
+      "expected_sha256": "7121672c2308782df6175656e76ea65685bed8619b4c72c095ef1c92c77a9f15",
+      "actual_sha256": "7121672c2308782df6175656e76ea65685bed8619b4c72c095ef1c92c77a9f15",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6230.owl",
+      "expected_sha256": "0f815c62d4374815af45833bc1b5d67b4dd563730cda3052aa9014924af370e1",
+      "actual_sha256": "0f815c62d4374815af45833bc1b5d67b4dd563730cda3052aa9014924af370e1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6233.owl",
+      "expected_sha256": "4b5add0fe8d03550e73fabd056982905396a8a93a2932c150bc518272461ee92",
+      "actual_sha256": "4b5add0fe8d03550e73fabd056982905396a8a93a2932c150bc518272461ee92",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6246.owl",
+      "expected_sha256": "8df3e3420a44a75c344630b68345d356bc9330c51a0eb96a622bc8c22f02ed5d",
+      "actual_sha256": "8df3e3420a44a75c344630b68345d356bc9330c51a0eb96a622bc8c22f02ed5d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6310.owl",
+      "expected_sha256": "44373e9d110c808569f5c4d13c2e733aed60fab13bcf466f992c4a16105af89a",
+      "actual_sha256": "44373e9d110c808569f5c4d13c2e733aed60fab13bcf466f992c4a16105af89a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6358.owl",
+      "expected_sha256": "070f8749c9dc5ef87dd680837f7f3b33bfa8de98ca24ce8a2ce85d66841c9169",
+      "actual_sha256": "070f8749c9dc5ef87dd680837f7f3b33bfa8de98ca24ce8a2ce85d66841c9169",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_637.owl",
+      "expected_sha256": "d9f87f44bc4c1e7b38940a26cca5df391a20b9a3be810111970be2e81c5e1e91",
+      "actual_sha256": "d9f87f44bc4c1e7b38940a26cca5df391a20b9a3be810111970be2e81c5e1e91",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6417.owl",
+      "expected_sha256": "f02710c4c6d328e87233138cb9fc3e0e63bffac390772e028ae0bafbe5df884b",
+      "actual_sha256": "f02710c4c6d328e87233138cb9fc3e0e63bffac390772e028ae0bafbe5df884b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6423.owl",
+      "expected_sha256": "95e33691ad85a9dcbe28d97ad5747a91101ba45ac2a251e2c9d608bd59987b4a",
+      "actual_sha256": "95e33691ad85a9dcbe28d97ad5747a91101ba45ac2a251e2c9d608bd59987b4a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6433.owl",
+      "expected_sha256": "26c4ac1b6336bbc11eac60672598aafee384b8df4c190486b77ea23d7749f0fc",
+      "actual_sha256": "26c4ac1b6336bbc11eac60672598aafee384b8df4c190486b77ea23d7749f0fc",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6453.owl",
+      "expected_sha256": "2122b18d9db580236747a34685e95221a9997d01118034137164f6e2efa02074",
+      "actual_sha256": "2122b18d9db580236747a34685e95221a9997d01118034137164f6e2efa02074",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6477.owl",
+      "expected_sha256": "0a9b299c8a664003a98a1da425c90071653c0dde9c4c5b9eb342f675b41e2014",
+      "actual_sha256": "0a9b299c8a664003a98a1da425c90071653c0dde9c4c5b9eb342f675b41e2014",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6566.owl",
+      "expected_sha256": "8784d540eaa74f2127c035aefe1786bfdf18d35104963dff8b367049b1a2ac23",
+      "actual_sha256": "8784d540eaa74f2127c035aefe1786bfdf18d35104963dff8b367049b1a2ac23",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6589.owl",
+      "expected_sha256": "aa108d73ec029b6f5f6ae06165b50c40a4b504014edb1eb99c43ce82beca1c9d",
+      "actual_sha256": "aa108d73ec029b6f5f6ae06165b50c40a4b504014edb1eb99c43ce82beca1c9d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6659.owl",
+      "expected_sha256": "d56a587e4a2e5cd34187eda2a5a4bb9712e293d583f501e13c1d960dc83eab3b",
+      "actual_sha256": "d56a587e4a2e5cd34187eda2a5a4bb9712e293d583f501e13c1d960dc83eab3b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6682.owl",
+      "expected_sha256": "653662f9a3b6c91b8d4f3a28ca36ce32fed4a56a0921ea7df1ceda687574ae5d",
+      "actual_sha256": "653662f9a3b6c91b8d4f3a28ca36ce32fed4a56a0921ea7df1ceda687574ae5d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6696.owl",
+      "expected_sha256": "194402ed252faf7a922d8ba8f5a5f1017bd0f974dd35a6fad6fb41f6895b8d76",
+      "actual_sha256": "194402ed252faf7a922d8ba8f5a5f1017bd0f974dd35a6fad6fb41f6895b8d76",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_670.owl",
+      "expected_sha256": "e9f089bf9ee0e2fd83f54cf5a0e6e4e4f413b5a9c809665c5e4f84ab31a93bbe",
+      "actual_sha256": "e9f089bf9ee0e2fd83f54cf5a0e6e4e4f413b5a9c809665c5e4f84ab31a93bbe",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6720.owl",
+      "expected_sha256": "f523011167d3df401ceee24744def2f3d1db3363281bb41f98b20a769750e057",
+      "actual_sha256": "f523011167d3df401ceee24744def2f3d1db3363281bb41f98b20a769750e057",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6722.owl",
+      "expected_sha256": "705374ff8cfed0762825afdfe997063007e06c802aa995a5968d03c3e2a19651",
+      "actual_sha256": "705374ff8cfed0762825afdfe997063007e06c802aa995a5968d03c3e2a19651",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6735.owl",
+      "expected_sha256": "81c637d72e7c4b1d99fd254615f006bf259f73ee3d5e02f16b0a4afd04407a29",
+      "actual_sha256": "81c637d72e7c4b1d99fd254615f006bf259f73ee3d5e02f16b0a4afd04407a29",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6751.owl",
+      "expected_sha256": "1566c3a75207cd19b1731495477825566934ce8255ce03f68997ce59c44597ec",
+      "actual_sha256": "1566c3a75207cd19b1731495477825566934ce8255ce03f68997ce59c44597ec",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6765.owl",
+      "expected_sha256": "fa886bb466507ba72ad435422bc8c628d3767acf5cb943a605e140f34cf36697",
+      "actual_sha256": "fa886bb466507ba72ad435422bc8c628d3767acf5cb943a605e140f34cf36697",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6796.owl",
+      "expected_sha256": "735cbc711308c77dcff32ffb8025df362a7ba3dbbc6be45563f528f1ed7dfc7c",
+      "actual_sha256": "735cbc711308c77dcff32ffb8025df362a7ba3dbbc6be45563f528f1ed7dfc7c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6812.owl",
+      "expected_sha256": "442f55ae73de77ec1cd4ca728e3eb9e744c2df672ac98ca272c1e7a4449f749d",
+      "actual_sha256": "442f55ae73de77ec1cd4ca728e3eb9e744c2df672ac98ca272c1e7a4449f749d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6817.owl",
+      "expected_sha256": "256912d97478cec5ce309164f1fb8b285220e2a5a36423783d2662845f1b6275",
+      "actual_sha256": "256912d97478cec5ce309164f1fb8b285220e2a5a36423783d2662845f1b6275",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6855.owl",
+      "expected_sha256": "2a3ebab8ec0e933f1e261d26740fdfc9e042156c6250007515452dbeed8fb9ec",
+      "actual_sha256": "2a3ebab8ec0e933f1e261d26740fdfc9e042156c6250007515452dbeed8fb9ec",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6869.owl",
+      "expected_sha256": "5d60e314e3d4f0c8da06752f1cf9cd7b178a495e14834dd353079e8f0f1671ae",
+      "actual_sha256": "5d60e314e3d4f0c8da06752f1cf9cd7b178a495e14834dd353079e8f0f1671ae",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6870.owl",
+      "expected_sha256": "f073217fedf45ddef713f7d6bdca0049e96e27b47fd71f79259e31fc6ad8d824",
+      "actual_sha256": "f073217fedf45ddef713f7d6bdca0049e96e27b47fd71f79259e31fc6ad8d824",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6934.owl",
+      "expected_sha256": "ad1986e262e98bfff5304b707e3a55bf8f7a193ea63df9d52f9b38e49978b453",
+      "actual_sha256": "ad1986e262e98bfff5304b707e3a55bf8f7a193ea63df9d52f9b38e49978b453",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_6999.owl",
+      "expected_sha256": "78e049c1257044f3c81ab73304288c18c6f70c778d324f137da56dd4c8376694",
+      "actual_sha256": "78e049c1257044f3c81ab73304288c18c6f70c778d324f137da56dd4c8376694",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7003.owl",
+      "expected_sha256": "165a698ff1889138f0041e73cd360588cd4f94a4e571c5979d5054d63ba02aa7",
+      "actual_sha256": "165a698ff1889138f0041e73cd360588cd4f94a4e571c5979d5054d63ba02aa7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7025.owl",
+      "expected_sha256": "baeac37afed87621e58ed4bd8ed6e2da979b0b8114cb73f1abdb9aabf89093da",
+      "actual_sha256": "baeac37afed87621e58ed4bd8ed6e2da979b0b8114cb73f1abdb9aabf89093da",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_703.owl",
+      "expected_sha256": "30bde4b6808bb237acb799a5122f9dfa2820541b0a0a436ba281edd3e0b6631d",
+      "actual_sha256": "30bde4b6808bb237acb799a5122f9dfa2820541b0a0a436ba281edd3e0b6631d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7052.owl",
+      "expected_sha256": "d2de2b00ae2b52d504eac8b6954d5106d8e4a486db1c447ecf571ebb059e38c4",
+      "actual_sha256": "d2de2b00ae2b52d504eac8b6954d5106d8e4a486db1c447ecf571ebb059e38c4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7120.owl",
+      "expected_sha256": "dceb27b9380211bb12f4b7710faea7cb78e55860149441808f2f0156c37ee6ac",
+      "actual_sha256": "dceb27b9380211bb12f4b7710faea7cb78e55860149441808f2f0156c37ee6ac",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7127.owl",
+      "expected_sha256": "aa916a9a4e3b090d7fcf78fbb4cda84455123a55487cfe9d78f53393dfeb1714",
+      "actual_sha256": "aa916a9a4e3b090d7fcf78fbb4cda84455123a55487cfe9d78f53393dfeb1714",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7169.owl",
+      "expected_sha256": "d7ffcf3520e287e1e47355f508c66ea912b3ddc3aa652ff3d886d0f58b1acec0",
+      "actual_sha256": "d7ffcf3520e287e1e47355f508c66ea912b3ddc3aa652ff3d886d0f58b1acec0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7195.owl",
+      "expected_sha256": "864b176eadeb77bce7e46d432a14362f1d4e11c1998c3fe4de3be1fee694fe83",
+      "actual_sha256": "864b176eadeb77bce7e46d432a14362f1d4e11c1998c3fe4de3be1fee694fe83",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7216.owl",
+      "expected_sha256": "f7ab310cbf3aa1a41aca7e663ef942ae0018d72e262608e32a62d1a2688351ab",
+      "actual_sha256": "f7ab310cbf3aa1a41aca7e663ef942ae0018d72e262608e32a62d1a2688351ab",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7218.owl",
+      "expected_sha256": "470ac62e7a3d95b6dde7baa49478ca47b99b35e236f140c078efde15e0907dc1",
+      "actual_sha256": "470ac62e7a3d95b6dde7baa49478ca47b99b35e236f140c078efde15e0907dc1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7220.owl",
+      "expected_sha256": "c5a02b66d4a9d5b8addb4d732e31e4f009c7961e7d409b5061a87d7554c19e3e",
+      "actual_sha256": "c5a02b66d4a9d5b8addb4d732e31e4f009c7961e7d409b5061a87d7554c19e3e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7234.owl",
+      "expected_sha256": "c729acf263559a915ee51e2be305af6419ee55f9298655253bb0bf07edfd69b3",
+      "actual_sha256": "c729acf263559a915ee51e2be305af6419ee55f9298655253bb0bf07edfd69b3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7246.owl",
+      "expected_sha256": "32b167c0c4c5180b90e7d45b211dbbf08871e7fb284cf000522577288a1f78f7",
+      "actual_sha256": "32b167c0c4c5180b90e7d45b211dbbf08871e7fb284cf000522577288a1f78f7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_725.owl",
+      "expected_sha256": "81403cf07e1e4f3eb9b46d9121126386287aa0033a70038840ec1a87479077d2",
+      "actual_sha256": "81403cf07e1e4f3eb9b46d9121126386287aa0033a70038840ec1a87479077d2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7251.owl",
+      "expected_sha256": "67a1c0e6c0f46be3680b264cef4395f86cb491bdda7bd6be281fea1fceb344d4",
+      "actual_sha256": "67a1c0e6c0f46be3680b264cef4395f86cb491bdda7bd6be281fea1fceb344d4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7256.owl",
+      "expected_sha256": "8c8192449d054a15305649b78a7eaa497766bcb545ff6670a5d56142ee890b6f",
+      "actual_sha256": "8c8192449d054a15305649b78a7eaa497766bcb545ff6670a5d56142ee890b6f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7270.owl",
+      "expected_sha256": "36c0c3e4bee63ba9ce6b2a113192b22b5d8af9258070bdd3cf4086f35e5c2243",
+      "actual_sha256": "36c0c3e4bee63ba9ce6b2a113192b22b5d8af9258070bdd3cf4086f35e5c2243",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7300.owl",
+      "expected_sha256": "4d6db91a4b8bd29d526a1ed489c637a073c47a912a8d4bc0342f4787f50fb87d",
+      "actual_sha256": "4d6db91a4b8bd29d526a1ed489c637a073c47a912a8d4bc0342f4787f50fb87d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7320.owl",
+      "expected_sha256": "88d7bba7a0f670d7261641d9c4b3494bc5b98762d53788354a78bddca1c59a4f",
+      "actual_sha256": "88d7bba7a0f670d7261641d9c4b3494bc5b98762d53788354a78bddca1c59a4f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7340.owl",
+      "expected_sha256": "2345fca6782a32e495ada15b8dde4b3d9fb8b6cbbcb87240702f5184693449dc",
+      "actual_sha256": "2345fca6782a32e495ada15b8dde4b3d9fb8b6cbbcb87240702f5184693449dc",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7343.owl",
+      "expected_sha256": "073fa5c9c1977ea443fb77249db0534657119a114d2d0d4bbfaec5370585253f",
+      "actual_sha256": "073fa5c9c1977ea443fb77249db0534657119a114d2d0d4bbfaec5370585253f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7409.owl",
+      "expected_sha256": "2c3e7eb05dbfe271b9a217fce2a5c3efa3caa22b050ca2b7bb439f311e345e3d",
+      "actual_sha256": "2c3e7eb05dbfe271b9a217fce2a5c3efa3caa22b050ca2b7bb439f311e345e3d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7417.owl",
+      "expected_sha256": "d6fe9a487174a41bacdc4bdf7315b4daeab845ae3ab08309314e4d93f5e97568",
+      "actual_sha256": "d6fe9a487174a41bacdc4bdf7315b4daeab845ae3ab08309314e4d93f5e97568",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7418.owl",
+      "expected_sha256": "3e7c986d6eb7513b0710a487c815ac38b7c421cecd1dd9ebd02e3bf430972f70",
+      "actual_sha256": "3e7c986d6eb7513b0710a487c815ac38b7c421cecd1dd9ebd02e3bf430972f70",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7439.owl",
+      "expected_sha256": "00bac37cf25a0293446c7cc52cd70b7caeac0dddeb2d80560868dac4b9e4a54a",
+      "actual_sha256": "00bac37cf25a0293446c7cc52cd70b7caeac0dddeb2d80560868dac4b9e4a54a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7455.owl",
+      "expected_sha256": "ae040a0032cae2ace7c1daa5ccfe34ade0cdaeec17451dd0318a3b7769cade80",
+      "actual_sha256": "ae040a0032cae2ace7c1daa5ccfe34ade0cdaeec17451dd0318a3b7769cade80",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7474.owl",
+      "expected_sha256": "8fea85781d39b12157215a8b38b2e4fb6876d8bc7db5f00ed489bb784150b297",
+      "actual_sha256": "8fea85781d39b12157215a8b38b2e4fb6876d8bc7db5f00ed489bb784150b297",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7482.owl",
+      "expected_sha256": "e9518cae2fa39904f57b00e281e687e03c826a5dddb58401fbf7c5165be0dbf7",
+      "actual_sha256": "e9518cae2fa39904f57b00e281e687e03c826a5dddb58401fbf7c5165be0dbf7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7493.owl",
+      "expected_sha256": "ada492ac8023c2296573b723adfb24885d58f208fd8181c077ff8be7637dd68b",
+      "actual_sha256": "ada492ac8023c2296573b723adfb24885d58f208fd8181c077ff8be7637dd68b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7499.owl",
+      "expected_sha256": "37450d5960dbac07f086a1fbeb4d10ae7009b5782e503325582dc4aecfc6c533",
+      "actual_sha256": "37450d5960dbac07f086a1fbeb4d10ae7009b5782e503325582dc4aecfc6c533",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7567.owl",
+      "expected_sha256": "7c609718fd3b40c1d85f5e26f9169fce4544e97473120c0a311b61569dd8ba4c",
+      "actual_sha256": "7c609718fd3b40c1d85f5e26f9169fce4544e97473120c0a311b61569dd8ba4c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7576.owl",
+      "expected_sha256": "cce937899aff97d18a5ba5026f599afc42c55cae48cbcdeda98345739df23dd4",
+      "actual_sha256": "cce937899aff97d18a5ba5026f599afc42c55cae48cbcdeda98345739df23dd4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7581.owl",
+      "expected_sha256": "9bced0b95daf61fca531b6a7720b641bafc2a4e957a4911601d9c3c2cb1f38e4",
+      "actual_sha256": "9bced0b95daf61fca531b6a7720b641bafc2a4e957a4911601d9c3c2cb1f38e4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7608.owl",
+      "expected_sha256": "b7d5f338ea46241d5b958756807748d0e8ff0ba0097a8a104cda154bc1fb3aeb",
+      "actual_sha256": "b7d5f338ea46241d5b958756807748d0e8ff0ba0097a8a104cda154bc1fb3aeb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7639.owl",
+      "expected_sha256": "90025dfad159fd2e178cbcbe9831fce8c9a058184441304a1458095c2b4189c0",
+      "actual_sha256": "90025dfad159fd2e178cbcbe9831fce8c9a058184441304a1458095c2b4189c0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7663.owl",
+      "expected_sha256": "228b6e6ad34a8e35de85fab21da4940810b6ca2ccd61eb6712f4974f478836d0",
+      "actual_sha256": "228b6e6ad34a8e35de85fab21da4940810b6ca2ccd61eb6712f4974f478836d0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7716.owl",
+      "expected_sha256": "b2dabc82472eebd00c9ed6cef236d3866570ad873355ffc7c4799cb2b9f66026",
+      "actual_sha256": "b2dabc82472eebd00c9ed6cef236d3866570ad873355ffc7c4799cb2b9f66026",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7726.owl",
+      "expected_sha256": "4d5ce07bbc512d21c66d5fdd3d7b3c4e7945e52de9b5063ced7a687c0b8084ba",
+      "actual_sha256": "4d5ce07bbc512d21c66d5fdd3d7b3c4e7945e52de9b5063ced7a687c0b8084ba",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7728.owl",
+      "expected_sha256": "64a594af1321104623e2c6ad9812269af1e74dc96fca45e54e9b438e52e7e0f4",
+      "actual_sha256": "64a594af1321104623e2c6ad9812269af1e74dc96fca45e54e9b438e52e7e0f4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7775.owl",
+      "expected_sha256": "3c6a45f70079159d38b1597384cf22458842349ddebbca928cc65b3f5f4c5747",
+      "actual_sha256": "3c6a45f70079159d38b1597384cf22458842349ddebbca928cc65b3f5f4c5747",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7831.owl",
+      "expected_sha256": "7f47b39d91bb8b7e0f732f3c3743651b266bc6046b7f36ce54601fa73ef118a1",
+      "actual_sha256": "7f47b39d91bb8b7e0f732f3c3743651b266bc6046b7f36ce54601fa73ef118a1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7868.owl",
+      "expected_sha256": "73c3f345e805c918f13bab00dc56202bc8699d087bad1650393e726d89952029",
+      "actual_sha256": "73c3f345e805c918f13bab00dc56202bc8699d087bad1650393e726d89952029",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7890.owl",
+      "expected_sha256": "52672ab991c5167487353898d832d125186991827101cd0db1e0e98d4921a235",
+      "actual_sha256": "52672ab991c5167487353898d832d125186991827101cd0db1e0e98d4921a235",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7901.owl",
+      "expected_sha256": "06d9fe0e092c5f7711453952d38ed82a5c0a50b76f84f4c189ff79ab7c1063fd",
+      "actual_sha256": "06d9fe0e092c5f7711453952d38ed82a5c0a50b76f84f4c189ff79ab7c1063fd",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7914.owl",
+      "expected_sha256": "bfd003b43e573acfbaf62d1456cdff714f26ace592287a0bc262910419113037",
+      "actual_sha256": "bfd003b43e573acfbaf62d1456cdff714f26ace592287a0bc262910419113037",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_795.owl",
+      "expected_sha256": "5133dda44a7866243ecb8d337465c5277021f0d5d38ef8af2ad8c1f3a546a70e",
+      "actual_sha256": "5133dda44a7866243ecb8d337465c5277021f0d5d38ef8af2ad8c1f3a546a70e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7956.owl",
+      "expected_sha256": "ad26a9eb704ca126cc4df37f718f472ce0f88486f3417a58499893c6c581afbb",
+      "actual_sha256": "ad26a9eb704ca126cc4df37f718f472ce0f88486f3417a58499893c6c581afbb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_7993.owl",
+      "expected_sha256": "5435d366a663fea5167de5fa383f7b15b72735787facc30268466f7496565d43",
+      "actual_sha256": "5435d366a663fea5167de5fa383f7b15b72735787facc30268466f7496565d43",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8006.owl",
+      "expected_sha256": "df4f9aa4cecdebfa5912418b4ba55078e5241cd4b38afa1a2f066c752fdb85e5",
+      "actual_sha256": "df4f9aa4cecdebfa5912418b4ba55078e5241cd4b38afa1a2f066c752fdb85e5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8021.owl",
+      "expected_sha256": "b689c68eecc5b59a6cc3f7562ec0b309998f6bbaeab989a8f2b51447c0068114",
+      "actual_sha256": "b689c68eecc5b59a6cc3f7562ec0b309998f6bbaeab989a8f2b51447c0068114",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8068.owl",
+      "expected_sha256": "29b813a64ff5ef0c2bbe0d46e74234be0e147d06856762cc5a7ab0e0c3211931",
+      "actual_sha256": "29b813a64ff5ef0c2bbe0d46e74234be0e147d06856762cc5a7ab0e0c3211931",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8135.owl",
+      "expected_sha256": "492dfd66c8f142a9a598a63f291fd8d2d5df3166da2c41922cf52b17e6b8d64b",
+      "actual_sha256": "492dfd66c8f142a9a598a63f291fd8d2d5df3166da2c41922cf52b17e6b8d64b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8145.owl",
+      "expected_sha256": "c847844cd95df4499493c7c41b8a43b71293e937946b9c0271babbe1446df208",
+      "actual_sha256": "c847844cd95df4499493c7c41b8a43b71293e937946b9c0271babbe1446df208",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8169.owl",
+      "expected_sha256": "da9f17b5330ee8f53c047fd0424ecc30384b5ebb90c79e6cc3b84ff982ce627b",
+      "actual_sha256": "da9f17b5330ee8f53c047fd0424ecc30384b5ebb90c79e6cc3b84ff982ce627b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8175.owl",
+      "expected_sha256": "ba73db1777d78a2bbe9db45641c1346d83120d750440745db1a5887448d455ed",
+      "actual_sha256": "ba73db1777d78a2bbe9db45641c1346d83120d750440745db1a5887448d455ed",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8298.owl",
+      "expected_sha256": "10874a0c28cee656e5d05eb81f9491f60e34bbedd6f03c42b48da3e9e7c07e1a",
+      "actual_sha256": "10874a0c28cee656e5d05eb81f9491f60e34bbedd6f03c42b48da3e9e7c07e1a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8322.owl",
+      "expected_sha256": "00bde32b7144881a5f3b2b98f53e086acfbcb2a5e6e8edd01194f55cdc733d5f",
+      "actual_sha256": "00bde32b7144881a5f3b2b98f53e086acfbcb2a5e6e8edd01194f55cdc733d5f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8329.owl",
+      "expected_sha256": "52761173d243a6715c11dad42b46a22adb104e1506bafc3d8135b7bb9a5615ae",
+      "actual_sha256": "52761173d243a6715c11dad42b46a22adb104e1506bafc3d8135b7bb9a5615ae",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8347.owl",
+      "expected_sha256": "ce445c917b0bf5f626b87f2b0240a58f8e8b6a7aa4bfa108b2abe015e50d8e2d",
+      "actual_sha256": "ce445c917b0bf5f626b87f2b0240a58f8e8b6a7aa4bfa108b2abe015e50d8e2d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8369.owl",
+      "expected_sha256": "5512ea054e0e22a0cf199addacdcbdfe85705f0fb2629f4819a069bc0d0264cd",
+      "actual_sha256": "5512ea054e0e22a0cf199addacdcbdfe85705f0fb2629f4819a069bc0d0264cd",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_840.owl",
+      "expected_sha256": "e96f6adc2ee878e562ecadcdc3c33b0e14b0679a2e9cca3376119f81d14da2e5",
+      "actual_sha256": "e96f6adc2ee878e562ecadcdc3c33b0e14b0679a2e9cca3376119f81d14da2e5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8462.owl",
+      "expected_sha256": "d1e8ef5b93fb5ff00a1e7bc08cb3ea986381985dd54f50dc69414804ae090450",
+      "actual_sha256": "d1e8ef5b93fb5ff00a1e7bc08cb3ea986381985dd54f50dc69414804ae090450",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8480.owl",
+      "expected_sha256": "8856c9240d4c71a35513ffdc68ff9d7f54a9d2ae8f0ae840a9c5c8163e580f7f",
+      "actual_sha256": "8856c9240d4c71a35513ffdc68ff9d7f54a9d2ae8f0ae840a9c5c8163e580f7f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8486.owl",
+      "expected_sha256": "cc9ce7ea79a3bc6492087abbed3e3fec26d622a38e75aad3e3310745999e31c3",
+      "actual_sha256": "cc9ce7ea79a3bc6492087abbed3e3fec26d622a38e75aad3e3310745999e31c3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8492.owl",
+      "expected_sha256": "acaba777f752d4280e3efda7658fc0ac4b61931de9b95b6725a5493e3f50fc49",
+      "actual_sha256": "acaba777f752d4280e3efda7658fc0ac4b61931de9b95b6725a5493e3f50fc49",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8557.owl",
+      "expected_sha256": "46acca9665790a5a2a15101432c75b0863a1566f625ce7f41ec638254df862e1",
+      "actual_sha256": "46acca9665790a5a2a15101432c75b0863a1566f625ce7f41ec638254df862e1",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8579.owl",
+      "expected_sha256": "c8f00e01f2f02d1d552b3b544771fce4cfe5039bb481789a710d3208bfa6e65b",
+      "actual_sha256": "c8f00e01f2f02d1d552b3b544771fce4cfe5039bb481789a710d3208bfa6e65b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8634.owl",
+      "expected_sha256": "5df892cfd0b3edf40fcb4e8692e6f61eaf90cf479a8916a7ed3dd4a88016d8a4",
+      "actual_sha256": "5df892cfd0b3edf40fcb4e8692e6f61eaf90cf479a8916a7ed3dd4a88016d8a4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8641.owl",
+      "expected_sha256": "ae971ee9ca88fa6b35d643e3524473b2ab081997ecd3f835f82c670fcad37370",
+      "actual_sha256": "ae971ee9ca88fa6b35d643e3524473b2ab081997ecd3f835f82c670fcad37370",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8667.owl",
+      "expected_sha256": "ab764651d8497266a413a071d07569a023f1ce5ea946a2b1ebc4bc1531111ccd",
+      "actual_sha256": "ab764651d8497266a413a071d07569a023f1ce5ea946a2b1ebc4bc1531111ccd",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_868.owl",
+      "expected_sha256": "21f1849747854eae7692beb53bdc9801c9387e3765cf1644914dfba864558d6b",
+      "actual_sha256": "21f1849747854eae7692beb53bdc9801c9387e3765cf1644914dfba864558d6b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_869.owl",
+      "expected_sha256": "6cce00063df41ca83a9c8040aa0be54cdf90154197755bf83fb83ce3af89c8bb",
+      "actual_sha256": "6cce00063df41ca83a9c8040aa0be54cdf90154197755bf83fb83ce3af89c8bb",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8730.owl",
+      "expected_sha256": "ddd4ceccba395733ae68a5e3d50ad214965ee0aae451e34224c429a949f2ff52",
+      "actual_sha256": "ddd4ceccba395733ae68a5e3d50ad214965ee0aae451e34224c429a949f2ff52",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8737.owl",
+      "expected_sha256": "2f5e2478a6a21f304d5c49fa65aa6fc447cf5fe907b3a68ec375da05320f1cc6",
+      "actual_sha256": "2f5e2478a6a21f304d5c49fa65aa6fc447cf5fe907b3a68ec375da05320f1cc6",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8744.owl",
+      "expected_sha256": "b507a133f3e1a32b51058eeb1b6fcac865c27d8c3a07ecd18fabe53c6eb2dd92",
+      "actual_sha256": "b507a133f3e1a32b51058eeb1b6fcac865c27d8c3a07ecd18fabe53c6eb2dd92",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8759.owl",
+      "expected_sha256": "db1791565317721853cca2a0bbce6f99a1ad58eecc30dc2e8ea183b410f09ab7",
+      "actual_sha256": "db1791565317721853cca2a0bbce6f99a1ad58eecc30dc2e8ea183b410f09ab7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8792.owl",
+      "expected_sha256": "0e2175c59afef6c30f77580bf62eb90d05e8ad32e1da3f00bd3a366f41790f29",
+      "actual_sha256": "0e2175c59afef6c30f77580bf62eb90d05e8ad32e1da3f00bd3a366f41790f29",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8806.owl",
+      "expected_sha256": "50061a51df302c5d194dc6ee5ba4e9d7afb28e69526d477140e844ce67842f26",
+      "actual_sha256": "50061a51df302c5d194dc6ee5ba4e9d7afb28e69526d477140e844ce67842f26",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8864.owl",
+      "expected_sha256": "e781b1dfa8fbfa2b2eaeefe2a8ae3442d48c7e29e97855e633f6514c6c1b6a0b",
+      "actual_sha256": "e781b1dfa8fbfa2b2eaeefe2a8ae3442d48c7e29e97855e633f6514c6c1b6a0b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8937.owl",
+      "expected_sha256": "0e407cc88b95b108c72e80108d0f88d4f1159016a1d3f9dc9c90c41e8faf95c3",
+      "actual_sha256": "0e407cc88b95b108c72e80108d0f88d4f1159016a1d3f9dc9c90c41e8faf95c3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8941.owl",
+      "expected_sha256": "a8b598bf988c00436e2eaa7d9e1b8e67063cce2d4b83cdadc023e1e23844e9e5",
+      "actual_sha256": "a8b598bf988c00436e2eaa7d9e1b8e67063cce2d4b83cdadc023e1e23844e9e5",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8974.owl",
+      "expected_sha256": "bd941576f00a1ba4c94a62a199d2785aa7492096c59b98c3876ad6899721d6e2",
+      "actual_sha256": "bd941576f00a1ba4c94a62a199d2785aa7492096c59b98c3876ad6899721d6e2",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8982.owl",
+      "expected_sha256": "e5b37a8a8ceae41f2e29613ae55bf9bab1ce27d95e1dffaee42a6804f8e15be8",
+      "actual_sha256": "e5b37a8a8ceae41f2e29613ae55bf9bab1ce27d95e1dffaee42a6804f8e15be8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_8999.owl",
+      "expected_sha256": "4440e4d46e0e00259b4568bf4c5242fee582b92196f69467c5ab92e274467ed4",
+      "actual_sha256": "4440e4d46e0e00259b4568bf4c5242fee582b92196f69467c5ab92e274467ed4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9002.owl",
+      "expected_sha256": "3ffd71eeec2cac21e7f73f11153cf8e6c8e46a85152a764c595db8d2c62cbb0e",
+      "actual_sha256": "3ffd71eeec2cac21e7f73f11153cf8e6c8e46a85152a764c595db8d2c62cbb0e",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9014.owl",
+      "expected_sha256": "4ae26ad382b8972a758e019d3f5d56cc2d0465edc7871dddbe62ddf1efc00e1c",
+      "actual_sha256": "4ae26ad382b8972a758e019d3f5d56cc2d0465edc7871dddbe62ddf1efc00e1c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9020.owl",
+      "expected_sha256": "43750bf810e094f31d54cf7dbd66621bbc50915fd5776066421507b1d6acb59a",
+      "actual_sha256": "43750bf810e094f31d54cf7dbd66621bbc50915fd5776066421507b1d6acb59a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9024.owl",
+      "expected_sha256": "619381f88556a979621a8c8faf28de57f17730374183a725b484ebebb070a32f",
+      "actual_sha256": "619381f88556a979621a8c8faf28de57f17730374183a725b484ebebb070a32f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9031.owl",
+      "expected_sha256": "737c98e9f799ecbfc79b7eda3201bb5c24a7e41011d2ae6d66c90d2de7cd1591",
+      "actual_sha256": "737c98e9f799ecbfc79b7eda3201bb5c24a7e41011d2ae6d66c90d2de7cd1591",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9096.owl",
+      "expected_sha256": "d5c9f1a970bb5faad25fe379415f74a2e7e62a288a96071e1f353e721a9cb207",
+      "actual_sha256": "d5c9f1a970bb5faad25fe379415f74a2e7e62a288a96071e1f353e721a9cb207",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_935.owl",
+      "expected_sha256": "10531e885c04dd62fa67eee02ad50d6532644ea5d0a827458d27b0f658dd287b",
+      "actual_sha256": "10531e885c04dd62fa67eee02ad50d6532644ea5d0a827458d27b0f658dd287b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9400.owl",
+      "expected_sha256": "8d23984b0b39083506e7925a4d7afaf5ebdad26a973b495642279376c0f0cbb8",
+      "actual_sha256": "8d23984b0b39083506e7925a4d7afaf5ebdad26a973b495642279376c0f0cbb8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9435.owl",
+      "expected_sha256": "17d3177411122b3d5c26605fe62b233d88e42c5715096f17d2afeaa408aab21c",
+      "actual_sha256": "17d3177411122b3d5c26605fe62b233d88e42c5715096f17d2afeaa408aab21c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_947.owl",
+      "expected_sha256": "43808f6b5a01bd06e220abb6439e1e9f1fe52348ec9250d8cf2bec6d86db69d8",
+      "actual_sha256": "43808f6b5a01bd06e220abb6439e1e9f1fe52348ec9250d8cf2bec6d86db69d8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9498.owl",
+      "expected_sha256": "f5c0a031f7a3190d8ad7c6d2852a7319521865ea4f8a9355cbaaf21dd392d8c0",
+      "actual_sha256": "f5c0a031f7a3190d8ad7c6d2852a7319521865ea4f8a9355cbaaf21dd392d8c0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9499.owl",
+      "expected_sha256": "bf115f1db671b323b191d4ec9248dd0e1c51880cfd714d2b9e6811a5fb335123",
+      "actual_sha256": "bf115f1db671b323b191d4ec9248dd0e1c51880cfd714d2b9e6811a5fb335123",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9509.owl",
+      "expected_sha256": "50f2a8ff3932f186b8afd7b68a08e6e262be274b682ad1c647885036b2e54a8f",
+      "actual_sha256": "50f2a8ff3932f186b8afd7b68a08e6e262be274b682ad1c647885036b2e54a8f",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9513.owl",
+      "expected_sha256": "3b57b6113a7248e20db93058c983cd582fff1ff36234d9ef554f5d5ecf198bc4",
+      "actual_sha256": "3b57b6113a7248e20db93058c983cd582fff1ff36234d9ef554f5d5ecf198bc4",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9540.owl",
+      "expected_sha256": "d6ce184d69fee10fc8c78753611fcb86b43123b58268c6d6ed3415e78fda4b04",
+      "actual_sha256": "d6ce184d69fee10fc8c78753611fcb86b43123b58268c6d6ed3415e78fda4b04",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9557.owl",
+      "expected_sha256": "97e625b5212fc7c05f2e3f8df2acd68245f07a6b924be13e599d3b347cd6a888",
+      "actual_sha256": "97e625b5212fc7c05f2e3f8df2acd68245f07a6b924be13e599d3b347cd6a888",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9567.owl",
+      "expected_sha256": "b2906ae7c98b350195d21fefc10e37d6de4c61f88d9f9a423067347b716fe5c7",
+      "actual_sha256": "b2906ae7c98b350195d21fefc10e37d6de4c61f88d9f9a423067347b716fe5c7",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9590.owl",
+      "expected_sha256": "32782f841aceb5104e23ae4b0ec3035d275c6be30cb7366b1c60355860104915",
+      "actual_sha256": "32782f841aceb5104e23ae4b0ec3035d275c6be30cb7366b1c60355860104915",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9598.owl",
+      "expected_sha256": "b48fbe3717bd2a9ea97b04b347c16b4480f61bc3e31a4c83d0c2158e969219ed",
+      "actual_sha256": "b48fbe3717bd2a9ea97b04b347c16b4480f61bc3e31a4c83d0c2158e969219ed",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_960.owl",
+      "expected_sha256": "cc2e7101c85531e0deed75990f7e848c8a19d6530033489f744ed0d960c3cb9a",
+      "actual_sha256": "cc2e7101c85531e0deed75990f7e848c8a19d6530033489f744ed0d960c3cb9a",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9612.owl",
+      "expected_sha256": "ed71f4ef3c9a515aa68d7c07b6e4ee541a39bed82b7e8020f5b543822ee1c910",
+      "actual_sha256": "ed71f4ef3c9a515aa68d7c07b6e4ee541a39bed82b7e8020f5b543822ee1c910",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9635.owl",
+      "expected_sha256": "38ac070da84cef1d2e069700a237f1129bdd9afac0ef8debb1ce60ad92a05677",
+      "actual_sha256": "38ac070da84cef1d2e069700a237f1129bdd9afac0ef8debb1ce60ad92a05677",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_964.owl",
+      "expected_sha256": "c8f1fd06ef5bc6952cf54e3568753e80afe761e56c134f2972b0bcdc015863e0",
+      "actual_sha256": "c8f1fd06ef5bc6952cf54e3568753e80afe761e56c134f2972b0bcdc015863e0",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9646.owl",
+      "expected_sha256": "2b5a7581c43f8320501ca8d8a1d666c539fbfc28ba47e034a012400dccda5396",
+      "actual_sha256": "2b5a7581c43f8320501ca8d8a1d666c539fbfc28ba47e034a012400dccda5396",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9654.owl",
+      "expected_sha256": "9b80e89d2d93b66d438ba597a125905f576fd0871502a000ac3676db87eb2513",
+      "actual_sha256": "9b80e89d2d93b66d438ba597a125905f576fd0871502a000ac3676db87eb2513",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9663.owl",
+      "expected_sha256": "13497cacd9c6fc1035450e50255c8f2d605a7aa85829958aa4c5d9fedfc7c86b",
+      "actual_sha256": "13497cacd9c6fc1035450e50255c8f2d605a7aa85829958aa4c5d9fedfc7c86b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9668.owl",
+      "expected_sha256": "150e9c380d34ff0158c5dccd6ce7941445d5d6e079a16cf3ffd18627b62026f3",
+      "actual_sha256": "150e9c380d34ff0158c5dccd6ce7941445d5d6e079a16cf3ffd18627b62026f3",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9674.owl",
+      "expected_sha256": "8a33686cd3ecc033851652d43f0ac4f07a9022682e165ef06cad6c96bfa85a02",
+      "actual_sha256": "8a33686cd3ecc033851652d43f0ac4f07a9022682e165ef06cad6c96bfa85a02",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9695.owl",
+      "expected_sha256": "d67c7fb188a0538cc8601ba677ff0f021dbdbd88b7a2f5f405c23e4fafaf5e5b",
+      "actual_sha256": "d67c7fb188a0538cc8601ba677ff0f021dbdbd88b7a2f5f405c23e4fafaf5e5b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9724.owl",
+      "expected_sha256": "00c80e07aa57578c168d15a1755b62fde41c53dd69a2f04cc5d88c888c8baf19",
+      "actual_sha256": "00c80e07aa57578c168d15a1755b62fde41c53dd69a2f04cc5d88c888c8baf19",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9761.owl",
+      "expected_sha256": "b585ab35cddda6d00358af706166d0d882d4d43e3435ce0fb51f15427fe110aa",
+      "actual_sha256": "b585ab35cddda6d00358af706166d0d882d4d43e3435ce0fb51f15427fe110aa",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9768.owl",
+      "expected_sha256": "9f43a0a913e5f6c287b7d00e0c7abefc050ddfa083d56e2c5b565160b3e4c315",
+      "actual_sha256": "9f43a0a913e5f6c287b7d00e0c7abefc050ddfa083d56e2c5b565160b3e4c315",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9772.owl",
+      "expected_sha256": "ddacd0132d4ca18b0709dc3a4be83cfd1311e73092c8c438dacae746c3a1fc40",
+      "actual_sha256": "ddacd0132d4ca18b0709dc3a4be83cfd1311e73092c8c438dacae746c3a1fc40",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9790.owl",
+      "expected_sha256": "13d783053b13bb74123523408ec92a924dba6490594cc753f93a00db0a2a3428",
+      "actual_sha256": "13d783053b13bb74123523408ec92a924dba6490594cc753f93a00db0a2a3428",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9792.owl",
+      "expected_sha256": "2f5dec300e680dcce98f6201bfd812fca658dbb57b7206b715eaa88a7c277f6c",
+      "actual_sha256": "2f5dec300e680dcce98f6201bfd812fca658dbb57b7206b715eaa88a7c277f6c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9794.owl",
+      "expected_sha256": "e36812dfc190596155d27d4652e3fad2dcb19f80ed6cad1296f8502780da862c",
+      "actual_sha256": "e36812dfc190596155d27d4652e3fad2dcb19f80ed6cad1296f8502780da862c",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9854.owl",
+      "expected_sha256": "20746a71a6116f12b7c075c1038a680161c5dbfa43de40abd51e27c438cf8835",
+      "actual_sha256": "20746a71a6116f12b7c075c1038a680161c5dbfa43de40abd51e27c438cf8835",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9857.owl",
+      "expected_sha256": "4762f814465ce688f6585587202de6a8cc3fc803ed2a49d881b193b21aa0c71d",
+      "actual_sha256": "4762f814465ce688f6585587202de6a8cc3fc803ed2a49d881b193b21aa0c71d",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9881.owl",
+      "expected_sha256": "ddb85667fb8e3990f2e5dddbfe421a3a669b716fcdb80ba0c596a5d5ae980137",
+      "actual_sha256": "ddb85667fb8e3990f2e5dddbfe421a3a669b716fcdb80ba0c596a5d5ae980137",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9894.owl",
+      "expected_sha256": "4189383597ee8a0ffe9bc0488b53881fd50cf4bc6c905af5de37b2eab2344b10",
+      "actual_sha256": "4189383597ee8a0ffe9bc0488b53881fd50cf4bc6c905af5de37b2eab2344b10",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9904.owl",
+      "expected_sha256": "abac4b533e36584a771713329c2d9ac0d70490c8deea36396528069f738d35d8",
+      "actual_sha256": "abac4b533e36584a771713329c2d9ac0d70490c8deea36396528069f738d35d8",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9944.owl",
+      "expected_sha256": "90bdfaec048928e8bbcccdf26608cd95920350adf361f629900f2035740a5c9b",
+      "actual_sha256": "90bdfaec048928e8bbcccdf26608cd95920350adf361f629900f2035740a5c9b",
+      "matches": true
+    },
+    {
+      "ontology": "ore_ont_9958.owl",
+      "expected_sha256": "2cda3dfb137a3d4d776b35e2eec832bbe9e06a4422d4e24ee4bf22691d941705",
+      "actual_sha256": "2cda3dfb137a3d4d776b35e2eec832bbe9e06a4422d4e24ee4bf22691d941705",
+      "matches": true
+    }
+  ]
+}

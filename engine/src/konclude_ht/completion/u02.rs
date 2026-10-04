@@ -22,10 +22,21 @@ use super::super::model::substrate::{Cint64, Id, NegLink};
 use super::super::model::ConceptId;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::queues::{ConceptProcessingQueue, ConceptProcessingQueueId};
-use super::super::process::{ConDescId, LabelSetId, NodeId, TrackPointId};
+use super::super::process::{ClashDescId, ConDescId, LabelSetId, NodeId, TrackPointId};
 use super::algorithm::{BranchKind, IndiNodeQueueType, DETERMINISTIC_PROCESS_PRIORITY};
 use super::clash::CalcSignal;
 use super::context::CalculationAlgorithmContextBase;
+
+#[derive(Default)]
+pub(super) struct SingletonLabelCache {
+    scans: usize, pub(super) hits: usize, misses: usize, invalidations: usize,
+    epoch: u64,
+    labels: std::collections::HashMap<usize, (
+        Vec<std::sync::Arc<super::super::process::satellites::ReapplyConceptLabelSet>>,
+        Vec<(Cint64, ConDescId)>,
+        Vec<usize>,
+    )>,
+}
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     fn take_next_backend_reuse_expansion_individual(
@@ -1575,6 +1586,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 return false;
             }
             let initialized = self.individual_node_initializing(indi_proc_node, calc_alg_context);
+            if progress && drive_iters % 1_000_000 == 0 {
+                let queue = calc_alg_context.process_context_mut().node_concept_processing_queue(indi_proc_node, false);
+                let next = if queue.is_some() { ConceptProcessingQueue::get_next_concept_process_priority(queue, calc_alg_context.process_context_mut()).map(|p| p.get_priority()) } else { None };
+                eprintln!("PROGRESS-SAT-QUEUE node_index={} present={} next={next:?}", indi_proc_node.index(), queue.is_some());
+                let node = calc_alg_context.process_context().node(indi_proc_node);
+                eprintln!("PROGRESS-SAT-NODE id={} queue={:?} initialized={} priority={} flags={}",
+                    node.individual_node_id(), self.indi_node_from_queue_type, initialized,
+                    self.min_concept_processing_priority_level, node.processing_restriction_flags());
+            }
             if calc_alg_context.has_pending_signal() {
                 return false;
             }
@@ -1858,6 +1878,146 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
     }
 
+    /// Reconstruct the first two live carriers in node order, with their
+    /// original dependencies. Rebuild after each merge; retain nothing across
+    /// rollback. The index changes lookup cost, not merge order or provenance.
+    pub(super) fn singleton_first_carriers(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> std::collections::HashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
+        let ctx = calc_alg_context.process_context();
+        let onto = calc_alg_context.ontology_arenas();
+        let mut carriers: std::collections::HashMap<_, Vec<_>> = self.singleton_concepts.iter()
+            .map(|&concept| (onto.concept(concept).get_concept_tag(), Vec::new())).collect();
+        // Most visited labels are not literal singleton tags. An exact,
+        // bounded bitmap rejects those misses before hashing. Sparse or
+        // extreme tag ranges retain the original map-only lookup.
+        let membership = carriers.keys().min().copied().zip(carriers.keys().max().copied())
+            .and_then(|(first, last)| {
+                let span = usize::try_from(last.checked_sub(first)?.checked_add(1)?).ok()?;
+                if span > 1_048_576 { return None; }
+                let mut bits = vec![0u64; span.div_ceil(64)];
+                for &tag in carriers.keys() {
+                    let offset = (tag - first) as usize;
+                    bits[offset / 64] |= 1 << (offset % 64);
+                }
+                Some((first, bits))
+            });
+        for i in 0..ctx.node_count() {
+            if self.phantom_node_intervals.iter().any(|&(a, b)| i >= a && i < b) { continue; }
+            let node_id = NodeId::new(i as Cint64);
+            let node = ctx.node(node_id);
+            if node.has_merged_into_individual_node_id() { continue; }
+            let label = node.reapply_con_label_set;
+            if label.is_none() { continue; }
+            // Label order cannot change the first two nodes for any tag:
+            // nodes are visited in reference order and duplicate keys below
+            // cannot insert the same node twice.
+            ctx.label_set_visit_stored_descriptors(label, |tag, descriptor, additional| {
+                if let Some((first, bits)) = &membership {
+                    let Some(offset) = tag.checked_sub(*first).and_then(|n| usize::try_from(n).ok()) else { return; };
+                    if bits.get(offset / 64).is_none_or(|word| word & (1 << (offset % 64)) == 0) {
+                        return;
+                    }
+                }
+                // Most singleton-labelled entries are negative. Their stored
+                // descriptor suffices to reject them before either map lookup.
+                // A positive additional entry is usable only when no local key
+                // shadows it, exactly as get_concept_descriptor_by_tag_in_context.
+                if descriptor.is_none() || ctx.con_desc(descriptor).is_negated() { return; }
+                if additional && ctx.label_set(label).concept_des_dep_map.contains_key(&tag) { return; }
+                if let Some(pair) = carriers.get_mut(&tag) {
+                    if pair.len() < 2 && pair.last().is_none_or(|&(last, _)| last != node_id) {
+                        pair.push((node_id, ctx.con_desc(descriptor).get_dependency_track_point()));
+                    }
+                }
+            });
+        }
+        carriers
+    }
+
+    pub(super) fn singleton_first_carriers_cached(
+        &self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+        cache: &mut SingletonLabelCache,
+    ) -> std::collections::HashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
+        let epoch = calc_alg_context.process_context_mut().singleton_cache_scan_epoch();
+        let changed = calc_alg_context.process_context_mut().take_singleton_changed_descriptors();
+        if cache.epoch != epoch {
+            cache.invalidations += 1;
+            // Include negative and shadowed descriptors in the dependency
+            // vector: polarity changes can create a previously absent carrier.
+            cache.labels.retain(|_, entry| !changed.iter().any(|id| entry.2.binary_search(id).is_ok()));
+            cache.epoch = epoch;
+        }
+        let ctx = calc_alg_context.process_context();
+        let onto = calc_alg_context.ontology_arenas();
+        let mut carriers: std::collections::HashMap<_, Vec<_>> = self.singleton_concepts.iter()
+            .map(|&concept| (onto.concept(concept).get_concept_tag(), Vec::new())).collect();
+        // Most visited labels are not literal singleton tags. An exact,
+        // bounded bitmap rejects those misses before hashing. Sparse or
+        // extreme tag ranges retain the original map-only lookup.
+        let membership = carriers.keys().min().copied().zip(carriers.keys().max().copied())
+            .and_then(|(first, last)| {
+                let span = usize::try_from(last.checked_sub(first)?.checked_add(1)?).ok()?;
+                if span > 1_048_576 { return None; }
+                let mut bits = vec![0u64; span.div_ceil(64)];
+                for &tag in carriers.keys() {
+                    let offset = (tag - first) as usize;
+                    bits[offset / 64] |= 1 << (offset % 64);
+                }
+                Some((first, bits))
+            });
+        for i in 0..ctx.node_count() {
+            if self.phantom_node_intervals.iter().any(|&(a, b)| i >= a && i < b) { continue; }
+            let node_id = NodeId::new(i as Cint64);
+            let node = ctx.node(node_id);
+            if node.has_merged_into_individual_node_id() { continue; }
+            let label = node.reapply_con_label_set;
+            if label.is_none() { continue; }
+            // Label order cannot change the first two nodes for any tag:
+            // nodes are visited in reference order and duplicate keys below
+            // cannot insert the same node twice.
+            let snapshots = ctx.singleton_label_snapshot(label);
+            let entry = cache.labels.entry(label.index()).or_insert_with(|| (Vec::new(), Vec::new(), Vec::new()));
+            let unchanged = entry.0.len() == snapshots.len() && entry.0.iter().zip(&snapshots)
+                .all(|(a,b)| std::sync::Arc::ptr_eq(a,b));
+            if unchanged { cache.hits += 1; }
+            if !unchanged {
+                cache.misses += 1;
+                entry.1.clear();
+                entry.2.clear();
+                ctx.label_set_visit_stored_descriptors(label, |tag, descriptor, additional| {
+                    if descriptor.is_some() { entry.2.push(descriptor.index()); }
+                    if descriptor.is_none() || ctx.con_desc(descriptor).is_negated() { return; }
+                    if additional && ctx.label_set(label).concept_des_dep_map.contains_key(&tag) { return; }
+                    entry.1.push((tag,descriptor));
+                });
+                entry.2.sort_unstable();
+                entry.2.dedup();
+                entry.0 = snapshots;
+            }
+            for &(tag, descriptor) in &entry.1 {
+                if let Some((first,bits)) = &membership {
+                    let Some(offset) = tag.checked_sub(*first).and_then(|n| usize::try_from(n).ok()) else { continue; };
+                    if bits.get(offset / 64).is_none_or(|word| word & (1 << (offset % 64)) == 0) { continue; }
+                }
+                if let Some(pair) = carriers.get_mut(&tag) {
+                    if pair.len() < 2 && pair.last().is_none_or(|&(last,_)| last != node_id) {
+                        pair.push((node_id,ctx.con_desc(descriptor).get_dependency_track_point()));
+                    }
+                }
+            }
+        }
+        cache.scans += 1;
+        if super::bridge_progress_enabled() && (cache.scans <= 3 || cache.scans % 32 == 0) {
+            eprintln!("SINGLETON-CACHE scans={} hits={} misses={} invalidations={} nodes={} labels={} merges={}",
+                cache.scans,cache.hits,cache.misses,cache.invalidations,ctx.node_count(),
+                cache.labels.len(),self.applied_singleton_merge_count);
+        }
+        carriers
+    }
+
     /// Deterministic singleton-concept merge rule — the bridge's realisation
     /// of the clausal datatype value-identity `C(x) ∧ C(y) → x = y` (a
     /// role-free eq-head clause; Konclude never sees this shape because its
@@ -1873,8 +2033,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        // The cache never survives a return to the completion driver, so no
+        // rollback or branch restoration can reuse its entries.
+        let mut cache = SingletonLabelCache::default();
+        let result = self.ht_apply_singleton_merges_cached(calc_alg_context, &mut cache);
+        calc_alg_context.process_context_mut().end_singleton_cache_scope();
+        result
+    }
+
+    fn ht_apply_singleton_merges_cached(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+        cache: &mut SingletonLabelCache,
+    ) -> bool {
         let mut merged_any = false;
         let singleton_concepts = self.singleton_concepts.clone(); // tiny (distinct literal values)
+        // A dry first scan needs no label snapshots or descriptor journals.
+        // Use the differential-tested reference index initially; allocate the
+        // cache only after a real merge requires repeated scans of this state.
+        let mut indexed = (singleton_concepts.len() >= 32)
+            .then(|| self.singleton_first_carriers(calc_alg_context));
         for &concept in &singleton_concepts {
             loop {
                 // Collect the first two LIVE positive carriers (read-only
@@ -1882,7 +2060,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // never allocate during the scan).
                 let mut first: Option<(NodeId, TrackPointId)> = None;
                 let mut second: Option<(NodeId, TrackPointId)> = None;
-                {
+                if let Some(index) = &indexed {
+                    let tag = calc_alg_context.ontology_arenas().concept(concept).get_concept_tag();
+                    if let Some(pair) = index.get(&tag) {
+                        first = pair.first().copied();
+                        second = pair.get(1).copied();
+                    }
+                } else {
                     let ctx = calc_alg_context.process_context();
                     let onto = calc_alg_context.ontology_arenas();
                     let con_tag = onto.concept(concept).get_concept_tag();
@@ -1952,6 +2136,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         self.or_backtrack_count,
                     );
                 }
+                // Forced value identity must respect distinct-successor edges and
+                // opposing labels, just like the native nominal merge rule. Include
+                // both value-membership premises in the clash dependency so a
+                // branch-dependent equality remains backtrackable.
+                let mut clash = ClashDescId::NONE;
+                if !self.ht_individuals_mergeable_with_clashes(
+                    into, from, &mut clash, calc_alg_context,
+                ) {
+                    if calc_alg_context.has_pending_signal() {
+                        return true;
+                    }
+                    let tag = calc_alg_context.ontology_arenas().concept(concept).get_concept_tag();
+                    for (mut node, dependency) in [(into, into_tp), (from, from_tp)] {
+                        let mut descriptor = ConDescId::NONE;
+                        let mut ignored_dependency = TrackPointId::NONE;
+                        let pc = calc_alg_context.process_context();
+                        let label = pc.node(node).reapply_con_label_set;
+                        pc.label_set(label).get_concept_descriptor_by_tag_in_context(
+                            pc, tag, &mut descriptor, &mut ignored_dependency,
+                        );
+                        clash = self.create_clashed_concept_descriptor(
+                            clash, &mut node, descriptor, dependency, calc_alg_context,
+                        );
+                    }
+                    calc_alg_context.raise_clash(clash);
+                    return true;
+                }
                 let mut merge_dep_track_point: TrackPointId = Id::NONE;
                 let mut into_mut = into;
                 self.create_same_individual_merge_dependency(
@@ -1971,6 +2182,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 merged_any = true;
                 if calc_alg_context.has_pending_signal() {
                     return true; // a clash raised during the merge unwinds to the drive
+                }
+                if indexed.is_some() {
+                    indexed = Some(self.singleton_first_carriers_cached(calc_alg_context, cache));
                 }
             }
         }
@@ -2184,6 +2398,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .indi_unsorted_proc_queue_mut(q)
                     .take_next_process_individual_node();
                 self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_DepthFirst;
+            }
+        }
+
+        // Literal identity is deterministic datatype work. Finish the same
+        // branch-local singleton equality rule after deterministic expansion,
+        // before selecting a nondeterministic node. Otherwise these forced
+        // merges occur below the first fork and disappear from the retained
+        // consistency base when classification rolls back that alternative.
+        // No node/descriptor has been removed from a queue at this point.
+        // Only prepare the deterministic base here. Once a choice is open,
+        // the existing final-fixpoint check handles branch-local identities;
+        // rescanning after each nondeterministic queue item adds no reuse.
+        // Retained class jobs already inherit the prepared consistency base.
+        // Query-created identities still run at the final fixpoint below.
+        if indi_proc_node.is_none() && self.or_branch_stack.is_empty()
+            && self.retained_base_node_count == 0
+            && !self.singleton_base_prepared && !self.singleton_concepts.is_empty() {
+            // This is a scheduling optimization only. Later identities still
+            // run at candidate fixpoint, including after branch rollback.
+            self.singleton_base_prepared = true;
+            calc_alg_context.base.current_indi_node = Id::NONE;
+            let merged = self.ht_apply_singleton_merges(calc_alg_context);
+            if calc_alg_context.has_pending_signal() { return NodeId::NONE; }
+            if merged {
+                // Merging can enqueue new deterministic consequences; drain
+                // those before continuing with the lower-priority queues.
+                return self.take_next_process_individual(calc_alg_context);
             }
         }
 

@@ -1,0 +1,8 @@
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=40243912 complements_below=0
+KM_TIMING in-process frontend declined by the exact-EL screen: bytes=40243912 screen=0.00s
+KM_TIMING frontend done @ 6.22s route=ht_bridge
+KM_TIMING spawn_ht: read+convert 66842 clauses (ht_view=66842) in 0.61s
+KM_TIMING atomic route ht_bridge declined @ 65.49s: out of fragment: selected HT mechanism deferred (worker exit 1)
+KM_TIMING in-process frontend declined by the exact-EL screen: bytes=40243912 screen=0.00s
+KM_TIMING frontend done @ 6.62s route=nominals
+worker engine exceeded its RSS limit: 

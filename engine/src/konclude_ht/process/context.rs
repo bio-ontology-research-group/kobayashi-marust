@@ -336,6 +336,10 @@ macro_rules! arena_accessors {
 /// dependency spine, satellites) for readability; allocation order within a test
 /// is whatever the completion engine drives, not the field order.
 pub struct ProcessContext {
+    singleton_descriptor_limit: Option<usize>,
+    singleton_descriptor_epoch: u64,
+    singleton_changed_descriptors: Vec<usize>,
+    singleton_descriptor_changes: HashMap<usize, (ConceptId, bool, TrackPointId)>,
     /// Open branch-epoch count (in-process COW; see `push_branch_epoch`).
     branch_epoch_depth: usize,
     // --- graph nodes ---
@@ -727,7 +731,10 @@ impl ProcessContext {
     /// every arena empty, every handle `nullptr`.
     pub fn new() -> Self {
         ProcessContext {
-            branch_epoch_depth: 0,
+            singleton_descriptor_limit: None,
+            singleton_descriptor_epoch: 0,
+            singleton_changed_descriptors: Vec::new(),
+            singleton_descriptor_changes: HashMap::new(),            branch_epoch_depth: 0,
             nodes: Arena::new(),
             sat_nodes: Arena::new_tight(),
             edges: Arena::new(),
@@ -1841,14 +1848,66 @@ impl ProcessContext {
         disjoint_edge_mut,
         alloc_disjoint_edge
     );
-    arena_accessors!(
-        con_descs,
-        ConceptDescriptor,
-        ConDescId,
-        con_desc,
-        con_desc_mut,
-        alloc_con_desc
-    );
+    #[inline]
+    pub fn con_desc(&self, id: ConDescId) -> &ConceptDescriptor { self.con_descs.get(id) }
+    #[inline]
+    pub fn con_desc_mut(&mut self, id: ConDescId) -> &mut ConceptDescriptor {
+        // Record the first semantic state before an old descriptor is
+        // borrowed. Intrusive `next` edits do not change label membership;
+        // recycling, polarity changes and dependency changes still invalidate.
+        if self.singleton_descriptor_limit.is_some_and(|limit| id.index() < limit) {
+            let d = self.con_descs.get(id);
+            self.singleton_descriptor_changes.entry(id.index()).or_insert((
+                d.get_concept(), d.is_negated(), d.get_dependency_track_point()));
+        }
+        self.con_descs.get_mut_journaled(id)
+    }
+    #[inline]
+    pub fn alloc_con_desc(&mut self, value: ConceptDescriptor) -> ConDescId { self.con_descs.push(value) }
+    pub(crate) fn singleton_cache_scan_epoch(&mut self) -> u64 {
+        let mut changed = false;
+        for (index, previous) in self.singleton_descriptor_changes.drain() {
+            let d = self.con_descs.get(Id::new(index as Cint64));
+            if previous != (d.get_concept(),d.is_negated(),d.get_dependency_track_point()) {
+                changed = true;
+                self.singleton_changed_descriptors.push(index);
+            }
+        }
+        if changed {
+            self.singleton_descriptor_epoch = self.singleton_descriptor_epoch.checked_add(1)
+                .expect("singleton descriptor epoch overflow");
+        }
+        self.singleton_descriptor_limit = Some(self.con_descs.len());
+        self.singleton_descriptor_epoch
+    }
+    pub(crate) fn take_singleton_changed_descriptors(&mut self) -> Vec<usize> {
+        std::mem::take(&mut self.singleton_changed_descriptors)
+    }
+    pub(crate) fn end_singleton_cache_scope(&mut self) {
+        self.singleton_descriptor_limit = None;
+        self.singleton_descriptor_changes.clear();
+        self.singleton_changed_descriptors.clear();
+    }
+
+    /// Retain every COW label object that owns a map visible through this label.
+    /// Shared aliases are resolved afresh, including aliases of additional maps.
+    pub(crate) fn singleton_label_snapshot(&self, id: LabelSetId)
+        -> Vec<std::sync::Arc<ReapplyConceptLabelSet>> {
+        let mut result = vec![self.label_sets.get(Id::new(id.raw)).clone()];
+        let mut next = match &self.label_set(id).additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Shared(alias) => Some(*alias), _ => None,
+        };
+        while let Some(alias) = next {
+            result.push(self.label_sets.get(Id::new(alias.label_set.raw)).clone());
+            next = match alias.which {
+                AdditionalMapSlot::Main => None,
+                AdditionalMapSlot::Additional => match &self.label_set(alias.label_set).additional_concept_des_dep_map {
+                    AdditionalDesDepMapRef::Shared(alias) => Some(*alias), _ => None,
+                },
+            };
+        }
+        result
+    }
     /// Port-facing concept descriptor arena size.
     #[inline]
     pub fn con_desc_count(&self) -> usize {
@@ -8171,6 +8230,51 @@ impl ProcessContext {
         }
     }
 
+    /// Visit keys without copying or sorting descriptors. A key may occur in
+    /// both maps; callers must resolve shadowing through the normal lookup.
+    pub(crate) fn label_set_visit_concept_tags(
+        &self,
+        label_set: LabelSetId,
+        mut visit: impl FnMut(Cint64),
+    ) {
+        let label = self.label_set(label_set);
+        for &tag in label.concept_des_dep_map.keys() {
+            visit(tag);
+        }
+        let additional = match &label.additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Null => None,
+            AdditionalDesDepMapRef::Owned(map) => Some(map),
+            AdditionalDesDepMapRef::Shared(alias) => self.label_set_additional_alias_map(*alias),
+        };
+        if let Some(map) = additional {
+            for &tag in map.keys() {
+                visit(tag);
+            }
+        }
+    }
+
+    /// Visit stored descriptors without a second hash lookup. Additional-map
+    /// entries may be shadowed by any local entry, including a queue-only entry
+    /// with no descriptor. The caller must apply that shadow rule before using
+    /// an additional descriptor. Shared aliases are resolved on every visit.
+    pub(crate) fn label_set_visit_stored_descriptors(
+        &self, label_set: LabelSetId,
+        mut visit: impl FnMut(Cint64, ConDescId, bool),
+    ) {
+        let label = self.label_set(label_set);
+        for (&tag, data) in &label.concept_des_dep_map {
+            visit(tag, data.concept_descriptor, false);
+        }
+        let additional = match &label.additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Null => None,
+            AdditionalDesDepMapRef::Owned(map) => Some(map),
+            AdditionalDesDepMapRef::Shared(alias) => self.label_set_additional_alias_map(*alias),
+        };
+        if let Some(map) = additional {
+            for (&tag, data) in map { visit(tag, data.concept_descriptor, true); }
+        }
+    }
+
     fn label_set_snapshot_sorted_entries(
         m: &HashMap<Cint64, ConceptDescriptorDependencyReapplyData>,
     ) -> Vec<LabelSetMapEntry> {
@@ -8419,6 +8523,51 @@ impl ProcessContext {
     /// Context-threaded port of `CIndividualProcessNode::getDistinctHash(false)`.
     pub fn node_distinct_hash_existing(&self, node: NodeId) -> DistinctHashId {
         self.node(node).use_distinct_hash
+    }
+
+    /// Materialize only the actual compressed pair needed for clash evidence.
+    /// Both localized partner hashes receive the same edge and dependency.
+    pub fn node_materialize_distinct_edge(&mut self, source: NodeId, destination: NodeId) -> DistinctEdgeId {
+        let hash = self.node_distinct_hash_existing(source);
+        if hash.is_none() { return DistinctEdgeId::NONE; }
+        let destination_id = self.node(destination).individual_node_id();
+        if let Some(edge) = self.distinct_hash(hash).materialized_distinct_edge(destination_id) {
+            return edge;
+        }
+        let Some(dependency) = self.distinct_hash(hash)
+            .distinct_dependency(destination_id, self.distinct_edges()) else {
+            return DistinctEdgeId::NONE;
+        };
+        let mut edge = DistinctEdge::new();
+        edge.init_distinct_edge(source, destination, dependency);
+        let edge = self.alloc_distinct_edge(edge);
+        let source_id = self.node(source).individual_node_id();
+        let source_hash = self.node_distinct_hash(source);
+        self.distinct_hash_mut(source_hash).insert_distinct_individual(destination_id, edge);
+        let destination_hash = self.node_distinct_hash(destination);
+        self.distinct_hash_mut(destination_hash).insert_distinct_individual(source_id, edge);
+        edge
+    }
+
+    /// Install one shared all-different group in all member views. Duplicate
+    /// process IDs defer to explicit pairs, which preserve self-inequality.
+    pub fn nodes_install_distinct_group(&mut self, nodes: &[NodeId], dependency: TrackPointId) -> bool {
+        use super::distinct_group::DistinctGroup;
+        if nodes.len() < 2 { return false; }
+        let members: Vec<_> = nodes.iter().map(|node| self.node(*node).individual_node_id()).collect();
+        let group = DistinctGroup::new(members, dependency);
+        if group.members().len() != nodes.len() { return false; }
+        for &node in nodes {
+            let hash = self.node_distinct_hash_existing(node);
+            if hash.is_some() && !self.distinct_hash(hash)
+                .can_install_distinct_group(self.node(node).individual_node_id(), &group) { return false; }
+        }
+        for &node in nodes {
+            let owner = self.node(node).individual_node_id();
+            let hash = self.node_distinct_hash(node);
+            assert!(self.distinct_hash_mut(hash).install_distinct_group(owner, group.clone()));
+        }
+        true
     }
 
     /// Context-threaded port of `CIndividualProcessNode::getDisjointSuccessorRoleHash(true)`.

@@ -461,7 +461,49 @@ impl<'a> DataAbox<'a> {
         {
             return None;
         }
-        Some(self.cassert.iter().map(|(class, _)| *class).collect())
+        let classes: std::collections::BTreeSet<_> =
+            self.cassert.iter().map(|(class, _)| *class).collect();
+        if classes.len() <= 1 {
+            return Some(classes);
+        }
+        // Independent class satisfiability supplies one witness per individual
+        // only when that individual has a single asserted class. Otherwise the
+        // conjunction can be unsatisfiable even when each class is satisfiable.
+        let mut individual_classes = HashMap::new();
+        for &(class, individual) in &self.cassert {
+            if let Some(previous) = individual_classes.insert(individual, class) {
+                if previous != class {
+                    return None;
+                }
+            }
+        }
+        // With several classes, lexical individual identity must also imply
+        // semantic identity. Prefixed/relative names can alias a full IRI;
+        // leave such sources on the full ABox path rather than treating their
+        // different spellings as independent witnesses. One class needs only
+        // one shared witness, so aliases are harmless in that case.
+        if classes.len() > 1
+            && individual_classes.keys().any(|individual| {
+                !individual
+                    .strip_prefix('<')
+                    .and_then(|s| s.strip_suffix('>'))
+                    .is_some_and(|iri| {
+                        !iri.contains('\\')
+                            && iri.split_once(':').is_some_and(|(scheme, _)| {
+                                scheme
+                                    .as_bytes()
+                                    .first()
+                                    .is_some_and(u8::is_ascii_alphabetic)
+                                    && scheme.bytes().all(|c| {
+                                        c.is_ascii_alphanumeric() || matches!(c, b'+' | b'-' | b'.')
+                                    })
+                            })
+                    })
+            })
+        {
+            return None;
+        }
+        Some(classes)
     }
 
     pub fn observe(&mut self, node: &Node<'a>) {
@@ -535,13 +577,19 @@ impl<'a> DataAbox<'a> {
                     self.overflow = true;
                     return;
                 }
-                if let (Some(Some(p)), Some(Some(a)), Some(Some(b))) = (
-                    args.first().map(|n| n.as_atom()),
-                    args.get(1).map(|n| n.as_atom()),
-                    args.get(2).map(|n| n.as_atom()),
+                if let (Some(role), Some(a), Some(b)) = (
+                    args.first(), args.get(1).and_then(|n| n.as_atom()),
+                    args.get(2).and_then(|n| n.as_atom()),
                 ) {
-                    self.oedges.push((p, a, b));
-                }
+                    match role {
+                        Node::Atom(p) => self.oedges.push((p, a, b)),
+                        Node::List("ObjectInverseOf", inner) => match inner.as_slice() {
+                            [Node::Atom(p)] => self.oedges.push((p, b, a)),
+                            _ => self.global_omission_unsafe = true,
+                        },
+                        _ => self.global_omission_unsafe = true,
+                    }
+                } else { self.global_omission_unsafe = true; }
             }
             "SymmetricObjectProperty" => {
                 let args = strip_annotations(args);
@@ -1003,6 +1051,106 @@ impl<'a> DataAbox<'a> {
         true
     }
 
+    /// Exact object-side projection of a bounded, string-valued functional
+    /// data ABox. Different values of one functional property force different
+    /// owners. Conversely, retaining all those inequalities permits extending
+    /// any object model with exactly the asserted strings. Range and domain
+    /// obligations must already hold; every other data interaction defers.
+    /// This certificate must never be used to simply discard the assertions:
+    /// the caller must install every returned inequality in the native ABox.
+    pub fn functional_string_projection(&self) -> Option<Vec<(&'a str, &'a str)>> {
+        if self.overflow
+            || self.global_omission_unsafe
+            || self.functional.is_empty()
+            || self.assertions.is_empty()
+            || self.assertions.len() > 256
+            || !self.supers.is_empty()
+            || !self.dmax1.is_empty()
+            || self.functional.iter()
+                .chain(self.ranges.keys())
+                .chain(self.domains.keys())
+                .chain(self.unsupported_properties.iter())
+                .any(|p| p.contains("topDataProperty") || p.contains("bottomDataProperty"))
+        {
+            return None;
+        }
+        let mut values: HashMap<&str, Vec<(&str, String)>> = HashMap::new();
+        for &(property, individual, token, suffix) in &self.assertions {
+            let literal = parse_lit(token, suffix)?;
+            if !is_plain_string(&literal)
+                || self.unsupported_properties.contains(property)
+                || property == "owl:topDataProperty"
+                || property == "owl:bottomDataProperty"
+                || property == "<http://www.w3.org/2002/07/owl#topDataProperty>"
+                || property == "<http://www.w3.org/2002/07/owl#bottomDataProperty>"
+            {
+                return None;
+            }
+            if !self.ranges.get(property).is_none_or(|ranges| {
+                ranges
+                    .iter()
+                    .all(|range| provably_in_datatype(&literal, range))
+            }) || !self.domains.get(property).is_none_or(|domains| {
+                domains
+                    .iter()
+                    .all(|domain| self.named_type_entailed(individual, domain))
+            }) {
+                return None;
+            }
+            if self.functional.contains(property) {
+                let lexical = match literal {
+                    Lit::Plain(value) | Lit::Typed(value, _) => value,
+                    Lit::Lang(..) => return None,
+                };
+                if lexical.contains('\\') {
+                    return None;
+                }
+                values
+                    .entry(property)
+                    .or_default()
+                    .push((individual, unescape(lexical)));
+            }
+        }
+        let mut different = std::collections::BTreeSet::new();
+        for group in values.values() {
+            for (index, (left, value)) in group.iter().enumerate() {
+                for (right, other) in &group[index + 1..] {
+                    if value != other {
+                        if left == right {
+                            return None;
+                        }
+                        different.insert(if left < right {
+                            (*left, *right)
+                        } else {
+                            (*right, *left)
+                        });
+                    }
+                }
+            }
+        }
+        Some(different.into_iter().collect())
+    }
+
+    // Follow only asserted named-class inclusion edges. Cycles terminate and
+    // complex class expressions never contribute an unproved membership.
+    fn named_type_entailed(&self, individual: &str, target: &str) -> bool {
+        let mut pending: Vec<&str> = self.cassert.iter()
+            .filter_map(|(class, owner)| (*owner == individual).then_some(*class))
+            .collect();
+        let mut seen = std::collections::HashSet::new();
+        while let Some(class) = pending.pop() {
+            if class == target {
+                return true;
+            }
+            if seen.insert(class) {
+                if let Some(supers) = self.csupers.get(class) {
+                    pending.extend(supers.iter().copied());
+                }
+            }
+        }
+        false
+    }
+
     /// `true` iff the asserted ABox provably contradicts the declared data
     /// ranges, at-most-1 constraints, or `DifferentIndividuals`. Sound: every
     /// reported clash is an OWL 2 entailment; caps degrade to "not detected".
@@ -1104,6 +1252,85 @@ mod tests {
             da.observe(&node);
         }
         da
+    }
+
+    #[test]
+    fn inverse_object_assertions_preserve_functional_merge_data_clash() {
+        for edges in [
+            ["ObjectPropertyAssertion(ObjectInverseOf(<r>) <a> <c>)",
+             "ObjectPropertyAssertion(ObjectInverseOf(<r>) <b> <c>)"],
+            ["ObjectPropertyAssertion(<r> <c> <a>)",
+             "ObjectPropertyAssertion(<r> <c> <b>)"],
+        ] {
+            let axioms = ["FunctionalObjectProperty(<r>)", "FunctionalDataProperty(<p>)",
+                "DataPropertyAssertion(<p> <a> \"one\")", "DataPropertyAssertion(<p> <b> \"two\")",
+                edges[0], edges[1]];
+            let data = build(&axioms);
+            assert!(data.is_inconsistent());
+        }
+        let reversed = build(&["FunctionalObjectProperty(<r>)", "FunctionalDataProperty(<p>)",
+            "DataPropertyAssertion(<p> <a> \"one\")", "DataPropertyAssertion(<p> <b> \"two\")",
+            "ObjectPropertyAssertion(<r> <a> <c>)", "ObjectPropertyAssertion(<r> <b> <c>)"]);
+        assert!(!reversed.is_inconsistent());
+    }
+
+    #[test]
+    fn functional_strings_preserve_owner_inequalities_and_equal_values() {
+        let da = build(&[
+            "FunctionalDataProperty(<http://x#p>)",
+            "DataPropertyRange(<http://x#p> xsd:string)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"same\")",
+            "DataPropertyAssertion(<http://x#p> <http://x#b> \"same\"^^xsd:string)",
+            "DataPropertyAssertion(<http://x#p> <http://x#c> \"different\")",
+        ]);
+        assert!(!da.positive_assertions_redundant());
+        assert_eq!(
+            da.functional_string_projection(),
+            Some(vec![
+                ("<http://x#a>", "<http://x#c>"),
+                ("<http://x#b>", "<http://x#c>"),
+            ])
+        );
+    }
+
+    #[test]
+    fn functional_strings_accept_inherited_domains_without_assuming_membership() {
+        let facts = [
+            "FunctionalDataProperty(<p>)",
+            "DataPropertyDomain(<p> <D>)",
+            "SubClassOf(<C> <B>)",
+            "SubClassOf(<B> <D>)",
+            "SubClassOf(<D> <B>)",
+            "ClassAssertion(<C> <a>)",
+            "DataPropertyAssertion(<p> <a> \"value\")",
+        ];
+        assert!(build(&facts).functional_string_projection().is_some());
+        let mut missing = facts;
+        missing[5] = "ClassAssertion(<Unrelated> <a>)";
+        assert!(build(&missing).functional_string_projection().is_none());
+    }
+
+    #[test]
+    fn functional_string_projection_declines_unrepresented_interactions() {
+        for extra in [
+            "DataPropertyDomain(<http://x#p> <http://x#Unasserted>)",
+            "SubClassOf(<http://x#C> DataHasValue(<http://x#p> \"x\"))",
+            "NegativeDataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
+            "SubDataPropertyOf(<http://x#p> <http://x#q>)",
+            "DatatypeDefinition(<http://x#D> xsd:string)",
+            "DataPropertyDomain(owl:topDataProperty <http://x#C>)",
+            "DataPropertyRange(owl:topDataProperty xsd:string)",
+        ] {
+            let items = [
+                "FunctionalDataProperty(<http://x#p>)",
+                "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
+                extra,
+            ];
+            assert!(
+                build(&items).functional_string_projection().is_none(),
+                "{extra}"
+            );
+        }
     }
 
     #[test]

@@ -97,6 +97,7 @@ macro_rules! cached_completion_flag {
 }
 
 cached_completion_flag!(bridge_progress_enabled, "KM_BRIDGE_PROGRESS");
+cached_completion_flag!(bridge_base_audit_enabled, "KM_BRIDGE_BASE_AUDIT");
 cached_completion_flag!(bridge_search_log_enabled, "KM_BRIDGE_SEARCH_LOG");
 cached_completion_flag!(bridge_dump_clash_enabled, "KM_BRIDGE_DUMP_CLASH");
 cached_completion_flag!(bridge_dump_dep_chain_enabled, "KM_BRIDGE_DUMP_DEP_CHAIN");
@@ -108,6 +109,7 @@ cached_completion_flag!(sat_absorb_debug_enabled, "KM_SAT_ABSORB_DEBUG");
 cached_completion_flag!(ht_or_trace_enabled, "KM_HT_OR_TRACE");
 cached_completion_flag!(ht_ddb_no_skip_enabled, "KM_HT_DDB_NO_SKIP");
 cached_completion_flag!(ht_atmost_rest_enabled, "KM_HT_ATMOST_REST");
+cached_completion_flag!(compact_distinct_groups_enabled, "KM_COMPACT_DISTINCT_GROUPS");
 
 macro_rules! cached_completion_i64 {
     ($function:ident, $variable:literal) => {

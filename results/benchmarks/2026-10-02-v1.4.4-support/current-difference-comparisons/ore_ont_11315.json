@@ -1,0 +1,35 @@
+{
+  "ont": "ore_ont_11315",
+  "source_sha256": "1ba40991317ec49d3e90f3c1edc3e629813012b8742dc6feb33996282eb0e6de",
+  "reference_sha256": "668f9588336d2cb89482a43d2dae71702816aec7c3dd2c54e12ebcbc29e741c3",
+  "declared_classes": 36115,
+  "reference_relations": 415917,
+  "reference_unsat": 38,
+  "reference_thing_equiv": [],
+  "candidate": {
+    "path": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/full-v144-automatic-native-source-53158847_5/output/ore_ont_11315.json",
+    "sha256": "a51c9565d31f9dbf4e08fa223e36785a33b9ea6e0d883a408737f69e08a6b1df",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 415917,
+    "missing_count": 0,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [],
+    "extra_sample": []
+  },
+  "baseline": {
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/candidate-v143-rc2/005/output/ore_ont_11315.json",
+    "sha256": "9af0b21fa8977dc82ba386cfd1a965d68f0c151d580bb96d31aa194f2f5f8737",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 415917,
+    "missing_count": 0,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [],
+    "extra_sample": []
+  }
+}

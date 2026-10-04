@@ -93,8 +93,8 @@ pub struct CardMeta {
 
 /// Structural provenance for a fresh clausifier concept. The trigger absorber
 /// uses this side channel instead of reverse-engineering `Q_*` definitions from
-/// clause shapes. It is emitted only with `KM_TRIGGER_ABSORB` and is ignored by
-/// the certified CB engine.
+/// clause shapes. It is emitted with `KM_TRIGGER_ABSORB` or symbolic native
+/// cardinality normalization and is ignored by the certified CB engine.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct DefinerMeta {
     pub marker: String,

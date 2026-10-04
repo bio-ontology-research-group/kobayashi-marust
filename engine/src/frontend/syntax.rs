@@ -121,6 +121,9 @@ pub enum Axiom {
     // rule whose atoms we cannot represent is dropped wholesale (sound: a dropped
     // constraint can lose an inconsistency, never invent one).
     Rule(Vec<RuleAtom>, Vec<RuleAtom>),
+    /// Retained concrete-domain rule obligation. It must be lowered by an
+    /// exact datatype backend before ordinary object-rule publication.
+    DataRule(Vec<RuleAtom>, Vec<RuleAtom>),
 }
 
 /// A term inside a SWRL rule atom: either a rule variable or a named individual.
@@ -130,15 +133,26 @@ pub enum RuleTerm {
     Ind(String),
 }
 
-/// A SWRL rule atom (the subset we represent: class membership, role edge, and
-/// the (in)equality guards). Datatype/builtin atoms are not represented; a rule
-/// containing one is dropped by the parser.
+/// A preserved SWRL rule atom. Concrete-domain atoms are kept in `DataRule`
+/// until an exact backend lowers them; they never enter the object-only worker.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RuleAtom {
     Class(Concept, RuleTerm),
     Role(String, RuleTerm, RuleTerm),
     Same(RuleTerm, RuleTerm),
     Diff(RuleTerm, RuleTerm),
+    Data(String, RuleTerm, RuleDataTerm),
+    Builtin(String, Vec<RuleDataTerm>),
+    DataRange(String, RuleDataTerm),
+}
+
+/// Keep literal spellings separate from object individuals. The value decoder
+/// decides datatype membership/equality later; the parser does not coerce them.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RuleDataTerm {
+    Var(String),
+    Literal(String),
+    Iri(String),
 }
 
 impl Axiom {
@@ -225,6 +239,11 @@ impl Ontology {
             .iter()
             .map(|a| a.as_ref())
             .filter(|a| matches!(a, Axiom::Rule(..)))
+    }
+
+    pub fn datatype_rules(&self) -> impl Iterator<Item = &Axiom> {
+        self.axioms.iter().map(|a| a.as_ref())
+            .filter(|a| matches!(a, Axiom::DataRule(..)))
     }
 
     /// Drop every axiom for which `keep` is false, returning how many went.

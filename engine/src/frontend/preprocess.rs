@@ -155,6 +155,32 @@ fn detect_role_chains(tbox: &[DLClause]) -> ChainInfo {
             }
         }
     }
+    // Converse-equivalent roles share transitivity. A one-way inclusion of
+    // the converse is insufficient: require both unguarded universal bridges.
+    let mut converse = HashSet::new();
+    for c in tbox {
+        if let ([Atom::Role(r, a, b)], [Atom::Role(s, c, d)]) =
+            (c.body.as_slice(), c.head.as_slice())
+        {
+            if a == d && b == c && a != b
+                && matches!(a, Term::Var(_)) && matches!(b, Term::Var(_))
+            {
+                converse.insert((r.clone(), s.clone()));
+            }
+        }
+    }
+    let mut inverse_pairs: Vec<_> = converse.iter()
+        .filter(|(r,s)| converse.contains(&(s.clone(),r.clone())))
+        .cloned().collect();
+    inverse_pairs.sort();
+    let mut index = 0;
+    while index < trans.len() {
+        let role = trans[index].clone();
+        for (r,s) in &inverse_pairs {
+            if *r == role && !trans.contains(s) { trans.push(s.clone()); }
+        }
+        index += 1;
+    }
     ChainInfo { trans, chains }
 }
 
@@ -1049,6 +1075,93 @@ fn is_canonical_long_chain_axiom(c: &DLClause) -> bool {
     })
 }
 
+/// A transitive closure preserves the set of sources and targets of a role.
+/// Thus pure domain/range consumers cannot distinguish that closure. Guarded
+/// source-endpoint consumers of explicit transitive roles use the existing
+/// recognition clauses. All other
+/// body occurrences (including ground negatives, functionality, and mixed
+/// chains) prevent this model-extension certificate. Direct/inverse inclusions
+/// are preserved by closing a set of roles upward along those inclusions.
+fn endpoint_only_transitive_roles(tbox: &[DLClause], abox: &[DLClause]) -> HashSet<String> {
+    fn transitive_role(c: &DLClause) -> Option<&str> {
+        let (first, second, head) = binary_role_composition(c)?;
+        let (r, a, b) = role_parts(first);
+        let (s, c, d) = role_parts(second);
+        let (t, e, f) = role_parts(head);
+        if r != s || r != t || ![a, b, c, d, e, f].iter().all(|term| matches!(term, Term::Var(_))) {
+            return None;
+        }
+        ((b == c && a == e && d == f && a != b && b != d && a != d)
+            || (d == a && c == e && b == f && c != d && d != b && c != b)).then_some(r)
+    }
+    let mut candidates: HashSet<String> = tbox.iter().chain(abox)
+        .filter_map(transitive_role).map(str::to_owned).collect();
+    let mut unsafe_roles = HashSet::new();
+    let mut inclusion_predecessors: HashMap<String, Vec<String>> = HashMap::new();
+    for c in tbox.iter().chain(abox) {
+        if transitive_role(c).is_some() {
+            continue;
+        }
+        // R o S <= S remains true if either relation is transitively closed.
+        // Keep this chain itself, but it does not obstruct projecting a pure
+        // transitivity axiom. The variable/path checks exclude repeated nodes
+        // and ground constraints, which do not have this extension property.
+        if binary_role_composition(c).is_some_and(|(first, second, head)| {
+            let (r, a, b) = role_parts(first);
+            let (s, c, d) = role_parts(second);
+            let (t, e, f) = role_parts(head);
+            [a,b,c,d,e,f].iter().all(|term| matches!(term, Term::Var(_)))
+                && ((b == c && a == e && d == f && s == t && a != b && b != d && a != d)
+                    || (d == a && c == e && b == f && r == t && c != d && d != b && c != b))
+        }) { continue; }
+        if let ([Atom::Role(left, a, b)], [Atom::Role(right, c, d)]) =
+            (c.body.as_slice(), c.head.as_slice())
+        {
+            if matches!(a, Term::Var(_)) && matches!(b, Term::Var(_)) && a != b
+                && ((a == c && b == d) || (a == d && b == c))
+            {
+                inclusion_predecessors.entry(right.clone()).or_default().push(left.clone());
+                continue;
+            }
+        }
+        let endpoint_consumer = match (c.body.as_slice(), c.head.as_slice()) {
+            ([Atom::Role(_, source, target)], [Atom::Concept(_, term)]) =>
+                matches!(source, Term::Var(_)) && matches!(target, Term::Var(_))
+                && source != target && (term == source || term == target),
+            _ => false,
+        };
+        // The three recognition clauses emitted below replace this exact
+        // guarded consumer on an explicitly transitive role. Do not admit a
+        // nontransitive super-role: closing it could change class entailments.
+        let recognized_consumer = single_body_role(c).is_some_and(|atom| {
+            let (role, source, target) = role_parts(atom);
+            candidates.contains(role) && *source == var_x() && source != target
+                && matches!(target, Term::Var(_))
+                && c.body.iter().all(|a| a == atom || matches!(a,
+                    Atom::Concept(_, term) if term == source || term == target))
+                && c.body.iter().any(|a| matches!(a, Atom::Concept(_, term) if term == target))
+                && !c.head.is_empty()
+                && c.head.iter().all(|a| matches!(a, Atom::Concept(_, term) if term == source))
+        });
+        if !endpoint_consumer && !recognized_consumer {
+            for atom in &c.body {
+                if let Atom::Role(role, _, _) = atom { unsafe_roles.insert(role.clone()); }
+            }
+        }
+    }
+    // If extending S would violate a consumer, extending R cannot be certified
+    // when R is included in S or its inverse. Propagate that restriction through
+    // the complete dependency graph, including cycles and nontransitive roles.
+    let mut pending: Vec<_> = unsafe_roles.iter().cloned().collect();
+    while let Some(role) = pending.pop() {
+        for predecessor in inclusion_predecessors.get(&role).into_iter().flatten() {
+            if unsafe_roles.insert(predecessor.clone()) { pending.push(predecessor.clone()); }
+        }
+    }
+    candidates.retain(|role| !unsafe_roles.contains(role));
+    candidates
+}
+
 /// Port of `augment`: tbox minus raw chain axioms, plus nominal / transitivity /
 /// chain encodings.
 pub fn augment(tbox: Vec<DLClause>, abox: &[DLClause], hooks: &GroundHooks) -> Vec<DLClause> {
@@ -1065,6 +1178,15 @@ pub fn augment_with_chains(
     abox: &[DLClause],
     hooks: &GroundHooks,
 ) -> (Vec<DLClause>, ChainInfo) {
+    augment_with_chains_retaining_role_axioms(tbox, abox, hooks, false)
+}
+
+pub(super) fn augment_with_chains_retaining_role_axioms(
+    tbox: Vec<DLClause>,
+    abox: &[DLClause],
+    hooks: &GroundHooks,
+    retain_role_axioms: bool,
+) -> (Vec<DLClause>, ChainInfo) {
     // The raw `R1∘R2⊑R` (and `R∘R⊑R` transitive) role axioms are ALWAYS
     // filtered from the clause stream (default behaviour): keeping them
     // bloats cb_to_ht's cardinality/disjunction expansion (14817: +434 clauses
@@ -1072,7 +1194,16 @@ pub fn augment_with_chains(
     // `trans`/`chain` records (rbox.rs), which the frontend emits for
     // KM_KEEP_CHAIN_AXIOMS.  KM_ROLE_AUTOMATON still keeps them (the expensive
     // preprocessing closure needs the raw axioms in the tbox it scans).
-    let keep_chains = std::env::var_os("KM_ROLE_AUTOMATON").is_some();
+    // Recognition clauses preserve class consumers, but do not materialize
+    // chain edges between named individuals. The nominal clause stream must
+    // retain the original chain implications so ground negative assertions
+    // and other ABox consumers see every entailed edge. These are original
+    // normalized axioms, not a new inference rule or an approximation.
+    let keep_chains = retain_role_axioms || std::env::var_os("KM_ROLE_AUTOMATON").is_some()
+        || (std::env::var_os("KM_NOMINALS").is_some() && !abox.is_empty());
+    let endpoint_only = if keep_chains && !retain_role_axioms {
+        endpoint_only_transitive_roles(&tbox, abox)
+    } else { HashSet::new() };
     // Build every addition while raw chain axioms remain borrowable, then move
     // the retained normalized clauses into `base`. Cloning the whole TBox here
     // served only to keep the original alive for these derived passes.
@@ -1094,7 +1225,14 @@ pub fn augment_with_chains(
     let mut base = Vec::with_capacity(tbox.len());
     base.extend(
         tbox.into_iter()
-            .filter(|c| keep_chains || !is_chain_axiom(c) || is_canonical_long_chain_axiom(c)),
+            .filter(|c| {
+                let endpoint_transitivity = binary_role_composition(c).is_some_and(|(a,b,h)| {
+                    let (r,_,_) = role_parts(a);
+                    r == role_parts(b).0 && r == role_parts(h).0 && endpoint_only.contains(r)
+                        && is_chain_axiom(c)
+                });
+                !endpoint_transitivity && (keep_chains || !is_chain_axiom(c) || is_canonical_long_chain_axiom(c))
+            }),
     );
     base.extend(nominal_clauses(abox, hooks));
     if std::env::var_os("KM_NOMINALS").is_some() {
@@ -1855,5 +1993,88 @@ mod chain_detection_tests {
         assert_eq!(chain_clauses_with(&tbox, &info), chain_clauses(&tbox));
         assert!(!transitivity_clauses(&tbox).is_empty());
         assert!(!chain_clauses(&tbox).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod endpoint_transitivity_tests {
+    use super::*;
+    fn fixture() -> Vec<DLClause> {
+        vec![
+            clause([Atom::Role("r".into(), Term::Var("x".into()), Term::Var("y".into())),
+                    Atom::Role("r".into(), Term::Var("y".into()), Term::Var("z".into()))],
+                   [Atom::Role("r".into(), Term::Var("x".into()), Term::Var("z".into()))]),
+            clause([Atom::Role("r".into(), var_x(), var_y())], [Atom::Concept("Domain".into(), var_x())]),
+            clause([Atom::Role("r".into(), var_x(), var_y())], [Atom::Concept("Range".into(), var_y())]),
+            clause([Atom::Role("s".into(), var_x(), var_y())], [Atom::Role("r".into(), var_x(), var_y())]),
+        ]
+    }
+    #[test]
+    fn endpoint_transitivity_accepts_only_model_extendible_consumers() {
+        let source = fixture();
+        assert!(endpoint_only_transitive_roles(&source, &[]).contains("r"));
+        let edge = Atom::Role("r".into(), var_x(), var_y());
+        for obstruction in [
+            clause([edge.clone()], []),
+            clause([edge.clone()], [Atom::Concept("A".into(), var_x()), Atom::Concept("B".into(), var_y())]),
+            clause([edge.clone(), Atom::Concept("A".into(), var_y())], []),
+            clause([Atom::Role("r".into(), Term::Ind("a".into()), Term::Ind("b".into()))], []),
+            clause([edge, Atom::Role("r".into(), var_x(), Term::Var("z".into()))],
+                   [Atom::Eq(var_y(), Term::Var("z".into()))]),
+        ] {
+            assert!(!endpoint_only_transitive_roles(&source, &[obstruction]).contains("r"));
+        }
+        let recognized = clause([Atom::Role("r".into(), var_x(), var_y()),
+            Atom::Concept("A".into(), var_y())], [Atom::Concept("B".into(), var_x())]);
+        let mut augmented = source;
+        augmented.push(recognized);
+        assert!(endpoint_only_transitive_roles(&augmented, &[]).contains("r"));
+    }
+
+    #[test]
+    fn endpoint_transitivity_closes_inclusion_cycles_and_propagates_obstructions() {
+        let mut source = fixture();
+        source.push(clause([Atom::Role("r".into(), var_x(), var_y())],
+            [Atom::Role("s".into(), var_y(), var_x())]));
+        source.push(clause([Atom::Role("s".into(), var_x(), var_y())],
+            [Atom::Role("t".into(), var_x(), var_y())]));
+        assert!(endpoint_only_transitive_roles(&source, &[]).contains("r"));
+        let negative = clause([Atom::Role("t".into(), Term::Ind("a".into()), Term::Ind("b".into()))], []);
+        assert!(!endpoint_only_transitive_roles(&source, &[negative]).contains("r"));
+        let guarded = clause([Atom::Role("t".into(), var_x(), var_y()),
+            Atom::Concept("A".into(), var_y())], [Atom::Concept("B".into(), var_x())]);
+        assert!(!endpoint_only_transitive_roles(&source, &[guarded]).contains("r"));
+    }
+}
+
+#[cfg(test)]
+mod inverse_transitivity_probe_tests {
+    use super::*;
+    fn role(r: &str, a: &str, b: &str) -> Atom {
+        Atom::Role(r.into(), Term::Var(a.into()), Term::Var(b.into()))
+    }
+    fn transitive() -> DLClause {
+        clause([role("R","x","y"),role("R","y","z")], [role("R","x","z")])
+    }
+    fn bridge(r: &str, s: &str) -> DLClause {
+        clause([role(r,"x","y")], [role(s,"y","x")])
+    }
+    #[test]
+    fn converse_transitivity_requires_equivalence_and_closes_aliases() {
+        let mut axioms=vec![transitive(),bridge("R","S")];
+        assert_eq!(detect_role_chains(&axioms).trans,vec!["R"]);
+        axioms.extend([bridge("S","R"),bridge("S","T"),bridge("T","S")]);
+        assert_eq!(detect_role_chains(&axioms).trans,vec!["R","S","T"]);
+    }
+    #[test]
+    fn guarded_and_ground_bridges_do_not_establish_converse_equivalence() {
+        let mut guarded=bridge("S","R");
+        guarded.body.push(Atom::Concept("Guard".into(),var_x()));
+        let axioms=vec![transitive(),bridge("R","S"),guarded];
+        assert_eq!(detect_role_chains(&axioms).trans,vec!["R"]);
+        let ground=|r: &str,s: &str| clause(
+            [Atom::Role(r.into(),Term::Ind("a".into()),Term::Ind("b".into()))],
+            [Atom::Role(s.into(),Term::Ind("b".into()),Term::Ind("a".into()))]);
+        assert_eq!(detect_role_chains(&[transitive(),ground("R","S"),ground("S","R")]).trans,vec!["R"]);
     }
 }
