@@ -25,6 +25,8 @@ def main():
     parser.add_argument('--cap', type=int)
     parser.add_argument('--timeout', type=int, default=45)
     parser.add_argument('--route', choices=['auto', 'ht_bridge'], default='auto')
+    parser.add_argument('--ground-source', action='store_true', help='Probe the existing exact source compiler.')
+    parser.add_argument('--dump-typed', action='store_true', help='Save the converted input for admission diagnosis.')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     flags = dict(KM_HT_DDB='1', KM_HT_NATIVE_FULL='1', KM_CACHE_CONFORMANCE='1',
@@ -33,6 +35,10 @@ def main():
                  OMP_NUM_THREADS='1', RAYON_NUM_THREADS='1')
     if args.cap is not None:
         flags['KM_HT_SATURATION_BUDGET_CAP_S'] = str(args.cap)
+    if args.ground_source:
+        flags['KM_GROUND_RULE_SOURCE'] = '1'
+    if args.dump_typed:
+        flags['KM_DUMP_TIN'] = str((args.output / 'typed-input.json').resolve())
     environment = {k: v for k, v in os.environ.items() if not k.startswith('KM_')}
     environment.update(flags)
     cpu = min(os.sched_getaffinity(0))

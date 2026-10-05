@@ -101,7 +101,13 @@ impl IriRegistry {
         // it. Escape only registry-owned source names; generated symbols never
         // pass through this registry. The inverse `full_iri` mapping preserves
         // the exact public IRI.
-        let base = if reserved_internal_prefix(&raw_base) {
+        // A legal IRI can end at a namespace separator. Its empty local part
+        // must not become an empty internal entity identifier: native ABox
+        // coverage deliberately rejects those. Keep the full-IRI owner and
+        // use the ordinary collision handling for the replacement name.
+        let base = if raw_base.is_empty() && !full.is_empty() {
+            "km_src_empty_iri".to_string()
+        } else if reserved_internal_prefix(&raw_base) {
             format!("km_src_{raw_base}")
         } else {
             raw_base.clone()
@@ -182,6 +188,27 @@ fn reserved_internal_prefix(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_separator_iris_keep_nonempty_collision_safe_owned_names() {
+        let sources = [
+            "http://first.example/", "http://second.example#",
+            "http://third.example/#", "http://fourth.example#km_src_empty_iri",
+        ];
+        for order in [sources.to_vec(), sources.into_iter().rev().collect()] {
+            let mut reg = IriRegistry::new();
+            let mut names = std::collections::HashSet::new();
+            for full in order {
+                let name = reg.short(&format!("<{full}>"));
+                assert!(!name.is_empty());
+                assert!(!reserved_internal_prefix(&name));
+                assert!(names.insert(name.clone()), "distinct IRIs must remain distinct");
+                assert_eq!(reg.full_iri(&name), full);
+                assert!(reg.is_named_iri(&name));
+                assert_eq!(reg.short(full), name);
+            }
+        }
+    }
 
     #[test]
     fn source_names_that_look_generated_are_typed_as_named() {
@@ -312,7 +339,7 @@ mod borrowed_lookup_tests {
     }
 
     #[test]
-    fn borrowed_probe_matches_the_owned_reference_on_every_spelling() {
+    fn borrowed_probe_matches_the_owned_reference_on_unchanged_spellings() {
         let spellings = [
             "<http://a.example/onto#Cell>",
             "<http://b.example/onto#Cell>",
@@ -337,12 +364,12 @@ mod borrowed_lookup_tests {
             "<http://x.example#aux_A>",
             "<http://z.example#Cell>",
             "<http://z.example/#Cell>",
-            "<http://z.example/Cell#>",
+            // Nonempty IRIs with empty local parts intentionally receive new
+            // names; their ownership/collision contract has a separate test.
             "<http://a.example/onto#Cell__ns>",
             "<http://q.example#Cell__ns>",
             "<http://q.example#Cell>",
             "<urn:isbn:123>",
-            "<http://a.example/onto#>",
         ];
         let mut reference = ReferenceRegistry::default();
         let mut registry = IriRegistry::new();

@@ -1,0 +1,16 @@
+{
+  "source_manifest_sha256": "a05d2c9cbf2bdac5acd13f240c009e6e355a2d1820c767318c16cfa1b65b6a9f",
+  "source_files_rechecked": 778,
+  "binary_sha256": "09bf32a4e57b61293d6c113c1106848c59ca555005e2e5ccaa7b9574d6d4df7c",
+  "local_binary": "/tmp/agent/km-v150-diagnostics/km-empty-iri-09bf32a4e57b",
+  "production_profile": true,
+  "build_log_sha256": "fe80bcb9e0a0749c7a293c35befee9e8db182aec6323e4edd31440368de4776c",
+  "configured_library_tests": {
+    "passed": 2708,
+    "failed": 0,
+    "ignored": 8,
+    "log_sha256": "3fc6cd319e075981c281fe26b4377ee0ec54c2f3bdb4270e13be6d22e8ce4f57",
+    "environment_sha256": "63a9e1647dae97fdc874a34f154e6a0f1dd02f8306bc6331f943a4d9c4f2c607"
+  },
+  "release_approved": false
+}

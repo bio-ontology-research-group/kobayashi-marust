@@ -1,0 +1,29 @@
+{
+  "diagnostic_only": true,
+  "source_sha256": "c9f00cbbf9c897096ea3ce006cf5b0fc0db5d92b76df042cbf94491b2619f97b",
+  "binary_sha256": "73fa6674e6cca16ccbfa0bbd766890e9560aa91192eb4f9991dcecd1abf5cece",
+  "runner_sha256": "72d59b17356d22e6aa1196b45d99eb6953568a6c1e2ed68c2cf85f770be12cf8",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_PROGRESS": "1",
+    "KM_TIMING": "1",
+    "KM_HT_STATS": "1",
+    "KM_ROUTE": "auto",
+    "KM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_GROUND_RULE_SOURCE": "1"
+  },
+  "cpu_affinity": [
+    0
+  ],
+  "timeout_s": 45,
+  "timed_out": true,
+  "returncode": -9,
+  "wall_s": 45.14395253290422,
+  "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "282997553d98084011ddd46107c3bcd521d871613a43b541380691da68ae3273",
+  "partial_pass_discarded": false
+}

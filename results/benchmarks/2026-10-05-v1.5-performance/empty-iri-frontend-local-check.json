@@ -1,0 +1,39 @@
+{
+  "old_binary_sha256": "639f70f8321387966d0f3b9b23fdbadaefacbdbc9e2d51fab2325accb76e3589",
+  "new_binary_sha256": "09bf32a4e57b61293d6c113c1106848c59ca555005e2e5ccaa7b9574d6d4df7c",
+  "runner_sha256": "25954c9f6247257145c741a773267f473486571d8dcc3977554307379c81e369",
+  "flags": {
+    "KM_ROUTE": "manual",
+    "KM_NOMINALS": "1",
+    "KM_TRIGGER_ABSORB": "1",
+    "KM_ABSORB": "0"
+  },
+  "rows": [
+    {
+      "source": "/tmp/agent/km-v150-diagnostics/nominal-route-probes/ore_ont_10080.owl",
+      "source_sha256": "8a643f05e93950e834e9cc154f5a77445bc1351e9f8705e151d25a959687b515",
+      "renaming": {
+        "": "km_src_empty_iri",
+        "__nom__": "__nom__km_src_empty_iri"
+      },
+      "old_sha256": "6933be744500a633b5da48245df3dee23a6a91da382021daab390567407aa162",
+      "new_sha256": "299b82a705bbb819f30e98c63ec8934110e1a40686f1a59ac1aae30fee761cd8",
+      "old_meta_sha256": "8d9dc7ddc05a4294f55b60b27a4d390e837563fc6521c527f138e15615fa5685",
+      "new_meta_sha256": "8a3666194009386d3d3b91d330c1ec7b35a45e04a53578ed29b38442ce283373",
+      "byte_identical": false,
+      "equal_after_source_bound_renaming": true
+    },
+    {
+      "source": "/tmp/agent/km-v150-diagnostics/nominal-route-probes/ore_ont_11378.owl",
+      "source_sha256": "c9f00cbbf9c897096ea3ce006cf5b0fc0db5d92b76df042cbf94491b2619f97b",
+      "renaming": {},
+      "old_sha256": "5b85cc98bab17c344b4015b152bf61605ecbf8e7c2b77772b67ca16285cd93e1",
+      "new_sha256": "5b85cc98bab17c344b4015b152bf61605ecbf8e7c2b77772b67ca16285cd93e1",
+      "old_meta_sha256": "760909fdbfb32209289d6b5cd3912560cf89893498a2eb3ce55fedf719808e7e",
+      "new_meta_sha256": "760909fdbfb32209289d6b5cd3912560cf89893498a2eb3ce55fedf719808e7e",
+      "byte_identical": true,
+      "equal_after_source_bound_renaming": true
+    }
+  ],
+  "scope": "Only the listed sources; this is not a full-corpus frontend gate."
+}

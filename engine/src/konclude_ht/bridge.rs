@@ -12390,6 +12390,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // The bridge has no typed data-domain object. Decline before constructing
     // an arena instead of treating a fixed datatype as an ordinary class.
     if has_fixed_datatype_object_position(tin) {
+        if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            eprintln!("BRIDGE-INPUT-DEFER: a fixed datatype occurs in an object position");
+        }
         return None;
     }
     let source_mode = trigger_absorb
@@ -12409,9 +12412,15 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // target of the tautology R <= top is semantically inert for the certified
     // component-ABox path, so it need not make that path defer.
     if has_builtin_top_role(tin) && !independent_abox_elided {
+        if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            eprintln!("BRIDGE-INPUT-DEFER: universal role requires an exact supported source path");
+        }
         return None;
     }
     if has_any_nominal_input(tin) && !native_nominals {
+        if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            eprintln!("BRIDGE-INPUT-DEFER: nominal metadata is not covered by the native source path");
+        }
         return None;
     }
     // Native ABox saturation is scheduled separately, immediately before the
@@ -20294,6 +20303,22 @@ mod tests {
             "M's saturation label cannot rule out an unabsorbed H definition");
         assert!(outcome.certain_subsumers[h].is_some(),
             "the subject itself is not an unresolved equivalent subsumer");
+    }
+
+    #[test]
+    fn terminal_separator_individual_retains_native_abox_coverage() {
+        let ofn = format!("{PREFIX} Declaration(Class(:A)) Declaration(Class(:B)) \
+            Declaration(NamedIndividual(<http://example.org/individual/>)) \
+            ClassAssertion(:A <http://example.org/individual/>) SubClassOf(:A :B))");
+        let frontend = crate::frontend::ofn_to_clauses(&ofn).expect("valid source");
+        let mut env = bridge_ofn(&ofn);
+        assert!(crate::orchestrate::cb_to_ht::install_nominal_abox(
+            &mut env.tin, &frontend.nominal_abox,
+        ));
+        assert!(native_nominal_metadata_covered(&env.tin, true));
+        let individual = &env.tin.nominal_abox.individuals[0].individual;
+        assert_eq!(frontend.iri_map.get(individual).map(String::as_str),
+                   Some("http://example.org/individual/"));
     }
 
     #[test]

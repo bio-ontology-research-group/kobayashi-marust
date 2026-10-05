@@ -366,6 +366,7 @@ done
     cargo test --release --lib certified_input_coverage_matches_the_lean_truth_table -- --nocapture
     cargo test --release --lib conditional_full_nominal_filler_preserves_asserted_type_subsumption -- --nocapture
     cargo test --release --lib unfinished_saturation_seeds_cannot_publish_a_taxonomy -- --nocapture
+    cargo test --release --lib terminal_separator -- --nocapture
     cargo test --release --lib s07_successor_work_budget_preserves_pending_work_and_allows_a_finite_drain -- --nocapture
     cargo test --release --lib s07_successor_deadline_interrupts_cyclic_qualified_notifications -- --nocapture
     cargo test --release --lib regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture

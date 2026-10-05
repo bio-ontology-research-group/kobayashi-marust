@@ -54,9 +54,17 @@ fn plan(text: &str) -> Option<&'static str> {
     }
     // Give ground-source compilation a separate class-count cost bound;
     // keep the existing native/numeric scheduling bounds above unchanged.
-    let bounded_data = source.distinct_classes <= 1024 && source.distinct_individuals <= 512
-        && source.logical_axioms <= 4_000 && source.imports == 0;
-    if !bounded_data || !(1..=512).contains(&count("DataPropertyAssertion"))
+    let data_assertions = count("DataPropertyAssertion");
+    // A large terminology with a sparse data ABox can still have a cheap exact
+    // reduction. The file-size bound above and the compiler's instance limit
+    // remain in force; this only widens which complete-or-defer attempt runs.
+    let bounded_terminology = (source.distinct_classes <= 1024
+        && source.logical_axioms <= 4_000)
+        || (source.distinct_classes <= 4096 && source.logical_axioms <= 40_000
+            && data_assertions <= 16);
+    let bounded_data = bounded_terminology && source.distinct_individuals <= 512
+        && source.imports == 0;
+    if !bounded_data || !(1..=512).contains(&data_assertions)
         || source.unsupported_rule_axioms != 0 {
         return None;
     }
@@ -101,8 +109,15 @@ mod tests {
         assert_eq!(plan(source), Some("KM_GROUND_RULE_SOURCE"));
         assert_eq!(plan(&source.replace("\"first\"", "\"first\"^^<urn:unknown>")), None);
         assert_eq!(plan(&source.replace("Ontology(", "Ontology(Import(<urn:missing>)")), None);
-        let oversized = source.replace("Ontology(", &format!("Ontology({}",
+        let sparse_large = source.replace("Ontology(", &format!("Ontology({}",
             (0..1025).map(|i| format!("Declaration(Class(:C{i})) ")).collect::<String>()));
+        assert_eq!(plan(&sparse_large), Some("KM_GROUND_RULE_SOURCE"));
+        let dense_large = sparse_large.replace("Ontology(", &format!("Ontology({}",
+            (0..15).map(|i| format!("DataPropertyAssertion(:name :document \"extra{i}\") "))
+                .collect::<String>()));
+        assert_eq!(plan(&dense_large), None);
+        let oversized = source.replace("Ontology(", &format!("Ontology({}",
+            (0..4097).map(|i| format!("Declaration(Class(:C{i})) ")).collect::<String>()));
         assert_eq!(plan(&oversized), None);
     }
 

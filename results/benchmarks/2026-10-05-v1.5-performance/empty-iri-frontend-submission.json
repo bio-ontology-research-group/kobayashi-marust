@@ -1,0 +1,9 @@
+{
+  "job_id": 53312770,
+  "observed_state": "PENDING",
+  "observed_at": "2026-10-05T23:02:00.007822+00:00",
+  "script_sha256": "6e1f4667197f0ba0be13928b624f10b6dac082fe12e6969397238fc9bebe4f22",
+  "files_manifest_sha256": "85defc0f57faf74400d48b32b057632d65f8f0893e69d1a8342bed8c7c1a1759",
+  "full_corpus": 1920,
+  "scope": "Frontend preservation only; not classification release acceptance."
+}
