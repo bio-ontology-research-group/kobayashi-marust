@@ -3,13 +3,16 @@
   "standard_build": {
     "session_id": 25225,
     "log": "/tmp/agent/km-v150-diagnostics/extension-deadline-standard-build.log",
-    "status": "running"
+    "status": "completed",
+    "exit_code": 0,
+    "binary_sha256": "3365b5c33f14eef483bdc3bd5d3ca0ecb8945158dab547f2f72349dc0bc78ee1"
   },
   "intermediate_ht_gate": {
     "session_id": 78233,
     "log": "/tmp/agent/km-v150-diagnostics/extension-deadline-ht-gate.log",
-    "status": "running",
-    "scope": "Started before cleanup repair; do not use as exact-final-source certification. Rerun all four gates against pinned manifest."
+    "status": "completed",
+    "scope": "Started before cleanup repair; do not use as exact-final-source certification. Rerun all four gates against pinned manifest.",
+    "exit_code": 0
   },
   "next_steps": [
     "Complete standard build and check immutable artifact hash.",
@@ -17,5 +20,23 @@
     "Measure repaired candidate with a bounded saturation budget on the frozen full corpus.",
     "Continue nominal-route coverage work and incremental reuse implementation."
   ],
-  "release_approved": false
+  "release_approved": false,
+  "final_certification": {
+    "session_id": 65479,
+    "status": "completed",
+    "driver": "/tmp/agent/km-v150-diagnostics/certify-successor-deadline.py",
+    "receipt": "successor-deadline-certification-receipt.json",
+    "scope": "All four gates with source hashes checked before and after each gate.",
+    "exit_code": 0
+  },
+  "full_audit": {
+    "job_id": "53306225",
+    "status": "submitted",
+    "flags": {
+      "KM_HT_DDB": "1",
+      "KM_HT_NATIVE_FULL": "1",
+      "KM_CACHE_CONFORMANCE": "1",
+      "KM_HT_SATURATION_BUDGET_CAP_S": "1"
+    }
+  }
 }

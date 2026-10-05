@@ -1,0 +1,17 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "successor-deadline-candidate-3365b5c33f14",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-successor-deadline-3365b5c33f14",
+      "sha256": "3365b5c33f14eef483bdc3bd5d3ca0ecb8945158dab547f2f72349dc0bc78ee1"
+    }
+  ],
+  "source_manifest_sha256": "a4ef3186e2dbf1931b033a9196af496e8047bc1d0fcb627c486f4ae6d6ac7266",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_HT_SATURATION_BUDGET_CAP_S": "1"
+  }
+}

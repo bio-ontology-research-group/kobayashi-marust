@@ -1,0 +1,7 @@
+{
+  "observed_at": "2026-10-05T21:29:30.989698+00:00",
+  "returncode": 0,
+  "stdout": "run_successor_deadline_candidate.py: OK\nsuccessor-deadline-candidate.sbatch: OK\nsuccessor-deadline-candidate-artifact.json: OK\nsuccessor-deadline-source-manifest.json: OK\nsuccessor-deadline-certification-receipt.json: OK\n3365b5c33f14eef483bdc3bd5d3ca0ecb8945158dab547f2f72349dc0bc78ee1  km-successor-deadline-3365b5c33f14\n53306225\n",
+  "stderr": "",
+  "job_id": "53306225"
+}
