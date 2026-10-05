@@ -17,24 +17,27 @@
   },
   "standard_build": {
     "session_id": 10524,
-    "status": "running",
-    "log": "/tmp/agent/km-v150-diagnostics/successor-work-budget-standard-build.log"
+    "status": "completed",
+    "log": "/tmp/agent/km-v150-diagnostics/successor-work-budget-standard-build.log",
+    "exit_code": 0,
+    "binary_sha256": "639f70f8321387966d0f3b9b23fdbadaefacbdbc9e2d51fab2325accb76e3589",
+    "immutable_binary": "/tmp/agent/km-v150-diagnostics/km-successor-work-budget-639f70f83213"
   },
   "certification": {
     "session_id": 56008,
-    "status": "running",
+    "status": "completed",
     "receipt": "successor-work-budget-certification-receipt.json",
-    "driver": "/tmp/agent/km-v150-diagnostics/certify-successor-work-budget.py"
+    "driver": "/tmp/agent/km-v150-diagnostics/certify-successor-work-budget.py",
+    "exit_code": 0
   },
   "full_audit_preceding_binary": "53309442",
   "worker_timeout_profile": "53309995",
   "release_approved": false,
   "next_steps": [
-    "Poll standard-build session 10524 and certification session 56008; never restart live work.",
-    "Verify source hashes and pin the optimized binary after successful completion.",
-    "Repeat the 15167 default-budget check with the optimized binary before preparing a full candidate.",
-    "Inspect full audit 53309442 and diagnostic job 53309995 without changing their frozen artifacts.",
-    "Use all 1920 inputs and every comparator for release claims; incremental requirements remain outstanding."
+    "Prepare an immutable full-corpus candidate from the already pinned and certified 639f70f83213 binary; later diagnostics-only source edits are not part of that binary.",
+    "Inspect full audit 53309442 and diagnostic job 53309995 without modifying their artifacts.",
+    "Diagnose native admission refusals before broadening routing.",
+    "All release and incremental-reuse targets remain mandatory."
   ],
   "diagnostics": {
     "status": "passed",
@@ -46,5 +49,16 @@
     "receipt": "successor-work-budget-diagnostics.json",
     "data_source_cases": 5,
     "data_source_receipt": "successor-work-budget-data-source-check.json"
+  },
+  "optimized_diagnostic": {
+    "status": "passed",
+    "receipt": "successor-work-budget-standard-check.json",
+    "case": "ore_ont_15167",
+    "references": [
+      "konclude",
+      "hermit",
+      "openllet",
+      "jfact"
+    ]
   }
 }

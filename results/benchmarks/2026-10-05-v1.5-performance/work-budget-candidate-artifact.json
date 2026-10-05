@@ -1,0 +1,17 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "successor-work-budget-639f70f83213",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-successor-work-budget-639f70f83213",
+      "sha256": "639f70f8321387966d0f3b9b23fdbadaefacbdbc9e2d51fab2325accb76e3589"
+    }
+  ],
+  "source_commit": "54c91c659008569c06b6be5ab1fd8befc85a64d6",
+  "source_manifest_sha256": "a58e2798297ab508e18ca3266f862ef3444527d8f2ec0ed485133be15dd0608c",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1"
+  }
+}
