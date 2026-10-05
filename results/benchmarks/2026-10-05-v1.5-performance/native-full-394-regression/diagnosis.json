@@ -1,0 +1,16 @@
+{
+  "ontology": "ore_ont_394",
+  "source_sha256": "957384bba4a91be4b5bce0747347285fd239f3a75795bc210ceca7240cf8d415",
+  "missing_pairs": 4,
+  "extra_pairs": 0,
+  "cause_boundary": "KM_HT_NATIVE_FULL plus saturation cache; DDB and retained completion-base reuse not required to reproduce. Exact internal cause remains under investigation.",
+  "minimal_expected": [
+    "urn:test:A",
+    "urn:test:C"
+  ],
+  "production_default_affected": false,
+  "candidate_promotion_blocked": true,
+  "minimal_source": "nominal-filler.ofn",
+  "reproduce": "KM_HT_NATIVE_FULL=1 km classify --route ht_bridge nominal-filler.ofn",
+  "control": "KM_HT_NATIVE_FULL=1 KM_HT_NO_SATCACHE=1 km classify --route ht_bridge nominal-filler.ofn"
+}

@@ -38,6 +38,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMConcreteWorkerAdapters \
         ContextCalculus.KMConcreteAutomaticSupervisor \
         ContextCalculus.KMIncrementalExplanationCertification \
+        ContextCalculus.IncrementalHornActivation \
         ContextCalculus.KMAtomicABoxPublication \
         ContextCalculus.ABoxBooleanInclusion \
         ContextCalculus.EndpointTransitivity \
@@ -76,6 +77,11 @@ if grep -q 'sorryAx' "$surface_log"; then
 fi
 
 for theorem in \
+    IncrementalHornActivation.derives_bounded \
+    IncrementalHornActivation.transfer_inactive_removed \
+    IncrementalHornActivation.inactive_delta_preserves_closure \
+    IncrementalHornActivation.entails_iff_derives \
+    IncrementalHornActivation.inactive_delta_preserves_entailment \
     ABoxBooleanInclusion.union_operand_included \
     ABoxBooleanInclusion.intersection_operand_included \
     ABoxBooleanInclusion.equivalence_directions \

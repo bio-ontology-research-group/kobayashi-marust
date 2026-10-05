@@ -200,3 +200,25 @@ numeric IDs are resolved to concept names. Evidence is in
 This is not a production fingerprint relaxation or a speedup result. The
 source-metadata completeness boundary, handling of every typed field, Lean
 proof, and full update-panel comparisons remain necessary.
+
+## Abstract preservation proof and newly detected candidate defect
+
+The routing gate now includes five `IncrementalHornActivation` theorems:
+closed bounds contain every derivation, inactive removals preserve derivations,
+inactive symmetric differences preserve closure, Horn entailment agrees with
+derivability, and inactive deltas preserve entailment. The gate passes without
+`sorryAx`; `horn-activation-certification-receipt.json` pins the proof and gate.
+OWL lowering and implementation correspondence are still outstanding.
+
+Updated partial classification snapshots cover 1,344 native-candidate inputs
+and 647 validation-cache-candidate inputs. The native candidate has eleven
+newly verified successes but two historical successes not reproduced. One is
+1123, discussed above. The other, ORE 394, is a confirmed taxonomy defect: four
+entailed pairs are missing. A three-axiom nominal-filler fixture reproduces it.
+The flag ablation isolates `KM_HT_NATIVE_FULL`, independently of DDB. Disabling
+saturation-cache use restores both the minimal and real-source answers;
+disabling retained-base reuse does not. The precise faulty cache inference is
+still under investigation. `native-full-394-regression/` retains the fixture
+and evidence. The opt-in candidate cannot be promoted while this defect exists,
+regardless of its speed or completed certification gates. The full runs remain
+useful for detecting other defects; their frozen configurations are unchanged.

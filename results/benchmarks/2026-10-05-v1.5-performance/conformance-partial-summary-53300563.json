@@ -1,48 +1,55 @@
 {
   "job_id": "53300563",
   "variant": "conformance",
-  "complete_chunks": 11,
-  "recorded_inputs": 501,
+  "complete_chunks": 18,
+  "recorded_inputs": 647,
   "full_measurement_complete": false,
   "candidate": {
-    "verified_solved": 422,
-    "mean_s": 7.084123911283098,
-    "median_s": 0.36730464082211256
+    "verified_solved": 547,
+    "mean_s": 6.967651409136176,
+    "median_s": 0.36440287344157696
   },
   "baseline_sha256": "3c35154735b5d5bc2d8aaed9ee2ff1ac881d940f060fcd362b58f45184f0da48",
   "status_counts": {
-    "executed_unvalidated": 423,
-    "process_error": 63,
-    "timeout": 15
+    "executed_unvalidated": 548,
+    "process_error": 80,
+    "timeout": 19
   },
   "audit_errors": [],
   "comparisons": {
     "km": {
       "shared": {
-        "verified_solved": 422,
-        "mean_s": 7.084123911283098,
-        "median_s": 0.36730464082211256
+        "verified_solved": 546,
+        "mean_s": 6.9780615873348255,
+        "median_s": 0.36378464102745056
       },
-      "baseline_shared_mean_s": 10.984624018848507,
-      "baseline_shared_median_s": 0.6707097990438342,
+      "baseline_shared_mean_s": 11.711171635201426,
+      "baseline_shared_median_s": 0.678131703287363,
       "lost_verified": [],
-      "gained_verified": []
+      "gained_verified": [
+        "ore_ont_16124"
+      ]
     },
     "konclude": {
       "shared": {
-        "verified_solved": 421,
-        "mean_s": 6.602547310602424,
-        "median_s": 0.36440287344157696
+        "verified_solved": 546,
+        "mean_s": 6.596112542123885,
+        "median_s": 0.36378464102745056
       },
-      "baseline_shared_mean_s": 2.924544565481379,
-      "baseline_shared_median_s": 0.2867923229932785,
+      "baseline_shared_mean_s": 2.8294357955182865,
+      "baseline_shared_median_s": 0.276634325273335,
       "lost_verified": [
         "ore_ont_10230",
         "ore_ont_12566",
         "ore_ont_12723",
         "ore_ont_1342",
+        "ore_ont_13545",
         "ore_ont_13700",
+        "ore_ont_13799",
         "ore_ont_13954",
+        "ore_ont_1397",
+        "ore_ont_14334",
+        "ore_ont_14379",
         "ore_ont_10517",
         "ore_ont_10929",
         "ore_ont_11477",
@@ -54,13 +61,14 @@
     },
     "rustdl": {
       "shared": {
-        "verified_solved": 322,
-        "mean_s": 5.067539066348155,
+        "verified_solved": 416,
+        "mean_s": 4.894746452623692,
         "median_s": 0.36730464082211256
       },
-      "baseline_shared_mean_s": 5.17988614001028,
+      "baseline_shared_mean_s": 5.396224616386462,
       "baseline_shared_median_s": 0.39789605140686035,
       "lost_verified": [
+        "ore_ont_12898",
         "ore_ont_10838",
         "ore_ont_1199"
       ],
@@ -75,6 +83,8 @@
         "ore_ont_10388",
         "ore_ont_12653",
         "ore_ont_12698",
+        "ore_ont_12824",
+        "ore_ont_12836",
         "ore_ont_12916",
         "ore_ont_12925",
         "ore_ont_12948",
@@ -88,21 +98,44 @@
         "ore_ont_13219",
         "ore_ont_13230",
         "ore_ont_13242",
+        "ore_ont_13276",
+        "ore_ont_13299",
         "ore_ont_13383",
         "ore_ont_13405",
         "ore_ont_13483",
         "ore_ont_13526",
+        "ore_ont_13584",
         "ore_ont_13680",
         "ore_ont_13704",
         "ore_ont_13759",
+        "ore_ont_13805",
+        "ore_ont_13846",
         "ore_ont_13859",
         "ore_ont_13898",
+        "ore_ont_13991",
+        "ore_ont_14012",
         "ore_ont_1422",
         "ore_ont_14223",
         "ore_ont_14272",
         "ore_ont_14285",
         "ore_ont_14321",
         "ore_ont_14351",
+        "ore_ont_14380",
+        "ore_ont_1445",
+        "ore_ont_1461",
+        "ore_ont_14684",
+        "ore_ont_14742",
+        "ore_ont_14746",
+        "ore_ont_1478",
+        "ore_ont_14800",
+        "ore_ont_14818",
+        "ore_ont_14848",
+        "ore_ont_14897",
+        "ore_ont_14936",
+        "ore_ont_14981",
+        "ore_ont_15010",
+        "ore_ont_15030",
+        "ore_ont_15058",
         "ore_ont_10391",
         "ore_ont_10407",
         "ore_ont_10425",
@@ -112,6 +145,12 @@
         "ore_ont_1059",
         "ore_ont_10621",
         "ore_ont_10681",
+        "ore_ont_15331",
+        "ore_ont_15623",
+        "ore_ont_16167",
+        "ore_ont_1618",
+        "ore_ont_1646",
+        "ore_ont_16461",
         "ore_ont_10702",
         "ore_ont_10807",
         "ore_ont_10860",
@@ -169,17 +208,19 @@
     },
     "elk": {
       "shared": {
-        "verified_solved": 370,
-        "mean_s": 5.542881025283321,
-        "median_s": 0.3415996413677931
+        "verified_solved": 482,
+        "mean_s": 5.433673800143154,
+        "median_s": 0.33962481562048197
       },
-      "baseline_shared_mean_s": 10.56870177365034,
-      "baseline_shared_median_s": 4.2739150039851665,
+      "baseline_shared_mean_s": 10.760896911311322,
+      "baseline_shared_median_s": 4.265749544836581,
       "lost_verified": [
         "ore_ont_10080",
         "ore_ont_10230",
+        "ore_ont_12898",
         "ore_ont_1342",
         "ore_ont_13700",
+        "ore_ont_13799",
         "ore_ont_10568",
         "ore_ont_10838",
         "ore_ont_10926",
@@ -204,17 +245,30 @@
         "ore_ont_13219",
         "ore_ont_13230",
         "ore_ont_13242",
+        "ore_ont_13276",
+        "ore_ont_13306",
         "ore_ont_13383",
         "ore_ont_13404",
+        "ore_ont_13584",
         "ore_ont_13737",
         "ore_ont_13859",
         "ore_ont_13898",
         "ore_ont_13912",
+        "ore_ont_14012",
+        "ore_ont_14066",
         "ore_ont_14351",
+        "ore_ont_1461",
+        "ore_ont_1478",
+        "ore_ont_14818",
+        "ore_ont_14897",
+        "ore_ont_14936",
+        "ore_ont_15010",
         "ore_ont_10407",
         "ore_ont_10503",
         "ore_ont_10621",
         "ore_ont_10689",
+        "ore_ont_1646",
+        "ore_ont_16461",
         "ore_ont_10702",
         "ore_ont_10860",
         "ore_ont_10952",
@@ -244,12 +298,12 @@
   },
   "status_by_admission": {
     "checks_passed": {
-      "executed_unvalidated": 423,
-      "process_error": 9,
-      "timeout": 15
+      "executed_unvalidated": 548,
+      "process_error": 12,
+      "timeout": 19
     },
     "invalid_input": {
-      "process_error": 54
+      "process_error": 68
     }
   },
   "release_approved": false,

@@ -1,0 +1,10 @@
+Ontology(
+ Declaration(Class(<urn:test:A>))
+ Declaration(Class(<urn:test:B>))
+ Declaration(Class(<urn:test:C>))
+ Declaration(ObjectProperty(<urn:test:r>))
+ Declaration(NamedIndividual(<urn:test:a>))
+ SubClassOf(<urn:test:A> ObjectSomeValuesFrom(<urn:test:r> ObjectOneOf(<urn:test:a>)))
+ ClassAssertion(<urn:test:B> <urn:test:a>)
+ SubClassOf(ObjectSomeValuesFrom(<urn:test:r> <urn:test:B>) <urn:test:C>)
+)

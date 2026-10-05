@@ -1,0 +1,34 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "a138c2c1243e21e6e086e6d8e3a3ec3ad6f7d6b8adb2ff7d4a93239e7019de73",
+  "records": [
+    {
+      "ddb": false,
+      "native": false,
+      "exit_code": 0,
+      "wall_s": 0.31555844098329544,
+      "output_sha256": "6fa9419baeaf26ba0fb669c94484d1b17854812ef5a314f0e1ed11761469ce7d"
+    },
+    {
+      "ddb": true,
+      "native": false,
+      "exit_code": 0,
+      "wall_s": 0.26585649396292865,
+      "output_sha256": "6fa9419baeaf26ba0fb669c94484d1b17854812ef5a314f0e1ed11761469ce7d"
+    },
+    {
+      "ddb": false,
+      "native": true,
+      "exit_code": 0,
+      "wall_s": 0.11519247805699706,
+      "output_sha256": "8249e9617e95ca74bee009cdb50a1307a56513c798bfef0a2608bb148588e497"
+    },
+    {
+      "ddb": true,
+      "native": true,
+      "exit_code": 0,
+      "wall_s": 0.11508868495002389,
+      "output_sha256": "8249e9617e95ca74bee009cdb50a1307a56513c798bfef0a2608bb148588e497"
+    }
+  ]
+}

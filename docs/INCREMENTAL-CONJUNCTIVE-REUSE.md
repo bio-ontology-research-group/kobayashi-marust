@@ -75,3 +75,14 @@ this in production, the source metadata must account for every premise,
 all `TInput` fields need explicit treatment, and proof and broader measurements
 remain required. See `source-activation-*.json` and
 `probe_source_activation.py` in the v1.5 performance evidence directory.
+
+## Abstract Lean proof
+
+`lean/ContextCalculus/IncrementalHornActivation.lean` proves that a bound
+closed under both Horn rule sets contains every derivable fact, and that an
+inactive symmetric difference preserves every derivation and positive Horn
+entailment. The derivable facts form the least model. A clash may be represented
+as a distinguished atom. The routing gate builds and audits all five theorems;
+the gate passes without `sorryAx`. This does not yet prove the OWL lowering,
+typed-state completeness or Rust bit-matrix correspondence. It is a component
+of the required certification boundary, not certification of the optimization.
