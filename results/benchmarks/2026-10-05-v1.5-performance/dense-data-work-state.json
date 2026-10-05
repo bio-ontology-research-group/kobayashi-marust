@@ -1,5 +1,5 @@
 {
-  "status": "All local gates passed; full frozen dense-routing candidate sweep submitted.",
+  "status": "Local correctness/certification gates passed; full classification queued. Frontend preservation established on 1919/1920 inputs; old forced-nominal memory failure unresolved.",
   "source_manifest_sha256": "c4ac70b0d661eadd913485c80fdc05836e3d93a935db27611cac0292efaffef2",
   "diagnostic_tests": {
     "data_source": {
@@ -33,5 +33,13 @@
     "Investigate whether compact exact functional-data owner inequalities can avoid thousands of literal singleton merges; require model-equivalence proof before implementing a new source reduction."
   ],
   "standard_binary": "/tmp/agent/km-v150-diagnostics/km-dense-data-ba955555af71",
-  "frontend_large_result": "Old forced-nominal frontend also exceeds 64 GiB on 15687; preservation remains unresolved there. Do not treat matching resource failures as equivalence."
+  "frontend_large_result": "Old forced-nominal frontend also exceeds 64 GiB on 15687; preservation remains unresolved there. Do not treat matching resource failures as equivalence.",
+  "frontend_reconciliation": {
+    "inputs": 1920,
+    "preserved": 1919,
+    "unresolved": [
+      "ore_ont_15687"
+    ],
+    "full_frontend_preservation_passed": false
+  }
 }

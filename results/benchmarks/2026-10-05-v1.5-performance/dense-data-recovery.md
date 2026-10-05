@@ -60,3 +60,11 @@ cap and a separate 64-GiB validation cap on ORE 15687. This remains unresolved;
 matching resource failures do not prove equivalence. No classification limit
 or failure denominator has changed. Full classification measurements and the
 v1.5.0/v1.5.1 acceptance criteria remain outstanding.
+
+The completed reconciliation accounts for all 1,920 inputs: 1,654 have
+byte-identical output, 54 match after source-bound renaming, three additionally
+require outer clause reordering, and 208 retain identical invalid-input
+refusals. ORE 15687 remains unresolved. Thus preservation is established for
+1,919 inputs, and the full frontend gate is explicitly **not passed**.
+Candidate classification sweep **53315705** uses the frozen full corpus and
+original limits, with the singleton-scan experiment disabled.
