@@ -1,0 +1,17 @@
+{
+  "job_id": "53316202",
+  "runner": "run_empty_iri_frontend_auto.py",
+  "files_manifest": "empty-iri-frontend-auto-files.sha256",
+  "source_sha256": "e8e00e63ab8bbef80de3059389b565613c3a79c0210c9ed710cc8703d4849791",
+  "limits": {
+    "memory_gib": 20,
+    "per_frontend_seconds": 240,
+    "outer_seconds": 600
+  },
+  "scope": "Single-input automatic frontend byte-identity check; does not replace the failed forced-mode audit.",
+  "checker_self_test": {
+    "identical_output": "accepted",
+    "changed_output": "rejected"
+  },
+  "release_approved": false
+}
