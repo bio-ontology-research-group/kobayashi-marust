@@ -3,6 +3,7 @@
 //! DL profile checker: remaining global restrictions still require audit.
 //! User-entry APIs enforce declarations separately from generated documents.
 use std::collections::{BTreeMap, BTreeSet};
+use std::cell::RefCell;
 use super::sexpr::{tokens, Node, Parser};
 
 mod roles;
@@ -115,7 +116,46 @@ fn expand(datatype: &str, prefixes: &BTreeMap<String, String>) -> String {
 
 /// Check the implemented source constraints, retaining DL-safe rule axioms.
 /// Passing this function is not yet a complete OWL 2 DL profile certificate.
+const VALIDATED_SOURCE_CACHE_LIMIT: usize = 8 * 1024 * 1024;
+
+thread_local! {
+    // One exact successful document per calling thread. No hash collision or
+    // caller-supplied admission flag can authorize a different source.
+    static VALIDATED_SOURCE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
 pub fn check_source(text: &str) -> Result<(), String> {
+    let timing = std::env::var_os("KM_CONFORMANCE_TIMING").is_some();
+    let start = timing.then(std::time::Instant::now);
+    let mut reused = false;
+    let result = if std::env::var_os("KM_CACHE_CONFORMANCE").is_some() {
+        VALIDATED_SOURCE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            reused = cache.as_deref() == Some(text);
+            check_source_cached(text, &mut cache)
+        })
+    } else {
+        check_source_uncached(text)
+    };
+    if let Some(start) = start {
+        eprintln!("CONFORMANCE seconds={:.6} bytes={} reused={} ok={}",
+            start.elapsed().as_secs_f64(), text.len(), reused, result.is_ok());
+    }
+    result
+}
+
+fn check_source_cached(text: &str, cache: &mut Option<String>) -> Result<(), String> {
+    if cache.as_deref() == Some(text) {
+        return Ok(());
+    }
+    check_source_uncached(text)?;
+    if text.len() <= VALIDATED_SOURCE_CACHE_LIMIT {
+        *cache = Some(text.to_owned());
+    }
+    Ok(())
+}
+
+fn check_source_uncached(text: &str) -> Result<(), String> {
     check_literal_datatypes(text)?;
     km_owl_functional_syntax::validate(text)?;
     let prefixes = prefixes(text)?;
@@ -164,6 +204,36 @@ pub fn check_literal_datatypes(text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn exact_validation_cache_preserves_rejections_after_valid_input() {
+        let valid = "Ontology(Declaration(Class(<urn:A>)))";
+        let mut cache = None;
+        check_source_cached(valid, &mut cache).unwrap();
+        check_source_cached(valid, &mut cache).unwrap();
+        for invalid in [
+            "Ontology(Declaration(Class(<urn:A>))) trailing",
+            "Ontology(Annotation(<urn:p> \"x\"^^rdfs:Literal))",
+            "Ontology(TransitiveObjectProperty(<urn:r>) SubClassOf(<urn:A> ObjectMaxCardinality(1 <urn:r>)))",
+        ] {
+            let expected = check_source_uncached(invalid);
+            assert!(expected.is_err());
+            assert_eq!(check_source_cached(invalid, &mut cache), expected);
+            assert_eq!(cache.as_deref(), Some(valid));
+        }
+        let replacement = "Ontology(Declaration(Class(<urn:B>)))";
+        check_source_cached(replacement, &mut cache).unwrap();
+        assert_eq!(cache.as_deref(), Some(replacement));
+        check_source_cached(valid, &mut cache).unwrap();
+    }
+
+    #[test]
+    fn exact_validation_cache_does_not_retain_oversized_sources() {
+        let source = format!("Ontology(){}", " ".repeat(VALIDATED_SOURCE_CACHE_LIMIT));
+        let mut cache = None;
+        check_source_cached(&source, &mut cache).unwrap();
+        assert!(cache.is_none());
+    }
+
     #[test]
     fn public_prefix_declarations_are_unique_and_cannot_rebind_standard_names() {
         for source in [

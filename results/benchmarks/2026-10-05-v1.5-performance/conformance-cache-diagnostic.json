@@ -1,0 +1,211 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "afc81401d4f6aca046046fe48ca2cc05abd129aa823094c5be484c97d6394e56",
+  "records": [
+    {
+      "ontology": "4961",
+      "repetition": 0,
+      "mode": "uncached",
+      "wall_s": 0.51609938708134,
+      "validation_s": 0.056907,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "4961",
+      "repetition": 0,
+      "mode": "cached",
+      "wall_s": 0.529234093031846,
+      "validation_s": 0.015966999999999995,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    },
+    {
+      "ontology": "4961",
+      "repetition": 1,
+      "mode": "cached",
+      "wall_s": 0.48946708906441927,
+      "validation_s": 0.016045,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    },
+    {
+      "ontology": "4961",
+      "repetition": 1,
+      "mode": "uncached",
+      "wall_s": 0.5212517919717357,
+      "validation_s": 0.046584,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "4961",
+      "repetition": 2,
+      "mode": "uncached",
+      "wall_s": 0.5601153530878946,
+      "validation_s": 0.046958,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "4961",
+      "repetition": 2,
+      "mode": "cached",
+      "wall_s": 0.5621439330279827,
+      "validation_s": 0.016266999999999997,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    },
+    {
+      "ontology": "9303",
+      "repetition": 0,
+      "mode": "uncached",
+      "wall_s": 0.5419462299905717,
+      "validation_s": 0.377673,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "9303",
+      "repetition": 0,
+      "mode": "cached",
+      "wall_s": 0.28074531094171107,
+      "validation_s": 0.12757299999999996,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    },
+    {
+      "ontology": "9303",
+      "repetition": 1,
+      "mode": "cached",
+      "wall_s": 0.3020882970886305,
+      "validation_s": 0.127128,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    },
+    {
+      "ontology": "9303",
+      "repetition": 1,
+      "mode": "uncached",
+      "wall_s": 0.545671229949221,
+      "validation_s": 0.387544,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "9303",
+      "repetition": 2,
+      "mode": "uncached",
+      "wall_s": 0.5895480340113863,
+      "validation_s": 0.40814900000000004,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "9303",
+      "repetition": 2,
+      "mode": "cached",
+      "wall_s": 0.2834418429993093,
+      "validation_s": 0.128832,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    },
+    {
+      "ontology": "9944",
+      "repetition": 0,
+      "mode": "uncached",
+      "wall_s": 2.339872688986361,
+      "validation_s": 0.702476,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "9944",
+      "repetition": 0,
+      "mode": "cached",
+      "wall_s": 1.837807020987384,
+      "validation_s": 0.22836299999999998,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    },
+    {
+      "ontology": "9944",
+      "repetition": 1,
+      "mode": "cached",
+      "wall_s": 1.7800997879821807,
+      "validation_s": 0.257189,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    },
+    {
+      "ontology": "9944",
+      "repetition": 1,
+      "mode": "uncached",
+      "wall_s": 2.2038243100978434,
+      "validation_s": 0.6880310000000001,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "9944",
+      "repetition": 2,
+      "mode": "uncached",
+      "wall_s": 2.277294608997181,
+      "validation_s": 0.686629,
+      "validation_calls": 3,
+      "cache_hits": 0,
+      "same_answer": true
+    },
+    {
+      "ontology": "9944",
+      "repetition": 2,
+      "mode": "cached",
+      "wall_s": 1.87874345399905,
+      "validation_s": 0.275891,
+      "validation_calls": 3,
+      "cache_hits": 2,
+      "same_answer": true
+    }
+  ],
+  "sources": {
+    "4961": "cb8e4bf8ad01662b688b0fcf66e4e00509759772f51a93e83e5780a31729e739",
+    "9303": "c715db5039d9c2f70a93af27be49d1135a473ee9c7f9047557cdb8ad3d76efe5",
+    "9944": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87"
+  },
+  "source_manifest_sha256": "7978e4bc0601c571a784b162b4c6eda3d68b3b72341fe2935d959e2f1512d2ec",
+  "tests": {
+    "passed": 51,
+    "failed": 0,
+    "log_sha256": "6b492c6b9ae8da4330acb0d314e48d11b2c48be8c4119d39d9fda5a4cf5a8e7a"
+  },
+  "summary": {
+    "4961": {
+      "uncached": 0.5212517919717357,
+      "cached": 0.529234093031846
+    },
+    "9303": {
+      "uncached": 0.545671229949221,
+      "cached": 0.2834418429993093
+    },
+    "9944": {
+      "uncached": 2.277294608997181,
+      "cached": 1.837807020987384
+    }
+  }
+}

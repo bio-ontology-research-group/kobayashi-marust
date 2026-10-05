@@ -12,6 +12,7 @@
   "audit_dependency": "aftercorr:53294013",
   "remaining_array_indices": "3-31,33-41",
   "next_actions": [
+    "Poll production build session 43025. Verify conformance-cache source manifest, pin new artifact, stage conformance-candidate runner/checksums and submit unchanged full 1920-input panel. NOT YET SUBMITTED.",
     "Poll 1123 regression ablation 53299394: same binary, four flag combinations, three repetitions. Candidate times out where v145 verified in 209.9 seconds; do not promote.",
     "Poll routing diagnostic 53298748 and compare paired verified times across all 32 selected inputs before changing in-process CB scheduling.",
     "Poll full candidate job 53298536; collect all 1920 outcomes and compute coverage, arithmetic mean and median using unchanged verification rules.",
@@ -77,5 +78,9 @@
   "routing_probe_status": "submitted",
   "incremental_index_status": "implemented_10_ht_and_20_source_tests_pass_original_9944_same_answers_and_receipts",
   "candidate_regression_ablation_job": "53299394",
-  "incremental_hypergraph_diagnostic": "8 affected concepts vs 15225 with conjunctive predicate activation including typed RBox; no production reuse authorized"
+  "incremental_hypergraph_diagnostic": "8 affected concepts vs 15225 with conjunctive predicate activation including typed RBox; no production reuse authorized",
+  "conformance_cache_status": "opt_in_passes_51_tests_and_18_diagnostic_classifications_identical_answers",
+  "conformance_cache_production_build_session": 43025,
+  "conformance_cache_production_build_log": "/tmp/agent/km-v150-diagnostics/conformance-cache-production-build.log",
+  "candidate_regression_attribution": "Pinned v144 and v145 also time out on current 1123 reruns; do not attribute historical coverage loss to candidate flags."
 }

@@ -1,0 +1,31 @@
+{
+  "ontology": "ore_ont_1123",
+  "group": "shared_time_deciles",
+  "selection_sha256": "93c75f96fc22696194f84474995405eeb3326f4368fa7934b6e44ad22f5bab3a",
+  "inventory_sha256": "8a8acde19ddc8bee21f3d155cb6fc174cde0c4565ab63bb882f92e7397f1c12b",
+  "runner_sha256": "85cc4c6cb0594993fb81d35b88df5adebd237697f5db37725b9a133721bed84f",
+  "outcomes": [
+    {
+      "version": "v145",
+      "repetition": 0,
+      "status": "timeout",
+      "wall_s": 240.06247763894498,
+      "peak_bytes": 398434304
+    },
+    {
+      "version": "v144",
+      "repetition": 0,
+      "status": "timeout",
+      "wall_s": 240.07351575233042,
+      "peak_bytes": 309157888
+    },
+    {
+      "version": "v144",
+      "repetition": 1,
+      "status": "timeout",
+      "wall_s": 240.0729362666607,
+      "peak_bytes": 398966784
+    }
+  ],
+  "semantic_validation": "pending"
+}
