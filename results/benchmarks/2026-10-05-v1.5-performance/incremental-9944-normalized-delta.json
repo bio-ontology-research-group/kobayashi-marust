@@ -1,0 +1,33 @@
+{
+  "diagnostic_only": true,
+  "removed": [
+    {
+      "body": [
+        {
+          "concept": "FBbt_00007445",
+          "kind": "concept",
+          "term": {
+            "kind": "var",
+            "name": "x"
+          }
+        }
+      ],
+      "head": [
+        {
+          "concept": "Q_2623",
+          "kind": "concept",
+          "term": {
+            "kind": "var",
+            "name": "x"
+          }
+        }
+      ]
+    }
+  ],
+  "added": [],
+  "old_clauses": 40787,
+  "new_clauses": 40786,
+  "source_sha256": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+  "revised_sha256": "8a00ea8beefa1c01b80adf9884167959a8c54dd41a411520ad77ee526a8beb33",
+  "finding": "A single unary concept implication deletion triggers the undirected component fallback. Need proof-supported or locality-based retention before reducing invalidation."
+}
