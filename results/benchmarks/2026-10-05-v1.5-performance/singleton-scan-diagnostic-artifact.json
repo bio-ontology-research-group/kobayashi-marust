@@ -1,0 +1,18 @@
+{
+  "binary": "/tmp/agent/km-v150-diagnostics/km-singleton-scan-diagnostic-76ec1110c771",
+  "binary_sha256": "76ec1110c77191271c6194cb34849d7f7959cf38ebbea6275d5e79323624c575",
+  "release_lto": false,
+  "codegen_units": 16,
+  "u02_sha256": "95863cb3537f16bdf288c3e81bafd153976fa8d1d752941ad2dfcafe99eae62a",
+  "option": "KM_HT_SINGLETON_SCAN_AFTER_MERGE=1",
+  "default_enabled": false,
+  "scope": "Diagnostic scheduling alternative only; not release-certified.",
+  "tests": {
+    "passed": 1474,
+    "failed": 0,
+    "ignored": 7,
+    "filter": "konclude_ht::",
+    "option_enabled": true,
+    "log_sha256": "a3363a4e96a7662f8b73c306bf5a0643709813fc1edcbc315cf01d738fc5715d"
+  }
+}

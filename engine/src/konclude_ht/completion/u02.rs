@@ -2047,6 +2047,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         cache: &mut SingletonLabelCache,
     ) -> bool {
         let mut merged_any = false;
+        // Diagnostic scheduling alternative: after the first mutation, use
+        // the existing exact per-concept scan instead of rebuilding every
+        // singleton's index after each merge. Both paths select the first two
+        // live positive carriers in node order with their current dependencies.
+        let scan_after_merge = std::env::var_os("KM_HT_SINGLETON_SCAN_AFTER_MERGE").is_some();
         let singleton_concepts = self.singleton_concepts.clone(); // tiny (distinct literal values)
         // A dry first scan needs no label snapshots or descriptor journals.
         // Use the differential-tested reference index initially; allocate the
@@ -2184,7 +2189,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     return true; // a clash raised during the merge unwinds to the drive
                 }
                 if indexed.is_some() {
-                    indexed = Some(self.singleton_first_carriers_cached(calc_alg_context, cache));
+                    indexed = if scan_after_merge {
+                        None
+                    } else {
+                        Some(self.singleton_first_carriers_cached(calc_alg_context, cache))
+                    };
                 }
             }
         }

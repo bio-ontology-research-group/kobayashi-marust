@@ -1,0 +1,35 @@
+{
+  "status": "All four Lean gates, configured library tests, and both standard automatic recoveries passed. Full classification pending.",
+  "source_manifest_sha256": "c4ac70b0d661eadd913485c80fdc05836e3d93a935db27611cac0292efaffef2",
+  "diagnostic_tests": {
+    "data_source": {
+      "passed": 5,
+      "failed": 0,
+      "log_sha256": "ef90aee34cb6c8d987f45e49cf900fa35fd8a20f5203fb69f3f30ce5b4ec7e84"
+    },
+    "singleton_scan_option": {
+      "passed": 1474,
+      "failed": 0,
+      "ignored": 7,
+      "log_sha256": "a3363a4e96a7662f8b73c306bf5a0643709813fc1edcbc315cf01d738fc5715d"
+    }
+  },
+  "source_snapshot_locked_for_builds": true,
+  "local_sessions": {},
+  "cluster_jobs": {
+    "dense_data_explicit_probe": 53313783,
+    "frontend_all": 53312770,
+    "frontend_clause_order": 53313782,
+    "frontend_refusals": 53314782,
+    "frontend_large_validation": 53314986
+  },
+  "release_approved": false,
+  "next": [
+    "Reconcile full frontend gate with exact refusal, clause-order and larger-memory validation receipts.",
+    "Launch frozen full classification with dense routing; compare complete audited metrics to all required competitors.",
+    "Keep singleton scan option disabled by default until repeated paired evidence justifies promotion.",
+    "Incremental reuse goal remains outstanding."
+  ],
+  "standard_binary": "/tmp/agent/km-v150-diagnostics/km-dense-data-ba955555af71",
+  "frontend_large_result": "Old forced-nominal frontend also exceeds 64 GiB on 15687; preservation remains unresolved there. Do not treat matching resource failures as equivalence."
+}

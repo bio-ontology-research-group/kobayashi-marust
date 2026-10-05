@@ -62,9 +62,17 @@ fn plan(text: &str) -> Option<&'static str> {
         && source.logical_axioms <= 4_000)
         || (source.distinct_classes <= 4096 && source.logical_axioms <= 40_000
             && data_assertions <= 16);
-    let bounded_data = bounded_terminology && source.distinct_individuals <= 512
-        && source.imports == 0;
-    if !bounded_data || !(1..=512).contains(&data_assertions)
+    let small_data_abox = bounded_terminology && source.distinct_individuals <= 512
+        && (1..=512).contains(&data_assertions);
+    // Dense functional data ABoxes with a small terminology also fit the
+    // native retained-base schedule. Bound object names plus asserted values
+    // together, leaving room below its conditional-full individual limit.
+    let dense_data_abox = source.distinct_classes <= 512
+        && source.logical_axioms <= 20_000
+        && source.distinct_individuals.saturating_add(data_assertions) <= 8_000
+        && (513..=4_096).contains(&data_assertions)
+        && count("FunctionalDataProperty") > 0;
+    if !(small_data_abox || dense_data_abox) || source.imports != 0
         || source.unsupported_rule_axioms != 0 {
         return None;
     }
@@ -86,6 +94,25 @@ mod tests {
     const SOURCE: &str = r#"Ontology(Declaration(Class(<urn:C>))
         InverseFunctionalObjectProperty(<urn:r>) FunctionalDataProperty(<urn:p>)
         DataPropertyAssertion(<urn:p> <urn:a> "red"^^xsd:string))"#;
+    #[test]
+    fn dense_functional_data_abox_requires_bounded_complete_compilation() {
+        let assertions = (0..513).map(|i|
+            format!("DataPropertyAssertion(:p :a{i} \"red\"^^xsd:string) "))
+            .collect::<String>();
+        let source = format!("Prefix(:=<urn:test:>) Ontology(Declaration(Class(:C)) \
+            FunctionalDataProperty(:p) {assertions})");
+        assert_eq!(plan(&source), Some("KM_GROUND_RULE_SOURCE"));
+        assert_eq!(plan(&source.replace("FunctionalDataProperty(:p)", "")), None);
+        assert_eq!(plan(&source.replace("xsd:string", "<urn:unknown>")), None);
+        assert_eq!(plan(&source.replace("Ontology(", "Ontology(Import(<urn:missing>)")), None);
+        let large_tbox = source.replace("Ontology(", &format!("Ontology({}",
+            (0..513).map(|i| format!("Declaration(Class(:C{i})) ")).collect::<String>()));
+        assert_eq!(plan(&large_tbox), None);
+        let oversized = source.replace("Ontology(", &format!("Ontology({}",
+            (0..8_000).map(|i| format!("Declaration(NamedIndividual(:extra{i})) "))
+                .collect::<String>()));
+        assert_eq!(plan(&oversized), None);
+    }
     #[test]
     fn scheduling_requires_complete_reduction_and_preserves_rule_fences() {
         assert_eq!(plan(SOURCE), Some("KM_DATA_ABOX_PROJECT"));

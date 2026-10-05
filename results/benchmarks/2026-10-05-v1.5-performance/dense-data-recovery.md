@@ -1,0 +1,62 @@
+# Dense data-ABox routing and singleton-index experiment
+
+The frozen worker traces put ORE 15680 and 4609 on the nominal fallback after
+the direct bridge declines their data ABoxes. Each has 205 source classes,
+2,111 data assertions, about 4,282 named individuals, and 13,556 logical axioms.
+The existing exact ground-source compiler supports them, but the automatic
+scheduling hint excluded their size.
+
+Explicit source-compiler job **53313783**, using the original 240-second,
+20-GiB, one-CPU limits, verifies ORE 15680 in 61.65 seconds and ORE 4609 in
+60.36 seconds. Both agree with independent full-DL references. The same job
+times out on the larger-terminology ORE 11378 and 12191; these remain outside
+the new dense scheduling bound. This four-case diagnostic is not a release
+performance panel.
+
+Automatic scheduling now permits dense functional data ABoxes with at most
+512 classes, 20,000 logical axioms, 4,096 positive data assertions, and 8,000
+combined source individuals plus data assertions. The 4-MiB source cap,
+complete source compilation, import/rule handling, and native coverage checks
+remain mandatory. This changes which exact attempt runs, not its semantics.
+The standard artifact `ba955555af71` verifies both inputs through automatic
+routing with Konclude, HermiT, Openllet, and RustDL agreement.
+
+Five scheduling tests pass. The configured library suite passes 2,709 tests
+with eight ignored. All four exact-source Lean gates pass without `sorryAx`.
+Source and binary hashes are in `dense-data-source-manifest.json`,
+`dense-data-certification-receipt.json`, and `dense-data-standard-check.json`.
+Local diagnostic timings are not release speedup measurements; the first
+standard check briefly overlapped another local diagnostic on the same CPU.
+
+An optional `KM_HT_SINGLETON_SCAN_AFTER_MERGE=1` experiment replaces repeated
+whole-index rebuilding after a singleton merge with the existing direct
+per-concept scan. It selects the same first two live positive carriers in
+node order and reads their current dependency track points. The reference
+index/direct-scan differential tests cover shared labels, local shadowing,
+descriptor changes, dependencies, node liveness, and rollback boundaries.
+All 1,474 hypertableau tests pass with this option enabled. One local pair on
+ORE 15680 gives 44.12 seconds with the option and 47.93 seconds without it,
+with byte-identical complete answers. The option remains disabled by default;
+repeated paired measurements are still required before promotion.
+
+Frontend validation of the preceding IRI repair remains separate. The strict
+audit exposes clause-order changes on ORE 13404 and 6446: nominal defining
+clauses are sorted by internal proxy name, so renaming changes their outer
+order. `compare_frontend_clause_multiset.py` requires the exact same clause
+multiset after source-bound renaming, preserving multiplicity and every
+ordered body, head, term, role chain, and other metadata field. Corruption
+checks reject dropped/duplicated clauses, changed concepts, and reversed
+bodies. Follow-up job **53313782** checks the retained failed outputs.
+
+The original invalid-input check passed 199 of 212 cases. Nine failures came
+from the checker's overly narrow diagnostic spelling; four inputs pass the
+standalone frontend but fail later classification admission. Revised job
+**53314782** requires identical old/new return codes and output bytes for all
+212 inputs, accepting the documented line-numbered refusal format. It does
+not count any invalid input as a solved ontology.
+
+The old forced-nominal frontend exceeds both the original 20-GiB comparison
+cap and a separate 64-GiB validation cap on ORE 15687. This remains unresolved;
+matching resource failures do not prove equivalence. No classification limit
+or failure denominator has changed. Full classification measurements and the
+v1.5.0/v1.5.1 acceptance criteria remain outstanding.

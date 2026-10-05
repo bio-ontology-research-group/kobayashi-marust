@@ -27,6 +27,8 @@ def main():
     parser.add_argument('--route', choices=['auto', 'ht_bridge'], default='auto')
     parser.add_argument('--ground-source', action='store_true', help='Probe the existing exact source compiler.')
     parser.add_argument('--dump-typed', action='store_true', help='Save the converted input for admission diagnosis.')
+    parser.add_argument('--singleton-scan-after-merge', action='store_true',
+                        help='Probe exact per-concept singleton scans after the first merge.')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     flags = dict(KM_HT_DDB='1', KM_HT_NATIVE_FULL='1', KM_CACHE_CONFORMANCE='1',
@@ -37,6 +39,8 @@ def main():
         flags['KM_HT_SATURATION_BUDGET_CAP_S'] = str(args.cap)
     if args.ground_source:
         flags['KM_GROUND_RULE_SOURCE'] = '1'
+    if args.singleton_scan_after_merge:
+        flags['KM_HT_SINGLETON_SCAN_AFTER_MERGE'] = '1'
     if args.dump_typed:
         flags['KM_DUMP_TIN'] = str((args.output / 'typed-input.json').resolve())
     environment = {k: v for k, v in os.environ.items() if not k.startswith('KM_')}

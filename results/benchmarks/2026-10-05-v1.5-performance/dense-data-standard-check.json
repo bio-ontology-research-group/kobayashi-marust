@@ -1,0 +1,17 @@
+{
+  "source_manifest_sha256": "c4ac70b0d661eadd913485c80fdc05836e3d93a935db27611cac0292efaffef2",
+  "source_files_rechecked": 778,
+  "binary_sha256": "ba955555af717f0dd880ba21c2a011172767b73056057f1c5b24aa748408e180",
+  "local_binary": "/tmp/agent/km-v150-diagnostics/km-dense-data-ba955555af71",
+  "production_profile": true,
+  "build_log_sha256": "b1738602885b03c571e7ee07a0b78688f1fc3b8bc11aa0be76b27288809c8f95",
+  "release_approved": false,
+  "configured_library_tests": {
+    "passed": 2709,
+    "failed": 0,
+    "ignored": 8,
+    "log_sha256": "cffc30591df7fef93729079aeffd4ef88cce4ed3c9828f47fa264815912425a1",
+    "environment_sha256": "52f3f4bada6c95e1409501f0a271ebcb8ca774df16bab365801fcb4d18a54e01"
+  },
+  "local_timing_caveat": "The first standard automatic check briefly overlapped another bounded diagnostic on the same CPU. Local times are validation diagnostics, not benchmark speedup evidence."
+}

@@ -1,0 +1,38 @@
+{
+  "full_manifest_sha256": "0309377d05dfd0cd81eb46050416272fbd52b16e77f21d9a37d732b352817fb4",
+  "scope": "Four diagnostic source compiler attempts; no release performance claim.",
+  "inputs": [
+    {
+      "ontology": "ore_ont_11378",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_11378.owl",
+      "sha256": "c9f00cbbf9c897096ea3ce006cf5b0fc0db5d92b76df042cbf94491b2619f97b",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/5/ore_ont_11378",
+      "reference_audit_sha256": "6ce3a58107428187d2874e1a8db9f291d9d58a799a6fc74f1539eb6982dfe138"
+    },
+    {
+      "ontology": "ore_ont_12191",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12191.owl",
+      "sha256": "f2ed0b80b6adc2df9a31e71d6b0ae291ee08c35b8423dee52a298169e4d67a9b",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/8/ore_ont_12191",
+      "reference_audit_sha256": "d5b4ec12c50589412fa1629433343d4e5b780c7babc84725d0f2ae2e55e7b8a5"
+    },
+    {
+      "ontology": "ore_ont_15680",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15680.owl",
+      "sha256": "d2596f52dbc00edc31cc26a503b879321a5079a8c537b0e978e9765e06372579",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/22/ore_ont_15680",
+      "reference_audit_sha256": "d59b0a1621f27d3bb2611a9c8af8ceb548b76f09f2f829cad1fa5a1fcdd92731"
+    },
+    {
+      "ontology": "ore_ont_4609",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4609.owl",
+      "sha256": "b40edab3458fd7db2ab67340a6c8858f1a61f46cfdce3c76b83ad156202aad21",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/38/ore_ont_4609",
+      "reference_audit_sha256": "ef65ae15f3b90e0276424ba3bb5a2fd35625803a3fd97b83d9e42c49e4039234"
+    }
+  ]
+}
