@@ -377,12 +377,39 @@ impl IncrementalBridgeClassifier {
         kind: HtChangeKind,
         input: TInput,
     ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
+        self.updated_typed_with_activation(candidate, changed_clauses, kind, input, false)
+    }
+
+    /// The caller must establish the positive Horn source-profile boundary for
+    /// both revisions. All other bridge clients retain component invalidation.
+    pub(crate) fn updated_typed_with_activation(
+        &self,
+        candidate: &[JClause],
+        changed_clauses: &[JClause],
+        kind: HtChangeKind,
+        input: TInput,
+        positive_horn_source: bool,
+    ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
         let side_fingerprint = bridge_side_fingerprint(&input)?;
         let queries = bridge_query_names(&input);
         let old_queries = bridge_query_names(&self.input);
         let side_changed = self.side_fingerprint != side_fingerprint || old_queries != queries;
-        let mut affected =
-            affected_concepts(&self.source_clauses, candidate, changed_clauses, &queries);
+        let activation = if positive_horn_source && !side_changed && !self.result.inconsistent
+            && !input.number && input.nominals.is_empty() && input.nominal_abox.is_empty()
+            && input.native_abox.is_empty() && input.rule_data_roles.is_none()
+            && input.rule_source_classes.is_none() && input.rule_source_abox.is_none()
+            && changed_clauses.iter().all(|c| !clause_symbols(c).iter().any(|s| matches!(s, Symbol::Role(_))))
+        {
+            // Roles are universally available in the abstraction. Their typed
+            // domains/ranges therefore contribute global concept premises.
+            input.role_domains.iter().chain(&input.role_ranges)
+                .map(|(_, id)| input.concepts.get(*id).cloned())
+                .collect::<Option<Vec<_>>>()
+                .and_then(|global| crate::incremental_activation::affected(
+                    &self.source_clauses, candidate, changed_clauses, &queries, &global))
+        } else { None };
+        let mut affected = activation.unwrap_or_else(||
+            affected_concepts(&self.source_clauses, candidate, changed_clauses, &queries));
         // A concept-only replacement has the same dependency boundary as an
         // addition plus a removal: `affected_concepts` walks both snapshots
         // from every removed and inserted symbol.  Rebuilding every query here
@@ -432,7 +459,12 @@ impl IncrementalBridgeClassifier {
                 .subsumptions
                 .retain(|subject, _| !affected.contains(subject));
             for (subject, supers) in rebuilt.subsumptions {
-                merged.subsumptions.insert(subject, supers);
+                // Source-level closure can emit incidental rows outside the
+                // requested subjects. Those rows are not a complete replacement
+                // for the exact retained taxonomy of an unaffected subject.
+                if affected.contains(&subject) {
+                    merged.subsumptions.insert(subject, supers);
+                }
             }
             for query in &queries {
                 merged.subsumptions.entry(query.clone()).or_default();

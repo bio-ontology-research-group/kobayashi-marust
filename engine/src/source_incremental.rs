@@ -573,7 +573,12 @@ impl SourceIncrementalClassifier {
                 crate::orchestrate::race::prepare_incremental_bridge(&candidate)
             })? {
                 let update = with_route_environment(&route_after, || {
-                    classifier.updated_typed(&candidate.clauses, &changed, kind, input)
+                    let activation = std::env::var_os("KM_INCREMENTAL_CONJUNCTIVE").is_some()
+                        && self.frontend.iri_map == candidate.iri_map
+                        && positive_bridge_activation_profile(&self.frontend)
+                        && positive_bridge_activation_profile(&candidate);
+                    classifier.updated_typed_with_activation(
+                        &candidate.clauses, &changed, kind, input, activation)
                 })?;
                 if let Err(error) = &update {
                     if std::env::var_os("KM_TIMING").is_some() {
@@ -1373,6 +1378,16 @@ fn generic_ht_adapter_allowed(route: &str) -> bool {
     route != "ht_bridge"
 }
 
+fn positive_bridge_activation_profile(frontend: &FrontendResult) -> bool {
+    let s = &frontend.profile.source;
+    s.abox_axioms == 0 && s.rule_axioms == 0 && s.distinct_individuals == 0
+        && s.declared_named_individuals == 0 && s.distinct_data_properties == 0
+        && s.declared_data_properties == 0 && s.datatype_constructors == 0
+        && s.min_cardinalities == 0 && s.max_cardinalities == 0 && s.exact_cardinalities == 0
+        && s.functional_role_axioms == 0 && s.inverse_functional_role_axioms == 0
+        && s.unions == 0 && s.complements == 0 && s.universals == 0 && s.has_self == 0
+}
+
 fn validate_incremental_source(source: &str) -> Result<(), String> {
     if crate::frontend::conformance::has_imports(source)? {
         return Err("cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into());
@@ -1752,6 +1767,48 @@ mod tests {
     use crate::orchestrate::Classification;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn partial_bridge_update_keeps_unaffected_role_chain_entailments() {
+        let _lock = lock_environment();
+        let axioms = "Declaration(Class(<urn:test:A>)) Declaration(Class(<urn:test:B>)) Declaration(Class(<urn:test:C>))
+            Declaration(Class(<urn:test:X>)) Declaration(Class(<urn:test:Y>))
+            Declaration(ObjectProperty(<urn:test:r>)) Declaration(ObjectProperty(<urn:test:s>)) Declaration(ObjectProperty(<urn:test:t>))
+            InverseObjectProperties(<urn:test:s> <urn:test:t>)
+            SubObjectPropertyOf(ObjectPropertyChain(<urn:test:r> <urn:test:r>) <urn:test:s>)
+            SubClassOf(<urn:test:A> ObjectSomeValuesFrom(<urn:test:r> ObjectSomeValuesFrom(<urn:test:r> <urn:test:B>)))
+            SubClassOf(ObjectSomeValuesFrom(<urn:test:s> <urn:test:B>) <urn:test:C>)
+            SubClassOf(<urn:test:X> <urn:test:Y>)";
+        let old = format!("Ontology({axioms})");
+        let new = format!("Ontology({axioms} SubClassOf(<urn:test:X> <urn:test:C>))");
+        super::with_route_environment("ht_bridge", || {
+            let before = super::normalize_selected(&old, "ht_bridge").unwrap();
+            let after = super::normalize_selected(&new, "ht_bridge").unwrap();
+            assert!(super::positive_bridge_activation_profile(&before));
+            assert!(super::positive_bridge_activation_profile(&after));
+            let prepare = |f: &crate::frontend::FrontendResult|
+                crate::orchestrate::race::prepare_incremental_bridge(f).unwrap();
+            let classifier = crate::incremental_ht::IncrementalBridgeClassifier::new_typed(
+                &before.clauses, prepare(&before)).unwrap();
+            let ids = (0..before.clauses.len() as u64).collect::<Vec<_>>();
+            let (removed, added) = clause_delta(&before.clauses, &ids, &after.clauses);
+            let mut changed: Vec<_> = removed.iter()
+                .map(|id| before.clauses[*id as usize].clone()).collect();
+            changed.extend(added);
+            let (updated, stats) = classifier.updated_typed_with_activation(
+                &after.clauses, &changed, crate::incremental_ht::HtChangeKind::Replacement,
+                prepare(&after), true).unwrap();
+            let fresh = crate::incremental_ht::IncrementalBridgeClassifier::new_typed(
+                &after.clauses, prepare(&after)).unwrap();
+            let actual = map_incremental_result(&after, updated.result());
+            let expected = map_incremental_result(&after, fresh.result());
+            assert!(stats.reused_queries > 0);
+            assert!(expected.subsumptions.contains(&["urn:test:A".into(), "urn:test:C".into()]));
+            assert_eq!(actual.subsumptions, expected.subsumptions);
+            assert_eq!(actual.unsatisfiable, expected.unsatisfiable);
+            assert_eq!(actual.consistent, expected.consistent);
+        }).unwrap();
+    }
 
     fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK

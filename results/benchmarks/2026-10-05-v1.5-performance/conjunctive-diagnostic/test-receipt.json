@@ -1,0 +1,29 @@
+{
+  "observed_at": "2026-10-05T20:24:04.999359+00:00",
+  "source_sha256": {
+    "engine/src/incremental_activation.rs": "a51a86d8ca7d5fbe26302d117f936284d2649c0d03408576cf38df2a845d9a4f",
+    "engine/src/incremental_ht.rs": "9ce9d5e071881ea5f47902f87bbc77c6288999d74bc688a78b5ebf2a8f160cb5",
+    "engine/src/source_incremental.rs": "b9b19e76ff232a51ad146d400d92484f311dd7613caf9c8fe58388acca5b6587",
+    "engine/src/lib.rs": "6ebdf9cb3a8278f8b9587b1d2ab0a9bd69d2053176b21c377216e8d6842ac9bf"
+  },
+  "tests": [
+    {
+      "opt_in": "enabled",
+      "command": "cargo test --release --manifest-path engine/Cargo.toml --lib incremental",
+      "lto": false,
+      "codegen_units": 16,
+      "result": "test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 2658 filtered out; finished in 0.56s",
+      "log_sha256": "b546aadaecd8d95ac0d463e394be88b8c9e814c2f2e7b8b07ae2e8d76f9f8105"
+    },
+    {
+      "opt_in": "disabled",
+      "command": "cargo test --release --manifest-path engine/Cargo.toml --lib incremental",
+      "lto": false,
+      "codegen_units": 16,
+      "result": "test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 2658 filtered out; finished in 0.57s",
+      "log_sha256": "7d67bc9f8192618c485d3c894ebd44bf661101a64d132c98eedf5ca8cac57a1a"
+    }
+  ],
+  "release_approved": false,
+  "remaining": "Exact-source Lean publication-boundary certification and repeated full update benchmark against fresh reasoning remain required."
+}

@@ -148,3 +148,40 @@ receipts and the trace. Its local timing is diagnostic only. This motivates
 finer dependency-supported invalidation, not removal of the typed-state
 guards. Prior-state restoration can help the restoration revisions, but
 would not satisfy the requirement to improve deletion revisions as well.
+
+## Conjunctive reuse prototype and current partial measurements
+
+The opt-in `KM_INCREMENTAL_CONJUNCTIVE=1` path preserves conjunctions during
+query-dependency analysis in a guarded positive Horn fragment. On ORE 9944,
+the single-axiom removal/restoration retains 8,004 of 8,008 query rows. All five
+revision answers match the retained full-rebuild baseline. Larger edits still
+rebuild because normalized definer names and typed fingerprints change.
+`conjunctive-diagnostic/` retains the failed initial merge result as well as
+the corrected comparison. The bridge merge now replaces only requested
+subjects; incidental partial rows must not overwrite complete retained rows.
+See `docs/INCREMENTAL-CONJUNCTIVE-REUSE.md` for scope and remaining proof work.
+The local timing sequence is not a comparison against fresh processes and
+cannot establish the v1.5.1 target.
+
+The snapshots `native-partial-summary-53298536.json` and
+`conformance-partial-summary-53300563.json` record 1,170 and 501 inputs,
+respectively. Both full 1,920-input Slurm jobs remain active. The first
+candidate has eight newly corroborated successes and one historical verified
+success not reproduced (1123; the separate ablation does not attribute this
+to the candidate flags). The validation-cache candidate's 422 shared verified
+KM cases improve from mean 10.985/median 0.671 seconds to 7.084/0.367 seconds.
+It still trails Konclude on their shared subset. Input order is not random,
+so these snapshots must not be extrapolated to the full corpus. Neither
+release objective is established.
+
+The incremental test group passes all 49 tests with the opt-in enabled and
+with it absent, including exhaustive small Horn theories and the partial
+role-chain taxonomy merge regression. The source-hashed test receipt is in
+`conjunctive-diagnostic/test-receipt.json`. Certification of the new reuse
+boundary is still pending; the optimization remains disabled by default.
+
+The completed routing diagnostic has 96 verified pairs over 32 selected
+inputs. Disabling the preliminary in-process engine has median paired runtime
+ratio 0.9988; mean times are 6.526 versus 6.477 seconds. This does not justify
+a global routing default change. `routing-probe-completion.json` records all
+paired times and chunk hashes.

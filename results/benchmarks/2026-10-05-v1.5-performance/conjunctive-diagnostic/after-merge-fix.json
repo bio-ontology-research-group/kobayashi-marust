@@ -1,0 +1,36 @@
+{
+  "diagnostic_only": true,
+  "wall_s": 6.3464710739208385,
+  "binary_sha256": "ce329dd4458dc1c18375e1bd24aac2b8732500ac40953a168838422b0ff5beb0",
+  "responses": [
+    {
+      "op": "init",
+      "status": "ok",
+      "receipt": null
+    },
+    {
+      "op": "replace",
+      "status": "ok",
+      "receipt": {
+        "added_normalized_clauses": 0,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 1,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 1,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    }
+  ],
+  "missing_pairs": 0,
+  "extra_pairs": 0,
+  "baseline_output_sha256": "3195fb69603070280aaac5585ecce63598a3abe156115eee92cdafc1e7b674ea"
+}

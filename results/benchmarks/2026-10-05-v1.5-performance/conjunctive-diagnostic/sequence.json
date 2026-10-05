@@ -1,0 +1,205 @@
+{
+  "diagnostic_only": true,
+  "records": [
+    {
+      "mode": "baseline",
+      "revision": 0,
+      "wall_s": 2.744938895921223,
+      "receipt": null,
+      "same_answer": true
+    },
+    {
+      "mode": "baseline",
+      "revision": 1,
+      "wall_s": 2.3131059729494154,
+      "receipt": {
+        "added_normalized_clauses": 0,
+        "added_rules": 0,
+        "invalidated_states": 15225,
+        "meaningful_incremental_update": false,
+        "removed_normalized_clauses": 1,
+        "removed_rules": 0,
+        "retained_states": 0,
+        "reused_edges": 0,
+        "reused_fixpoint": false,
+        "reused_subsumptions": 83281,
+        "revision": 1,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "exact_rebuild"
+      },
+      "same_answer": true
+    },
+    {
+      "mode": "baseline",
+      "revision": 2,
+      "wall_s": 2.24679953395389,
+      "receipt": {
+        "added_normalized_clauses": 1,
+        "added_rules": 0,
+        "invalidated_states": 15225,
+        "meaningful_incremental_update": false,
+        "removed_normalized_clauses": 0,
+        "removed_rules": 0,
+        "retained_states": 0,
+        "reused_edges": 0,
+        "reused_fixpoint": false,
+        "reused_subsumptions": 83281,
+        "revision": 2,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "exact_rebuild"
+      },
+      "same_answer": true
+    },
+    {
+      "mode": "baseline",
+      "revision": 3,
+      "wall_s": 2.1985812910133973,
+      "receipt": {
+        "added_normalized_clauses": 27103,
+        "added_rules": 0,
+        "invalidated_states": 8008,
+        "meaningful_incremental_update": false,
+        "removed_normalized_clauses": 27130,
+        "removed_rules": 0,
+        "retained_states": 0,
+        "reused_edges": 0,
+        "reused_fixpoint": false,
+        "reused_subsumptions": 83113,
+        "revision": 3,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "exact_rebuild"
+      },
+      "same_answer": true
+    },
+    {
+      "mode": "baseline",
+      "revision": 4,
+      "wall_s": 2.226563074043952,
+      "receipt": {
+        "added_normalized_clauses": 27130,
+        "added_rules": 0,
+        "invalidated_states": 8008,
+        "meaningful_incremental_update": false,
+        "removed_normalized_clauses": 27103,
+        "removed_rules": 0,
+        "retained_states": 0,
+        "reused_edges": 0,
+        "reused_fixpoint": false,
+        "reused_subsumptions": 83113,
+        "revision": 4,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "exact_rebuild"
+      },
+      "same_answer": true
+    },
+    {
+      "mode": "conjunctive",
+      "revision": 0,
+      "wall_s": 2.6239027010742575,
+      "receipt": null,
+      "same_answer": true
+    },
+    {
+      "mode": "conjunctive",
+      "revision": 1,
+      "wall_s": 1.9417953148949891,
+      "receipt": {
+        "added_normalized_clauses": 0,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 1,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 1,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      },
+      "same_answer": true
+    },
+    {
+      "mode": "conjunctive",
+      "revision": 2,
+      "wall_s": 2.0515928979730234,
+      "receipt": {
+        "added_normalized_clauses": 1,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 0,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 2,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      },
+      "same_answer": true
+    },
+    {
+      "mode": "conjunctive",
+      "revision": 3,
+      "wall_s": 1.9229513730388135,
+      "receipt": {
+        "added_normalized_clauses": 27103,
+        "added_rules": 0,
+        "invalidated_states": 8008,
+        "meaningful_incremental_update": false,
+        "removed_normalized_clauses": 27130,
+        "removed_rules": 0,
+        "retained_states": 0,
+        "reused_edges": 0,
+        "reused_fixpoint": false,
+        "reused_subsumptions": 83113,
+        "revision": 3,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "exact_rebuild"
+      },
+      "same_answer": true
+    },
+    {
+      "mode": "conjunctive",
+      "revision": 4,
+      "wall_s": 1.9825272599700838,
+      "receipt": {
+        "added_normalized_clauses": 27130,
+        "added_rules": 0,
+        "invalidated_states": 8008,
+        "meaningful_incremental_update": false,
+        "removed_normalized_clauses": 27103,
+        "removed_rules": 0,
+        "retained_states": 0,
+        "reused_edges": 0,
+        "reused_fixpoint": false,
+        "reused_subsumptions": 83113,
+        "revision": 4,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "exact_rebuild"
+      },
+      "same_answer": true
+    }
+  ],
+  "limitation": "One local sequence per mode, baseline retained session not fresh process. All five revision answers agree, but larger edits still rebuild and no release speed claim follows.",
+  "merge_fix_binary_sha256": "ce329dd4458dc1c18375e1bd24aac2b8732500ac40953a168838422b0ff5beb0"
+}

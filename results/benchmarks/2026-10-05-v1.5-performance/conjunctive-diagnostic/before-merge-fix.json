@@ -1,0 +1,41 @@
+{
+  "diagnostic_only": true,
+  "status": "failed_before_merge_fix",
+  "missing_pairs": 9227,
+  "extra_pairs": 0,
+  "missing_subject_count": 3230,
+  "first_run": {
+    "diagnostic_only": true,
+    "wall_s": 6.28075065696612,
+    "binary_sha256": "16ef2a4aa544656c8022c22a0ed13b28ba60339ee3ce415477cb0ae23c5b46f1",
+    "responses": [
+      {
+        "op": "init",
+        "status": "ok",
+        "receipt": null
+      },
+      {
+        "op": "replace",
+        "status": "ok",
+        "receipt": {
+          "added_normalized_clauses": 0,
+          "added_rules": 0,
+          "invalidated_states": 4,
+          "meaningful_incremental_update": true,
+          "removed_normalized_clauses": 1,
+          "removed_rules": 0,
+          "retained_states": 8004,
+          "reused_edges": 0,
+          "reused_fixpoint": true,
+          "reused_subsumptions": 74054,
+          "revision": 1,
+          "route_after": "ht_bridge",
+          "route_before": "ht_bridge",
+          "route_migrated": false,
+          "strategy": "ht_delta"
+        }
+      }
+    ]
+  },
+  "finding": "Incidental partial rows overwrote exact unaffected rows. Do not promote failing implementation."
+}
