@@ -99,118 +99,126 @@ These figures describe v1.4.4; the v1.4.5 benchmark results follow.
 
 ## v1.4.5 benchmarks
 
-**[Read the full benchmark report](results/benchmarks/2026-10-04-v1.4.5-comparative/benchmark-report-53234931.md)**, including
-all three panels, preparation costs, coverage, and the exact selected runs.
-The [evidence index](results/benchmarks/2026-10-04-v1.4.5-comparative/release-evidence-index.json) links the reports,
-source and binary manifests, validation receipts, and discrepancy reviews.
+**[Full benchmark results: counts, average and median times](results/benchmarks/2026-10-04-v1.4.5-comparative/benchmark-summary.md)**
+include all three panels and initialization costs.
+The [machine-readable summary](results/benchmarks/2026-10-04-v1.4.5-comparative/benchmark-counts-times.json) contains the
+individual times and references used for these tables.
 
-KM is compared with **ELK, HermiT, JFact, Konclude, MORe, Openllet, RustDL,
-Sequoia, and Whelk**. Measurements use one CPU, a 20-GiB process-tree memory
-limit, and 240 seconds per classification, update, or justification generation.
-Justification verification has a separate 240-second limit. Preparation costs
-are reported separately.
+**Limits: 240 seconds per attempt, 20 GiB memory, one CPU.** Times below are
+wall-clock seconds. “Average” is the arithmetic mean; “median” is the middle
+recorded time. Both use only the verified solved attempts in that row.
 
-| Panel | Workload | KM outcome |
-|---|---|---|
-| Classification | 1,920 unchanged inputs | 1,594 outputs, 212 invalid-input refusals, 44 worker time limits, 70 external timeouts |
-| Incremental reasoning | 80 selected sources; 79 prepared, five revisions, three repetitions | 1,149 cold and 1,031 retained outputs; all 395 prepared revisions audited |
-| Justifications | 80 selected sources; 124 queries from 42 sources, three repetitions | 336 independently verified justifications, 18 worker time-limit errors, 18 external timeouts |
+For classification and updates, **verified solved** means a complete audited
+answer with known consistency that agrees with at least one different full-DL
+reasoner (KM, HermiT, Konclude, Openllet, or JFact). Complete outputs without
+that corroboration appear only in the output column. This conservative count
+does not incorporate separate case-specific proofs or treat unknown consistency
+as agreement. For justifications, solved means independently verified source
+membership, entailment, and subset-minimality.
 
-Output counts alone do not establish correctness. Classification and update
-cost pairs require semantic agreement on the same input; justification pairs
-require independent verification for both results. Tables below give medians
-of **per-case right/left ratios**, not ratios of independent medians. A ratio
-below 1 means the right-hand method uses less time or memory on that paired
-subset. Pair counts differ, so rows are not an overall ranking.
+Failed and timed-out attempts remain in the denominators. The successful
+subsets differ between reasoners, so read the times together with the solved
+counts; a low average alone does not imply better overall coverage.
 
 ### Classification
 
-| Left | Right | Paired cases | Time right/left | Peak memory right/left |
-|---|---|---:|---:|---:|
-| ELK | KM | 1368 | 0.105 | 0.143 |
-| HermiT | KM | 1476 | 0.085 | 0.133 |
-| JFact | KM | 1069 | 0.028 | 0.085 |
-| KM | Konclude | 1589 | 0.629 | 2.348 |
-| KM | MORe | 0 | n/a | n/a |
-| KM | Openllet | 1344 | 17.687 | 8.704 |
-| KM | RustDL | 1195 | 0.595 | 0.838 |
-| KM | Sequoia | 627 | 13.115 | 12.752 |
-| KM | Whelk | 1334 | 13.623 | 8.155 |
+The corpus contains **1,920 inputs: 1,708 pass the input checks and 212 are
+invalid**. The table counts the 1,708 admitted inputs; invalid-input refusals
+are reported separately and do not count as solved ontologies.
 
-Only valid inputs with fully agreeing results enter this table. MORe's unknown
-consistency is not promoted to full agreement. Four inputs that completed in
-the preceding candidate run timed out in this run; those outcomes remain in
-the report. The [classification JSON](results/benchmarks/2026-10-04-v1.4.5-comparative/classification-report-v4-full-global-dependency-53234888.json)
-contains all 45 reasoner-pair comparisons and their coverage denominators.
+| Reasoner | Complete outputs | Verified solved / attempts | Average time (s) | Median time (s) |
+|---|---:|---:|---:|---:|
+| KM | 1,594 | 1,591 / 1,708 | 10.892 | 0.691 |
+| ELK | 1,701 | 1,411 / 1,708 | 11.971 | 4.777 |
+| HermiT | 1,540 | 1,539 / 1,708 | 15.764 | 4.988 |
+| JFact | 1,238 | 1,101 / 1,708 | 17.430 | 5.208 |
+| Konclude | 1,697 | 1,655 / 1,708 | 2.923 | 0.269 |
+| MORe | 1,584 | 0 / 1,708 | n/a | n/a |
+| Openllet | 1,411 | 1,402 / 1,708 | 16.335 | 4.890 |
+| RustDL | 1,220 | 1,212 / 1,708 | 5.139 | 0.331 |
+| Sequoia | 630 | 629 / 1,708 | 18.676 | 7.375 |
+| Whelk | 1,647 | 1,380 / 1,708 | 17.705 | 6.198 |
+
+MORe produces taxonomy outputs but its adapter does not establish consistency,
+so these outputs do not enter the verified column. KM's three uncorroborated
+outputs are ORE 1194, 3794, and 4669; the full evidence includes the separate
+adjudications for 3794 and 4669. They are excluded by the same automatic
+corroboration rule used for every reasoner in this summary.
 
 ### Incremental reasoning
 
-Initialization is reported separately from the four subsequent revisions.
-Cold runs start a fresh process; retained runs use an existing session.
-RustDL, MORe, and Sequoia participate through cold reruns; the other seven
-reasoners also have retained-session methods.
+**80 sources × four updates × three repetitions = 960 update attempts per
+method.** One source failed preparation; its 12 update attempts remain in the
+denominator. Repeated runs count separately, so these are update attempts,
+not 960 distinct ontologies. Initialization is excluded from the table and
+reported separately in the full summary.
 
-| Left | Right | Agreeing update pairs | Time right/left | Peak memory right/left |
-|---|---|---:|---:|---:|
-| KM fresh | KM retained | 803 | 1.255 | 1.627 |
-| KM fresh | RustDL fresh | 647 | 0.538 | 0.867 |
-| KM retained | RustDL fresh | 592 | 0.417 | 0.459 |
+Fresh-process rows restart the reasoner for each revision. Retained-session
+rows keep the process running across revisions. RustDL, MORe, and Sequoia have
+fresh-process results only.
 
-Retained KM is slower and uses more peak memory on these paired updates.
-Among 948 scheduled updates after initialization, receipts record **206
-incremental updates and 615 exact rebuilds**, with 121 revisions skipped after
-session failure and six update timeouts. Retaining a process does not by itself
-establish internal reuse.
+| Reasoner | Mode | Complete outputs | Verified solved / attempts | Average time (s) | Median time (s) |
+|---|---|---:|---:|---:|---:|
+| KM | Fresh process | 918 | 906 / 960 | 13.066 | 0.784 |
+| KM | Retained session | 821 | 821 / 960 | 16.276 | 0.646 |
+| ELK | Fresh process | 925 | 769 / 960 | 14.670 | 5.655 |
+| ELK | Retained session | 924 | 768 / 960 | 6.778 | 1.274 |
+| HermiT | Fresh process | 852 | 852 / 960 | 17.664 | 5.006 |
+| HermiT | Retained session | 852 | 852 / 960 | 10.532 | 1.370 |
+| JFact | Fresh process | 636 | 564 / 960 | 14.172 | 4.324 |
+| JFact | Retained session | 636 | 540 / 960 | 12.988 | 0.474 |
+| Konclude | Fresh process | 936 | 936 / 960 | 4.147 | 0.318 |
+| Konclude | Retained session | 930 | 896 / 960 | 10.517 | 0.542 |
+| MORe | Fresh process | 862 | 0 / 960 | n/a | n/a |
+| Openllet | Fresh process | 739 | 727 / 960 | 13.142 | 4.620 |
+| Openllet | Retained session | 725 | 713 / 960 | 5.624 | 0.911 |
+| RustDL | Fresh process | 647 | 647 / 960 | 6.203 | 0.452 |
+| Sequoia | Fresh process | 348 | 348 / 960 | 14.992 | 8.432 |
+| Whelk | Fresh process | 912 | 768 / 960 | 22.214 | 6.847 |
+| Whelk | Retained session | 908 | 764 / 960 | 14.557 | 2.286 |
 
-One source failed preparation. All five revisions of ORE 1194 have repeatable
-cold KM outputs but no completed independent reference or retained KM output;
-correctness and fresh-versus-retained equivalence remain unverified there.
-The [incremental JSON](results/benchmarks/2026-10-04-v1.4.5-comparative/updates-report-v5-full-global-dependency-53234889.json)
-contains all 272 phase-specific comparisons among 17 methods, initialization
-costs, reuse receipts, and failures. The
-[incremental review](results/benchmarks/2026-10-04-v1.4.5-comparative/globaldep-update-report-review.json) explains the
-reference gap and retained-session limitations.
+A retained process does not guarantee internal reuse. Of KM's 948 prepared
+post-initialization attempts, 206 used incremental updates and 615 rebuilt
+exactly; 121 were skipped after session failure and six timed out. The 12
+completed cold KM update outputs on ORE 1194 lack an independent reference and
+are excluded from the verified count. Fresh and retained rows can solve
+different subsets; their separate averages are not a paired speedup measure.
 
 ### Justifications
 
-Queries come from the frozen source panel: 24 sources failed preparation and
-14 had no eligible query. They were not replaced. Each accepted justification
-passes independent checks for source membership, entailment, and
-subset-minimality. The table compares **generation** costs on jointly verified
-queries; verification costs and support sizes are separate in the full report.
+**124 queries × three repetitions = 372 attempts per reasoner.** These queries
+come from 42 of the 80 selected sources; 24 sources failed preparation and 14
+had no eligible query. Those sources were not replaced. Times measure
+justification generation; independent verification has its own 240-second
+limit and is reported separately.
 
-| Left | Right | Paired cases | Time right/left | Peak memory right/left |
-|---|---|---:|---:|---:|
-| ELK | KM | 333 | 0.022 | 0.066 |
-| HermiT | KM | 336 | 0.026 | 0.074 |
-| JFact | KM | 327 | 0.018 | 0.055 |
-| KM | Konclude | 249 | 320.526 | 16.814 |
-| KM | MORe | 264 | 237.923 | 13.606 |
-| KM | Openllet | 336 | 38.707 | 13.272 |
-| KM | RustDL | 336 | 0.746 | 0.630 |
-| KM | Sequoia | 207 | 494.206 | 26.871 |
-| KM | Whelk | 309 | 52.906 | 15.018 |
+| Reasoner | Verified solved / attempts | Average time (s) | Median time (s) |
+|---|---:|---:|---:|
+| KM | 336 / 372 | 0.268 | 0.076 |
+| ELK | 366 / 372 | 3.516 | 3.094 |
+| HermiT | 372 / 372 | 3.184 | 2.796 |
+| JFact | 354 / 372 | 5.913 | 3.754 |
+| Konclude | 249 / 372 | 30.109 | 15.791 |
+| MORe | 264 / 372 | 30.529 | 12.140 |
+| Openllet | 372 / 372 | 3.323 | 2.836 |
+| RustDL | 369 / 372 | 1.636 | 0.043 |
+| Sequoia | 207 / 372 | 36.786 | 22.856 |
+| Whelk | 318 / 372 | 7.315 | 2.659 |
 
-The [justification JSON](results/benchmarks/2026-10-04-v1.4.5-comparative/justification-report-v4-full-global-dependency-53234890.json)
-contains all 45 reasoner-pair comparisons and per-query outcomes.
-The [preparation JSON](results/benchmarks/2026-10-04-v1.4.5-comparative/preparation-report-v2-full-global-dependency-53234930.json)
-records conversion, workload preparation, and query/module costs.
+### Validation and detailed evidence
 
-### Validation and scope
+The measured v1.4.5 candidate passed 2,835 Rust tests (8 ignored), 31 Java
+tests, plugin installation checks, all four Lean certification gates without
+`sorryAx`, and 68 benchmark-harness tests. The detailed reports retain failed
+measurements, raw disagreements, preparation costs, and verification costs.
+Earlier 592-input ORE benchmark results used different panels and validation
+rules and should not be compared directly with these totals.
 
-The measured candidate passed 2,835 Rust tests (8 ignored), 31 Java tests,
-plugin installation checks, all four Lean certification gates without
-`sorryAx`, and 68 benchmark-harness tests. Reports retain disagreements,
-incomplete outputs, and resource-limit failures. Agreement with another
-reasoner corroborates a result; it is not a formal proof of every entailment.
-See the [combined report review](results/benchmarks/2026-10-04-v1.4.5-comparative/globaldep-combined-report-review.json)
-and [v1.4.5 release notes](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.5)
-for the exact scope and documented limitations.
-
-Earlier 592-input ORE results used different panels and validation rules and
-should not be compared directly with these totals. Historical evidence remains
-under [results/benchmarks/](results/benchmarks/) and in
-[docs/SOLVED-ONTOLOGIES.md](docs/SOLVED-ONTOLOGIES.md).
+- [Detailed paired comparisons and preparation costs](results/benchmarks/2026-10-04-v1.4.5-comparative/benchmark-report-53234931.md)
+- [Classification results](results/benchmarks/2026-10-04-v1.4.5-comparative/classification-report-v4-full-global-dependency-53234888.json)
+- [Incremental results](results/benchmarks/2026-10-04-v1.4.5-comparative/updates-report-v5-full-global-dependency-53234889.json)
+- [Justification results](results/benchmarks/2026-10-04-v1.4.5-comparative/justification-report-v4-full-global-dependency-53234890.json)
+- [Evidence index and validation receipts](results/benchmarks/2026-10-04-v1.4.5-comparative/release-evidence-index.json)
 
 ## Protégé plugin
 
