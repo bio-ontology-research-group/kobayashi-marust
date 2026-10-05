@@ -1,0 +1,137 @@
+{
+  "observed_at_utc": "2026-10-05T18:02:27.187740+00:00",
+  "status": "partial_measurements_semantic_audit_pending",
+  "rows": [
+    {
+      "ontology": "ore_ont_10174",
+      "group": "shared_time_deciles",
+      "selection_sha256": "93c75f96fc22696194f84474995405eeb3326f4368fa7934b6e44ad22f5bab3a",
+      "inventory_sha256": "8a8acde19ddc8bee21f3d155cb6fc174cde0c4565ab63bb882f92e7397f1c12b",
+      "runner_sha256": "85cc4c6cb0594993fb81d35b88df5adebd237697f5db37725b9a133721bed84f",
+      "outcomes": [
+        {
+          "version": "v144",
+          "repetition": 0,
+          "status": "executed_unvalidated",
+          "wall_s": 0.04437974654138088,
+          "peak_bytes": 7864320
+        },
+        {
+          "version": "v145",
+          "repetition": 0,
+          "status": "executed_unvalidated",
+          "wall_s": 0.040223293006420135,
+          "peak_bytes": 7864320
+        },
+        {
+          "version": "v145",
+          "repetition": 1,
+          "status": "executed_unvalidated",
+          "wall_s": 0.04080144129693508,
+          "peak_bytes": 7864320
+        },
+        {
+          "version": "v144",
+          "repetition": 1,
+          "status": "executed_unvalidated",
+          "wall_s": 0.04003114812076092,
+          "peak_bytes": 7536640
+        },
+        {
+          "version": "v144",
+          "repetition": 2,
+          "status": "executed_unvalidated",
+          "wall_s": 0.039748264476656914,
+          "peak_bytes": 7864320
+        },
+        {
+          "version": "v145",
+          "repetition": 2,
+          "status": "executed_unvalidated",
+          "wall_s": 0.039626944810152054,
+          "peak_bytes": 7864320
+        }
+      ],
+      "semantic_validation": "pending"
+    },
+    {
+      "ontology": "ore_ont_1997",
+      "group": "lost_completion",
+      "selection_sha256": "93c75f96fc22696194f84474995405eeb3326f4368fa7934b6e44ad22f5bab3a",
+      "inventory_sha256": "8a8acde19ddc8bee21f3d155cb6fc174cde0c4565ab63bb882f92e7397f1c12b",
+      "runner_sha256": "85cc4c6cb0594993fb81d35b88df5adebd237697f5db37725b9a133721bed84f",
+      "outcomes": [
+        {
+          "version": "v144",
+          "repetition": 0,
+          "status": "executed_unvalidated",
+          "wall_s": 0.8444651383906603,
+          "peak_bytes": 61607936
+        },
+        {
+          "version": "v145",
+          "repetition": 0,
+          "status": "timeout",
+          "wall_s": 240.0492252651602,
+          "peak_bytes": 1220542464
+        }
+      ],
+      "semantic_validation": "pending"
+    },
+    {
+      "ontology": "ore_ont_2901",
+      "group": "lost_completion",
+      "selection_sha256": "93c75f96fc22696194f84474995405eeb3326f4368fa7934b6e44ad22f5bab3a",
+      "inventory_sha256": "8a8acde19ddc8bee21f3d155cb6fc174cde0c4565ab63bb882f92e7397f1c12b",
+      "runner_sha256": "85cc4c6cb0594993fb81d35b88df5adebd237697f5db37725b9a133721bed84f",
+      "outcomes": [
+        {
+          "version": "v144",
+          "repetition": 0,
+          "status": "executed_unvalidated",
+          "wall_s": 8.615741770714521,
+          "peak_bytes": 73216000
+        },
+        {
+          "version": "v145",
+          "repetition": 0,
+          "status": "timeout",
+          "wall_s": 240.05277646705508,
+          "peak_bytes": 2842320896
+        }
+      ],
+      "semantic_validation": "pending"
+    },
+    {
+      "ontology": "ore_ont_5303",
+      "group": "lost_completion",
+      "selection_sha256": "93c75f96fc22696194f84474995405eeb3326f4368fa7934b6e44ad22f5bab3a",
+      "inventory_sha256": "8a8acde19ddc8bee21f3d155cb6fc174cde0c4565ab63bb882f92e7397f1c12b",
+      "runner_sha256": "85cc4c6cb0594993fb81d35b88df5adebd237697f5db37725b9a133721bed84f",
+      "outcomes": [
+        {
+          "version": "v145",
+          "repetition": 0,
+          "status": "timeout",
+          "wall_s": 240.03651053458452,
+          "peak_bytes": 1216397312
+        },
+        {
+          "version": "v144",
+          "repetition": 0,
+          "status": "executed_unvalidated",
+          "wall_s": 0.8609549514949322,
+          "peak_bytes": 60297216
+        },
+        {
+          "version": "v144",
+          "repetition": 1,
+          "status": "executed_unvalidated",
+          "wall_s": 0.9068415686488152,
+          "peak_bytes": 61173760
+        }
+      ],
+      "semantic_validation": "pending"
+    }
+  ]
+}

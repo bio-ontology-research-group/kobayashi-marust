@@ -42,3 +42,20 @@ Initial hypotheses to test, not established causes:
 
 Do not remove correctness safeguards. Use matched results and phase profiles
 to identify the next implementation change.
+
+## First matched observations
+
+The first repetition of job 53294013 reproduces three large operational
+regressions: v1.4.4 completes 1997 in 0.844 s, 5303 in 0.861 s, and 2901 in
+8.616 s; v1.4.5 reaches the 240-second limit on all three. The small control
+10174 takes approximately 0.040 s in either version. Independent answer audits
+and the remaining repetitions are pending; these observations do not prove
+that the earlier answers are correct. `pilot-initial-observations.json` stores
+the partial receipts.
+
+Phase profile job 53294179 uses a separate 60-second diagnostic limit and
+enables timing/progress logs; its times must not enter performance summaries.
+The remaining 38 pairs are queued as job 53294280, dependent on successful
+completion of the pilot audit. Audit jobs 53294117 and 53294283 run after
+their corresponding measurement tasks. See `CURRENT-STATE.json` before
+resuming, to avoid duplicate submissions.

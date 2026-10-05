@@ -12,12 +12,15 @@
   "audit_dependency": "aftercorr:53294013",
   "remaining_array_indices": "3-31,33-41",
   "next_actions": [
-    "Poll Slurm jobs 53294013 and 53294117; inspect actual receipts before resubmitting anything.",
-    "Check adapter errors and semantic audits on the four pilot sources.",
-    "If the pilot protocol is valid, submit remaining array indices with paired.sbatch and a matching dependent audit.sbatch.",
-    "Compare versions per ontology and inspect profiles for confirmed regressions.",
-    "Implement and certify improvements; validate full v1.5.0 and v1.5.1 objectives before release."
+    "Poll measurement jobs 53294013/53294280, audit jobs 53294117/53294283, and phase profile job 53294179. Do not resubmit live or pending jobs.",
+    "Inspect phase profiles and independent comparisons on the three reproduced regressions.",
+    "If a job failed, inspect its receipts/logs and fix the actual cause before restarting.",
+    "Use matched results to implement and certify improvements; full v1.5.0 and v1.5.1 acceptance remains required."
   ],
   "release_requirements_status": "not_achieved",
-  "profile_job": "53294179"
+  "profile_job": "53294179",
+  "remaining_measurement_job": "53294280",
+  "remaining_audit_job": "53294283",
+  "remaining_measurement_dependency": "afterok:53294117",
+  "remaining_audit_dependency": "aftercorr:53294280"
 }
