@@ -1,0 +1,32 @@
+[
+  {
+    "case": "inverse_chain",
+    "exit_code": 0,
+    "stdout": "{\"consistent\": false, \"subsumptions\": [], \"unsatisfiable\": [], \"dropped\": 0}\n",
+    "stderr": ""
+  },
+  {
+    "case": "dl_safe_rule",
+    "exit_code": 0,
+    "stdout": "{\"consistent\": false, \"subsumptions\": [], \"unsatisfiable\": [], \"dropped\": 0}\n",
+    "stderr": ""
+  },
+  {
+    "case": "invalid_literal",
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "invalid OWL 2 DL input at line 1: literal \"bad\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.\n"
+  },
+  {
+    "case": "anonymous_named_star",
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "invalid OWL 2 DL input: anonymous-individual tree containing _:a has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)\n"
+  },
+  {
+    "case": "empty_path_prefix",
+    "exit_code": 0,
+    "stdout": "{\"consistent\": true, \"subsumptions\": [], \"unsatisfiable\": [], \"dropped\": 0}\n",
+    "stderr": ""
+  }
+]

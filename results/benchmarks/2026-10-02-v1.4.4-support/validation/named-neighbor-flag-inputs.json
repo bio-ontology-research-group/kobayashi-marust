@@ -1,0 +1,266 @@
+[
+  {
+    "ontology": "ore_ont_10127",
+    "sha256": "fc3b31f19ca7e8d872d937042c7e04cc92636ac26983f80b3daabef252df3cee",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2413 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10127.owl",
+    "status": "invalid_input",
+    "seconds": 0.9648385886102915
+  },
+  {
+    "ontology": "ore_ont_10212",
+    "sha256": "42f93d15a2175565d6759bbee506291eb709595cbd590de3e5bc48d632dab0bf",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid528 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10212.owl",
+    "status": "invalid_input",
+    "seconds": 0.09852564334869385
+  },
+  {
+    "ontology": "ore_ont_10697",
+    "sha256": "aa8e15d4758d38ee1ced3e84127371e7b586a9745da99ab5b9f7d8e40ff195a3",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2720 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10697.owl",
+    "status": "invalid_input",
+    "seconds": 1.693900614976883
+  },
+  {
+    "ontology": "ore_ont_11207",
+    "sha256": "c2e9b2669ab63d1d73dc907c7c8f078313ea8f12914eaa0bae4140435551a00c",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid4745 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_11207.owl",
+    "status": "invalid_input",
+    "seconds": 0.9197137169539928
+  },
+  {
+    "ontology": "ore_ont_1182",
+    "sha256": "ee9b4e91c731381e12e0b506a8d2ac6ccdbbd95a59c5f7a5409d5d1730d68778",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid5336 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1182.owl",
+    "status": "invalid_input",
+    "seconds": 1.8564324285835028
+  },
+  {
+    "ontology": "ore_ont_12203",
+    "sha256": "04f8e7478f80944193e2326598c6d0237c67f685d33f0676ced501ac283a8fcf",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid3281 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12203.owl",
+    "status": "invalid_input",
+    "seconds": 3.4453477282077074
+  },
+  {
+    "ontology": "ore_ont_12901",
+    "sha256": "6b68cf4ade1e3e27961d609ab1e46b456b34617606b9edc2ebad665056895c2d",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1002 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12901.owl",
+    "status": "invalid_input",
+    "seconds": 2.187070971354842
+  },
+  {
+    "ontology": "ore_ont_14154",
+    "sha256": "3b0c0a3b0718a1f7c44451ed6e3333d69919c556d51996040c312c71d5f188aa",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2973 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14154.owl",
+    "status": "invalid_input",
+    "seconds": 1.2806642781943083
+  },
+  {
+    "ontology": "ore_ont_14221",
+    "sha256": "46ba916c689a2d2a65df2e1dd4293e5d9dc87b1d498953d5fde577c6c88c1606",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1744 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14221.owl",
+    "status": "invalid_input",
+    "seconds": 1.015145007520914
+  },
+  {
+    "ontology": "ore_ont_14375",
+    "sha256": "021b73ea8a49c9ecce3323c98ac3ce83353e797d5906338d3f2229ffda886660",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1396 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14375.owl",
+    "status": "invalid_input",
+    "seconds": 0.44026891700923443
+  },
+  {
+    "ontology": "ore_ont_14556",
+    "sha256": "39b281dcf2b7473c8cdb41ddf40e103d995e0487222dc2f605299fb5c8988d1a",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1002 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14556.owl",
+    "status": "invalid_input",
+    "seconds": 0.813264012336731
+  },
+  {
+    "ontology": "ore_ont_14601",
+    "sha256": "2c0b7c14f648f188b18a6918cfd2bcb394fbd209880065b2fc032e07cb623f0c",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2789 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14601.owl",
+    "status": "invalid_input",
+    "seconds": 1.125289287418127
+  },
+  {
+    "ontology": "ore_ont_15237",
+    "sha256": "330fbf9a8d34a470c17726d3cec8ceba85d32c017707311bcf1f6dab7a47c87c",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1118 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15237.owl",
+    "status": "invalid_input",
+    "seconds": 0.7486108113080263
+  },
+  {
+    "ontology": "ore_ont_15536",
+    "sha256": "69ce84100290df0a3e0ee006637ac75bd62dc7f8a87bbdefc1501964cdf7abef",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2382 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15536.owl",
+    "status": "invalid_input",
+    "seconds": 0.5698169358074665
+  },
+  {
+    "ontology": "ore_ont_15621",
+    "sha256": "eb3eca40e0ea8b60c3772d1f7e07bc38a560154a0b7c02be80ba71a5aadef492",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2212 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15621.owl",
+    "status": "invalid_input",
+    "seconds": 1.4936282485723495
+  },
+  {
+    "ontology": "ore_ont_15725",
+    "sha256": "90916e5a9ac1a4298955466d29ff95a7f152bf2258d605dcd144486a3062de1f",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2040 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15725.owl",
+    "status": "invalid_input",
+    "seconds": 1.2858550399541855
+  },
+  {
+    "ontology": "ore_ont_15991",
+    "sha256": "6a0b2c10f88f53682457373c3cad883c1c4da4ce5db0cbd32c6e87d932bc4f14",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1171 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15991.owl",
+    "status": "invalid_input",
+    "seconds": 0.5177845023572445
+  },
+  {
+    "ontology": "ore_ont_16414",
+    "sha256": "019512ea7a2442a31630124efd69b767b21aaf324cc37faaa0a15c0da0e0d7e0",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid4369 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16414.owl",
+    "status": "invalid_input",
+    "seconds": 4.115888087078929
+  },
+  {
+    "ontology": "ore_ont_2513",
+    "sha256": "e509c7f49e5138f94dbaacd8bc123f2462f7b35dc7d226b2a61109e5389e904e",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid3879 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2513.owl",
+    "status": "invalid_input",
+    "seconds": 3.3288018219172955
+  },
+  {
+    "ontology": "ore_ont_2622",
+    "sha256": "dd76672c61b1d5687a8e6c52d14180924ec8bb9bde0efcb4ce510cd0b8334f68",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2065 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2622.owl",
+    "status": "invalid_input",
+    "seconds": 3.050402434542775
+  },
+  {
+    "ontology": "ore_ont_3133",
+    "sha256": "4f8a466aba4a50216cbaac23129312cea94d5cac08057be8c991686a9d79f309",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid3779 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3133.owl",
+    "status": "invalid_input",
+    "seconds": 3.331854371353984
+  },
+  {
+    "ontology": "ore_ont_3164",
+    "sha256": "a71c1eb9b7399cb9000fc74bdf440cdef75364ce9d817cce2e1345c1e8cceba8",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2198 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3164.owl",
+    "status": "invalid_input",
+    "seconds": 2.4472284000366926
+  },
+  {
+    "ontology": "ore_ont_3255",
+    "sha256": "615d86ca66711a978e1d401a65f75c7bb7b3c4f6997cddab3d94afb950678042",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1129 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3255.owl",
+    "status": "invalid_input",
+    "seconds": 0.31694026105105877
+  },
+  {
+    "ontology": "ore_ont_3658",
+    "sha256": "c8084740875f30011ff2fb62c325e0dcbaec0faa15ae02df6742f58affa50a60",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid4585 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3658.owl",
+    "status": "invalid_input",
+    "seconds": 2.945821264758706
+  },
+  {
+    "ontology": "ore_ont_4187",
+    "sha256": "49ab8adca440ee2752a56a854647ff50fd4f4919b9e12d3a7b2004dbb05fcdc8",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2460 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4187.owl",
+    "status": "invalid_input",
+    "seconds": 3.600664371624589
+  },
+  {
+    "ontology": "ore_ont_4510",
+    "sha256": "9d6246688fe292693f91ced5d096d3c732ccfa1bcf5fb57bad1f25ae2aa8766a",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1120 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4510.owl",
+    "status": "invalid_input",
+    "seconds": 2.7918878495693207
+  },
+  {
+    "ontology": "ore_ont_5103",
+    "sha256": "7ee96bc7befaf0b8007436c48d42677c4591963281301f663ac124e6f4397e5a",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1118 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5103.owl",
+    "status": "invalid_input",
+    "seconds": 0.6743735633790493
+  },
+  {
+    "ontology": "ore_ont_5695",
+    "sha256": "e636a6d3826c0ee286ef43931c9b39ce35cbd5c9ea6622dad5ea264632a1b5c9",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1295 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5695.owl",
+    "status": "invalid_input",
+    "seconds": 0.12258322536945343
+  },
+  {
+    "ontology": "ore_ont_6444",
+    "sha256": "af7b0effe044d06914e5dae3731fa0d83df82d4462d6074f90a05e618d9c1880",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1154 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6444.owl",
+    "status": "invalid_input",
+    "seconds": 0.39755408093333244
+  },
+  {
+    "ontology": "ore_ont_9088",
+    "sha256": "e43aa883da518785861d4a70020e45cb14d4025c6257642d31ff154a01b9c114",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9088.owl",
+    "status": "invalid_input",
+    "seconds": 0.011422963812947273
+  },
+  {
+    "ontology": "ore_ont_9249",
+    "sha256": "755db83651e219abe6bce438c40be4dd2cb75acbc1852fbc1fff0f2ea01caa34",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid323 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9249.owl",
+    "status": "invalid_input",
+    "seconds": 0.06454845331609249
+  },
+  {
+    "ontology": "ore_ont_950",
+    "sha256": "ef02f1e8f4280292648ed6cc03ab29490524d66ddcd39998c5acaef4d87e49f3",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1000 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_950.owl",
+    "status": "invalid_input",
+    "seconds": 0.11161003820598125
+  },
+  {
+    "ontology": "ore_ont_9958",
+    "sha256": "2cda3dfb137a3d4d776b35e2eec832bbe9e06a4422d4e24ee4bf22691d941705",
+    "message": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid5532 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9958.owl",
+    "status": "invalid_input",
+    "seconds": 2.9586860090494156
+  }
+]

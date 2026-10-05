@@ -369,6 +369,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 self.eliminiate_blocked_individuals(indi_proc_node, calc_alg_context);
                 return false;
             }
+            // A queue-less node can be reached through an ABox role link even
+            // when it has no processable concepts. The scheduler interprets a
+            // missing queue as initialization work and immediately requeues it.
+            // Mark successful initialization with an empty queue; the accessor
+            // preserves (and localizes) any inherited pending descriptors.
+            calc_alg_context.process_context_mut()
+                .node_concept_processing_queue(indi_proc_node, true);
             // if (mConfSignatureSaving) addSignatureIndividualNodeBlockerCandidate(...) [W8-DEFER]
             return true;
         }
@@ -1111,6 +1118,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // per-disjunction records (OR dependency, alternative track points,
         // snapshots) — those belong to the PARENT state and survive
         // alternative pops — and BEFORE the first disjunct is added.
+        if self.or_branch_stack.is_empty() && super::bridge_base_audit_enabled() {
+            let ctx=calc_alg_context.process_context();
+            let merged=(0..ctx.node_count()).filter(|&i|
+                ctx.node(NodeId::new(i as Cint64)).has_merged_into_individual_node_id()).count();
+            eprintln!("BASE-AUDIT first-or nodes={} merged={} singleton_merges={} depth={}",
+                ctx.node_count(),merged,self.applied_singleton_merge_count,ctx.branch_epoch_depth());
+        }
         if self.conf_inprocess_cow {
             calc_alg_context.push_branch_epoch();
         }

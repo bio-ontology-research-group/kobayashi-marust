@@ -1,0 +1,61 @@
+{
+  "scope": "Eight raw v1.4.3 differences. Current actual-output hashes were checked by audit53175743; each exactly equals an independently Konclude-compared output. Existing comparison normalization and unsat treatment apply.",
+  "checks": [
+    {
+      "ont": "ore_ont_11315",
+      "current_output_sha256": "a51c9565d31f9dbf4e08fa223e36785a33b9ea6e0d883a408737f69e08a6b1df",
+      "reference_comparison": "current-difference-comparisons/ore_ont_11315.json",
+      "comparison_sha256": "a89795fd1a66becc037d4cefea67bf3c139da0912c6f99e838dcaff6881402b1",
+      "identical_to_independently_checked_output": true
+    },
+    {
+      "ont": "ore_ont_11899",
+      "current_output_sha256": "452fb4428b2450db02c895fa3e9114caf0a817184eb0d46be16db996b0b552e7",
+      "reference_comparison": "current-difference-comparisons/ore_ont_11899.json",
+      "comparison_sha256": "744cdcd4d7129b957d483e8fbc725320c9076156be76c4b3ebb79bf0fc7fb843",
+      "identical_to_independently_checked_output": true
+    },
+    {
+      "ont": "ore_ont_14101",
+      "current_output_sha256": "db5cb25edfcd841f97ca896f2f05507a4678b3e47176e6bb239a631a364c6e8f",
+      "reference_comparison": "current-difference-comparisons/ore_ont_14101.json",
+      "comparison_sha256": "67fd9e8d475b82368f754dd95ca0a30fc0ca6748e973c7a8db9b9de745289cc1",
+      "identical_to_independently_checked_output": true
+    },
+    {
+      "ont": "ore_ont_7868",
+      "current_output_sha256": "f217d9c8c9e0ac54adbaee73134a5e17f464e60c0cfcd1fa7a968fa1fbe3c1ee",
+      "reference_comparison": "current-difference-comparisons/ore_ont_7868.json",
+      "comparison_sha256": "753407b25e75ed79509ceb8c1eaef184fdec670f1451adc654ef098a39656c0e",
+      "identical_to_independently_checked_output": true
+    },
+    {
+      "ont": "ore_ont_954",
+      "current_output_sha256": "8947b7789a54c4dc507f44d2d5757918b0cc59f8d05118b8560ff4c3ae23baec",
+      "reference_comparison": "current-difference-comparisons/ore_ont_954.json",
+      "comparison_sha256": "e924aa872a49ac600bc60912fa5e12a2e68e2c8fb04ba58eefe767c99e337822",
+      "identical_to_independently_checked_output": true
+    },
+    {
+      "ont": "ore_ont_9684",
+      "current_output_sha256": "688bf85746373b246c5c9ca30b84f64405321408005c4d039e3105dccd4f30c0",
+      "reference_comparison": "current-difference-comparisons/ore_ont_9684.json",
+      "comparison_sha256": "957584cdadc4e716ae8c88cb3146da6ae2ae1b8f097c77d9b20686a0ec652a7d",
+      "identical_to_independently_checked_output": true
+    },
+    {
+      "ont": "ore_ont_6951",
+      "current_output_sha256": "bafd01854fe62f6116822fc274cf0f2c529bed2b1c4f7f3573dd828f8a062661",
+      "reference_comparison": "6951-nominal-fixed-comparison.json",
+      "comparison_sha256": "1a24d52484e03bd0b114b092730117604959cc18ad3249baeee8bd7bd4d41cc0",
+      "identical_to_independently_checked_output": true
+    },
+    {
+      "ont": "ore_ont_14897",
+      "current_output_sha256": "6f73e5d2710f3f40478cc4d19b8c93efca023a9dde35613881672b5ded8bc7ee",
+      "reference_comparison": "14897-extended-reference-comparison.json",
+      "comparison_sha256": "fd366bd0c66233202805ca6b6a09650d37194303dc29af8326f842268f33bc6d",
+      "identical_to_independently_checked_output": true
+    }
+  ]
+}

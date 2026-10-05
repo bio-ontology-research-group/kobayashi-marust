@@ -1,0 +1,9 @@
+{
+  "job_id": "53222433",
+  "slurm_state": "COMPLETED",
+  "slurm_exit_code": "0:0",
+  "comparative_tests_passed": 54,
+  "watchdog_tests_passed": 14,
+  "log_sha256": "90b2905b40c865c445bbf9ce501e1f342994a1ac98fb4a287e1b8cba457d649d",
+  "manifest_sha256": "2e3caa0fa8de95db5442bcf13a44a9dcb68c699af2aa771c4951e750fa06557a"
+}

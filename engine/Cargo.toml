@@ -1,6 +1,6 @@
 [package]
 name = "kobayashi-marust"
-version = "1.4.3"
+version = "1.4.5"
 edition = "2021"
 license = "BSD-3-Clause"
 description = "An experimental hybrid SROIQ / OWL 2 DL reasoner written in Rust."
@@ -36,7 +36,11 @@ smallvec = "1"
 thin-vec = "0.2.19"
 libc = "0.2"
 horned-owl = { version = "1.4", default-features = false }
+km-owl-functional-syntax = { path = "vendor/owl-functional-syntax" }
 oxrdfio = "0.2"
+oxilangtag = "0.1.6"
+oxixml-regex = "=0.1.2"
+quick-xml = "0.37.5"
 dhat = { version = "=0.3.3", optional = true }
 
 [features]

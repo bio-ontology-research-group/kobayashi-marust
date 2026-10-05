@@ -1,0 +1,60 @@
+{
+  "observed_at": "2026-10-05T11:20:20.607765+00:00",
+  "status": "combined report checked against all four reviewed panels and exact selected run set",
+  "report": {
+    "path": "benchmark-report-53234931.md",
+    "sha256": "51c18d7defb71d8b30a4dd6361f0d42312c7dc51ad6a993fb2f83e6ea45719ac",
+    "bytes": 16093
+  },
+  "inputs": [
+    {
+      "path": "classification-report-v4-full-global-dependency-53234888.json",
+      "sha256": "640d6458f54986e94a281c1a885553cc300355ddd94550cf49ce4a35b03ec4d3",
+      "bytes": 7127561
+    },
+    {
+      "path": "updates-report-v5-full-global-dependency-53234889.json",
+      "sha256": "559a03d9635cd257ec776e6200b9b0153f80693d9fd345f8082f3e7c447369f1",
+      "bytes": 4871006
+    },
+    {
+      "path": "justification-report-v4-full-global-dependency-53234890.json",
+      "sha256": "8ccf0ed781bbd973522cb756dbaab3a5de7f5cee1623eb7c1dc154c2bac0cc9d",
+      "bytes": 2737098
+    },
+    {
+      "path": "preparation-report-v2-full-global-dependency-53234930.json",
+      "sha256": "7ef57afbe843057e0c6c9ecd5a0f3077bde89f0db71cbd484f9a534041228f14",
+      "bytes": 5427156
+    },
+    {
+      "path": "run-set-global-dependency.json",
+      "sha256": "9c9a27c6645573907f8fb873ef4fa2ae2b4588e2f6aa62f7b5639f12fbf60853",
+      "bytes": 629
+    }
+  ],
+  "rendered_content_matches_verified_source": true,
+  "scope": "Readable report retains raw issue counts; panel review receipts and release notes explain adjudications and evidence limitations. All baseline pairs remain in JSON reports; the readable report presents KM comparisons.",
+  "independent_panel_reviews": [
+    {
+      "path": "globaldep-classification-report-review.json",
+      "sha256": "ca04aefbaf094a89b0621e4f33626c650bf5598a1e0f2cf7aff938dac3b8a925",
+      "bytes": 3239
+    },
+    {
+      "path": "globaldep-update-report-review.json",
+      "sha256": "645cc98df9ddbd3a914c9ed32f1f6b27ab0d2f8707764236cee46f9781073f18",
+      "bytes": 6530
+    },
+    {
+      "path": "globaldep-justification-report-review.json",
+      "sha256": "81b5ec7c0d9f2d88cada5f163dcd0c21584e136cb46ca536b46552fd653ddc22",
+      "bytes": 7174
+    },
+    {
+      "path": "global-dependency-preparation-review.json",
+      "sha256": "facda12ec09ecf7fe851c7402bcbc6a59081eb766daaf2b6cc9e688f00a8047d",
+      "bytes": 368
+    }
+  ]
+}

@@ -539,6 +539,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_writes_the_el_binary_sidecar_for_an_uncached_el_route() {
+        let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "elc");
         std::env::remove_var("KM_EL_ABOX_CHECK");
@@ -547,10 +548,10 @@ mod tests {
         // ratio, and the existential excludes the small flat admission, so
         // the exact EL leaf is not retained in process. The worker boundary
         // must then receive the compact handoff, not a JSON stream.
-        let source = "Ontology(Declaration(Class(<A>)) Declaration(Class(<B>)) \
-                      Declaration(Class(<C>)) Declaration(Class(<D>)) Declaration(Class(<E>)) \
-                      SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>)) \
-                      SubClassOf(ObjectSomeValuesFrom(<r> <B>) <C>) SubClassOf(<D> <E>))";
+        let source = "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) \
+                      Declaration(Class(<urn:C>)) Declaration(Class(<urn:D>)) Declaration(Class(<urn:E>)) \
+                      SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> <urn:B>)) \
+                      SubClassOf(ObjectSomeValuesFrom(<urn:r> <urn:B>) <urn:C>) SubClassOf(<urn:D> <urn:E>))";
         let clauses = TempPath::new(".clauses.json");
         let (meta, cached, sidecar) =
             run_ofn_in_process(source, clauses.path()).expect("frontend parses");
@@ -568,13 +569,14 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_shoq_input() {
+        let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         // Route selection itself has a separate profile regression test. This
         // fixture exercises the typed-handoff contract of a selected leaf.
         std::env::set_var("KM_ROUTE", "ht_shoq");
         std::env::remove_var("KM_NO_INPROC_HT");
-        let source = "Ontology(Declaration(Class(<A>)) Declaration(ObjectProperty(<r>)) \
-                      EquivalentClasses(<A> ObjectExactCardinality(128 <r>)))";
+        let source = "Ontology(Declaration(Class(<urn:A>)) Declaration(ObjectProperty(<urn:r>)) \
+                      EquivalentClasses(<urn:A> ObjectExactCardinality(128 <urn:r>)))";
         let clauses = TempPath::new(".clauses.json");
         let (meta, cached, sidecar) =
             run_ofn_in_process(source, clauses.path()).expect("frontend parses");
@@ -586,11 +588,12 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_general_ht_input() {
+        let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "ht_general");
         std::env::remove_var("KM_NO_INPROC_HT");
-        let source = "Ontology(Declaration(Class(<A>)) Declaration(Class(<B>)) \
-                      SubClassOf(<A> ObjectComplementOf(<B>)))";
+        let source = "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) \
+                      SubClassOf(<urn:A> ObjectComplementOf(<urn:B>)))";
         let clauses = TempPath::new(".clauses.json");
         let (meta, cached, sidecar) =
             run_ofn_in_process(source, clauses.path()).expect("frontend parses");
@@ -602,11 +605,12 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_bridge_input() {
+        let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "ht_bridge");
         std::env::remove_var("KM_NO_INPROC_HT");
-        let source = "Ontology(Declaration(Class(<A>)) Declaration(Class(<B>)) \
-                      SubClassOf(<A> <B>))";
+        let source = "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) \
+                      SubClassOf(<urn:A> <urn:B>))";
         let clauses = TempPath::new(".clauses.json");
         let (meta, cached, sidecar) =
             run_ofn_in_process(source, clauses.path()).expect("frontend parses");
@@ -622,7 +626,7 @@ mod tests {
         let token = b"TransitiveObjectProperty(";
         let mut input = vec![b'x'; (64 << 10) - token.len() / 2];
         input.extend_from_slice(token);
-        input.extend_from_slice(b"<r>)");
+        input.extend_from_slice(b"<urn:r>)");
         std::fs::write(path.path(), input).unwrap();
         assert!(giant_source_uses_certified_rbox(path.path()).unwrap());
     }
@@ -632,7 +636,7 @@ mod tests {
         let path = TempPath::new(".ofn");
         std::fs::write(
             path.path(),
-            b"Ontology(SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>)))",
+            b"Ontology(SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> <urn:B>)))",
         )
         .unwrap();
         assert!(!giant_source_uses_certified_rbox(path.path()).unwrap());
@@ -642,12 +646,12 @@ mod tests {
     fn giant_rbox_scan_checks_tail_then_full_source() {
         let tail_path = TempPath::new(".ofn");
         let mut tail_input = vec![b'x'; (1 << 20) + 4096];
-        tail_input.extend_from_slice(b"InverseObjectProperties(<r> <s>)");
+        tail_input.extend_from_slice(b"InverseObjectProperties(<urn:r> <urn:s>)");
         std::fs::write(tail_path.path(), tail_input).unwrap();
         assert!(giant_source_uses_certified_rbox(tail_path.path()).unwrap());
 
         let prefix_path = TempPath::new(".ofn");
-        let mut prefix_input = b"SymmetricObjectProperty(<r>)".to_vec();
+        let mut prefix_input = b"SymmetricObjectProperty(<urn:r>)".to_vec();
         prefix_input.resize((1 << 20) + 4096, b'x');
         std::fs::write(prefix_path.path(), prefix_input).unwrap();
         assert!(giant_source_uses_certified_rbox(prefix_path.path()).unwrap());

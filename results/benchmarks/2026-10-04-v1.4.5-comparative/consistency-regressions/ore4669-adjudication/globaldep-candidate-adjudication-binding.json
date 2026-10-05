@@ -1,0 +1,56 @@
+{
+  "observed_at": "2026-10-05T04:42:44.080939+00:00",
+  "candidate_commit": "323d427694a62105b6bbb8d75be0c0f6d4054561",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "source_sha256": "2b15dc9535ed50c4dc9eae05067df4e6525b69c7bf1913192715b79ad550b3eb",
+  "current_km_raw_sha256": "d9f2ef6fe9159392094a154c24201f90d502fc9ac5a7f02717d57642e282a58a",
+  "current_audit_sha256": "50ab20a57104f7132ff218be4967a15e19caebf4789e770a805e5a7fbcb16420",
+  "comparisons": [
+    {
+      "ontology": "ore_ont_4669",
+      "baseline": "elk",
+      "comparison": {
+        "source_sha256": "2b15dc9535ed50c4dc9eae05067df4e6525b69c7bf1913192715b79ad550b3eb",
+        "left_raw_sha256": "53266823dfdc63d0bda11ea6be4c02a7d2cd85aebb0b61191226725f2cfd625c",
+        "right_raw_sha256": "d9f2ef6fe9159392094a154c24201f90d502fc9ac5a7f02717d57642e282a58a",
+        "left_consistency": true,
+        "right_consistency": true,
+        "status": "taxonomy_disagreement",
+        "agreement": false,
+        "scope": "consistency_and_taxonomy",
+        "left": "elk",
+        "right": "km"
+      },
+      "comparison_identical_to_previous_reviewed_report": true,
+      "current_independent_agreements": [],
+      "current_audit_sha256": "50ab20a57104f7132ff218be4967a15e19caebf4789e770a805e5a7fbcb16420",
+      "previous_audit_sha256": "21621cb730f6460dbd1665dc5ef14da74647eeb2dca7566f7a4774d0fb22a34d"
+    },
+    {
+      "ontology": "ore_ont_4669",
+      "baseline": "whelk",
+      "comparison": {
+        "source_sha256": "2b15dc9535ed50c4dc9eae05067df4e6525b69c7bf1913192715b79ad550b3eb",
+        "left_raw_sha256": "d9f2ef6fe9159392094a154c24201f90d502fc9ac5a7f02717d57642e282a58a",
+        "right_raw_sha256": "e8665c605c51e4083305806910d1d9cf34a41c623eefe8aa4ff2fc7085a5bf67",
+        "left_consistency": true,
+        "right_consistency": true,
+        "status": "taxonomy_disagreement",
+        "agreement": false,
+        "scope": "consistency_and_taxonomy",
+        "left": "km",
+        "right": "whelk"
+      },
+      "comparison_identical_to_previous_reviewed_report": true,
+      "current_independent_agreements": [],
+      "current_audit_sha256": "50ab20a57104f7132ff218be4967a15e19caebf4789e770a805e5a7fbcb16420",
+      "previous_audit_sha256": "21621cb730f6460dbd1665dc5ef14da74647eeb2dca7566f7a4774d0fb22a34d"
+    }
+  ],
+  "adjudication_sha256": "f6424b744d24712c0cdd0806620f64b5eb6c0327c6bc82ac096749ed29d39be8",
+  "proof_manifest_sha256": "f9f63ba8342c399bde62e816bc63d8aa5045851fd592a5701cad7f02cdc8b5f4",
+  "proof_artifacts_verified": 29,
+  "conclusion": "All additional KM taxonomy relations are accounted for by the shared baseline taxonomy, source definitions/transitivity, and three independently verified source-subset entailments. The reconstructed taxonomy matches KM exactly. Raw ELK/Whelk disagreements and full-DL baseline timeouts remain unchanged.",
+  "scope_limit": "This adjudicates additional named-class entailments relative to the shared positive baseline taxonomy; it is not a full independent classification, a finite-model consistency proof, or evidence for replacing benchmark timeout results.",
+  "timings_transferred": false
+}

@@ -1,257 +1,6 @@
 # Changelog
 
-## [1.4.3] - 2026-09-18
-
-Fix misleading worker `-1` errors by preserving timeout, memory-watchdog and
-signal outcomes. Respect the available CPU budget for small nominal query
-sets while retaining bounded partitions for large inputs. Avoid allocating
-Hyper provenance when certificate recording is disabled.
-
-Preserve the owner inequalities implied by functional string data assertions
-so the checked native bridge can handle those inputs without dropping their
-data constraints. Domain admission follows asserted named subclass links.
-
-The [Michel harness validation](docs/HARNESS-v1.4.3.md) records the full
-1,920-input reproduction and separates completion from semantic agreement.
-The final candidate completes 1,829/1,920 inputs, compared with 1,816 for
-v1.4.2 and 1,806 for rustdl v0.4.28 under the matched one-CPU limits. It recovers
-13 baseline failures, loses no baseline completion, and preserves every
-jointly completed output hash. Each recovery has independent reference agreement;
-reference disagreements, source-coverage flags and failures remain visible.
-These are coverage observations, not a repeated speed ranking.
-
-All 592 signatures in the separate previous-release regression are unchanged.
-Validation passes 2,413 library tests, 59 integration tests and all four source
-certification gates, including the 22 native-checker tests. Eight tests remain
-explicitly ignored. The versioned plugin passes 31 tests and a real installed
-Protégé smoke test using the shipped binary.
-
-## [1.4.2] - 2026-09-18
-
-Both releases contain the same minor ABox correctness fixes. Incremental source
-sessions now preserve a frontend inconsistency verdict, suppress taxonomy rows
-while inconsistent, and restore consistent output after the conflicting
-assertion is removed. The batch atomic-ABox shortcut now checks its independent
-witness premise; inputs outside that premise use the existing complete path.
-
-The fixes were tested experimentally before the new Lean publication proof.
-All four source certification gates pass for each exact version, as do 2,407
-library tests and 59 integration tests. The 22 native-checker tests excluded
-from the general invocation pass within the gates. Eight ignored tests remain
-explicitly excluded. The proof assumes the documented parser, identity,
-fragment-admission, detector and worker boundaries; it is not extracted from the
-Rust implementation.
-
-Each version also completes the 592-input ORE regression with unchanged semantic
-outputs: 588 match retained gold, two retain known consistency disagreements,
-and two have no retained external gold. These runs are regression evidence,
-not new paired performance comparisons against other reasoners.
-
-The Protégé plugin reports the matching version and passes 31 Maven tests,
-bundle checks and a real Protégé installation smoke test.
-
-## Entailment-justification comparison
-
-The literature-based protocol uses five independently confirmed queries per
-prepared ontology, full ontologies and STAR modules, extraction bounds 1/10/100,
-one warmup and five measured repetitions. Five ontologies reached measurement:
-MMO, HAO, VTO, MFOMD and ZFA. Preparation failures for TO, Uberon and MRO remain
-reported. Each returned support was checked independently for source membership,
-entailment and deletion minimality, with logical normalization to detect duplicates.
-
-The selected final comparison contains 7,650 measured attempts. Counts below
-summarize coverage across tracks and bounds; they do not establish a speed ranking.
-
-| Service | Correct / measured | Timeout | Error |
-|---|---:|---:|---:|
-| KM native | 675 / 750 | 0 | 75 |
-| KM common extractor | 373 / 750 | 362 | 15 |
-| HermiT library | 710 / 750 | 40 | 0 |
-| JFact library | 710 / 750 | 40 | 0 |
-| Openllet library | 668 / 750 | 82 | 0 |
-| HermiT common extractor | 517 / 750 | 233 | 0 |
-| JFact common extractor | 450 / 750 | 299 | 1 |
-| Openllet common extractor | 450 / 750 | 300 | 0 |
-| Konclude common extractor | 431 / 750 | 287 | 32 |
-| ELK common extractor, EL only | 300 / 450 | 150 | 0 |
-| Whelk common extractor, EL only | 290 / 450 | 160 | 0 |
-
-Correct means the returned supports passed the audit, not that enumeration is
-complete. Native, library and common-extractor mechanisms remain separate in
-performance comparisons. Full/module tracks and each bound also remain separate.
-The report provides per-case wall-time dispersion, measured process-tree memory,
-all failures and compatible paired timing ratios requiring five valid repetitions.
-
-A Java adapter stream-close defect required complete reruns of affected KM and
-Konclude common-extractor cohorts. Original attempts remain archived and cannot
-replace failed corrected attempts. These later cohorts and recorded scheduling
-changes introduce cache and contention caveats. Raw worker errors remain errors;
-they are not silently recoded as timeouts. No overall performance winner is claimed.
-
-The report and parent checks are under
-`results/benchmarks/2026-09-17-dynamic-baseline/justification-final-comparison/`.
-The checks cover all 1,500 frozen tasks, ten audit/normalization/driver input sets,
-selected-cohort identity and all 12,300 paired rows. The archive includes warmups,
-baseline KM and superseded attempts; its total is not the selected denominator.
-
-The release attaches the tested binary, matching Protégé plugin, benchmark
-evidence, validation archive, source attestation and SHA-256 checksums.
-
-See the [complete justification comparison](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/v1.4.2/results/benchmarks/2026-09-17-dynamic-baseline/justification-final-comparison/README.md)
-and the [literature-based methodology](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/v1.4.2/benchmarks/dynamic-v1.4/METHODOLOGY.md).
-
-## [1.4.1] - 2026-09-18
-
-Both releases contain the same minor ABox correctness fixes. Incremental source
-sessions now preserve a frontend inconsistency verdict, suppress taxonomy rows
-while inconsistent, and restore consistent output after the conflicting
-assertion is removed. The batch atomic-ABox shortcut now checks its independent
-witness premise; inputs outside that premise use the existing complete path.
-
-The fixes were tested experimentally before the new Lean publication proof.
-All four source certification gates pass for each exact version, as do 2,407
-library tests and 59 integration tests. The 22 native-checker tests excluded
-from the general invocation pass within the gates. Eight ignored tests remain
-explicitly excluded. The proof assumes the documented parser, identity,
-fragment-admission, detector and worker boundaries; it is not extracted from the
-Rust implementation.
-
-Each version also completes the 592-input ORE regression with unchanged semantic
-outputs: 588 match retained gold, two retain known consistency disagreements,
-and two have no retained external gold. These runs are regression evidence,
-not new paired performance comparisons against other reasoners.
-
-The Protégé plugin reports the matching version and passes 31 Maven tests,
-bundle checks and a real Protégé installation smoke test.
-
-## Benchmark method
-
-The generated histories follow Kazakov and Klinov's ISWC 2013 method
-([Section 5.3](https://www.uni-ulm.de/fileadmin/website_uni_ulm/iui.inst.090/Publikationen/2013/KazKli13Incremental_ISWC.pdf)):
-250 revisions exchange 1, 10 or 100 active axioms with a seeded holdout.
-The benchmark extends this method to separately reported expressive-DL cases;
-it does not reproduce the paper's datasets or performance measurements.
-Each arm receives one warmup and five measured repetitions, one CPU, a
-20-GiB process-tree memory cap, a 240-second state deadline and a separate
-7,200-second history cap. Failed histories remain in the coverage denominator.
-
-Session arms retain a reasoner across updates. Fresh arms rebuild reasoning
-state for every version within a persistent runtime for Java and KM;
-Konclude is a separately labelled fresh-only comparator. ELK and Whelk apply
-only to the EL panel. Paired timing ratios require mutually correct completed
-histories. Java inference intervals and KM request/response intervals have
-different boundaries, so whole-history costs are also reported.
-
-Correctness checks use hashes of complete canonical full-IRI taxonomies,
-including consistency and unsatisfiable classes. Full pilot outputs are
-retained; disagreements require targeted full-output diagnosis. These checks
-are not sampled-entailment checks. Memory uses sampled process-tree RSS,
-which may miss brief peaks. Scheduling amendments and shared-resource effects
-remain part of the interpretation of timing results.
-
-## Incremental comparison
-
-All 1,800 planned attempts terminated, including warmups. The final comparison
-uses 1,260 measured peer/baseline attempts and 240 measured KM v1.4.1 attempts.
-The table retains all planned cases, including failures and unverified outputs.
-Independent correctness requires complete agreement with fresh HermiT and JFact
-on the identical 251-state history. No available state-digest disagreement was
-found, including partial histories, but partial agreement does not certify a
-complete history.
-
-| Reasoner / arm | Verified / planned | Completed but unverified | Timeout | Other failure |
-|---|---:|---:|---:|---:|
-| km / session | 45 / 120 | 15 | 30 | 30 |
-| km / fresh | 45 / 120 | 15 | 30 | 30 |
-| hermit / session | 60 / 120 | 15 | 45 | 0 |
-| hermit / fresh | 60 / 120 | 15 | 45 | 0 |
-| jfact / session | 60 / 120 | 0 | 59 | 1 |
-| jfact / fresh | 60 / 120 | 0 | 59 | 1 |
-| openllet / session | 60 / 120 | 0 | 60 | 0 |
-| openllet / fresh | 60 / 120 | 0 | 60 | 0 |
-| konclude / fresh | 60 / 120 | 25 | 5 | 30 |
-| elk / session | 30 / 45 | 15 | 0 | 0 |
-| elk / fresh | 30 / 45 | 15 | 0 | 0 |
-| whelk / session | 30 / 45 | 0 | 15 | 0 |
-| whelk / fresh | 30 / 45 | 0 | 15 | 0 |
-
-ELK and Whelk cover only the nine EL histories; the other arms cover 24 histories.
-KM completes MMO, HAO, VTO and ZFA at all three update sizes. VTO lacks a complete
-HermiT/JFact reference pair and remains unverified. MFOMD records 30 worker errors;
-TO records 30 complex-class DL-safe-rule initialization errors. Uberon and MRO
-account for the 60 timeouts. Errors remain visible, including opaque worker `-1`
-reports; this release does not claim to solve those failures.
-
-KM's median fresh/session whole-history ratios on the nine verified histories
-range from 0.529 to 0.974. Retained sessions are slower than fresh reconstruction
-at the median on these cases. EL updates report retained fixpoints, while ZFA
-uses exact rebuilds. These receipts describe the mechanism, not a speedup claim.
-
-The complete per-case wall-time ranges, sampled peak memory, within-reasoner
-paired ratios and source/runtime identities are in the
-[incremental comparison](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/v1.4.1/results/benchmarks/2026-09-17-dynamic-baseline/incremental-final-comparison/README.md).
-The frozen [methodology](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/v1.4.1/benchmarks/dynamic-v1.4/METHODOLOGY.md)
-records the literature, panel construction and comparison boundaries.
-
-The release attaches the tested binary, matching Protégé plugin, benchmark
-evidence, validation archive, source attestation and SHA-256 checksums.
-
-## [1.4.0] - 2026-09-16
-
-### Release summary
-
-- Preserve typed ABox individuals and assertions in incremental source
-  sessions. Batch-only ABox elision had forced these sessions to rebuild after
-  an update. The retained positive-EL adapter now handles inconsistent
-  insertions and their removal while restoring the caller's environment.
-- Extend automatic classification to ORE1194 and retain the full 592-input
-  completion result. ORE1194 has no authoritative external full-taxonomy gold;
-  operational completion and external agreement are reported separately.
-- Reduce frontend allocation, pack EL rule indexes, improve CB subsumption
-  indexing, and avoid unnecessary worker preparation and data copies.
-- Include source-profile routing improvements and the source-bound Lean
-  publication boundaries for ELC, HT, CB, incremental reasoning, and explanations.
-- Publish time and peak process-tree memory with exact tested artifact identities
-  and per-ontology evidence. Full contemporary Uberon classification remains
-  an open task and is not implied by completing the ORE 2015 corpus.
-
-Release validation and the comparison table are recorded in
-`results/benchmarks/2026-09-16-v1.4.0-release/README.md`.
-
-### ORE 2015 comparison
-
-Fresh IBEX job `51947388` completes all 592 inputs within 240 seconds and
-20 GiB each. The audit verifies 592 results, matching checkpoints, completion
-markers, binary identities, and unchanged semantic outputs. Of these, 588 match
-retained gold, two retain adjudicated consistency disagreements, and two have
-no retained external full-taxonomy gold. ORE1194 completes in 127.7150 seconds
-at 16,840.31 MiB.
-
-| Reasoner | Tested version / commit | Completions used | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
-|---|---|---:|---:|---:|---:|---:|
-| KM | v1.4.0; `edb1721`; binary `ddc30d2f…8903d09a` | 592/592 | 1.4765 | 0.1046 | 206.29 | 22.59 |
-| ELK | 0.6.0 | 531/592 | 1.5208 | 0.7520 | 493.33 | 234.30 |
-| Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 3.2765 | 0.2814 | 559.90 | 76.87 |
-| Sequoia | 0.6.1-alpha; `c5248ec7be30` | 339/592 | 7.3704 | 2.5371 | 2207.35 | 536.15 |
-| HermiT | 1.4.6.519-SNAPSHOT | 557/592 | 13.1172 | 1.8782 | 1331.72 | 714.22 |
-
-KM includes all completed inputs, with the gold limitations above. Baselines
-use their retained correct-completion subsets. These aggregates use different
-populations and are not paired per-ontology speedup measurements. Times are
-wall seconds; memory is peak process-tree RSS in MiB on Intel Xeon Gold 6248.
-
-### Release validation
-
-- Pass all four production Lean certification gates on the final production
-  source, including incremental and explanation publication. The axiom audits
-  reject `sorryAx` and report only `propext`, `Classical.choice`, and `Quot.sound`.
-- Pass 2,405 general Rust library tests and all 13 remaining integration
-  targets, with native-checker tests executed separately by certification gates.
-- Pass all 31 plugin tests, packaged-bundle verification, and native
-  classification, incremental update, and explanation in Protégé 5.6.6 using
-  the exact benchmark binary.
-- Ship the measured Linux x86-64 binary, Protégé JAR, comparison and per-ontology
-  TSVs, benchmark evidence, validation logs, and SHA-256 checksums.
+## Unreleased
 
 ### Deferred engine thread budget in the production race
 
@@ -476,6 +225,144 @@ wall seconds; memory is peak process-tree RSS in MiB on Intel Xeon Gold 6248.
   It therefore clears 1579's memory target but not its 2.4938-second wall
   target. ORE 6722 improved from 3.59 to 3.42 seconds. The strict score remains
   524/589.
+
+## [1.4.5] - 2026-10-05
+
+### Correctness and comparative benchmarks
+
+- Reject asserted data values outside an applicable finite data range, including
+  inherited constraints on the top data property. ORE 13219 now reports the
+  inconsistency detected by the independent reference reasoners.
+- Preserve the dependency of nominal membership through node merges so that
+  backtracking retains the proof supporting a pending nominal choice. A reduced
+  wine-ontology regression covers this case. Full classifications of ORE 11477,
+  1397, 13954, and 14334 still reach the 240-second benchmark limit; the reduced
+  regression does not establish successful full-ontology classification.
+- Respect the physical orientation of ancestor links when propagating universal
+  restrictions in the completion engine. This removes the false subsumptions
+  observed on ORE 185.
+- Handle floating-point facet ranges over representable float and double values,
+  including signed zero, infinities, NaN, and empty intervals. The corrected
+  taxonomies for ORE 16708 and 3685 agree with HermiT and Konclude.
+- Reset cancellation state between classifications in a retained process so that
+  an earlier cancellation does not abort subsequent justification checks.
+- Keep unresolved equivalent-class definitions out of saturation-only taxonomy
+  answers, and materialize cached disjunctions when reading classification
+  models. Check live ancestor edges before reusing cached universal automata.
+  These changes recover missing subsumptions in ORE 6333, 7877, and 6134.
+  Full taxonomies match JFact, HermiT, and Konclude respectively; reduced
+  source-preserving examples and cache-compatibility tests cover the failures.
+- Preserve global superclass consequences during retained EL replacements.
+  When a changed component reaches a global rule, recompute all class rows:
+  implicit top membership connects rows that share no explicit source symbols.
+  This restores 798 missing entailments on ORE 5295. All five update revisions
+  match fresh classification and Konclude across all three cold and retained
+  repetitions; disconnected components still reuse their closure.
+- Add comparative classification, incremental-update, and justification panels
+  for KM, RustDL, Konclude, HermiT, JFact, Openllet, ELK, Whelk, MORe, and Sequoia.
+  Reports retain preparation failures, invalid-input refusals, timeouts, and
+  incomplete outputs. Performance comparisons use paired verified outcomes;
+  justification verification checks source membership, entailment, and
+  subset-minimality independently. Retained sessions are distinguished from
+  demonstrated internal reuse.
+- Complete and review the 1920-input classification panel: KM produces 1594
+  outputs, rejects 212 invalid inputs, reaches 44 worker time limits, and reaches
+  70 external timeouts. All 45 reasoner-pair statistics are independently
+  recomputed. On the 1195 valid, fully agreeing KM/RustDL cases, the median
+  paired RustDL/KM ratios are 0.595 for wall time and 0.838 for peak memory.
+  Four inputs completed in the preceding candidate run but time out in this
+  run; the report retains these outcomes without substituting earlier timings.
+- Complete and review the justification panel: 80 selected sources yield 124
+  queries from 42 sources, with 24 preparation failures and 14 sources without
+  eligible queries. Across three repetitions, KM has 336 independently verified
+  justifications, 18 worker time-limit errors, and 18 external timeouts. On the
+  336 verified KM/RustDL pairs, median paired RustDL/KM ratios are 0.746 for
+  wall time and 0.630 for peak memory. Failures remain outside paired costs.
+- Complete the incremental measurements on 80 selected sources: 79 prepared
+  sources provide five revisions and three repetitions; one source reaches the
+  preparation time limit. KM's 1185 cold runs produce 1149 outputs, 21 external
+  timeouts, and 15 verified worker time-limit errors. Of 237 retained sessions,
+  204 finish, 24 time out, six exceed the memory limit, and three report an
+  internal worker time limit. For the 948 scheduled updates after initialization,
+  receipts report 206 incremental updates and 615 exact rebuilds, with 121
+  revisions skipped after session failure and six update timeouts. These are
+  measurement outcomes. All 395 revision audits are complete. The KM reference,
+  repeatability, and fresh-versus-retained checks have 4321 taxonomy agreements,
+  145 inconsistent agreements, 198 unavailable comparisons, and no
+  disagreements. Independently recompute all 272 phase-specific method-pair
+  reports and verify 7252 retained-reuse entries against measurement records.
+  All 1977 KM-baseline disagreement records have an agreeing full-DL reference
+  in the same repetition; the raw disagreements remain in the reports.
+- Record the independent-reference gap on all five update revisions of ORE
+  1194: all three cold KM repetitions agree, but every other reasoner and the
+  retained KM sessions produce no usable result under the benchmark protocol.
+  These results establish repeatability only; independent correctness and
+  fresh-versus-retained equivalence remain unverified for these revisions.
+- Retained KM is slower on this workload: on 803 fully agreeing update pairs,
+  median paired retained/fresh ratios are 1.255 for wall time and 1.627 for peak
+  memory. RustDL/KM-cold ratios are 0.538 and 0.867 on 647 agreeing update pairs;
+  RustDL/KM-retained ratios are 0.417 and 0.459 on 592 agreeing update pairs.
+  Initialization has separate statistics. RustDL, MORe, and Sequoia participate
+  through cold reruns; retained-session methods are available for the other
+  seven reasoners. Do not interpret cold reruns as internal incremental reuse.
+- Keep 227 incomplete or dropped-axiom RustDL update outputs out of verified
+  cost pairs. Three retained Konclude execution records marked `ok` have no
+  canonical result and likewise provide no verified pair. Unknown consistency,
+  missing outputs, and failed sessions are never promoted to semantic agreement.
+- Release validation: 2835 Rust tests passed (8 ignored), 31 Java tests passed,
+  plugin installation smoke passed, all four Lean certification gates passed
+  without `sorryAx`, and 68 benchmark-harness tests passed. All four panel
+  reports and the combined readable report have been reviewed. Evidence is under
+  `results/benchmarks/2026-10-04-v1.4.5-comparative/`.
+
+## [1.4.4] - 2026-10-04
+
+### Inverse chains, DL-safe rules, and input validation
+
+- Support inverse object-property expressions in role chains, including
+  inverse superproperties, with direction and source-name collision tests.
+- Extend DL-safe rule normalization and execution. Preserve the consistency
+  precheck when normalization moves rule obligations into ordinary clauses.
+- Reject detected OWL 2 DL input violations with an explanation and exit code
+  2, without repairing the source or returning a classification. Keep support
+  refusals distinct (exit code 3). DL-safe SWRL remains admitted by the input
+  contract. For anonymous-individual trees, follow the explicit named-neighbour
+  condition in OWL 2 section 11.2, including isolated vertices. The following
+  named-star example conflicts with that formal condition and is not treated
+  as an exception. Count distinct assertions, including incoming assertions,
+  and require one qualifying vertex per component.
+- Fix validation memory growth in the functional-syntax grammar and correct
+  `DataPropertyAtom` subject typing and empty IRI paths. The final 1,920-input
+  inventory has 1,708 inputs passing the implemented checks and 212 refusals,
+  with no validation errors or timeouts. Independent source-witness audits
+  confirmed all 212 violations, including the 33 new anonymous-tree diagnoses.
+- Use direct witness inequalities for minimum cardinalities up to seven,
+  where they need fewer clauses than role colours. Keep colours for larger
+  minima and for maximum bounds. This resolves the shared-successor regression
+  without relaxing its assertions or time limit.
+- The final candidate passed 2,822 Rust tests (8 ignored), all four production
+  Lean gates with no `sorryAx` in the audited surfaces, 31 Java tests, plugin
+  packaging, and the Protégé installation smoke test. Certification and builds
+  use the same 863-file source manifest. The final 592-input Konclude
+  comparison has 552 matches, two successes without gold, 35 independently
+  verified invalid-input refusals, two memory-limit failures, and one timeout.
+  No successful taxonomy disagrees with gold. All 554 successful signatures
+  match the preceding candidate. The final 1,920-input classification run
+  reports 1,622 successes, 212 input rejections, and 86 non-completions under
+  the unchanged 240-second / 20-GiB / one-CPU protocol. The final output audit
+  verifies all successful output hashes, zero dropped axioms, and all 212
+  invalid-input diagnoses. There are no unsupported-input outcomes or
+  unexplained engine errors in this run. All eight differences from the
+  v1.4.3 baseline match independently checked reference outputs.
+- Original errors 15687 and 9890 complete in 109.6 and 7.3 seconds on the final
+  candidate, with actual output hashes verified against independent references.
+  Three preceding successes (13229, 14817, 5162) now hit the
+  240-second limit, compared with preceding times of 227.0, 211.7, and 230.6
+  seconds. Retain those outcomes in the final totals.
+
+- Release evidence: `results/benchmarks/2026-10-02-v1.4.4-support/validation/`
+  contains the final source manifest, test and certification logs, corpus
+  inventories, gold comparison, full output audit, and adjudication.
 
 ## [1.3.0] - 2026-08-30
 

@@ -1,0 +1,8 @@
+KM_TIMING mirror-route: fragment: 36495 private mirrors over 1 role(s), 1244 selected, 36494 base classes
+KM_TIMING in-process frontend declined by the exact-EL screen: bytes=19295447 screen=0.01s
+KM_TIMING frontend done @ 3.99s route=ht_bridge
+KM_TIMING spawn_ht: read+convert 414895 clauses (ht_view=414895) in 1.17s
+KM_TIMING engine block done @ 62.90s (subs_keys=36104)
+KM_TIMING mirror-route: slice classified: 427376 pairs
+KM_TIMING mirror-route: reconstructed 846306 public pairs, 0 unsatisfiable
+KM_TIMING frontend done @ 67.06s route=mirror_private

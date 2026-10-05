@@ -1,0 +1,48 @@
+{
+  "observed_at": "2026-10-05T01:38:11.355688+00:00",
+  "ontology": "ore_ont_4669",
+  "source_sha256": "2b15dc9535ed50c4dc9eae05067df4e6525b69c7bf1913192715b79ad550b3eb",
+  "candidate_sha256": "33967030dd429b48e5ebf35e028873ebba524bf1629bca13ce2f3958b56195fc",
+  "km_raw_sha256": "d9f2ef6fe9159392094a154c24201f90d502fc9ac5a7f02717d57642e282a58a",
+  "shared_reference_rows": 34860,
+  "km_rows": 48158,
+  "km_only_subjects": 13298,
+  "total_derived_relations": 846306,
+  "exact_decompressed_node_fingerprints_match": true,
+  "node_fingerprints_decompressed_sha256": "fd94f22049c891065ca12fccd84c90e45a1a1d3473ccafafc7fd6930eacd3fb5",
+  "proofs": [
+    {
+      "directory": "hermit-probe",
+      "query": [
+        "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0006911",
+        "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0006909"
+      ],
+      "verification_sha256": "328b72b35274937d6069442731b457faddfc579754676ffa55048f1001e307e4"
+    },
+    {
+      "directory": "hermit-GO_0043630",
+      "query": [
+        "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0043630",
+        "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0043634"
+      ],
+      "verification_sha256": "2dd2986bab6717704527b24d830836a90ffab083eeed6708839fb4604fdc8f08"
+    },
+    {
+      "directory": "hermit-GO_0048610",
+      "query": [
+        "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0048610",
+        "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0019065"
+      ],
+      "verification_sha256": "96768dbd7ebecfeb539fb2cce74f2ef1d38753406c7eba4ab4779f4de922ed4d"
+    }
+  ],
+  "derivation": [
+    "ELK/Whelk and KM have identical positive taxonomy rows.",
+    "Reverse positive subclass edges under not exists has_part definitions.",
+    "For each source A subclass of exists has_part.B, transitivity yields not exists has_part.B subclass of not exists has_part.A.",
+    "Every filler is subclass of owl:Thing, yielding the corresponding top-filler complement inclusions.",
+    "Add three independently HermiT-verified source-subset entailments and take transitive closure."
+  ],
+  "conclusion": "All additional KM taxonomy relations are accounted for by the shared baseline taxonomy, source definitions/transitivity, and three independently verified source-subset entailments. The reconstructed taxonomy matches KM exactly. Raw ELK/Whelk disagreements and full-DL baseline timeouts remain unchanged.",
+  "scope_limit": "This adjudicates additional named-class entailments relative to the shared positive baseline taxonomy; it is not a full independent classification, a finite-model consistency proof, or evidence for replacing benchmark timeout results."
+}

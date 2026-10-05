@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "consistent": true,
+  "incomplete": false,
+  "trusted_sat_refutations": 0,
+  "unsatisfiable": [],
+  "equivalent_groups": [],
+  "direct_subsumptions": [
+    [
+      "urn:v145:A",
+      "urn:v145:B"
+    ],
+    [
+      "urn:v145:B",
+      "urn:v145:C"
+    ]
+  ],
+  "dropped": {}
+}

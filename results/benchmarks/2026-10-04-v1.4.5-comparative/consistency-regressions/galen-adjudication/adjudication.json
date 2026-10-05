@@ -1,0 +1,389 @@
+{
+  "source": "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+  "source_sha256": "6af9fc669cc53b055176b5996faaeb9cfa08ce1902104dad53fab1abb4556217",
+  "hermit_jar_sha256": "59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c",
+  "checker_source_sha256": "185be115e7c9e0cc61524f8b10292eb716296e04d869c49f4634acc1ebe9edc1",
+  "records": [
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DividedRightHeartAtrium",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT source-subset minimal justification verification",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DividedRightHeartAtrium",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "entailed": true,
+        "explanation_sha256": "add263c4c0c7d453628d2e5983716d9891e8578ec6fc20a033938a6c510dc7bb",
+        "verification": {
+          "command": [
+            "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+            "-Xmx12g",
+            "-XX:ActiveProcessorCount=1",
+            "-cp",
+            "/workspace/v145-tools/classes:/workspace/v145-tools/classifier-hermit.jar",
+            "org.kmbenchmark.VerifyJustification",
+            "org.semanticweb.HermiT.ReasonerFactory",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-probe/explanation.tsv.ofn",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DividedRightHeartAtrium",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/0/verification.tsv"
+          ],
+          "status": "ok",
+          "exit_code": 0,
+          "wall_s": 7.420631492976099,
+          "peak_bytes": 712867840
+        }
+      }
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletHeartVentricle",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT source-subset minimal justification verification",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletHeartVentricle",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "entailed": true,
+        "explanation_sha256": "da6ebe276adf6419f8a1ae36aa309261534f27f2114c77a22dbfe90dc0a37808",
+        "verification": {
+          "command": [
+            "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+            "-Xmx12g",
+            "-XX:ActiveProcessorCount=1",
+            "-cp",
+            "/workspace/v145-tools/classes:/workspace/v145-tools/classifier-hermit.jar",
+            "org.kmbenchmark.VerifyJustification",
+            "org.semanticweb.HermiT.ReasonerFactory",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/1/explanation.tsv.ofn",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletHeartVentricle",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/1/verification.tsv"
+          ],
+          "status": "ok",
+          "exit_code": 0,
+          "wall_s": 8.461650397977792,
+          "peak_bytes": 712585216
+        }
+      }
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletLeftVentricle",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT source-subset minimal justification verification",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletLeftVentricle",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "entailed": true,
+        "explanation_sha256": "8d57384b934197e19bce7a9acf28402b03876af27ca8cbfeccacb1285304d567",
+        "verification": {
+          "command": [
+            "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+            "-Xmx12g",
+            "-XX:ActiveProcessorCount=1",
+            "-cp",
+            "/workspace/v145-tools/classes:/workspace/v145-tools/classifier-hermit.jar",
+            "org.kmbenchmark.VerifyJustification",
+            "org.semanticweb.HermiT.ReasonerFactory",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/2/explanation.tsv.ofn",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletLeftVentricle",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/2/verification.tsv"
+          ],
+          "status": "ok",
+          "exit_code": 0,
+          "wall_s": 11.041990997968242,
+          "peak_bytes": 713551872
+        }
+      }
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletRightVentricle",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT source-subset minimal justification verification",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletRightVentricle",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "entailed": true,
+        "explanation_sha256": "13705cccb3b4a9a10328bf2b89dd3d020ed329e31874504e81ac875a31f0b0b7",
+        "verification": {
+          "command": [
+            "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+            "-Xmx12g",
+            "-XX:ActiveProcessorCount=1",
+            "-cp",
+            "/workspace/v145-tools/classes:/workspace/v145-tools/classifier-hermit.jar",
+            "org.kmbenchmark.VerifyJustification",
+            "org.semanticweb.HermiT.ReasonerFactory",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/3/explanation.tsv.ofn",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#DoubleOutletRightVentricle",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/3/verification.tsv"
+          ],
+          "status": "ok",
+          "exit_code": 0,
+          "wall_s": 8.506199297960848,
+          "peak_bytes": 720777216
+        }
+      }
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HoodedPrepuce",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT source-subset minimal justification verification",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HoodedPrepuce",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "entailed": true,
+        "explanation_sha256": "ae09def713cd2ff7ec1803cd1f09a8d93622b9ffc308f2f4e2c8125fd5972623",
+        "verification": {
+          "command": [
+            "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+            "-Xmx12g",
+            "-XX:ActiveProcessorCount=1",
+            "-cp",
+            "/workspace/v145-tools/classes:/workspace/v145-tools/classifier-hermit.jar",
+            "org.kmbenchmark.VerifyJustification",
+            "org.semanticweb.HermiT.ReasonerFactory",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/4/explanation.tsv.ofn",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HoodedPrepuce",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/4/verification.tsv"
+          ],
+          "status": "ok",
+          "exit_code": 0,
+          "wall_s": 7.548113914905116,
+          "peak_bytes": 714227712
+        }
+      }
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IndeterminateVentricle",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT source-subset minimal justification verification",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IndeterminateVentricle",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "entailed": true,
+        "explanation_sha256": "43bedbb959351ae983cac986c577fbf79bd302d3143507d5cce5992d90161730",
+        "verification": {
+          "command": [
+            "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+            "-Xmx12g",
+            "-XX:ActiveProcessorCount=1",
+            "-cp",
+            "/workspace/v145-tools/classes:/workspace/v145-tools/classifier-hermit.jar",
+            "org.kmbenchmark.VerifyJustification",
+            "org.semanticweb.HermiT.ReasonerFactory",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/6/explanation.tsv.ofn",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IndeterminateVentricle",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/6/verification.tsv"
+          ],
+          "status": "ok",
+          "exit_code": 0,
+          "wall_s": 10.393646267009899,
+          "peak_bytes": 719269888
+        }
+      }
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IneffectiveConceptionSymptom",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#PathologicalBodyProcessSymptom"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT direct query on a verified source subset; a negative answer on a subset does not refute the full ontology",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IneffectiveConceptionSymptom",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#PathologicalBodyProcessSymptom"
+        ],
+        "status": "ok",
+        "exit_code": 0,
+        "wall_s": 9.789987770025618,
+        "command": [
+          "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+          "-Xmx12g",
+          "-XX:ActiveProcessorCount=1",
+          "-cp",
+          "/workspace/v145-tools/km-consistency-diagnosis:/workspace/v145-tools/classifier-hermit.jar",
+          "CheckSubclass",
+          "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+          "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/7/module.ofn",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IneffectiveConceptionSymptom",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#PathologicalBodyProcessSymptom"
+        ],
+        "stdout": "source_subset=true consistent=true entailed=true\n"
+      },
+      "module_sha256": "9a89e2fa3ad276903be85a59cf1dd820446c3a8d22f5e6d5e37dfa79574925a5"
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IncompetentAnalSphincter",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT direct query on a verified source subset; a negative answer on a subset does not refute the full ontology",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IncompetentAnalSphincter",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "status": "ok",
+        "exit_code": 0,
+        "wall_s": 9.135299514979124,
+        "command": [
+          "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+          "-Xmx12g",
+          "-XX:ActiveProcessorCount=1",
+          "-cp",
+          "/workspace/v145-tools/km-consistency-diagnosis:/workspace/v145-tools/classifier-hermit.jar",
+          "CheckSubclass",
+          "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+          "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/5/module.ofn",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IncompetentAnalSphincter",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "stdout": "source_subset=true consistent=true entailed=true\n"
+      },
+      "module_sha256": "9a89e2fa3ad276903be85a59cf1dd820446c3a8d22f5e6d5e37dfa79574925a5"
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#UniventricularHeart",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "inconclusive",
+      "evidence": "HermiT direct query on a verified source subset; a negative answer on a subset does not refute the full ontology",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#UniventricularHeart",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "status": "ok",
+        "exit_code": 0,
+        "wall_s": 9.028988252044655,
+        "command": [
+          "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+          "-Xmx12g",
+          "-XX:ActiveProcessorCount=1",
+          "-cp",
+          "/workspace/v145-tools/km-consistency-diagnosis:/workspace/v145-tools/classifier-hermit.jar",
+          "CheckSubclass",
+          "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+          "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-probe/module.ofn",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#UniventricularHeart",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "stdout": "source_subset=true consistent=true entailed=false\n"
+      },
+      "module_sha256": "014cfc4e91ccb0c6bbcdcef9f48705e95a9c487cecc81f2cc6d2530ee8ea4bb0"
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IneffectiveConceptionSymptom",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#PathologicalBodyProcesswhichplaysConsultationRoleSymptomRole"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT direct query on a verified source subset; a negative answer on a subset does not refute the full ontology",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IneffectiveConceptionSymptom",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#PathologicalBodyProcesswhichplaysConsultationRoleSymptomRole"
+        ],
+        "status": "ok",
+        "exit_code": 0,
+        "wall_s": 8.897356195026077,
+        "command": [
+          "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+          "-Xmx12g",
+          "-XX:ActiveProcessorCount=1",
+          "-cp",
+          "/workspace/v145-tools/km-consistency-diagnosis:/workspace/v145-tools/classifier-hermit.jar",
+          "CheckSubclass",
+          "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+          "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/8/module.ofn",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#IneffectiveConceptionSymptom",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#PathologicalBodyProcesswhichplaysConsultationRoleSymptomRole"
+        ],
+        "stdout": "source_subset=true consistent=true entailed=true\n"
+      },
+      "module_sha256": "9a89e2fa3ad276903be85a59cf1dd820446c3a8d22f5e6d5e37dfa79574925a5"
+    },
+    {
+      "query": [
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#UniventricularHeart",
+        "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+      ],
+      "adjudication": "entailed",
+      "evidence": "HermiT source-subset minimal justification verification",
+      "receipt": {
+        "query": [
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#UniventricularHeart",
+          "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart"
+        ],
+        "entailed": true,
+        "explanation_sha256": "fa3e69771c80ea63be8cdfa780558d2f1cdb8ad36c35c0e294153020606c4dea",
+        "verification": {
+          "command": [
+            "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+            "-Xmx12g",
+            "-XX:ActiveProcessorCount=1",
+            "-cp",
+            "/workspace/v145-tools/classes:/workspace/v145-tools/classifier-hermit.jar",
+            "org.kmbenchmark.VerifyJustification",
+            "org.semanticweb.HermiT.ReasonerFactory",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794.owl",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/9/explanation.tsv.ofn",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#UniventricularHeart",
+            "file:/I:/ore2015/pool/full/OpenGALEN7_FULL_WithPropertyChains.owl#HollowPathologicalBodyPart",
+            "/workspace/v145-tools/km-consistency-diagnosis/ore_ont_3794/hermit-all-queries/9/verification.tsv"
+          ],
+          "status": "ok",
+          "exit_code": 0,
+          "wall_s": 7.110930642927997,
+          "peak_bytes": 717860864
+        }
+      }
+    }
+  ],
+  "positive_queries": 10,
+  "total_disputed_queries": 10,
+  "status": "all_ten_extra_relations_confirmed_by_independent_hermit",
+  "interpretation": "The recorded KM-only relations are supported by source-axiom subsets. The Konclude taxonomy lacks these ten entailments. This adjudicates the old measured taxonomy; current candidate measurements still require their own audit.",
+  "verifier_class_sha256": "f5293e8314a799c17f667f0ba73d1ab952d13869549373f660975e2da0d8f1fe"
+}

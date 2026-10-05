@@ -1262,6 +1262,15 @@ fn create_clashed_individual_distinct_descriptor_prepends_payload() {
 
 #[test]
 fn mergeability_clash_retains_distinct_edge_dependency() {
+    check_mergeability_distinct_dependency(false, false);
+}
+
+#[test]
+fn mergeability_clash_retains_compressed_distinct_branch_dependency() {
+    check_mergeability_distinct_dependency(true, true);
+}
+
+fn check_mergeability_distinct_dependency(compressed: bool, branching: bool) {
     let mut env = build_env();
     let root = env.root;
     let other = env
@@ -1272,9 +1281,14 @@ fn mergeability_clash_retains_distinct_edge_dependency() {
         .process_context_mut()
         .node_mut(other)
         .set_individual_node_id(71);
-    let distinct_tp = deterministic_track_point(&mut env);
-    env.algo
-        .ht_make_individuals_distinct(&[root, other], distinct_tp, &mut env.ctx);
+    let distinct_tp = if branching {
+        real_dependency_track_point(&mut env, root, ConDescId::NONE, DepKind::Or, 1175, 7)
+    } else { deterministic_track_point(&mut env) };
+    if compressed {
+        assert!(env.ctx.process_context_mut().nodes_install_distinct_group(&[root, other], distinct_tp));
+    } else {
+        env.algo.ht_make_individuals_distinct(&[root, other], distinct_tp, &mut env.ctx);
+    }
 
     let mut clashes = ClashDescId::NONE;
     assert!(!env.algo.ht_individuals_mergeable_with_clashes(
@@ -1291,6 +1305,14 @@ fn mergeability_clash_retains_distinct_edge_dependency() {
     ));
     assert_eq!(clash.get_dependency_track_point(), distinct_tp);
     assert_eq!(clash.get_next(), ClashDescId::NONE);
+    if compressed {
+        let ClashDescriptorKind::IndividualDistinct { distinct_edge } = clash.kind else { unreachable!() };
+        let edge = env.ctx.process_context().distinct_edge(distinct_edge);
+        assert_eq!(edge.get_source_individual(), root);
+        assert_eq!(edge.get_destination_individual(), other);
+        assert_eq!(edge.get_dependency_track_point(), distinct_tp);
+        assert_eq!(env.ctx.process_context().track_point(distinct_tp).get_branching_tag(), 7);
+    }
 }
 
 #[test]
@@ -22569,6 +22591,21 @@ fn varbind_implication_existing_binding_refreshes_and_drains_reapply() {
 }
 
 #[test]
+fn optimized_blocking_rejects_a_node_without_an_ancestor() {
+    let mut env = build_env();
+    let mut root = env.root;
+    let mut blocker = env.algo.create_new_individual(TrackPointId::NONE, false, &mut env.ctx);
+    for node in [&mut root, &mut blocker] {
+        env.algo.add_concept_to_individual(env.concept_a, false, node,
+            TrackPointId::NONE, false, true, &mut env.ctx);
+    }
+    assert!(env.algo.get_ancestor_individual(&mut root, &mut env.ctx).is_none());
+    let mut alternative = Id::NONE;
+    assert!(!env.algo.is_label_concept_optimized_blocking(root, blocker, Id::NONE,
+        false, &mut alternative, &mut env.ctx));
+}
+
+#[test]
 fn optimized_blocking_b2_role_reapply_rejects_missing_forall_operand() {
     use super::super::model::op;
     use super::super::model::role::Role;
@@ -25784,6 +25821,32 @@ fn role_hierarchy_forall() {
 /// must propagate C BACK to the root (the predecessor). After the run the ROOT carries
 /// C, reached purely through the inverse role.
 #[test]
+fn forall_ancestor_link_respects_physical_orientation() {
+    use super::super::model::role::Role;
+    use super::super::model::substrate::NegLink;
+
+    // A symmetric role installs both directions; the last (inverse) link
+    // becomes the child's ancestor link. Neither direction implies a self edge.
+    for inverse in [false, true] {
+        let mut env = build_env();
+        let parent = env.root;
+        let child = env.algo.create_new_individual(
+            TrackPointId::NONE, false, &mut env.ctx,
+        );
+        let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+        env.ctx.ontology_arenas_mut().role_mut(role).set_inverse_role(role);
+        let link = env.algo.create_new_individuals_links_reapplyed(
+            parent, child,
+            &[NegLink { target: role, negated: inverse }],
+            role, TrackPointId::NONE, false, &mut env.ctx,
+        );
+        env.ctx.process_context_mut().node_mut(child).set_ancestor_link(link);
+        let targets = env.algo.ht_all_rule_targets(child, role, &env.ctx);
+        assert_eq!(targets, vec![parent], "inverse ancestor edge: {inverse}");
+    }
+}
+
+#[test]
 fn inverse_role_propagation() {
     use super::super::model::op;
     use super::super::model::role::Role;
@@ -26420,7 +26483,7 @@ fn make_reuse_nominal(
         .processing_data_box_mut()
         .individual_process_node_vector_mut()
         .set_local_data(-tag, node);
-    env.algo.native_nominal_backend_replay.insert(tag, replay);
+    std::sync::Arc::make_mut(&mut env.algo.native_nominal_backend_replay).insert(tag, replay);
     node
 }
 
@@ -27270,4 +27333,248 @@ fn backend_expansion_reuse_activation_does_not_defer_a_freshly_materialized_node
             .backend_reuse_expansion_queued,
         "the reuse round still runs, it is just not ordered ahead of this round"
     );
+}
+
+#[test]
+fn initialized_queue_less_node_does_not_starve_other_completion_work() {
+    let mut env = build_env();
+    let node = env.root;
+    assert!(env.ctx.process_context_mut().node_concept_processing_queue(node, false).is_none());
+    env.algo.add_individual_to_processing_queue(node, &mut env.ctx);
+    assert_eq!(env.algo.take_next_process_individual(&mut env.ctx), node);
+    assert!(env.algo.individual_node_initializing(node, &mut env.ctx));
+    assert!(!env.algo.continue_individual_processing(node, &mut env.ctx));
+    env.algo.individual_node_conclusion(node, &mut env.ctx);
+    assert!(env.algo.take_next_process_individual(&mut env.ctx).is_none());
+}
+
+#[test]
+fn singleton_index_matches_reference_carriers_and_dependencies() {
+    fn carrier(env: &mut SelfTestEnv, concept: ConceptId, negative: bool, layout: usize) -> NodeId {
+        let mut descriptor = ConceptDescriptor::new(); descriptor.concept = concept; descriptor.negated = negative;
+        descriptor.set_dependency_track_point(env.ctx.get_or_create_base_dependency_track_point());
+        let id = env.ctx.process_context_mut().alloc_con_desc(descriptor);
+        let tag = env.ctx.ontology_arenas().concept(concept).get_concept_tag();
+        let mut map = HashMap::new(); map.insert(tag, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: id, pos_neg_reapply_queue: Default::default(),
+        });
+        let mut label = ReapplyConceptLabelSet::new(INVALID); label.concept_count = 1;
+        if layout == 0 { label.concept_des_dep_map = map; }
+        else {
+            let mut parent = ReapplyConceptLabelSet::new(INVALID);
+            parent.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(map);
+            let parent = env.ctx.process_context_mut().alloc_label_set(parent);
+            label.additional_concept_des_dep_map = AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+                label_set: parent, which: AdditionalMapSlot::Additional,
+            });
+            if layout == 2 { label.concept_des_dep_map.insert(tag, ConceptDescriptorDependencyReapplyData {
+                concept_descriptor: id, pos_neg_reapply_queue: Default::default(),
+            }); }
+        }
+        let label = env.ctx.process_context_mut().alloc_label_set(label);
+        let node = env.ctx.process_context_mut().alloc_node(IndividualProcessNode::new(Id::NONE));
+        env.ctx.process_context_mut().node_mut(node).set_individual_node_id(node.index() as i64 + 100).set_reapply_concept_label_set(label);
+        node
+    }
+    fn check(env: &SelfTestEnv) -> bool {
+        let indexed = env.algo.singleton_first_carriers(&env.ctx);
+        let ctx = env.ctx.process_context();
+        for &concept in &env.algo.singleton_concepts {
+            let tag = env.ctx.ontology_arenas().concept(concept).get_concept_tag();
+            let mut expected = Vec::new();
+            for i in 0..ctx.node_count() {
+                if env.algo.phantom_node_intervals.iter().any(|&(a,b)| i >= a && i < b) { continue; }
+                let node_id = NodeId::new(i as i64);
+                let node = ctx.node(node_id);
+                if node.has_merged_into_individual_node_id() || node.reapply_con_label_set.is_none() { continue; }
+                let mut descriptor = ConDescId::NONE;
+                let mut dependency = TrackPointId::NONE;
+                if ctx.label_set(node.reapply_con_label_set).get_concept_descriptor_by_tag_in_context(
+                    ctx, tag, &mut descriptor, &mut dependency,
+                ) && !ctx.con_desc(descriptor).is_negated() {
+                    expected.push((node_id, dependency));
+                    if expected.len() == 2 { break; }
+                }
+            }
+            assert_eq!(indexed.get(&tag).unwrap(), &expected);
+        }
+        indexed.values().any(|pair| pair.len() == 2)
+    }
+    // Reuse one cache while mutating shared parents, descriptor semantics,
+    // local shadows, dependencies, and node liveness. Every observation must
+    // equal a fresh reference scan, including the selected dependency ids.
+    {
+        let mut env = build_env();
+        let mut con = Concept::new(); con.set_concept_tag(91000);
+        let concept = env.ctx.ontology_arenas_mut().alloc_concept(con);
+        env.algo.singleton_concepts = vec![concept];
+        carrier(&mut env,concept,false,0);
+        let node = carrier(&mut env,concept,false,1);
+        let label = env.ctx.process_context().node(node).reapply_con_label_set;
+        let parent = match env.ctx.process_context().label_set(label).additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Shared(alias) => alias.label_set, _ => unreachable!(),
+        };
+        let mut descriptor = ConDescId::NONE; let mut dep = TrackPointId::NONE;
+        env.ctx.process_context().label_set(label).get_concept_descriptor_by_tag_in_context(
+            env.ctx.process_context(),91000,&mut descriptor,&mut dep);
+        // A recycled descriptor that belongs to no label must not evict
+        // unrelated cached labels merely because its old id is in the arena.
+        let unused=env.ctx.process_context_mut().alloc_con_desc(ConceptDescriptor::new());
+        let mut cache = super::u02::SingletonLabelCache::default();
+        let compare = |env: &mut SelfTestEnv, cache: &mut super::u02::SingletonLabelCache| {
+            let expected = env.algo.singleton_first_carriers(&env.ctx);
+            assert_eq!(env.algo.singleton_first_carriers_cached(&mut env.ctx,cache),expected);
+        };
+        compare(&mut env,&mut cache);
+        let hits=cache.hits;
+        env.ctx.process_context_mut().con_desc_mut(unused).negated=true;
+        compare(&mut env,&mut cache);
+        assert!(cache.hits>hits,"unreferenced descriptor evicted all labels");
+        let epoch=env.ctx.process_context_mut().singleton_cache_scan_epoch();
+        let old_next=env.ctx.process_context().con_desc(descriptor).get_next_concept_descriptor();
+        env.ctx.process_context_mut().con_desc_mut(descriptor).set_next(descriptor);
+        assert_eq!(env.ctx.process_context_mut().singleton_cache_scan_epoch(),epoch);
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().con_desc_mut(descriptor).set_next(old_next);
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().con_desc_mut(descriptor).negated = true;
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().con_desc_mut(descriptor).negated = false;
+        let dependency=env.ctx.process_context_mut().alloc_track_point(DependencyTrackPoint::new(Id::NONE));
+        env.ctx.process_context_mut().con_desc_mut(descriptor).set_dependency_track_point(dependency);
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().label_set_mut(parent).additional_concept_des_dep_map = AdditionalDesDepMapRef::Null;
+        compare(&mut env,&mut cache);
+        let mut map=HashMap::new();map.insert(91000,ConceptDescriptorDependencyReapplyData {
+            concept_descriptor:descriptor,pos_neg_reapply_queue:Default::default() });
+        env.ctx.process_context_mut().label_set_mut(parent).additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(map);
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().label_set_mut(label).concept_des_dep_map.insert(91000,
+            ConceptDescriptorDependencyReapplyData {concept_descriptor:ConDescId::NONE,pos_neg_reapply_queue:Default::default()});
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().label_set_mut(label).concept_des_dep_map.remove(&91000);
+        compare(&mut env,&mut cache);
+        // Follow a Shared Additional alias whose owner itself aliases a
+        // different label's Main map. Mutating that remote owner must miss.
+        let mut remote = ReapplyConceptLabelSet::new(INVALID);
+        remote.concept_des_dep_map.insert(91000,ConceptDescriptorDependencyReapplyData {
+            concept_descriptor:descriptor,pos_neg_reapply_queue:Default::default() });
+        let remote=env.ctx.process_context_mut().alloc_label_set(remote);
+        env.ctx.process_context_mut().label_set_mut(parent).additional_concept_des_dep_map =
+            AdditionalDesDepMapRef::Shared(LabelSetMapAlias { label_set:remote,which:AdditionalMapSlot::Main });
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().label_set_mut(remote).concept_des_dep_map.remove(&91000);
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().label_set_mut(remote).concept_des_dep_map.insert(91000,
+            ConceptDescriptorDependencyReapplyData {concept_descriptor:descriptor,pos_neg_reapply_queue:Default::default()});
+        compare(&mut env,&mut cache);
+        let before_branch=env.algo.singleton_first_carriers(&env.ctx);
+        env.ctx.process_context_mut().push_branch_epoch();
+        env.ctx.process_context_mut().label_set_mut(remote).concept_des_dep_map.remove(&91000);
+        compare(&mut env,&mut cache);
+        assert_ne!(env.algo.singleton_first_carriers(&env.ctx),before_branch);
+        // The production wrapper ends this scope before the driver restores
+        // an alternative. Reproduce exactly that cache lifetime here.
+        env.ctx.process_context_mut().end_singleton_cache_scope();
+        drop(cache);
+        env.ctx.process_context_mut().pop_branch_epoch();
+        let mut cache=super::u02::SingletonLabelCache::default();
+        compare(&mut env,&mut cache);
+        assert_eq!(env.algo.singleton_first_carriers(&env.ctx),before_branch);
+        env.ctx.process_context_mut().node_mut(node).set_merged_into_individual_node_id(0);
+        compare(&mut env,&mut cache);
+        env.ctx.process_context_mut().end_singleton_cache_scope();
+    }
+    // Local negative and queue-only entries must suppress a positive shared
+    // descriptor. A positive local override must retain its own dependency.
+    for shadow in 0..3 {
+        let mut env = build_env();
+        let mut concept = Concept::new(); concept.set_concept_tag(91000);
+        let concept = env.ctx.ontology_arenas_mut().alloc_concept(concept);
+        env.algo.singleton_concepts = vec![concept];
+        carrier(&mut env, concept, false, 0);
+        let node = carrier(&mut env, concept, false, 1);
+        let label = env.ctx.process_context().node(node).reapply_con_label_set;
+        let dependency = env.ctx.process_context_mut().alloc_track_point(DependencyTrackPoint::new(Id::NONE));
+        let descriptor = if shadow == 1 { ConDescId::NONE } else {
+            let mut descriptor = ConceptDescriptor::new(); descriptor.concept = concept;
+            descriptor.negated = shadow == 0; descriptor.set_dependency_track_point(dependency);
+            env.ctx.process_context_mut().alloc_con_desc(descriptor)
+        };
+        env.ctx.process_context_mut().label_set_mut(label).concept_des_dep_map.insert(91000,
+            ConceptDescriptorDependencyReapplyData { concept_descriptor: descriptor,
+                pos_neg_reapply_queue: Default::default() });
+        assert_eq!(check(&env), shadow == 2);
+        if shadow == 2 {assert_eq!(env.algo.singleton_first_carriers(&env.ctx)[&91000][1],(node,dependency));}
+    }
+    for sparse in [false, true] { for layout in 0..3 { for negative in [false,true] { for phantom in [false,true] { for merged in [false,true] {
+        let mut env = build_env();
+        let concepts: Vec<_> = (0..64).map(|i| {
+            let mut concept = Concept::new(); concept.set_concept_tag(if sparse && i == 63 { i64::MAX - 1 } else { 80000+i });
+            env.ctx.ontology_arenas_mut().alloc_concept(concept)
+        }).collect();
+        env.algo.singleton_concepts = concepts.clone();
+        for &concept in &concepts { carrier(&mut env,concept,false,layout); }
+        for tag in [79999, 80064, 90000] {
+            let mut noise = Concept::new(); noise.set_concept_tag(tag);
+            let noise = env.ctx.ontology_arenas_mut().alloc_concept(noise);
+            carrier(&mut env, noise, false, layout);
+        }
+        assert!(!check(&env));
+        let duplicate=carrier(&mut env,concepts[7],negative,layout);
+        if phantom { env.algo.phantom_node_intervals.push((duplicate.index(),duplicate.index()+1)); }
+        if merged { env.ctx.process_context_mut().node_mut(duplicate).set_merged_into_individual_node_id(0); }
+        assert_eq!(check(&env),!negative && !phantom && !merged,
+            "layout={layout} negative={negative} phantom={phantom} merged={merged}");
+    }}}}}
+}
+
+#[test]
+fn retained_class_job_skips_optional_early_singleton_scan() {
+    let mut env = build_env();
+    let mut con = Concept::new();
+    con.set_concept_tag(91001);
+    let concept = env.ctx.ontology_arenas_mut().alloc_concept(con);
+    env.algo.singleton_concepts = vec![concept];
+    env.algo.retained_base_node_count = 1;
+    assert!(!env.algo.singleton_base_prepared);
+    let _ = env.algo.take_next_process_individual(&mut env.ctx);
+    assert!(!env.algo.singleton_base_prepared,
+        "restored class jobs must not rescan their already prepared base early");
+    assert!(!env.ctx.has_pending_signal());
+}
+
+#[test]
+fn satisfiable_cache_automaton_checks_live_edge_to_ancestor() {
+    use super::super::model::{op, role::Role};
+    let mut env = build_env();
+    let mut parent = env.root;
+    let child = test_node_at_depth(&mut env, 4, 1);
+    register_test_node(&mut env, child);
+    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let filler = atom_concept_with_tag(&mut env, 9101);
+    let mut all = Concept::new();
+    all.set_concept_tag(9102);
+    all.set_operator_code(op::CCAQALL);
+    all.set_role(role);
+    all.add_operand_linker(filler, false);
+    all.set_operand_count(1);
+    let all = env.ctx.ontology_arenas_mut().alloc_concept(all);
+    env.ctx.process_context_mut().node_reapply_concept_label_set(parent);
+    assert!(env.algo.is_satisfiable_cached_automat_concept_compatible(
+        child, all, false, parent, &mut env.ctx,
+    ), "without a backward edge there is no ancestor obligation");
+    let dependency = env.ctx.get_or_create_base_dependency_track_point();
+    env.algo.create_new_individuals_link_reapplyed(
+        child, child, parent, role, dependency, &mut env.ctx,
+    );
+    assert!(!env.algo.is_satisfiable_cached_automat_concept_compatible(
+        child, all, false, parent, &mut env.ctx,
+    ), "the cached universal cannot be reused until its ancestor filler holds");
+    env.algo.add_concept_to_individual(
+        filler, false, &mut parent, dependency, false, true, &mut env.ctx,
+    );
+    assert!(env.algo.is_satisfiable_cached_automat_concept_compatible(
+        child, all, false, parent, &mut env.ctx,
+    ), "a satisfied ancestor obligation allows reuse");
 }

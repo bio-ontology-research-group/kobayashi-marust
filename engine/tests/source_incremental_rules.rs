@@ -98,6 +98,33 @@ fn run_source_commands(commands: &[serde_json::Value]) -> Vec<serde_json::Value>
 }
 
 #[test]
+fn isolated_rule_projection_is_rechecked_when_a_named_body_becomes_active() {
+    let source = r#"Ontology(
+      Declaration(Class(<http://example.org/isolated#A>))
+      Declaration(Class(<http://example.org/isolated#B>))
+      DisjointClasses(<http://example.org/isolated#A> <http://example.org/isolated#B>)
+      Declaration(NamedIndividual(<http://example.org/isolated#a>))
+      ClassAssertion(owl:Thing <http://example.org/isolated#a>)
+      DLSafeRule(
+        Body(ClassAtom(<http://example.org/isolated#A> Variable(<http://example.org/isolated#x>)))
+        Head(ClassAtom(<http://example.org/isolated#B> Variable(<http://example.org/isolated#x>))))
+    )"#;
+    let activated = source.replace(
+        "ClassAssertion(owl:Thing",
+        "ClassAssertion(<http://example.org/isolated#A>",
+    );
+    let rows = run_source_commands(&[
+        serde_json::json!({"op": "init", "functional_syntax": source}),
+        serde_json::json!({"op": "replace", "functional_syntax": activated}),
+        serde_json::json!({"op": "replace", "functional_syntax": source}),
+    ]);
+    assert_eq!(rows.len(), 3, "{rows:#?}");
+    assert_eq!(rows[0]["result"]["consistent"], true, "{rows:#?}");
+    assert_eq!(rows[1]["result"]["consistent"], false, "{rows:#?}");
+    assert_eq!(rows[2]["result"], rows[0]["result"], "{rows:#?}");
+}
+
+#[test]
 fn rules_route_retains_taxonomy_across_abox_clash_and_retraction() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_km"))
         .arg("incremental-source")

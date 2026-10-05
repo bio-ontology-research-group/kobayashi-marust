@@ -205,13 +205,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "574b0cd5e90ee2ba03a66d0611fc9a09c9a0c28b2ecc2dc8a181dd31a53ca5d7"
 
 [[package]]
+name = "km-owl-functional-syntax"
+version = "0.1.0"
+dependencies = [
+ "pest",
+ "pest_derive",
+]
+
+[[package]]
 name = "kobayashi-marust"
-version = "1.4.3"
+version = "1.4.5"
 dependencies = [
  "dhat",
  "horned-owl",
+ "km-owl-functional-syntax",
  "libc",
+ "oxilangtag",
+ "oxixml-regex",
  "oxrdfio",
+ "quick-xml 0.37.5",
  "rayon",
  "serde",
  "serde_json",
@@ -290,6 +302,21 @@ name = "oxiri"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54b4ed3a7192fa19f5f48f99871f2755047fabefd7f222f12a1df1773796a102"
+
+[[package]]
+name = "oxixml-regex"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e765f73cac537d1a8462bc368cfed614e444748f9d856369c4a7c68f9b0c8420"
+dependencies = [
+ "oxixml-unicode",
+]
+
+[[package]]
+name = "oxixml-unicode"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f4fe405939d195999b5e957038d6c66e14ee766c94a98b08309afa04548bdb6"
 
 [[package]]
 name = "oxjsonld"

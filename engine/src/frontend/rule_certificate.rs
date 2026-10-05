@@ -4,6 +4,51 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::sexpr::Node;
 
+/// SQWRL selection heads accumulate query results outside the ontology.
+/// Admit only a nonempty head consisting entirely of recognized observer
+/// operators at the exact published namespace. Mixed logical heads and
+/// unknown extensions retain their full rule obligation.
+pub(super) fn query_only_head(node: &Node<'_>) -> bool {
+    let Node::List("DLSafeRule", args) = node else { return false };
+    if args.iter().any(|n| !matches!(n.head(), Some("Body" | "Head" | "Annotation"))) {
+        return false;
+    }
+    let heads: Vec<_> = args.iter().filter(|n| n.head() == Some("Head")).collect();
+    if heads.len() != 1 || args.iter().filter(|n| n.head() == Some("Body")).count() != 1 {
+        return false;
+    }
+    let Node::List(_, atoms) = heads[0] else { return false };
+    let atoms: Vec<_> = atoms.iter().filter(|n| n.head() != Some("Annotation")).collect();
+    !atoms.is_empty() && atoms.into_iter().all(observer_atom)
+}
+
+/// Recognize a result-only operator. This may be projected out of a mixed
+/// head only while retaining every logical head atom and the complete body.
+pub(super) fn observer_atom(atom: &Node<'_>) -> bool {
+    const PREFIX: &str = "<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#";
+    let Node::List("BuiltInAtom", args) = atom else { return false };
+    let Some(name) = args.first().and_then(Node::as_atom) else { return false };
+    let Some(op) = name.strip_prefix(PREFIX).and_then(|s| s.strip_suffix('>')) else {
+        return false;
+    };
+    // Typed/language-tagged literals occupy two token nodes.
+    let values: Vec<_> = args.iter().skip(1).collect();
+    let mut i = 0;
+    let mut arity = 0;
+    while i < values.len() {
+        i += super::parse::glue_literal(&values, i).map_or(1, |(_, used)| used);
+        arity += 1;
+    }
+    match op {
+        "select" | "selectDistinct" | "orderBy" | "orderByDescending" | "columnNames" => arity > 0,
+        "count" | "countDistinct" | "min" | "max" | "sum" | "avg" | "median" | "limit"
+        | "first" | "last" | "firstN" | "lastN" | "notFirst" | "notLast"
+        | "notFirstN" | "notLastN" | "nth" | "nthLast" | "notNth" | "notNthLast" => arity == 1,
+        "nthSlice" | "nthLastSlice" | "notNthSlice" | "notNthLastSlice" => arity == 2,
+        _ => false,
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum Term {
     Var(String),
@@ -28,6 +73,7 @@ struct Rule {
 
 #[derive(Default)]
 pub(super) struct RuleCertificateScan {
+    query_only_rules: u64,
     class_assertions: Vec<(String, String)>,
     role_assertions: Vec<(String, String, String)>,
     disjoint_classes: HashSet<(String, String)>,
@@ -155,6 +201,10 @@ impl RuleCertificateScan {
             "DataPropertyAssertion" | "NegativeDataPropertyAssertion" => self.data_assertions += 1,
             "SubDataPropertyOf" | "EquivalentDataProperties" => self.data_property_inclusions += 1,
             "DLSafeRule" => {
+                if query_only_head(node) {
+                    self.query_only_rules += 1;
+                    return;
+                }
                 let body = args
                     .iter()
                     .find(|n| n.head() == Some("Body"))
@@ -186,6 +236,10 @@ impl RuleCertificateScan {
                     || self.legacy_meta_rule_is_subsumed(r)
             })
             .count() as u64
+    }
+
+    pub(super) fn query_only_rules(&self) -> u64 {
+        self.query_only_rules
     }
 
     /// Certify an inconsistency using only explicit named-ABox facts, explicit
@@ -626,5 +680,51 @@ mod tests {
             certified(&format!("Ontology({split} {meta} {ordinary})")),
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod query_projection_tests {
+    use super::*;
+    use crate::frontend::{iri::IriRegistry, parse};
+
+    #[test]
+    fn mixed_query_head_preserves_logical_conclusions_and_body() {
+        let source = "Ontology(DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) ObjectPropertyAtom(<r> Variable(<y>) Variable(<z>))) Head(BuiltInAtom(<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#select> Variable(<x>)) ObjectPropertyAtom(<r> Variable(<x>) Variable(<z>)))))";
+        let ontology = parse::parse_axioms(&mut IriRegistry::new(), source).unwrap();
+        let rules: Vec<_> = ontology.rules().collect();
+        assert_eq!(rules.len(), 1);
+        let super::super::syntax::Axiom::Rule(body, head) = rules[0] else { panic!("expected retained rule") };
+        assert_eq!(body.len(), 2);
+        assert_eq!(head.len(), 1);
+        assert!(matches!(&head[0], super::super::syntax::RuleAtom::Role(r, super::super::syntax::RuleTerm::Var(x), super::super::syntax::RuleTerm::Var(z)) if r == "r" && x == "x" && z == "z"));
+
+        // A predicate sharing only the local name is not a recognized observer.
+        let unknown = source.replace("http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#select", "http://example.org#select");
+        let ontology = parse::parse_axioms(&mut IriRegistry::new(), &unknown).unwrap();
+        assert_eq!(ontology.rules().count(), 0);
+    }
+
+    #[test]
+    fn sqwrl_projection_requires_an_entire_observer_head() {
+        const SELECT: &str = "<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#select>";
+        let count = |head: &str| {
+            let text = format!("Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head({head})))");
+            let mut scan = RuleCertificateScan::default();
+            parse::parse_axioms_observed(&mut IriRegistry::new(), &text, |n| scan.observe(n)).unwrap();
+            scan.query_only_rules()
+        };
+        assert_eq!(count(&format!("BuiltInAtom({SELECT} Variable(<x>))")), 1);
+        assert_eq!(count("BuiltInAtom(<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#limit> \"2\"^^xsd:long)"), 1);
+        assert_eq!(count("BuiltInAtom(<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#notNthSlice> \"2\"^^xsd:long \"3\"^^xsd:long)"), 1);
+        for head in [
+            format!("BuiltInAtom({SELECT} Variable(<x>)) ClassAtom(<B> Variable(<x>))"),
+            format!("BuiltInAtom({SELECT})"),
+            "BuiltInAtom(<http://example.org#select> Variable(<x>))".into(),
+            "BuiltInAtom(<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#unknown> Variable(<x>))".into(),
+            String::new(),
+        ] {
+            assert_eq!(count(&head), 0, "{head}");
+        }
     }
 }

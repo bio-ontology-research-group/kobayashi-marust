@@ -145,16 +145,26 @@ impl<'a> Parser<'a> {
         self.toks.next()
     }
 
-    /// Parse one node. Mirrors `P.parse`: a leading `(` is an error; a token
-    /// followed by `(` becomes `(token, args...)` up to the matching `)`.
+    /// Parse one node. A token followed by `(` becomes `(token, args...)`.
+    /// Anonymous lists (used by HasKey) have an empty head.
     pub fn parse(&mut self) -> Result<Node<'a>, String> {
         let t = self
             .next_tok()
             .ok_or_else(|| "unexpected end of input".to_string())?;
         if t == "(" {
-            return Err("unexpected (".to_string());
+            let mut args = Vec::new();
+            while self.peek() != Some(")") {
+                if self.peek().is_none() {
+                    return Err("unexpected end of input".to_string());
+                }
+                args.push(self.parse()?);
+            }
+            self.next_tok();
+            return Ok(Node::List("", args));
         }
-        if self.peek() == Some("(") {
+        // An IRI before a HasKey property list is an argument, not a
+        // constructor. Only bare functional-syntax keywords introduce lists.
+        if t.bytes().all(|b| b.is_ascii_alphabetic()) && self.peek() == Some("(") {
             self.next_tok(); // consume '('
             let mut args = Vec::new();
             while self.peek() != Some(")") {

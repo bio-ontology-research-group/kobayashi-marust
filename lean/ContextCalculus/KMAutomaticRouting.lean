@@ -1,4 +1,6 @@
 import ContextCalculus.CertifiedRouting
+import ContextCalculus.SQWRLClassificationProjection
+import ContextCalculus.DLSafeEmptyNamedDomain
 import Lean.Data.Json
 
 /-!
@@ -241,4 +243,12 @@ example (decision : Decision)
 #print axioms WireSelection.check_sound
 #print axioms automatic_specialist_decline_has_coverage
 
+#print axioms ContextCalculus.SQWRLClassificationProjection.models_preserved
+#print axioms ContextCalculus.DLSafeEmptyNamedDomain.guarded_rule_vacuous
+#print axioms ContextCalculus.DLSafeEmptyNamedDomain.theory_models_preserved
+#print axioms ContextCalculus.SQWRLClassificationProjection.consequences_preserved
+#print axioms ContextCalculus.SQWRLClassificationProjection.mixed_rule_preserved
+
 end ContextCalculus.KMAutomaticRouting
+
+#print axioms ContextCalculus.DLSafeEmptyNamedDomain.rule_family_models_preserved

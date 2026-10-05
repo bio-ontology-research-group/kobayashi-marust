@@ -34,6 +34,9 @@ structure WireCardinalityTaxonomyProductionRun where
   variable_count : Nat
   ontology : List WireClause
   definitions : List WireCardinalityDef
+  /-- Retain the shared recognition metadata of the produced certificate. -/
+  exact_maximums : List Nat := []
+  exact_definitions : List Nat := []
   query : WireCardinalityTaxonomyQuery
   frontiers : List WireCardinalityAddressRefinementDocument
   terminal : WireCardinalityQueryPayload

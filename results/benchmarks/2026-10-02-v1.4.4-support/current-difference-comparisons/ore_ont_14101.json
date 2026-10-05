@@ -1,0 +1,116 @@
+{
+  "ont": "ore_ont_14101",
+  "source_sha256": "de536d28551a0a4f6760598818cf71f404cc95cb1a51a7eb763f51089b15fbda",
+  "reference_sha256": "f1faa083767472524bcd26728d4c5788a33ec9f93e44aee4e0a0810134983a1a",
+  "declared_classes": 13563,
+  "reference_relations": 212224,
+  "reference_unsat": 0,
+  "reference_thing_equiv": [],
+  "candidate": {
+    "path": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/full-v144-automatic-native-source-53158847_15/output/ore_ont_14101.json",
+    "sha256": "db5cb25edfcd841f97ca896f2f05507a4678b3e47176e6bb239a631a364c6e8f",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 212224,
+    "missing_count": 0,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [],
+    "extra_sample": []
+  },
+  "baseline": {
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/candidate-v143-rc2/015/output/ore_ont_14101.json",
+    "sha256": "a81e279673d002cf84ad6dbd818ecb63ada965ac3e6aca768ca09b192a14b179",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 212204,
+    "missing_count": 20,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002814",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002815",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002816",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002817",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002818",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0003369",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0003980",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0003989",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0004048",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0008335",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0009123",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0009576",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0013526",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0014468",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0014471",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0014473",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0014474",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_2001095",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_2001096",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_2001097",
+        "http://www.absoluteiri.edu/RELAPPROXC12276"
+      ]
+    ],
+    "extra_sample": []
+  }
+}

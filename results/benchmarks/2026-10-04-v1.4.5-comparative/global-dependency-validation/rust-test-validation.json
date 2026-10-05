@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "exit_code": 0,
+  "completed_targets": 41,
+  "passed": 2835,
+  "failed": 0,
+  "ignored": 8,
+  "log_sha256": "5e22c353e4313ebfecdf4c606d87ce06a672a69ab76f107f39a33876d3dd442d",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "changed_source_files": []
+}

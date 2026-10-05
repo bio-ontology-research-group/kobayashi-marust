@@ -1,0 +1,136 @@
+{
+  "ont": "ore_ont_954",
+  "source_sha256": "e4b4c071cc264e2de509e7a9046704ac8bc1952470349e5c61ced0c9dc64a2fc",
+  "reference_sha256": "d8d964bb7ec80837903ab63709c7a303e6dfd834d09cc124c4c626fe90ad0b95",
+  "declared_classes": 60975,
+  "reference_relations": 1303647,
+  "reference_unsat": 0,
+  "reference_thing_equiv": [],
+  "candidate": {
+    "path": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/full-v144-automatic-native-source-53158847_57/output/ore_ont_954.json",
+    "sha256": "8947b7789a54c4dc507f44d2d5757918b0cc59f8d05118b8560ff4c3ae23baec",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 1303647,
+    "missing_count": 0,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [],
+    "extra_sample": []
+  },
+  "baseline": {
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/candidate-v143-rc2/057/output/ore_ont_954.json",
+    "sha256": "bdef2e814cb02061eda0e914bc2b40b619ce3f9bc9c146f0d061069f0bc29349",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 1303619,
+    "missing_count": 28,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002814",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002815",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002816",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002817",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0002818",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0003369",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0003980",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0003989",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0004048",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0008335",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0009123",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0013526",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0014468",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0014471",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0014473",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_0014474",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_2001095",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_2001096",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/UBERON_2001097",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://www.absoluteiri.edu/RELAPPROXC58603",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://www.absoluteiri.edu/RELAPPROXC58644",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://www.absoluteiri.edu/RELAPPROXC58654",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://www.absoluteiri.edu/RELAPPROXC58681",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://www.absoluteiri.edu/RELAPPROXC58990",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ],
+      [
+        "http://www.absoluteiri.edu/RELAPPROXC59330",
+        "http://www.absoluteiri.edu/RELAPPROXC59982"
+      ]
+    ],
+    "extra_sample": []
+  }
+}

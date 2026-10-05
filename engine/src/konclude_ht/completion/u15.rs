@@ -1266,6 +1266,15 @@ mod tests {
 
     #[test]
     fn merge_individual_node_into_relocates_distinct_edges() {
+        check_merge_distinct_edge_relocation(false);
+    }
+
+    #[test]
+    fn merge_individual_node_into_relocates_compressed_distinct_groups() {
+        check_merge_distinct_edge_relocation(true);
+    }
+
+    fn check_merge_distinct_edge_relocation(compressed: bool) {
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut calc_ctx = CalculationAlgorithmContextBase::new();
 
@@ -1299,6 +1308,12 @@ mod tests {
             .set_data(30, other);
 
         let old_dep_track_point = TrackPointId::new(77);
+        let other_hash = calc_ctx.process_context_mut().node_distinct_hash(other);
+        if compressed {
+            assert!(calc_ctx.process_context_mut().nodes_install_distinct_group(
+                &[individual, other], old_dep_track_point));
+            assert_eq!(calc_ctx.process_context().distinct_edges().len(), 0);
+        } else {
         let mut old_edge = DistinctEdge::new();
         old_edge.init_distinct_edge(individual, other, old_dep_track_point);
         let old_edge = calc_ctx.process_context_mut().alloc_distinct_edge(old_edge);
@@ -1310,11 +1325,11 @@ mod tests {
             .process_context_mut()
             .distinct_hash_mut(individual_hash)
             .insert_distinct_individual(30, old_edge);
-        let other_hash = calc_ctx.process_context_mut().node_distinct_hash(other);
         calc_ctx
             .process_context_mut()
             .distinct_hash_mut(other_hash)
             .insert_distinct_individual(20, old_edge);
+        }
 
         algo.merge_individual_node_into(
             merge_into,

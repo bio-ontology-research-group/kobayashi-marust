@@ -1,0 +1,6 @@
+invalid OWL 2 DL input:     --> 3015:59
+     |
+3015 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W�rttemberg-N>)
+     |                                                           ^---
+     |
+     = expected SPARQL_BlankNodeLabel, SPARQL_PnameLn, or FullIRI

@@ -206,6 +206,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         let mut v_node = self.get_ancestor_individual(&mut w_node, calc_alg_context);
+        // Optimized blocking checks the predecessor label and incoming edge.
+        // A query root has no predecessor, so this blocking criterion cannot
+        // establish a blocker for it. Continue ordinary expansion instead of
+        // indexing the arena with the absent-ancestor sentinel.
+        if v_node.is_none() {
+            return false;
+        }
         let v_con_set = calc_alg_context
             .process_context_mut()
             .node_mut(v_node)

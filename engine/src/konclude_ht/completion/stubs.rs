@@ -1951,7 +1951,10 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             individual_node_vector,
         )?;
         let max_deterministic_branch_tag = if corrected_individual.nondeterministically_merged {
-            0
+            // Even a branch-zero label belongs only to the representative.
+            // Transferring it to the tested root requires the nondeterministic
+            // equality, so no representative label proves a root subsumer.
+            -1
         } else {
             max_deterministic_branch_tag
         };
@@ -2067,7 +2070,10 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             individual_node_vector,
         )?;
         let max_deterministic_branch_tag = if corrected_individual.nondeterministically_merged {
-            0
+            // Even a branch-zero label belongs only to the representative.
+            // Transferring it to the tested root requires the nondeterministic
+            // equality, so no representative label proves a root subsumer.
+            -1
         } else {
             max_deterministic_branch_tag
         };
@@ -9739,6 +9745,7 @@ mod tests {
         let mut concepts = Arena::new();
         let testing = concepts.push(concept_with_tag(CCATOM, 10, true));
         let late_subsumer = concepts.push(concept_with_tag(CCATOM, 20, true));
+        let existing_nominal_label = concepts.push(concept_with_tag(CCATOM, 30, true));
         let constructed = add_identified_node(&mut process_context, 1);
         let representative = add_identified_node(&mut process_context, 2);
         let mut merge_track = DependencyTrackPoint::new(DependencyId::NONE);
@@ -9759,6 +9766,16 @@ mod tests {
         let mut root_track = DependencyTrackPoint::new(DependencyId::NONE);
         root_track.process_tag = 0;
         let root_track = process_context.alloc_track_point(root_track);
+        // A pre-existing label on the nominal representative is deterministic
+        // for that individual, but not for a query root merged by a choice.
+        add_label_descriptor(
+            &mut process_context,
+            label_set,
+            &concepts,
+            existing_nominal_label,
+            false,
+            root_track,
+        );
         let mut late_track = DependencyTrackPoint::new(DependencyId::NONE);
         late_track.process_tag = 3;
         let late_track = process_context.alloc_track_point(late_track);
@@ -9795,7 +9812,7 @@ mod tests {
             .expect("root branch result");
 
         assert_eq!(result.corrected_individual.node, representative);
-        assert_eq!(result.max_deterministic_branch_tag, 0);
+        assert_eq!(result.max_deterministic_branch_tag, -1);
         let subsum_linker = result
             .subsum_message_data_linker
             .expect("root class-subsumption linker");

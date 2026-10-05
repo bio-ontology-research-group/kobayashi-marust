@@ -1,5 +1,30 @@
 # DL-safe rules (SWRL `DLSafeRule`) — fragment and contract
 
+## v1.4.4 behavior
+
+Version 1.4.4 extends the historical precheck described below with
+source-preserving rule normalization, finite grounding, and rule-aware
+completion paths. An accepted classification must account for the complete
+source rule obligation; a partial precheck alone cannot establish a consistent
+taxonomy. The implementation also preserves the consistency check when rules
+have already been normalized into ordinary clauses.
+
+Input validation allows DL-safe SWRL alongside OWL 2 DL. Invalid input is
+refused with an explanation and exit code 2; inability to establish complete
+support is reported separately with exit code 3. In particular, the unmodified
+ORE inputs 2669, 15516, and 10906 contain literals typed as `rdfs:Literal` and
+are now refused. Historical results on cleaned or differently admitted inputs
+below are not current verdicts on those original files. The grammar accepts a
+named individual or variable as the subject of a `DataPropertyAtom`.
+
+The final 1,920-input benchmark has no unsupported-input outcomes, and its
+output audit confirms zero dropped axioms in successful classifications.
+Invalid inputs and resource-limited runs remain separate outcomes. See the
+source hashes, input audit, and validation records in
+[`v1.4.4 support evidence`](../results/benchmarks/2026-10-02-v1.4.4-support/).
+
+## Historical precheck design and corpus investigations
+
 KM supports SWRL DL-safe rules through the **ABox-seeded HT consistency
 precheck** (`KM_HT_RULES`, default on). A rule fires only over *named
 individuals* (DL-safety: every rule variable is `__O__`-guarded, and every

@@ -1,0 +1,74 @@
+test_generation_without_verification_is_not_success (test_audit_justification.JustificationAuditTests) ... ok
+test_real_independently_verified_support (test_audit_justification.JustificationAuditTests) ... ok
+test_tampered_support_rejected (test_audit_justification.JustificationAuditTests) ... ok
+test_different_source_revision_is_rejected (test_compare_taxonomies.ComparisonTests) ... ok
+test_inconsistent_relations_are_not_compared (test_compare_taxonomies.ComparisonTests) ... ok
+test_matching_consistent_relations (test_compare_taxonomies.ComparisonTests) ... ok
+test_taxonomy_and_consistency_disagreements (test_compare_taxonomies.ComparisonTests) ... ok
+test_unbound_or_failed_output_is_rejected (test_compare_taxonomies.ComparisonTests) ... ok
+test_unknown_consistency_never_becomes_success (test_compare_taxonomies.ComparisonTests) ... ok
+test_alternative_support_is_subset_minimal (test_external_deletion.DeletionTests) ... ok
+test_oracle_timeout_is_not_treated_as_nonentailment (test_external_deletion.DeletionTests) ... ok
+test_unknown_answer_rejects_explanation (test_external_deletion.DeletionTests) ... ok
+test_exit_failure_keeps_output (test_measure_classification.MeasurementTests) ... ok
+test_success_is_not_semantic_validation (test_measure_classification.MeasurementTests) ... ok
+test_timeout_is_terminal_and_persisted (test_measure_classification.MeasurementTests) ... ok
+test_wrong_source_never_executes (test_measure_classification.MeasurementTests) ... ok
+test_implicit_plain_literal_matches_explicit_default (test_owllink_requests.RequestTests) ... ok
+test_literal_whitespace_is_preserved (test_owllink_requests.RequestTests) ... ok
+test_serialization_prefix_and_whitespace_do_not_create_false_changes (test_owllink_requests.RequestTests) ... ok
+test_missing_or_error_response_is_not_negative_entailment (test_owllink_taxonomy.OWLlinkTests) ... ok
+test_real_retract_restore_responses (test_owllink_taxonomy.OWLlinkTests) ... ok
+test_every_consumed_run_is_checked (test_render_report.RunSelectionTests) ... ok
+test_mixed_runs_require_explicit_selection (test_render_report.RunSelectionTests) ... ok
+test_partial_selection_rejected (test_render_report.RunSelectionTests) ... ok
+test_replacing_updates_preserves_other_panels_historical_receipts (test_render_report.RunSelectionTests) ... ok
+test_absent_and_invalid_costs_are_not_imputed (test_report_classification.ReportTests) ... ok
+test_missing_and_failed_inputs_remain_in_denominator (test_report_classification.ReportTests) ... ok
+test_ratios_are_paired_not_ratio_of_independent_medians (test_report_classification.ReportTests) ... ok
+test_km_replacement_does_not_replace_rustdl_measurements (test_report_justifications.ReportTests) ... ok
+test_reference_failure_is_retained_as_an_ontology_outcome (test_report_justifications.ReportTests) ... ok
+test_preparation_failures_keep_all_revision_denominators (test_report_updates.ReportTests) ... ok
+test_retained_and_fresh_konclude_paths_are_distinct (test_report_updates.ReportTests) ... ok
+test_source_larger_than_pipe_buffer (test_retained_km.RetainedKMTests) ... ok
+test_stalled_reader_is_killed_and_later_revision_is_visible (test_retained_km.RetainedKMTests) ... ok
+test_phase_memory_includes_retained_allocations (test_session_watchdog.SessionWatchdogTests) ... ok
+test_retained_phases_then_timeout (test_session_watchdog.SessionWatchdogTests) ... ok
+test_all_ten_real_pilot_outputs (test_taxonomy.TaxonomyTests) ... ok
+test_conflicting_consistency_rejected (test_taxonomy.TaxonomyTests) ... ok
+test_explicit_bottom_is_not_an_unsatisfiable_source_class (test_taxonomy.TaxonomyTests) ... ok
+test_incomplete_rustdl_rejected (test_taxonomy.TaxonomyTests) ... ok
+test_km_dropped_axioms_rejected (test_taxonomy.TaxonomyTests) ... ok
+test_konclude_empty_taxonomy_cannot_cover_nonempty_source (test_taxonomy.TaxonomyTests) ... ok
+test_missing_completion_marker_rejected (test_taxonomy.TaxonomyTests) ... ok
+test_prefix_and_fragment_preserved (test_taxonomy.TaxonomyTests) ... ok
+test_serialized_inconsistency_through_equivalence_representative (test_taxonomy.TaxonomyTests) ... ok
+test_source_bound_non_http_iri_is_preserved (test_taxonomy.TaxonomyTests) ... ok
+test_truncated_functional_rejected (test_taxonomy.TaxonomyTests) ... ok
+test_unknown_axiom_rejected (test_taxonomy.TaxonomyTests) ... ok
+test_unknown_consistency_not_promoted (test_taxonomy.TaxonomyTests) ... ok
+test_unresolved_prefix_rejected (test_taxonomy.TaxonomyTests) ... ok
+test_unsatisfiable_class_does_not_imply_inconsistency (test_taxonomy.TaxonomyTests) ... ok
+test_xml_entity_decoding (test_taxonomy.TaxonomyTests) ... ok
+test_retained_revision_and_hash_binding (test_update_outputs.UpdateOutputTests) ... ok
+test_timeout_does_not_become_a_taxonomy (test_update_outputs.UpdateOutputTests) ... ok
+
+----------------------------------------------------------------------
+Ran 54 tests in 1.205s
+
+OK
+  ok test_cgroup_current_absent
+  ok test_cgroup_current_v1
+  ok test_cgroup_current_v2
+  ok test_child_preexec_installs_address_space_backstop
+  ok test_classify_terminal
+  ok test_clean_small_run_is_ok
+  ok test_memout_over_the_tree
+  ok test_parse_stat_robust_comm
+  ok test_runner_adjudicates_hard_as_allocation_failure_as_memout
+  ok test_runner_emits_one_memout_row_and_checkpoint
+  ok test_stubborn_child_is_sigkilled
+  ok test_timeout
+  ok test_tree_and_group_rss_walk_and_union
+  ok test_tree_beats_group_setsid
+OK

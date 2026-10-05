@@ -1,0 +1,766 @@
+   Compiling km-owl-functional-syntax v0.1.0 (/workspace/.work/worktrees/v1.4/engine/vendor/owl-functional-syntax)
+   Compiling kobayashi-marust v1.4.4 (/workspace/.work/worktrees/v1.4/engine)
+warning: unused imports: `IndividualAssociationData`, `IndividualRoleSetNeighbourArray`, `IndividualRoleSetNeighbourData`, `LabelCacheItemExtensionData`, `LabelCacheItemExtensionType`, `LabelCacheItem`, `LabelValueLinker`, and `OntologyData`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/cache/backend_facade3.rs:40:31
+   |
+40 |     BackendTempWriteRecordId, IndividualAssociationData, IndividualAssociationDataId,
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^
+41 |     IndividualRoleSetNeighbourArray, IndividualRoleSetNeighbourArrayId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+42 |     IndividualRoleSetNeighbourData, IndividualRoleSetNeighbourIndividualIdLinker,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+43 |     IndividualRoleSetNeighbourIndividualIdLinkerId, LabelCacheItem, LabelCacheItemExtensionData,
+   |                                                     ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 |     LabelCacheItemExtensionType, LabelCacheItemId, LabelCacheItemType, LabelValueLinker,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^                                        ^^^^^^^^^^^^^^^^
+45 |     OntologyData, OntologyDataId, LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `CacheValueIdentifier`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/cache/backend_facade3.rs:48:32
+   |
+48 | use super::value::{CacheValue, CacheValueIdentifier};
+   |                                ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `IndividualDependenceTrackingMarker`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/classifier/mod.rs:21:46
+   |
+21 |     IndividualDependenceTrackingCollectorId, IndividualDependenceTrackingMarker,
+   |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ClassificationMessageDataType` and `ClassificationMessageData`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/stubs.rs:39:66
+   |
+39 |     ClassificationInitializePossibleClassSubsumptionMessageData, ClassificationMessageData,
+   |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+42 |     ClassificationMessageDataType, ClassificationPseudoModelIdentifierMessageData,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `LabelSetId`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u04.rs:62:39
+   |
+62 |     ConDescId, ConProcDescId, EdgeId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
+   |                                       ^^^^^^^^^^
+
+warning: unused import: `DependencyNode`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u12.rs:62:50
+   |
+62 | use super::super::process::dependency::{DepKind, DependencyNode};
+   |                                                  ^^^^^^^^^^^^^^
+
+warning: unused import: `DepLinkId`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u12.rs:64:31
+   |
+64 |     ConDescId, ConProcDescId, DepLinkId, DependencyId, NodeId, RestrictionSpecId, TrackPointId,
+   |                               ^^^^^^^^^
+
+warning: unused import: `DependencyId`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u18.rs:78:27
+   |
+78 |     ConDescId, DepLinkId, DependencyId, EdgeId, LabelSetId, NodeId, TrackPointId,
+   |                           ^^^^^^^^^^^^
+
+warning: unused import: `INVALID`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u21.rs:82:50
+   |
+82 | use super::super::model::substrate::{Cint64, Id, INVALID};
+   |                                                  ^^^^^^^
+
+warning: unused import: `EdgeId`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u26.rs:80:29
+   |
+80 | use super::super::process::{EdgeId, LabelSetId, NodeId};
+   |                             ^^^^^^
+
+warning: unused import: `INVALID`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u35.rs:91:51
+   |
+91 | use super::super::model::substrate::{Id, NegLink, INVALID};
+   |                                                   ^^^^^^^
+
+warning: unused import: `super::super::process::descriptor::ClashDescriptor`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u36.rs:96:5
+   |
+96 | use super::super::process::descriptor::ClashDescriptor;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::super::model::role_chain::RoleChain`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/preprocess/role_chain_automata.rs:26:5
+   |
+26 | use super::super::model::role_chain::RoleChain;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `MarkerIndividualNodeHashData`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/context.rs:89:5
+   |
+89 |     MarkerIndividualNodeHashData, MarkerIndividualNodeHashId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `RepresentativeJoiningHashData` and `RepresentativeVariableBindingPathJoiningKeyHashData`
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/context.rs:224:5
+    |
+224 |     RepresentativeJoiningHashData, RepresentativeJoiningHashId,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+231 |     RepresentativeVariableBindingPathJoiningKeyHashData,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BlockingCandidateHashData`
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/context.rs:243:5
+    |
+243 |     BlockingCandidateHashData, BlockingIndividualNodeCandidateData,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `IndividualSaturationProcessNodeLinker`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/db5.rs:55:5
+   |
+55 |     IndividualSaturationProcessNodeLinker, IndividualSaturationProcessNodeLinkerId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Id`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/pn6.rs:27:35
+   |
+27 | use super::super::model::{Cint64, Id};
+   |                                   ^^
+
+warning: unused import: `ConceptId`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/sat1.rs:19:27
+   |
+19 | use super::super::model::{ConceptId, IndividualId, RoleId};
+   |                           ^^^^^^^^^
+
+warning: unused import: `SaturationIndividualNodeAllConceptsExtensionDataId`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/sat1.rs:24:5
+   |
+24 |     SaturationIndividualNodeAllConceptsExtensionDataId, SaturationIndividualNodeDatatypeDataId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `CCATLEAST`, `CCATMOST`, and `CCATOM`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/saturation/s04.rs:73:31
+   |
+73 | use super::super::model::op::{CCATLEAST, CCATMOST, CCATOM};
+   |                               ^^^^^^^^^  ^^^^^^^^  ^^^^^^
+
+warning: unused import: `super::satellites::ConceptSaturationDescriptorId`
+  --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/saturation/s04.rs:80:5
+   |
+80 | use super::satellites::ConceptSaturationDescriptorId;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/frontend/data_abox.rs:810:13
+    |
+810 |         let mut intern = |s: &'a str, ids: &mut HashMap<&'a str, u32>| -> u32 {
+    |             ----^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/frontend/data_abox.rs:848:13
+    |
+848 |         let mut ancestors =
+    |             ----^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/frontend/data_abox.rs:885:21
+    |
+885 |                 let mut push =
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+
+warning: unreachable pattern
+   --> /workspace/.work/worktrees/v1.4/engine/src/frontend/datatypes.rs:170:21
+    |
+169 |                     Val::$variant(bits) => <$ty>::from_bits(*bits),
+    |                     ------------------- matches all the relevant values
+170 |                     Val::Float32(bits) if wide => f32::from_bits(*bits) as $ty,
+    |                     ^^^^^^^^^^^^^^^^^^ no value can reach this
+...
+194 |     if wide { evaluate!(f64, Float64) } else { evaluate!(f32, Float32) }
+    |                                                ----------------------- in this macro invocation
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+    = note: this warning originates in the macro `evaluate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: value assigned to `bridge_phase_started` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:3844:17
+     |
+3844 |                 bridge_phase_started = now;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+5811 |     bridge_phase!("terminology-stamp");
+     |     ---------------------------------- in this macro invocation
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+     = note: this warning originates in the macro `bridge_phase` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8655:13
+     |
+8655 |             coordination.running_tasks -= 1;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8656:13
+     |
+8656 |             coordination.failed_tasks += 1;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8663:13
+     |
+8663 |             coordination.running_tasks -= 1;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8664:13
+     |
+8664 |             coordination.failed_tasks += 1;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8669:17
+     |
+8669 |                 coordination.running_tasks -= 1;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8670:17
+     |
+8670 |                 coordination.clashed = true;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8674:17
+     |
+8674 |                 coordination.running_tasks -= 1;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8675:17
+     |
+8675 |                 coordination.failed_tasks += 1;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8706:13
+     |
+8706 |             coordination.writeback_failed = true;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8688:13
+     |
+8688 |             coordination.running_tasks -= 1;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8689:13
+     |
+8689 |             coordination.writeback_failed = true;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+     --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:13184:13
+      |
+13184 |         let mut renew = |algo: &mut CompletionTaskHandleAlgorithm,
+      |             ----^^^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/cache/backend_facade1.rs:644:13
+    |
+644 |         let mut associations_updated = false;
+    |             ----^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `update_slot` is never read
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/cache/unsat.rs:777:39
+    |
+777 |         let mut update_slot: Cint64 = 0;
+    |                                       ^ this value is reassigned later and never used
+...
+784 |             update_slot = slot_arena.get(self.cache_slot_item).get_slot_index();
+    |             ------------------------------------------------------------------- `update_slot` is overwritten here before the previous value is read
+
+warning: value assigned to `update_slot` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/cache/unsat.rs:1013:39
+     |
+1013 |         let mut update_slot: Cint64 = 0;
+     |                                       ^ this value is reassigned later and never used
+...
+1018 |             update_slot = slot_arena.get(self.cache_slot_item).get_slot_index();
+     |             ------------------------------------------------------------------- `update_slot` is overwritten here before the previous value is read
+
+warning: value assigned to `next_priority` is never read
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/strategy.rs:282:9
+    |
+282 |         next_priority = 2;
+    |         ^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `priority` is never read
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/strategy.rs:349:33
+    |
+349 |         let mut priority: f64 = 0.0;
+    |                                 ^^^ this value is reassigned later and never used
+350 |         priority = self.sym(c_code);
+    |         --------------------------- `priority` is overwritten here before the previous value is read
+
+warning: value assigned to `subsum_message_data_linker` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/stubs.rs:1979:46
+     |
+1979 |         let mut subsum_message_data_linker = None;
+     |                                              ^^^^ this value is reassigned later and never used
+...
+1991 |             subsum_message_data_linker = Some(ClassificationMessageDataLinker::from_message(
+     |             -------------------------- `subsum_message_data_linker` is overwritten here before the previous value is read
+
+warning: value assigned to `subsum_message_data_linker` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/stubs.rs:2098:46
+     |
+2098 |         let mut subsum_message_data_linker = None;
+     |                                              ^^^^ this value is reassigned later and never used
+...
+2110 |             subsum_message_data_linker = Some(ClassificationMessageDataLinker::from_message(
+     |             -------------------------- `subsum_message_data_linker` is overwritten here before the previous value is read
+
+warning: unused variable: `ontology`
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/stubs.rs:2472:9
+     |
+2472 |         ontology: &OntologyArenas,
+     |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ontology`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/stubs.rs:5219:13
+     |
+5219 |         let mut remaining_merging_depth = 5;
+     |             ----^^^^^^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u03.rs:952:9
+    |
+952 |         mut operands: Vec<NegLink<ConceptId>>,
+    |         ----^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u08.rs:122:17
+    |
+122 |             let mut triggered_concepts: ConDescId = Id::NONE;
+    |                 ----^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u08.rs:166:13
+    |
+166 |         let mut triggered_concepts: ConDescId = Id::NONE;
+    |             ----^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u08.rs:437:13
+    |
+437 |         let mut saturation_node: SatNodeId = if self.conf_expand_created_successors_from_saturation
+    |             ----^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u14.rs:693:13
+    |
+693 |         let mut merged_individual;
+    |             ----^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u14.rs:694:13
+    |
+694 |         let mut adding_individual;
+    |             ----^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u14.rs:768:13
+    |
+768 |         let mut new_empty_indi_node_ref = new_empty_indi_node;
+    |             ----^^^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u16.rs:1142:13
+     |
+1142 |         let mut nominal_individual = indi;
+     |             ----^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u17.rs:105:13
+    |
+105 |         let mut state = calc_alg_context.take_used_saturation_node_expansion_cache_handler()?;
+    |             ----^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `block_alt_data` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u19.rs:1102:65
+     |
+1102 |         let mut block_alt_data: BlockingAlternativeDataHandle = Id::NONE;
+     |                                                                 ^^^^^^^^ this value is reassigned later and never used
+...
+1153 |             block_alt_data = Id::NONE;
+     |             ------------------------- `block_alt_data` is overwritten here before the previous value is read
+
+warning: value assigned to `blocking_indi_node` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u19.rs:1369:46
+     |
+1369 |           let mut blocking_indi_node: NodeId = Id::NONE;
+     |                                                ^^^^^^^^ this value is reassigned later and never used
+...
+1372 | /             blocking_indi_node = calc_alg_context
+1373 | |                 .process_context()
+1374 | |                 .blocking_test_data(block_data)
+1375 | |                 .get_blocking_individual_node();
+     | |_______________________________________________- `blocking_indi_node` is overwritten here before the previous value is read
+
+warning: value assigned to `min_test_anc_indi_depth` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u19.rs:1770:45
+     |
+1770 |                     (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
+     |                                             ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `synchronized` is never read
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u21.rs:270:32
+    |
+270 |           let mut synchronized = false;
+    |                                  ^^^^^ this value is reassigned later and never used
+...
+424 | /         synchronized = calc_alg_context
+425 | |             .process_context()
+426 | |             .node(individual_node)
+427 | |             .has_partial_processing_restriction_flags(Node::PRF_SYNCHRONIZEDBACKEND);
+    | |____________________________________________________________________________________- `synchronized` is overwritten here before the previous value is read
+
+warning: value assigned to `backend_sync_data` is never read
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u25.rs:1902:25
+     |
+1902 |                         backend_sync_data = loc_backend_sync_data;
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/completion/u36.rs:1403:17
+     |
+1403 |             let mut expansion_blocked = native_expansion_blocked;
+     |                 ----^^^^^^^^^^^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: unused variable: `concept`
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/ls1.rs:982:9
+    |
+982 |         concept: ConceptId,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_concept`
+
+warning: value assigned to `list` is never read
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/process/varbind.rs:319:25
+    |
+319 |                         list = ctx.var_binding_des(first_linker).get_next();
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/saturation/s06.rs:1137:13
+     |
+1137 |         let mut updated = false;
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `resolved_node` is never read
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/saturation/s10.rs:149:33
+    |
+149 |           let mut resolved_node = SatNodeId::NONE;
+    |                                   ^^^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+262 | /             resolved_node = self.create_resolved_individual_node(
+263 | |                 resolve_data,
+264 | |                 &mut copy_indi_proc_sat_node,
+265 | |                 true,
+266 | |                 calc_alg_context,
+267 | |             );
+    | |_____________- `resolved_node` is overwritten here before the previous value is read
+
+warning: value assigned to `resolved_node` is never read
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/saturation/s10.rs:369:33
+    |
+369 |           let mut resolved_node = SatNodeId::NONE;
+    |                                   ^^^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+453 | /             resolved_node = self.create_resolved_individual_node(
+454 | |                 resolve_data,
+455 | |                 &mut copy_indi_proc_sat_node,
+456 | |                 true,
+457 | |                 calc_alg_context,
+458 | |             );
+    | |_____________- `resolved_node` is overwritten here before the previous value is read
+
+warning: value assigned to `resolved_node` is never read
+   --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/saturation/s10.rs:540:33
+    |
+540 |           let mut resolved_node = SatNodeId::NONE;
+    |                                   ^^^^^^^^^^^^^^^ this value is reassigned later and never used
+...
+575 | /             resolved_node = self.create_resolved_individual_node(
+576 | |                 resolve_data,
+577 | |                 &mut copy_indi_proc_sat_node,
+578 | |                 true,
+579 | |                 calc_alg_context,
+580 | |             );
+    | |_____________- `resolved_node` is overwritten here before the previous value is read
+
+warning: unused variable: `i`
+    --> /workspace/.work/worktrees/v1.4/engine/src/orchestrate/cb_to_ht.rs:1468:10
+     |
+1468 |     for (i, n) in ids.con_names.iter().enumerate() {
+     |          ^ help: if this is intentional, prefix it with an underscore: `_i`
+
+warning: variable does not need to be mutable
+    --> /workspace/.work/worktrees/v1.4/engine/src/orchestrate/cb_to_ht.rs:3970:13
+     |
+3970 |         let mut note = |ind: &str, individuals: &mut BTreeSet<String>| {
+     |             ----^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> /workspace/.work/worktrees/v1.4/engine/src/hypertableau.rs:7010:13
+     |
+7010 |         let mut chain_fwd: HashMap<R, Vec<(R, R)>> = HashMap::new();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> /workspace/.work/worktrees/v1.4/engine/src/hypertableau.rs:7011:13
+     |
+7011 |         let mut chain_bwd: HashMap<R, Vec<(R, R)>> = HashMap::new();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: unused variable: `variable_count`
+     --> /workspace/.work/worktrees/v1.4/engine/src/hypertableau.rs:12986:14
+      |
+12986 |         let (variable_count, concept_count, role_count, equality_ontology) =
+      |              ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_variable_count`
+
+warning: unused variable: `role_count`
+     --> /workspace/.work/worktrees/v1.4/engine/src/hypertableau.rs:12986:45
+      |
+12986 |         let (variable_count, concept_count, role_count, equality_ontology) =
+      |                                             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_role_count`
+
+warning: variable does not need to be mutable
+    --> /workspace/.work/worktrees/v1.4/engine/src/tableau.rs:7347:9
+     |
+7347 |     let mut replace_cell_abox = |cell: &mut serde_json::Value| -> Result<(), String> {
+     |         ----^^^^^^^^^^^^^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: type `CardDef` is more private than the item `Ht::set_card_defs`
+     --> /workspace/.work/worktrees/v1.4/engine/src/hypertableau.rs:18252:5
+      |
+18252 |     pub fn set_card_defs(&mut self, defs: HashMap<C, CardDef>) {
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `Ht::set_card_defs` is reachable at visibility `pub`
+      |
+note: but type `CardDef` is only usable at visibility `pub(self)`
+     --> /workspace/.work/worktrees/v1.4/engine/src/hypertableau.rs:451:1
+      |
+  451 | struct CardDef {
+      | ^^^^^^^^^^^^^^
+      = note: `#[warn(private_interfaces)]` on by default
+
+warning: variants `Top` and `Bottom` are never constructed
+   --> /workspace/.work/worktrees/v1.4/engine/src/frontend/bottom_prepass.rs:175:5
+    |
+173 | enum RawClassConstraint {
+    |      ------------------ variants in this enum
+174 |     Name(String),
+175 |     Top,
+    |     ^^^
+176 |     Bottom,
+    |     ^^^^^^
+    |
+    = note: `RawClassConstraint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `role_supers` is never used
+   --> /workspace/.work/worktrees/v1.4/engine/src/frontend/data_abox.rs:777:8
+    |
+442 | impl<'a> DataAbox<'a> {
+    | --------------------- method in this implementation
+...
+777 |     fn role_supers(&self, p: &'a str) -> Vec<&'a str> {
+    |        ^^^^^^^^^^^
+
+warning: variant `Other` is never constructed
+   --> /workspace/.work/worktrees/v1.4/engine/src/frontend/datatypes.rs:360:5
+    |
+351 | enum Partition {
+    |      --------- variant in this enum
+...
+360 |     Other,
+    |     ^^^^^
+    |
+    = note: `Partition` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `fresh_bridge_env` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:6979:4
+     |
+6979 | fn fresh_bridge_env(
+     |    ^^^^^^^^^^^^^^^^
+
+warning: constant `NATIVE_REPRESENTATIVE_BATCH_SIZE` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:7637:7
+     |
+7637 | const NATIVE_REPRESENTATIVE_BATCH_SIZE: usize = 7;
+     |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_incomplete_abox_seed_batch` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:7639:4
+     |
+7639 | fn native_incomplete_abox_seed_batch(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `NativeRepresentativeCoordinationState` is never constructed
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:7673:8
+     |
+7673 | struct NativeRepresentativeCoordinationState {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_representative_coordination_complete` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:7680:4
+     |
+7680 | fn native_representative_coordination_complete(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `precompute_native_representative_batches` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8600:4
+     |
+8600 | fn precompute_native_representative_batches(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `snapshot_native_consistency_nominal_nondeterministic_prefix` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:8916:4
+     |
+8916 | fn snapshot_native_consistency_nominal_nondeterministic_prefix(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `build_saturation_seeds` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/konclude_ht/bridge.rs:9317:4
+     |
+9317 | fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `positive_class_assertion_iris` is never used
+   --> /workspace/.work/worktrees/v1.4/engine/src/orchestrate/flat_nf1.rs:395:4
+    |
+395 | fn positive_class_assertion_iris(line: &str) -> Option<(&str, &str)> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_nominal_ht_view` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/orchestrate/race.rs:1580:4
+     |
+1580 | fn native_nominal_ht_view<'a>(
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `component_abox_bridge_candidate` is never used
+    --> /workspace/.work/worktrees/v1.4/engine/src/routing.rs:1352:15
+     |
+1352 | pub(crate) fn component_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: direct cast of function item into an integer
+  --> /workspace/.work/worktrees/v1.4/engine/src/cli.rs:68:55
+   |
+68 |             libc::signal(libc::SIGUSR1, km_sigusr1_bt as usize as libc::sighandler_t);
+   |                                                       ^^^^^^^^
+   |
+   = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+   |
+68 |             libc::signal(libc::SIGUSR1, km_sigusr1_bt as *const () as usize as libc::sighandler_t);
+   |                                                       ++++++++++++
+
+warning: for loop over a `&Option`. This is more readably written as an `if let` statement
+   --> /workspace/.work/worktrees/v1.4/engine/src/frontend/ground_rule_source.rs:143:19
+    |
+143 |     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |                   ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(for_loops_over_fallibles)]` on by default
+help: to check pattern in a loop use `while let`
+    |
+143 -     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+143 +     while let Some(domain) = &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |
+help: consider using `if let` to clear intent
+    |
+143 -     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+143 +     if let Some(domain) = &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |
+
+warning: `kobayashi-marust` (lib) generated 93 warnings (run `cargo fix --lib -p kobayashi-marust` to apply 49 suggestions)
+   Compiling km-conformance-probe v0.0.0 (/tmp/agent/v144-validator)
+    Finished `release` profile [optimized] target(s) in 1m 21s

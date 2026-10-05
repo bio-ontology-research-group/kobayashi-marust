@@ -1,0 +1,766 @@
+{
+  "cases": 33,
+  "confirmed": 33,
+  "all_input_hashes_match": true,
+  "results": [
+    {
+      "ontology": "ore_ont_10127",
+      "sha256": "fc3b31f19ca7e8d872d937042c7e04cc92636ac26983f80b3daabef252df3cee",
+      "confirmed": true,
+      "component": [
+        "_:genid2413"
+      ],
+      "named_assertion_counts": {
+        "_:genid2413": 2
+      },
+      "witnesses": {
+        "_:genid2413": [
+          {
+            "line": 2098,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/2b127208-ea13-42f8-87ed-fe1717bf3667-1> _:genid2413)"
+          },
+          {
+            "line": 107103,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2413 <http://purl.obolibrary.org/obo/COLLECTION_0000149>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_10212",
+      "sha256": "42f93d15a2175565d6759bbee506291eb709595cbd590de3e5bc48d632dab0bf",
+      "confirmed": true,
+      "component": [
+        "_:genid528"
+      ],
+      "named_assertion_counts": {
+        "_:genid528": 2
+      },
+      "witnesses": {
+        "_:genid528": [
+          {
+            "line": 663,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/8c5489c3-c850-4264-b24b-d9dfbd962171-1> _:genid528)"
+          },
+          {
+            "line": 10424,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid528 <http://purl.obolibrary.org/obo/COLLECTION_0000417>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_10697",
+      "sha256": "aa8e15d4758d38ee1ced3e84127371e7b586a9745da99ab5b9f7d8e40ff195a3",
+      "confirmed": true,
+      "component": [
+        "_:genid2720"
+      ],
+      "named_assertion_counts": {
+        "_:genid2720": 2
+      },
+      "witnesses": {
+        "_:genid2720": [
+          {
+            "line": 2023,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/55602d09-e34c-4727-a1db-d736dbcdc669-1> _:genid2720)"
+          },
+          {
+            "line": 188246,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2720 <http://purl.obolibrary.org/obo/COLLECTION_0000263>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_11207",
+      "sha256": "c2e9b2669ab63d1d73dc907c7c8f078313ea8f12914eaa0bae4140435551a00c",
+      "confirmed": true,
+      "component": [
+        "_:genid4745"
+      ],
+      "named_assertion_counts": {
+        "_:genid4745": 2
+      },
+      "witnesses": {
+        "_:genid4745": [
+          {
+            "line": 3472,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/34a8f91e-ab1c-44a5-9422-97e57858bc07-1> _:genid4745)"
+          },
+          {
+            "line": 102938,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid4745 <http://purl.obolibrary.org/obo/COLLECTION_0000403>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_1182",
+      "sha256": "ee9b4e91c731381e12e0b506a8d2ac6ccdbbd95a59c5f7a5409d5d1730d68778",
+      "confirmed": true,
+      "component": [
+        "_:genid5336"
+      ],
+      "named_assertion_counts": {
+        "_:genid5336": 2
+      },
+      "witnesses": {
+        "_:genid5336": [
+          {
+            "line": 3789,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/e571e48f-df11-440d-8886-0a2adcf67645-1> _:genid5336)"
+          },
+          {
+            "line": 206645,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid5336 <http://purl.obolibrary.org/obo/COLLECTION_0000169>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_12203",
+      "sha256": "04f8e7478f80944193e2326598c6d0237c67f685d33f0676ced501ac283a8fcf",
+      "confirmed": true,
+      "component": [
+        "_:genid3281"
+      ],
+      "named_assertion_counts": {
+        "_:genid3281": 2
+      },
+      "witnesses": {
+        "_:genid3281": [
+          {
+            "line": 2812,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/9291e5a0-a283-4cb4-9067-c89cbc1d4ad6-1> _:genid3281)"
+          },
+          {
+            "line": 385443,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid3281 <http://purl.obolibrary.org/obo/COLLECTION_0000074>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_12901",
+      "sha256": "6b68cf4ade1e3e27961d609ab1e46b456b34617606b9edc2ebad665056895c2d",
+      "confirmed": true,
+      "component": [
+        "_:genid1002"
+      ],
+      "named_assertion_counts": {
+        "_:genid1002": 2
+      },
+      "witnesses": {
+        "_:genid1002": [
+          {
+            "line": 70548,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/62bd7e6b-bdc1-49ab-b3e3-dbe2cc8f33f3-23> _:genid1002)"
+          },
+          {
+            "line": 247841,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1002 <http://purl.obolibrary.org/obo/COLLECTION_0000009>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_14154",
+      "sha256": "3b0c0a3b0718a1f7c44451ed6e3333d69919c556d51996040c312c71d5f188aa",
+      "confirmed": true,
+      "component": [
+        "_:genid2973"
+      ],
+      "named_assertion_counts": {
+        "_:genid2973": 2
+      },
+      "witnesses": {
+        "_:genid2973": [
+          {
+            "line": 2504,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/523a9211-6d44-48a8-833a-cdb50cf6833a-1> _:genid2973)"
+          },
+          {
+            "line": 143833,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2973 <http://purl.obolibrary.org/obo/COLLECTION_0000138>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_14221",
+      "sha256": "46ba916c689a2d2a65df2e1dd4293e5d9dc87b1d498953d5fde577c6c88c1606",
+      "confirmed": true,
+      "component": [
+        "_:genid1744"
+      ],
+      "named_assertion_counts": {
+        "_:genid1744": 2
+      },
+      "witnesses": {
+        "_:genid1744": [
+          {
+            "line": 1631,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/0c353e09-4579-4cda-97c1-401026c25a5d-1> _:genid1744)"
+          },
+          {
+            "line": 115073,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1744 <http://purl.obolibrary.org/obo/COLLECTION_0000417>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_14375",
+      "sha256": "021b73ea8a49c9ecce3323c98ac3ce83353e797d5906338d3f2229ffda886660",
+      "confirmed": true,
+      "component": [
+        "_:genid1396"
+      ],
+      "named_assertion_counts": {
+        "_:genid1396": 2
+      },
+      "witnesses": {
+        "_:genid1396": [
+          {
+            "line": 1411,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/ac229b0e-9af5-4faf-a481-4115a47a5b8c-1> _:genid1396)"
+          },
+          {
+            "line": 48664,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1396 <http://purl.obolibrary.org/obo/COLLECTION_0000192>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_14556",
+      "sha256": "39b281dcf2b7473c8cdb41ddf40e103d995e0487222dc2f605299fb5c8988d1a",
+      "confirmed": true,
+      "component": [
+        "_:genid1002"
+      ],
+      "named_assertion_counts": {
+        "_:genid1002": 2
+      },
+      "witnesses": {
+        "_:genid1002": [
+          {
+            "line": 42534,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/e8b1a354-fa3e-42e8-8493-75af85a0a9fb-19> _:genid1002)"
+          },
+          {
+            "line": 90207,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1002 <http://purl.obolibrary.org/obo/COLLECTION_0000417>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_14601",
+      "sha256": "2c0b7c14f648f188b18a6918cfd2bcb394fbd209880065b2fc032e07cb623f0c",
+      "confirmed": true,
+      "component": [
+        "_:genid2789"
+      ],
+      "named_assertion_counts": {
+        "_:genid2789": 2
+      },
+      "witnesses": {
+        "_:genid2789": [
+          {
+            "line": 2137,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/2002ba4d-2c45-4fc5-93a0-a80c7aebeee1-1> _:genid2789)"
+          },
+          {
+            "line": 116964,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2789 <http://purl.obolibrary.org/obo/COLLECTION_0000263>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_15237",
+      "sha256": "330fbf9a8d34a470c17726d3cec8ceba85d32c017707311bcf1f6dab7a47c87c",
+      "confirmed": true,
+      "component": [
+        "_:genid1118"
+      ],
+      "named_assertion_counts": {
+        "_:genid1118": 2
+      },
+      "witnesses": {
+        "_:genid1118": [
+          {
+            "line": 1046,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/f981eeff-5f75-4624-8f3f-463ab830316a-1> _:genid1118)"
+          },
+          {
+            "line": 84011,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1118 <http://purl.obolibrary.org/obo/COLLECTION_0000095>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_15536",
+      "sha256": "69ce84100290df0a3e0ee006637ac75bd62dc7f8a87bbdefc1501964cdf7abef",
+      "confirmed": true,
+      "component": [
+        "_:genid2382"
+      ],
+      "named_assertion_counts": {
+        "_:genid2382": 2
+      },
+      "witnesses": {
+        "_:genid2382": [
+          {
+            "line": 1868,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/d9f0f871-a09d-485f-82ed-14087d29635e-1> _:genid2382)"
+          },
+          {
+            "line": 64171,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2382 <http://purl.obolibrary.org/obo/COLLECTION_0000009>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_15621",
+      "sha256": "eb3eca40e0ea8b60c3772d1f7e07bc38a560154a0b7c02be80ba71a5aadef492",
+      "confirmed": true,
+      "component": [
+        "_:genid2212"
+      ],
+      "named_assertion_counts": {
+        "_:genid2212": 2
+      },
+      "witnesses": {
+        "_:genid2212": [
+          {
+            "line": 2060,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/9ae08125-7129-4f20-b550-28bc5f66867d-1> _:genid2212)"
+          },
+          {
+            "line": 168496,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2212 <http://purl.obolibrary.org/obo/COLLECTION_0000469>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_15725",
+      "sha256": "90916e5a9ac1a4298955466d29ff95a7f152bf2258d605dcd144486a3062de1f",
+      "confirmed": true,
+      "component": [
+        "_:genid2040"
+      ],
+      "named_assertion_counts": {
+        "_:genid2040": 2
+      },
+      "witnesses": {
+        "_:genid2040": [
+          {
+            "line": 2046,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/5f7c18aa-d6d6-42e1-86e3-d5daa187d5b4-1> _:genid2040)"
+          },
+          {
+            "line": 145500,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2040 <http://purl.obolibrary.org/obo/COLLECTION_0000009>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_15991",
+      "sha256": "6a0b2c10f88f53682457373c3cad883c1c4da4ce5db0cbd32c6e87d932bc4f14",
+      "confirmed": true,
+      "component": [
+        "_:genid1171"
+      ],
+      "named_assertion_counts": {
+        "_:genid1171": 2
+      },
+      "witnesses": {
+        "_:genid1171": [
+          {
+            "line": 1141,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/1daf572d-074d-413c-aa2b-b012f08dc7f0-1> _:genid1171)"
+          },
+          {
+            "line": 58162,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1171 <http://purl.obolibrary.org/obo/COLLECTION_0000171>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_16414",
+      "sha256": "019512ea7a2442a31630124efd69b767b21aaf324cc37faaa0a15c0da0e0d7e0",
+      "confirmed": true,
+      "component": [
+        "_:genid4369"
+      ],
+      "named_assertion_counts": {
+        "_:genid4369": 2
+      },
+      "witnesses": {
+        "_:genid4369": [
+          {
+            "line": 3354,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/0b4f2700-da19-42dc-8080-48e64bc174dc-1> _:genid4369)"
+          },
+          {
+            "line": 464025,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid4369 <http://purl.obolibrary.org/obo/COLLECTION_0000417>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_2513",
+      "sha256": "e509c7f49e5138f94dbaacd8bc123f2462f7b35dc7d226b2a61109e5389e904e",
+      "confirmed": true,
+      "component": [
+        "_:genid3879"
+      ],
+      "named_assertion_counts": {
+        "_:genid3879": 2
+      },
+      "witnesses": {
+        "_:genid3879": [
+          {
+            "line": 3102,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/117be544-bf61-42d0-9d9d-ab3f53c1b9fe-1> _:genid3879)"
+          },
+          {
+            "line": 324763,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid3879 <http://purl.obolibrary.org/obo/COLLECTION_0000011>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_2622",
+      "sha256": "dd76672c61b1d5687a8e6c52d14180924ec8bb9bde0efcb4ce510cd0b8334f68",
+      "confirmed": true,
+      "component": [
+        "_:genid2065"
+      ],
+      "named_assertion_counts": {
+        "_:genid2065": 2
+      },
+      "witnesses": {
+        "_:genid2065": [
+          {
+            "line": 1819,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/ef167bad-a06d-4497-abba-1849bfb67dab-1> _:genid2065)"
+          },
+          {
+            "line": 314986,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2065 <http://purl.obolibrary.org/obo/COLLECTION_0000417>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_3133",
+      "sha256": "4f8a466aba4a50216cbaac23129312cea94d5cac08057be8c991686a9d79f309",
+      "confirmed": true,
+      "component": [
+        "_:genid3779"
+      ],
+      "named_assertion_counts": {
+        "_:genid3779": 2
+      },
+      "witnesses": {
+        "_:genid3779": [
+          {
+            "line": 3416,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/1d52b226-3d58-40b0-b0a8-0f92be3369a8-1> _:genid3779)"
+          },
+          {
+            "line": 377136,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid3779 <http://purl.obolibrary.org/obo/COLLECTION_0000388>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_3164",
+      "sha256": "a71c1eb9b7399cb9000fc74bdf440cdef75364ce9d817cce2e1345c1e8cceba8",
+      "confirmed": true,
+      "component": [
+        "_:genid2198"
+      ],
+      "named_assertion_counts": {
+        "_:genid2198": 2
+      },
+      "witnesses": {
+        "_:genid2198": [
+          {
+            "line": 2175,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/7da75d18-583f-4369-9c6f-08f5ddfdba38-1> _:genid2198)"
+          },
+          {
+            "line": 275783,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2198 <http://purl.obolibrary.org/obo/COLLECTION_0000065>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_3255",
+      "sha256": "615d86ca66711a978e1d401a65f75c7bb7b3c4f6997cddab3d94afb950678042",
+      "confirmed": true,
+      "component": [
+        "_:genid1129"
+      ],
+      "named_assertion_counts": {
+        "_:genid1129": 2
+      },
+      "witnesses": {
+        "_:genid1129": [
+          {
+            "line": 1134,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/d9fbe6e9-56d4-4d38-bf2b-0e4e3c2b117d-1> _:genid1129)"
+          },
+          {
+            "line": 35255,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1129 <http://purl.obolibrary.org/obo/COLLECTION_0000417>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_3658",
+      "sha256": "c8084740875f30011ff2fb62c325e0dcbaec0faa15ae02df6742f58affa50a60",
+      "confirmed": true,
+      "component": [
+        "_:genid4585"
+      ],
+      "named_assertion_counts": {
+        "_:genid4585": 2
+      },
+      "witnesses": {
+        "_:genid4585": [
+          {
+            "line": 3205,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/f7cf0850-3f2d-4ee7-a352-76ba0d77634d-1> _:genid4585)"
+          },
+          {
+            "line": 330663,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid4585 <http://purl.obolibrary.org/obo/COLLECTION_0000194>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_4187",
+      "sha256": "49ab8adca440ee2752a56a854647ff50fd4f4919b9e12d3a7b2004dbb05fcdc8",
+      "confirmed": true,
+      "component": [
+        "_:genid2460"
+      ],
+      "named_assertion_counts": {
+        "_:genid2460": 2
+      },
+      "witnesses": {
+        "_:genid2460": [
+          {
+            "line": 2495,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/acbf9512-9d01-401b-9fee-d4309e84eac6-1> _:genid2460)"
+          },
+          {
+            "line": 396868,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid2460 <http://purl.obolibrary.org/obo/COLLECTION_0000194>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_4510",
+      "sha256": "9d6246688fe292693f91ced5d096d3c732ccfa1bcf5fb57bad1f25ae2aa8766a",
+      "confirmed": true,
+      "component": [
+        "_:genid1120"
+      ],
+      "named_assertion_counts": {
+        "_:genid1120": 2
+      },
+      "witnesses": {
+        "_:genid1120": [
+          {
+            "line": 1399,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/69bc99ef-bdbe-43b2-b088-4598196a701e-1> _:genid1120)"
+          },
+          {
+            "line": 308577,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1120 <http://purl.obolibrary.org/obo/COLLECTION_0000403>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_5103",
+      "sha256": "7ee96bc7befaf0b8007436c48d42677c4591963281301f663ac124e6f4397e5a",
+      "confirmed": true,
+      "component": [
+        "_:genid1118"
+      ],
+      "named_assertion_counts": {
+        "_:genid1118": 2
+      },
+      "witnesses": {
+        "_:genid1118": [
+          {
+            "line": 1297,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/0f5c6124-e3df-4048-b5f1-f0fd6a36cfce-1> _:genid1118)"
+          },
+          {
+            "line": 74960,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1118 <http://purl.obolibrary.org/obo/COLLECTION_0000014>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_5695",
+      "sha256": "e636a6d3826c0ee286ef43931c9b39ce35cbd5c9ea6622dad5ea264632a1b5c9",
+      "confirmed": true,
+      "component": [
+        "_:genid1295"
+      ],
+      "named_assertion_counts": {
+        "_:genid1295": 2
+      },
+      "witnesses": {
+        "_:genid1295": [
+          {
+            "line": 1285,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/00eff755-90a3-4ea4-9cd4-28c120346f33-1> _:genid1295)"
+          },
+          {
+            "line": 13140,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1295 <http://purl.obolibrary.org/obo/COLLECTION_0000361>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_6444",
+      "sha256": "af7b0effe044d06914e5dae3731fa0d83df82d4462d6074f90a05e618d9c1880",
+      "confirmed": true,
+      "component": [
+        "_:genid1154"
+      ],
+      "named_assertion_counts": {
+        "_:genid1154": 2
+      },
+      "witnesses": {
+        "_:genid1154": [
+          {
+            "line": 1082,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/116277b0-d084-4abf-b6d6-47ec3454dc4d-1> _:genid1154)"
+          },
+          {
+            "line": 43813,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1154 <http://purl.obolibrary.org/obo/COLLECTION_0000095>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_9088",
+      "sha256": "e43aa883da518785861d4a70020e45cb14d4025c6257642d31ff154a01b9c114",
+      "confirmed": true,
+      "component": [
+        "_:genid2"
+      ],
+      "named_assertion_counts": {
+        "_:genid2": 2
+      },
+      "witnesses": {
+        "_:genid2": [
+          {
+            "line": 666,
+            "assertion": "ObjectPropertyAssertion(<http://www.owl-ontologies.com/Ontology1201106854.owl#groupsBySubject> <http://www.owl-ontologies.com/Ontology1201106854.owl#KB197271en_ver1> _:genid2)"
+          },
+          {
+            "line": 674,
+            "assertion": "ObjectPropertyAssertion(<http://www.owl-ontologies.com/Ontology1201106854.owl#isGroupedBySubject> _:genid2 <http://www.owl-ontologies.com/Ontology1201106854.owl#KB197271en_ver1>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_9249",
+      "sha256": "755db83651e219abe6bce438c40be4dd2cb75acbc1852fbc1fff0f2ea01caa34",
+      "confirmed": true,
+      "component": [
+        "_:genid323"
+      ],
+      "named_assertion_counts": {
+        "_:genid323": 2
+      },
+      "witnesses": {
+        "_:genid323": [
+          {
+            "line": 473,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/2a0abf54-ba96-4c91-bdf7-34e3c03581ab-1> _:genid323)"
+          },
+          {
+            "line": 6545,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid323 <http://purl.obolibrary.org/obo/COLLECTION_0000009>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_950",
+      "sha256": "ef02f1e8f4280292648ed6cc03ab29490524d66ddcd39998c5acaef4d87e49f3",
+      "confirmed": true,
+      "component": [
+        "_:genid1000"
+      ],
+      "named_assertion_counts": {
+        "_:genid1000": 2
+      },
+      "witnesses": {
+        "_:genid1000": [
+          {
+            "line": 8008,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/62a92019-b08d-45a4-82b3-d739906e9fca-4> _:genid1000)"
+          },
+          {
+            "line": 11539,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid1000 <http://purl.obolibrary.org/obo/COLLECTION_0000095>)"
+          }
+        ]
+      }
+    },
+    {
+      "ontology": "ore_ont_9958",
+      "sha256": "2cda3dfb137a3d4d776b35e2eec832bbe9e06a4422d4e24ee4bf22691d941705",
+      "confirmed": true,
+      "component": [
+        "_:genid5532"
+      ],
+      "named_assertion_counts": {
+        "_:genid5532": 2
+      },
+      "witnesses": {
+        "_:genid5532": [
+          {
+            "line": 4545,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/individualID> <http://kb.phenoscape.org/uuid/41d9c495-a2fd-404d-b11b-e3e08436793d-1> _:genid5532)"
+          },
+          {
+            "line": 331612,
+            "assertion": "ObjectPropertyAssertion(<http://rs.tdwg.org/dwc/terms/collectionID> _:genid5532 <http://purl.obolibrary.org/obo/COLLECTION_0000403>)"
+          }
+        ]
+      }
+    }
+  ]
+}

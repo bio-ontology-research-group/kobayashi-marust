@@ -1,0 +1,92 @@
+{
+  "ont": "ore_ont_9684",
+  "source_sha256": "f3b8111a742c6cd4ac0615174156e61335462553f6b15db5c0df7cdb4fddd5c9",
+  "reference_sha256": "91cab0048c6602f05aa732f5a13b5e9090bfb87dfcc4f2351c4becfe3e2c4058",
+  "declared_classes": 4443,
+  "reference_relations": 35071,
+  "reference_unsat": 4,
+  "reference_thing_equiv": [],
+  "candidate": {
+    "path": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/full-v144-automatic-native-source-53158847_58/output/ore_ont_9684.json",
+    "sha256": "688bf85746373b246c5c9ca30b84f64405321408005c4d039e3105dccd4f30c0",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 35071,
+    "missing_count": 0,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [],
+    "extra_sample": []
+  },
+  "baseline": {
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/candidate-v143-rc2/058/output/ore_ont_9684.json",
+    "sha256": "83ceed77f74e62c40b232f9503b0ba8039f74120e8ef660706517adc2a5d51e9",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 35057,
+    "missing_count": 14,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0001578",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0001601",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0001602",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0001603",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0001604",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0001605",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0003269",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0003386",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0003660",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0004277",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0004505",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0004508",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0004836",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ],
+      [
+        "http://purl.org/obo/owl/UBERON#UBERON_0004837",
+        "http://purl.org/obo/owl/UBERON#UBERON_0004121"
+      ]
+    ],
+    "extra_sample": []
+  }
+}

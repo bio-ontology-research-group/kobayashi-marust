@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -967,7 +967,12 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
         matches!(
             fence.reason.as_str(),
             "inverse+number(SHIQ)" | "inverse-functional" | "irreflexivity"
-        ) || (source_tbox && matches!(fence.reason.as_str(), "complex-domain" | "complex-range"))
+        ) || (fence.reason == "reflexivity" && tin.roles.iter().position(|r| r == &fence.detail).is_some_and(|role| {
+            tin.clauses.iter().any(|clause| matches!(
+                (clause.body.as_slice(), clause.head.as_slice()),
+                ([], [cb_to_ht::HAtom::Role { r, s, t }]) if *r == role && s == t
+            ))
+        })) || (source_tbox && matches!(fence.reason.as_str(), "complex-domain" | "complex-range"))
             || (source_tbox
                 && tin.nominal_abox.complete
                 && fence.reason == "nominal+inverse(SHOI/SHOIQ)")
@@ -1527,8 +1532,7 @@ fn native_nominal_bridge_clauses<'a>(
             },
         )
         .collect();
-    Cow::Owned(
-        clauses
+    let mut projected: Vec<JClause> = clauses
             .iter()
             .filter(|clause| {
                 let redundant_universal_ground = matches!(
@@ -1545,8 +1549,29 @@ fn native_nominal_bridge_clauses<'a>(
                     && !native_nominal_clause_represented(clause, nominal_abox, definers)
             })
             .cloned()
-            .collect(),
-    )
+            .collect();
+    // Moving assertions to the typed ABox must preserve the source concept
+    // signature used by cb_to_ht to enumerate taxonomy queries. A class that
+    // occurs only in C(a) still inherits every universal superclass. Register
+    // vanished symbols through C(x) -> C(x): a tautology changes no models,
+    // and internal names remain subject to the converter's query filter.
+    let concepts = |input: &[JClause]| -> std::collections::BTreeSet<String> {
+        input.iter().flat_map(|clause| clause.body.iter().chain(&clause.head))
+            .filter_map(|atom| match atom {
+                crate::json_io::JAtom::Concept { concept, .. } => Some(concept.clone()),
+                _ => None,
+            }).collect()
+    };
+    let source_concepts = concepts(clauses);
+    let retained_concepts = concepts(&projected);
+    for concept in source_concepts.difference(&retained_concepts) {
+        let atom = crate::json_io::JAtom::Concept {
+            concept: concept.clone(),
+            term: crate::json_io::JTerm::Var { name: "x".into() },
+        };
+        projected.push(JClause { body: vec![atom.clone()], head: vec![atom] });
+    }
+    Cow::Owned(projected)
 }
 
 /// Exact clause view for the native nominal fast-Ht tests and callers that do
@@ -2083,7 +2108,10 @@ fn spawn_ht(
                 // share one clause file. Project only the worker's view back
                 // to the TBox; the CB process still reads every ground ABox
                 // clause from the original file.
-                || std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_some()),
+                || std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_some())
+            // SameIndividual is represented by native nominal assertions in
+            // this worker. Remove only clauses certified by that typed ABox.
+            || (specialist_only.as_deref() == Some("bridge") && !nominal_abox.same.is_empty()),
         !rules.is_empty(),
     );
     let mut tin = cb_to_ht::convert(
@@ -2111,7 +2139,8 @@ fn spawn_ht(
         && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let mut proxy_abox_certificate = None;
     let global_native_abox = std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
-    let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some() || global_native_abox;
+    let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
+        || global_native_abox || specialist_only.as_deref() == Some("bridge");
     if card_proxy_abox {
         let mut native = tin.clone();
         cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);
@@ -2347,6 +2376,15 @@ fn spawn_ht(
         // card arm rides along (certified production portfolio), the worker must
         // instead hand a bridge defer off to the card path, so this stays unset.
         cmd.env("KM_HT_BRIDGE_ONLY", "1");
+        // A bridge-exclusive worker either publishes the bridge taxonomy or
+        // defers; it has no validated tableau fallback. When publication does
+        // not require the proxy-ABox post-filter, retain concept names once and
+        // carry relation endpoints through the strict versioned binary handoff.
+        // Proxy-filtered workers keep JSON so their established certificate
+        // check and output rewrite below remain unchanged.
+        if proxy_abox_certificate.is_none() && !crate::tableau::ht_lean_certification_requested() {
+            cmd.env("KM_HT_BRIDGE_OUTPUT_BINARY", "1");
+        }
     }
     if qo_candidate {
         // Route this Horn-inverse ont to the validated hybrid certify path, run as
@@ -2608,6 +2646,14 @@ pub fn run_ht_only(
             crate::orchestrate::engine_run::exit_status_code(&status)
         )));
     }
+    let mut probe = BufReader::new(File::open(out_path.path())?);
+    if crate::json_io::is_elc_output_binary(probe.fill_buf()?) {
+        if proxy_abox_certificate.is_some() {
+            return Err(OrchestrateError::OutOfFragment(
+                "compact native output cannot bypass proxy ABox verification".into()));
+        }
+        return super::parse_out_path(out_path.path());
+    }
     let output = File::open(out_path.path())?;
     let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
         OrchestrateError::Worker {
@@ -2833,7 +2879,7 @@ pub fn run_ht_bridge_in_process(
             "native HT bridge received rules".into(),
         ));
     }
-    let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, false);
+    let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, !nominal_abox.same.is_empty(), false);
     let mut tin = cb_to_ht::convert(
         &view,
         Some(rbox.as_slice()),
@@ -2845,13 +2891,18 @@ pub fn run_ht_bridge_in_process(
         &[],
         false,
     );
-    if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, false) {
+    if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, true) {
         return Err(OrchestrateError::OutOfFragment(
             "native HT bridge ABox conversion was incomplete".into(),
         ));
     }
     let source_tbox =
         !tin.source_axioms.is_empty() && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
+    if let Some(path) = std::env::var_os("KM_DUMP_TIN") {
+        if let Ok(bytes) = serde_json::to_vec(&tin) {
+            let _ = std::fs::write(path, bytes);
+        }
+    }
     if !bridge_candidate_from(&tin, true, source_tbox) {
         return Err(OrchestrateError::OutOfFragment(
             "ontology is outside the native HT bridge certificate".into(),
@@ -2930,6 +2981,14 @@ pub fn run_ht_only_bounded(
     };
     if !status.success() {
         return Ok(None);
+    }
+    let mut probe = BufReader::new(File::open(out_path.path())?);
+    if crate::json_io::is_elc_output_binary(probe.fill_buf()?) {
+        if proxy_abox_certificate.is_some() {
+            return Err(OrchestrateError::OutOfFragment(
+                "compact native output cannot bypass proxy ABox verification".into()));
+        }
+        return super::parse_out_path(out_path.path()).map(Some);
     }
     let output = File::open(out_path.path())?;
     let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
@@ -3207,6 +3266,16 @@ where
         );
 
         let read_tout = |p: &Path| -> Option<EngineOut> {
+            let mut probe = BufReader::new(File::open(p).ok()?);
+            if crate::json_io::is_elc_output_binary(probe.fill_buf().ok()?) {
+                // The producer enables compact output only when no proxy
+                // certificate rewrite is required. Fail closed if a future
+                // caller violates that transport contract.
+                if proxy_abox_certificate.is_some() {
+                    return None;
+                }
+                return super::parse_out_path(p).ok();
+            }
             let f = File::open(p).ok()?;
             let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
             if proxy_abox_certificate
@@ -3426,6 +3495,38 @@ mod tests {
     }
 
     #[test]
+    fn native_nominal_projection_preserves_assertion_only_query_classes() {
+        use crate::json_io::{JAtom, JClause, NominalAboxMeta, NominalIndividualMeta};
+        use crate::frontend::syntax::Concept;
+        let clauses = vec![
+            JClause { body: vec![], head: vec![JAtom::Concept {
+                concept: "A".into(), term: ind("a"),
+            }] },
+            JClause { body: vec![], head: vec![JAtom::Concept {
+                concept: "T".into(), term: var("x"),
+            }] },
+        ];
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![NominalIndividualMeta {
+                individual: "a".into(), proxies: vec![],
+                assertions: vec![Concept::Name("A".into())],
+                assertion_markers: vec!["A".into()],
+            }],
+            ..Default::default()
+        };
+        let view = native_nominal_bridge_clauses(&clauses, &meta, &[], true, false);
+        let named = ["A".to_string(), "T".to_string()].into_iter().collect();
+        let tin = cb_to_ht::convert(&view, None, &named, &[], &[], &[], false, &[], false);
+        let queries: std::collections::HashSet<_> = tin.queries.iter()
+            .map(|&index| tin.concepts[index].as_str()).collect();
+        assert!(queries.contains("A"), "assertion-only A must be queried for A <= T");
+        assert!(queries.contains("T"));
+        assert_eq!(tin.dropped, 0);
+        assert_eq!(clauses.len(), 2, "CB source stays unchanged");
+    }
+
+    #[test]
     fn native_nominal_view_filters_only_exact_typed_shapes_and_preserves_cb_input() {
         use crate::json_io::{
             JAtom, JClause, NominalAboxMeta, NominalIndividualMeta, NominalRoleAssertionMeta,
@@ -3531,7 +3632,8 @@ mod tests {
         ];
         let original_bytes = serde_json::to_vec(&clauses).unwrap();
         let view = native_nominal_ht_view(&clauses, &meta, true, false);
-        assert_eq!(view.len(), 2, "only the two unknown shapes remain");
+        assert_eq!(view.iter().filter(|clause| clause.body != clause.head).count(), 2,
+            "only the two unknown shapes remain besides signature tautologies");
         assert_eq!(
             serde_json::to_vec(&clauses).unwrap(),
             original_bytes,
@@ -3572,6 +3674,7 @@ mod tests {
               DifferentIndividuals(:a :b)
             )
         "#;
+        let _environment_lock = crate::frontend::lock_test_environment();
         crate::frontend::with_ofn_to_clauses_requested_route(
             source,
             crate::routing::Route::Auto,
@@ -3632,6 +3735,78 @@ mod tests {
             },
         )
         .expect("source fixture parses through automatic production routing");
+    }
+
+    #[test]
+    fn original_data_assertions_preserve_value_identity_and_functional_clashes() {
+        for (other, consistent) in [("\"01\"^^xsd:int", true), ("\"2\"^^xsd:integer", false)] {
+            let source = format!(r#"Prefix(:=<http://example.org/>)
+                Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>) Ontology(
+                Declaration(Class(:A)) Declaration(DataProperty(:value))
+                Declaration(NamedIndividual(:a)) FunctionalDataProperty(:value)
+                DataPropertyRange(:value xsd:integer)
+                DataPropertyAssertion(:value :a "1"^^xsd:integer)
+                DataPropertyAssertion(:value :a {other}))"#);
+            let lowered = crate::frontend::ground_rule_source::compile(&source, 100_000)
+                .expect("exact data assertion normalization");
+            assert_eq!(lowered.source_rules, 0);
+            assert_eq!(lowered.instances, 0);
+            let _environment_lock = crate::frontend::lock_test_environment();
+            crate::frontend::with_ofn_to_clauses_requested_route(&lowered.text,
+                crate::routing::Route::CertifiedNominals, |frontend| {
+                    assert!(frontend.nominal_abox.complete);
+                    assert!(!frontend.source_axioms.is_empty());
+                    let view = native_nominal_bridge_clauses(&frontend.clauses,
+                        &frontend.nominal_abox, &frontend.definers, true, false);
+                    let named = frontend.named.iter().cloned().collect();
+                    let mut input = cb_to_ht::convert(&view, Some(&frontend.rbox), &named,
+                        &frontend.cardinalities, &frontend.definers, &frontend.source_axioms,
+                        false, &[], false);
+                    assert!(cb_to_ht::install_nominal_abox_with_same(
+                        &mut input, &frontend.nominal_abox, true));
+                    assert_eq!(input.dropped, 0);
+                    let result = crate::konclude_ht::bridge::bridged_classify_opts(&input, false, false)
+                        .expect("exact value aliases in the native ABox");
+                    assert_eq!(result.consistent, consistent, "{other}");
+                }).unwrap();
+        }
+    }
+
+    #[test]
+    fn native_same_individual_source_projection_preserves_alias_clash() {
+        for same in [false, true] {
+            let equality = if same { "SameIndividual(:a :b)" } else { "" };
+            let source = format!(r#"Prefix(:=<http://example.org/>) Ontology(
+                Declaration(Class(:A)) Declaration(Class(:B))
+                Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                DisjointClasses(:A :B) ClassAssertion(:A :a) ClassAssertion(:B :b)
+                {equality})"#);
+            let _environment_lock = crate::frontend::lock_test_environment();
+            crate::frontend::with_ofn_to_clauses_requested_route(
+                &source, crate::routing::Route::CertifiedNominals, |frontend| {
+                    assert!(frontend.nominal_abox.complete);
+                    assert!(!frontend.source_axioms.is_empty());
+                    let original = serde_json::to_vec(&frontend.clauses).unwrap();
+                    let view = native_nominal_bridge_clauses(&frontend.clauses,
+                        &frontend.nominal_abox, &frontend.definers, true, false);
+                    let named = frontend.named.iter().cloned().collect();
+                    let mut input = cb_to_ht::convert(&view, Some(&frontend.rbox), &named,
+                        &frontend.cardinalities, &frontend.definers, &frontend.source_axioms,
+                        false, &[], false);
+                    assert!(cb_to_ht::install_nominal_abox_with_same(
+                        &mut input, &frontend.nominal_abox, true));
+                    assert_eq!(input.dropped, 0);
+                    let _guard = crate::routing::EnvironmentGuard::capture();
+                    std::env::set_var("KM_TRIGGER_ABSORB", "1");
+                    let result = crate::konclude_ht::bridge::bridged_classify_opts(
+                        &input, false, false).unwrap_or_else(|| panic!(
+                            "complete native ABox projection: same={same} no_source={} input={}",
+                            std::env::var_os("KM_NO_SOURCE_TBOX").is_some(),
+                            serde_json::to_string(&input).unwrap()));
+                    assert_eq!(result.consistent, !same);
+                    assert_eq!(serde_json::to_vec(&frontend.clauses).unwrap(), original);
+                }).unwrap();
+        }
     }
 
     #[test]
@@ -3741,7 +3916,7 @@ mod tests {
 
         let bridge = native_nominal_bridge_clauses(&clauses, &exact, &[], true, false);
         assert_eq!(
-            bridge.len(),
+            bridge.iter().filter(|clause| clause.body != clause.head).count(),
             3,
             "ordinary and unsupported/mismatched clauses remain in the HT coverage check"
         );
@@ -3826,7 +4001,8 @@ mod tests {
 
         let projected =
             native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, true, false);
-        assert!(projected.is_empty(), "all 85 exact Top copies are typed");
+        assert!(projected.iter().all(|clause| clause.body == clause.head),
+            "all 85 exact Top copies are typed; only signature tautologies remain");
         assert_eq!(
             clauses.len(),
             85,
@@ -3891,7 +4067,8 @@ mod tests {
         });
         let fail_closed =
             native_nominal_bridge_clauses(&adversarial, &nominal_abox, &definers, true, false);
-        assert_eq!(fail_closed.len(), 1);
+        assert_eq!(fail_closed.iter().filter(|clause| clause.body != clause.head).count(), 1,
+            "the unproven ground fact remains alongside signature tautologies");
         let converted = cb_to_ht::convert(
             &fail_closed,
             None,

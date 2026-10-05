@@ -1,0 +1,14 @@
+{
+  "status": "retained_retraction_restore_verified",
+  "exit_code": 0,
+  "wall_s": 0.13070806302130222,
+  "peak_bytes": 23592960,
+  "artifact_sha256": "e8dd5373d4606a1c9dbab0896b5939124ef7997781f15aea0d6f5fc6fd4cf0f4",
+  "runner_sha256": "1e06ef6b7c3b191ca1df645ac69aba58a31aa782e84adeb21c7a0e7aee1d51be",
+  "entails_A_C": [
+    true,
+    false,
+    true
+  ],
+  "internal_reuse": "not inferred from persistent process"
+}

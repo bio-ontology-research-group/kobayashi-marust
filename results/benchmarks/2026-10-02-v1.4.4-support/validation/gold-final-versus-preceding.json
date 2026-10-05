@@ -1,0 +1,78 @@
+{
+  "same_successful_signatures": 554,
+  "status_changes": [
+    {
+      "ontology": "ore_ont_14375.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_15725.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_9958.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_10127.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_10212.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_15536.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_11207.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_4187.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_5103.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_3164.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_10697.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    },
+    {
+      "ontology": "ore_ont_3658.owl",
+      "before": "ok",
+      "after": "error",
+      "rc": 2
+    }
+  ],
+  "scope": "Final versus preceding candidate; all changed outcomes are invalid-input refusals"
+}

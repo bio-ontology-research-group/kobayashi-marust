@@ -1,0 +1,9 @@
+KM_TIMING mirror-route: declined: non-positive residual axiom: ObjectAllValuesFrom(<http://www.cs.ox.ac.uk/isg/ontologies/UID/00088.owl#incomingConnector> <http://www.cs.ox.ac.uk/isg/ontologies/UID/00088.owl#SurveyConnector>)
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false
+KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false
+KM_TIMING frontend done @ 0.00s route=production_all
+KM_TIMING certified ABox production probe declined @ 0.01s: out of fragment: positive EL ABox consistency certificate declined
+KM_TIMING frontend done @ 0.01s route=certified_nominals
+KM_TIMING in-process engine done @ 0.01s (no race)
+KM_TIMING engine block done @ 0.01s (subs_keys=42)

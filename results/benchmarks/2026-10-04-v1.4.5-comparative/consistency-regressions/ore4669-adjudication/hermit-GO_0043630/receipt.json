@@ -1,0 +1,20 @@
+{
+  "command": [
+    "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+    "-Xmx12g",
+    "-XX:ActiveProcessorCount=1",
+    "-cp",
+    "/workspace/v145-tools/classes:/workspace/v145-tools/classifier-hermit.jar",
+    "org.kmbenchmark.EntailmentExplanation",
+    "org.semanticweb.HermiT.ReasonerFactory",
+    "/workspace/v145-tools/ore4669-review/source.owl",
+    "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0043630",
+    "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0043634",
+    "/workspace/v145-tools/ore4669-review/hermit-GO_0043630/module.ofn",
+    "/workspace/v145-tools/ore4669-review/hermit-GO_0043630/explanation.tsv"
+  ],
+  "status": "ok",
+  "exit_code": 0,
+  "wall_s": 41.32999205496162,
+  "peak_bytes": 2403569664
+}

@@ -1,0 +1,244 @@
+{
+  "observed_at": "2026-10-05T03:58:05.776774+00:00",
+  "status": "reviewed; source, audit and measurement bindings checked; all paired costs independently recomputed",
+  "report_sha256": "8ccf0ed781bbd973522cb756dbaab3a5de7f5cee1623eb7c1dc154c2bac0cc9d",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "selected_sources": 80,
+  "cases_per_reasoner": 372,
+  "unique_queries": 124,
+  "reasoners": 10,
+  "pairwise_comparisons": 45,
+  "coverage": {
+    "elk": {
+      "verified_evidence_intact": 366,
+      "adapter_or_validation_error": 6
+    },
+    "hermit": {
+      "verified_evidence_intact": 372
+    },
+    "jfact": {
+      "verified_evidence_intact": 354,
+      "generation_timeout": 9,
+      "generation_error": 9
+    },
+    "km": {
+      "verified_evidence_intact": 336,
+      "generation_error": 18,
+      "generation_timeout": 18
+    },
+    "konclude": {
+      "verified_evidence_intact": 249,
+      "generation_timeout": 123
+    },
+    "more": {
+      "verified_evidence_intact": 264,
+      "generation_timeout": 108
+    },
+    "openllet": {
+      "verified_evidence_intact": 372
+    },
+    "rustdl": {
+      "verified_evidence_intact": 369,
+      "generation_timeout": 3
+    },
+    "sequoia": {
+      "generation_error": 156,
+      "verified_evidence_intact": 207,
+      "generation_timeout": 9
+    },
+    "whelk": {
+      "verified_evidence_intact": 318,
+      "adapter_or_validation_error": 9,
+      "generation_timeout": 45
+    }
+  },
+  "baseline_only_results_identical": true,
+  "km_pairwise": [
+    {
+      "left": "elk",
+      "right": "km",
+      "common_verified_generation_costs": {
+        "cases": 333,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 333,
+          "left_median": 3.0244375932961702,
+          "right_median": 0.07510560564696789,
+          "median_paired_ratio": 0.021525458136830787
+        },
+        "peak_bytes": {
+          "measured_pairs": 333,
+          "left_median": 134553600,
+          "right_median": 9502720,
+          "median_paired_ratio": 0.06617241590588811
+        }
+      }
+    },
+    {
+      "left": "hermit",
+      "right": "km",
+      "common_verified_generation_costs": {
+        "cases": 336,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 336,
+          "left_median": 2.6354689737781882,
+          "right_median": 0.07602917682379484,
+          "median_paired_ratio": 0.02602419431809446
+        },
+        "peak_bytes": {
+          "measured_pairs": 336,
+          "left_median": 121991168.0,
+          "right_median": 9502720.0,
+          "median_paired_ratio": 0.07419033616155135
+        }
+      }
+    },
+    {
+      "left": "jfact",
+      "right": "km",
+      "common_verified_generation_costs": {
+        "cases": 327,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 327,
+          "left_median": 3.714327000081539,
+          "right_median": 0.0743824876844883,
+          "median_paired_ratio": 0.01798641886609753
+        },
+        "peak_bytes": {
+          "measured_pairs": 327,
+          "left_median": 162852864,
+          "right_median": 8847360,
+          "median_paired_ratio": 0.05517805139733306
+        }
+      }
+    },
+    {
+      "left": "km",
+      "right": "konclude",
+      "common_verified_generation_costs": {
+        "cases": 249,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 249,
+          "left_median": 0.04510781168937683,
+          "right_median": 15.790636820718646,
+          "median_paired_ratio": 320.5260074256303
+        },
+        "peak_bytes": {
+          "measured_pairs": 249,
+          "left_median": 8519680,
+          "right_median": 143138816,
+          "median_paired_ratio": 16.813942307692308
+        }
+      }
+    },
+    {
+      "left": "km",
+      "right": "more",
+      "common_verified_generation_costs": {
+        "cases": 264,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 264,
+          "left_median": 0.04543412197381258,
+          "right_median": 12.14021963160485,
+          "median_paired_ratio": 237.92346280030796
+        },
+        "peak_bytes": {
+          "measured_pairs": 264,
+          "left_median": 8519680.0,
+          "right_median": 116051968.0,
+          "median_paired_ratio": 13.606490384615384
+        }
+      }
+    },
+    {
+      "left": "km",
+      "right": "openllet",
+      "common_verified_generation_costs": {
+        "cases": 336,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 336,
+          "left_median": 0.07602917682379484,
+          "right_median": 2.7997766518965364,
+          "median_paired_ratio": 38.70729187410665
+        },
+        "peak_bytes": {
+          "measured_pairs": 336,
+          "left_median": 9502720.0,
+          "right_median": 123183104.0,
+          "median_paired_ratio": 13.272426075268818
+        }
+      }
+    },
+    {
+      "left": "km",
+      "right": "rustdl",
+      "common_verified_generation_costs": {
+        "cases": 336,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 336,
+          "left_median": 0.07602917682379484,
+          "right_median": 0.04290840681642294,
+          "median_paired_ratio": 0.7464056802395174
+        },
+        "peak_bytes": {
+          "measured_pairs": 336,
+          "left_median": 9502720.0,
+          "right_median": 5570560.0,
+          "median_paired_ratio": 0.6296296296296297
+        }
+      }
+    },
+    {
+      "left": "km",
+      "right": "sequoia",
+      "common_verified_generation_costs": {
+        "cases": 207,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 207,
+          "left_median": 0.04474305734038353,
+          "right_median": 22.856042889878154,
+          "median_paired_ratio": 494.20615052534794
+        },
+        "peak_bytes": {
+          "measured_pairs": 207,
+          "left_median": 8192000,
+          "right_median": 223354880,
+          "median_paired_ratio": 26.871
+        }
+      }
+    },
+    {
+      "left": "km",
+      "right": "whelk",
+      "common_verified_generation_costs": {
+        "cases": 309,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 309,
+          "left_median": 0.07348121702671051,
+          "right_median": 2.621380038559437,
+          "median_paired_ratio": 52.90582567720085
+        },
+        "peak_bytes": {
+          "measured_pairs": 309,
+          "left_median": 8847360,
+          "right_median": 128700416,
+          "median_paired_ratio": 15.018269230769231
+        }
+      }
+    }
+  ],
+  "limitations": "24 source preparation failures and 14 sources without eligible queries retained. KM 18 internal worker time-limit errors and 18 external timeouts excluded from paired verified costs. Generation cost excludes preparation and independent verification.",
+  "evidence": [
+    "globaldep-justification-measurement-completion.json",
+    "globaldep-justification-audit-completion.json",
+    "globaldep-justification-generation-errors.json"
+  ]
+}

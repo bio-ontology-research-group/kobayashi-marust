@@ -1,0 +1,1358 @@
+{
+  "normative_source": "https://www.w3.org/TR/owl2-syntax/#Global_Restrictions_on_Axioms_in_OWL_2_DL",
+  "reason": "OWL 2 DL forbids anonymous individuals in ObjectHasValue",
+  "cases": 150,
+  "confirmed": 150,
+  "results": [
+    {
+      "ontology": "ore_ont_10058",
+      "sha256": "3a834a2f2a47c2f1306a5607de605c793b687f07e0dc1c5c8b163c761b5a96df",
+      "confirmed": true,
+      "witness": {
+        "line": 4216,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid244)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10173",
+      "sha256": "fb2ceaad068eb4ae5de4089a171c0db5dd5d90373cc89843a3cda24952dae184",
+      "confirmed": true,
+      "witness": {
+        "line": 3686,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid131)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10270",
+      "sha256": "1ad80f43a85c57905102f6e98f10977575796d7d4c6ea59f393488d3d1b8903d",
+      "confirmed": true,
+      "witness": {
+        "line": 3865,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid148)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10409",
+      "sha256": "ae17d6ca03e19010ae65c3cab30811471761aa33f4db260b1ee3bb5ea4a414fa",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid141)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10423",
+      "sha256": "0f34a4fedb43a5a22ec97879a7fc6f2dc56874099290e8332f9e31b492efd3d5",
+      "confirmed": true,
+      "witness": {
+        "line": 3687,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid137)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10588",
+      "sha256": "93f8aaedd4d4b79fe257422d529a4f80c557a033cf28bbd36eda544d163ba91a",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10594",
+      "sha256": "0d2fc604447b56834140fe5a6d7549dbe11f179dddc8a3e1b1d6d0310e4306b9",
+      "confirmed": true,
+      "witness": {
+        "line": 4222,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid301)"
+      }
+    },
+    {
+      "ontology": "ore_ont_1062",
+      "sha256": "0cb3f531617083ec37ca17703023b8eaae30a5a771c35c68432b78f0cc08b34c",
+      "confirmed": true,
+      "witness": {
+        "line": 4221,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid301)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10672",
+      "sha256": "9c90f6c9ac5595c23f09ee8b7d7d3bfe8c381037b8dfbcbaa894bcb74fa29101",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid680)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10892",
+      "sha256": "9d4d850275a50d4dcbd8875aaa30d41ec921ff24dcb8b9a41780646d9c51428b",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid107)"
+      }
+    },
+    {
+      "ontology": "ore_ont_1091",
+      "sha256": "84aab2e6d461c4a4d76af4ef823ee2780c880cf1a5b54019e74029887a4a7b51",
+      "confirmed": true,
+      "witness": {
+        "line": 4228,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid262)"
+      }
+    },
+    {
+      "ontology": "ore_ont_10985",
+      "sha256": "0431969399e719eddd39ae1a15f3aacc9a8378ab9c978e27a3ac5a3e32af57b3",
+      "confirmed": true,
+      "witness": {
+        "line": 3692,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid141)"
+      }
+    },
+    {
+      "ontology": "ore_ont_11289",
+      "sha256": "f9da1d70870bdc4a8ef637f3736a3c6e6e54731e1587ca26b864d3fad27c464f",
+      "confirmed": true,
+      "witness": {
+        "line": 4222,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid164)"
+      }
+    },
+    {
+      "ontology": "ore_ont_11564",
+      "sha256": "28c99af9e246c80f4c2b5fc04e1f957f232016f54b0f39e529b1da2d111fc815",
+      "confirmed": true,
+      "witness": {
+        "line": 3701,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_11636",
+      "sha256": "b7273ead39288ff608e9de1aede807b1c7b37219a3c7722f040c37a31d02d07a",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid95)"
+      }
+    },
+    {
+      "ontology": "ore_ont_11696",
+      "sha256": "aa5423172a85629198208d78573990c33b8ed24018ea72f1b899af56b9f9af65",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid244)"
+      }
+    },
+    {
+      "ontology": "ore_ont_11948",
+      "sha256": "0070d0cb4eb5d92748742ad2fd17a8bf9a1361db487c9662ba4576ef17d7c569",
+      "confirmed": true,
+      "witness": {
+        "line": 4222,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid164)"
+      }
+    },
+    {
+      "ontology": "ore_ont_11989",
+      "sha256": "9dce1c71a7a02fec29110a3220ff39c75821cbf1bcc34c35b8f1dec6ff19f2f7",
+      "confirmed": true,
+      "witness": {
+        "line": 3672,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid150)"
+      }
+    },
+    {
+      "ontology": "ore_ont_12039",
+      "sha256": "8589b95377b0243634d13ca88944a479549b7a94183009724111dd30c5aa0fcd",
+      "confirmed": true,
+      "witness": {
+        "line": 4026,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_12418",
+      "sha256": "1809bdd6b271278ae17eba56a9a3d8f883ab3fbaf7c58a01e9286ddfd280b4dd",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid167)"
+      }
+    },
+    {
+      "ontology": "ore_ont_12468",
+      "sha256": "65bf6c72845272768f18dbb3cd314edad91fa15cbe352b6a33696164564f9d80",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_12474",
+      "sha256": "548cf0d3c43d7075f520b3c918251b1b3344eb0e45e5ccb711600cd9d2745c0a",
+      "confirmed": true,
+      "witness": {
+        "line": 3671,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid534)"
+      }
+    },
+    {
+      "ontology": "ore_ont_12884",
+      "sha256": "4b19494b1a742cb911d18f73addd8ec2ec539a8795985700f0c3d424d63e60ec",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid149)"
+      }
+    },
+    {
+      "ontology": "ore_ont_13150",
+      "sha256": "75ed380428ea233a0c088075fe7f62fb28ec7f1d0b16af774087a1107b6bf5fa",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid151)"
+      }
+    },
+    {
+      "ontology": "ore_ont_13337",
+      "sha256": "9dd28d8316fa9df2d4dd1798b8d136eecc36e0eaa8c6e54b4f0eb9ba2da205ae",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid158)"
+      }
+    },
+    {
+      "ontology": "ore_ont_13674",
+      "sha256": "51423bbf4905e550a898a2bba58f64f2a5375df45eb0758563c604eb2a69d222",
+      "confirmed": true,
+      "witness": {
+        "line": 3670,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid167)"
+      }
+    },
+    {
+      "ontology": "ore_ont_13679",
+      "sha256": "05f6a72df63c7be6425cbf4e957b9a285b0c076c699b3fa8a478c279171cba88",
+      "confirmed": true,
+      "witness": {
+        "line": 3718,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid165)"
+      }
+    },
+    {
+      "ontology": "ore_ont_13776",
+      "sha256": "c1f744355f7f56fcb1a8d35eea4dfc329a6573cb4cfc78139b112534ed8c6175",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid169)"
+      }
+    },
+    {
+      "ontology": "ore_ont_13851",
+      "sha256": "d53ac25485c2f506a54299d85dbfc641b88e67d74f4c0865c49045b46c8c5371",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid210)"
+      }
+    },
+    {
+      "ontology": "ore_ont_13857",
+      "sha256": "d6d31d81f6d60f958aaa014f49cf15965401d208e1c517541074b71025dcdd5e",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid139)"
+      }
+    },
+    {
+      "ontology": "ore_ont_13941",
+      "sha256": "b21abf6250efcca5277c539bfba8f6196df08668846dbbd775cb193d52139ff8",
+      "confirmed": true,
+      "witness": {
+        "line": 3662,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid126)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14134",
+      "sha256": "016680bbe8375ec847a880278450fb6120b041c578a2d128912da2d9bd812967",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid187)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14183",
+      "sha256": "b4a7fb67f759da2e0260e0972ab40e193f4608676d89e3ce1bf54ac69b0d8e77",
+      "confirmed": true,
+      "witness": {
+        "line": 4222,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid294)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14237",
+      "sha256": "4e49722c16814d27b47f77763d15188690c2a0f73a5564213e46f8e1463236b4",
+      "confirmed": true,
+      "witness": {
+        "line": 4220,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid227)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14255",
+      "sha256": "1c393cf7592e64806cfe3063f9aad1ef440004b5645043bfbbbaeb97a7f8dbd0",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid142)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14294",
+      "sha256": "911e6a354e397a2e4f8831164f53f852e9fcc14ebabfcc6a9fb7d1ee0a6e35a4",
+      "confirmed": true,
+      "witness": {
+        "line": 4053,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14331",
+      "sha256": "0ab73bbc57a52b265b6f228e5270e896a2a7773a084266ccff200154e36db5f8",
+      "confirmed": true,
+      "witness": {
+        "line": 3670,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid158)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14367",
+      "sha256": "84f740455b4784e971c9e082c6284c8f80075f5a3c9678b5c04fecb09ffa7b20",
+      "confirmed": true,
+      "witness": {
+        "line": 3672,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14452",
+      "sha256": "e97589f7b684d4360f3aea69a41574e10c4d7f459c20c236bf7ddafecb97b405",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14593",
+      "sha256": "6d2c50d13388e2fa53a315f5c0b7fd4a20f93d2efc95913df2b378a47d5930db",
+      "confirmed": true,
+      "witness": {
+        "line": 3647,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid158)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14766",
+      "sha256": "e01d61cde7c05c104acd43ce254d03cedee1a5269a9f2bca85bead16e196d16e",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid103)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14767",
+      "sha256": "653eca912d83c8e41bb6743719858005a6635f739c110966162d1df96c8fae7c",
+      "confirmed": true,
+      "witness": {
+        "line": 4222,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid291)"
+      }
+    },
+    {
+      "ontology": "ore_ont_148",
+      "sha256": "976196736f79f9e5fd3f20a5523ce764ad34d6614b4833aea9592de9a27c2699",
+      "confirmed": true,
+      "witness": {
+        "line": 3731,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid149)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14878",
+      "sha256": "7e50376676d82ed344f023aabc49a2080266ea2d2dc75c48722256d82a80fdbe",
+      "confirmed": true,
+      "witness": {
+        "line": 4244,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid281)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14896",
+      "sha256": "923bb1961fc3065c4c2f219bfadcfee70387f3aa8d5e0794a7b0c5ed65809b59",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid244)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14906",
+      "sha256": "455b529efbea160da5a4ab0c6d124525f700ae47f8bfe73d2f78322a975580b6",
+      "confirmed": true,
+      "witness": {
+        "line": 4250,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid114)"
+      }
+    },
+    {
+      "ontology": "ore_ont_14919",
+      "sha256": "1406279a23e4a28cd6355bacfa9a7b8ccd1cd9e99c5761fef172801a94332e11",
+      "confirmed": true,
+      "witness": {
+        "line": 3670,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid151)"
+      }
+    },
+    {
+      "ontology": "ore_ont_1517",
+      "sha256": "ab7e71652842c0cb563968e0cd7ac3d3e51a9f59ed2c6177904b4b5274476fab",
+      "confirmed": true,
+      "witness": {
+        "line": 3778,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid148)"
+      }
+    },
+    {
+      "ontology": "ore_ont_15184",
+      "sha256": "55cbb50fc7106cc28909a51ba6a54a20f606d97fdda6fdf393ba640a06be0f24",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid140)"
+      }
+    },
+    {
+      "ontology": "ore_ont_153",
+      "sha256": "02883ddc0c37c40fdb9ff7e2b066bc373ed07411470a874e217460a171804c7c",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid158)"
+      }
+    },
+    {
+      "ontology": "ore_ont_15352",
+      "sha256": "44be1cdfe0d69bddb3b2786785d97f6f0c91a6a8b89335f21deffa67dc38824a",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid167)"
+      }
+    },
+    {
+      "ontology": "ore_ont_1539",
+      "sha256": "bb4da10accfe3bc7655aa07fe1663048bd5804c5bb6f1477bd3e625f8311e5f1",
+      "confirmed": true,
+      "witness": {
+        "line": 3658,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid126)"
+      }
+    },
+    {
+      "ontology": "ore_ont_15450",
+      "sha256": "11c7fb78a9d5b69493d02cb3ba72bb58ea18ad535ea564271a966f1335744dc7",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_15544",
+      "sha256": "f99d5f5a8f6956d308ffa2d51efff642aacb7bc65fec458f57e64565146f44ee",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_15692",
+      "sha256": "f9c405865247b80288f52b85692d374326089a9ef0a6b2206487ec878e6c3a41",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid205)"
+      }
+    },
+    {
+      "ontology": "ore_ont_15796",
+      "sha256": "1925648b1b283115a9a194915f61d1a14720eb37c5d7c15e49ff4f9c44b355e4",
+      "confirmed": true,
+      "witness": {
+        "line": 3657,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid185)"
+      }
+    },
+    {
+      "ontology": "ore_ont_16017",
+      "sha256": "4e7643b51b545aa398dc29bc6f5d008640389e36092c03f797bfbc3cc20cd117",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid288)"
+      }
+    },
+    {
+      "ontology": "ore_ont_16120",
+      "sha256": "4bee61e6dbebdac2771ce8863283c6313baacd6e3b62fc7f1c7fa58b95aa09b6",
+      "confirmed": true,
+      "witness": {
+        "line": 3660,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid145)"
+      }
+    },
+    {
+      "ontology": "ore_ont_16565",
+      "sha256": "9b1390f2c94b581cb2f88be21c6a2f0490f78acf902661641d0d9f05c12485d4",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid148)"
+      }
+    },
+    {
+      "ontology": "ore_ont_16617",
+      "sha256": "4edcc1c9bda08be5f7933a99d80e0b3ebafac87c76022940b89bca2057a61249",
+      "confirmed": true,
+      "witness": {
+        "line": 3672,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid210)"
+      }
+    },
+    {
+      "ontology": "ore_ont_16642",
+      "sha256": "ed318ddc694b7e1a51bc2c514095e022e5af457d370fac56202296553237adbd",
+      "confirmed": true,
+      "witness": {
+        "line": 4305,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid244)"
+      }
+    },
+    {
+      "ontology": "ore_ont_16738",
+      "sha256": "9c14c5a08c0c34f3383c7b30d81714ec3ac1b68ca37359e610b5e22931ca20e8",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid115)"
+      }
+    },
+    {
+      "ontology": "ore_ont_16822",
+      "sha256": "1fd281f460adef2ce5c3a00e0b9dd03d26030365f46a5b5ca4a587d8573221cb",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid316)"
+      }
+    },
+    {
+      "ontology": "ore_ont_1790",
+      "sha256": "a2bf8b5bd1d09681a292bfd042acc8a0a0b04c39a7827da85c195600a9fe7527",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_1870",
+      "sha256": "2d29a1ff65a563409c1416a6dcd53369f0d958382f04a1a673bf3aea34c9c4ec",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid361)"
+      }
+    },
+    {
+      "ontology": "ore_ont_2213",
+      "sha256": "f6f6877de58efe3e47160d1a0278bff4a65238e2edc8d40e4ce619ab2fec2ef9",
+      "confirmed": true,
+      "witness": {
+        "line": 3684,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid146)"
+      }
+    },
+    {
+      "ontology": "ore_ont_2360",
+      "sha256": "035996336614bf6d268a0003becd11afe4ad500a710d56ba760c92f8f21690d2",
+      "confirmed": true,
+      "witness": {
+        "line": 4055,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid151)"
+      }
+    },
+    {
+      "ontology": "ore_ont_2531",
+      "sha256": "0199600af986cd6396504425f0f3691a4646ae8fb7ec0462d599e806ceca4242",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid158)"
+      }
+    },
+    {
+      "ontology": "ore_ont_259",
+      "sha256": "f19574d8b60e7d59fbaf4a8e8cc22a5eeb01e789d44556a5d15b68fd247b5532",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid193)"
+      }
+    },
+    {
+      "ontology": "ore_ont_2664",
+      "sha256": "18c07baa8010ef341fffa4a7145a8a92edb91f9dc3f61fb819136e5ea986c4fa",
+      "confirmed": true,
+      "witness": {
+        "line": 3662,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid130)"
+      }
+    },
+    {
+      "ontology": "ore_ont_2700",
+      "sha256": "f8a25d218fa3f677d878c9cc2787dd94303defa2fe2541808c9061b0c4f486fc",
+      "confirmed": true,
+      "witness": {
+        "line": 4238,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid288)"
+      }
+    },
+    {
+      "ontology": "ore_ont_2783",
+      "sha256": "b7f3f79ee8750bc8d98ed3247a89d6b3f2f1d72cc7e45c4b03995e0372ac0153",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid154)"
+      }
+    },
+    {
+      "ontology": "ore_ont_2817",
+      "sha256": "5d8c013b885f35a65e5731211e9721fec80495f5ef76cc5270cdcae0cbda3672",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid159)"
+      }
+    },
+    {
+      "ontology": "ore_ont_290",
+      "sha256": "aa1bac9af7a2026af39c003d5d41a9566bb9ccba5518b9b3ff53667a8c7cce96",
+      "confirmed": true,
+      "witness": {
+        "line": 3707,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_3050",
+      "sha256": "a1381c508b9ad37364c28de76e64f55cc2281d4321b25761b8db1e79a037a5c4",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid145)"
+      }
+    },
+    {
+      "ontology": "ore_ont_3114",
+      "sha256": "c21be8c071f0782a4ff72ceccbc0398ccf2d1600bea5f17d23ea22b995c3e4f9",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid85)"
+      }
+    },
+    {
+      "ontology": "ore_ont_3214",
+      "sha256": "c975a0604b2df253c8dfdf457db1f68794c0093ccf83de183fd18c32d6865f7a",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid288)"
+      }
+    },
+    {
+      "ontology": "ore_ont_3329",
+      "sha256": "72e93c461a490ce08df5a7fca99123e74e6cdd0cc90ff024809b77bc120eda5e",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_3357",
+      "sha256": "82f5a9a5c3a344123fee45b4178659681d145091b0cb6a0eeb094aeb95e0beec",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid845)"
+      }
+    },
+    {
+      "ontology": "ore_ont_336",
+      "sha256": "c923d69f67c688c406a7fe28b2cc06fd09eb9559f1d1f46672782eb2e1dfac0a",
+      "confirmed": true,
+      "witness": {
+        "line": 4269,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid288)"
+      }
+    },
+    {
+      "ontology": "ore_ont_3500",
+      "sha256": "bdcad256f81d953de3040c9a2bc65bd9388b62c2df67bc3c5e5d6efc6279a179",
+      "confirmed": true,
+      "witness": {
+        "line": 4223,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid294)"
+      }
+    },
+    {
+      "ontology": "ore_ont_3584",
+      "sha256": "c0cfb7a622b03a3a9ba54fdf225d17e8eefde8c24ae21252ba99edebbd13c391",
+      "confirmed": true,
+      "witness": {
+        "line": 3663,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid169)"
+      }
+    },
+    {
+      "ontology": "ore_ont_3795",
+      "sha256": "f91b648dd9e78bb37424a254f052071680562bf89824082dfb66dbbf2842d79e",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid129)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4092",
+      "sha256": "4a5b3127fcd6812d0fe5933bce14885a46ecb2094753a00ca46e7f0b14ccc304",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid101)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4162",
+      "sha256": "bf393fcd8cb279e192ee750473d8787e2af6cb63978ac2e80b774006208849d6",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid209)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4188",
+      "sha256": "64e6877a1c1fc2cdb8a58b4bd54a4887ac50de6e57b7cc4c1246208410f3f6ad",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid129)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4210",
+      "sha256": "9ce803920aa514c77b4e78db325c4cd9288ff2eda3a568a1b1522262bafd6f16",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid114)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4263",
+      "sha256": "a18e5b6dab0197d5e4a996e73d7f1fe7cc8144368d9849fbdbecdf52869cbf4b",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid169)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4423",
+      "sha256": "acbda8e9c6de5d1dd577621bf5ef221148172b49cf17589dc83605f7fdcc1e84",
+      "confirmed": true,
+      "witness": {
+        "line": 4221,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid301)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4429",
+      "sha256": "a1ed4047b659a2e1312d02f9994744d63a49b00eec862158e8e9caf445b61db5",
+      "confirmed": true,
+      "witness": {
+        "line": 3670,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4515",
+      "sha256": "d2fee52ae04125f4aaa66827526a2d142cc26b47ab5ad29ddad7b7ec021860a3",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4581",
+      "sha256": "7d686dd120b24d587e4ed2e9624f5b5c5c42aeccb6ce04d7a038d85e96acc797",
+      "confirmed": true,
+      "witness": {
+        "line": 3663,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid150)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4587",
+      "sha256": "8250b11ad734a4d1951cfde067205a72850625e07da72e1ea4e378ac142c77b9",
+      "confirmed": true,
+      "witness": {
+        "line": 4226,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid335)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4770",
+      "sha256": "f80ea20d434a19c1434b00670d790e53c0002678370b1fd58f9211bac277105e",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid243)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4834",
+      "sha256": "40804b294628af2cc4d6c6b8aa0ecbb87b1378f750277b8264da12e5ccfb3210",
+      "confirmed": true,
+      "witness": {
+        "line": 4218,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid259)"
+      }
+    },
+    {
+      "ontology": "ore_ont_4958",
+      "sha256": "a8e6ebe2174d2f38e6051b9cba19a89c08a229073ba0bd9e13cf37f82a4cca5e",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid103)"
+      }
+    },
+    {
+      "ontology": "ore_ont_5092",
+      "sha256": "84cc569c695f2d78be0caf46833c05757f1f2dcc2ae65546831136c5bbb70cfa",
+      "confirmed": true,
+      "witness": {
+        "line": 3696,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid141)"
+      }
+    },
+    {
+      "ontology": "ore_ont_5298",
+      "sha256": "6efca419f5fb294769fbbe7859291a38154125abeb108a4a56527c337dd3234e",
+      "confirmed": true,
+      "witness": {
+        "line": 4237,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid244)"
+      }
+    },
+    {
+      "ontology": "ore_ont_5398",
+      "sha256": "af642511c6bae4ab2c1d50e2807a42cee1a141bea8824f7b8032c9155cd25ffb",
+      "confirmed": true,
+      "witness": {
+        "line": 4228,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid311)"
+      }
+    },
+    {
+      "ontology": "ore_ont_5448",
+      "sha256": "cd1af8be04bd8d9f7c10ae998de9d30bc5d647f27d5f2fcc15748f75af48b454",
+      "confirmed": true,
+      "witness": {
+        "line": 3678,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid151)"
+      }
+    },
+    {
+      "ontology": "ore_ont_5543",
+      "sha256": "9c4991ebbe068bd88d6f3759c76409ba5e17e1ccfa31f7af56b5ea701c9097b3",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid167)"
+      }
+    },
+    {
+      "ontology": "ore_ont_5943",
+      "sha256": "9d061aaa87c25a68dc89cc78376229a9246b18f7cb2b6d2fa38701be78ba39ed",
+      "confirmed": true,
+      "witness": {
+        "line": 4222,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid324)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6060",
+      "sha256": "ea759863a6e37dac2f3207bb34089aba06b600b4b3390058c7d82710a36dacc3",
+      "confirmed": true,
+      "witness": {
+        "line": 4261,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid276)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6266",
+      "sha256": "07387f6f0953ea3de5710e25e2e12c9a322cbb664838328d33094397840a8434",
+      "confirmed": true,
+      "witness": {
+        "line": 3688,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid168)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6469",
+      "sha256": "c1555054b65973fdec18745977cb62bf4c639519ae0b51c00fbb07e364ade4f9",
+      "confirmed": true,
+      "witness": {
+        "line": 3670,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid142)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6504",
+      "sha256": "660c94a2d2143e85d8e8a98c0d65fec5e7ff8b6d36dcc981c28348d97edd7538",
+      "confirmed": true,
+      "witness": {
+        "line": 4211,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid210)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6535",
+      "sha256": "e07c387f7cbed4d2083f494d444fe2e45d945eb7800bb64c90c12aeb3301dc06",
+      "confirmed": true,
+      "witness": {
+        "line": 4079,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid135)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6729",
+      "sha256": "dfaec39a5ea2e74e081245ad4a895706650895488ef6dddbf6dc64b23308043d",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid244)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6765",
+      "sha256": "fa886bb466507ba72ad435422bc8c628d3767acf5cb943a605e140f34cf36697",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6815",
+      "sha256": "0f5db4e7d22d5f36bd04617d563855f5e2bc8d119c4d34001df22cfc52372258",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid137)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6847",
+      "sha256": "a911b19b5cb4d564710bcc570d0a04fc536d61eb30ce36354ea58a958527beae",
+      "confirmed": true,
+      "witness": {
+        "line": 4216,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid103)"
+      }
+    },
+    {
+      "ontology": "ore_ont_6892",
+      "sha256": "08a50d41ae5660ef366a09be48bbe030bfeb7dccc58851bd4aa6634ea86f9355",
+      "confirmed": true,
+      "witness": {
+        "line": 4075,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid151)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7014",
+      "sha256": "2f82ff8061ab38874ef440e16c4681e6f040ad2802a1fcbf57545bdd333063c0",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid319)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7025",
+      "sha256": "baeac37afed87621e58ed4bd8ed6e2da979b0b8114cb73f1abdb9aabf89093da",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid302)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7079",
+      "sha256": "ab8cd4e50426d6e35f70f6998089ec740722e27742924fbf2419ff96176c4e42",
+      "confirmed": true,
+      "witness": {
+        "line": 4253,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid209)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7084",
+      "sha256": "e29e7cd92a76ab5114ef1cc1614bbcc8c8334d58c8f274c5fe54948e796c50cd",
+      "confirmed": true,
+      "witness": {
+        "line": 3706,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid151)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7102",
+      "sha256": "671ea9ec187a77dafce2d113085619624ca06f603847b73a6afd04ad329fcb17",
+      "confirmed": true,
+      "witness": {
+        "line": 3678,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid151)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7237",
+      "sha256": "006cfc456e6f8137f76d39c41eea396048b1baea982b8cc32252d70991830533",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid310)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7320",
+      "sha256": "88d7bba7a0f670d7261641d9c4b3494bc5b98762d53788354a78bddca1c59a4f",
+      "confirmed": true,
+      "witness": {
+        "line": 4212,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid235)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7399",
+      "sha256": "dc35ffaee2b7b3a4e8d0dc929d4f27e845f47716f77989c09fa1f63e5453f758",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid158)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7474",
+      "sha256": "8fea85781d39b12157215a8b38b2e4fb6876d8bc7db5f00ed489bb784150b297",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid150)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7537",
+      "sha256": "b7988c4eeec037984b2922aaf2025c24e27d4eec6f7ccbc941a843c6cc5a1807",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid323)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7569",
+      "sha256": "1da5a35a8f15cf60ea88d14153a25e37f7951c8f2f5c604280ac415febdc0db9",
+      "confirmed": true,
+      "witness": {
+        "line": 4237,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid301)"
+      }
+    },
+    {
+      "ontology": "ore_ont_770",
+      "sha256": "396ec18126411e28a7ee72982bc7fcfca2a40f16a25d1621ecd9c4f0748efa1b",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid302)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7758",
+      "sha256": "f82305d292b8333ee8faa7d37fd43745591e609345461e92d10b55c7f82cdacc",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid144)"
+      }
+    },
+    {
+      "ontology": "ore_ont_7944",
+      "sha256": "4eeea125a04eb4268a01c524d0deaf4c6809e6b204e9c99dc6d982995c20cfeb",
+      "confirmed": true,
+      "witness": {
+        "line": 4226,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid311)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8171",
+      "sha256": "17c537dd9cc3da351cee84a08a57381f5f7c244d5b73a5edc427897cbfc044cd",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid194)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8286",
+      "sha256": "d8ab23276c25298c46a1662104378016fb49ea5598e37ac9a9d147f11fa662c0",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8322",
+      "sha256": "00bde32b7144881a5f3b2b98f53e086acfbcb2a5e6e8edd01194f55cdc733d5f",
+      "confirmed": true,
+      "witness": {
+        "line": 3695,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid149)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8326",
+      "sha256": "3c70da6fd3979f615c48ec74c538c5327c77aac9b2efda61c1ceb7e38258a4dc",
+      "confirmed": true,
+      "witness": {
+        "line": 3656,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8359",
+      "sha256": "af2bf838545e604e069926f4c38de22b3eb99c93e6260e3321d937bfbb8ddc8f",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid150)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8417",
+      "sha256": "6e6b070cf4e1d133c5fa8a6cf67b2d917f396f7239cb6c96adc05f43422fe772",
+      "confirmed": true,
+      "witness": {
+        "line": 4257,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid244)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8431",
+      "sha256": "11c1c7acb3cf68d21a70619fd89e190c1f7d0aecc58b0c8aecc6ea22d6fd53b6",
+      "confirmed": true,
+      "witness": {
+        "line": 3675,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid361)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8668",
+      "sha256": "5db5bd9382b0f2c449053e3286970c07db5b48263dc3ae8b468e2b7c3b0ad5a4",
+      "confirmed": true,
+      "witness": {
+        "line": 4217,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid288)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8684",
+      "sha256": "0c42bc1547982f4a7cfb67620897254d0b9959fae9c1d3705d54925e58d81053",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid146)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8688",
+      "sha256": "0175d02274576305b494e1bdd5f9d704f753be341999809eef3ba611bec87be3",
+      "confirmed": true,
+      "witness": {
+        "line": 3670,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid169)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8719",
+      "sha256": "634fa236b4399bfa6c6786056aab20a362afc803f343f9cbfdf37b946593313b",
+      "confirmed": true,
+      "witness": {
+        "line": 3663,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid169)"
+      }
+    },
+    {
+      "ontology": "ore_ont_891",
+      "sha256": "5ede74c31f8a36befa08907497f0decbbda136e41b33f51befc939495f063d96",
+      "confirmed": true,
+      "witness": {
+        "line": 4222,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid368)"
+      }
+    },
+    {
+      "ontology": "ore_ont_8999",
+      "sha256": "4440e4d46e0e00259b4568bf4c5242fee582b92196f69467c5ab92e274467ed4",
+      "confirmed": true,
+      "witness": {
+        "line": 3675,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid90)"
+      }
+    },
+    {
+      "ontology": "ore_ont_9037",
+      "sha256": "9b2a7fa806f3cb557b2a69d65a35b8740c3c213365182774cc95c9d6b78db3ab",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid166)"
+      }
+    },
+    {
+      "ontology": "ore_ont_9186",
+      "sha256": "408c2779c69fc213312c5e73c45b13d53ad91a37ba18ed893bc8577cf78e65ab",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid169)"
+      }
+    },
+    {
+      "ontology": "ore_ont_9382",
+      "sha256": "01d53e29ee3d5612c9a1f55c56eb824864e414ad65f3f87ed0f39fbcc9d7e079",
+      "confirmed": true,
+      "witness": {
+        "line": 3647,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid158)"
+      }
+    },
+    {
+      "ontology": "ore_ont_9534",
+      "sha256": "d871fa4c2520a8b31cbc083dc8cb04a236a52b6297c454605b0ca912443cdc90",
+      "confirmed": true,
+      "witness": {
+        "line": 3715,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid152)"
+      }
+    },
+    {
+      "ontology": "ore_ont_9558",
+      "sha256": "f43ad23f6fff0444b95714b48532d4810d72355be81333043304a553afc4900b",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid141)"
+      }
+    },
+    {
+      "ontology": "ore_ont_960",
+      "sha256": "cc2e7101c85531e0deed75990f7e848c8a19d6530033489f744ed0d960c3cb9a",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid141)"
+      }
+    },
+    {
+      "ontology": "ore_ont_9668",
+      "sha256": "150e9c380d34ff0158c5dccd6ce7941445d5d6e079a16cf3ffd18627b62026f3",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid158)"
+      }
+    },
+    {
+      "ontology": "ore_ont_9758",
+      "sha256": "738154ffdd281d965492b797e9cec30379b76d866a5cf95411f1ec28d67cf86f",
+      "confirmed": true,
+      "witness": {
+        "line": 3661,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.2/quanSpaceDistance.owl#diameter> _:genid137)"
+      }
+    },
+    {
+      "ontology": "ore_ont_980",
+      "sha256": "21ce233de5c487a6ceeecd64f13d58b8b9c5b47456d778fdf0fc870e8618076f",
+      "confirmed": true,
+      "witness": {
+        "line": 4227,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid244)"
+      }
+    },
+    {
+      "ontology": "ore_ont_990",
+      "sha256": "654790de855a906889aab0a690396fb1f5593b9183d952b37ed295faefa0976c",
+      "confirmed": true,
+      "witness": {
+        "line": 4231,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.3/relaSpace.owl#diameter> _:genid288)"
+      }
+    },
+    {
+      "ontology": "ore_ont_9972",
+      "sha256": "b04b501018707d2d478ee1c3da9b1174339b513ac6379502a4c13359469b6343",
+      "confirmed": true,
+      "witness": {
+        "line": 3659,
+        "expression": "ObjectHasValue(<http://sweet.jpl.nasa.gov/2.1/propSpaceDistance.owl#diameter> _:genid160)"
+      }
+    }
+  ]
+}

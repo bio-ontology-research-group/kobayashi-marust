@@ -334,6 +334,8 @@ const MERGE_ITER_CAP: usize = 64;
 pub struct DataAbox<'a> {
     /// property token -> declared range datatype tokens (conjunctive)
     ranges: HashMap<&'a str, Vec<&'a str>>,
+    /// Complete, exact value enumerations, conjunctive across range axioms.
+    finite_ranges: HashMap<&'a str, Vec<Vec<String>>>,
     /// property token -> named domain classes (conjunctive)
     domains: HashMap<&'a str, Vec<&'a str>>,
     functional: HashSet<&'a str>,
@@ -521,6 +523,14 @@ impl<'a> DataAbox<'a> {
                     self.ranges.entry(p).or_default().push(d);
                 } else {
                     self.global_omission_unsafe = true;
+                    if let (Some(p), Some(range @ Node::List("DataOneOf", _))) =
+                        (args.first().and_then(|n| n.as_atom()), args.get(1))
+                    {
+                        let name = format!("__dt__c__{}", super::parse::serialize_node(range));
+                        if let Some(values) = super::datatypes::bridge_exact_finite_values(&name) {
+                            self.finite_ranges.entry(p).or_default().push(values);
+                        }
+                    }
                 }
             }
             "FunctionalDataProperty" => {
@@ -577,13 +587,19 @@ impl<'a> DataAbox<'a> {
                     self.overflow = true;
                     return;
                 }
-                if let (Some(Some(p)), Some(Some(a)), Some(Some(b))) = (
-                    args.first().map(|n| n.as_atom()),
-                    args.get(1).map(|n| n.as_atom()),
-                    args.get(2).map(|n| n.as_atom()),
+                if let (Some(role), Some(a), Some(b)) = (
+                    args.first(), args.get(1).and_then(|n| n.as_atom()),
+                    args.get(2).and_then(|n| n.as_atom()),
                 ) {
-                    self.oedges.push((p, a, b));
-                }
+                    match role {
+                        Node::Atom(p) => self.oedges.push((p, a, b)),
+                        Node::List("ObjectInverseOf", inner) => match inner.as_slice() {
+                            [Node::Atom(p)] => self.oedges.push((p, b, a)),
+                            _ => self.global_omission_unsafe = true,
+                        },
+                        _ => self.global_omission_unsafe = true,
+                    }
+                } else { self.global_omission_unsafe = true; }
             }
             "SymmetricObjectProperty" => {
                 let args = strip_annotations(args);
@@ -751,6 +767,7 @@ impl<'a> DataAbox<'a> {
         let known_top = self
             .ranges
             .keys()
+            .chain(self.finite_ranges.keys())
             .chain(self.domains.keys())
             .copied()
             .chain(self.functional.iter().copied())
@@ -1149,6 +1166,25 @@ impl<'a> DataAbox<'a> {
     /// ranges, at-most-1 constraints, or `DifferentIndividuals`. Sound: every
     /// reported clash is an OWL 2 entailment; caps degrade to "not detected".
     pub fn is_inconsistent(&self) -> bool {
+        // A finite range is exhaustive. An asserted value outside every
+        // enumerated value proves a clash; unknown equality never does.
+        // Keep the existing omission fence even when these checks succeed.
+        if !self.finite_ranges.is_empty() {
+            for &(property, _, token, suffix) in &self.assertions {
+                let value = format!("__dt__val__{token}{}", suffix.unwrap_or(""));
+                for parent in self.all_supers(property) {
+                    if let Some(ranges) = self.finite_ranges.get(parent) {
+                        for values in ranges {
+                            if values.iter().all(|other|
+                                super::datatypes::bridge_exact_value_equal(&value, other) == Some(false))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // rule 1: literal value outside a (possibly inherited) declared range
         // (independent of merging)
         if !self.ranges.is_empty() {
@@ -1246,6 +1282,70 @@ mod tests {
             da.observe(&node);
         }
         da
+    }
+
+    #[test]
+    fn finite_range_detects_empty_string_outside_enumeration() {
+        let axioms = [
+            r#"DataPropertyRange(<p> DataOneOf("driver"^^xsd:string "all"^^xsd:string))"#,
+            r#"DataPropertyAssertion(<p> <a> ""^^xsd:string)"#,
+        ];
+        assert!(build(&axioms).is_inconsistent());
+        let member = [axioms[0], r#"DataPropertyAssertion(<p> <a> "driver"^^xsd:string)"#];
+        let data = build(&member);
+        assert!(!data.is_inconsistent());
+        assert!(data.global_omission_unsafe);
+    }
+
+    #[test]
+    fn finite_range_checks_inherited_and_multiple_ranges() {
+        let axioms = [
+            "SubDataPropertyOf(<p> <q>)", "SubDataPropertyOf(<q> <r>)",
+            r#"DataPropertyRange(<r> DataOneOf("red" "blue"))"#,
+            r#"DataPropertyRange(<q> DataOneOf("blue" "green"))"#,
+            r#"DataPropertyAssertion(<p> <a> "red")"#,
+        ];
+        assert!(build(&axioms).is_inconsistent());
+        let top = [r#"DataPropertyRange(owl:topDataProperty DataOneOf("red"))"#,
+                   r#"DataPropertyAssertion(<p> <a> "blue")"#];
+        assert!(build(&top).is_inconsistent());
+    }
+
+    #[test]
+    fn finite_range_uses_value_equality_and_defers_unknown_values() {
+        for (range, assertion) in [
+            (r#"DataPropertyRange(<p> DataOneOf("01"^^xsd:integer))"#,
+             r#"DataPropertyAssertion(<p> <a> "1"^^xsd:int)"#),
+            (r#"DataPropertyRange(<p> DataOneOf("true"^^xsd:boolean))"#,
+             r#"DataPropertyAssertion(<p> <a> "1"^^xsd:boolean)"#),
+            (r#"DataPropertyRange(<p> DataOneOf("a"^^xsd:token))"#,
+             r#"DataPropertyAssertion(<p> <a> " a "^^xsd:token)"#),
+            (r#"DataPropertyRange(<p> DataOneOf("a"^^<urn:unknown> "b"))"#,
+             r#"DataPropertyAssertion(<p> <a> "c")"#),
+        ] {
+            let axioms = [range, assertion];
+            assert!(!build(&axioms).is_inconsistent(), "{range}; {assertion}");
+        }
+    }
+
+    #[test]
+    fn inverse_object_assertions_preserve_functional_merge_data_clash() {
+        for edges in [
+            ["ObjectPropertyAssertion(ObjectInverseOf(<r>) <a> <c>)",
+             "ObjectPropertyAssertion(ObjectInverseOf(<r>) <b> <c>)"],
+            ["ObjectPropertyAssertion(<r> <c> <a>)",
+             "ObjectPropertyAssertion(<r> <c> <b>)"],
+        ] {
+            let axioms = ["FunctionalObjectProperty(<r>)", "FunctionalDataProperty(<p>)",
+                "DataPropertyAssertion(<p> <a> \"one\")", "DataPropertyAssertion(<p> <b> \"two\")",
+                edges[0], edges[1]];
+            let data = build(&axioms);
+            assert!(data.is_inconsistent());
+        }
+        let reversed = build(&["FunctionalObjectProperty(<r>)", "FunctionalDataProperty(<p>)",
+            "DataPropertyAssertion(<p> <a> \"one\")", "DataPropertyAssertion(<p> <b> \"two\")",
+            "ObjectPropertyAssertion(<r> <a> <c>)", "ObjectPropertyAssertion(<r> <b> <c>)"]);
+        assert!(!reversed.is_inconsistent());
     }
 
     #[test]

@@ -219,10 +219,91 @@ pub struct ClauseStatistics {
     pub transitivity_clauses: u64,
 }
 
+/// Full source IRIs, retained separately from collision-safe worker names.
+/// This is typing evidence only, not a consistency or taxonomy certificate.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RulePropertyKinds {
+    pub object: Vec<String>,
+    pub data: Vec<String>,
+}
+
+impl RulePropertyKinds {
+    pub fn worker_data_roles(&self, roles: &[String], iri_map: &BTreeMap<String, String>)
+        -> Result<Vec<bool>, String>
+    {
+        let object: HashSet<_> = self.object.iter().collect();
+        let data: HashSet<_> = self.data.iter().collect();
+        if object.len() != self.object.len() || data.len() != self.data.len()
+            || !object.is_disjoint(&data) {
+            return Err("ambiguous source property kinds".into());
+        }
+        let mut seen = HashSet::new();
+        roles.iter().map(|role| {
+            let iri = iri_map.get(role).ok_or_else(|| format!("missing full IRI for worker role {role}"))?;
+            if !seen.insert(iri) { return Err(format!("duplicate worker property IRI {iri}")); }
+            if data.contains(iri) { Ok(true) }
+            else if object.contains(iri) { Ok(false) }
+            else { Err(format!("worker property absent from source kinds: {iri}")) }
+        }).collect()
+    }
+}
+
+/// Original Boolean class theory and full-IRI worker class identity.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RuleSourceClasses {
+    pub source: String,
+    pub concept_iris: Vec<Option<String>>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RuleSourceAbox {
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_properties: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_axioms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules: Option<String>,
+    pub concept_iris: Vec<Option<String>>,
+    pub role_iris: Vec<Option<String>>,
+    /// Index is the nominal concept id; aliases may denote the same object.
+    pub nominal_iris: Vec<Option<String>>,
+}
+
 /// Versioned profile carried in `ofn --meta` and consumed by the router.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OntologyProfile {
     pub schema_version: u32,
+    /// Original source rules covered by nominal-guarded unary normalization,
+    /// including any observer-only query rules projected to identity.
+    /// Source rule counts remain unchanged for provenance and coverage checks.
+    #[serde(default)]
+    pub normalized_unary_rules: u64,
+    #[serde(default)]
+    pub vacuous_named_domain_rules: u64,
+    /// Logical rules projected through an isolated named-object extension.
+    /// Original source counts remain unchanged; observer rules are counted separately.
+    #[serde(default)]
+    pub isolated_named_domain_rules: u64,
+    /// Concrete rules retained as object rules with exact singleton definitions.
+    #[serde(default)]
+    pub normalized_constant_data_rules: u64,
+    /// Original concrete rules certified before finite tuple expansion.
+    #[serde(default)]
+    pub normalized_finite_data_rules: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finite_rule_property_kinds: Option<RulePropertyKinds>,
+    /// Boolean source theory candidate; not permission to publish its taxonomy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finite_rule_class_projection: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finite_rule_object_abox: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finite_rule_object_properties: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finite_rule_data_axioms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finite_rule_source_rules: Option<String>,
     /// Source-only proof that the positive ABox is consistent and cannot alter
     /// any named-class TBox subsumption. See
     /// `positive_abox_tbox_separable` for the fail-closed contract.
@@ -937,6 +1018,15 @@ impl<'a> SourceProfileBuilder<'a> {
         self.expr.universal_role = false;
     }
 
+    pub(super) fn rule_individual_names(&self) -> Vec<&'a str> {
+        if self.stats.rule_axioms == 0 { return Vec::new(); }
+        let mut names: Vec<_> = self.individuals.iter().copied()
+            .filter(|name| !name.starts_with("_:"))
+            .collect();
+        names.sort_unstable();
+        names
+    }
+
     pub fn finish(self, file_bytes: u64) -> OntologyProfile {
         self.finish_with_separable_class_names(file_bytes).0
     }
@@ -1070,6 +1160,17 @@ impl<'a> SourceProfileBuilder<'a> {
         (
             OntologyProfile {
                 schema_version: 2,
+                normalized_unary_rules: 0,
+                vacuous_named_domain_rules: 0,
+                isolated_named_domain_rules: 0,
+                normalized_constant_data_rules: 0,
+                normalized_finite_data_rules: 0,
+                finite_rule_property_kinds: None,
+                finite_rule_class_projection: None,
+                finite_rule_object_abox: None,
+                finite_rule_object_properties: None,
+                finite_rule_data_axioms: None,
+                finite_rule_source_rules: None,
                 positive_abox_tbox_separable,
                 positive_el_abox_materializable,
                 atomic_class_abox_candidate: false,
@@ -2724,5 +2825,52 @@ mod tests {
             )"#;
         assert!(!source(positive).positive_abox_tbox_separable);
         assert!(elided_profile(positive).positive_abox_tbox_separable);
+    }
+}
+
+#[cfg(test)]
+mod rule_property_kind_tests {
+    use super::*;
+    #[test]
+    fn graph_source_sorts_survive_frontend_converter_and_worker_wire() {
+        let _environment_lock = super::super::separable_abox_elision_tests::lock_environment();
+        struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                for (key, value) in &self.0 {
+                    if let Some(value) = value { std::env::set_var(key, value); }
+                    else { std::env::remove_var(key); }
+                }
+            }
+        }
+        let keys = ["KM_FINITE_DATA_RULE_NORMALIZE", "KM_RULE_JOIN_ORDER",
+            "KM_RULE_ASSERTION_CLOSURE", "KM_TRANSITIVE_RULE_REDUCE"];
+        let _restore = Restore(keys.iter().map(|key| (*key, std::env::var_os(key))).collect());
+        for key in keys { std::env::set_var(key, "1"); }
+        let result = crate::frontend::ofn_to_clauses(include_str!("../../tests/fixtures/graph_data_rules.ofn")).unwrap();
+        let profile: OntologyProfile = serde_json::from_value(serde_json::to_value(&result.profile).unwrap()).unwrap();
+        let kinds = profile.finite_rule_property_kinds.unwrap();
+        assert_eq!((kinds.object.len(), kinds.data.len()), (20, 16));
+        let named = result.named.iter().cloned().collect();
+        let mut input = crate::orchestrate::cb_to_ht::convert(&result.clauses, None, &named,
+            &result.cardinalities, &result.definers, &result.source_axioms, false, &result.rules, true);
+        input.rule_data_roles = Some(kinds.worker_data_roles(&input.roles, &result.iri_map).unwrap());
+        assert_eq!(input.dropped, 0);
+        assert_eq!(input.rule_data_roles.as_ref().unwrap().iter().filter(|data| **data).count(), 16);
+        let worker: crate::tableau::TInput = serde_json::from_value(serde_json::to_value(&input).unwrap()).unwrap();
+        assert_eq!(worker.rule_data_roles, input.rule_data_roles);
+        assert_eq!(worker.roles.len(), 36);
+    }
+    #[test]
+    fn worker_sorts_use_full_iris_and_reject_incomplete_or_ambiguous_tables() {
+        let kinds = RulePropertyKinds { object: vec!["https://one/p".into()], data: vec!["https://two/p".into()] };
+        let map = BTreeMap::from([("p".into(), "https://one/p".into()), ("p_1".into(), "https://two/p".into())]);
+        assert_eq!(kinds.worker_data_roles(&["p_1".into(), "p".into()], &map).unwrap(), vec![true, false]);
+        assert!(kinds.worker_data_roles(&["https://one/p".into()], &map).is_err());
+        assert!(kinds.worker_data_roles(&["p".into(), "p".into()], &map).is_err());
+        let missing = RulePropertyKinds { object: vec![], data: kinds.data.clone() };
+        assert!(missing.worker_data_roles(&["p".into()], &map).is_err());
+        let overlap = RulePropertyKinds { object: kinds.object.clone(), data: kinds.object.clone() };
+        assert!(overlap.worker_data_roles(&[], &map).is_err());
     }
 }

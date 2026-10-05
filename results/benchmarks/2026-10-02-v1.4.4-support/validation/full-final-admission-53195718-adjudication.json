@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "job": "53195718",
+    "cases": 1920,
+    "outcomes": {
+      "ok": 1622,
+      "err_reject": 212,
+      "dnf": 86
+    },
+    "reported_outcomes": {
+      "ok": 1622,
+      "invalid_input": 212,
+      "dnf": 86
+    },
+    "missing_execution_records": 42,
+    "successful_outputs_with_dropped": 0,
+    "byte_identical_successes": 1596,
+    "independent_reference_matches": 5,
+    "independent_reference_mismatches": 0,
+    "recovery_cases_not_completed": [],
+    "semantic_disagreements": 8
+  },
+  "all_invalid_refusals_independently_verified": true,
+  "original_two_errors_independently_verified": true,
+  "unchanged_successful_outputs_from_preceding_audited_run": 1622,
+  "outputs_requiring_further_review": [],
+  "differences_from_v143_resolved_against_references": [
+    {
+      "ontology": "ore_ont_11315",
+      "output_sha256": "a51c9565d31f9dbf4e08fa223e36785a33b9ea6e0d883a408737f69e08a6b1df",
+      "reference_comparison": "current-difference-comparisons/ore_ont_11315.json"
+    },
+    {
+      "ontology": "ore_ont_11899",
+      "output_sha256": "452fb4428b2450db02c895fa3e9114caf0a817184eb0d46be16db996b0b552e7",
+      "reference_comparison": "current-difference-comparisons/ore_ont_11899.json"
+    },
+    {
+      "ontology": "ore_ont_14101",
+      "output_sha256": "db5cb25edfcd841f97ca896f2f05507a4678b3e47176e6bb239a631a364c6e8f",
+      "reference_comparison": "current-difference-comparisons/ore_ont_14101.json"
+    },
+    {
+      "ontology": "ore_ont_14897",
+      "output_sha256": "6f73e5d2710f3f40478cc4d19b8c93efca023a9dde35613881672b5ded8bc7ee",
+      "reference_comparison": "14897-extended-reference-comparison.json"
+    },
+    {
+      "ontology": "ore_ont_6951",
+      "output_sha256": "bafd01854fe62f6116822fc274cf0f2c529bed2b1c4f7f3573dd828f8a062661",
+      "reference_comparison": "6951-nominal-fixed-comparison.json"
+    },
+    {
+      "ontology": "ore_ont_7868",
+      "output_sha256": "f217d9c8c9e0ac54adbaee73134a5e17f464e60c0cfcd1fa7a968fa1fbe3c1ee",
+      "reference_comparison": "current-difference-comparisons/ore_ont_7868.json"
+    },
+    {
+      "ontology": "ore_ont_954",
+      "output_sha256": "8947b7789a54c4dc507f44d2d5757918b0cc59f8d05118b8560ff4c3ae23baec",
+      "reference_comparison": "current-difference-comparisons/ore_ont_954.json"
+    },
+    {
+      "ontology": "ore_ont_9684",
+      "output_sha256": "688bf85746373b246c5c9ca30b84f64405321408005c4d039e3105dccd4f30c0",
+      "reference_comparison": "current-difference-comparisons/ore_ont_9684.json"
+    }
+  ]
+}

@@ -20,6 +20,9 @@ pub mod frontend_run;
 pub mod input;
 pub mod mirror;
 mod positive_abox_quotient;
+mod symbolic_source;
+mod data_source;
+pub(crate) mod public_subjects;
 pub mod race;
 pub mod tmpfile;
 
@@ -171,6 +174,8 @@ fn mapped_iri<'a>(map: &'a BTreeMap<String, String>, iri: &'a str) -> &'a str {
 // ---------------------------------------------------------------------------
 #[derive(Debug)]
 pub enum OrchestrateError {
+    /// Source violates OWL 2 DL constraints (DL-safe rules are an extension).
+    InvalidOntology(String),
     /// ofn exit 3: ontology outside the supported fragment (datatypes)
     OutOfFragment(String),
     /// The supervisor stopped a worker at its configured wall-clock deadline.
@@ -201,6 +206,7 @@ pub enum OrchestrateError {
 impl std::fmt::Display for OrchestrateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            OrchestrateError::InvalidOntology(m) => write!(f, "{m}"),
             OrchestrateError::OutOfFragment(m) => write!(f, "out of fragment: {m}"),
             OrchestrateError::WorkerTimeout { bin, stderr } => {
                 write!(f, "worker {bin} exceeded its time limit: {stderr}")
@@ -223,9 +229,18 @@ impl std::fmt::Display for OrchestrateError {
 }
 impl std::error::Error for OrchestrateError {}
 impl OrchestrateError {
+    fn from_conformance(message: String) -> Self {
+        if message.starts_with("OWL 2 DL validation resource limit:")
+            || message.starts_with("OWL 2 DL validation unsupported:") {
+            Self::OutOfFragment(message)
+        } else {
+            Self::InvalidOntology(message)
+        }
+    }
     /// Preserve an observed timeout in the command-line resource contract.
     pub fn exit_code(&self) -> i32 {
         match self {
+            Self::InvalidOntology(_) => 2,
             Self::OutOfFragment(_) => 3,
             Self::WorkerTimeout { .. } => 124,
             _ => 1,
@@ -801,6 +816,7 @@ fn try_inproc_elc(
 // the conductor
 // ---------------------------------------------------------------------------
 pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateError> {
+    validate_user_input(ont)?;
     classify_with_evidence(initial_cfg, ont).map(|evidence| evidence.classification)
 }
 
@@ -898,10 +914,25 @@ pub fn classify_json(
     initial_cfg: &Config,
     ont: &Path,
 ) -> Result<JsonClassification, OrchestrateError> {
+    validate_user_input(ont)?;
     classify_with_evidence_mode(initial_cfg, ont, true).map(|evidence| JsonClassification {
         classification: evidence.classification,
         grouped_subsumptions: evidence.grouped_subsumptions,
     })
+}
+
+// Public source validation is separate from generated projections and
+// explanation candidates, which can intentionally omit entity declarations.
+fn validate_user_input(ont: &Path) -> Result<(), OrchestrateError> {
+    let prepared = input::prepare(ont)?;
+    let source = std::fs::read_to_string(prepared.path())?;
+    if crate::frontend::conformance::has_imports(&source).map_err(OrchestrateError::from_conformance)? {
+        return Err(OrchestrateError::OutOfFragment(
+            "cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into()));
+    }
+    crate::frontend::conformance::check_source(&source).map_err(OrchestrateError::from_conformance)?;
+    crate::frontend::conformance::check_iri_prefixes(&source).map_err(OrchestrateError::from_conformance)?;
+    crate::frontend::conformance::check_declarations(&source).map_err(OrchestrateError::from_conformance)
 }
 
 fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Option<u32> {
@@ -928,6 +959,23 @@ fn classify_with_evidence_mode(
     ont: &Path,
     retain_grouped_output: bool,
 ) -> Result<ClassificationEvidence, OrchestrateError> {
+    // Previous race arms have joined before their classification returns.
+    // Sequential library calls (including explanation deletion) must not inherit
+    // the winning race's cancellation of its losing workers.
+    engine_run::reset_cancel();
+    // Validate the original source before any rule compilation, projection,
+    // route selection, or consistency shortcut can erase invalid literals.
+    {
+        let prepared_input = input::prepare(ont)?;
+        let source = std::fs::read_to_string(prepared_input.path())?;
+        if crate::frontend::conformance::has_imports(&source).map_err(OrchestrateError::from_conformance)? {
+            return Err(OrchestrateError::OutOfFragment(
+                "cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into()));
+        }
+        crate::frontend::conformance::check_source(
+            &source,
+        ).map_err(OrchestrateError::from_conformance)?;
+    }
     let automatic_requested = std::env::var("KM_ROUTE")
         .map(|route| route == crate::routing::Route::Auto.as_str())
         .unwrap_or(false);
@@ -936,6 +984,112 @@ fn classify_with_evidence_mode(
     // worker subprocesses share the established environment contract. Restore
     // them on every return path so repeated library calls route independently.
     let _environment_guard = crate::routing::EnvironmentGuard::capture();
+    let project_data_abox = std::env::var_os("KM_DATA_ABOX_PROJECT").is_some();
+    if std::env::var_os("KM_GROUND_RULE_SOURCE").is_some() || project_data_abox {
+        if crate::tableau::ht_lean_certification_requested() {
+            return Err(OrchestrateError::OutOfFragment(
+                "ground-rule source cannot bypass requested runtime certification".into()));
+        }
+        let source = std::fs::read_to_string(ont)?;
+        let grounded = if project_data_abox {
+            crate::frontend::ground_rule_source::GroundedRuleSource {
+                text: crate::frontend::data_abox_projection::project(&source)
+                    .map_err(OrchestrateError::OutOfFragment)?,
+                source_rules: 0, instances: 0, private_classes: Default::default(),
+            }
+        } else {
+            crate::frontend::ground_rule_source::compile(&source, 100_000)
+                .map_err(OrchestrateError::OutOfFragment)?
+        };
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!("KM_TIMING ground-rule source: rules={} instances={}",
+                grounded.source_rules, grounded.instances);
+        }
+        // Reparse the transformed source, including its generated assertions,
+        // under the ordinary ABox coverage checks. No original counts are forged.
+        let input = tmpfile::TempPath::new("-ground-rules.ofn");
+        std::fs::write(input.path(), grounded.text)?;
+        std::env::remove_var("KM_GROUND_RULE_SOURCE");
+        std::env::remove_var("KM_DATA_ABOX_PROJECT");
+        crate::routing::Route::HtBridge.apply_environment();
+        // Freeze this explicit native bundle so frontend route normalization
+        // does not clear its required nominal mode.
+        std::env::set_var("KM_ROUTE", "manual");
+        std::env::set_var("KM_NOMINALS", "1");
+        // Native bridge selection retains the complete SameIndividual payload
+        // and its complete-answer-or-defer admission checks.
+        std::env::set_var("KM_HT_ONLY", "bridge");
+        // Keep every compiled axiom and the active concept set. Restrict only
+        // subject probes through the bridge's existing query adapter.
+        let private_file = tmpfile::TempPath::new("-private-classes.json");
+        std::fs::write(private_file.path(), serde_json::to_vec(&grounded.private_classes)
+            .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?)?;
+        std::env::set_var("KM_GROUND_PRIVATE_CLASS_FILE", private_file.path());
+        // Consistency of the complete compiled ABox needs the benchmark's
+        // native budget; the external supervisor still enforces its wall cap.
+        std::env::set_var("KM_BRIDGE_PROBE_BUDGET_S", "180");
+        let mut evidence = classify_with_evidence_mode(&Config::from_env(), input.path(), false)?;
+        if evidence.classification.dropped != 0 {
+            return Err(OrchestrateError::OutOfFragment("ground-rule native bridge omitted axioms".into()));
+        }
+        evidence.classification.subsumptions.retain(|[a,b]|
+            !grounded.private_classes.contains(a) && !grounded.private_classes.contains(b));
+        evidence.classification.unsatisfiable.retain(|a| !grounded.private_classes.contains(a));
+        return Ok(evidence);
+    }
+    // Each attempt uses an exact source reduction and the native bridge's
+    // complete-answer-or-defer gate. Restore all route flags on refusal and
+    // continue with the unchanged input. Runtime certificate requests retain
+    // their existing path; source reduction must not bypass them.
+    if automatic_requested && !crate::tableau::ht_lean_certification_requested() {
+        if let Some(mode) = data_source::automatic_candidate(ont)? {
+            let attempt = {
+                let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                if mode == "native" {
+                    crate::routing::Route::HtBridge.apply_environment();
+                    std::env::set_var("KM_ROUTE", "manual");
+                    classify_with_evidence_mode(&Config::from_env(), ont, retain_grouped_output)
+                } else {
+                    std::env::set_var(mode, "1");
+                    classify_with_evidence_mode(initial_cfg, ont, retain_grouped_output)
+                }
+            };
+            match attempt {
+                Ok(evidence) => {
+                    if std::env::var_os("KM_TIMING").is_some() {
+                        eprintln!("KM_TIMING automatic data source accepted: {mode}");
+                    }
+                    return Ok(evidence);
+                }
+                Err(error) => {
+                    if std::env::var_os("KM_TIMING").is_some() {
+                        eprintln!("KM_TIMING automatic data source declined ({mode}): {error}");
+                    }
+                }
+            }
+        }
+    }
+    if std::env::var_os("KM_SYMBOLIC_SOURCE_BRIDGE").is_some() {
+        return symbolic_source::classify(ont);
+    }
+    if automatic_requested && std::env::var_os("KM_NO_SYMBOLIC_SOURCE_BRIDGE").is_none() {
+        if let Some(source) = symbolic_source::automatic_candidate(ont)? {
+            let runtime_certificate = crate::tableau::ht_lean_certification_requested();
+            let attempt = {
+                let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                symbolic_source::classify_text(source)
+            };
+            match attempt {
+                Ok(evidence) => return Ok(evidence),
+                Err(error) if runtime_certificate => return Err(error),
+                Err(error) => {
+                    if std::env::var_os("KM_TIMING").is_some() {
+                        eprintln!("KM_TIMING symbolic source probe declined: {error}");
+                    }
+                }
+            }
+        }
+    }
     // Preserve an explicit HT worker-count measurement across both the outer
     // route selection and any complete HT probe selected by that route.
     let ht_par_request = std::env::var_os("KM_HT_PAR");
@@ -1029,6 +1183,43 @@ fn classify_with_evidence_mode(
     }
     let (clauses_path, meta, mut cached_input, elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+    let _public_subject_file = if let Some(path) = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE") {
+        let private: std::collections::BTreeSet<String> = serde_json::from_slice(&std::fs::read(path)?)
+            .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?;
+        let names=public_subjects::select(&meta.named,&meta.iri_map,&private)
+            .map_err(OrchestrateError::OutOfFragment)?;
+        let file=tmpfile::TempPath::new("-public-subjects.json");
+        std::fs::write(file.path(),serde_json::to_vec(&names)
+            .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?)?;
+        std::env::set_var("KM_BRIDGE_PUBLIC_SUBJECT_FILE",file.path());
+        Some(file)
+    } else { None };
+
+    // Source-checked publication path: the source admission gate permits an
+    // isolated fresh object for every Boolean class valuation. A verified
+    // model of the COMPLETE source is also required; successful grounding or
+    // satisfiability of the class projection alone cannot authorize this.
+    if std::env::var_os("KM_NO_FINITE_RULE_TAXONOMY").is_none() {
+        if let Some(source) = meta.profile.finite_rule_class_projection.as_ref() {
+            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true)? {
+                Some(true) => {},
+                Some(false) => return Ok(ClassificationEvidence {
+                    classification: Classification { consistent: false, subsumptions: vec![],
+                        unsatisfiable: vec![], dropped: 0 },
+                    grouped_subsumptions: None,
+                    consistency_certified: true,
+                }),
+                None => return Err(OrchestrateError::OutOfFragment(
+                    "finite-rule taxonomy requires a verified original-source model".into())),
+            }
+            let projection = tmpfile::TempPath::new(".finite-rule-classes.ofn");
+            std::fs::write(projection.path(), source)?;
+            // The projection has no rules, so it cannot recursively select
+            // this branch. Preserve the caller's requested output layout.
+            let evidence = classify_with_evidence_mode(initial_cfg, projection.path(), retain_grouped_output)?;
+            return checked_finite_rule_taxonomy(evidence);
+        }
+    }
     let elc_input_path = elc_binary
         .as_ref()
         .map(|path| path.path())
@@ -1260,6 +1451,7 @@ fn classify_with_evidence_mode(
     // Explicit worker requests are A/B measurement arms, not route settings.
     // Capture them before `apply_environment` clears the route keys so the
     // caller's own worker count always survives route selection.
+    let query_task_size_request = std::env::var_os("KM_QUERY_TASK_SIZE");
     let elc_par_ctx_request = std::env::var_os("KM_ELC_PAR_CTX");
     let sequential_elc_request = std::env::var_os("KM_ELC_SEQUENTIAL");
     let routed_cfg = if matches!(
@@ -1273,6 +1465,11 @@ fn classify_with_evidence_mode(
         // manual mode so the absorption portfolio can explicitly request its
         // plain/absorbed pass without the tree overriding it.
         selected_route.apply_environment();
+        // Constant-data normalization retains ground singleton witnesses.
+        // Match the frontend's nominal term mode in the worker process too.
+        if meta.profile.normalized_constant_data_rules > 0 {
+            std::env::set_var("KM_NOMINALS", "1");
+        }
         // Like explicit worker counts, this is a caller-selected scheduling
         // mode rather than a route-bundle setting. Preserve it across the
         // route environment reset so the fail-closed sequential certificate
@@ -1405,6 +1602,17 @@ fn classify_with_evidence_mode(
             // encoding and its complete fixpoint while avoiding fifteen idle
             // worker arenas on compact assertion-bearing inputs.
             std::env::set_var("KM_THREADS", "1");
+        }
+        if let Some(size) = query_task_size_request.as_deref() {
+            std::env::set_var("KM_QUERY_TASK_SIZE", size);
+        } else if automatic_requested
+            && matches!(selected_route, crate::routing::Route::Nominals | crate::routing::Route::CertifiedNominals)
+            && crate::routing::isolated_nominal_query_candidate(&meta.profile)
+        {
+            // Independent complete CB tasks limit conditional labels retained
+            // in the shared ground context. This does not change CPU count;
+            // certificate mode overrides it to retain one complete engine.
+            std::env::set_var("KM_QUERY_TASK_SIZE", "1");
         }
         if selected_route == crate::routing::Route::HtGeneral
             && crate::routing::compact_role_assertion_general_ht_candidate(&meta.profile)
@@ -1577,13 +1785,14 @@ fn classify_with_evidence_mode(
     // empty subsumption set is the complete, correct answer (this is the
     // 2669/15516 contested-gold case — genuinely inconsistent, gold wrong; see
     // docs/CONTESTED-GOLD.md). A CONSISTENT rule ontology falls THROUGH to normal
-    // classification so its class hierarchy is still computed — the rules are
-    // DL-safe (range only over named individuals) and so cannot change any TBox
-    // class subsumption, making the fall-through sound and complete. Inert when
+    // classification so its class hierarchy is still computed. DL-safety alone
+    // does not justify this fall-through: rule conclusions about named
+    // individuals can affect nominal class queries. The nominal-data-rule
+    // regression records this remaining completeness obligation. Inert when
     // the ontology has no rule (`rules_consistency` returns None). Opt out with
     // KM_NO_HT_RULES.
     if cfg.ht_rules {
-        match rules_consistency(cfg, clauses_path.path(), &meta)? {
+        match rules_consistency(cfg, clauses_path.path(), &meta, false)? {
             Some(false) => {
                 if timing {
                     eprintln!(
@@ -2195,16 +2404,47 @@ fn disjoint_union_global_consistency(
 /// CONSISTENCY-ONLY mode (`KM_RULES_CONSISTENCY`, default Tableau, no `KM_HT`).
 /// Returns `Some(consistent)` when rules are present, `None` otherwise (caller
 /// then takes the normal route).
+fn checked_finite_rule_taxonomy(mut evidence: ClassificationEvidence) -> Result<ClassificationEvidence, OrchestrateError> {
+    if !evidence.classification.consistent || evidence.classification.dropped != 0 {
+        return Err(OrchestrateError::OutOfFragment(
+            "finite-rule class projection did not produce a complete consistent taxonomy".into()));
+    }
+    evidence.consistency_certified = true;
+    Ok(evidence)
+}
+
 fn rules_consistency(
     cfg: &Config,
     clauses_path: &Path,
     meta: &frontend_run::Meta,
+    require_source_model: bool,
 ) -> Result<Option<bool>, OrchestrateError> {
     use crate::json_io::JInput;
     use std::process::{Command, Stdio};
+    let _rule_environment = crate::routing::EnvironmentGuard::capture();
+    if require_source_model {
+        std::env::set_var("KM_TRANSITIVE_RULE_REDUCE", "1");
+    }
+    let timing = std::env::var_os("KM_TIMING").is_some();
+    let started = std::time::Instant::now();
     let input: JInput = serde_json::from_reader(BufReader::new(File::open(clauses_path)?))?;
-    if input.rules.is_empty() {
+    // Finite grounding can erase every executable rule when no source data
+    // value matches its body. The original-rule/model check is still needed
+    // before publishing the class projection in that case.
+    // Normalized rules remain semantically active as ordinary clauses. An
+    // empty executable rule list must not bypass their named-ABox clash check.
+    let normalized_rules = meta.profile.normalized_unary_rules > 0
+        || meta.profile.normalized_constant_data_rules > 0;
+    if input.rules.is_empty() && !normalized_rules && !require_source_model {
         return Ok(None);
+    }
+    if timing {
+        eprintln!(
+            "KM_TIMING rules-consistency input parsed @ {:.2}s clauses={} rules={}",
+            started.elapsed().as_secs_f64(),
+            input.clauses.len(),
+            input.rules.len(),
+        );
     }
     let named: HashSet<String> = meta.named.iter().cloned().collect();
     // rbox is deliberately NOT threaded here (`None`): this is the validated
@@ -2216,18 +2456,66 @@ fn rules_consistency(
     // rule-detected inconsistency is lost). Inverse/subrole/domain/range
     // semantics still reach the tableau through the frontend's bridge clauses
     // inside `input.clauses`, so a detected clash remains a real clash.
-    let tin = cb_to_ht::convert(
-        &input.clauses,
-        None,
-        &named,
-        &input.cardinalities,
-        &input.definers,
-        &input.source_axioms,
-        false, // keep the clausal cardinality (Eq-heads) for the default Tableau
-        &input.rules,
-        true, // ht_rules: seed the ABox + emit rule clauses
-    );
+    let mut tin = if require_source_model {
+        cb_to_ht::convert_rule_model(&input.clauses, &named, &input.cardinalities,
+            &input.definers, &input.source_axioms, &input.rules)
+    } else {
+        cb_to_ht::convert(
+            &input.clauses,
+            None,
+            &named,
+            &input.cardinalities,
+            &input.definers,
+            &input.source_axioms,
+            false, // keep the clausal cardinality (Eq-heads) for the default Tableau
+            &input.rules,
+            true, // ht_rules: seed the ABox + emit rule clauses
+        )
+    };
+    if timing {
+        eprintln!(
+            "KM_TIMING rules-consistency converted @ {:.2}s ht_clauses={} queries={}",
+            started.elapsed().as_secs_f64(),
+            tin.clauses.len(),
+            tin.queries.len(),
+        );
+    }
+    // Source-model publication requires every original-source component.
+    // Missing provenance must not weaken the check.
+    if require_source_model || std::env::var_os("KM_RULES_FINITE_DATA_VERIFY").is_some() {
+        let kinds = meta.profile.finite_rule_property_kinds.as_ref()
+            .ok_or_else(|| OrchestrateError::OutOfFragment("missing finite-rule source property kinds".into()))?;
+        tin.rule_data_roles = Some(kinds.worker_data_roles(&tin.roles, &meta.iri_map)
+            .map_err(OrchestrateError::OutOfFragment)?);
+        let source = meta.profile.finite_rule_class_projection.as_ref().ok_or_else(||
+            OrchestrateError::OutOfFragment("missing original Boolean class theory".into()))?;
+        tin.rule_source_classes = Some(crate::frontend::profile::RuleSourceClasses {
+            source: source.clone(),
+            concept_iris: tin.concepts.iter().map(|name| meta.iri_map.get(name).cloned()).collect(),
+        });
+        tin.rule_source_abox = Some(crate::frontend::profile::RuleSourceAbox {
+            rules: Some(meta.profile.finite_rule_source_rules.clone().ok_or_else(||
+                OrchestrateError::OutOfFragment("missing original source rules".into()))?),
+            data_axioms: Some(meta.profile.finite_rule_data_axioms.clone().ok_or_else(||
+                OrchestrateError::OutOfFragment("missing original data theory".into()))?),
+            object_properties: Some(meta.profile.finite_rule_object_properties.clone().ok_or_else(||
+                OrchestrateError::OutOfFragment("missing original object-property theory".into()))?),
+            source: meta.profile.finite_rule_object_abox.clone().ok_or_else(||
+                OrchestrateError::OutOfFragment("missing original object ABox".into()))?,
+            concept_iris: tin.concepts.iter().map(|name| meta.iri_map.get(name).cloned()).collect(),
+            role_iris: tin.roles.iter().map(|name| meta.iri_map.get(name).cloned()).collect(),
+            nominal_iris: tin.concepts.iter().map(|name| name.strip_prefix("__nom__")
+                .and_then(|individual| meta.iri_map.get(individual)).cloned()).collect(),
+        });
+    }
     let tin_bytes = serde_json::to_vec(&tin)?;
+    if timing {
+        eprintln!(
+            "KM_TIMING rules-consistency serialized @ {:.2}s bytes={}",
+            started.elapsed().as_secs_f64(),
+            tin_bytes.len(),
+        );
+    }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let out_path = tmpfile::TempPath::new(".rulescons.json");
     let mut cmd = Command::new(&tab_prog);
@@ -2239,6 +2527,7 @@ fn rules_consistency(
     // do NOT set KM_HT here: the default Tableau is what seeds the nominal roots
     // and applies the o-rule in `consistent(&[])`.
     cmd.env_remove("KM_HT");
+    if require_source_model { cmd.env("KM_RULE_JOIN_ORDER", "1"); }
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: "tableau".into(),
         source: e,
@@ -2247,6 +2536,12 @@ fn rules_consistency(
         use std::io::Write as _;
         let mut stdin = child.stdin.take().expect("tableau stdin");
         stdin.write_all(&tin_bytes)?;
+    }
+    if timing {
+        eprintln!(
+            "KM_TIMING rules-consistency worker input sent @ {:.2}s",
+            started.elapsed().as_secs_f64(),
+        );
     }
     // The worker owns the complete rule-aware input now. Nothing below reads
     // the parsed clause file, the converted input, or its wire bytes, and the
@@ -2257,6 +2552,13 @@ fn rules_consistency(
     drop(input);
     crate::mem::release_transient_heap();
     let status = child.wait()?;
+    if timing {
+        eprintln!(
+            "KM_TIMING rules-consistency worker exited @ {:.2}s success={}",
+            started.elapsed().as_secs_f64(),
+            status.success(),
+        );
+    }
     if !status.success() {
         return Err(OrchestrateError::Worker {
             bin: "tableau".into(),
@@ -2266,11 +2568,7 @@ fn rules_consistency(
     }
     #[derive(serde::Deserialize)]
     struct TOut {
-        #[serde(default = "tt")]
         consistent: bool,
-    }
-    fn tt() -> bool {
-        true
     }
     let t: TOut = serde_json::from_reader(BufReader::new(File::open(out_path.path())?))?;
     Ok(Some(t.consistent))
@@ -2379,6 +2677,124 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sequential_classification_does_not_inherit_a_completed_race_cancellation() {
+        let file = super::tmpfile::TempPath::new("-sequential-cancellation.ofn");
+        std::fs::write(file.path(), "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) SubClassOf(<urn:A> <urn:B>))").unwrap();
+        let mut cfg = super::Config::from_env();
+        cfg.elc = false;
+        cfg.elc_portfolio = false;
+        cfg.ht_race = false;
+        cfg.tab_race = false;
+        let expected = super::classify_with_evidence(&cfg, file.path()).unwrap().classification;
+        super::engine_run::cancel_and_kill_engines();
+        let actual = super::classify_with_evidence(&cfg, file.path()).unwrap().classification;
+        assert_eq!(actual, expected);
+        assert!(actual.consistent);
+        assert!(actual.subsumptions.iter().any(|[sub, sup]| sub == "urn:A" && sup == "urn:B"));
+    }
+    #[test]
+    fn unvalidated_facet_extension_is_refused_before_classification() {
+        let file = super::tmpfile::TempPath::new("-facet-extension.ofn");
+        std::fs::write(file.path(), r#"Ontology(Declaration(DataProperty(<urn:p>))
+            DataPropertyRange(<urn:p> DatatypeRestriction(xsd:decimal xsd:totalDigits "2"^^xsd:integer)))"#).unwrap();
+        let cfg = super::Config::from_env();
+        for error in [super::classify(&cfg, file.path()).err().unwrap(),
+            super::classify_json(&cfg, file.path()).err().unwrap()] {
+            assert!(matches!(error, super::OrchestrateError::OutOfFragment(_)));
+            assert_eq!(error.exit_code(), 3);
+            assert!(error.to_string().contains("totalDigits"));
+            assert!(error.to_string().contains("no conformance verdict"));
+        }
+    }
+
+    #[test]
+    fn conformance_pattern_capacity_refusal_is_not_an_invalid_ontology_verdict() {
+        let file = super::tmpfile::TempPath::new("-pattern-capacity.ofn");
+        let pattern = format!("{}a{}", "(".repeat(201), ")".repeat(201));
+        std::fs::write(file.path(), format!("Ontology(Declaration(DataProperty(<urn:p>)) DataPropertyRange(<urn:p> DatatypeRestriction(xsd:string xsd:pattern \"{pattern}\")))")).unwrap();
+        let error = super::classify(&super::Config::from_env(), file.path()).err().unwrap();
+        assert!(matches!(error, super::OrchestrateError::OutOfFragment(_)));
+        assert_eq!(error.exit_code(), 3);
+        assert!(error.to_string().contains("no conformance verdict"));
+    }
+
+    #[test]
+    fn public_classification_requires_entity_declarations_before_workers() {
+        let file = super::tmpfile::TempPath::new("-missing-declarations.ofn");
+        std::fs::write(file.path(), "Prefix(:=<urn:test:>) Ontology(SubClassOf(:A :B))").unwrap();
+        let cfg = super::Config::from_env();
+        let errors = [
+            super::classify(&cfg, file.path()).err().expect("public classification accepted undeclared classes"),
+            super::classify_json(&cfg, file.path()).err().expect("JSON classification accepted undeclared classes"),
+        ];
+        for error in errors {
+            assert_eq!(error.exit_code(), 2);
+            assert!(error.to_string().contains("no matching declaration"));
+        }
+        std::fs::write(file.path(), "Prefix(:=<urn:test:>) Ontology(Declaration(Class(:A)) ClassAssertion(:A :a))").unwrap();
+        super::validate_user_input(file.path()).unwrap();
+    }
+
+    #[test]
+    fn conformance_unresolved_imports_are_a_loading_limitation() {
+        let file = super::tmpfile::TempPath::new("-unresolved-import.ofn");
+        std::fs::write(file.path(), "Ontology(Import(<urn:missing:ontology>))").unwrap();
+        let error = match super::classify(&super::Config::from_env(), file.path()) {
+            Err(error) => error,
+            Ok(_) => panic!("unresolved imports must not produce a classification"),
+        };
+        assert!(matches!(error, super::OrchestrateError::OutOfFragment(_)));
+        assert!(error.to_string().contains("complete import closure"));
+    }
+
+    #[test]
+    fn conformance_rejection_precedes_workers_and_has_distinct_exit_code() {
+        let file = super::tmpfile::TempPath::new("-invalid-literal.ofn");
+        std::fs::write(file.path(), include_str!("../../../tests/conformance/invalid-top-literal.ofn")).unwrap();
+        let error = match super::classify(&super::Config::from_env(), file.path()) {
+            Err(error) => error,
+            Ok(_) => panic!("invalid input must not produce a classification"),
+        };
+        assert!(matches!(error, super::OrchestrateError::InvalidOntology(_)));
+        assert_eq!(error.exit_code(), 2);
+        assert!(error.to_string().contains("no lexical space"));
+    }
+
+    #[test]
+    fn conformance_rejects_anonymous_tree_without_a_permitted_root() {
+        let file = super::tmpfile::TempPath::new("-invalid-anonymous-tree.ofn");
+        let source = "Ontology(Declaration(ObjectProperty(<urn:r>)) ObjectPropertyAssertion(<urn:r> _:a <urn:one>) ObjectPropertyAssertion(<urn:r> _:a <urn:two>))";
+        std::fs::write(file.path(), source).unwrap();
+        let error = match super::classify(&super::Config::from_env(), file.path()) {
+            Err(error) => error,
+            Ok(_) => panic!("invalid anonymous tree must not produce a classification"),
+        };
+        assert!(matches!(error, super::OrchestrateError::InvalidOntology(_)));
+        assert_eq!(error.exit_code(), 2);
+        assert!(error.to_string().contains("formal restriction in OWL 2 section 11.2"));
+        assert_eq!(std::fs::read_to_string(file.path()).unwrap(), source);
+    }
+
+    #[test]
+    fn finite_rule_taxonomy_requires_complete_consistent_projection() {
+        for (consistent, dropped, accepted) in [(true, 0, true), (true, 1, false), (false, 0, false)] {
+            let evidence = super::ClassificationEvidence {
+                classification: super::Classification { consistent, dropped,
+                    subsumptions: vec![["urn:A".into(), "urn:B".into()]],
+                    unsatisfiable: vec!["urn:Empty".into()] },
+                grouped_subsumptions: None, consistency_certified: false,
+            };
+            let result = super::checked_finite_rule_taxonomy(evidence);
+            assert_eq!(result.is_ok(), accepted);
+            if let Ok(result) = result {
+                assert!(result.consistency_certified);
+                assert_eq!(result.classification.unsatisfiable, vec!["urn:Empty"]);
+                assert_eq!(result.classification.subsumptions.len(), 1);
+            }
+        }
+    }
+
     use super::{
         composite_layout, elc_context_parallel_setting, flatten_grouped_subsumptions,
         inproc_engine_out, is_bottom, production_saturation_rss_override, use_atomic_inproc_elc,

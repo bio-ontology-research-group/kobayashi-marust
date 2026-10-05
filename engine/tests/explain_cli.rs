@@ -30,6 +30,8 @@ fn el_route_enumerates_two_verified_source_axiom_justifications() {
         "el-two-justifications",
         r#"Prefix(:=<http://example.org/>)
 Ontology(
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+Declaration(Class(:D)) Declaration(Class(:Noise))
 SubClassOf(:A :B)
 SubClassOf(:B :D)
 SubClassOf(:A :C)
@@ -42,7 +44,7 @@ SubClassOf(:Noise :D)
         "--route",
         "auto",
         "--max-axioms",
-        "8",
+        "10",
         "--max-checks",
         "64",
         "--max-justifications",
@@ -107,6 +109,8 @@ fn cb_route_explains_an_inverse_role_entailment() {
         "cb-inverse",
         r#"Prefix(:=<http://example.org/>)
 Ontology(
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))
 InverseObjectProperties(:r :s)
 ObjectPropertyRange(:s :B)
 SubClassOf(:A ObjectSomeValuesFrom(:r :C))
@@ -140,7 +144,7 @@ SubClassOf(:A ObjectSomeValuesFrom(:r :C))
 }
 
 #[test]
-fn ht_rules_route_explains_inconsistency_through_the_automatic_gate() {
+fn ground_rule_source_explains_inconsistency_through_the_automatic_gate() {
     let ontology =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/explain_rule_unsat.ofn");
     let output = run_explain(&[
@@ -157,15 +161,24 @@ fn ht_rules_route_explains_inconsistency_through_the_automatic_gate() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("route=ht_rules"), "stderr: {stderr}");
     assert!(
-        stderr.contains("rules-consistency done") && stderr.contains("consistent=false"),
-        "HT explanation did not exercise the validated rule mechanism: {stderr}"
+        stderr.contains("ground-rule source: rules=1 instances=1")
+            && stderr.contains("automatic data source accepted: KM_GROUND_RULE_SOURCE"),
+        "Explanation did not exercise automatic ground-rule source compilation: {stderr}"
     );
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["status"], "entailed");
     assert_eq!(report["justifications"][0]["verified"], true);
     assert_eq!(report["justifications"][0]["subsetMinimal"], true);
+    let axioms: std::collections::BTreeSet<_> = report["justifications"][0]["axioms"]
+        .as_array().unwrap().iter()
+        .map(|axiom| axiom["functionalSyntax"].as_str().unwrap())
+        .collect();
+    assert_eq!(axioms, std::collections::BTreeSet::from([
+        "DisjointClasses(:A :B)",
+        "ClassAssertion(:A :a)",
+        "DLSafeRule(Body(ClassAtom(:A Variable(:x))) Head(ClassAtom(:B Variable(:x))))",
+    ]));
 }
 
 #[test]
@@ -305,6 +318,7 @@ fn automatic_nominal_route_explains_minimal_singleton_identity_inconsistency() {
         "minimal-singleton-identity",
         r#"Prefix(:=<http://example.org/>)
 Ontology(
+ Declaration(Class(:A))
  EquivalentClasses(:A ObjectOneOf(:a))
  ClassAssertion(:A :b)
  DifferentIndividuals(:a :b)
@@ -344,6 +358,8 @@ fn explanation_minimisation_survives_automatic_route_migration() {
         "route-migration",
         r#"Prefix(:=<http://example.org/>)
 Ontology(
+ Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+ Declaration(Class(:Noise)) Declaration(Class(:Left)) Declaration(Class(:Right))
  SubClassOf(:A :B)
  SubClassOf(:B :C)
  SubClassOf(:Noise ObjectUnionOf(:Left :Right))
@@ -353,7 +369,7 @@ Ontology(
         "--route",
         "auto",
         "--max-axioms",
-        "8",
+        "9",
         "--max-checks",
         "32",
         ontology.to_str().unwrap(),

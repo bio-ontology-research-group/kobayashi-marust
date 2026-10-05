@@ -1,0 +1,193 @@
+{
+  "observed_at": "2026-10-05T11:20:20.579568+00:00",
+  "status": "final incremental report reviewed; failures and evidence gaps retained",
+  "report": {
+    "path": "updates-report-v5-full-global-dependency-53234889.json",
+    "sha256": "559a03d9635cd257ec776e6200b9b0153f80693d9fd345f8082f3e7c447369f1",
+    "bytes": 4871006
+  },
+  "selected_sources": 80,
+  "prepared_sources": 79,
+  "prepared_revision_audits": 395,
+  "methods": 17,
+  "phase_pair_reports": 272,
+  "all_baseline_comparison_review": {
+    "path": "globaldep-incremental-all-baseline-review-final.json",
+    "sha256": "773d9aa86de99ef03e6e27f656ba99078432633ba9be6240c78f29f769380766",
+    "bytes": 1177677
+  },
+  "metadata_statistics_review": {
+    "path": "globaldep-update-report-metadata-review.json",
+    "sha256": "79d693175446592706bcc39bff40b2b7b63212f1582253acc65404a8aff6e0c8",
+    "bytes": 1384449
+  },
+  "baseline_validation_failure_review": {
+    "path": "globaldep-update-baseline-validation-failures.json",
+    "sha256": "50e57d53cf41e28c7ec557113b33f1353a20c9dec7e9fc7a9f6debea6298f183",
+    "bytes": 110932
+  },
+  "km_baseline_disagreement_records": 1977,
+  "discrepancies_without_same_repetition_full_dl_corroboration": 0,
+  "independent_reference_gap": "15 cold KM outputs on the five revisions of ORE 1194 have repeatability only; all independent references failed. No retained KM output is available on these revisions.",
+  "reuse": "206 meaningful incremental updates, 615 exact rebuilds, 121 skipped revisions and six update timeouts among 948 scheduled post-initialization updates; retained process does not establish internal reuse.",
+  "retained_session_limit": "Only KM, HermiT, JFact, Openllet, ELK, Whelk and Konclude expose retained-session benchmark methods. RustDL, MORe and Sequoia participate through cold reruns.",
+  "adjudication_scope": "Other full-DL outputs corroborate all KM discrepancies. Raw disagreements, MORe conditional comparisons, and all failures remain in the report; corroboration is not a formal proof of every entailment.",
+  "selected_paired_statistics": [
+    {
+      "phase": "initialization",
+      "left": "km-cold",
+      "right": "km-retained",
+      "outcomes": {
+        "agreement": 198,
+        "inconsistent_agreement": 9,
+        "comparison_unavailable": 33
+      },
+      "costs_on_fully_agreeing_cases": {
+        "cases": 207,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 207,
+          "left_median": 0.37036712281405926,
+          "right_median": 0.4291444253176451,
+          "median_paired_ratio": 1.0767509590351467
+        },
+        "peak_bytes": {
+          "measured_pairs": 207,
+          "left_median": 21299200,
+          "right_median": 38666240,
+          "median_paired_ratio": 1.307249053030303
+        }
+      }
+    },
+    {
+      "phase": "initialization",
+      "left": "km-cold",
+      "right": "rustdl-cold",
+      "outcomes": {
+        "agreement": 158,
+        "comparison_unavailable": 79,
+        "inconsistent_agreement": 3
+      },
+      "costs_on_fully_agreeing_cases": {
+        "cases": 161,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 161,
+          "left_median": 0.9051046036183834,
+          "right_median": 0.465572951361537,
+          "median_paired_ratio": 0.5424120689219488
+        },
+        "peak_bytes": {
+          "measured_pairs": 161,
+          "left_median": 29507584,
+          "right_median": 31961088,
+          "median_paired_ratio": 0.9124745565571387
+        }
+      }
+    },
+    {
+      "phase": "initialization",
+      "left": "km-retained",
+      "right": "rustdl-cold",
+      "outcomes": {
+        "agreement": 146,
+        "comparison_unavailable": 91,
+        "inconsistent_agreement": 3
+      },
+      "costs_on_fully_agreeing_cases": {
+        "cases": 149,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 149,
+          "left_median": 0.7912365365773439,
+          "right_median": 0.3052170295268297,
+          "median_paired_ratio": 0.48810768124369563
+        },
+        "peak_bytes": {
+          "measured_pairs": 149,
+          "left_median": 55967744,
+          "right_median": 26304512,
+          "median_paired_ratio": 0.5853448275862069
+        }
+      }
+    },
+    {
+      "phase": "updates",
+      "left": "km-cold",
+      "right": "km-retained",
+      "outcomes": {
+        "agreement": 779,
+        "inconsistent_agreement": 24,
+        "comparison_unavailable": 157
+      },
+      "costs_on_fully_agreeing_cases": {
+        "cases": 803,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 803,
+          "left_median": 0.37500317208468914,
+          "right_median": 0.4641362279653549,
+          "median_paired_ratio": 1.2545876745950202
+        },
+        "peak_bytes": {
+          "measured_pairs": 803,
+          "left_median": 22937600,
+          "right_median": 50405376,
+          "median_paired_ratio": 1.6268378207060934
+        }
+      }
+    },
+    {
+      "phase": "updates",
+      "left": "km-cold",
+      "right": "rustdl-cold",
+      "outcomes": {
+        "agreement": 635,
+        "comparison_unavailable": 313,
+        "inconsistent_agreement": 12
+      },
+      "costs_on_fully_agreeing_cases": {
+        "cases": 647,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 647,
+          "left_median": 0.8932166416198015,
+          "right_median": 0.45175930857658386,
+          "median_paired_ratio": 0.5378723613773343
+        },
+        "peak_bytes": {
+          "measured_pairs": 647,
+          "left_median": 29507584,
+          "right_median": 31821824,
+          "median_paired_ratio": 0.867355259581408
+        }
+      }
+    },
+    {
+      "phase": "updates",
+      "left": "km-retained",
+      "right": "rustdl-cold",
+      "outcomes": {
+        "agreement": 580,
+        "comparison_unavailable": 368,
+        "inconsistent_agreement": 12
+      },
+      "costs_on_fully_agreeing_cases": {
+        "cases": 592,
+        "ratio_direction": "right / left",
+        "wall_s": {
+          "measured_pairs": 592,
+          "left_median": 0.9585327813401818,
+          "right_median": 0.19624867476522923,
+          "median_paired_ratio": 0.41651042551700584
+        },
+        "peak_bytes": {
+          "measured_pairs": 592,
+          "left_median": 83353600.0,
+          "right_median": 26206208.0,
+          "median_paired_ratio": 0.458646727173567
+        }
+      }
+    }
+  ]
+}

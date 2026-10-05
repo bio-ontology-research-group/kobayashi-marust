@@ -1,0 +1,47 @@
+{
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "inventory_sha256": "173a0b2f2e37e4d28cfd1b527961604a433bc4087e2e22fbe1336aa3c8afc495",
+  "status": "submitted_pending_validation_and_semantic_audit",
+  "panels": {
+    "classification": {
+      "job": "53234829",
+      "snapshot": "km-classification-v2",
+      "snapshot_files": {
+        "paper/benchmark/comparative/run_classification_panel.py": "099fa13c7833c1c4eb0ac349b960c9673ac8e6cb144fc5eca5de67519509644a",
+        "paper/benchmark/comparative/measure_classification.py": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+        "oracle/ore/tree_watchdog.py": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+        "results/benchmarks/2026-10-04-v1.4.5-comparative/km-classification-v2.sbatch": "57dfb41dcac622ba14286a47b41d9372ff132dddd4ae821c8a449b4f7b833ccb",
+        "results/benchmarks/2026-10-04-v1.4.5-comparative/classification-inputs.json": "2a3826a6249cf2a3f9b05b55086f98c59518fa27456eb9ff5ff98f40e55b1ea2"
+      },
+      "submission_script_sha256": "54089ee446c892758bd3ec85d90f2f570af152cb3d88eb9472dfde5af4d1ad37"
+    },
+    "updates": {
+      "job": "53234830",
+      "snapshot": "km-updates-v2",
+      "snapshot_files": {
+        "paper/benchmark/comparative/run_km_updates.py": "afa0427fd59687f634b6d1fec7a37bb7f46d110c224160243ac0ecf215ffd696",
+        "paper/benchmark/comparative/measure_retained_km.py": "3052b7a471de2b49acb1757b3f5eca2b7484bdadcab5f7a99acc34f6c804761f",
+        "paper/benchmark/comparative/measure_retained_java.py": "9a562e73f221abe981c446da9a8b21a72ff9f8b576e807c7ec3af2d8480deb97",
+        "paper/benchmark/comparative/measure_classification.py": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+        "oracle/ore/tree_watchdog.py": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+        "results/benchmarks/2026-10-04-v1.4.5-comparative/km-updates-v2.sbatch": "bc402ca75a3cf47025d0073f29bc383d002158abfcbb8be7b2ab832c7830f424"
+      },
+      "submission_script_sha256": "7bdfeff109e1a696835a928f0c6b7e3c26e4304523df352c394faf5b14c2cf12"
+    },
+    "justifications": {
+      "job": "53234831",
+      "snapshot": "km-justifications-v2",
+      "snapshot_files": {
+        "paper/benchmark/comparative/run_java_justifications.py": "7cce603517ccafe81f28c41c849b341bcbe730e05deab2d0d8c65690f986e270",
+        "paper/benchmark/comparative/measure_justification_java.py": "3902ca42226767efbabf56abc69e23554393f3f0e1e74c4ee9f1b247aa67996a",
+        "paper/benchmark/comparative/measure_classification.py": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+        "paper/benchmark/comparative/native_justification.py": "ddbbc01334d95cb61635554a2487d691c8eb4b3b14fc92d9e57a97e0689c7361",
+        "oracle/ore/tree_watchdog.py": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+        "results/benchmarks/2026-10-04-v1.4.5-comparative/km-justifications-v2.sbatch": "d4c158047ac4241384b4b6fb1957e4a123ab41565f1e54d199a073c0eda4cbc2",
+        "paper/benchmark/runners/owlapi/EntailmentExplanation.java": "1f79f059160f51e44741ea53d13c0cdf0b8076e5bb65e25991ee59a8eeec04c5",
+        "paper/benchmark/runners/owlapi/VerifyJustification.java": "a85195fc31306680822d99ea1943026446257d2dcf65a3eb367d841c870923db"
+      },
+      "submission_script_sha256": "b829f8aa23392b559c6e539533e4dc8a975379714d975d02651a48420538ae4e"
+    }
+  }
+}

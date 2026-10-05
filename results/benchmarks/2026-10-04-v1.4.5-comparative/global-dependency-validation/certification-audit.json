@@ -1,0 +1,46 @@
+{
+  "status": "passed",
+  "gates": [
+    {
+      "gate": "cb",
+      "exit_code": 0,
+      "log_sha256": "2d10845d64d4133a0ed7da6ec6ff1ab26d090d2ca34f9b7d3eb7e092439bc235"
+    },
+    {
+      "gate": "elc",
+      "exit_code": 0,
+      "log_sha256": "5e05980c220ed2a7a7671f1ff2c96b25851378438d86b5753e1991ee445c39b1"
+    },
+    {
+      "gate": "ht",
+      "exit_code": 0,
+      "log_sha256": "28956390aafa2e2a41ce2e49ffd88da585e665353d646648a983eaf99dbaa235"
+    },
+    {
+      "gate": "routing",
+      "exit_code": 0,
+      "log_sha256": "f7cb96efb3bdb2d7d3a642ceca3399045426a9a27f1ebe56a03756e53d5ccabe"
+    }
+  ],
+  "changed_source_files": [],
+  "surfaces": {
+    "cb": {
+      "sha256": "0dc0f3cc720771c42dd7464fc5df5b8bee2a101d76192bdf5ef48331b40a376e",
+      "sorryAx": false
+    },
+    "elc": {
+      "sha256": "d516022d709d84466627a6191eb633c59f3a80084efcc17dbb95f1ed8f15ba9d",
+      "sorryAx": false
+    },
+    "ht": {
+      "sha256": "23d4701c3310a64621c434580b5da767d761ace459afe3ee2e9fdc9f1e87e0b6",
+      "sorryAx": false
+    },
+    "routing": {
+      "sha256": "863a4e5a90dba92a99b38f9f15a3b0958177e1de441defed9d3642cc61462f14",
+      "sorryAx": false
+    }
+  },
+  "certified_source_files": 868,
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0"
+}

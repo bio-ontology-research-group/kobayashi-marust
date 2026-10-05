@@ -1,0 +1,19 @@
+{
+  "inventory": "artifact-inventory-v145-global-dependency.json",
+  "classification": "53200614",
+  "classification_km": "53234829",
+  "classification_konclude": "53201252",
+  "updates_java": "53201374",
+  "updates_km": "53234830",
+  "updates_native": "53201456",
+  "updates_whelk": "53204205",
+  "updates_konclude": "53202853",
+  "retained_konclude": "53214508",
+  "justifications_km": "53234831",
+  "justifications_java": "53201375",
+  "justifications_native": "53201976",
+  "justifications_external": "53203745",
+  "justifications_whelk": "53204206",
+  "updates_preparation": "53201177",
+  "queries_preparation": "53201195"
+}

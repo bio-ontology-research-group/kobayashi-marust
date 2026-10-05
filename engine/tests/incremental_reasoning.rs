@@ -119,6 +119,26 @@ fn removal_rebuilds_only_the_affected_el_component() {
 }
 
 #[test]
+fn removal_preserves_global_consequences_in_disconnected_rows() {
+    for body in [vec![concept("\u{22a4}", "x")], vec![]] {
+        let global = clauses(&format!("[{}]", clause(&body, &[concept("G", "x")]))).remove(0);
+        let removed = clauses(&format!(
+            "[{}]", clause(&[concept("A", "x")], &[concept("G", "x")])
+        )).remove(0);
+        let independent = clauses(&format!(
+            "[{}]", clause(&[concept("X", "x")], &[concept("Y", "x")])
+        )).remove(0);
+        let candidate = vec![global.clone(), independent.clone()];
+        let session = IncrementalElClassifier::new(vec![global, removed.clone(), independent])
+            .expect("EL with a global superclass");
+        let (next, _) = session.replace_clauses(candidate.clone(), &[removed])
+            .expect("remove redundant local inclusion");
+        assert_eq!(next.is_subsumed_by("X", "G"), Some(true));
+        assert_eq!(next.result(), normalise(elcomplete::classify(candidate).unwrap()));
+    }
+}
+
+#[test]
 fn role_hierarchy_addition_replays_existing_edges() {
     // Initial: A ⊑ ∃R.B and ∃S.B ⊑ D. Adding R ⊑ S must lift the
     // already-materialised R edge and fire the existing NF4 rule.

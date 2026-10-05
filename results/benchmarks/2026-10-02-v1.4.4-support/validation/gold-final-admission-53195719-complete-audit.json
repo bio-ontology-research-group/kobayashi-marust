@@ -1,0 +1,433 @@
+{
+  "partial": false,
+  "cases": 592,
+  "expected": 592,
+  "statuses": {
+    "ok": 554,
+    "error": 37,
+    "timeout": 1
+  },
+  "verdicts": {
+    "match": 552,
+    "error": 37,
+    "nogold": 2,
+    "timeout": 1
+  },
+  "verified_invalid_diagnostics": 35,
+  "taxonomy_mismatches": 0,
+  "failures": [
+    {
+      "ontology": "ore_ont_14375.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1396 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_7025.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid302 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_7914.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: <http://www.geneontology.org/formats/oboInOwl#conflicts> is used as AnnotationProperty but has no matching declaration"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_8322.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid149 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_3050.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid145 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_3795.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid129 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_15725.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2040 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_9958.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid5532 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_10127.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2413 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_10212.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid528 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_14896.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_960.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid141 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_9881.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input:     --> 3015:59"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_9668.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_7474.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid150 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_9663.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: <http://www.geneontology.org/formats/oboInOwl#source> is used as AnnotationProperty but has no matching declaration"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_5943.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid324 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_8999.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid90 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_15536.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2382 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_11207.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid4745 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_6765.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_10594.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid301 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_4187.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2460 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_148.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid149 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_4834.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid259 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_6060.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid276 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_5103.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1118 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_3164.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2198 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_1790.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_9654.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid6460 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_2669.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input at line 373: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_15846.owl",
+      "raw_status": "error",
+      "rc": 1,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": false,
+      "diagnostic": [],
+      "tail": "KM_TIMING mirror-route: declined by lexical prefilter: bytes=40243912 complements_below=0\nKM_TIMING in-process frontend declined by the exact-EL screen: bytes=40243912 screen=0.00s\nKM_TIMING frontend done @ 6.22s route=ht_bridge\nKM_TIMING spawn_ht: read+convert 66842 clauses (ht_view=66842) in 0.61s\nKM_TIMING atomic route ht_bridge declined @ 65.49s: out of fragment: selected HT mechanism deferred (worker exit 1)\nKM_TIMING in-process frontend declined by the exact-EL screen: bytes=40243912 screen=0.00s\nKM_TIMING frontend done @ 6.62s route=nominals\nworker engine exceeded its RSS limit: \n"
+    },
+    {
+      "ontology": "ore_ont_10697.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2720 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_15516.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input at line 354: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_7320.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous individual _:genid235 is forbidden in ObjectHasValue"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_3658.owl",
+      "raw_status": "error",
+      "rc": 2,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": true,
+      "diagnostic": [
+        "invalid OWL 2 DL input: anonymous-individual tree containing _:genid4585 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+      ],
+      "tail": null
+    },
+    {
+      "ontology": "ore_ont_8480.owl",
+      "raw_status": "error",
+      "rc": 1,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": false,
+      "diagnostic": [],
+      "tail": "KM_TIMING mirror-route: declined by lexical prefilter: bytes=7162399 complements_below=0\nKM_TIMING in-process frontend declined by the exact-EL screen: bytes=7162399 screen=0.00s\nKM_TIMING frontend done @ 0.95s route=ht_bridge\nKM_TIMING spawn_ht: read+convert 20195 clauses (ht_view=20195) in 0.12s\nKM_TIMING atomic route ht_bridge declined @ 32.76s: out of fragment: selected HT mechanism deferred (worker exit 1)\nKM_TIMING in-process frontend declined by the exact-EL screen: bytes=7162399 screen=0.00s\nKM_TIMING frontend done @ 1.05s route=nominals\nworker engine exceeded its RSS limit: \n"
+    },
+    {
+      "ontology": "ore_ont_9540.owl",
+      "raw_status": "timeout",
+      "rc": -9,
+      "stderr_hash_verified": true,
+      "verified_invalid_diagnostic": false,
+      "diagnostic": [],
+      "tail": "KM_TIMING mirror-route: declined: non-positive residual axiom: ObjectHasValue(<http://krono.act.uji.es/people/Ernesto/qimage-ontology/OntologyQimage.owl#has_curvature> <http://krono.act.uji.es/people/Ernesto/qimage-ontology/OntologyQimage.owl#semicircular>)\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.06s cached=false sidecar=false\nKM_TIMING frontend done @ 0.06s route=certified_card_nominals\nKM_TIMING spawn_ht: read+convert 6615 clauses (ht_view=1989) in 0.01s\n"
+    }
+  ],
+  "mismatches": []
+}

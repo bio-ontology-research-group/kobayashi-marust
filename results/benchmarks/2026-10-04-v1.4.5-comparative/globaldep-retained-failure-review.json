@@ -1,0 +1,590 @@
+{
+  "observed_at": "2026-10-05T06:23:37.751089+00:00",
+  "status": "all retained failures bound to completed records; timeout and memory thresholds verified; downstream skipped revisions preserved",
+  "counts": {
+    "engine_refusal_or_error": 3,
+    "timeout": 24,
+    "memout": 6
+  },
+  "by_source": {
+    "ore_ont_10517": {
+      "engine_refusal_or_error": 3
+    },
+    "ore_ont_10689": {
+      "timeout": 3
+    },
+    "ore_ont_10860": {
+      "timeout": 3
+    },
+    "ore_ont_1194": {
+      "timeout": 3
+    },
+    "ore_ont_14308": {
+      "timeout": 3
+    },
+    "ore_ont_14312": {
+      "memout": 3
+    },
+    "ore_ont_15066": {
+      "timeout": 3
+    },
+    "ore_ont_15929": {
+      "timeout": 3
+    },
+    "ore_ont_1634": {
+      "timeout": 3
+    },
+    "ore_ont_4617": {
+      "memout": 3
+    },
+    "ore_ont_9724": {
+      "timeout": 3
+    }
+  },
+  "skipped_revisions": 121,
+  "cases": [
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-0/retained/record.json",
+      "record_sha256": "2652098cb96e059ad2cddf4284c30dee6198c06bd61eb9452b7bc200958b6c94",
+      "status": "engine_refusal_or_error",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10517/revisions/000.ofn",
+        "sha256": "4176051dcb74ed93866ad5022f6b03d07a6777bfee73e6181ff2bc955b1c7b19",
+        "revision": 0,
+        "status": "engine_refusal_or_error",
+        "semantic_validation": "pending",
+        "wall_s": 235.29283956438303,
+        "sampled_peak_bytes": 100511744,
+        "request_bytes": 381919,
+        "response_sha256": "0b51ce8131b4b8611a50bb47f40ed597a49bad62fce9052775fec5ec7e3a3ddf",
+        "engine_status": "error",
+        "route": null,
+        "retained_backend": null,
+        "reuse_receipt": null
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-1/retained/record.json",
+      "record_sha256": "9f2dc2974d167deb0751237331112c261add4bbea32cbe717fe9a9d0c4ad2c74",
+      "status": "engine_refusal_or_error",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10517/revisions/000.ofn",
+        "sha256": "4176051dcb74ed93866ad5022f6b03d07a6777bfee73e6181ff2bc955b1c7b19",
+        "revision": 0,
+        "status": "engine_refusal_or_error",
+        "semantic_validation": "pending",
+        "wall_s": 235.35562354139984,
+        "sampled_peak_bytes": 101588992,
+        "request_bytes": 381919,
+        "response_sha256": "0b51ce8131b4b8611a50bb47f40ed597a49bad62fce9052775fec5ec7e3a3ddf",
+        "engine_status": "error",
+        "route": null,
+        "retained_backend": null,
+        "reuse_receipt": null
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-2/retained/record.json",
+      "record_sha256": "0222b23c7190d414eca97536ffb327a558c7e1edaadb91699ab73dae3f5abbfe",
+      "status": "engine_refusal_or_error",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10517/revisions/000.ofn",
+        "sha256": "4176051dcb74ed93866ad5022f6b03d07a6777bfee73e6181ff2bc955b1c7b19",
+        "revision": 0,
+        "status": "engine_refusal_or_error",
+        "semantic_validation": "pending",
+        "wall_s": 235.28601517155766,
+        "sampled_peak_bytes": 99360768,
+        "request_bytes": 381919,
+        "response_sha256": "0b51ce8131b4b8611a50bb47f40ed597a49bad62fce9052775fec5ec7e3a3ddf",
+        "engine_status": "error",
+        "route": null,
+        "retained_backend": null,
+        "reuse_receipt": null
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10689/km/repetition-0/retained/record.json",
+      "record_sha256": "2087683c7eef1afda740433daa37bf42f90ac55419c967f8d09d18c24d8ada25",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10689/revisions/003.ofn",
+        "sha256": "6e5aa8eed285b6e2e1224c9445d7e67f10e27348770b7e2e3e953b705d157dc4",
+        "revision": 3,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 10984644608,
+        "wall_s": 240.69806354865432,
+        "request_bytes": 294093414
+      },
+      "subsequent_revisions_skipped": 1
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10689/km/repetition-1/retained/record.json",
+      "record_sha256": "7ba2837f7c86e9401bdce827151806880a101c61bfc860c76f65502fe58ef99c",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10689/revisions/004.ofn",
+        "sha256": "04061dfeea4121ea5e10f02439dede3829d0e63789b5b47fc15db85a42d3b0b3",
+        "revision": 4,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 11251830784,
+        "wall_s": 240.5998426526785,
+        "request_bytes": 294100737
+      },
+      "subsequent_revisions_skipped": 0
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10689/km/repetition-2/retained/record.json",
+      "record_sha256": "d97976b4b2a80b9716bce428679a0a52de972b21c926056b38682db0b8a7f070",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10689/revisions/001.ofn",
+        "sha256": "15acfdaf96bee217978a69a7fd66a8e37e0dd9e33a90ea0b233d49e787d946c2",
+        "revision": 1,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 10659397632,
+        "wall_s": 241.34466016106308,
+        "request_bytes": 294100508
+      },
+      "subsequent_revisions_skipped": 3
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10860/km/repetition-0/retained/record.json",
+      "record_sha256": "34940612fe058a0f40912a054e1a8c923c19166a3b6a37411b77eb2bf057111c",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10860/revisions/001.ofn",
+        "sha256": "c26b4652f517503242d5596e20def07fe30a524c564dac7848aebf4003464c3f",
+        "revision": 1,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 33378304,
+        "wall_s": 240.0263327229768,
+        "request_bytes": 452903
+      },
+      "subsequent_revisions_skipped": 3
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10860/km/repetition-1/retained/record.json",
+      "record_sha256": "d1253e7cd2eb9c41d53aff393354cbf465b1714e645773038c60420016cdb47c",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10860/revisions/001.ofn",
+        "sha256": "c26b4652f517503242d5596e20def07fe30a524c564dac7848aebf4003464c3f",
+        "revision": 1,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 33452032,
+        "wall_s": 240.0371439307928,
+        "request_bytes": 452903
+      },
+      "subsequent_revisions_skipped": 3
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10860/km/repetition-2/retained/record.json",
+      "record_sha256": "399d1a9e8d5d27aaf0466e91ce35cde7a36715c339113334a12ad6dd6db0bb44",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_10860/revisions/001.ofn",
+        "sha256": "c26b4652f517503242d5596e20def07fe30a524c564dac7848aebf4003464c3f",
+        "revision": 1,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 33390592,
+        "wall_s": 240.0413430556655,
+        "request_bytes": 452903
+      },
+      "subsequent_revisions_skipped": 3
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_1194/km/repetition-0/retained/record.json",
+      "record_sha256": "3aae5a4138a604942796a09ded093181fb487839fa45abe7af6acffd88566f60",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_1194/revisions/000.ofn",
+        "sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 6403112960,
+        "wall_s": 240.3437398057431,
+        "request_bytes": 90549894
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_1194/km/repetition-1/retained/record.json",
+      "record_sha256": "443d225c18f221e4199af2d85d4df61840334405f98b6ebec7a4f214be1670aa",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_1194/revisions/000.ofn",
+        "sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 6406270976,
+        "wall_s": 240.35259253159165,
+        "request_bytes": 90549894
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_1194/km/repetition-2/retained/record.json",
+      "record_sha256": "d7991ece3767b5ffe1a78542bcb25da064a50720e459721bf9174d919734f93f",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_1194/revisions/000.ofn",
+        "sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 6405001216,
+        "wall_s": 240.3601229581982,
+        "request_bytes": 90549894
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_14308/km/repetition-0/retained/record.json",
+      "record_sha256": "52ed57affc8ca765e38a5a64a02b407c3963a460ae81bc305e7070938b8c3fd9",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_14308/revisions/000.ofn",
+        "sha256": "5c820c91971cc495692daec3968b9fb80925054973351fee72b679148aa5561b",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 9227956224,
+        "wall_s": 240.43938724137843,
+        "request_bytes": 54242466
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_14308/km/repetition-1/retained/record.json",
+      "record_sha256": "5a7694fb5e120695079e277c32fb37068e3b91d6b01f529c3f9498d4089e24de",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_14308/revisions/000.ofn",
+        "sha256": "5c820c91971cc495692daec3968b9fb80925054973351fee72b679148aa5561b",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 9218179072,
+        "wall_s": 240.4517004508525,
+        "request_bytes": 54242466
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_14308/km/repetition-2/retained/record.json",
+      "record_sha256": "e4cbc0992138c5be82b506a84e91c4de96a464803d76ec71d59f7605d69dca58",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_14308/revisions/000.ofn",
+        "sha256": "5c820c91971cc495692daec3968b9fb80925054973351fee72b679148aa5561b",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 9440886784,
+        "wall_s": 240.51151021942496,
+        "request_bytes": 54242466
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_14312/km/repetition-0/retained/record.json",
+      "record_sha256": "deaf956e58425b81dd17a897086b775de7036768eee4e415ea6d94dc8d229f48",
+      "status": "memout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_14312/revisions/000.ofn",
+        "sha256": "e9f9a9debf767b45e7f25fae869bd6749cacfc7ceafe19390fd7c6b6611c56d0",
+        "revision": 0,
+        "status": "memout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 21493796864,
+        "wall_s": 33.7186012621969,
+        "request_bytes": 15613361
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_14312/km/repetition-1/retained/record.json",
+      "record_sha256": "c49a3a1e650fdd049925c809ed18c6f77534782d1ad7f3724a745dcbc695e2b7",
+      "status": "memout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_14312/revisions/000.ofn",
+        "sha256": "e9f9a9debf767b45e7f25fae869bd6749cacfc7ceafe19390fd7c6b6611c56d0",
+        "revision": 0,
+        "status": "memout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 21480873984,
+        "wall_s": 33.0188603810966,
+        "request_bytes": 15613361
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_14312/km/repetition-2/retained/record.json",
+      "record_sha256": "262ec5890f651f0e9862c9d43850c3e10df7c637c701cd9168b1e81bd5806081",
+      "status": "memout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_14312/revisions/000.ofn",
+        "sha256": "e9f9a9debf767b45e7f25fae869bd6749cacfc7ceafe19390fd7c6b6611c56d0",
+        "revision": 0,
+        "status": "memout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 21481218048,
+        "wall_s": 32.296072060242295,
+        "request_bytes": 15613361
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_15066/km/repetition-0/retained/record.json",
+      "record_sha256": "e67539f04e59446391a8b1b297b9f010729722a207c9af66a307366752ee5500",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_15066/revisions/000.ofn",
+        "sha256": "500bfe75bb81bb4626bc4bffebe1e964c026db1ae8b0355de664e6cdd4d30cb6",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 591265792,
+        "wall_s": 240.10754276439548,
+        "request_bytes": 3146494
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_15066/km/repetition-1/retained/record.json",
+      "record_sha256": "2033d2aaf350fa01319f47c83c398562f6a5cac3539b797e3dd6b703896b0806",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_15066/revisions/000.ofn",
+        "sha256": "500bfe75bb81bb4626bc4bffebe1e964c026db1ae8b0355de664e6cdd4d30cb6",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 618524672,
+        "wall_s": 240.07725245133042,
+        "request_bytes": 3146494
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_15066/km/repetition-2/retained/record.json",
+      "record_sha256": "62c45364edba1271873a850c88466ce8608542a7b387c31787d6abfb6c10b5bb",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_15066/revisions/000.ofn",
+        "sha256": "500bfe75bb81bb4626bc4bffebe1e964c026db1ae8b0355de664e6cdd4d30cb6",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 618872832,
+        "wall_s": 240.05956821143627,
+        "request_bytes": 3146494
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_15929/km/repetition-0/retained/record.json",
+      "record_sha256": "84e7f1efdbdcfbe959236cacfc3841aea02a39c6bea458f7cb45f37397b9c13a",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_15929/revisions/000.ofn",
+        "sha256": "5855fc7df0fe5fc43e71f12694dbed5869b58cce91955d5dda4422a6adeb7142",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 9140629504,
+        "wall_s": 240.58643779158592,
+        "request_bytes": 22954384
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_15929/km/repetition-1/retained/record.json",
+      "record_sha256": "e791484b718248d2671b67c56e375e2436dfcad7b975cc74bfeab8836bcc1b65",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_15929/revisions/000.ofn",
+        "sha256": "5855fc7df0fe5fc43e71f12694dbed5869b58cce91955d5dda4422a6adeb7142",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 9148485632,
+        "wall_s": 240.49113767407835,
+        "request_bytes": 22954384
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_15929/km/repetition-2/retained/record.json",
+      "record_sha256": "38bf56984db6c2b5d6a40c3919da3abd9758d5358c722fd59c3232b41c43b24d",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_15929/revisions/000.ofn",
+        "sha256": "5855fc7df0fe5fc43e71f12694dbed5869b58cce91955d5dda4422a6adeb7142",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 9046392832,
+        "wall_s": 240.5432888250798,
+        "request_bytes": 22954384
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_1634/km/repetition-0/retained/record.json",
+      "record_sha256": "dc3c230539d7a543f1c54f6500a0160aab74b531a76a615475c7c10f8b5288b7",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_1634/revisions/000.ofn",
+        "sha256": "c483f079af349f2b3a8d96dbfdd7ed314eea122a5211c01961dc20afc8aac70b",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 1944473600,
+        "wall_s": 240.2234623171389,
+        "request_bytes": 10813765
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_1634/km/repetition-1/retained/record.json",
+      "record_sha256": "259feb79f64cf0bfe63c76979c391d80f49f2ceb8d6adf48b39cfc1b5c0798b4",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_1634/revisions/000.ofn",
+        "sha256": "c483f079af349f2b3a8d96dbfdd7ed314eea122a5211c01961dc20afc8aac70b",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 1897586688,
+        "wall_s": 240.21113751642406,
+        "request_bytes": 10813765
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_1634/km/repetition-2/retained/record.json",
+      "record_sha256": "a247da095d31cf1f78e45299422cb4907e5aa79f10e529fd5061920af4f89382",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_1634/revisions/000.ofn",
+        "sha256": "c483f079af349f2b3a8d96dbfdd7ed314eea122a5211c01961dc20afc8aac70b",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 1891958784,
+        "wall_s": 240.21139285340905,
+        "request_bytes": 10813765
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_4617/km/repetition-0/retained/record.json",
+      "record_sha256": "796146b92ae6368d2040daef052ada9e0f15bbd99048a14e8d32193a83c331da",
+      "status": "memout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_4617/revisions/000.ofn",
+        "sha256": "78bee006e117651870e386e9347a2fbe8323af0cb143ea6c950e34b312b2b374",
+        "revision": 0,
+        "status": "memout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 21477433344,
+        "wall_s": 34.55415218695998,
+        "request_bytes": 20190045
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_4617/km/repetition-1/retained/record.json",
+      "record_sha256": "78d6421bd0e2e23a0a80c5b7519a8f2ea058f08545a5b7a226eba4d853821b9d",
+      "status": "memout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_4617/revisions/000.ofn",
+        "sha256": "78bee006e117651870e386e9347a2fbe8323af0cb143ea6c950e34b312b2b374",
+        "revision": 0,
+        "status": "memout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 21488902144,
+        "wall_s": 32.25491024367511,
+        "request_bytes": 20190045
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_4617/km/repetition-2/retained/record.json",
+      "record_sha256": "22740cfc1c786f491e9f2aa14914928e51dedab7baeb8cbe19d5b48e584bea04",
+      "status": "memout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_4617/revisions/000.ofn",
+        "sha256": "78bee006e117651870e386e9347a2fbe8323af0cb143ea6c950e34b312b2b374",
+        "revision": 0,
+        "status": "memout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 21476184064,
+        "wall_s": 32.93481853976846,
+        "request_bytes": 20190045
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_9724/km/repetition-0/retained/record.json",
+      "record_sha256": "7384a0cd384ae3010eb9364201363d52f4b4c63f1f9e8482e726e88ee9f80f06",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_9724/revisions/000.ofn",
+        "sha256": "08d70b80df170f32c8ab033a15582b42552b9e4e70798c675f4b7e89990d84f0",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 5946736640,
+        "wall_s": 240.34221224486828,
+        "request_bytes": 13832521
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_9724/km/repetition-1/retained/record.json",
+      "record_sha256": "0506c539b681750685a6df72d3e3672d66390c0849f700d9bca9f5d0f570edae",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_9724/revisions/000.ofn",
+        "sha256": "08d70b80df170f32c8ab033a15582b42552b9e4e70798c675f4b7e89990d84f0",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 5815480320,
+        "wall_s": 240.34180434048176,
+        "request_bytes": 13832521
+      },
+      "subsequent_revisions_skipped": 4
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_9724/km/repetition-2/retained/record.json",
+      "record_sha256": "a1e8f170a9686ead2f72dfac64d967aa43ca7b2f8408df04f56ae67884257176",
+      "status": "timeout",
+      "failed_revision": {
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/prepared-updates-53201177/ore_ont_9724/revisions/000.ofn",
+        "sha256": "08d70b80df170f32c8ab033a15582b42552b9e4e70798c675f4b7e89990d84f0",
+        "revision": 0,
+        "status": "timeout",
+        "semantic_validation": "pending",
+        "sampled_peak_bytes": 6103142400,
+        "wall_s": 240.2555561568588,
+        "request_bytes": 13832521
+      },
+      "subsequent_revisions_skipped": 4
+    }
+  ]
+}

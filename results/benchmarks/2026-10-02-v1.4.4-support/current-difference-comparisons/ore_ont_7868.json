@@ -1,0 +1,37 @@
+{
+  "ont": "ore_ont_7868",
+  "source_sha256": "73c3f345e805c918f13bab00dc56202bc8699d087bad1650393e726d89952029",
+  "reference_sha256": "4ebdf577005f36dd77ad69d88eae48f3be95c87651dac1ccb837b8ba079f9b51",
+  "declared_classes": 74055,
+  "reference_relations": 1289029,
+  "reference_unsat": 18,
+  "reference_thing_equiv": [
+    "http://www.absoluteiri.edu/RELAPPROXC70529"
+  ],
+  "candidate": {
+    "path": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/full-v144-automatic-native-source-53158847_51/output/ore_ont_7868.json",
+    "sha256": "f217d9c8c9e0ac54adbaee73134a5e17f464e60c0cfcd1fa7a968fa1fbe3c1ee",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 1289029,
+    "missing_count": 0,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [],
+    "extra_sample": []
+  },
+  "baseline": {
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/candidate-v143-rc2/051/output/ore_ont_7868.json",
+    "sha256": "449bb36dfbd272d1ad5767165e51ac3bbf2df67a4d1a78442fc107c9fa866bdb",
+    "consistent": true,
+    "dropped": 0,
+    "observed_relations": 1289029,
+    "missing_count": 0,
+    "extra_count": 0,
+    "missing_unsat": [],
+    "extra_unsat": [],
+    "missing_sample": [],
+    "extra_sample": []
+  }
+}

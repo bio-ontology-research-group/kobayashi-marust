@@ -1,0 +1,34 @@
+{info} 18:25:00:213 >> Starting Konclude ... 
+{info} 18:25:00:213 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 18:25:00:213 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 18 2021)
+
+{info} 18:25:00:214 >> Processing OWLlink request from file '/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/konclude-owllink-pilot-53202500/request.xml'.
+{info} 18:25:00:214 >> Initializing reasoner. Creating calculation context.
+{info} 18:25:00:217 >> Reasoner initialized with 1 processing unit(s).
+{info} 18:25:00:217 >> Preprocessing ontology 'urn:pilot:kb'.
+{info} 18:25:00:218 >> Finished preprocessing in 1 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:218 >> Precomputing ontology 'urn:pilot:kb', expressiveness 'ALI+'.
+{info} 18:25:00:219 >> Finished precomputing in 1 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:219 >> Query 'UnnamedConsistencyQuery' processed in '0' ms.
+{info} 18:25:00:219 >> Classifying ontology 'urn:pilot:kb', expressiveness 'ALI+'.
+{info} 18:25:00:219 >> Ontology 'urn:pilot:kb' has been sufficiently saturated, extracting data for classification.
+{info} 18:25:00:219 >> Finished class classification in 0 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:219 >> Query 'UnnamedSubClassQuery' processed in '0' ms.
+{info} 18:25:00:220 >> Preprocessing ontology 'urn:pilot:kb'.
+{info} 18:25:00:221 >> Finished preprocessing in 1 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:221 >> Precomputing ontology 'urn:pilot:kb', expressiveness 'ALI+'.
+{info} 18:25:00:222 >> Finished precomputing in 1 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:222 >> Query 'UnnamedConsistencyQuery' processed in '0' ms.
+{info} 18:25:00:231 >> Classifying ontology 'urn:pilot:kb', expressiveness 'ALI+'.
+{info} 18:25:00:231 >> Ontology 'urn:pilot:kb' has been sufficiently saturated, extracting data for classification.
+{info} 18:25:00:232 >> Finished class classification in 0 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:232 >> Query 'UnnamedSubClassQuery' processed in '0' ms.
+{info} 18:25:00:232 >> Preprocessing ontology 'urn:pilot:kb'.
+{info} 18:25:00:233 >> Finished preprocessing in 1 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:233 >> Precomputing ontology 'urn:pilot:kb', expressiveness 'ALI+'.
+{info} 18:25:00:234 >> Finished precomputing in 1 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:234 >> Query 'UnnamedConsistencyQuery' processed in '0' ms.
+{info} 18:25:00:234 >> Classifying ontology 'urn:pilot:kb', expressiveness 'ALI+'.
+{info} 18:25:00:234 >> Ontology 'urn:pilot:kb' has been sufficiently saturated, extracting data for classification.
+{info} 18:25:00:235 >> Finished class classification in 1 ms for ontology 'urn:pilot:kb'.
+{info} 18:25:00:235 >> Query 'UnnamedSubClassQuery' processed in '0' ms.

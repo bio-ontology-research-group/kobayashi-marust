@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "baseline": "elk",
+  "source": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+  "source_sha256": "fa4249686374c76b7549f64257f3c117afc6a3ea2a2e8ac7880571a7734bdac0",
+  "runtime_source": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+  "artifact": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes/classifier-elk.jar",
+  "artifact_sha256": "7ffc442f2966667a488479a748502276136445c8e44ffd9e8498873a401cb3d4",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-17-r",
+  "slurm_job_id": "53199545",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "fa4249686374c76b7549f64257f3c117afc6a3ea2a2e8ac7880571a7734bdac0",
+  "command": [
+    "java",
+    "-Xms256m",
+    "-Xmx16g",
+    "-XX:ActiveProcessorCount=1",
+    "-jar",
+    "/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes/classifier-elk.jar",
+    "org.semanticweb.elk.owlapi.ElkReasonerFactory",
+    "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+    "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/measurement-pilot-53199410/elk/taxonomy.raw"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "owlapi-tsv",
+  "cpu_affinity": [
+    2
+  ],
+  "exit_code": 0,
+  "wall_s": 2.1786366682499647,
+  "peak_bytes": 116252672,
+  "sampled_peak_bytes": 116252672,
+  "files": {
+    "max-rss-kib.txt": {
+      "sha256": "b0a7682400453c8aa7b9f6af3a221de7ff5bacafef0f78e1647ec7384f763c98",
+      "bytes": 7
+    },
+    "taxonomy.raw": {
+      "sha256": "e4fc102cafe1b744f4f295c556efb62ec522f4fb48dc248cc84dd1e12e9b072b",
+      "bytes": 261
+    },
+    "stderr": {
+      "sha256": "2c58b87a0350a39bb1c3b5f4891defeeb9a785e84aa11a466dc9ddb21253bf58",
+      "bytes": 186
+    },
+    "stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  }
+}

@@ -14,12 +14,10 @@ without access to the expected answer.
 
 ## Highlights
 
-- `km classify` completes all 592 ORE 2015 ontologies under the documented
+- The recorded v1.4.0 candidate completes all 592 ORE 2015 ontologies under the documented
   240-second and 20-GiB benchmark contract.
-- Of those results, 588 match retained signatures and two retain independently
-  adjudicated consistency verdicts (2669 and 15516). ORE10860 and ORE1194 have
-  no retained external full-taxonomy gold; ORE10860 has an independently checked
-  inconsistency argument. ORE1194 completion is not an external correctness check.
+- Those results comprise 588 exact retained signatures and four independently
+  adjudicated cases: 2669, 15516, 10860, and the no-gold ontology 1194.
 - KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle.
 - Conversion, routing, and certification paths fail closed when they cannot
   justify a complete result.
@@ -32,41 +30,14 @@ without access to the expected answer.
   production ELC, hypertableau, and CB publication boundaries and for their
   automatic routing composition. Accepted routed taxonomies are bound to the
   exact source clauses and requested named-class signature.
-- On the completed ORE panel, the automatic route has lower mean and median
-  wall time and peak process-tree RSS than the retained correct-completion
-  results for ELK, HermiT, Konclude, and Sequoia. The populations and tested
-  versions are listed below.
-
-## Harness bugfixes
-
-v1.4.3 fixes misleading worker `-1` errors, redundant saturation work on small
-nominal inputs, and handling of bounded functional string assertions. The
-[Michel-harness report](results/benchmarks/2026-09-18-v1.4.3-harness/README.md)
-compares the full 1,920-input ORE sample with v1.4.2 and rustdl using the same
-resource limits. It separates completion counts, source-coverage flags and
-independent answer checks. The previous 592-input regression retains every
-output signature. See the [fix rationale](docs/HARNESS-v1.4.3.md).
-
-## Dynamic reasoning benchmarks
-
-v1.4.2 adds the [entailment-justification comparison](results/benchmarks/2026-09-17-dynamic-baseline/justification-final-comparison/README.md),
-with 7,650 measured attempts across native, library and common-extractor services.
-Support validity and minimality are checked independently; bounded enumeration
-is not a claim of completeness. The report retains preparation failures,
-timeouts, errors and separate full/module tracks.
-
-v1.4.1 adds the [incremental benchmark comparison](results/benchmarks/2026-09-17-dynamic-baseline/incremental-final-comparison/README.md),
-following 250-revision histories from the literature. It reports failures,
-independent correctness, time, memory and retained work separately. KM sessions
-are slower than rebuilding at the median on the verified cases; VTO completion
-lacks a complete reference pair. Minor ABox fixes were tested experimentally
-before Lean certification. See [CHANGELOG.md](CHANGELOG.md) for validation and limits.
+- On the completed ORE panel, the automatic route has lower median wall time
+  and lower mean and median peak process-tree RSS than the retained
+  correct-completion results for ELK, HermiT, Konclude, and Sequoia. Its mean
+  wall time is lower than HermiT, Konclude, and Sequoia, but not ELK.
 
 ## Install
 
-The [v1.4.3 release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.3)
-provides a Linux x86-64 binary (glibc 2.34 or newer), a Protégé JAR, and benchmark
-tables. Building from source requires a recent stable Rust toolchain.
+KM requires a recent stable Rust toolchain.
 
 ```sh
 git clone https://github.com/bio-ontology-research-group/kobayashi-marust.git
@@ -103,35 +74,60 @@ selects a compatible reasoning route. Worker entry points are also available
 as `km ofn`, `km elc`, `km engine`, and `km tableau` for development and
 diagnostics.
 
+Version 1.4.4 adds inverse expressions in role chains and
+extends DL-safe SWRL reasoning. Its input checks reject malformed ontologies
+before reasoning. For example, `"text"^^rdfs:Literal` has no literal lexical
+mapping: use of `rdfs:Literal` as a data range does not make it a valid literal
+datatype. KM explains the violation and exits with code 2 without rewriting
+the input or producing a classification. A valid construct whose complete
+execution cannot be established is a separate refusal (exit code 3).
+
+The final validation inventory covers 1,920 unchanged corpus files: 1,708
+pass its implemented checks and 212 are refused. Independent audits verified
+all 212 violations, including the 33 additional anonymous-tree diagnoses.
+The anonymous-individual check follows the formal condition in
+[OWL 2 section 11.2](https://www.w3.org/TR/owl2-syntax/#Global_Restrictions_on_Axioms_in_OWL_2_DL):
+each anonymous tree must contain a node with at most one object-property
+assertion to a named individual. The named-star example immediately after
+that condition contradicts it; KM follows the explicit condition. The release
+candidate passed 2,822 Rust tests and all four production Lean gates.
+The final 1,920-input classification run reports 1,622 successes, 212 input
+rejections, and 86 non-completions. The output audit verifies every successful
+output, zero dropped axioms, and all refusals as invalid inputs. No unsupported
+input or unexplained engine-error outcomes remain in this run. The
+592-input gold comparison has 552 Konclude matches, two successes without
+gold, 35 invalid-input refusals, two memory-limit failures, and one timeout.
+The historical benchmark table below does not describe these new validation
+rules.
+
 ## ORE 2015 benchmark
 
-The table reports the automatic KM route. KM measurements include all completed
-inputs, with the external-validation scope stated above. Baseline measurements
-include each reasoner's retained correct completions. These populations differ;
-the aggregate table is not a paired per-ontology speedup comparison.
+The table reports the automatic KM route, not an oracle-selected union of
+manually chosen configurations. Correct counts require agreement with the
+retained or independently adjudicated full-IRI result signature. Times and
+memory are computed over correct completions.
 
-| Reasoner | Tested version / commit | Completions used | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
+| Reasoner | Tested version / commit | Correct completions | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
 |---|---|---:|---:|---:|---:|---:|
-| KM | v1.4.0; engine `edb1721`; binary `ddc30d2f…8903d09a` | 592/592 | 1.4765 | 0.1046 | 206.29 | 22.59 |
+| KM | v1.4.0 candidate; source archive `affa892f…ed83a6`; binary `33951140…c320e1` | 592/592 | 1.7798 | 0.1588 | 227.64 | 27.31 |
 | ELK | 0.6.0 | 531/592 | 1.5208 | 0.7520 | 493.33 | 234.30 |
 | Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 3.2765 | 0.2814 | 559.90 | 76.87 |
 | Sequoia | 0.6.1-alpha; `c5248ec7be30` | 339/592 | 7.3704 | 2.5371 | 2207.35 | 536.15 |
 | HermiT | 1.4.6.519-SNAPSHOT | 557/592 | 13.1172 | 1.8782 | 1331.72 | 714.22 |
 
-Time is wall time in seconds; memory is peak process-tree RSS in MiB. Runs use
-Intel Xeon Gold 6248 nodes, a 240-second timeout, and a 20-GiB memory cap.
-The release audit checks all 592 results, checkpoints, completion markers,
-binary hashes, and semantic outputs before computing aggregates.
+Metrics are computed independently over each reasoner's correct completions;
+incorrect, incomplete, timed-out, and failed runs do not make a reasoner look
+faster. The final KM row is accepted only when the release binary's SHA-256 is
+recorded by all 592 result, profile, and checkpoint records and the aggregate
+gate passes strictly on all four metrics.
 
 The benchmark corpus, limits, canonical signatures, adjudications, special
 cases, and route history are documented in
 [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md),
 [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md), and
-[`results/benchmarks/`](results/benchmarks/). The v1.4.0 aggregate, route
+[`results/benchmarks/`](results/benchmarks/). The v1.3.0 aggregate, route
 provenance, binary hash, jobs, and gate evidence are recorded in
-[`2026-09-16-v1.4.0-release`](results/benchmarks/2026-09-16-v1.4.0-release/README.md),
-with a downloadable [comparison TSV](results/benchmarks/2026-09-16-v1.4.0-release/comparison.tsv)
-and [per-ontology TSV](results/benchmarks/2026-09-16-v1.4.0-release/per-ontology.tsv).
+[`2026-08-30-v1.3.0-release`](results/benchmarks/2026-08-30-v1.3.0-release/README.md).
 The table records the exact tested artifacts; it is not automatically
 attributed to later source releases.
 
@@ -223,12 +219,12 @@ execution that bypasses the mandatory checker.
 Version 1.0.0 records the integrated ELC, HT, CB, and automatic-routing
 certification milestone.
 
-Every full KM release must pass all Lean
+Every full KM release, including v1.3.0 and later releases, must pass all Lean
 certification gates from the exact source commit that is tagged. A corpus
 benchmark, Rust test suite, or interface test cannot replace this requirement.
 If a release adds a new answer-publication path, that path must be included in
 the Lean certification boundary and its no-`sorryAx` audit before the release is
-tagged. This includes incremental publications and source-axiom
+tagged. For v1.3.0 this includes incremental publications and source-axiom
 explanations.
 
 ## Repository layout

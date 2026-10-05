@@ -1,0 +1,3 @@
+Declaration(Class(<urn:pilot:A>))
+Declaration(Class(<urn:pilot:B>))
+Declaration(Class(<urn:pilot:C>))

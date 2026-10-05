@@ -1,0 +1,613 @@
+{
+  "observed_at": "2026-10-05T11:21:34.081277+00:00",
+  "status": "all benchmark panels reviewed; final commit verification and publication pending",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "development_commit": "74f83a3234bbec2a6061dbf0082d0e68f35f01b9",
+  "raw_measurement_root": "ibex:/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004",
+  "artifacts": {
+    "workload": [
+      {
+        "path": "workload-protocol.json",
+        "sha256": "93fbe984017e28294f2e7058ed746ce1a3f77060746fee58151b33b4246217f5",
+        "bytes": 3095
+      },
+      {
+        "path": "workload-selection.json",
+        "sha256": "d51dff7640b82a84ccf22857532817c39c1952c9b6c7e2acd00ad4df6ab246e7",
+        "bytes": 97085
+      },
+      {
+        "path": "classification-inputs.json",
+        "sha256": "2a3826a6249cf2a3f9b05b55086f98c59518fa27456eb9ff5ff98f40e55b1ea2",
+        "bytes": 535316
+      },
+      {
+        "path": "run-set-global-dependency.json",
+        "sha256": "9c9a27c6645573907f8fb873ef4fa2ae2b4588e2f6aa62f7b5639f12fbf60853",
+        "bytes": 629
+      },
+      {
+        "path": "global-dependency-validation/artifact-inventory-v145-global-dependency.json",
+        "sha256": "173a0b2f2e37e4d28cfd1b527961604a433bc4087e2e22fbe1336aa3c8afc495",
+        "bytes": 20305
+      }
+    ],
+    "jobs": [
+      {
+        "path": "global-dependency-rerun-submissions.json",
+        "sha256": "d5bf395a50b9f7f5a501dcc096a088826a70f36e9a1609f7add0ab0cb022a9bc",
+        "bytes": 3481
+      },
+      {
+        "path": "global-dependency-audit-submissions.json",
+        "sha256": "cb1d69c9cbba5867f5d46c5e4ef23a4a4f28df6628939e0414267cd8f9cf5e9c",
+        "bytes": 4584
+      },
+      {
+        "path": "global-dependency-validation/global-dependency-render-submissions.json",
+        "sha256": "4d4384b12640178168b5b2f8db2a8d3d5fe8e99e00c45652b8e83ee0848f7b18",
+        "bytes": 278
+      },
+      {
+        "path": "globaldep-updates-group17-readiness.json",
+        "sha256": "ed0534fbeced8db1498fff6903af92ccfda29d85dbf787049de2bc3a37b4ab16",
+        "bytes": 118932
+      }
+    ],
+    "engine_validation": [
+      {
+        "path": "global-dependency-validation/certification-source-manifest.json",
+        "sha256": "284f5fb1353c32cca10e3a1f1927ad362b5de6edf8987f76a8bdde525bac8cc8",
+        "bytes": 104182
+      },
+      {
+        "path": "global-dependency-validation/certification-audit.json",
+        "sha256": "c85aed116ac7f49514bbd758e566522d511ccf46193c50bd4ad8e4b2aa9ee99e",
+        "bytes": 1299
+      },
+      {
+        "path": "global-dependency-validation/rust-test-validation.json",
+        "sha256": "75c6085728d0f44cbb90ff312a8297823a145ffdc67541f77fc47ffdcc62bb49",
+        "bytes": 323
+      },
+      {
+        "path": "global-dependency-validation/rust-tests.log.gz",
+        "sha256": "312ac98994c2054c6f022ab4df853db8cd8e322fa036a034b4ab76fcb1a67a5e",
+        "bytes": 58929
+      },
+      {
+        "path": "global-dependency-validation/java-plugin-configured-validation.json",
+        "sha256": "afe3a005fb543384b6a793c725e8d15780801b1dd7304a777618f3e3e52bea07",
+        "bytes": 368
+      },
+      {
+        "path": "global-dependency-validation/protege-configured-verify.log",
+        "sha256": "8b0851f760917ed7ffc261fc4e07631c23fa7a0e094a4142ca6d845a505dff92",
+        "bytes": 6595
+      },
+      {
+        "path": "global-dependency-validation/candidate-commit-verification.json",
+        "sha256": "5e9556d63f61c4174e49ab8e3304fd599567bf7fe88fe2a37cd76cf2c9df28b1",
+        "bytes": 446
+      },
+      {
+        "path": "global-dependency-validation/harness-commit-verification.json",
+        "sha256": "db0bc8bc430fc7ae0bb4b23ff78bdd2227bb8e2f62bdca0059751f24d53bcbcf",
+        "bytes": 479
+      },
+      {
+        "path": "global-dependency-validation/development-push-verification.json",
+        "sha256": "11ce92a744dbe213fcb7bbea0c23fbcff365953543a958027bcd06c822b35ff6",
+        "bytes": 383
+      },
+      {
+        "path": "global-dependency-validation/cb-certification-surface.log",
+        "sha256": "0dc0f3cc720771c42dd7464fc5df5b8bee2a101d76192bdf5ef48331b40a376e",
+        "bytes": 226490
+      },
+      {
+        "path": "global-dependency-validation/v145-cb-certification.log",
+        "sha256": "2d10845d64d4133a0ed7da6ec6ff1ab26d090d2ca34f9b7d3eb7e092439bc235",
+        "bytes": 1244742
+      },
+      {
+        "path": "global-dependency-validation/elc-certification-surface.log",
+        "sha256": "d516022d709d84466627a6191eb633c59f3a80084efcc17dbb95f1ed8f15ba9d",
+        "bytes": 17307
+      },
+      {
+        "path": "global-dependency-validation/v145-elc-certification.log",
+        "sha256": "5e05980c220ed2a7a7671f1ff2c96b25851378438d86b5753e1991ee445c39b1",
+        "bytes": 601862
+      },
+      {
+        "path": "global-dependency-validation/ht-certification-surface.log",
+        "sha256": "23d4701c3310a64621c434580b5da767d761ace459afe3ee2e9fdc9f1e87e0b6",
+        "bytes": 274824
+      },
+      {
+        "path": "global-dependency-validation/v145-ht-certification.log",
+        "sha256": "28956390aafa2e2a41ce2e49ffd88da585e665353d646648a983eaf99dbaa235",
+        "bytes": 2480278
+      },
+      {
+        "path": "global-dependency-validation/routing-certification-surface.log",
+        "sha256": "863a4e5a90dba92a99b38f9f15a3b0958177e1de441defed9d3642cc61462f14",
+        "bytes": 416555
+      },
+      {
+        "path": "global-dependency-validation/v145-routing-certification.log",
+        "sha256": "f7cb96efb3bdb2d7d3a642ceca3399045426a9a27f1ebe56a03756e53d5ccabe",
+        "bytes": 1167158
+      }
+    ],
+    "harness_validation": [
+      {
+        "path": "harness-validation-v3-manifest.json",
+        "sha256": "2e3caa0fa8de95db5442bcf13a44a9dcb68c699af2aa771c4951e750fa06557a",
+        "bytes": 27541
+      },
+      {
+        "path": "harness-validation-v3-result.json",
+        "sha256": "0fe671f827487e6a060e8d4b4b701d01e351a7c08c42acdeec063fe9d5452a85",
+        "bytes": 323
+      },
+      {
+        "path": "harness-validation-53222433.log",
+        "sha256": "90b2905b40c865c445bbf9ce501e1f342994a1ac98fb4a287e1b8cba457d649d",
+        "bytes": 5415
+      }
+    ],
+    "reviewed_reports": [
+      {
+        "path": "justification-report-v4-full-global-dependency-53234890.json",
+        "sha256": "8ccf0ed781bbd973522cb756dbaab3a5de7f5cee1623eb7c1dc154c2bac0cc9d",
+        "bytes": 2737098
+      },
+      {
+        "path": "globaldep-justification-report-review.json",
+        "sha256": "81b5ec7c0d9f2d88cada5f163dcd0c21584e136cb46ca536b46552fd653ddc22",
+        "bytes": 7174
+      },
+      {
+        "path": "globaldep-justification-measurement-completion.json",
+        "sha256": "1095450236f932aa41a07e98c96e2e90d5b8e3b0c0597e81c5fe768f248d2b37",
+        "bytes": 67374
+      },
+      {
+        "path": "globaldep-justification-audit-completion.json",
+        "sha256": "09bdb386ebf641517ac46e490199c7506fa2b636d660a9fe70ed5a942600af90",
+        "bytes": 11255
+      },
+      {
+        "path": "globaldep-justification-generation-errors.json",
+        "sha256": "df41bea6105b216524eef01541469ec20df4c90825ea51c4a65a80512f4b7b21",
+        "bytes": 8079
+      },
+      {
+        "path": "preparation-report-v2-full-global-dependency-53234930.json",
+        "sha256": "7ef57afbe843057e0c6c9ecd5a0f3077bde89f0db71cbd484f9a534041228f14",
+        "bytes": 5427156
+      },
+      {
+        "path": "global-dependency-preparation-review.json",
+        "sha256": "facda12ec09ecf7fe851c7402bcbc6a59081eb766daaf2b6cc9e688f00a8047d",
+        "bytes": 368
+      }
+    ],
+    "specific_adjudications": [
+      {
+        "path": "consistency-regressions/galen-adjudication/globaldep-candidate-adjudication-binding.json",
+        "sha256": "3fdd5d9c0d017ec417d27ba22e8bf696ab6ef02814d2449cbe6e6621addfbc0f",
+        "bytes": 1091
+      },
+      {
+        "path": "consistency-regressions/ore_ont_3545/globaldep-candidate-adjudication-binding.json",
+        "sha256": "457f3ad1e8f67826b8e7d220f549f12d95d4380e68aaff3945ce75d68189dcec",
+        "bytes": 1281
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/globaldep-candidate-adjudication-binding.json",
+        "sha256": "0e1f6678eeadb87265c8867ed21d933ad3db6eee9b5e7b545a59460d2fdb5021",
+        "bytes": 3189
+      }
+    ],
+    "adjudication_proof_files": [
+      {
+        "path": "consistency-regressions/galen-adjudication/adjudication.json",
+        "sha256": "e2bc7f30f3e6baae07c8fed5ddc2f9e87cc2be0b4c0f25d8eb3920ae66fb2019",
+        "bytes": 20174
+      },
+      {
+        "path": "consistency-regressions/galen-adjudication/source-subset-evidence.tar.gz",
+        "sha256": "a2d133d80c80aeb1284914ac3dd1ea09a56152244c8c4ea6b479b4091c054009",
+        "bytes": 1567957
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/CheckSubclass.java",
+        "sha256": "185be115e7c9e0cc61524f8b10292eb716296e04d869c49f4634acc1ebe9edc1",
+        "bytes": 1248
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/adjudicated-expected.json",
+        "sha256": "fc160b6ed2e03eee779c12dcacd33e2bdd622ad097729c416b57da365295fc7b",
+        "bytes": 1388
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/adjudicated-expected.nodes.tsv.gz",
+        "sha256": "efd0307537f271f75f8d7aee28c7c649a564ad0c8f2f9ed61b6977e809bfa6c8",
+        "bytes": 1690351
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/adjudication.json",
+        "sha256": "f6424b744d24712c0cdd0806620f64b5eb6c0327c6bc82ac096749ed29d39be8",
+        "bytes": 2781
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/artifact-manifest.json",
+        "sha256": "f9f63ba8342c399bde62e816bc63d8aa5045851fd592a5701cad7f02cdc8b5f4",
+        "bytes": 3153
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/elk.nodes.tsv.gz",
+        "sha256": "ec4c28432d80986313be121618d870f1d37e53bbba5c5957ab68635ce2030938",
+        "bytes": 1116636
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/elk.normalized.json.gz",
+        "sha256": "15f95568b064abb3281ec9e43a809f57ff3cce59013ff0d50557b7766166d02c",
+        "bytes": 1379323
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0043630/explanation.ofn.gz",
+        "sha256": "b47ee0a07282fe5ea883400ce0b78144429c375d95688f00fa36260268d8ee54",
+        "bytes": 199579
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0043630/explanation.tsv",
+        "sha256": "7ba11049d96be8c0775e80ebf9d7a7261e61ae5303f0d74f082ecd4a36129b02",
+        "bytes": 1283
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0043630/receipt.json",
+        "sha256": "b753647a4bec113c0f5fb5d8433d358b1828481a4d4f95bf393e6523a6fadb92",
+        "bytes": 792
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0043630/verification.json",
+        "sha256": "2dd2986bab6717704527b24d830836a90ffab083eeed6708839fb4604fdc8f08",
+        "bytes": 735
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0043630/verification.stderr",
+        "sha256": "9ddf3781b5e43a87b1d67caac2bc4b251f9ce8d77c509c8369129f4b0359fd55",
+        "bytes": 210
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0043630/verification.stdout",
+        "sha256": "ed433c194cfe1ca1406ba28bab2c67744daad689f801418907fe4ecd3adf1a9c",
+        "bytes": 49
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0048610/explanation.ofn.gz",
+        "sha256": "6b50928a024909ce2c4a813ae348180c20ffddf4b49d86e554f339694e998838",
+        "bytes": 199788
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0048610/explanation.tsv",
+        "sha256": "14c25ae9a22ed646a69ebcfad771a7058dcc31650b424030cdfd355660635c1c",
+        "bytes": 2269
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0048610/receipt.json",
+        "sha256": "0fba88cf597fa916aa3209d9923388b133c506c8f7d5a98353106b3d3860f3d8",
+        "bytes": 792
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0048610/verification.json",
+        "sha256": "96768dbd7ebecfeb539fb2cce74f2ef1d38753406c7eba4ab4779f4de922ed4d",
+        "bytes": 735
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0048610/verification.stderr",
+        "sha256": "9ddf3781b5e43a87b1d67caac2bc4b251f9ce8d77c509c8369129f4b0359fd55",
+        "bytes": 210
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-GO_0048610/verification.stdout",
+        "sha256": "ed433c194cfe1ca1406ba28bab2c67744daad689f801418907fe4ecd3adf1a9c",
+        "bytes": 49
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-probe/explanation.ofn.gz",
+        "sha256": "656727a4978a286ec56ba001d4fa8073d1b8d804c90a7a5db12595f233c8a8e1",
+        "bytes": 199619
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-probe/explanation.tsv",
+        "sha256": "579e22286acbf605bbbaff32b1a92f78b50436fac5312069e9f23756af6eff7b",
+        "bytes": 1385
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-probe/receipt.json",
+        "sha256": "708a386b239451c7a64e014f8e43a9918ea0cee155564bbde5a8840a835a6c3e",
+        "bytes": 782
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-probe/verification.json",
+        "sha256": "328b72b35274937d6069442731b457faddfc579754676ffa55048f1001e307e4",
+        "bytes": 731
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-probe/verification.stderr",
+        "sha256": "9ddf3781b5e43a87b1d67caac2bc4b251f9ce8d77c509c8369129f4b0359fd55",
+        "bytes": 210
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/hermit-probe/verification.stdout",
+        "sha256": "ed433c194cfe1ca1406ba28bab2c67744daad689f801418907fe4ecd3adf1a9c",
+        "bytes": 49
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/km.nodes.tsv.gz",
+        "sha256": "2f783e258167788696a7fbc2d066e1a8e6d6e8959a8b056aeb89d243287a77e4",
+        "bytes": 1690333
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/reconstruct.log",
+        "sha256": "63ded6790ff2e16d89973628342b2ab5c74633ef1fd9ae9329a68a39abec1d8f",
+        "bytes": 1294
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/reconstruct.py",
+        "sha256": "c43bb14225e6fc7e8802837c680b882faf7d90d45331d66f6f4996f4fedb6d02",
+        "bytes": 2502
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/source.owl.gz",
+        "sha256": "7f4dc64ec526da8b6a2ddf7c059f69dd36f44c28d34b34e8c965a977f89f8474",
+        "bytes": 841151
+      },
+      {
+        "path": "consistency-regressions/ore4669-adjudication/whelk.nodes.tsv.gz",
+        "sha256": "2acd8037270331fcfd84a30973f134b6462cb76f328dda1ed07864604ce9b83d",
+        "bytes": 1116638
+      },
+      {
+        "path": "consistency-regressions/ore_ont_3545/finite-model-witness.json",
+        "sha256": "cb32a8b6a9d0ab4eca68df6eac3268f134ea1f24f24a051cca94b60e2aca02ff",
+        "bytes": 753925
+      },
+      {
+        "path": "consistency-regressions/ore_ont_3545/finite-model.json",
+        "sha256": "e76bb7790bdfb618e5c9ac01a74dcbab46ee851b30e2c4032835f8b6e87d12a1",
+        "bytes": 1771
+      },
+      {
+        "path": "consistency-regressions/ore_ont_3545/finite-model.log",
+        "sha256": "ff2665332663891600d1a3909d2cd9bf4b911c46d6154cda56bef77746102902",
+        "bytes": 1651
+      },
+      {
+        "path": "consistency-regressions/ore_ont_3545/finite-model.py",
+        "sha256": "844b2a72905eb3d01031ea08db99423769c741d1083fa2f1875288cf01f69948",
+        "bytes": 6260
+      }
+    ],
+    "classification_regression_reviews": [
+      {
+        "path": "globaldep-classification-regression-review-round1.json",
+        "sha256": "aec61786f6546dccd6f311b679ac518640350b6d82d6553090238d10f8895995",
+        "bytes": 6457
+      },
+      {
+        "path": "globaldep-ore7877-full-benchmark-review.json",
+        "sha256": "36865d5f0529257aed292e74501d9db5515074dd45ff5e4c91f68aeb0ce51749",
+        "bytes": 4435
+      }
+    ],
+    "classification_measurement_reviews": [
+      {
+        "path": "globaldep-classification-measurement-completion.json",
+        "sha256": "d40f53cd47d9f3916f44296773593e39febc20d40981312fbc841707e98efbeb",
+        "bytes": 252493
+      },
+      {
+        "path": "globaldep-classification-terminal-outcome-review.json",
+        "sha256": "59da4985002044995561056f2390b9c0837703730e023f49efa7cee7d85e02bb",
+        "bytes": 16612
+      }
+    ],
+    "incremental_regression_measurements": [
+      {
+        "path": "globaldep-ore5295-measurement-completion.json",
+        "sha256": "f8690c14958548410898e9eb3a00b672589f8b2a093eb70e195819639cffa5b3",
+        "bytes": 10543
+      }
+    ],
+    "classification_audit_reviews": [
+      {
+        "path": "globaldep-classification-audit-completion.json",
+        "sha256": "1ee099aa9f8a4c585c9058471e9540fc037eb168ee362bf12c9937891bb66e2f",
+        "bytes": 262903
+      },
+      {
+        "path": "globaldep-all-baseline-disagreement-review-final.json",
+        "sha256": "e3f474745bc94ca3ec0dec8b5edca26607c9506352b6036608e48a2383c6db03",
+        "bytes": 575784
+      }
+    ],
+    "reviewed_classification_report": [
+      {
+        "path": "classification-report-v4-full-global-dependency-53234888.json",
+        "sha256": "640d6458f54986e94a281c1a885553cc300355ddd94550cf49ce4a35b03ec4d3",
+        "bytes": 7127561
+      },
+      {
+        "path": "globaldep-classification-report-statistics-review.json",
+        "sha256": "59b6528068a9d7adcfc73f8208da76672bd36406f726e2158b2b68494637c62d",
+        "bytes": 263064
+      },
+      {
+        "path": "globaldep-classification-conditional-review.json",
+        "sha256": "acadb7b615ae8735e8b457a2c69e8dcc45c77a3f0e713c4943c3e59b8d97e040",
+        "bytes": 68157
+      },
+      {
+        "path": "globaldep-classification-report-review.json",
+        "sha256": "ca04aefbaf094a89b0621e4f33626c650bf5598a1e0f2cf7aff938dac3b8a925",
+        "bytes": 3239
+      }
+    ],
+    "incremental_measurement_completion": [
+      {
+        "path": "globaldep-update-measurement-completion.json",
+        "sha256": "18eb58c9fae28faf1796a0deae4629272c86a4c76fbdb6f97d7271523747f579",
+        "bytes": 228579
+      },
+      {
+        "path": "globaldep-update-cold-process-error-review.json",
+        "sha256": "ec456c36a4fd9264bac5cae7108f73b6fe548bb8b317fd775e2d99b9df5d8325",
+        "bytes": 6286
+      },
+      {
+        "path": "globaldep-retained-failure-review.json",
+        "sha256": "bdabcbd910b1706f4b52bc5c0365024aaa1d04de0583484c56a97124075e3711",
+        "bytes": 25802
+      }
+    ],
+    "incremental_regression_review": [
+      {
+        "path": "globaldep-ore5295-full-benchmark-review.json",
+        "sha256": "b0427617783ec6f1a3eb154711569b342842034a76cc06abbaf54c567dacd19d",
+        "bytes": 29857
+      }
+    ],
+    "incremental_reuse_measurement_review": [
+      {
+        "path": "globaldep-km-reuse-measurement-review.json",
+        "sha256": "75db6e28d4aa1ba584c04410a5ab98ebab638003d4019f90fb1a7e98dd1157ff",
+        "bytes": 639788
+      }
+    ],
+    "incremental_review_scripts": [
+      {
+        "path": "global-dependency-validation/review-globaldep-update-report-metadata.py",
+        "sha256": "50bebf9c264d132b50fdff681efdcae61e0355bdfa4c4492902a6a0c9e1a06f6",
+        "bytes": 10703
+      },
+      {
+        "path": "global-dependency-validation/verify-globaldep-update-audit-completion.py",
+        "sha256": "d301d7a1a7900f02b5426a0c554f37716f25dc2436726e9d6fde483636ecef01",
+        "bytes": 3256
+      },
+      {
+        "path": "global-dependency-validation/review-globaldep-ore5295-full.py",
+        "sha256": "fe47a66b555a5c9b532e7ff7f02341f13c1b6d6946789ff09505baa3f0084d44",
+        "bytes": 2718
+      },
+      {
+        "path": "global-dependency-validation/verify-globaldep-update-completion.py",
+        "sha256": "ece1151ad4c371217f76fbfc638ce952ef75e0a58af0cdaa91be90b329020414",
+        "bytes": 4083
+      },
+      {
+        "path": "global-dependency-validation/review-globaldep-unavailable-final.py",
+        "sha256": "d5f195b10aec1c3cc112100d25dd3c3376937199f4b9c76bf0ffe828c10c8cef",
+        "bytes": 1636
+      },
+      {
+        "path": "global-dependency-validation/review-globaldep-incremental-all-baseline-final.py",
+        "sha256": "9df23f5dd128d7137e6f39cf4f10dbbe58761e67988223a462cbc9cce1b234dd",
+        "bytes": 4160
+      }
+    ],
+    "incremental_partial_all_baseline_triage": [
+      {
+        "path": "globaldep-incremental-all-baseline-triage-round1.json",
+        "sha256": "57f33af827613e8f5004a420639e28eb263816b9fb0d27e74ff86b00b0ccd807",
+        "bytes": 77288
+      }
+    ],
+    "incremental_failure_reviews": [
+      {
+        "path": "globaldep-ore10517-retained-error-review.json",
+        "sha256": "86a8f3946dca858c36fa10a60920cdffc365a07329cfa7b673896883fe93066e",
+        "bytes": 1662
+      }
+    ],
+    "incremental_independent_evidence_gaps": [
+      {
+        "path": "globaldep-ore1194-all-revisions-evidence-gap.json",
+        "sha256": "b5818548c3cc91e1452c8e93d2219dfb2fad32d6c37af7c50ffce7a350085072",
+        "bytes": 42552
+      }
+    ],
+    "incremental_audit_completion": [
+      {
+        "path": "globaldep-update-audit-completion.json",
+        "sha256": "48c2380bf5fea512894e970ace2bc2bdc467a112abd7000a66e7bf3cb9a5cc7f",
+        "bytes": 70746
+      },
+      {
+        "path": "globaldep-update-unavailable-review-final.json",
+        "sha256": "5d3ec119ab0a9791226b1236778ad3a19563b75e9fe9c9d37377e5864b598883",
+        "bytes": 53973
+      }
+    ],
+    "evidence_commit_verification": [
+      {
+        "path": "global-dependency-validation/evidence-gap-commit-verification.json",
+        "sha256": "3c69da94300b7c463a5b342a3e6b9f3b27daee3f2cf386c5ff4640df1ed69a5d",
+        "bytes": 478
+      }
+    ],
+    "incremental_all_baseline_review": [
+      {
+        "path": "globaldep-incremental-all-baseline-review-final.json",
+        "sha256": "773d9aa86de99ef03e6e27f656ba99078432633ba9be6240c78f29f769380766",
+        "bytes": 1177677
+      }
+    ],
+    "final_incremental_and_combined_reports": [
+      {
+        "path": "updates-report-v5-full-global-dependency-53234889.json",
+        "sha256": "559a03d9635cd257ec776e6200b9b0153f80693d9fd345f8082f3e7c447369f1",
+        "bytes": 4871006
+      },
+      {
+        "path": "globaldep-update-report-metadata-review.json",
+        "sha256": "79d693175446592706bcc39bff40b2b7b63212f1582253acc65404a8aff6e0c8",
+        "bytes": 1384449
+      },
+      {
+        "path": "globaldep-update-baseline-validation-failures.json",
+        "sha256": "50e57d53cf41e28c7ec557113b33f1353a20c9dec7e9fc7a9f6debea6298f183",
+        "bytes": 110932
+      },
+      {
+        "path": "globaldep-update-report-review.json",
+        "sha256": "645cc98df9ddbd3a914c9ed32f1f6b27ab0d2f8707764236cee46f9781073f18",
+        "bytes": 6530
+      },
+      {
+        "path": "benchmark-report-53234931.md",
+        "sha256": "51c18d7defb71d8b30a4dd6361f0d42312c7dc51ad6a993fb2f83e6ea45719ac",
+        "bytes": 16093
+      },
+      {
+        "path": "globaldep-combined-report-review.json",
+        "sha256": "a5910e42353abca01e9a9978fadb688b39b1e4306d520931fc08de52b3cac2bb",
+        "bytes": 2307
+      },
+      {
+        "path": "globaldep-final-report-job-completion.json",
+        "sha256": "ee04ac1ff016603ede68db66262be7f53f8043b71e6d740c8c3233886e4a397e",
+        "bytes": 501
+      }
+    ]
+  },
+  "pending": [
+    "Final evidence commit, exact tagged-source verification, tag/push and publication verification"
+  ]
+}

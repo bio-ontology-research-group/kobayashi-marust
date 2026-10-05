@@ -1,0 +1,136 @@
+{
+  "observed_at": "2026-10-05T04:50:11.490184+00:00",
+  "scope": "Current classification regression outputs, source-bound independent agreements and exact comparison identity against prior full report. Timing measurements are not reused.",
+  "cases": [
+    {
+      "ontology": "ore_ont_6134",
+      "current_audit": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/44/ore_ont_6134/audit.json",
+      "current_audit_sha256": "a4cedfe4423fb4c226510388c7183d026f60093c8ccf152d471a3324e3841c79",
+      "previous_audit_sha256": "376b340fd7d9c033c2c44eeec1966f710ba27c0365a72a6c6971d13e360b6b85",
+      "current_km_outcome": {
+        "measurement_status": "executed_unvalidated",
+        "measurement_receipt_sha256": "e4ac178fa1104528263ea7f868b0a6c5f20be2ee69be35f4107179f096f0e651",
+        "status": "canonicalized_requires_comparison",
+        "canonical_sha256": "7f072dc9478af3e522399ac1da75fd684c5faca2fc5b4b3485b9c1747c6c8494"
+      },
+      "comparisons_identical_including_source_and_output_hashes": true,
+      "comparisons": [
+        {
+          "source_sha256": "659472e2958b0851cb37025b6687894b0dc85c4543c118636ed1451563d0213d",
+          "left_raw_sha256": "e64d13a27cff6f51b6479121207a7c96f8e45a1534472e41662b0af92749e801",
+          "right_raw_sha256": "cac9c824c100d5c285133abc6e674e7a43c486172ba95ab041c24d2b6d69a786",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "taxonomy_disagreement",
+          "agreement": false,
+          "scope": "consistency_and_taxonomy",
+          "left": "elk",
+          "right": "km"
+        },
+        {
+          "source_sha256": "659472e2958b0851cb37025b6687894b0dc85c4543c118636ed1451563d0213d",
+          "left_raw_sha256": "cac9c824c100d5c285133abc6e674e7a43c486172ba95ab041c24d2b6d69a786",
+          "right_raw_sha256": "1e7fa91a5b959c10ef36cacb53c73abb202730f3aeef912093f6db2d0c6d8f5c",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy",
+          "left": "km",
+          "right": "konclude"
+        },
+        {
+          "source_sha256": "659472e2958b0851cb37025b6687894b0dc85c4543c118636ed1451563d0213d",
+          "left_raw_sha256": "cac9c824c100d5c285133abc6e674e7a43c486172ba95ab041c24d2b6d69a786",
+          "right_raw_sha256": "d1a3818178f96c918575aef41eb35b028594579c9a1dc1d825ec7edd2e4a4619",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "taxonomy_disagreement",
+          "agreement": false,
+          "scope": "consistency_and_taxonomy",
+          "left": "km",
+          "right": "whelk"
+        }
+      ]
+    },
+    {
+      "ontology": "ore_ont_6333",
+      "current_audit": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/45/ore_ont_6333/audit.json",
+      "current_audit_sha256": "2dec1b9da18d9c96f397f16ec1963d9abb5bbdf774d827032d3830dba3060cfe",
+      "previous_audit_sha256": "491f8e3c78c1d7e78ed09d08ef9241abe93e720a7c2ab7a7ee3fc90528dace75",
+      "current_km_outcome": {
+        "measurement_status": "executed_unvalidated",
+        "measurement_receipt_sha256": "ca55a924d48ebf5689504366bfe1ee13b7b70ca9aabb05b38ac0c554f1e747e4",
+        "status": "canonicalized_requires_comparison",
+        "canonical_sha256": "ea928a97ed4ec098cdd8e4828d4f2f4388726c68d137b1db6985c078aa347caa"
+      },
+      "comparisons_identical_including_source_and_output_hashes": true,
+      "comparisons": [
+        {
+          "source_sha256": "6f742ce78951a515b2fb413e5af3bfb9aeca6faaed766c952199e2d98289911f",
+          "left_raw_sha256": "973cb765aaa81ce7194b28467f7516b79ac8e51952fc7f923565b9418589e7a4",
+          "right_raw_sha256": "85a0c1e335c4f96230a1f2c0fa465a3e4aa9385e5b159179c77ce87571c617ec",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "taxonomy_disagreement",
+          "agreement": false,
+          "scope": "consistency_and_taxonomy",
+          "left": "elk",
+          "right": "km"
+        },
+        {
+          "source_sha256": "6f742ce78951a515b2fb413e5af3bfb9aeca6faaed766c952199e2d98289911f",
+          "left_raw_sha256": "83f098239e509627d8bccbbd8c03de71c51b76b9f76578e7f565c9110233f4e2",
+          "right_raw_sha256": "85a0c1e335c4f96230a1f2c0fa465a3e4aa9385e5b159179c77ce87571c617ec",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy",
+          "left": "jfact",
+          "right": "km"
+        },
+        {
+          "source_sha256": "6f742ce78951a515b2fb413e5af3bfb9aeca6faaed766c952199e2d98289911f",
+          "left_raw_sha256": "85a0c1e335c4f96230a1f2c0fa465a3e4aa9385e5b159179c77ce87571c617ec",
+          "right_raw_sha256": "60257eb81d1b379e48e462c9053a12cda70865c71f200f0294c575258fef9b2b",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "taxonomy_disagreement",
+          "agreement": false,
+          "scope": "consistency_and_taxonomy",
+          "left": "km",
+          "right": "konclude"
+        },
+        {
+          "source_sha256": "6f742ce78951a515b2fb413e5af3bfb9aeca6faaed766c952199e2d98289911f",
+          "left_raw_sha256": "85a0c1e335c4f96230a1f2c0fa465a3e4aa9385e5b159179c77ce87571c617ec",
+          "right_raw_sha256": "251eec873fa8532aba9e9338c591ae8c11633b548a620b7d51c77bac015c34ac",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy",
+          "left": "km",
+          "right": "openllet"
+        },
+        {
+          "source_sha256": "6f742ce78951a515b2fb413e5af3bfb9aeca6faaed766c952199e2d98289911f",
+          "left_raw_sha256": "85a0c1e335c4f96230a1f2c0fa465a3e4aa9385e5b159179c77ce87571c617ec",
+          "right_raw_sha256": "59f18ed97ab35ae6cb00c4b054d489962c495cdf3830d02c0fc7bacacf5790e7",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "taxonomy_disagreement",
+          "agreement": false,
+          "scope": "consistency_and_taxonomy",
+          "left": "km",
+          "right": "whelk"
+        }
+      ]
+    },
+    {
+      "ontology": "ore_ont_7877",
+      "status": "audit_not_yet_available"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+M	schema	1
+M	conversion	konclude-compatible-serialization-v2
+M	converter_sha256	42a4aadc8807e7d18064a5c20b05db657858565de2bef31597cca47df0ea178a
+M	serialization	owlxml
+M	source	/ibex/project/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/konclude/external/oracle-000002.ofn
+M	source_sha256	15761376d0f54ea2b0ad0d1d337ef06e49efa1b2851238b7eb0c8760cbf0835d
+M	output_sha256	2055e28baac09d7886a426c3f869649cd6a432bd4baf8f5927ce91c3060b9519
+M	axioms	4
+M	logical_axioms	1
+M	signature_entities	3
+M	roundtrip_logical_axioms_equal	true
+M	roundtrip_alpha_renamed_rules	0
+M	roundtrip_annotation_axiom_delta	0
+M	roundtrip_signature_equal	true
+Z	complete

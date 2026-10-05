@@ -5,8 +5,9 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lean_root="$repo_root/lean"
 engine_root="$repo_root/engine"
 bin_root="$lean_root/.lake/build/bin"
-target_root="$repo_root/.work/target"
-artifact_root="$repo_root/.work/artifacts"
+work_root="${KM_WORK_ROOT:-$repo_root/.work}"
+target_root="$work_root/target"
+artifact_root="$work_root/artifacts"
 surface_log="$artifact_root/ht-certification-surface.log"
 
 mkdir -p "$artifact_root"
@@ -179,6 +180,41 @@ for theorem in "${surface_theorems[@]}"; do
     }
 done
 
+for theorem in DLSafeRulePath.rolling_iff DLSafeRulePath.endpoint_compilation_iff DLSafeRuleForest.body_only_elimination DLSafeRuleForest.named_cover_exists DLSafeRuleForest.independent_branches; do
+    grep -Fq "'ContextCalculus.$theorem' does not depend on any axioms" "$surface_log" || {
+        echo "missing axiom-free DL-safe rule compiler lemma: $theorem" >&2
+        exit 1
+    }
+done
+
+grep -Fq "'ContextCalculus.Hypertableau.selectedSubjectPublicPublication' does not depend on any axioms" "$surface_log" || {
+    echo "missing selected-subject publication axiom audit" >&2
+    exit 1
+}
+
+# Require reports for the numeric support lemmas, including those using the
+# standard classical axioms. The global sorryAx check above still applies.
+for theorem in DatatypeValueEmbedding.has_value_iff DatatypeValueEmbedding.disjunctive_has_value_iff DatatypeValueEmbedding.subproperty_iff FunctionalDatatypeQuotient.functional_preserved FunctionalDatatypeQuotient.exists_preserved FunctionalDatatypeQuotient.forall_preserved FunctionalDatatypeQuotient.literal_assertion_preserved FunctionalDatatypeQuotient.cardinality_preserved FunctionalDatatypeQuotient.maximum_cardinality_preserved FunctionalDatatypeQuotient.exact_cardinality_preserved IntegerProfileCover.cut_cover IntegerProfileCover.same_profile IntegerProfileCover.predicate_family_cover IntegerProfileCover.deduplicated_family_cover IntegerProfileCover.bounded_cut_cover; do
+    grep -Fq "'ContextCalculus.$theorem'" "$surface_log" || {
+        echo "missing numeric-support axiom audit: $theorem" >&2
+        exit 1
+    }
+done
+
+for theorem in atLeast_congr class_preserved tbox_preserved abox_preserved; do
+    grep -Fq "'ContextCalculus.DatatypeClassTransport.$theorem' does not depend on any axioms" "$surface_log" || {
+        echo "missing axiom-free datatype class transport audit: $theorem" >&2
+        exit 1
+    }
+done
+
+for theorem in sound model_preserved; do
+    grep -Fq "'ContextCalculus.SourceSubsumerClosure.$theorem' does not depend on any axioms" "$surface_log" || {
+        echo "missing axiom-free source-closure audit: $theorem" >&2
+        exit 1
+    }
+done
+
 for checker in "${checkers[@]}"; do
     [[ -x "$bin_root/$checker" ]] || {
         echo "missing Lean checker: $bin_root/$checker" >&2
@@ -189,6 +225,28 @@ done
 (
     cd "$engine_root"
     export CARGO_TARGET_DIR="$target_root"
+    # Route-selection unit tests run before certificate-path overrides below.
+    cargo test --release --lib orchestrate::race::tests -- --test-threads=1
+    cargo test --release --lib reflexivity_global_self_encoding_preserves_root_and_successor_consequences -- --test-threads=1
+    cargo test --release --lib singleton_value_identity_rejects_distinct_successors -- --nocapture
+    cargo test --release --lib finite_datatype_cover_controls_cardinality_and_missing_evidence_defers -- --nocapture --test-threads=1
+    cargo test --release --lib bridge_plain_string_literal_is_the_xsd_string_abbreviation -- --nocapture --test-threads=1
+    cargo test --release --lib bridge_datetime_literals_preserve_owl_value_identity -- --nocapture --test-threads=1
+    cargo test --release --lib explicit_finite_cover_is_not_truncated_by_interval_enumeration_cap -- --nocapture --test-threads=1
+    cargo test --release --lib data_domain_zero_cardinality_forces_empty_property -- --nocapture --test-threads=1
+    cargo test --release --lib native_same_individual -- --nocapture --test-threads=1
+    cargo test --release --lib original_data_assertions_preserve_value_identity_and_functional_clashes -- --nocapture --test-threads=1
+    cargo test --release --lib source_closure_ -- --test-threads=1
+    cargo test --release --lib source_post_closure_ -- --test-threads=1
+    cargo test --release --lib definition_containment_subsumers_reach_the_classification_output -- --test-threads=1
+    cargo test --release --lib orchestrate::public_subjects::tests -- --test-threads=1
+    cargo test --release --lib production_subject_subset_matches_full_taxonomy_projection -- --test-threads=1
+    cargo test --release --lib frontend::data_abox_projection:: -- --test-threads=1
+    cargo test --release --lib frontend::ground -- --test-threads=1
+    cargo test --release --lib frontend::rule_paths:: -- --test-threads=1
+    cargo test --release --lib orchestrate::data_source:: -- --test-threads=1
+    cargo test --release --test data_abox_projection -- --test-threads=1
+    cargo test --release --lib orchestrate::data_source:: -- --test-threads=1
     export KM_HT_TEST_REGULAR_LEAN_CHECKER="$bin_root/ht-regular-cert-check"
     export KM_HT_TEST_LEAN_PROJECTION_CHECKER="$bin_root/ht-projection-cert-check"
     export KM_HT_LEAN_FRONTIER_CHECKER="$bin_root/ht-address-refinement-check"

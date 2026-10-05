@@ -32,6 +32,7 @@ fn nom_of(ind: &str) -> String {
 enum AboxFact {
     Concept(String, String),      // q(a)
     Role(String, String, String), // r(a,b)
+    NegativeRole(String, String, String), // ¬r(a,b)
     Same(String, String),         // a ≈ b
     Diff(String, String),         // a ≠ b  (recorded, not encoded — see below)
 }
@@ -69,6 +70,10 @@ fn abox_fact(c: &JClause) -> Option<AboxFact> {
         };
     }
     if c.head.is_empty() && c.body.len() == 1 {
+        if let JAtom::Role { role, source, target } = &c.body[0] {
+            return Some(AboxFact::NegativeRole(role.clone(),
+                ind_name(source)?.to_owned(), ind_name(target)?.to_owned()));
+        }
         if let JAtom::Eq { left, right } = &c.body[0] {
             return Some(AboxFact::Diff(
                 ind_name(left)?.to_string(),
@@ -84,6 +89,39 @@ fn rule_term_name(t: &JRuleTerm) -> (bool, &str) {
         JRuleTerm::Var { name } => (false, name.as_str()),
         JRuleTerm::Ind { name } => (true, name.as_str()),
     }
+}
+
+fn source_transitive_roles(clauses: &[JClause]) -> HashSet<String> {
+    let mut result = HashSet::new();
+    for clause in clauses {
+        let ([JAtom::Role { role: r, source: JTerm::Var { name: x }, target: JTerm::Var { name: y } },
+            JAtom::Role { role: s, source: JTerm::Var { name: yy }, target: JTerm::Var { name: z } }],
+            [JAtom::Role { role: t, source: JTerm::Var { name: xx }, target: JTerm::Var { name: zz } }])
+            = (clause.body.as_slice(), clause.head.as_slice()) else { continue; };
+        let path = |start: &str, middle: &str, end: &str| {
+            start == xx && end == zz && start != middle && middle != end && start != end
+        };
+        // Clause bodies are conjunctions and may be sorted after centering
+        // their shared variable. Either atom can be the first path edge.
+        if r == s && s == t && ((y == yy && path(x, y, z)) || (z == x && path(yy, z, y))) {
+            result.insert(r.clone());
+        }
+    }
+    result
+}
+
+/// Exact source consequence, certified by transitive_rule_redundant. Extra
+/// body guards remain arbitrary: only the two entailing edges are inspected.
+fn rule_redundant_under_transitivity(rule: &JRule, transitive: &HashSet<String>) -> bool {
+    !rule.head.is_empty() && rule.head.iter().all(|head| {
+        let JRuleAtom::Role { role, source, target } = head else { return false; };
+        transitive.contains(role) && rule.body.iter().any(|first| {
+            let JRuleAtom::Role { role: r, source: left, target: middle } = first else { return false; };
+            r == role && left == source && rule.body.iter().any(|second|
+                matches!(second, JRuleAtom::Role { role: s, source: joined, target: right }
+                    if s == role && joined == middle && right == target))
+        })
+    })
 }
 
 /// Build the HT clause for one DL-safe rule (`ht_rules` path). Each distinct rule
@@ -699,6 +737,13 @@ pub struct NativeIndividualJson {
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 #[serde(default)]
 pub struct TInput {
+    /// Source-derived role sorts for finite rule-model verification only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_data_roles: Option<Vec<bool>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_source_classes: Option<crate::frontend::profile::RuleSourceClasses>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_source_abox: Option<crate::frontend::profile::RuleSourceAbox>,
     pub concepts: Vec<String>,
     pub roles: Vec<String>,
     pub clauses: Vec<HtClause>,
@@ -2845,6 +2890,159 @@ impl OrderedMM {
 // ---------------------------------------------------------------------------
 // convert
 // ---------------------------------------------------------------------------
+/// Validate a symbolic cardinality handoff before a native worker consumes it.
+/// This checks conversion coverage, not Lean certification or source parsing.
+pub fn validate_symbolic_cardinality_handoff(
+    input: &TInput,
+    source_bounds: &[crate::json_io::CardMeta],
+) -> Result<(), String> {
+    if input.dropped != 0 || !input.fenced.is_empty() {
+        return Err(format!("symbolic handoff has {} dropped clauses and {} fenced constructs",
+            input.dropped, input.fenced.len()));
+    }
+    if source_bounds.is_empty() || input.card_defs.len() != source_bounds.len() || !input.number {
+        return Err("symbolic handoff lacks complete native cardinality definitions".into());
+    }
+    let expected: std::collections::HashSet<_> = source_bounds.iter().map(|bound|
+        (bound.marker.as_str(), bound.min, bound.n, bound.role.as_str(), bound.filler.as_str())).collect();
+    if expected.len() != source_bounds.len() {
+        return Err("symbolic handoff contains duplicate source bounds".into());
+    }
+    let mut actual = std::collections::HashSet::new();
+    for bound in &input.card_defs {
+        let (Some(marker), Some(role), Some(filler)) = (
+            input.concepts.get(bound.marker), input.roles.get(bound.role), input.concepts.get(bound.filler),
+        ) else { return Err("symbolic handoff has an invalid cardinality index".into()); };
+        if !actual.insert((marker.as_str(), bound.min, bound.n, role.as_str(), filler.as_str())) {
+            return Err("symbolic handoff contains duplicate native bounds".into());
+        }
+    }
+    if actual != expected {
+        return Err("symbolic handoff changed a cardinality marker, role, filler, kind or bound".into());
+    }
+    Ok(())
+}
+
+/// Checked conversion for symbolic normalization; certified publication must
+/// still validate the source and execution evidence independently.
+pub fn convert_symbolic_cardinality(
+    clauses: &[JClause],
+    rbox: Option<&[Vec<String>]>,
+    named: &std::collections::HashSet<String>,
+    hooks: &crate::frontend::normalise::GroundHooks,
+    abox: &crate::json_io::NominalAboxMeta,
+    rules: &[JRule],
+    ht_rules: bool,
+) -> Result<TInput, String> {
+    if !hooks.native_cardinalities_match_provenance() {
+        return Err("symbolic conversion lacks valid cardinality provenance".into());
+    }
+    let mut input = convert(clauses, rbox, named, &hooks.cardinalities,
+        &hooks.definers, &hooks.source_axioms, true, rules, ht_rules);
+    if !install_nominal_abox(&mut input, abox) {
+        return Err("symbolic conversion could not install the complete typed ABox".into());
+    }
+    validate_symbolic_cardinality_handoff(&input, &hooks.cardinalities)?;
+    Ok(input)
+}
+
+/// Source-mode bridge handoff: bounds are reconstructed from the retained
+/// source/definer DAG, rather than the fast worker's `card_defs` vector.
+/// This verifies payload preservation only; bridge admission and certified
+/// publication must independently check datatype and execution semantics.
+fn symbolic_source_names(hooks: &crate::frontend::normalise::GroundHooks) -> (
+    std::collections::BTreeSet<String>, std::collections::BTreeSet<String>,
+) {
+    use crate::frontend::syntax::{Concept as C, Role as R};
+    let mut concepts = std::collections::BTreeSet::new();
+    let mut roles = std::collections::BTreeSet::new();
+    let mut pending = Vec::new();
+    for axiom in &hooks.source_axioms {
+        pending.extend([&axiom.left, &axiom.right]);
+    }
+    while let Some(concept) = pending.pop() {
+        let role = match concept {
+            C::Name(name) => { concepts.insert(name.clone()); None },
+            C::Not(child) => { pending.push(child); None },
+            C::And(children) | C::Or(children) => { pending.extend(children); None },
+            C::Exists(role, child) | C::Forall(role, child)
+            | C::AtLeast(_, role, child) | C::AtMost(_, role, child) => {
+                pending.push(child); Some(role)
+            },
+            C::HasSelf(role) => Some(role),
+            C::Top | C::Bottom | C::Nominal(_) => None,
+        };
+        if let Some(R::Name(name) | R::Inverse(name)) = role { roles.insert(name.clone()); }
+    }
+    for definition in &hooks.definers {
+        concepts.insert(definition.marker.clone());
+        concepts.extend(definition.operands.iter().cloned());
+        if let Some(role) = &definition.role { roles.insert(role.clone()); }
+    }
+    (concepts, roles)
+}
+
+pub fn validate_symbolic_source_handoff(
+    input: &TInput,
+    hooks: &crate::frontend::normalise::GroundHooks,
+) -> Result<(), String> {
+    if !hooks.native_cardinalities_match_provenance() {
+        return Err("symbolic source handoff lacks valid bound provenance".into());
+    }
+    if input.dropped != 0 {
+        return Err("symbolic source handoff dropped source clauses".into());
+    }
+    if hooks.source_axioms.is_empty() || input.source_axioms != hooks.source_axioms
+        || input.definers != hooks.definers
+    {
+        return Err("symbolic source handoff changed source axioms or definer evidence".into());
+    }
+    let (concepts, roles) = symbolic_source_names(hooks);
+    let present_concepts: std::collections::HashSet<_> = input.concepts.iter().collect();
+    let present_roles: std::collections::HashSet<_> = input.roles.iter().collect();
+    if present_concepts.len() != input.concepts.len() || present_roles.len() != input.roles.len()
+        || concepts.iter().any(|name| !present_concepts.contains(name))
+        || roles.iter().any(|name| !present_roles.contains(name))
+    {
+        return Err("symbolic source handoff lost or duplicated a source symbol".into());
+    }
+    Ok(())
+}
+
+pub fn convert_symbolic_source(
+    clauses: &[JClause],
+    rbox: Option<&[Vec<String>]>,
+    named: &std::collections::HashSet<String>,
+    hooks: &crate::frontend::normalise::GroundHooks,
+    abox: &crate::json_io::NominalAboxMeta,
+) -> Result<TInput, String> {
+    if !hooks.native_cardinalities_match_provenance() {
+        return Err("symbolic source conversion lacks valid bound provenance".into());
+    }
+    let mut input = convert(clauses, rbox, named, &hooks.cardinalities,
+        &hooks.definers, &hooks.source_axioms, false, &[], false);
+    // Symbolic-only names need not occur in ordinary clauses. Preserve their
+    // identity without changing any existing numeric index.
+    let (concepts, roles) = symbolic_source_names(hooks);
+    let mut present: std::collections::HashSet<_> = input.concepts.iter().cloned().collect();
+    for concept in concepts {
+        if present.insert(concept.clone()) { input.concepts.push(concept); }
+    }
+    let mut present: std::collections::HashSet<_> = input.roles.iter().cloned().collect();
+    for role in roles {
+        if present.insert(role.clone()) { input.roles.push(role); }
+    }
+    let mut queried: std::collections::HashSet<_> = input.queries.iter().copied().collect();
+    for (index, concept) in input.concepts.iter().enumerate() {
+        if named.contains(concept) && queried.insert(index) { input.queries.push(index); }
+    }
+    if !install_nominal_abox(&mut input, abox) {
+        return Err("symbolic source conversion could not install typed ABox".into());
+    }
+    validate_symbolic_source_handoff(&input, hooks)?;
+    Ok(input)
+}
+
 pub fn convert(
     clauses: &[JClause],
     rbox: Option<&[Vec<String>]>,
@@ -2855,6 +3053,33 @@ pub fn convert(
     card_enabled: bool,
     rules: &[JRule],
     ht_rules: bool,
+) -> TInput {
+    convert_with_rule_abox(clauses, rbox, named, cardinalities, definers, source_axioms, card_enabled, rules, ht_rules, false)
+}
+
+/// Preserve the named graph for original-source rule-model verification even
+/// when finite grounding leaves no executable rules. Ordinary conversion keeps
+/// its historical rule-free behavior; this entry does not authorize publication.
+pub fn convert_rule_model(
+    clauses: &[JClause], named: &std::collections::HashSet<String>,
+    cardinalities: &[crate::json_io::CardMeta], definers: &[crate::json_io::DefinerMeta],
+    source_axioms: &[crate::json_io::SourceAxiomMeta], rules: &[JRule],
+) -> TInput {
+    convert_with_rule_abox(clauses, None, named, cardinalities, definers,
+        source_axioms, false, rules, true, true)
+}
+
+fn convert_with_rule_abox(
+    clauses: &[JClause],
+    rbox: Option<&[Vec<String>]>,
+    named: &std::collections::HashSet<String>,
+    cardinalities: &[crate::json_io::CardMeta],
+    definers: &[crate::json_io::DefinerMeta],
+    source_axioms: &[crate::json_io::SourceAxiomMeta],
+    card_enabled: bool,
+    rules: &[JRule],
+    ht_rules: bool,
+    retain_rule_abox: bool,
 ) -> TInput {
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
@@ -2894,7 +3119,9 @@ pub fn convert(
     // SWRL onts (2669/15516), where firing the rules is strictly more correct
     // (they are DL-safe Horn — sound — and reveal a real inconsistency the gold
     // reasoner misses; HermiT agrees. See docs/CONTESTED-GOLD.md).
-    let rules_active = ht_rules && !rules.is_empty();
+    // Source-model verification is the explicit exception: finite grounding
+    // may remove every rule while the original named graph is still required.
+    let rules_active = retain_rule_abox || (ht_rules && !rules.is_empty());
 
     // KM_HT_CARD: the frontend tagged each `≥n`/`≤n` restriction with a `CardMeta`.
     // Install the Konclude first-class number rule (built below into `card_defs`)
@@ -3793,6 +4020,19 @@ pub fn convert(
                         }],
                     });
                 }
+                AboxFact::NegativeRole(r, a, b) => {
+                    note(a, &mut individuals);
+                    note(b, &mut individuals);
+                    let na = ids.cid(&nom_of(a));
+                    let nb = ids.cid(&nom_of(b));
+                    let rr = ids.rid(r);
+                    ht.push(HtClause {
+                        body: vec![HAtom::Concept { neg: false, c: na, t: 0 },
+                            HAtom::Concept { neg: false, c: nb, t: 1 },
+                            HAtom::Role { r: rr, s: 0, t: 1 }],
+                        head: vec![],
+                    });
+                }
                 AboxFact::Same(a, b) => {
                     note(a, &mut individuals);
                     note(b, &mut individuals);
@@ -3837,7 +4077,13 @@ pub fn convert(
         // atom has no sound fast-Ht encoding, so its rule is DEFERRED wholesale and
         // counted in `dropped` (sound: a lost constraint never invents an inconsistency).
         let oguard = ids.cid(O_GUARD);
+        let redundant_transitivity = if std::env::var_os("KM_TRANSITIVE_RULE_REDUCE").is_some() {
+            source_transitive_roles(clauses)
+        } else { HashSet::new() };
         for rule in rules {
+            if rule_redundant_under_transitivity(rule, &redundant_transitivity) {
+                continue; // entailed by the retained source transitivity axiom
+            }
             match build_rule_clause(rule, &mut ids, oguard) {
                 Some((cl, inds)) => {
                     for a in &inds {
@@ -4202,6 +4448,9 @@ pub fn convert(
     nominal_ids.sort();
     nominal_ids.dedup();
     TInput {
+        rule_data_roles: None,
+        rule_source_classes: None,
+        rule_source_abox: None,
         concepts: ids.con_names,
         roles: ids.rol_names,
         clauses: ht,
@@ -4285,6 +4534,133 @@ mod native_abox_install_tests {
     use super::*;
     use crate::frontend::syntax::Concept;
     use crate::json_io::{NominalAboxMeta, NominalIndividualMeta, NominalRoleAssertionMeta};
+
+    #[test]
+    fn symbolic_inverse_source_names_keep_existing_ids_and_public_queries() {
+        use crate::frontend::{normalise::normalise_symbolic_cardinality,
+            syntax::{Axiom, Ontology, Role}};
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::SubClassOf(Concept::Name("A".into()), Concept::AtLeast(
+            3, Role::Inverse("r".into()), Box::new(Concept::Name("F".into())))));
+        let (clauses, _, hooks) = normalise_symbolic_cardinality(&ontology).unwrap();
+        let clauses: Vec<_> = clauses.into_iter().map(crate::frontend::clauses::clause_into_json).collect();
+        let named = ["A".to_owned(), "F".to_owned()].into_iter().collect();
+        let original = convert(&clauses, None, &named, &hooks.cardinalities,
+            &hooks.definers, &hooks.source_axioms, false, &[], false);
+        let input = convert_symbolic_source(&clauses, None, &named, &hooks,
+            &NominalAboxMeta::default()).unwrap();
+        assert_eq!(&input.concepts[..original.concepts.len()], original.concepts.as_slice());
+        assert_eq!(&input.roles[..original.roles.len()], original.roles.as_slice());
+        assert!(input.roles.iter().any(|role| role == "r"));
+        let filler = input.concepts.iter().position(|concept| concept == "F").unwrap();
+        assert!(input.queries.contains(&filler));
+        assert_eq!(input.queries.iter().copied().collect::<std::collections::HashSet<_>>().len(),
+            input.queries.len());
+    }
+
+    #[test]
+    fn symbolic_source_handoff_preserves_large_bounds_and_rejects_tampering() {
+        use crate::frontend::{normalise::normalise_symbolic_cardinality,
+            syntax::{Axiom, Ontology, Role}};
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::SubClassOf(Concept::Name("A".into()), Concept::AtLeast(
+            1_000_000, Role::Name("r".into()), Box::new(Concept::Name("F".into())))));
+        let (clauses, _, hooks) = normalise_symbolic_cardinality(&ontology).unwrap();
+        let clauses: Vec<_> = clauses.into_iter().map(crate::frontend::clauses::clause_into_json).collect();
+        let mut input = convert_symbolic_source(&clauses, None, &Default::default(), &hooks,
+            &NominalAboxMeta::default()).unwrap();
+        assert!(input.card_defs.is_empty());
+        assert!(validate_symbolic_source_handoff(&input, &hooks).is_ok());
+        let roles = input.roles.clone();
+        input.roles.clear();
+        assert!(validate_symbolic_source_handoff(&input, &hooks).is_err());
+        input.roles = roles;
+        let concepts = input.concepts.clone();
+        input.concepts.retain(|name| name != "F");
+        assert!(validate_symbolic_source_handoff(&input, &hooks).is_err());
+        input.concepts = concepts;
+        input.source_axioms.clear();
+        assert!(validate_symbolic_source_handoff(&input, &hooks).is_err());
+        input.source_axioms = hooks.source_axioms.clone();
+        input.definers.pop();
+        assert!(validate_symbolic_source_handoff(&input, &hooks).is_err());
+        input.definers = hooks.definers.clone();
+        input.dropped = 1;
+        assert!(validate_symbolic_source_handoff(&input, &hooks).is_err());
+    }
+
+    #[test]
+    fn datatype_relations_keep_singleton_equality_and_value_clashes() {
+        let names = ["__dt__string", "__dt__float",
+            "__dt__val__\"label\"^^xsd:string", "__dt__val__\"1.0\"^^xsd:float",
+            "__dt__val__\"2.0\"^^xsd:float"].into_iter().map(str::to_owned).collect();
+        let clauses: Vec<_> = crate::frontend::datatypes::datatype_relation_clauses(&names, 8)
+            .into_iter().map(crate::frontend::clauses::clause_into_json).collect();
+        let input = convert(&clauses, None, &Default::default(), &[], &[], &[], false, &[], false);
+        assert_eq!(input.dropped, 0);
+        for source in &clauses {
+            let mut variables = mk_varmap();
+            let mut encode = |atom: &JAtom| match atom {
+                JAtom::Concept { concept, term: JTerm::Var { name } } => HAtom::Concept {
+                    neg: false, c: input.concepts.iter().position(|c| c == concept).unwrap(),
+                    t: vnum(&mut variables, name),
+                },
+                JAtom::Eq { left: JTerm::Var { name: left }, right: JTerm::Var { name: right } } =>
+                    HAtom::Eq { s: vnum(&mut variables, left), t: vnum(&mut variables, right) },
+                _ => panic!("unexpected datatype relation atom"),
+            };
+            let body: Vec<_> = source.body.iter().map(&mut encode).collect();
+            let head: Vec<_> = source.head.iter().map(&mut encode).collect();
+            assert!(input.clauses.iter().any(|clause| clause.body == body && clause.head == head),
+                "datatype relation lost in conversion");
+        }
+    }
+
+    #[test]
+    fn symbolic_handoff_rejects_lost_or_changed_bounds_and_abox() {
+        let bounds = vec![crate::json_io::CardMeta {
+            marker: "A".into(), min: true, n: 1_000_000, role: "r".into(), filler: "F".into(),
+        }];
+        let mut input = TInput {
+            concepts: vec!["A".into(), "F".into()], roles: vec!["r".into()], number: true,
+            card_defs: vec![CardDefJson { marker: 0, min: true, n: 1_000_000, role: 0, filler: 1, exact: false }],
+            ..TInput::default()
+        };
+        assert!(validate_symbolic_cardinality_handoff(&input, &bounds).is_ok());
+        input.dropped = 714;
+        assert!(validate_symbolic_cardinality_handoff(&input, &bounds).is_err());
+        input.dropped = 0;
+        input.card_defs[0].n = 999_999;
+        assert!(validate_symbolic_cardinality_handoff(&input, &bounds).is_err());
+        input.card_defs[0].n = 1_000_000;
+        input.card_defs[0].filler = 2;
+        assert!(validate_symbolic_cardinality_handoff(&input, &bounds).is_err());
+        input.card_defs[0].filler = 1;
+        input.card_defs.push(input.card_defs[0].clone());
+        assert!(validate_symbolic_cardinality_handoff(&input, &bounds).is_err());
+        input.card_defs.clear();
+        assert!(validate_symbolic_cardinality_handoff(&input, &bounds).is_err());
+    }
+
+    #[test]
+    fn checked_symbolic_converter_preserves_bounds_and_rejects_datatype_decline() {
+        use crate::frontend::{normalise::normalise_symbolic_cardinality, syntax::{Axiom, Ontology, Role}};
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::SubClassOf(Concept::Name("A".into()), Concept::AtLeast(
+            3, Role::Name("r".into()), Box::new(Concept::Name("F".into())))));
+        let (clauses, _, hooks) = normalise_symbolic_cardinality(&ontology).unwrap();
+        let mut clauses: Vec<_> = clauses.into_iter().map(crate::frontend::clauses::clause_into_json).collect();
+        let named = ["A".to_string(), "F".to_string()].into_iter().collect();
+        let input = convert_symbolic_cardinality(&clauses, None, &named, &hooks,
+            &NominalAboxMeta::default(), &[], false).expect("complete native bounds");
+        assert_eq!(input.card_defs.len(), hooks.cardinalities.len());
+        assert_eq!(input.dropped, 0);
+        clauses.push(JClause { body: Vec::new(), head: vec![JAtom::Concept {
+            concept: "__dt__integer".into(), term: JTerm::Var { name: "x".into() },
+        }] });
+        assert!(convert_symbolic_cardinality(&clauses, None, &named, &hooks,
+            &NominalAboxMeta::default(), &[], false).is_err());
+    }
 
     #[test]
     fn absent_typed_abox_is_an_identity_without_a_coverage_flag() {
@@ -5649,6 +6025,47 @@ mod rule_clause_tests {
     }
 
     #[test]
+    fn transitivity_recognition_rejects_ground_or_repeated_variable_instances() {
+        let edge = |left: &str, right: &str| JAtom::Role {
+            role: "r".to_owned(), source: JTerm::Var { name: left.to_owned() },
+            target: JTerm::Var { name: right.to_owned() },
+        };
+        let mut clause = JClause { body: vec![edge("x", "y"), edge("y", "z")],
+            head: vec![edge("x", "z")] };
+        assert!(source_transitive_roles(&[clause.clone()]).contains("r"));
+        let mut reordered = clause.clone();
+        reordered.body.reverse();
+        assert!(source_transitive_roles(&[reordered]).contains("r"),
+            "sorting a conjunction must not hide its transitivity axiom");
+        if let JAtom::Role { source, .. } = &mut clause.body[1] {
+            *source = JTerm::Ind { name: "y".to_owned() };
+        }
+        assert!(source_transitive_roles(&[clause]).is_empty());
+        let repeated = JClause { body: vec![edge("x", "x"), edge("x", "z")],
+            head: vec![edge("x", "z")] };
+        assert!(source_transitive_roles(&[repeated]).is_empty());
+    }
+
+    #[test]
+    fn transitive_rule_reduction_requires_every_head_and_exact_join() {
+        let mut rule = JRule {
+            body: vec![role("r", var("x"), var("y")), role("r", var("y"), var("z")),
+                JRuleAtom::Diff { left: var("x"), right: var("z") }],
+            head: vec![role("r", var("x"), var("z"))],
+        };
+        let transitive = HashSet::from(["r".to_owned()]);
+        assert!(rule_redundant_under_transitivity(&rule, &transitive));
+        assert!(!rule_redundant_under_transitivity(&rule, &HashSet::new()));
+        rule.head.push(class("Novel", var("x")));
+        assert!(!rule_redundant_under_transitivity(&rule, &transitive));
+        rule.head.pop();
+        rule.body[1] = role("r", var("other"), var("z"));
+        assert!(!rule_redundant_under_transitivity(&rule, &transitive));
+        rule.head.clear();
+        assert!(!rule_redundant_under_transitivity(&rule, &transitive));
+    }
+
+    #[test]
     fn body_same_guard_unifies_its_two_terms() {
         // Body: r(x,y) ∧ SameAs(x,y); Head: D(x). The guard forces x = y, so the
         // role edge must land on ONE variable (s == t).
@@ -5813,5 +6230,31 @@ mod rule_clause_tests {
                 .count(),
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod empty_grounding_model_tests {
+    use super::*;
+    #[test]
+    fn source_model_preserves_named_graph_without_changing_ordinary_rule_free_conversion() {
+        let atom = JAtom::Concept { concept: "A".into(), term: JTerm::Ind { name: "a".into() } };
+        let positive = JClause { body: vec![], head: vec![atom.clone()] };
+        // Normalized TBox contradiction A ⊑ bottom, together with A(a).
+        // The frontend does not encode negative class assertions as A(a) → bottom.
+        let negative = JClause { body: vec![JAtom::Concept { concept: "A".into(),
+            term: JTerm::Var { name: "x".into() } }], head: vec![] };
+        let named = std::collections::HashSet::from(["A".to_owned()]);
+        let ordinary = convert(&[positive.clone()], None, &named, &[], &[], &[], false, &[], true);
+        assert!(ordinary.nominals.is_empty());
+        assert!(ordinary.dropped > 0);
+        for (clauses, consistent) in [(vec![positive.clone()], true), (vec![positive, negative], false)] {
+            let input = convert_rule_model(&clauses, &named, &[], &[], &[], &[]);
+            assert_eq!(input.dropped, 0);
+            assert_eq!(input.nominals.len(), 1);
+            let worker: crate::tableau::TInput = serde_json::from_value(serde_json::to_value(input).unwrap()).unwrap();
+            let verdict = crate::tableau::rules_consistency_verdict(&worker, crate::tableau::clauses_of_tinput(&worker)).unwrap();
+            assert_eq!(verdict, consistent);
+        }
     }
 }

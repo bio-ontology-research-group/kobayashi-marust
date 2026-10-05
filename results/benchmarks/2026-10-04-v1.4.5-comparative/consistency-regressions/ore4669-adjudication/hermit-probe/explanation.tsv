@@ -1,0 +1,16 @@
+M	method	owlapi-black-box
+M	module_preparation	star-extraction
+M	prepare_ns	10969699140
+M	explain_ns	26079606358
+M	module_logical_axioms	111132
+M	module_axioms	184128
+M	entailed	true
+M	explanation_axioms	7
+A	EquivalentClasses(<http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0006909> ObjectComplementOf(ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000051> <http://purl.obolibrary.org/obo/GO_0006909>)) )
+A	EquivalentClasses(<http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0006911> ObjectComplementOf(ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000051> <http://purl.obolibrary.org/obo/GO_0006911>)) )
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/GO_0006911> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/GO_0010324> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000050> <http://purl.obolibrary.org/obo/GO_0006909>)) )
+A	InverseObjectProperties(<http://purl.obolibrary.org/obo/BFO_0000050> <http://purl.obolibrary.org/obo/BFO_0000051>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0006897> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000051> <http://purl.obolibrary.org/obo/GO_0010324>))
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0006909> <http://purl.obolibrary.org/obo/GO_0006897>)
+A	TransitiveObjectProperty(<http://purl.obolibrary.org/obo/BFO_0000051>)
+Z	complete

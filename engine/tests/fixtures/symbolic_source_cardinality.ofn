@@ -1,0 +1,12 @@
+
+            Prefix(:=<http://x#>) Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+            Ontology(
+                Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) Declaration(Class(<http://x#F>))
+                Declaration(ObjectProperty(<http://x#r>)) Declaration(DataProperty(<http://x#value>))
+                FunctionalDataProperty(<http://x#value>) DataPropertyRange(<http://x#value> xsd:float)
+                SubClassOf(<http://x#A> ObjectIntersectionOf(
+                    ObjectMinCardinality(3 <http://x#r> <http://x#F>) ObjectMaxCardinality(2 <http://x#r> <http://x#F>)
+                    DataHasValue(<http://x#value> "1.0"^^xsd:float)))
+                SubClassOf(<http://x#B> ObjectIntersectionOf(
+                    ObjectMinCardinality(3 <http://x#r> <http://x#F>) DataHasValue(<http://x#value> "1.0"^^xsd:float))))
+        

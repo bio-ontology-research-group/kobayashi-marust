@@ -50,6 +50,7 @@ public final class ConvertSyntax {
         OWLOntologyLoaderConfiguration configuration = new OWLOntologyLoaderConfiguration()
                 .setMissingImportHandlingStrategy(MissingImportHandlingStrategy.THROW_EXCEPTION);
         OWLOntologyManager sourceManager = OWLManager.createOWLOntologyManager();
+        sourceManager.getOntologyConfigurator().withRemapAllAnonymousIndividualsIds(false);
         OWLOntology ontology = sourceManager.loadOntologyFromOntologyDocument(
                 new org.semanticweb.owlapi.io.FileDocumentSource(source.toFile()), configuration);
         if (serialization.equals("functional")) {
@@ -62,6 +63,7 @@ public final class ConvertSyntax {
         }
 
         OWLOntologyManager checkManager = OWLManager.createOWLOntologyManager();
+        checkManager.getOntologyConfigurator().withRemapAllAnonymousIndividualsIds(false);
         OWLOntology reloaded = checkManager.loadOntologyFromOntologyDocument(
                 new org.semanticweb.owlapi.io.FileDocumentSource(temporary.toFile()), configuration);
         int alphaRenamedRules = 0;

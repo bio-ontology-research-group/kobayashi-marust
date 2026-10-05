@@ -36,6 +36,21 @@ theorem hasAtMost_iff_not_hasAtLeast_succ
     HasAtMost n predicate ↔ ¬HasAtLeast (n + 1) predicate :=
   Iff.rfl
 
+/-- Complementary native bounds give exact minimum recognition on arbitrary domains. -/
+theorem minimum_complement_recognition
+    {Domain : Type u} (n : Nat) (predicate : Domain → Prop)
+    (minimumMarker complementMarker : Prop)
+    (split : minimumMarker ∨ complementMarker)
+    (minimumBound : minimumMarker → HasAtLeast (n + 1) predicate)
+    (maximumBound : complementMarker → HasAtMost n predicate) :
+    minimumMarker ↔ HasAtLeast (n + 1) predicate := by
+  constructor
+  · exact minimumBound
+  · intro witnesses
+    rcases split with minimum | complement
+    · exact minimum
+    · exact False.elim (maximumBound complement witnesses)
+
 theorem not_injective_of_hasAtMost
     {Domain : Type u} {n : Nat} {predicate : Domain → Prop}
     (hbound : HasAtMost n predicate)
@@ -133,3 +148,5 @@ theorem Interp.maximum_forces_merge
 #print axioms Interp.maximum_forces_merge
 
 end ContextCalculus.Hypertableau
+
+#print axioms ContextCalculus.Hypertableau.minimum_complement_recognition

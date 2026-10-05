@@ -120,10 +120,12 @@ fn automatic_route_selects_the_rules_bundle_for_rule_ontologies() {
     let out = classify(&[], &fixture("rule_unsat_inverse.ofn"));
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     let v = json_of(&out);
-    // The semantic-fragment gate must route rule-bearing input to ht_rules
-    // (KM_ROUTE defaults to auto for `km classify`).
-    assert!(stderr.contains("route=ht_rules"), "stderr: {stderr}");
+    // Automatic classification may use the complete source-grounding path
+    // before the named rules bundle. Both must preserve the rule-driven clash.
     assert_eq!(v["consistent"], false, "stderr: {stderr}");
+    assert!(stderr.contains("route=ht_rules")
+        || stderr.contains("automatic data source accepted: KM_GROUND_RULE_SOURCE"),
+        "stderr: {stderr}");
 }
 
 #[test]

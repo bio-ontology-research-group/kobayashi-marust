@@ -1,0 +1,37 @@
+{
+  "generator": {
+    "id": "konclude",
+    "version": "v0.7.0-1138 / source 0002e8063540; embedded banner 500e11d9",
+    "path": "/ibex/scratch/hohndor/km/routing_20260715/konclude-oracle-builds/konclude-v0.7.0-1138-build-20260721-03/Konclude-build-a",
+    "expected_sha256": "e8dd5373d4606a1c9dbab0896b5939124ef7997781f15aea0d6f5fc6fd4cf0f4",
+    "sha256": "e8dd5373d4606a1c9dbab0896b5939124ef7997781f15aea0d6f5fc6fd4cf0f4",
+    "size_bytes": 18670056,
+    "status": "hash_verified"
+  },
+  "owlapi_runtime": {
+    "id": "hermit",
+    "path": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes/classifier-hermit.jar",
+    "expected_sha256": "59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c",
+    "version": "1.4.5.519",
+    "factory": "org.semanticweb.HermiT.ReasonerFactory",
+    "sha256": "59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c",
+    "size_bytes": 21412002,
+    "status": "hash_verified",
+    "factory_class_present": true,
+    "classifier_class_present": true
+  },
+  "module": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/module.ofn",
+  "module_sha256": "69c22786ca9ebc04f0cbc9839cdbad4914091a0925eabc8c86ff92c245658ceb",
+  "classes": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/classes",
+  "sub": "urn:pilot:A",
+  "sup": "urn:pilot:C",
+  "output": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/konclude/external",
+  "consistency_certificate": {
+    "module_sha256": "69c22786ca9ebc04f0cbc9839cdbad4914091a0925eabc8c86ff92c245658ceb",
+    "verifier": "hermit",
+    "taxonomy": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/consistency-reference.tsv",
+    "taxonomy_sha256": "7ab65a72b0f3fae9b13ce1a0d11455c6cc5c2c8c835b9b8e84b827b5b7ac739f",
+    "format": "owlapi-tsv",
+    "artifact_sha256": "59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "generator": "konclude",
+  "verifier": "hermit",
+  "source_sha256": "69c22786ca9ebc04f0cbc9839cdbad4914091a0925eabc8c86ff92c245658ceb",
+  "module_sha256": "69c22786ca9ebc04f0cbc9839cdbad4914091a0925eabc8c86ff92c245658ceb",
+  "query": [
+    "urn:pilot:A",
+    "urn:pilot:C"
+  ],
+  "status": "independently_verified",
+  "stages": [
+    {
+      "name": "generation",
+      "command": [
+        "/usr/bin/python3.9",
+        "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-v1/external_justification.py",
+        "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/konclude/external-config.json"
+      ],
+      "timeout_s": 240,
+      "memory_mib": 20480,
+      "cpu_affinity": [
+        0
+      ],
+      "status": "executed",
+      "wall_s": 11.485996002331376,
+      "peak_bytes": 143032320,
+      "exit_code": 0
+    },
+    {
+      "name": "verification",
+      "command": [
+        "java",
+        "-Xms256m",
+        "-Xmx16g",
+        "-XX:ActiveProcessorCount=1",
+        "-cp",
+        "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/classes:/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes/classifier-hermit.jar",
+        "org.kmbenchmark.VerifyJustification",
+        "org.semanticweb.HermiT.ReasonerFactory",
+        "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/module.ofn",
+        "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/konclude/explanation.tsv.ofn",
+        "urn:pilot:A",
+        "urn:pilot:C",
+        "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/konclude/verification.tsv"
+      ],
+      "timeout_s": 240,
+      "memory_mib": 20480,
+      "cpu_affinity": [
+        0
+      ],
+      "status": "executed",
+      "wall_s": 2.006070552393794,
+      "peak_bytes": 109531136,
+      "exit_code": 0
+    }
+  ],
+  "runner_sha256": "3902ca42226767efbabf56abc69e23554393f3f0e1e74c4ee9f1b247aa67996a",
+  "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+  "host": "cn512-19-l",
+  "slurm_job_id": "53203563",
+  "artifacts": {
+    "konclude": "e8dd5373d4606a1c9dbab0896b5939124ef7997781f15aea0d6f5fc6fd4cf0f4",
+    "hermit": "59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c"
+  },
+  "compiled_classes": {
+    "generator": {
+      "org/kmbenchmark/VerifyJustification.class": "5f774dc8d70f2fcd625b17dbc0920eeb1057eebc68db22018601fbabb3c6cb7a",
+      "org/kmbenchmark/ConvertSyntax.class": "42a4aadc8807e7d18064a5c20b05db657858565de2bef31597cca47df0ea178a",
+      "org/kmbenchmark/SourceSignature.class": "cd38cfd5ebe6e873806ee3b7865f99b1553a22330e0c966a1e96b705cb0c9987",
+      "org/kmbenchmark/ExportExplanationAxioms.class": "6b867d58a67624bfdc9290c88d0bb1fd5a7bf9a9601476ef5047a2c5ca29162f"
+    },
+    "verifier": {
+      "org/kmbenchmark/VerifyJustification.class": "5f774dc8d70f2fcd625b17dbc0920eeb1057eebc68db22018601fbabb3c6cb7a",
+      "org/kmbenchmark/ConvertSyntax.class": "42a4aadc8807e7d18064a5c20b05db657858565de2bef31597cca47df0ea178a",
+      "org/kmbenchmark/SourceSignature.class": "cd38cfd5ebe6e873806ee3b7865f99b1553a22330e0c966a1e96b705cb0c9987",
+      "org/kmbenchmark/ExportExplanationAxioms.class": "6b867d58a67624bfdc9290c88d0bb1fd5a7bf9a9601476ef5047a2c5ca29162f"
+    }
+  },
+  "justification_axioms": 2,
+  "method": "external-classification-source-axiom-deletion",
+  "external_generator_sha256": "65dc7885ba8c44e7b5711231394f8d8baddfa4a9815ddbdd43e91ce01d6f756e",
+  "justification_sha256": "edc22bc64ff041d6e17a0634120bbc04f3a23dabe469b86430f4e85538e9a08e",
+  "verification_sha256": "801d2c1d2cec2fff30ba21ad51d377e5acced475701709bc6be70602d81744b3",
+  "files": {
+    "verification.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "generation.stdout": {
+      "sha256": "51d805f28cc8b40bbd95868cd6e6dc630b27c0100aa7cd8277231e7899b699da",
+      "bytes": 428
+    },
+    "explanation.tsv.ofn": {
+      "sha256": "edc22bc64ff041d6e17a0634120bbc04f3a23dabe469b86430f4e85538e9a08e",
+      "bytes": 194
+    },
+    "generation.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "verification.tsv": {
+      "sha256": "801d2c1d2cec2fff30ba21ad51d377e5acced475701709bc6be70602d81744b3",
+      "bytes": 100
+    },
+    "external-config.json": {
+      "sha256": "94920a6956e3ac34f6d5c886e5a50c99da57d38db9481284730e8abebb6d1ab2",
+      "bytes": 2054
+    },
+    "verification.max-rss-kib": {
+      "sha256": "56c0154c79aa4b9972738fdf16c8d022c733201d8f00108e9501afdbe7e391af",
+      "bytes": 7
+    },
+    "verification.stderr": {
+      "sha256": "9ddf3781b5e43a87b1d67caac2bc4b251f9ce8d77c509c8369129f4b0359fd55",
+      "bytes": 210
+    },
+    "generation.max-rss-kib": {
+      "sha256": "c72392f4fbd832cf8edbce3c5cf28dfdb1dd27f5029b9caed4d9fcc0c16563fc",
+      "bytes": 7
+    }
+  }
+}

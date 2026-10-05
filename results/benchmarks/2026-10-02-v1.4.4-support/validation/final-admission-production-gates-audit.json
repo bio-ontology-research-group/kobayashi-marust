@@ -1,0 +1,30 @@
+[
+  {
+    "gate": "ht",
+    "exit_code": 0,
+    "log": "validation/final-admission-production-ht-gate.log",
+    "source_unchanged": true,
+    "completed_utc": "2026-10-04T12:35:08.440978+00:00"
+  },
+  {
+    "gate": "cb",
+    "exit_code": 0,
+    "log": "validation/final-admission-production-cb-gate.log",
+    "source_unchanged": true,
+    "completed_utc": "2026-10-04T12:36:50.996438+00:00"
+  },
+  {
+    "gate": "elc",
+    "exit_code": 0,
+    "log": "validation/final-admission-production-elc-gate.log",
+    "source_unchanged": true,
+    "completed_utc": "2026-10-04T12:37:03.141980+00:00"
+  },
+  {
+    "gate": "routing",
+    "exit_code": 0,
+    "log": "validation/final-admission-production-routing-gate.log",
+    "source_unchanged": true,
+    "completed_utc": "2026-10-04T12:37:10.806859+00:00"
+  }
+]

@@ -1,0 +1,26 @@
+{
+  "job": null,
+  "mode": "local-debug-semantic-audit",
+  "reference_job": 53132253,
+  "consistent": true,
+  "dropped": 0,
+  "source_classes": 47,
+  "reference_classes": 49,
+  "observed_relations": 67,
+  "expected_relations": 67,
+  "missing_count": 0,
+  "extra_count": 0,
+  "candidate_unsat": [
+    "http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#MeterToCentimeter",
+    "http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#MeterToMillimeter"
+  ],
+  "reference_unsat": [
+    "http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#MeterToCentimeter",
+    "http://www.w3.org/2001/di/Group/Ontologies/DeliveryContext.owl#MeterToMillimeter"
+  ],
+  "reference_thing_equiv": [],
+  "missing_sample": [],
+  "extra_sample": [],
+  "candidate_sha256": "bafd01854fe62f6116822fc274cf0f2c529bed2b1c4f7f3573dd828f8a062661",
+  "reference_sha256": "7e8b2bd74dfc109e817a20b96e517fb941044c54ed6e12890b0646075556aef5"
+}

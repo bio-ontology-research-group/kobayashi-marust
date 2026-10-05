@@ -1,0 +1,1221 @@
+{
+  "observed_at": "2026-10-05T10:36:28.859558+00:00",
+  "ontology": "ore_ont_1194",
+  "revisions": [
+    {
+      "revision": 0,
+      "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+      "audit_path": "update-audit-53234886/ore_ont_1194/000/audit.json",
+      "audit_sha256": "c511c1f912a7505fb0cded1ee8d73486b5f578aa4aa0463251aa0b4117a0a088",
+      "outcome_counts": {
+        "timeout": 39,
+        "canonicalized_requires_comparison": 3,
+        "memout": 6,
+        "process_error": 3
+      },
+      "audit": {
+        "revision": 0,
+        "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+        "outcomes": {
+          "hermit-cold-0": {
+            "status": "timeout"
+          },
+          "hermit-cold-1": {
+            "status": "timeout"
+          },
+          "hermit-cold-2": {
+            "status": "timeout"
+          },
+          "hermit-retained-0": {
+            "status": "timeout"
+          },
+          "hermit-retained-1": {
+            "status": "timeout"
+          },
+          "hermit-retained-2": {
+            "status": "timeout"
+          },
+          "jfact-cold-0": {
+            "status": "timeout"
+          },
+          "jfact-cold-1": {
+            "status": "timeout"
+          },
+          "jfact-cold-2": {
+            "status": "timeout"
+          },
+          "jfact-retained-0": {
+            "status": "timeout"
+          },
+          "jfact-retained-1": {
+            "status": "timeout"
+          },
+          "jfact-retained-2": {
+            "status": "timeout"
+          },
+          "openllet-cold-0": {
+            "status": "timeout"
+          },
+          "openllet-cold-1": {
+            "status": "timeout"
+          },
+          "openllet-cold-2": {
+            "status": "timeout"
+          },
+          "openllet-retained-0": {
+            "status": "timeout"
+          },
+          "openllet-retained-1": {
+            "status": "timeout"
+          },
+          "openllet-retained-2": {
+            "status": "timeout"
+          },
+          "elk-cold-0": {
+            "status": "timeout"
+          },
+          "elk-cold-1": {
+            "status": "timeout"
+          },
+          "elk-cold-2": {
+            "status": "timeout"
+          },
+          "elk-retained-0": {
+            "status": "timeout"
+          },
+          "elk-retained-1": {
+            "status": "timeout"
+          },
+          "elk-retained-2": {
+            "status": "timeout"
+          },
+          "whelk-cold-0": {
+            "status": "timeout"
+          },
+          "whelk-cold-1": {
+            "status": "timeout"
+          },
+          "whelk-cold-2": {
+            "status": "timeout"
+          },
+          "whelk-retained-0": {
+            "status": "timeout"
+          },
+          "whelk-retained-1": {
+            "status": "timeout"
+          },
+          "whelk-retained-2": {
+            "status": "timeout"
+          },
+          "more-cold-0": {
+            "status": "timeout"
+          },
+          "more-cold-1": {
+            "status": "timeout"
+          },
+          "more-cold-2": {
+            "status": "timeout"
+          },
+          "km-cold-0": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "2d0786d57b366e2d7ac5b55cc7dbf8d8da460067e3e082e2c657cb618318d510",
+            "wall_s": 200.33018478937447,
+            "peak_bytes": 15401598976,
+            "canonical_sha256": "b6bd6d0f03c21f962ff18703c9889c173fba3cf87664b42b7ef5dacad7d65988"
+          },
+          "km-cold-1": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "39e867e47443a7d03e7c592b9a5987c7aed3b7009ebbafaa500dd053690f7750",
+            "wall_s": 199.16996862366796,
+            "peak_bytes": 15843188736,
+            "canonical_sha256": "1dc8b3a7b565a887dccf2da3e3e0b82f89be09b0951ef0c7896142850cf06600"
+          },
+          "km-cold-2": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "97faca4ba53b02d8cf72fb92ab71229e1c81914e3ebf8ab4c43373375195b3b6",
+            "wall_s": 198.7512800078839,
+            "peak_bytes": 15853080576,
+            "canonical_sha256": "ecd68c24fca8eda7f2f8513fb586d1d5e2efb0e61e7a12789c78c3a68c7a491f"
+          },
+          "km-retained-0": {
+            "status": "timeout"
+          },
+          "km-retained-1": {
+            "status": "timeout"
+          },
+          "km-retained-2": {
+            "status": "timeout"
+          },
+          "rustdl-cold-0": {
+            "status": "timeout"
+          },
+          "rustdl-cold-1": {
+            "status": "timeout"
+          },
+          "rustdl-cold-2": {
+            "status": "timeout"
+          },
+          "konclude-cold-0": {
+            "status": "memout"
+          },
+          "konclude-cold-1": {
+            "status": "memout"
+          },
+          "konclude-cold-2": {
+            "status": "memout"
+          },
+          "konclude-retained-0": {
+            "status": "memout"
+          },
+          "konclude-retained-1": {
+            "status": "memout"
+          },
+          "konclude-retained-2": {
+            "status": "memout"
+          },
+          "sequoia-cold-0": {
+            "status": "process_error"
+          },
+          "sequoia-cold-1": {
+            "status": "process_error"
+          },
+          "sequoia-cold-2": {
+            "status": "process_error"
+          }
+        },
+        "comparisons": [
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-0",
+            "kind": "reference"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-1",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+            "left_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "right_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-1",
+            "kind": "repeatability"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-2",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+            "left_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "right_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-2",
+            "kind": "repeatability"
+          }
+        ],
+        "status": "audited_available_outputs"
+      }
+    },
+    {
+      "revision": 1,
+      "source_sha256": "5e202a22a5f60974ac736e4679554a4dba62723d93cd44a3f64f5ec525946859",
+      "audit_path": "update-audit-53234886/ore_ont_1194/001/audit.json",
+      "audit_sha256": "6bfdcc5fa405ce89563cd87b51007c859345032f20cf84d5f32f2b6522ac1ea0",
+      "outcome_counts": {
+        "timeout": 21,
+        "not_run_after_session_failure": 21,
+        "canonicalized_requires_comparison": 3,
+        "memout": 3,
+        "process_error": 3
+      },
+      "audit": {
+        "revision": 1,
+        "source_sha256": "5e202a22a5f60974ac736e4679554a4dba62723d93cd44a3f64f5ec525946859",
+        "outcomes": {
+          "hermit-cold-0": {
+            "status": "timeout"
+          },
+          "hermit-cold-1": {
+            "status": "timeout"
+          },
+          "hermit-cold-2": {
+            "status": "timeout"
+          },
+          "hermit-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "hermit-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "hermit-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-cold-0": {
+            "status": "timeout"
+          },
+          "jfact-cold-1": {
+            "status": "timeout"
+          },
+          "jfact-cold-2": {
+            "status": "timeout"
+          },
+          "jfact-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-cold-0": {
+            "status": "timeout"
+          },
+          "openllet-cold-1": {
+            "status": "timeout"
+          },
+          "openllet-cold-2": {
+            "status": "timeout"
+          },
+          "openllet-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-cold-0": {
+            "status": "timeout"
+          },
+          "elk-cold-1": {
+            "status": "timeout"
+          },
+          "elk-cold-2": {
+            "status": "timeout"
+          },
+          "elk-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-cold-0": {
+            "status": "timeout"
+          },
+          "whelk-cold-1": {
+            "status": "timeout"
+          },
+          "whelk-cold-2": {
+            "status": "timeout"
+          },
+          "whelk-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "more-cold-0": {
+            "status": "timeout"
+          },
+          "more-cold-1": {
+            "status": "timeout"
+          },
+          "more-cold-2": {
+            "status": "timeout"
+          },
+          "km-cold-0": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "extracted_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "measurement_receipt_sha256": "411e2d05f0eaad3ddb9d26028813fa6f05ea06c5da122530d497c3ae24e8edc0",
+            "wall_s": 199.63540441170335,
+            "peak_bytes": 15726432256,
+            "canonical_sha256": "e1b5f2696a6ec35f023e4a936c46a1f67929c2dd4ee9e5c08cdd10bef8292b06"
+          },
+          "km-cold-1": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "extracted_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "measurement_receipt_sha256": "2ad6c44406d3d1394a88e4327a17c991dff803efeb1729166a747b0479e07866",
+            "wall_s": 198.92974039539695,
+            "peak_bytes": 15824162816,
+            "canonical_sha256": "3e95a932b261f5e0c5e15c240f3473cab5902a9a551ea4cdbac0d40268f70bcc"
+          },
+          "km-cold-2": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "extracted_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "measurement_receipt_sha256": "7a314c010be0c9ef35ee055604e92b9cf17c7243cb849f21e35f61ab2d8dacb0",
+            "wall_s": 199.6640716791153,
+            "peak_bytes": 15841480704,
+            "canonical_sha256": "87df72daab9f3b77bdeccd35b42f646eca3e7dd53dc3e59dd26075fa4ad8a9f0"
+          },
+          "km-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "km-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "km-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "rustdl-cold-0": {
+            "status": "timeout"
+          },
+          "rustdl-cold-1": {
+            "status": "timeout"
+          },
+          "rustdl-cold-2": {
+            "status": "timeout"
+          },
+          "konclude-cold-0": {
+            "status": "memout"
+          },
+          "konclude-cold-1": {
+            "status": "memout"
+          },
+          "konclude-cold-2": {
+            "status": "memout"
+          },
+          "konclude-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "konclude-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "konclude-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "sequoia-cold-0": {
+            "status": "process_error"
+          },
+          "sequoia-cold-1": {
+            "status": "process_error"
+          },
+          "sequoia-cold-2": {
+            "status": "process_error"
+          }
+        },
+        "comparisons": [
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-0",
+            "kind": "reference"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-1",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "5e202a22a5f60974ac736e4679554a4dba62723d93cd44a3f64f5ec525946859",
+            "left_raw_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "right_raw_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-1",
+            "kind": "repeatability"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-2",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "5e202a22a5f60974ac736e4679554a4dba62723d93cd44a3f64f5ec525946859",
+            "left_raw_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "right_raw_sha256": "7973dbe51e9ff0e8fb01cc8f7e792579fb07d74b38fe0d7b4af3486f65056eb9",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-2",
+            "kind": "repeatability"
+          }
+        ],
+        "status": "audited_available_outputs"
+      }
+    },
+    {
+      "revision": 2,
+      "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+      "audit_path": "update-audit-53234886/ore_ont_1194/002/audit.json",
+      "audit_sha256": "bcc373e66d845d7cb58c780b2b0175d2404c9cdfaf2aa05228de603778f31317",
+      "outcome_counts": {
+        "timeout": 21,
+        "not_run_after_session_failure": 21,
+        "canonicalized_requires_comparison": 3,
+        "memout": 3,
+        "process_error": 3
+      },
+      "audit": {
+        "revision": 2,
+        "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+        "outcomes": {
+          "hermit-cold-0": {
+            "status": "timeout"
+          },
+          "hermit-cold-1": {
+            "status": "timeout"
+          },
+          "hermit-cold-2": {
+            "status": "timeout"
+          },
+          "hermit-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "hermit-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "hermit-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-cold-0": {
+            "status": "timeout"
+          },
+          "jfact-cold-1": {
+            "status": "timeout"
+          },
+          "jfact-cold-2": {
+            "status": "timeout"
+          },
+          "jfact-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-cold-0": {
+            "status": "timeout"
+          },
+          "openllet-cold-1": {
+            "status": "timeout"
+          },
+          "openllet-cold-2": {
+            "status": "timeout"
+          },
+          "openllet-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-cold-0": {
+            "status": "timeout"
+          },
+          "elk-cold-1": {
+            "status": "timeout"
+          },
+          "elk-cold-2": {
+            "status": "timeout"
+          },
+          "elk-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-cold-0": {
+            "status": "timeout"
+          },
+          "whelk-cold-1": {
+            "status": "timeout"
+          },
+          "whelk-cold-2": {
+            "status": "timeout"
+          },
+          "whelk-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "more-cold-0": {
+            "status": "timeout"
+          },
+          "more-cold-1": {
+            "status": "timeout"
+          },
+          "more-cold-2": {
+            "status": "timeout"
+          },
+          "km-cold-0": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "4584af3df535ed851326180859afa05a7961b2e0d9385a89423220f639932454",
+            "wall_s": 199.86709322966635,
+            "peak_bytes": 15733682176,
+            "canonical_sha256": "d585724f7cfbba4e250d697d9d84d9369a9158502b6ef20dd65fecb1a4d282a9"
+          },
+          "km-cold-1": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "5e43dfda85179a4ebb47b7e9e10144d306f473412eeb5e959d1abed5e9238b46",
+            "wall_s": 200.49301122315228,
+            "peak_bytes": 15781400576,
+            "canonical_sha256": "9ac84eaab801059e1048339c9f91e23438c4dbbcf6d27cf0ca005facce077e03"
+          },
+          "km-cold-2": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "512cfbe0a5474966344e762a385516b98b2c9f2ad23ab78cf7eed5c738967cdf",
+            "wall_s": 199.3811272867024,
+            "peak_bytes": 15854874624,
+            "canonical_sha256": "76a4e404ed2599ab464d11d4d50d67d1b58cea9986f189bc097a10cc2d427adb"
+          },
+          "km-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "km-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "km-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "rustdl-cold-0": {
+            "status": "timeout"
+          },
+          "rustdl-cold-1": {
+            "status": "timeout"
+          },
+          "rustdl-cold-2": {
+            "status": "timeout"
+          },
+          "konclude-cold-0": {
+            "status": "memout"
+          },
+          "konclude-cold-1": {
+            "status": "memout"
+          },
+          "konclude-cold-2": {
+            "status": "memout"
+          },
+          "konclude-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "konclude-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "konclude-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "sequoia-cold-0": {
+            "status": "process_error"
+          },
+          "sequoia-cold-1": {
+            "status": "process_error"
+          },
+          "sequoia-cold-2": {
+            "status": "process_error"
+          }
+        },
+        "comparisons": [
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-0",
+            "kind": "reference"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-1",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+            "left_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "right_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-1",
+            "kind": "repeatability"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-2",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+            "left_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "right_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-2",
+            "kind": "repeatability"
+          }
+        ],
+        "status": "audited_available_outputs"
+      }
+    },
+    {
+      "revision": 3,
+      "source_sha256": "07e9344340127cd4380823d8c8a5eb8ae6d14d95637033adecf9741b8fc16cce",
+      "audit_path": "update-audit-53234886/ore_ont_1194/003/audit.json",
+      "audit_sha256": "2d643d879ef83c19240b777e49a9c8ad218df4d0514cf7bc90d5fc4fbc1325f5",
+      "outcome_counts": {
+        "timeout": 21,
+        "not_run_after_session_failure": 21,
+        "canonicalized_requires_comparison": 3,
+        "memout": 3,
+        "process_error": 3
+      },
+      "audit": {
+        "revision": 3,
+        "source_sha256": "07e9344340127cd4380823d8c8a5eb8ae6d14d95637033adecf9741b8fc16cce",
+        "outcomes": {
+          "hermit-cold-0": {
+            "status": "timeout"
+          },
+          "hermit-cold-1": {
+            "status": "timeout"
+          },
+          "hermit-cold-2": {
+            "status": "timeout"
+          },
+          "hermit-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "hermit-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "hermit-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-cold-0": {
+            "status": "timeout"
+          },
+          "jfact-cold-1": {
+            "status": "timeout"
+          },
+          "jfact-cold-2": {
+            "status": "timeout"
+          },
+          "jfact-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-cold-0": {
+            "status": "timeout"
+          },
+          "openllet-cold-1": {
+            "status": "timeout"
+          },
+          "openllet-cold-2": {
+            "status": "timeout"
+          },
+          "openllet-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-cold-0": {
+            "status": "timeout"
+          },
+          "elk-cold-1": {
+            "status": "timeout"
+          },
+          "elk-cold-2": {
+            "status": "timeout"
+          },
+          "elk-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-cold-0": {
+            "status": "timeout"
+          },
+          "whelk-cold-1": {
+            "status": "timeout"
+          },
+          "whelk-cold-2": {
+            "status": "timeout"
+          },
+          "whelk-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "more-cold-0": {
+            "status": "timeout"
+          },
+          "more-cold-1": {
+            "status": "timeout"
+          },
+          "more-cold-2": {
+            "status": "timeout"
+          },
+          "km-cold-0": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "extracted_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "measurement_receipt_sha256": "6e4a1aa626d708f261a6fb3de03dfd8725f353045a4433da54dfeeb1f4b0a7bc",
+            "wall_s": 199.36447725258768,
+            "peak_bytes": 15819141120,
+            "canonical_sha256": "4500acb1ab410fc96d705d7fd0fcbcaa191a5399c9d36e7d13b7fb8168cc083f"
+          },
+          "km-cold-1": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "extracted_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "measurement_receipt_sha256": "525c8a6906bc267cfd79bf50bf09545c1447d30cf318271af08a652853eb22af",
+            "wall_s": 199.83177688531578,
+            "peak_bytes": 15869014016,
+            "canonical_sha256": "078cdb2508042de0e3de7c53928dca4fabbe4cf4bbff7dcc5efde4220f958f6f"
+          },
+          "km-cold-2": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "extracted_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "measurement_receipt_sha256": "839e377cac64bb7d1982b697c11b73c18510d743aec39f91854c488942f6ee9b",
+            "wall_s": 198.77713564038277,
+            "peak_bytes": 15866200064,
+            "canonical_sha256": "1cf6cf387fbfa36661ba50a985e88a8a9adbbe9b83f1709e526280c82286c3f5"
+          },
+          "km-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "km-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "km-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "rustdl-cold-0": {
+            "status": "timeout"
+          },
+          "rustdl-cold-1": {
+            "status": "timeout"
+          },
+          "rustdl-cold-2": {
+            "status": "timeout"
+          },
+          "konclude-cold-0": {
+            "status": "memout"
+          },
+          "konclude-cold-1": {
+            "status": "memout"
+          },
+          "konclude-cold-2": {
+            "status": "memout"
+          },
+          "konclude-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "konclude-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "konclude-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "sequoia-cold-0": {
+            "status": "process_error"
+          },
+          "sequoia-cold-1": {
+            "status": "process_error"
+          },
+          "sequoia-cold-2": {
+            "status": "process_error"
+          }
+        },
+        "comparisons": [
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-0",
+            "kind": "reference"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-1",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "07e9344340127cd4380823d8c8a5eb8ae6d14d95637033adecf9741b8fc16cce",
+            "left_raw_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "right_raw_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-1",
+            "kind": "repeatability"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-2",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "07e9344340127cd4380823d8c8a5eb8ae6d14d95637033adecf9741b8fc16cce",
+            "left_raw_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "right_raw_sha256": "abba44c61fb253162b0297135ae4d5e3eca81296980b695d8051a03db81b47a9",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-2",
+            "kind": "repeatability"
+          }
+        ],
+        "status": "audited_available_outputs"
+      }
+    },
+    {
+      "revision": 4,
+      "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+      "audit_path": "update-audit-53234886/ore_ont_1194/004/audit.json",
+      "audit_sha256": "9368ea9bd67bf6fb584998be4bba247c008f03e90d8aed43987b070bbf92f1d4",
+      "outcome_counts": {
+        "timeout": 21,
+        "not_run_after_session_failure": 21,
+        "canonicalized_requires_comparison": 3,
+        "memout": 3,
+        "process_error": 3
+      },
+      "audit": {
+        "revision": 4,
+        "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+        "outcomes": {
+          "hermit-cold-0": {
+            "status": "timeout"
+          },
+          "hermit-cold-1": {
+            "status": "timeout"
+          },
+          "hermit-cold-2": {
+            "status": "timeout"
+          },
+          "hermit-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "hermit-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "hermit-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-cold-0": {
+            "status": "timeout"
+          },
+          "jfact-cold-1": {
+            "status": "timeout"
+          },
+          "jfact-cold-2": {
+            "status": "timeout"
+          },
+          "jfact-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "jfact-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-cold-0": {
+            "status": "timeout"
+          },
+          "openllet-cold-1": {
+            "status": "timeout"
+          },
+          "openllet-cold-2": {
+            "status": "timeout"
+          },
+          "openllet-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "openllet-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-cold-0": {
+            "status": "timeout"
+          },
+          "elk-cold-1": {
+            "status": "timeout"
+          },
+          "elk-cold-2": {
+            "status": "timeout"
+          },
+          "elk-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "elk-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-cold-0": {
+            "status": "timeout"
+          },
+          "whelk-cold-1": {
+            "status": "timeout"
+          },
+          "whelk-cold-2": {
+            "status": "timeout"
+          },
+          "whelk-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "whelk-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "more-cold-0": {
+            "status": "timeout"
+          },
+          "more-cold-1": {
+            "status": "timeout"
+          },
+          "more-cold-2": {
+            "status": "timeout"
+          },
+          "km-cold-0": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "20cd385dab39bdd24cbf6cc3d03f25e83b1f384b708f3edcfac16202d6d23dc4",
+            "wall_s": 198.95350746810436,
+            "peak_bytes": 15775342592,
+            "canonical_sha256": "55d2063a3a98744850213c44b84e8a70f414ff00b6de67a26594f91c7f654582"
+          },
+          "km-cold-1": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "8f1d0d4b977a1026f7bf4e555e66f182bfab8c83cfeaa1bb0ee0e96e3a1e4fb0",
+            "wall_s": 199.83861622214317,
+            "peak_bytes": 15849721856,
+            "canonical_sha256": "9f256d3de7b45f007160479da1562ca5d698eb2fcff3e54494163a15fc56eab1"
+          },
+          "km-cold-2": {
+            "status": "canonicalized_requires_comparison",
+            "format": "km-json",
+            "raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "extracted_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "measurement_receipt_sha256": "33bbc5d2af356e953a097a13f09e44988ec8f33881c79a7ba9933680772c22a4",
+            "wall_s": 198.85328408516943,
+            "peak_bytes": 15888510976,
+            "canonical_sha256": "58675213d571c7df9dc6cd0a37a187ca796e168f63750fcbcaf2743777ea3330"
+          },
+          "km-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "km-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "km-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "rustdl-cold-0": {
+            "status": "timeout"
+          },
+          "rustdl-cold-1": {
+            "status": "timeout"
+          },
+          "rustdl-cold-2": {
+            "status": "timeout"
+          },
+          "konclude-cold-0": {
+            "status": "memout"
+          },
+          "konclude-cold-1": {
+            "status": "memout"
+          },
+          "konclude-cold-2": {
+            "status": "memout"
+          },
+          "konclude-retained-0": {
+            "status": "not_run_after_session_failure"
+          },
+          "konclude-retained-1": {
+            "status": "not_run_after_session_failure"
+          },
+          "konclude-retained-2": {
+            "status": "not_run_after_session_failure"
+          },
+          "sequoia-cold-0": {
+            "status": "process_error"
+          },
+          "sequoia-cold-1": {
+            "status": "process_error"
+          },
+          "sequoia-cold-2": {
+            "status": "process_error"
+          }
+        },
+        "comparisons": [
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-0",
+            "kind": "reference"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-1",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+            "left_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "right_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-1",
+            "kind": "repeatability"
+          },
+          {
+            "status": "comparison_unavailable",
+            "agreement": null,
+            "left": "hermit-cold-0",
+            "right": "km-cold-2",
+            "kind": "reference"
+          },
+          {
+            "source_sha256": "cf8e257bf95a248ed92798b0ffd93b9abc1cd116bf12e89c83ca5df4abf1863c",
+            "left_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "right_raw_sha256": "8073cc510fe3c8f4956a9ba96d1a9ce9e354bc2e3ac83ec132ee566d396f0e31",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy",
+            "left": "km-cold-0",
+            "right": "km-cold-2",
+            "kind": "repeatability"
+          }
+        ],
+        "status": "audited_available_outputs"
+      }
+    }
+  ],
+  "scope": "All five revisions have three agreeing cold KM outputs, but no independent baseline or retained-session output. Repeatability is established; independent correctness and fresh-versus-retained equivalence are unverified. Keep all failures in coverage and exclude unavailable comparisons from paired costs."
+}

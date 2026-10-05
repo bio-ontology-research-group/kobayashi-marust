@@ -656,6 +656,7 @@ pub fn explain(
             options.max_source_bytes
         )));
     }
+    super::validate_user_input(ontology)?;
     let source = std::fs::read_to_string(ontology)?;
     let document = SourceDocument::parse(&source, options.max_axioms)?;
     drop(source);

@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "baseline": "konclude",
+  "source": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+  "source_sha256": "fa4249686374c76b7549f64257f3c117afc6a3ea2a2e8ac7880571a7734bdac0",
+  "runtime_source": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199208/konclude/000.owlxml",
+  "artifact": "/ibex/scratch/hohndor/km/routing_20260715/konclude-oracle-builds/konclude-v0.7.0-1138-build-20260721-03/Konclude-build-a",
+  "artifact_sha256": "e8dd5373d4606a1c9dbab0896b5939124ef7997781f15aea0d6f5fc6fd4cf0f4",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-17-r",
+  "slurm_job_id": "53199461",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "be795feac4f8f8a2725b3b4276233c1ef39f6b53b75542a2f88bad84c6831ef5",
+  "conversion_receipt_sha256": "7329e8786092439ead24e177bb62cc59159cb0a4f50e926a0952343c5e5f5029",
+  "converter_sha256": "4b980a4cc641d96b4d3085e12d0129a5bb3b5aacfeb23fe64b866ee2ec00335f",
+  "command": [
+    "/ibex/scratch/hohndor/km/routing_20260715/konclude-oracle-builds/konclude-v0.7.0-1138-build-20260721-03/Konclude-build-a",
+    "classification",
+    "-w",
+    "1",
+    "-v",
+    "-i",
+    "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199208/konclude/000.owlxml",
+    "-o",
+    "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/measurement-pilot-53199410/konclude/taxonomy.raw"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1",
+    "LD_LIBRARY_PATH": "/ibex/scratch/hohndor/km/routing_20260715/konclude-oracle-builds/konclude-v0.7.0-1138-build-20260721-03/runtime-lib"
+  },
+  "output_format": "owlxml",
+  "cpu_affinity": [
+    2
+  ],
+  "exit_code": 0,
+  "wall_s": 0.1672277208417654,
+  "peak_bytes": 26492928,
+  "sampled_peak_bytes": 18350080,
+  "files": {
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "taxonomy.raw": {
+      "sha256": "5e7da23e76e1433d13638712516cc0687728459dc390ec835338df05766e886d",
+      "bytes": 1443
+    },
+    "max-rss-kib.txt": {
+      "sha256": "5167af279ae518f76ffacac992ffda6f7cfafd45c55b8c5a475ff59aefbcc105",
+      "bytes": 6
+    },
+    "stdout": {
+      "sha256": "40b2e9d76b189b850af69ac68d752ea553d74dcee1088fda5e61e76ed4ed3066",
+      "bytes": 1510
+    }
+  }
+}

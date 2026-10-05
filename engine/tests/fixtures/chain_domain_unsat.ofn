@@ -1,4 +1,4 @@
-Prefix(:=<urn:unnamed:ontology#ont4062649313237337#>)
+Prefix(:=<urn:chain-domain-fixture:>)
 Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
 Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
 Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
@@ -7,6 +7,27 @@ Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
 
 
 Ontology(<urn:unnamed:ontology#ont4062649313237337>
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0000902>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0000904>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0003674>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0004871>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0004872>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0004888>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0005623>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0007409>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0007411>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0008046>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0008150>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0009653>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0032502>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0048667>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0048856>))
+Declaration(Class(<http://purl.org/obo/owl/GO#GO_0060089>))
+Declaration(Class(<http://purl.org/obo/owl/UBERON#UBERON_0000061>))
+Declaration(ObjectProperty(<http://www.obofoundry.org/ro/ro.owl#has_output>))
+Declaration(ObjectProperty(<http://www.obofoundry.org/ro/ro.owl#part_of>))
+Declaration(ObjectProperty(<http://www.obofoundry.org/ro/ro.owl#results_in_complete_development_of>))
+Declaration(ObjectProperty(<http://www.obofoundry.org/ro/ro.owl#results_in_developmental_progression_of>))
 
 
 TransitiveObjectProperty(<http://www.obofoundry.org/ro/ro.owl#part_of>)

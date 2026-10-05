@@ -1,0 +1,40 @@
+[
+  {
+    "index": 0,
+    "source_sha256": "edc22bc64ff041d6e17a0634120bbc04f3a23dabe469b86430f4e85538e9a08e",
+    "taxonomy_sha256": "cad746a9729042ccc59067c408a41f9194b350805282180f74354247878e5b93",
+    "axiom_indices": [
+      0,
+      1
+    ],
+    "entailed": true
+  },
+  {
+    "index": 1,
+    "source_sha256": "f5b96e595de2f40a0a897a844bd0c6966df958f63a9bb14ce2f8c9fa98a006fb",
+    "taxonomy_sha256": "00aba7e0cbeee0b2ded259ebb516caf475d4ecfc7dbd31f5f9435f48b09f8ebf",
+    "axiom_indices": [
+      1
+    ],
+    "entailed": false
+  },
+  {
+    "index": 2,
+    "source_sha256": "15761376d0f54ea2b0ad0d1d337ef06e49efa1b2851238b7eb0c8760cbf0835d",
+    "taxonomy_sha256": "0e711e0081c234b5de6852c58bf04142ce3a49dd73655b3a8668031a157ec116",
+    "axiom_indices": [
+      0
+    ],
+    "entailed": false
+  },
+  {
+    "index": 3,
+    "source_sha256": "edc22bc64ff041d6e17a0634120bbc04f3a23dabe469b86430f4e85538e9a08e",
+    "taxonomy_sha256": "cad746a9729042ccc59067c408a41f9194b350805282180f74354247878e5b93",
+    "axiom_indices": [
+      0,
+      1
+    ],
+    "entailed": true
+  }
+]

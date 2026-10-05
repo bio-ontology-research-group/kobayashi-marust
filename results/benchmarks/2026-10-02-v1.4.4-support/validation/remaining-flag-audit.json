@@ -1,0 +1,454 @@
+{
+  "cases": 21,
+  "confirmed": 21,
+  "results": [
+    {
+      "ontology": "ore_ont_10197",
+      "sha256": "7e014d1cd7d50bdfc7dcf9d0f9c806ef7bb5c6e707060b8a322fdb742d47dd19",
+      "validator_message": "invalid OWL 2 DL input:     --> 3077:113\n     |\n3077 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n     |                                                                                                                 ^---\n     |\n     = expected RFC3987_IriPctEncoded or RFC3987_IriUCSChar",
+      "snippets": [
+        {
+          "line": 3077,
+          "source": "ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "iri",
+      "reason": "IRI contains U+FFFD outside RFC3987 ucschar, or raw square brackets forbidden in ifragment.",
+      "normative_source": "https://www.rfc-editor.org/rfc/rfc3987#section-2.2"
+    },
+    {
+      "ontology": "ore_ont_10906",
+      "sha256": "7ed3841b1a7d6bd515ea104a9a0d07a0a59d15b9767a03793bf67625f5ab10f8",
+      "validator_message": "invalid OWL 2 DL input at line 363: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 363,
+          "source": "DataPropertyAssertion(<http://semanticscience.org/resource/dl:hasDefaultValue> <http://semanticscience.org/resource/rdbowlizer/employees:Department.location> \"NULL\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_11411",
+      "sha256": "440a1315f07e639b6753902e5c11fdd212ca426e9028173849a784e04288d95e",
+      "validator_message": "invalid OWL 2 DL input:     --> 3077:113\n     |\n3077 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n     |                                                                                                                 ^---\n     |\n     = expected RFC3987_IriPctEncoded or RFC3987_IriUCSChar",
+      "snippets": [
+        {
+          "line": 3077,
+          "source": "ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "iri",
+      "reason": "IRI contains U+FFFD outside RFC3987 ucschar, or raw square brackets forbidden in ifragment.",
+      "normative_source": "https://www.rfc-editor.org/rfc/rfc3987#section-2.2"
+    },
+    {
+      "ontology": "ore_ont_1270",
+      "sha256": "a928d1144a7e0b86b62f31ae5f75bc1dc60f827e8e8fd92b3f7557c83a302f6c",
+      "validator_message": "invalid OWL 2 DL input: data range <http://sw.opencyc.org/concept/Mx4r1zUywIobEdaAAACQJ5T1Bg> is outside the OWL 2 datatype map and has no datatype definition",
+      "snippets": [
+        {
+          "line": 20703,
+          "source": "Declaration(Datatype(<http://sw.opencyc.org/concept/Mx4r1zUywIobEdaAAACQJ5T1Bg>))"
+        },
+        {
+          "line": 57296,
+          "source": "DataPropertyRange(<http://sw.opencyc.org/concept/Mx4rr5sHRumEEdmAAAACs6hbjw> <http://sw.opencyc.org/concept/Mx4r1zUywIobEdaAAACQJ5T1Bg>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "datatype",
+      "reason": "Datatype is outside the OWL 2 map and source contains no datatype definitions or imports.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Global_Restrictions_on_Axioms_in_OWL_2_DL"
+    },
+    {
+      "ontology": "ore_ont_12955",
+      "sha256": "b87b009996ec748c90ceb94fedb33a483e58baeb21493f6e99d13a73bcafe59c",
+      "validator_message": "invalid OWL 2 DL input: literal \"2010-10-21T19:15:25Z\"^^<xsd:dateTime> has no lexical interpretation in the OWL 2 datatype map; custom datatype definitions specify data ranges, not new literal lexical mappings",
+      "snippets": [
+        {
+          "line": 417,
+          "source": "Declaration(Datatype(<xsd:dateTime>))"
+        },
+        {
+          "line": 798,
+          "source": "DataPropertyRange(<http://iridl.ldeo.columbia.edu/ontologies/iridl.owl#expires> xsd:dateTime)"
+        },
+        {
+          "line": 810,
+          "source": "DataPropertyRange(<http://iridl.ldeo.columbia.edu/ontologies/iridl.owl#last_modified> xsd:dateTime)"
+        },
+        {
+          "line": 823,
+          "source": "DataPropertyRange(<http://iridl.ldeo.columbia.edu/ontologies/iridl.owl#time_coverage_end> xsd:dateTime)"
+        },
+        {
+          "line": 825,
+          "source": "DataPropertyRange(<http://iridl.ldeo.columbia.edu/ontologies/iridl.owl#time_coverage_start> xsd:dateTime)"
+        },
+        {
+          "line": 834,
+          "source": "DataPropertyRange(<http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#last_modified> xsd:dateTime)"
+        },
+        {
+          "line": 930,
+          "source": "DataPropertyAssertion(<http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#code_last_modified> <http://gcmd.gsfc.nasa.gov/Aboutus/xml/serf/serf.xsd> \"2010-10-21T19:15:25Z\"^^<xsd:dateTime>)"
+        },
+        {
+          "line": 931,
+          "source": "DataPropertyAssertion(<http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#last_modified> <http://gcmd.gsfc.nasa.gov/Aboutus/xml/serf/serf.xsd> \"2010-10-22T20:43:45Z\"^^<xsd:dateTime>)"
+        },
+        {
+          "line": 1331,
+          "source": "DataPropertyAssertion(<http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#last_modified> <http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#cachecontext> \"2005-10-04T00:00:00Z\"^^xsd:dateTime)"
+        },
+        {
+          "line": 1456,
+          "source": "DataPropertyAssertion(<http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#code_last_modified> <http://schemas.opengis.net/wms/1.3.0/capabilities_1_3_0.xsd> \"2010-04-08T20:53:50Z\"^^<xsd:dateTime>)"
+        },
+        {
+          "line": 1457,
+          "source": "DataPropertyAssertion(<http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#last_modified> <http://schemas.opengis.net/wms/1.3.0/capabilities_1_3_0.xsd> \"2010-02-13T09:13:35Z\"^^<xsd:dateTime>)"
+        },
+        {
+          "line": 1459,
+          "source": "DataPropertyAssertion(<http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#code_last_modified> <http://schemas.opengis.net/xlink/1.0.0/xlinks.xsd> \"2010-04-08T20:53:50Z\"^^<xsd:dateTime>)"
+        },
+        {
+          "line": 1460,
+          "source": "DataPropertyAssertion(<http://iridl.ldeo.columbia.edu/ontologies/rdfcache.owl#last_modified> <http://schemas.opengis.net/xlink/1.0.0/xlinks.xsd> \"2009-08-14T20:02:25Z\"^^<xsd:dateTime>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "Literal datatype IRI is not in the OWL 2 datatype map. <xsd:dateTime> is a literal IRI, not the expanded xsd prefix.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_13129",
+      "sha256": "c1841078521c6f983eca6db04b39101b0a0b83a55e7a0c9eefcf4378d08b04dd",
+      "validator_message": "invalid OWL 2 DL input at line 333: literal \"His father have had diabetes\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 333,
+          "source": "DataPropertyAssertion(<http://www.semanticweb.org/ontologies/2012/2/Ontology1331511057559.owl#History> <http://www.semanticweb.org/ontologies/2012/2/Ontology1331511057559.owl#Patient1> \"His father have had diabetes\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_13880",
+      "sha256": "604a343984299aff40b9a916e52a6b7dfad8f2fd2cd0fca09d8ce72caa56a357",
+      "validator_message": "invalid OWL 2 DL input at line 379: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 379,
+          "source": "DataPropertyAssertion(<http://semanticscience.org/resource/dl:hasDefaultValue> <http://semanticscience.org/resource/rdbowlizer/employees:Department.location> \"NULL\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_15516",
+      "sha256": "fe36410fa273546ee38e7a77ae2879f3f95aa1ac93cc021909c680f5fb036d62",
+      "validator_message": "invalid OWL 2 DL input at line 354: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 354,
+          "source": "DataPropertyAssertion(<http://semanticscience.org/resource/dl:hasDefaultValue> <http://semanticscience.org/resource/rdbowlizer/employees:Department.location> \"NULL\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_16542",
+      "sha256": "7548531930455d09189588cfa59597949f2a1cbaeb5ec92b9f7e160fc86f86a9",
+      "validator_message": "invalid OWL 2 DL input:      --> 28602:113\n      |\n28602 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n      |                                                                                                                 ^---\n      |\n      = expected RFC3987_IriPctEncoded or RFC3987_IriUCSChar",
+      "snippets": [
+        {
+          "line": 28602,
+          "source": "ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "iri",
+      "reason": "IRI contains U+FFFD outside RFC3987 ucschar, or raw square brackets forbidden in ifragment.",
+      "normative_source": "https://www.rfc-editor.org/rfc/rfc3987#section-2.2"
+    },
+    {
+      "ontology": "ore_ont_20",
+      "sha256": "c4582bf1dc1ab963b7a82277c8ec6aca3cb405e81e6b8c3852f9abf10408a74f",
+      "validator_message": "invalid OWL 2 DL input:     --> 1299:236\n     |\n1299 | ObjectPropertyAssertion(<http://www.ontologydesignpatterns.org/ont/lod-analysis-properties.owl#hasDefinedUniverse> <http://purl.org/NET/c4dm/event.owl#factor> <http://www.ontologydesignpatterns.org/ont/lod-analysis-properties-data.owl#[event:Event,]>)\n     |                                                                                                                                                                                                                                            ^---\n     |\n     = expected RFC3987_IriPctEncoded or RFC3987_IriUCSChar",
+      "snippets": [
+        {
+          "line": 1299,
+          "source": "ObjectPropertyAssertion(<http://www.ontologydesignpatterns.org/ont/lod-analysis-properties.owl#hasDefinedUniverse> <http://purl.org/NET/c4dm/event.owl#factor> <http://www.ontologydesignpatterns.org/ont/lod-analysis-properties-data.owl#[event:Event,]>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "iri",
+      "reason": "IRI contains U+FFFD outside RFC3987 ucschar, or raw square brackets forbidden in ifragment.",
+      "normative_source": "https://www.rfc-editor.org/rfc/rfc3987#section-2.2"
+    },
+    {
+      "ontology": "ore_ont_237",
+      "sha256": "341f8ba1ec18a33cc451a0fe51203e9aa24a83db08ab4a0dd817a75de3cab037",
+      "validator_message": "invalid OWL 2 DL input at line 364: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 364,
+          "source": "DataPropertyAssertion(<http://semanticscience.org/resource/dl:hasDefaultValue> <http://semanticscience.org/resource/rdbowlizer/employees:Department.location> \"NULL\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_2669",
+      "sha256": "e0c5414452959475ca00a63761af6869310d43e12d9d7a29f42f2ade2f0b395e",
+      "validator_message": "invalid OWL 2 DL input at line 373: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 373,
+          "source": "DataPropertyAssertion(<http://semanticscience.org/resource/dl:hasDefaultValue> <http://semanticscience.org/resource/rdbowlizer/employees:Department.location> \"NULL\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_4049",
+      "sha256": "adcdb8aa37ed499d3121f1d83b135b052e9c3b4c9e84f6f50c59dd6721e453a2",
+      "validator_message": "invalid OWL 2 DL input: literal \"4.0E7\"^^<http://dbpedia.org/datatype/usDollar> has no lexical interpretation in the OWL 2 datatype map; custom datatype definitions specify data ranges, not new literal lexical mappings",
+      "snippets": [
+        {
+          "line": 2460,
+          "source": "Declaration(Datatype(<http://dbpedia.org/datatype/usDollar>))"
+        },
+        {
+          "line": 8476,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/gift> <http://dbpedia.org/resource/Acadia_University> \"4.0E7\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 9390,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/fees> <http://dbpedia.org/resource/All_Saints_Greek_Orthodox_Grammar_School> \"95300.0\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 10765,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/revenue> <http://dbpedia.org/resource/Arthur_Andersen> \"9.3E9\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 11503,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/gift> <http://dbpedia.org/resource/Barnard_College> \"1.681E8\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 11996,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/gift> <http://dbpedia.org/resource/Binghamton_University> \"6.0E7\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 13527,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/fees> <http://dbpedia.org/resource/Canberra_Grammar_School> \"15060.0\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 13528,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/fees> <http://dbpedia.org/resource/Canberra_Grammar_School> \"30720.0\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 13531,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/revenue> <http://dbpedia.org/resource/Canberra_Grammar_School> \"2.4798519E7\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 14106,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/gift> <http://dbpedia.org/resource/Cazenovia_College> \"2.2E7\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 19476,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/revenue> <http://dbpedia.org/resource/Double_Cola> \"2.11E7\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 20114,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/gift> <http://dbpedia.org/resource/Eastern_Oregon_University> \"4897000.0\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 52052,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/tuition> <http://dbpedia.org/resource/American_Heritage_School_%28Florida%29> \"27303.0\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 53107,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/gift> <http://dbpedia.org/resource/California_State_University%2C_Fullerton> \"1.9E7\"^^<http://dbpedia.org/datatype/usDollar>)"
+        },
+        {
+          "line": 53133,
+          "source": "DataPropertyAssertion(<http://dbpedia.org/ontology/gift> <http://dbpedia.org/resource/California_State_University%2C_Long_Beach> \"3.11E7\"^^<http://dbpedia.org/datatype/usDollar>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "Literal datatype IRI is not in the OWL 2 datatype map. <xsd:dateTime> is a literal IRI, not the expanded xsd prefix.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_5206",
+      "sha256": "c9a11f7e233a41ac69764c416368e86b0d3b638e32c9a286983ff150da9b509b",
+      "validator_message": "invalid OWL 2 DL input at line 361: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 361,
+          "source": "DataPropertyAssertion(<http://semanticscience.org/resource/dl:hasDefaultValue> <http://semanticscience.org/resource/rdbowlizer/employees:Department.location> \"NULL\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_5539",
+      "sha256": "ee115016d57e142b420612ab498befef2122da595ff0007b4f6ad199294226e9",
+      "validator_message": "invalid OWL 2 DL input at line 361: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 361,
+          "source": "DataPropertyAssertion(<http://semanticscience.org/resource/dl:hasDefaultValue> <http://semanticscience.org/resource/rdbowlizer/employees:Department.location> \"NULL\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_5753",
+      "sha256": "44afd9c9bd3b2f9ea24e55115b637b434994bc55de13e0efc0cb75101b759b8e",
+      "validator_message": "invalid OWL 2 DL input:    --> 330:255\n    |\n330 | ObjectPropertyAssertion(<http://www.ontologydesignpatterns.org/ont/lod-analysis-properties.owl#hasUniverseObservation> <http://data.linkedmdb.org/resource/movie/actor> <http://www.ontologydesignpatterns.org/ont/lod-analysis-properties-data.owl#LinkedMDB:[mdb_movie:film,foaf:Person]>)\n    |                                                                                                                                                                                                                                                               ^---\n    |\n    = expected RFC3987_IriPctEncoded or RFC3987_IriUCSChar",
+      "snippets": [
+        {
+          "line": 330,
+          "source": "ObjectPropertyAssertion(<http://www.ontologydesignpatterns.org/ont/lod-analysis-properties.owl#hasUniverseObservation> <http://data.linkedmdb.org/resource/movie/actor> <http://www.ontologydesignpatterns.org/ont/lod-analysis-properties-data.owl#LinkedMDB:[mdb_movie:film,foaf:Person]>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "iri",
+      "reason": "IRI contains U+FFFD outside RFC3987 ucschar, or raw square brackets forbidden in ifragment.",
+      "normative_source": "https://www.rfc-editor.org/rfc/rfc3987#section-2.2"
+    },
+    {
+      "ontology": "ore_ont_6635",
+      "sha256": "65b31f36a8122ca1eae6564ae5fa7633b249c1f2ba53970dbeaf457db63c857e",
+      "validator_message": "invalid OWL 2 DL input: data range <http://www.w3.org/2001/XMLSchema.xsd#NCName> is outside the OWL 2 datatype map and has no datatype definition",
+      "snippets": [
+        {
+          "line": 95,
+          "source": "Declaration(Datatype(<http://www.w3.org/2001/XMLSchema.xsd#NCName>))"
+        },
+        {
+          "line": 238,
+          "source": "DataPropertyRange(<http://www.w3.org/2007/03/xproc#localName> <http://www.w3.org/2001/XMLSchema.xsd#NCName>)"
+        },
+        {
+          "line": 242,
+          "source": "DataPropertyRange(<http://www.w3.org/2007/03/xproc#name> <http://www.w3.org/2001/XMLSchema.xsd#NCName>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "datatype",
+      "reason": "Datatype is outside the OWL 2 map and source contains no datatype definitions or imports.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Global_Restrictions_on_Axioms_in_OWL_2_DL"
+    },
+    {
+      "ontology": "ore_ont_8280",
+      "sha256": "9a72cf6570f9d36e57b6ceb05a125eadc62ed51fb5c29eb0789d1627766feeef",
+      "validator_message": "invalid OWL 2 DL input at line 356: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically.",
+      "snippets": [
+        {
+          "line": 356,
+          "source": "DataPropertyAssertion(<http://semanticscience.org/resource/dl:hasDefaultValue> <http://semanticscience.org/resource/rdbowlizer/employees:Department.location> \"NULL\"^^rdfs:Literal)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "literal",
+      "reason": "rdfs:Literal is a data range without a literal lexical mapping.",
+      "normative_source": "https://www.w3.org/TR/owl2-syntax/#Literals"
+    },
+    {
+      "ontology": "ore_ont_9600",
+      "sha256": "d56974687279c95f3a5f8eca1195af9a1e9265cec929dbd8d19c73f0fe26660d",
+      "validator_message": "invalid OWL 2 DL input: malformed xsd:pattern: FORX0002: invalid regular expression: unrecognised escape \\~",
+      "snippets": [
+        {
+          "line": 137,
+          "source": "SubClassOf(<http://www.biointerchange.org/gfvo#AminoAcid> DataSomeValuesFrom(<http://www.biointerchange.org/gfvo#hasValue> DatatypeRestriction(xsd:string xsd:pattern \"[A-Z]\")))"
+        },
+        {
+          "line": 153,
+          "source": "SubClassOf(<http://www.biointerchange.org/gfvo#CodonSequence> DataSomeValuesFrom(<http://www.biointerchange.org/gfvo#hasValue> DatatypeRestriction(xsd:string xsd:pattern \"([ACGT]{3})+\")))"
+        },
+        {
+          "line": 161,
+          "source": "SubClassOf(<http://www.biointerchange.org/gfvo#DNASequence> DataSomeValuesFrom(<http://www.biointerchange.org/gfvo#hasValue> DatatypeRestriction(xsd:string xsd:pattern \"([ACGT])+\")))"
+        },
+        {
+          "line": 205,
+          "source": "SubClassOf(<http://www.biointerchange.org/gfvo#PeptideSequence> DataSomeValuesFrom(<http://www.biointerchange.org/gfvo#hasValue> DatatypeRestriction(xsd:string xsd:pattern \"([A-Z])+\")))"
+        },
+        {
+          "line": 222,
+          "source": "SubClassOf(<http://www.biointerchange.org/gfvo#Sequence> DataSomeValuesFrom(<http://www.biointerchange.org/gfvo#hasValue> DatatypeRestriction(xsd:string xsd:pattern \"([ACGTUWSMKRYBDHVN\\\\-]+|\\\\~[0-9]*|\\\\.|!|\\\\^)\")))"
+        }
+      ],
+      "status": "confirmed",
+      "category": "pattern",
+      "reason": "Functional-syntax literal decodes to a regex containing \\~; tilde is not an XML Schema regex escape.",
+      "normative_source": "https://www.w3.org/TR/xmlschema-2/#char-escapes"
+    },
+    {
+      "ontology": "ore_ont_9694",
+      "sha256": "98af18bed03ebf001dd8d5c6b4d42e64870cc757d6b98b3083be9b031c622a0a",
+      "validator_message": "invalid OWL 2 DL input:      --> 13559:113\n      |\n13559 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n      |                                                                                                                 ^---\n      |\n      = expected RFC3987_IriPctEncoded or RFC3987_IriUCSChar",
+      "snippets": [
+        {
+          "line": 13559,
+          "source": "ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "iri",
+      "reason": "IRI contains U+FFFD outside RFC3987 ucschar, or raw square brackets forbidden in ifragment.",
+      "normative_source": "https://www.rfc-editor.org/rfc/rfc3987#section-2.2"
+    },
+    {
+      "ontology": "ore_ont_9881",
+      "sha256": "ddb85667fb8e3990f2e5dddbfe421a3a669b716fcdb80ba0c596a5d5ae980137",
+      "validator_message": "invalid OWL 2 DL input:     --> 3015:113\n     |\n3015 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n     |                                                                                                                 ^---\n     |\n     = expected RFC3987_IriPctEncoded or RFC3987_IriUCSChar",
+      "snippets": [
+        {
+          "line": 3015,
+          "source": "ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)"
+        }
+      ],
+      "status": "confirmed",
+      "category": "iri",
+      "reason": "IRI contains U+FFFD outside RFC3987 ucschar, or raw square brackets forbidden in ifragment.",
+      "normative_source": "https://www.rfc-editor.org/rfc/rfc3987#section-2.2"
+    }
+  ],
+  "limitations": "Confirms one violation per input, not all violations; no ontology rewrite."
+}

@@ -1,0 +1,4 @@
+KM_TIMING mirror-route: declined: non-positive residual axiom: ObjectHasValue(<http://krono.act.uji.es/people/Ernesto/qimage-ontology/OntologyQimage.owl#has_curvature> <http://krono.act.uji.es/people/Ernesto/qimage-ontology/OntologyQimage.owl#semicircular>)
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.06s cached=false sidecar=false
+KM_TIMING frontend done @ 0.06s route=certified_card_nominals
+KM_TIMING spawn_ht: read+convert 6615 clauses (ht_view=1989) in 0.01s

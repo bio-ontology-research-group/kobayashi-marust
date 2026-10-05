@@ -1,0 +1,18 @@
+{
+  "observed_at": "2026-10-05T04:23:30.797369+00:00",
+  "candidate_commit": "451495776fde9116ca55c09d6eee25ebd1a6ce2a",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "source_sha256": "a923d5b5db714495bb32e1cd55a909a7de46eb0c6b4fecad3c09f30a885468a9",
+  "current_raw_taxonomy_sha256": "8d5e7674a430b322c2e0e8289e0c20478f2469ce13267e81322bfb23549dd393",
+  "current_audit_sha256": "280a542323ad8dae3a19e17d3fa7bab43585df998a11c515aca1ae2881bcd1e3",
+  "prior_audit_sha256": "43802920c3c41f14f167857527abd6dd96f227b413bfdaf4f77355a48875006f",
+  "km_comparisons_identical_to_previous_candidate": true,
+  "evidence": {
+    "finite-model.json": "e76bb7790bdfb618e5c9ac01a74dcbab46ee851b30e2c4032835f8b6e87d12a1",
+    "finite-model-witness.json": "cb32a8b6a9d0ab4eca68df6eac3268f134ea1f24f24a051cca94b60e2aca02ff",
+    "finite-model.py": "844b2a72905eb3d01031ea08db99423769c741d1083fa2f1875288cf01f69948",
+    "finite-model.log": "ff2665332663891600d1a3909d2cd9bf4b911c46d6154cda56bef77746102902"
+  },
+  "scope": "Finite object model with standard datatype domains establishes source consistency only. It does not independently prove the full taxonomy. Raw JFact/Openllet consistency disagreements retained.",
+  "timings_transferred": false
+}

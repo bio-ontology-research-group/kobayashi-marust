@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE ResponseMessage>
+<ResponseMessage xmlns="http://www.owllink.org/owllink#" xmlns:xsd="http://www.w3.org/2001/XMLSchema#" xml:base="http://www.w3.org/2002/07/owl#" xmlns:owl="http://www.w3.org/2002/07/owl#">
+ <KB kb="urn:pilot:kb"/>
+ <OK/>
+ <BooleanResponse result="true"/>
+ <ClassHierarchy>
+  <ClassSynset>
+   <owl:Class IRI="http://www.w3.org/2002/07/owl#Nothing"/>
+  </ClassSynset>
+  <ClassSubClassesPair>
+   <ClassSynset>
+    <owl:Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+   </ClassSynset>
+   <SubClassSynsets>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:C"/>
+    </ClassSynset>
+   </SubClassSynsets>
+  </ClassSubClassesPair>
+  <ClassSubClassesPair>
+   <ClassSynset>
+    <owl:Class IRI="urn:pilot:C"/>
+   </ClassSynset>
+   <SubClassSynsets>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:B"/>
+    </ClassSynset>
+   </SubClassSynsets>
+  </ClassSubClassesPair>
+  <ClassSubClassesPair>
+   <ClassSynset>
+    <owl:Class IRI="urn:pilot:B"/>
+   </ClassSynset>
+   <SubClassSynsets>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:A"/>
+    </ClassSynset>
+   </SubClassSynsets>
+  </ClassSubClassesPair>
+ </ClassHierarchy>
+ <OK/>
+ <BooleanResponse result="true"/>
+ <ClassHierarchy>
+  <ClassSynset>
+   <owl:Class IRI="http://www.w3.org/2002/07/owl#Nothing"/>
+  </ClassSynset>
+  <ClassSubClassesPair>
+   <ClassSynset>
+    <owl:Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+   </ClassSynset>
+   <SubClassSynsets>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:C"/>
+    </ClassSynset>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:B"/>
+    </ClassSynset>
+   </SubClassSynsets>
+  </ClassSubClassesPair>
+  <ClassSubClassesPair>
+   <ClassSynset>
+    <owl:Class IRI="urn:pilot:B"/>
+   </ClassSynset>
+   <SubClassSynsets>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:A"/>
+    </ClassSynset>
+   </SubClassSynsets>
+  </ClassSubClassesPair>
+ </ClassHierarchy>
+ <OK/>
+ <BooleanResponse result="true"/>
+ <ClassHierarchy>
+  <ClassSynset>
+   <owl:Class IRI="http://www.w3.org/2002/07/owl#Nothing"/>
+  </ClassSynset>
+  <ClassSubClassesPair>
+   <ClassSynset>
+    <owl:Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+   </ClassSynset>
+   <SubClassSynsets>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:C"/>
+    </ClassSynset>
+   </SubClassSynsets>
+  </ClassSubClassesPair>
+  <ClassSubClassesPair>
+   <ClassSynset>
+    <owl:Class IRI="urn:pilot:C"/>
+   </ClassSynset>
+   <SubClassSynsets>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:B"/>
+    </ClassSynset>
+   </SubClassSynsets>
+  </ClassSubClassesPair>
+  <ClassSubClassesPair>
+   <ClassSynset>
+    <owl:Class IRI="urn:pilot:B"/>
+   </ClassSynset>
+   <SubClassSynsets>
+    <ClassSynset>
+     <owl:Class IRI="urn:pilot:A"/>
+    </ClassSynset>
+   </SubClassSynsets>
+  </ClassSubClassesPair>
+ </ClassHierarchy>
+</ResponseMessage>

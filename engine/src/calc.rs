@@ -381,11 +381,10 @@ pub struct Sig {
     pub nothing: Vec<bool>,
     /// the special `owl:Nothing` concept id, if present.
     pub bottom: Option<Iri>,
-    /// `KM_RSUCC`: enable the r-Succ forward push of predecessor central
-    /// reachability facts (`__trans__`/`__chain__(x)`) to successor contexts as
-    /// edge-conditioned neighbour predicates, closing the transitive+inverse
-    /// reconstruction completeness gap (tests/completeness-gaps; 7914
-    /// UBERON_0001373/0008977).  Default off — opt-in until corpus-swept.
+    /// Forward predecessor central class labels to successor contexts as
+    /// edge-conditioned neighbour hypotheses. Enabled automatically for source
+    /// clauses with roles directed into the central variable; KM_RSUCC can
+    /// additionally request it for diagnostic runs.
     pub rsucc: bool,
 }
 

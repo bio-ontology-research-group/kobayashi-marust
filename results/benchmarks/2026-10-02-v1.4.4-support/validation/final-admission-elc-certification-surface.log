@@ -1,0 +1,266 @@
+⚠ [3/297] Replayed ContextCalculus.ELCompletionCertificate
+warning: ContextCalculus/ELCompletionCertificate.lean:47:15: unused variable `top`
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+warning: ContextCalculus/ELCompletionCertificate.lean:87:0: automatically included section variable(s) unused in theorem `ContextCalculus.ELCompletion.validStep_derivable`:
+  [DecidableEq Concept]
+  [DecidableEq Role]
+consider restructuring your `variable` declarations so that the variables are not in scope or explicitly omit them:
+  omit [DecidableEq Concept] [DecidableEq Role] in theorem ...
+
+Note: This linter can be disabled with `set_option linter.unusedSectionVars false`
+ℹ [4/297] Replayed ContextCalculus.ELRenaming
+info: ContextCalculus/ELRenaming.lean:129:0: 'ContextCalculus.ELCompletion.entailsSub_mapConcept_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELRenaming.lean:130:0: 'ContextCalculus.ELCompletion.unsatisfiable_mapConcept_iff' depends on axioms: [propext, Quot.sound]
+ℹ [466/485] Replayed ContextCalculus.ELNormalization
+info: ContextCalculus/ELNormalization.lean:619:0: 'ContextCalculus.ELCompletion.SourceOntologyNormalEvidence.models_project' depends on axioms: [propext, Quot.sound]
+ℹ [467/485] Replayed ContextCalculus.ELRawNormalization
+info: ContextCalculus/ELRawNormalization.lean:1066:0: 'ContextCalculus.ELCompletion.RawDirectToNormalCertificate.models_iff' depends on axioms: [propext, Quot.sound]
+ℹ [682/718] Replayed ContextCalculus.ELResidualCertificate
+info: ContextCalculus/ELResidualCertificate.lean:505:0: 'ContextCalculus.ELCompletion.entailsSubWithResidual_iff_materialized' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELResidualCertificate.lean:506:0: 'ContextCalculus.ELCompletion.unsatisfiableWithResidual_iff_materialized' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELResidualCertificate.lean:507:0: 'ContextCalculus.ELCompletion.entailsSubWithResidual_iff_materialized_on' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELResidualCertificate.lean:508:0: 'ContextCalculus.ELCompletion.unsatisfiableWithResidual_iff_materialized_on' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELResidualCertificate.lean:509:0: 'ContextCalculus.ELCompletion.entailsSubWithResidual_iff_finiteMaterialized' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELResidualCertificate.lean:510:0: 'ContextCalculus.ELCompletion.unsatisfiableWithResidual_iff_finiteMaterialized' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+⚠ [683/718] Replayed ContextCalculus.ELResidualCompilation
+info: ContextCalculus/ELResidualCompilation.lean:147:0: 'ContextCalculus.ELCompletion.modelsRawResidual_liftSource_iff' depends on axioms: [propext, Quot.sound]
+warning: ContextCalculus/ELResidualCompilation.lean:380:23: This simp argument is unused:
+  decide_eq_true_eq
+
+Hint: Omit it from the simp argument list.
+  simp only [checkResidualPins, Bool.and_eq_true, List.all_eq_true, L̵i̵s̵t̵.̵m̵e̵m̵_̵f̵i̵n̵R̵a̵n̵g̵e̵,̵ ̵d̵e̵c̵i̵d̵e̵_̵e̵q̵_̵t̵r̵u̵e̵_̵e̵q̵]̵L̲i̲s̲t̲.̲m̲e̲m̲_̲f̲i̲n̲R̲a̲n̲g̲e̲]̲
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualCompilation.lean:410:29: This simp argument is unused:
+  horigin
+
+Hint: Omit it from the simp argument list.
+  simp ̵[̵h̵o̵r̵i̵g̵i̵n̵]̵
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: ContextCalculus/ELResidualCompilation.lean:547:0: 'ContextCalculus.ELCompletion.ResidualCompilationEvidence.compiled_implies_raw' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELResidualCompilation.lean:548:0: 'ContextCalculus.ELCompletion.residualCompilationTheory_compiled_implies_raw' depends on axioms: [propext, Quot.sound]
+⚠ [684/718] Replayed ContextCalculus.ELResidualWitness
+warning: ContextCalculus/ELResidualWitness.lean:47:38: This simp argument is unused:
+  satRawAtom
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialRoleClause, s̵a̵t̵R̵a̵w̵A̵t̵o̵m̵,̵ ̵evalRawTerm, canonOn]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:47:50: This simp argument is unused:
+  evalRawTerm
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialRoleClause, satRawAtom, e̵v̵a̵l̵R̵a̵w̵T̵e̵r̵m̵,̵ ̵canonOn]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:47:63: This simp argument is unused:
+  canonOn
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialRoleClause, satRawAtom, evalRawTerm,̵ ̵c̵a̵n̵o̵n̵O̵n̵]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:56:40: This simp argument is unused:
+  satRawAtom
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialFillerClause, s̵a̵t̵R̵a̵w̵A̵t̵o̵m̵,̵ ̵evalRawTerm, canonOn]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:56:52: This simp argument is unused:
+  evalRawTerm
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialFillerClause, satRawAtom, e̵v̵a̵l̵R̵a̵w̵T̵e̵r̵m̵,̵ ̵canonOn]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:56:65: This simp argument is unused:
+  canonOn
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialFillerClause, satRawAtom, evalRawTerm,̵ ̵c̵a̵n̵o̵n̵O̵n̵]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:167:38: This simp argument is unused:
+  satRawAtom
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialRoleClause, s̵a̵t̵R̵a̵w̵A̵t̵o̵m̵,̵ ̵evalRawTerm, materializedCanon]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:167:50: This simp argument is unused:
+  evalRawTerm
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialRoleClause, satRawAtom, e̵v̵a̵l̵R̵a̵w̵T̵e̵r̵m̵,̵ ̵materializedCanon]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:167:63: This simp argument is unused:
+  materializedCanon
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialRoleClause, satRawAtom, evalRawTerm,̵ ̵m̵a̵t̵e̵r̵i̵a̵l̵i̵z̵e̵d̵C̵a̵n̵o̵n̵]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:176:40: This simp argument is unused:
+  satRawAtom
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialFillerClause, s̵a̵t̵R̵a̵w̵A̵t̵o̵m̵,̵ ̵evalRawTerm, materializedCanon]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:176:52: This simp argument is unused:
+  evalRawTerm
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialFillerClause, satRawAtom, e̵v̵a̵l̵R̵a̵w̵T̵e̵r̵m̵,̵ ̵materializedCanon]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: ContextCalculus/ELResidualWitness.lean:176:65: This simp argument is unused:
+  materializedCanon
+
+Hint: Omit it from the simp argument list.
+  simp [rawExistentialFillerClause, satRawAtom, evalRawTerm,̵ ̵m̵a̵t̵e̵r̵i̵a̵l̵i̵z̵e̵d̵C̵a̵n̵o̵n̵]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: ContextCalculus/ELResidualWitness.lean:326:0: 'ContextCalculus.ELCompletion.canonOn_rewrittenExistential_satisfies_raw' depends on axioms: [propext]
+info: ContextCalculus/ELResidualWitness.lean:327:0: 'ContextCalculus.ELCompletion.canonOn_witnessRecords_satisfy_raw' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELResidualWitness.lean:328:0: 'ContextCalculus.ELCompletion.canonOn_partitionedRawOntology_satisfies_source' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELResidualWitness.lean:329:0: 'ContextCalculus.ELCompletion.materialized_rewrittenExistential_satisfies_raw' depends on axioms: [propext]
+info: ContextCalculus/ELResidualWitness.lean:330:0: 'ContextCalculus.ELCompletion.materialized_witnessRecords_satisfy_raw' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELResidualWitness.lean:331:0: 'ContextCalculus.ELCompletion.materialized_partitionedRawOntology_satisfies_source' depends on axioms: [propext,
+ Quot.sound]
+⚠ [685/718] Replayed ContextCalculus.ELCompletionWire
+warning: ContextCalculus/ELCompletionWire.lean:252:5: unused variable `horigins`
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+info: ContextCalculus/ELCompletionWire.lean:304:0: 'ContextCalculus.ELCompletion.DecodedResidualCompilation.check_iff' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+warning: ContextCalculus/ELCompletionWire.lean:403:61: try 'simp' instead of 'simpa'
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+warning: ContextCalculus/ELCompletionWire.lean:407:30: try 'simp' instead of 'simpa'
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+warning: ContextCalculus/ELCompletionWire.lean:409:31: try 'simp' instead of 'simpa'
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+warning: ContextCalculus/ELCompletionWire.lean:469:66: This simp argument is unused:
+  eq_comm
+
+Hint: Omit it from the simp argument list.
+  simp [Clause.mentionsConcept, Clause.concepts,̵ ̵e̵q̵_̵c̵o̵m̵m̵]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: ContextCalculus/ELCompletionWire.lean:729:0: 'ContextCalculus.ELCompletion.DecodedCertificate.origin_entails_iff' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:730:0: 'ContextCalculus.ELCompletion.DecodedCertificate.origin_unsatisfiable_iff' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1400:0: 'ContextCalculus.ELCompletion.DecodedCertificate.residualModel_sat_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1401:0: 'ContextCalculus.ELCompletion.DecodedCertificate.checkFiniteResiduals_compiled' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1402:0: 'ContextCalculus.ELCompletion.DecodedCertificate.checkFiniteResiduals_evidence' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1483:0: 'ContextCalculus.ELCompletion.DecodedCertificate.checkPartitionedNormalization_direct_models' depends on axioms: [propext,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1652:0: 'ContextCalculus.ELCompletion.DecodedCertificate.residualCompilation_valid' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1982:0: 'ContextCalculus.ELCompletion.DecodedCertificate.checkV5_sourceResidual_holds' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1983:0: 'ContextCalculus.ELCompletion.DecodedCertificate.checkV5_entailsSubWithResidual_exact' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1984:0: 'ContextCalculus.ELCompletion.DecodedCertificate.checkV5_unsatisfiableWithResidual_exact' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1985:0: 'ContextCalculus.ELCompletion.DecodedCertificate.public_subsumption_sound_source' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1986:0: 'ContextCalculus.ELCompletion.DecodedCertificate.public_subsumption_complete_source_of_satisfiable' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1987:0: 'ContextCalculus.ELCompletion.DecodedCertificate.public_subsumption_exact' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1988:0: 'ContextCalculus.ELCompletion.DecodedCertificate.public_subsumption_source_exact' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCompletionWire.lean:1989:0: 'ContextCalculus.ELCompletion.DecodedCertificate.public_inconsistent_source_exact' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+ℹ [686/718] Replayed ContextCalculus.ELCompletionPublication
+info: ContextCalculus/ELCompletionPublication.lean:73:0: 'ContextCalculus.ELCompletion.DecodedCertificate.checkV5_publication_semantics' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+ℹ [687/718] Replayed ContextCalculus.ELCompletionExecutablePublication
+info: ContextCalculus/ELCompletionExecutablePublication.lean:27:0: 'ContextCalculus.ELCompletion.WireCertificate.check_publication_semantics' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+⚠ [689/718] Replayed ContextCalculus.CheckerTerm
+warning: ContextCalculus/CheckerTerm.lean:229:5: unused variable `he`
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+ℹ [715/718] Replayed ContextCalculus.ELCheckerTermEmbedding
+info: ContextCalculus/ELCheckerTermEmbedding.lean:411:0: 'ContextCalculus.ELCheckerTermEmbedding.valid_encodeClause_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELCheckerTermEmbedding.lean:412:0: 'ContextCalculus.ELCheckerTermEmbedding.models_encode_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELCheckerTermEmbedding.lean:413:0: 'ContextCalculus.ELCheckerTermEmbedding.valid_encodeResidualClause_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELCheckerTermEmbedding.lean:414:0: 'ContextCalculus.ELCheckerTermEmbedding.models_encodeResidual_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELCheckerTermEmbedding.lean:415:0: 'ContextCalculus.ELCheckerTermEmbedding.rawTermInterp_modelOfRaw' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCheckerTermEmbedding.lean:416:0: 'ContextCalculus.ELCheckerTermEmbedding.commonResidualEntails_iff_raw' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+ℹ [717/718] Replayed ContextCalculus.ELNormalCheckerTermEmbedding
+info: ContextCalculus/ELNormalCheckerTermEmbedding.lean:418:0: 'ContextCalculus.ELNormalCheckerTermEmbedding.models_encodeNormalClause_iff' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELNormalCheckerTermEmbedding.lean:419:0: 'ContextCalculus.ELNormalCheckerTermEmbedding.models_encodeNormalOntology_fixed_iff' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELNormalCheckerTermEmbedding.lean:420:0: 'ContextCalculus.ELNormalCheckerTermEmbedding.models_encodeNormalOntology_implies_models' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELNormalCheckerTermEmbedding.lean:421:0: 'ContextCalculus.ELNormalCheckerTermEmbedding.models_encodeNormalOntology_modelOfNormalAndRaw' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELNormalCheckerTermEmbedding.lean:422:0: 'ContextCalculus.ELNormalCheckerTermEmbedding.models_encodeCombinedSource_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELNormalCheckerTermEmbedding.lean:423:0: 'ContextCalculus.ELNormalCheckerTermEmbedding.commonCombinedEntails_iff_elcSource' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+ℹ [718/718] Replayed ContextCalculus.ELCommonSourceWire
+info: ContextCalculus/ELCommonSourceWire.lean:315:0: 'ContextCalculus.ELCommonSourceWire.sat_mapResidualClause_nat_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELCommonSourceWire.lean:316:0: 'ContextCalculus.ELCommonSourceWire.sat_mapResidualClause_fin_iff' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/ELCommonSourceWire.lean:317:0: 'ContextCalculus.ELCommonSourceWire.commonMappedEntails_iff_finite' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCommonSourceWire.lean:318:0: 'ContextCalculus.ELCommonSourceWire.commonMappedCombinedEntails_iff_finite' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: ContextCalculus/ELCommonSourceWire.lean:319:0: 'ContextCalculus.ELCommonSourceWire.finiteELCSourceEntails_iff_publicationSource' does not depend on any axioms
+info: ContextCalculus/ELCommonSourceWire.lean:320:0: 'ContextCalculus.ELCommonSourceWire.WireCertificate.check_common_source_sound' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Build completed successfully (718 jobs).

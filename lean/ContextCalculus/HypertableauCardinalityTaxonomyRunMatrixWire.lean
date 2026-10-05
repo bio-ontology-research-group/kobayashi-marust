@@ -51,7 +51,9 @@ def WireCardinalityTaxonomyRunMatrix.sameProblemB
       run.role_count == first.role_count &&
       run.variable_count == first.variable_count &&
       toJson run.ontology == toJson first.ontology &&
-      toJson run.definitions == toJson first.definitions
+      toJson run.definitions == toJson first.definitions &&
+      run.exact_maximums == first.exact_maximums &&
+      run.exact_definitions == first.exact_definitions
 
 def WireCardinalityTaxonomyRunMatrix.terminalMatrix?
     (wire : WireCardinalityTaxonomyRunMatrix) :
@@ -65,6 +67,8 @@ def WireCardinalityTaxonomyRunMatrix.terminalMatrix?
       variable_count := first.variable_count
       ontology := first.ontology
       definitions := first.definitions
+      exact_maximums := first.exact_maximums
+      exact_definitions := first.exact_definitions
       named := wire.named
       concepts := wire.concept_runs.map (·.terminal)
       subsumptions := wire.subsumption_runs.map fun row => row.map (·.terminal)
