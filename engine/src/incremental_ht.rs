@@ -402,14 +402,15 @@ impl IncrementalBridgeClassifier {
                 affected.len()
             );
         }
+        // Preserve first-position lookup semantics while avoiding one full
+        // concept-vector scan per affected symbol on large updates.
+        let mut concept_ids = HashMap::with_capacity(input.concepts.len());
+        for (id, name) in input.concepts.iter().enumerate() {
+            concept_ids.entry(name.as_str()).or_insert(id);
+        }
         let mut rebuilt_ids: Vec<usize> = affected
             .iter()
-            .filter_map(|name| {
-                input
-                    .concepts
-                    .iter()
-                    .position(|candidate| candidate == name)
-            })
+            .filter_map(|name| concept_ids.get(name.as_str()).copied())
             .collect();
         rebuilt_ids.sort_unstable();
         rebuilt_ids.dedup();
@@ -421,6 +422,7 @@ impl IncrementalBridgeClassifier {
                 },
             )?;
         let rebuilt = bridge_result(&input, classification, Some(&rebuilt_ids));
+        let query_set: HashSet<&str> = queries.iter().map(String::as_str).collect();
         let result = if rebuilt.inconsistent {
             result_from_inconsistent_queries(&queries)
         } else {
@@ -437,7 +439,7 @@ impl IncrementalBridgeClassifier {
             }
             merged
                 .subsumptions
-                .retain(|subject, _| queries.contains(subject));
+                .retain(|subject, _| query_set.contains(subject.as_str()));
             merged.dropped = 0;
             merged.unresolved.clear();
             merged

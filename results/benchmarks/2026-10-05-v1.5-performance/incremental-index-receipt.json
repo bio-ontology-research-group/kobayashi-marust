@@ -1,0 +1,85 @@
+{
+  "diagnostic_only": true,
+  "source_file_sha256": "26dc664f9ec2f14b9f07363eaae1f2fecdfed89e01df8c9460e7fa8c2a381b4d",
+  "before": {
+    "diagnostic_only": true,
+    "wall_s": 6.956676271976903,
+    "binary_sha256": "760c3e283226c4b6e1024524f11dafc53dfe4faab9799d27a5ca0c43de76160c",
+    "responses": [
+      {
+        "op": "init",
+        "status": "ok",
+        "receipt": null
+      },
+      {
+        "op": "replace",
+        "status": "ok",
+        "receipt": {
+          "added_normalized_clauses": 0,
+          "added_rules": 0,
+          "invalidated_states": 15225,
+          "meaningful_incremental_update": false,
+          "removed_normalized_clauses": 1,
+          "removed_rules": 0,
+          "retained_states": 0,
+          "reused_edges": 0,
+          "reused_fixpoint": false,
+          "reused_subsumptions": 83281,
+          "revision": 1,
+          "route_after": "ht_bridge",
+          "route_before": "ht_bridge",
+          "route_migrated": false,
+          "strategy": "exact_rebuild"
+        }
+      }
+    ]
+  },
+  "after": {
+    "diagnostic_only": true,
+    "wall_s": 5.879169809981249,
+    "binary_sha256": "a06baeb1bc80b81c6b859cb7a94f463d2651cbc60c30749847f9025d8c198fce",
+    "responses": [
+      {
+        "op": "init",
+        "status": "ok",
+        "receipt": null
+      },
+      {
+        "op": "replace",
+        "status": "ok",
+        "receipt": {
+          "added_normalized_clauses": 0,
+          "added_rules": 0,
+          "invalidated_states": 15225,
+          "meaningful_incremental_update": false,
+          "removed_normalized_clauses": 1,
+          "removed_rules": 0,
+          "retained_states": 0,
+          "reused_edges": 0,
+          "reused_fixpoint": false,
+          "reused_subsumptions": 83281,
+          "revision": 1,
+          "route_after": "ht_bridge",
+          "route_before": "ht_bridge",
+          "route_migrated": false,
+          "strategy": "exact_rebuild"
+        }
+      }
+    ]
+  },
+  "same_taxonomy_and_receipts": true,
+  "semantics": "First-position concept mapping, sorted rebuilt IDs, and query membership unchanged. Only lookups are indexed; no calculus or invalidation change.",
+  "tests": [
+    {
+      "log": "incremental-index-tests.log",
+      "sha256": "cedd74dfb34df1768a5770a938814db405d1a209c6443c711b5924458793a390",
+      "result": "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 2691 filtered out; finished in 0.00s"
+    },
+    {
+      "log": "incremental-index-source-tests.log",
+      "sha256": "596f8727fac397d596967b67ba45eb3b962ffd17c2a96f50b9fcc4456f1f842f",
+      "result": "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 2681 filtered out; finished in 0.52s"
+    }
+  ],
+  "limitation": "Single local timing pair under concurrent compilation, not release performance evidence. Still exact rebuild on this update."
+}

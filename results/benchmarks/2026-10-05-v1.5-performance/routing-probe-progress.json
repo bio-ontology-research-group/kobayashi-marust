@@ -1,0 +1,163 @@
+{
+  "job_id": "53298748",
+  "partial": true,
+  "completed_inputs": 12,
+  "cases": [
+    {
+      "ontology": "ore_ont_13306",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.11076424270868301
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.08392877131700516
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_6696",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.13832660391926765
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.13812187500298023
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_8781",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.1736917831003666
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.1843140460550785
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_2678",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.1708783134818077
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.16962162777781487
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_7482",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.05001557245850563
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.047403302043676376
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_8189",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.10409872978925705
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.10323717258870602
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_10431",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.11398218013346195
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.11045586876571178
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_12721",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.08138072304427624
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.07910924404859543
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_7216",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.21545929834246635
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.21509104780852795
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_9928",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.07480893656611443
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.07493640296161175
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_8665",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.07551320642232895
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.04417150281369686
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_1618",
+      "modes": {
+        "candidate": {
+          "verified": 3,
+          "median_s": 0.07207908108830452
+        },
+        "skip_inproc": {
+          "verified": 3,
+          "median_s": 0.07349009998142719
+        }
+      }
+    }
+  ]
+}

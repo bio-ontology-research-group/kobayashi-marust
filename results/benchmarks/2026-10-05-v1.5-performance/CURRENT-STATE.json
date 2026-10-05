@@ -70,7 +70,8 @@
   "full_candidate_job": "53298536",
   "native_full_build_status": "completed",
   "native_full_certification_session": 95224,
-  "native_full_certification_status": "all_four_passed_no_sorryAx_source_hashes_unchanged",
+  "native_full_certification_status": "all_four_passed_for_manifest_pinned_candidate; subsequent_incremental_lookup_change_not_in_that_manifest",
   "routing_probe_job": "53298748",
-  "routing_probe_status": "submitted"
+  "routing_probe_status": "submitted",
+  "incremental_index_status": "implemented_10_ht_and_20_source_tests_pass_original_9944_same_answers_and_receipts"
 }
