@@ -1,0 +1,16 @@
+{
+  "job_id": "53298536",
+  "status": "submitted",
+  "scope": 1920,
+  "array": "0-59%8",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "binary_sha256": "6b4f0701faffe0381d3bf2868dcfd76c61ea49491a4bd8d4005cf7fa30266616",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1"
+  },
+  "submitted_utc": "2026-10-05T19:12:13.793896+00:00",
+  "release_requirements_status": "not_achieved"
+}

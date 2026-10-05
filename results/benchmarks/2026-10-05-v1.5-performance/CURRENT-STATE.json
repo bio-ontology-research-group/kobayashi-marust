@@ -1,5 +1,5 @@
 {
-  "status": "atmost_dependency_repair_passes_focused_tests_and_2901_audit",
+  "status": "full_native_base_candidate_submitted",
   "remote_root": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005",
   "measurement_job": "53294013",
   "audit_job": "53294117",
@@ -12,11 +12,11 @@
   "audit_dependency": "aftercorr:53294013",
   "remaining_array_indices": "3-31,33-41",
   "next_actions": [
-    "Poll HT gate session 84011 and candidate Slurm job 53296355; do not restart live processes.",
-    "Collect candidate summaries and compare correctness/coverage before considering DDB default; this diagnostic cannot establish full-corpus acceptance.",
-    "Complete HT, routing, ELC, and CB exact-source Lean gates before release; inspect axiom audits.",
-    "Poll existing jobs 53294280 and 53294283; no duplicate measurements.",
-    "Keep DDB off by default until broader correctness evidence supports enabling it; full v1.5.0 and v1.5.1 goals remain unmet."
+    "Poll full candidate job 53298536; collect all 1920 outcomes and compute coverage, arithmetic mean and median using unchanged verification rules.",
+    "Finish exact-source CB gate in session 95224; preserve source until gate ends.",
+    "Collect remaining three-repeat candidate and matched regression audits from 53296355, 53294280, 53294283.",
+    "Keep both optimizations opt-in until full correctness audit supports promotion.",
+    "Address median runtime and incremental invalidation; both release objectives remain unmet."
   ],
   "release_requirements_status": "not_achieved",
   "profile_job": "53294179",
@@ -60,9 +60,15 @@
   "production_build_status": "completed",
   "production_binary_sha256": "4f4f2d9cec9eb83bcb49c2baf51d79b2157354c9808f3b464c5b66a52292f0ab",
   "atmost_candidate_job": "53296355",
-  "atmost_candidate_status": "submitted_pending_priority",
+  "atmost_candidate_status": "running_3_pilot_cases_verified_in_all_repetitions",
   "incremental_diagnostic_session": 66517,
   "incremental_diagnostic_root": "/tmp/agent/km-v150-diagnostics/incremental-9944",
   "incremental_diagnostic_status": "completed_all_queries_invalidated_on_single_clause_removal",
-  "ht_certification_status": "running_native_checker_build"
+  "ht_certification_status": "passed_atmost_source_15b5eaf9_no_sorryAx",
+  "native_full_build_session": 71706,
+  "native_full_diagnostic_status": "original_sources_8844_and_10621_match_pinned_answers",
+  "full_candidate_job": "53298536",
+  "native_full_build_status": "completed",
+  "native_full_certification_session": 95224,
+  "native_full_certification_status": "ht_routing_elc_passed_cb_running"
 }

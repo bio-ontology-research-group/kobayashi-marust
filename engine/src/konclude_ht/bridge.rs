@@ -3566,8 +3566,23 @@ fn has_any_nominal_input(tin: &TInput) -> bool {
 const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: usize = 10_000;
 
 fn native_cardinality_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
+    native_conditional_full_abox_profile(
+        tin,
+        native_nominals,
+        std::env::var_os("KM_HT_NATIVE_FULL").is_some(),
+    )
+}
+
+/// The non-number schedule remains opt-in pending the full corpus audit.
+/// It reuses the same deterministic consistency base and publication checks;
+/// no source feature flag or axiom is rewritten to select it.
+fn native_conditional_full_abox_profile(
+    tin: &TInput,
+    native_nominals: bool,
+    allow_non_number: bool,
+) -> bool {
     native_nominals
-        && tin.number
+        && (tin.number || allow_non_number)
         && tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
 }
 
@@ -14145,6 +14160,18 @@ mod tests {
             result.consistent,
             "without DifferentIndividuals, the two R-neighbours may merge"
         );
+    }
+
+    #[test]
+    fn non_number_conditional_full_profile_is_opt_in_and_bounded() {
+        let mut tin = cached_native_role_input();
+        tin.number = false;
+        assert!(!native_conditional_full_abox_profile(&tin, true, false));
+        assert!(native_conditional_full_abox_profile(&tin, true, true));
+        assert!(!native_conditional_full_abox_profile(&tin, false, true));
+        let individual = tin.nominal_abox.individuals[0].clone();
+        tin.nominal_abox.individuals.resize(CONDITIONAL_FULL_INDIVIDUAL_LIMIT, individual);
+        assert!(!native_conditional_full_abox_profile(&tin, true, true));
     }
 
     #[test]
