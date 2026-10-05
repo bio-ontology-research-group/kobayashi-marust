@@ -2275,7 +2275,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let mut pair_verdicts: Vec<String> = Vec::new();
             for i in 0..succs.len() {
                 for j in (i + 1)..succs.len() {
-                    let ok = self.ht_individuals_mergeable(succs[i], succs[j], calc_alg_context);
+                    // Rejected pairs are premises of the bound clash too.
+                    // Retain their branch causes even when other pairs can
+                    // still merge, so exhausting those alternatives cannot
+                    // incorrectly turn a local conflict into a root clash.
+                    let ok = self.ht_individuals_mergeable_with_clashes(
+                        succs[i], succs[j], &mut merge_causing, calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
                     if pair_log {
                         // annotate WHY a pair is blocked (distinct edge vs
                         // label clash-set) — the cross-pair-exclusion hunt.
@@ -3110,7 +3119,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let mut pairs: Vec<(NodeId, NodeId)> = Vec::new();
             for i in 0..cands.len() {
                 for j in (i + 1)..cands.len() {
-                    if self.ht_individuals_mergeable(cands[i].0, cands[j].0, calc_alg_context) {
+                    let mergeable = self.ht_individuals_mergeable_with_clashes(
+                        cands[i].0, cands[j].0, &mut merge_causing, calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                    if mergeable {
                         pairs.push((cands[i].0, cands[j].0));
                     }
                 }

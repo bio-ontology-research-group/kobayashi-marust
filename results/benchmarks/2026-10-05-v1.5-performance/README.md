@@ -86,3 +86,40 @@ v1.4.5 reuse receipts by route. All 348 recorded post-initialization attempts
 through nominals, certified_nominals, and ht_bridge rebuild. This is a concrete
 adapter/reuse coverage gap to address for v1.5.1, in addition to frontend and
 update overhead. The file does not replace the full failure denominator.
+
+## At-most dependency repair
+
+The completed pilot audit confirms all three regressions across three
+repetitions. Every v1.4.4 completion is independently verified; all nine
+corresponding v1.4.5 runs time out. The control remains verified for both.
+
+Reduction job 53294946 isolated four variable axioms, with HermiT checking
+each accepted reduction. A separate small fixture describes four successors
+in a disjoint union, three in C and one in D. The pre-fix Rust test accepts
+this satisfiable partition with chronological search but incorrectly rejects
+it with dependency-directed backjumping.
+
+Both at-most merge-enumeration paths used a boolean mergeability predicate
+that discarded dependencies of rejected pairs. The repair uses the existing
+descriptor-carrying predicate and retains these premises on the bound clash
+or merge decision. This prevents a branch-specific conflict from being
+mistaken for an unconditional contradiction. Unsupported predicate state
+continues to stop the task.
+
+The regression now passes for both cardinality implementations with
+backjumping on and off. The affected engine test group passes 1,466 tests,
+with seven ignored. The repaired diagnostic CLI also finishes the original
+ORE 2901 case and agrees with both pinned Konclude and HermiT references:
+the 17 false UNSAT classifications disappear. See
+`atmost-dependency-diagnostic/ore_ont_2901-local/independent-audit.json`.
+The local 25.8-second diagnostic used a build without LTO and is not a
+release benchmark measurement. An earlier local harness attempt failed
+because this container lacks `/usr/bin/time`; its adapter-error record is
+retained separately.
+
+Backjumping remains disabled by default. A standard release build and the
+HT certification gate are in progress; see `CURRENT-STATE.json` for handles.
+`run_atmost_candidate.py` and `atmost-candidate.sbatch` prepare an independently
+audited run of the existing 42-case diagnostic selection once the normal
+release binary is ready. This selection cannot establish the full release
+objectives, which remain unchanged and unmet.

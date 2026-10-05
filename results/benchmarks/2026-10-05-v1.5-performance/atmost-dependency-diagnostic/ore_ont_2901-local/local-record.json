@@ -1,0 +1,17 @@
+{
+  "status": "completed",
+  "rc": 0,
+  "wall_s": 25.796238485956565,
+  "diagnostic_only": true,
+  "env": {
+    "KM_HT_DDB": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto"
+  },
+  "artifact_sha256": "3e8a22c5d3da2f26f1db2fc1ebc98387618c5020b39c5ae378924e2aa2f0ae19",
+  "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+  "build_overrides": {
+    "CARGO_PROFILE_RELEASE_LTO": "false",
+    "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "16"
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "status": "matched_regressions_confirmed_ddb_candidate_rejected",
+  "status": "atmost_dependency_repair_passes_focused_tests_and_2901_audit",
   "remote_root": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005",
   "measurement_job": "53294013",
   "audit_job": "53294117",
@@ -12,11 +12,11 @@
   "audit_dependency": "aftercorr:53294013",
   "remaining_array_indices": "3-31,33-41",
   "next_actions": [
-    "Poll jobs 53294117,53294280,53294283 and 53294731; inspect receipts before any restart.",
-    "Audit all completed 2901 DDB isolation variants against pinned Konclude/HermiT fingerprints.",
-    "If no_skip changes the wrong answer to timeout, investigate DDB mark-driven stack pruning; if cache flags change it, investigate cached dependency provenance.",
-    "Reduce the 2901 wrong-UNSAT case to a regression test before changing default search settings.",
-    "Continue full v1.5.0 classification speed/coverage and v1.5.1 every-case incremental improvement objectives with exact-source Lean release gates."
+    "Poll production build session 57336 and HT gate session 84011; do not restart live processes.",
+    "Pin and deploy the normal release candidate; generate atmost-candidate-artifact.json and atmost-candidate-files.sha256, then submit prepared 42-case diagnostic array and audit all outcomes.",
+    "Complete HT, routing, ELC, and CB exact-source Lean gates before release; inspect axiom audits.",
+    "Poll existing jobs 53294280 and 53294283; no duplicate measurements.",
+    "Keep DDB off by default until broader correctness evidence supports enabling it; full v1.5.0 and v1.5.1 goals remain unmet."
   ],
   "release_requirements_status": "not_achieved",
   "profile_job": "53294179",
@@ -33,6 +33,26 @@
     "Slowdown occurs in completion search, not frontend parsing. Subject 150 read-off grows from 0.031 s to 28.206 s on 1997.",
     "KM_HT_DDB=1 recovers 1997 and 5303 with independent agreement, but wrongly marks 17 classes unsatisfiable on 2901. Do not enable it by default.",
     "KM_HT_NO_SEMB=1 does not remove the DDB wrong-UNSAT result on 2901.",
-    "348 measured updates in nominals/certified_nominals/ht_bridge routes all rebuilt."
-  ]
+    "348 measured updates in nominals/certified_nominals/ht_bridge routes all rebuilt.",
+    "Tiny satisfiable 3+1 disjoint cardinality partition is falsely UNSAT with v145 DDB.",
+    "Both at-most merge enumeration paths now retain rejected-pair dependencies. Focused tests pass; original 2901 diagnostic output agrees with Konclude and HermiT."
+  ],
+  "reduction_job": "53294946",
+  "reduction_status": "completed_4_variable_axioms",
+  "pilot_audit_status": "three_repetitions_confirmed",
+  "baseline_test_process": 786206,
+  "diagnostic_build_log": "/tmp/agent/km-v150-diagnostics/merge-dependency-build.log",
+  "baseline_test_status": "failed_as_expected_backjump_true_false_unsat",
+  "diagnostic_build_session": 30300,
+  "patched_test_session": 26193,
+  "production_build_session": 57336,
+  "production_build_log": "/tmp/agent/km-v150-diagnostics/merge-dependency-production-build.log",
+  "ht_certification_session": 84011,
+  "ht_certification_log": "/tmp/agent/km-v150-diagnostics/atmost-ht-certification.log",
+  "patched_test_status": "passed_four_configurations",
+  "nearby_tests": {
+    "passed": 1466,
+    "ignored": 7,
+    "failed": 0
+  }
 }

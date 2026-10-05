@@ -1,0 +1,12 @@
+Ontology(
+Declaration(Class(<urn:X>))
+Declaration(Class(<urn:B>))
+Declaration(Class(<urn:C>))
+Declaration(Class(<urn:D>))
+Declaration(Class(<urn:E>))
+Declaration(ObjectProperty(<urn:r>))
+DisjointUnion(<urn:B> <urn:C> <urn:D> <urn:E>)
+SubClassOf(<urn:X> ObjectExactCardinality(4 <urn:r> <urn:B>))
+SubClassOf(<urn:X> ObjectExactCardinality(3 <urn:r> <urn:C>))
+SubClassOf(<urn:X> ObjectExactCardinality(1 <urn:r> <urn:D>))
+)

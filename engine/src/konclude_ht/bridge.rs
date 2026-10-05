@@ -20101,6 +20101,32 @@ mod tests {
     const PREFIX: &str = "Prefix(:=<http://km.test/>)\nOntology(<http://km.test/o>\n";
 
     #[test]
+    fn ddb_preserves_satisfiable_disjoint_cardinality_partition() {
+        // Four r-successors can consist of three C nodes and one D node.
+        // B is the disjoint union of C, D and E; no E node is required.
+        let tin: TInput = serde_json::from_str(include_str!(
+            "../../tests/fixtures/ddb_cardinality_partition.json"
+        )).unwrap();
+        let subject = tin.concepts.iter().position(|name| name == "X").unwrap();
+        for (rest, backjump) in [(false, false), (false, true), (true, false), (true, true)] {
+            let (mut algo, mut ctx, bridged) =
+                fresh_bridge_env_with_trigger_absorption(&tin, true);
+            configure_production_search(&mut algo);
+            algo.conf_inprocess_cow = true;
+            algo.conf_atmost_rest = rest;
+            algo.conf_dependency_backjumping = backjump;
+            algo.conf_build_dependencies = true;
+            algo.probe_budget = Some(std::time::Duration::from_secs(10));
+            let mut next_id = 1000;
+            let verdict = bridged_unsat(
+                &mut algo, &mut ctx, &bridged, &mut next_id,
+                &[(bridged.named[subject], false)],
+            );
+            assert_eq!(verdict, Some(false), "rest={rest}, backjump={backjump}: the 3+1 partition is satisfiable");
+        }
+    }
+
+    #[test]
     fn equivalent_wine_definitions_preserve_nominal_universal_subsumption() {
         let mut env = bridge_ofn(include_str!("../../tests/fixtures/nominal_wine_absorption.ofn"));
         if let Some(path) = std::env::var_os("KM_WINE_PROBE_TIN") {

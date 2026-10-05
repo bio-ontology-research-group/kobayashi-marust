@@ -1,0 +1,22 @@
+{
+  "konclude": {
+    "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+    "left_raw_sha256": "1c1838c32f38e440b253dd89cb180ef0abc0883f8102c801ea9fdfacca960051",
+    "right_raw_sha256": "6966b89780205725e7699cf53b97e77beffa8f48f3ae91e4a38e6912d2248f05",
+    "left_consistency": true,
+    "right_consistency": true,
+    "status": "agreement",
+    "agreement": true,
+    "scope": "consistency_and_taxonomy"
+  },
+  "hermit": {
+    "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+    "left_raw_sha256": "1c1838c32f38e440b253dd89cb180ef0abc0883f8102c801ea9fdfacca960051",
+    "right_raw_sha256": "f9b73aec148df02e89d92b7f7bce0b3a87fc9d43d3c883d828989a7249e99733",
+    "left_consistency": true,
+    "right_consistency": true,
+    "status": "agreement",
+    "agreement": true,
+    "scope": "consistency_and_taxonomy"
+  }
+}
