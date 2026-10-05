@@ -1,0 +1,50 @@
+{
+  "source_manifest": "successor-work-budget-source-manifest.json",
+  "tests": {
+    "session_id": 27910,
+    "status": "passed",
+    "passed": 1473,
+    "failed": 0,
+    "ignored": 7,
+    "log": "/tmp/agent/km-v150-diagnostics/successor-work-budget-tests.log"
+  },
+  "diagnostic_build": {
+    "session_id": 59517,
+    "status": "completed",
+    "log": "/tmp/agent/km-v150-diagnostics/successor-work-budget-build.log",
+    "exit_code": 0,
+    "binary_sha256": "7723f305868d27adc2da1ebd5db458970b4921df05d57af805ed1da22a2dc1ca"
+  },
+  "standard_build": {
+    "session_id": 10524,
+    "status": "running",
+    "log": "/tmp/agent/km-v150-diagnostics/successor-work-budget-standard-build.log"
+  },
+  "certification": {
+    "session_id": 56008,
+    "status": "running",
+    "receipt": "successor-work-budget-certification-receipt.json",
+    "driver": "/tmp/agent/km-v150-diagnostics/certify-successor-work-budget.py"
+  },
+  "full_audit_preceding_binary": "53309442",
+  "worker_timeout_profile": "53309995",
+  "release_approved": false,
+  "next_steps": [
+    "Poll standard-build session 10524 and certification session 56008; never restart live work.",
+    "Verify source hashes and pin the optimized binary after successful completion.",
+    "Repeat the 15167 default-budget check with the optimized binary before preparing a full candidate.",
+    "Inspect full audit 53309442 and diagnostic job 53309995 without changing their frozen artifacts.",
+    "Use all 1920 inputs and every comparator for release claims; incremental requirements remain outstanding."
+  ],
+  "diagnostics": {
+    "status": "passed",
+    "default_budget_cases": [
+      "15167",
+      "1028",
+      "11629"
+    ],
+    "receipt": "successor-work-budget-diagnostics.json",
+    "data_source_cases": 5,
+    "data_source_receipt": "successor-work-budget-data-source-check.json"
+  }
+}

@@ -1122,10 +1122,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     }
 
                     watch_phase(5);
-                    self.process_next_successor_extensions_with_deadline(
+                    // Copy-dependent notifications can circulate forever while
+                    // neither extension processor reports an update. Bound this
+                    // unproductive inner loop independently of the whole-pass
+                    // deadline. The allowance scales with the graph so a large
+                    // ordinary drain is not treated like a small repeated cycle.
+                    let no_update_limit = calc_alg_context.process_context()
+                        .sat_node_count().saturating_mul(64).max(4096);
+                    if self.process_next_successor_extensions_with_limits(
                         calc_alg_context,
                         Some(t0 + budget),
-                    ); // 396
+                        Some(no_update_limit),
+                    ).is_none() {
+                        report_timeout("successor-no-update-budget", self, calc_alg_context);
+                        return false;
+                    } // 396
                 }
 
                 if self.conf_check_critical_concepts

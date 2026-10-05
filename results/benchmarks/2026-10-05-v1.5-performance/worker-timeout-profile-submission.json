@@ -1,0 +1,7 @@
+{
+  "observed_at": "2026-10-05T22:17:43.910081+00:00",
+  "returncode": 0,
+  "stdout": "profile_worker_timeouts.py: OK\nworker-timeout-profile.sbatch: OK\nworker-timeout-profile-inputs.json: OK\ndata-source-candidate-artifact.json: OK\n53309995\n",
+  "stderr": "",
+  "job_id": "53309995"
+}

@@ -743,7 +743,23 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
         deadline: Option<std::time::Instant>,
     ) -> bool {
+        self.process_next_successor_extensions_with_limits(calc_alg_context, deadline, None)
+            .unwrap_or(false)
+    }
+
+    /// Bound queue visits that produce no reported extension update. `None`
+    /// means the work budget expired with pending work, never a fixpoint.
+    /// The caller must discard the approximation pass and use exact completion.
+    /// A productive callback returns immediately, so a later call starts a fresh
+    /// allowance. This does not impose a shorter deadline on productive work.
+    pub(super) fn process_next_successor_extensions_with_limits(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+        deadline: Option<std::time::Instant>,
+        no_update_limit: Option<usize>,
+    ) -> Option<bool> {
         let mut extension_processed = false;
+        let mut visits = 0usize;
         let ext_pro_indi_queue =
             calc_alg_context.saturation_sucessor_extension_individual_node_processing_queue(false);
 
@@ -755,6 +771,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .sat_succ_ext_ind_node_proc_queue(ext_pro_indi_queue)
                 .is_empty()
         {
+            if no_update_limit.is_some_and(|limit| visits >= limit) {
+                return None;
+            }
+            visits = visits.saturating_add(1);
             let mut indi_proc_sat_node = calc_alg_context
                 .process_context_mut()
                 .sat_succ_ext_ind_node_proc_queue_mut(ext_pro_indi_queue)
@@ -808,7 +828,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .clear_current_process_individual();
             }
         }
-        extension_processed
+        Some(extension_processed)
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::processSuccessorALLConceptsExtensions`.
@@ -2148,6 +2168,10 @@ mod tests {
         algo.add_qualified_functional_atmost_concept_extension_processing(
             descriptor, &mut first, &mut ctx,
         );
+        assert_eq!(algo.process_next_successor_extensions_with_limits(
+            &mut ctx, None, Some(16),
+        ), None, "a no-update cycle must defer, never claim a drained queue");
+        assert!(algo.has_remaining_extension_processing_nodes(&mut ctx));
         assert!(!algo.process_next_successor_extensions_with_deadline(
             &mut ctx,
             Some(std::time::Instant::now() + std::time::Duration::from_millis(10)),
@@ -2158,6 +2182,31 @@ mod tests {
         let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(false);
         assert!(!ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).is_empty());
         assert!(algo.has_remaining_extension_processing_nodes(&mut ctx));
+    }
+
+    #[test]
+    fn s07_successor_work_budget_preserves_pending_work_and_allows_a_finite_drain() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = make_sat_node_with_individual(&mut ctx, 71);
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(true);
+        ctx.process_context_mut()
+            .sat_succ_ext_ind_node_proc_queue_mut(queue)
+            .insert_process_individual(node, 71);
+        let before = ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).clone();
+        assert_eq!(algo.process_next_successor_extensions_with_limits(
+            &mut ctx, None, Some(0),
+        ), None);
+        assert_eq!(&before, ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue));
+        // Spending the allowance on the last queue item is a normal drain, not
+        // an interruption. Empty queues remain drained even with zero allowance.
+        assert_eq!(algo.process_next_successor_extensions_with_limits(
+            &mut ctx, None, Some(1),
+        ), Some(false));
+        assert!(ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).is_empty());
+        assert_eq!(algo.process_next_successor_extensions_with_limits(
+            &mut ctx, None, Some(0),
+        ), Some(false));
     }
 
     #[test]
