@@ -30,7 +30,8 @@
   When a changed component reaches a global rule, recompute all class rows:
   implicit top membership connects rows that share no explicit source symbols.
   This restores 798 missing entailments on ORE 5295. All five update revisions
-  match fresh classification; disconnected components still reuse their closure.
+  match fresh classification and Konclude across all three cold and retained
+  repetitions; disconnected components still reuse their closure.
 - Add comparative classification, incremental-update, and justification panels
   for KM, RustDL, Konclude, HermiT, JFact, Openllet, ELK, Whelk, MORe, and Sequoia.
   Reports retain preparation failures, invalid-input refusals, timeouts, and
@@ -38,10 +39,38 @@
   justification verification checks source membership, entailment, and
   subset-minimality independently. Retained sessions are distinguished from
   demonstrated internal reuse.
+- Complete and review the 1920-input classification panel: KM produces 1594
+  outputs, rejects 212 invalid inputs, reaches 44 worker time limits, and reaches
+  70 external timeouts. All 45 reasoner-pair statistics are independently
+  recomputed. On the 1195 valid, fully agreeing KM/RustDL cases, the median
+  paired RustDL/KM ratios are 0.595 for wall time and 0.838 for peak memory.
+  Four inputs completed in the preceding candidate run but time out in this
+  run; the report retains these outcomes without substituting earlier timings.
+- Complete and review the justification panel: 80 selected sources yield 124
+  queries from 42 sources, with 24 preparation failures and 14 sources without
+  eligible queries. Across three repetitions, KM has 336 independently verified
+  justifications, 18 worker time-limit errors, and 18 external timeouts. On the
+  336 verified KM/RustDL pairs, median paired RustDL/KM ratios are 0.746 for
+  wall time and 0.630 for peak memory. Failures remain outside paired costs.
+- Complete the incremental measurements on 80 selected sources: 79 prepared
+  sources provide five revisions and three repetitions; one source reaches the
+  preparation time limit. KM's 1185 cold runs produce 1149 outputs, 21 external
+  timeouts, and 15 verified worker time-limit errors. Of 237 retained sessions,
+  204 finish, 24 time out, six exceed the memory limit, and three report an
+  internal worker time limit. For the 948 scheduled updates after initialization,
+  receipts report 206 incremental updates and 615 exact rebuilds, with 121
+  revisions skipped after session failure and six update timeouts. These are
+  measurement outcomes; the full semantic audit and paired-cost review remain
+  pending.
+- Record the independent-reference gap on all five update revisions of ORE
+  1194: all three cold KM repetitions agree, but every other reasoner and the
+  retained KM sessions produce no usable result under the benchmark protocol.
+  These results establish repeatability only; independent correctness and
+  fresh-versus-retained equivalence remain unverified for these revisions.
 - Candidate validation: 2835 Rust tests passed (8 ignored), 31 Java tests passed,
   plugin installation smoke passed, all four Lean certification gates passed
-  without `sorryAx`, and 68 benchmark-harness tests passed. Full comparative
-  measurements and correctness audits are still running; this entry does not
+  without `sorryAx`, and 68 benchmark-harness tests passed. Incremental
+  correctness audits are still running; this entry does not
   assert that v1.4.5 is ready for publication. Evidence is under
   `results/benchmarks/2026-10-04-v1.4.5-comparative/`.
 

@@ -25,7 +25,17 @@ coverage={n:Counter() for n in methods};hashes={};prepared_count=0;km_errors=[]
 allpairs=list(combinations(methods,2))
 counts={(phase,*pair):Counter() for phase in ('initialization','updates') for pair in allpairs}
 costs={key:[] for key in counts}
-issues=[];km_discrepancies=[]
+issues=[];km_discrepancies=[];expected_reuse={};retained_records={};km_independent_evidence_gaps=[]
+artifact_hashes={x["id"]:x["sha256"] for x in inventory}
+def retained_record(ontology,baseline,rep):
+ if baseline=="konclude":
+  path=root/("konclude-retained-"+runs["retained_konclude"])/ontology/f"repetition-{rep}"/"record.json"
+ else:
+  job=("km-updates-"+runs["updates_km"]) if baseline=="km" else "java-updates-"+runs["updates_whelk" if baseline=="whelk" else "updates_java"]
+  path=root/job/ontology/baseline/f"repetition-{rep}"/"retained"/"record.json"
+ if path not in retained_records:retained_records[path]=(read(path),sha(path))
+ return path,retained_records[path]
+
 def comparison(a,b):
  assert all(a[k]==b[k] for k in ('source_sha256','source_signature_sha256','algorithm','fingerprint_script_sha256'))
  x,y=a['reported_consistency'],b['reported_consistency']
@@ -67,7 +77,21 @@ for source,row in zip(selection,r['sources']):
      value=read(cp);assert value['status']=='ok' and value['source_sha256']==audit['source_sha256']
      assert value['raw_sha256']==out['extracted_sha256']
      canonical[key]=value
+     if name.endswith('-retained'):
+      baseline=name.removesuffix('-retained')
+      mp,(record,digest)=retained_record(ont,baseline,rep)
+      assert digest==out['measurement_receipt_sha256']
+      assert record['artifact_sha256']==artifact_hashes[baseline]
+      assert record['memory_mib']==20480 and len(record['cpu_affinity'])==1 and record['timeout_per_revision_s']==240
+      stage=record['revisions'][rev]
+      expected_reuse[(ont,rev,rep,baseline)]={'ontology':ont,'revision':rev,'repetition':rep,'baseline':baseline,'route':stage.get('route'),'retained_backend':stage.get('retained_backend'),'reuse_receipt':stage.get('reuse_receipt'),'internal_reuse':'see_receipt' if stage.get('reuse_receipt') else 'unknown'}
+      hashes[str(mp.relative_to(root))]=digest
     if name.startswith('km-') and out['status'] in ('validation_error','missing_measurement'):km_errors.append((ont,rev,key,out))
+  for kmkey,kmvalue in canonical.items():
+   if not kmkey.startswith('km-'):continue
+   references={key:comparison(kmvalue,value) for key,value in canonical.items() if key.split('-')[0] in ('hermit','konclude','openllet','jfact')}
+   if not any(status in ('agreement','inconsistent_agreement') for status in references.values()):
+    km_independent_evidence_gaps.append({'ontology':ont,'revision':rev,'km_output':kmkey,'source_sha256':audit['source_sha256'],'audit_sha256':hashes[str(ap.relative_to(root))],'available_full_dl_reference_comparisons':references,'reference_outcomes':{key:out['status'] for key,out in audit['outcomes'].items() if key.split('-')[0] in ('hermit','konclude','openllet','jfact')},'scope':'No independently agreeing full-DL reference output is available; repeatability alone does not establish correctness.'})
   for rep in range(3):
    for left,right in allpairs:
     key=('initialization' if rev==0 else 'updates',left,right)
@@ -82,6 +106,9 @@ for source,row in zip(selection,r['sources']):
       km_discrepancies.append(dict(issue,km_output=kmkey,independent_agreeing_outputs=matches,audit_sha256=hashes[str(ap.relative_to(root))]))
     if status in ('agreement','inconsistent_agreement'):costs[key].append((audit['outcomes'][lk],audit['outcomes'][rk]))
 assert prepared_count==79 and not km_errors
+reported_reuse={(x['ontology'],x['revision'],x['repetition'],x['baseline']):x for x in r['retained_reuse']}
+assert len(reported_reuse)==len(r['retained_reuse']), 'duplicate retained reuse entry'
+assert reported_reuse==expected_reuse, 'reported reuse differs from source-bound measurements'
 assert issues==r['issues'], 'report issue list differs'
 assert {n:dict(c) for n,c in coverage.items()}==r['coverage_per_revision_repetition']
 pairs=set(combinations(methods,2));assert len(r['pairwise'])==2*len(pairs)==272
@@ -106,6 +133,6 @@ if previous_path.exists():
   if not any(row[k].startswith('km-') for k in ('left','right')):assert row==oldpairs[row['phase'],row['left'],row['right']]
  for name in methods:
   if not name.startswith('km-'):assert r['coverage_per_revision_repetition'][name]==old['coverage_per_revision_repetition'][name]
-result={'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'report_sha256':sha(p),'status':'metadata bindings, denominators, canonical comparisons and paired costs verified; semantic discrepancy adjudication remains separate','selected_sources':80,'prepared_sources':79,'revision_audits':395,'methods':17,'phase_pair_reports':272,'baseline_only_comparison_performed':previous_path.exists(),'audit_hashes':hashes,'km_validation_errors':km_errors,'verified_report_issue_count':len(issues),'km_discrepancies':km_discrepancies,'uncorroborated_km_discrepancies':[x for x in km_discrepancies if not x['independent_agreeing_outputs']]}
+result={'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'report_sha256':sha(p),'status':'metadata bindings, denominators, canonical comparisons and paired costs verified; semantic discrepancy adjudication remains separate','selected_sources':80,'prepared_sources':79,'revision_audits':395,'methods':17,'phase_pair_reports':272,'baseline_only_comparison_performed':previous_path.exists(),'audit_hashes':hashes,'km_validation_errors':km_errors,'verified_retained_reuse_entries':len(expected_reuse),'verified_retained_measurement_records':len(retained_records),'km_independent_evidence_gaps':km_independent_evidence_gaps,'verified_report_issue_count':len(issues),'km_discrepancies':km_discrepancies,'uncorroborated_km_discrepancies':[x for x in km_discrepancies if not x['independent_agreeing_outputs']]}
 with (root/'globaldep-update-report-metadata-review.json').open('x') as f:json.dump(result,f,indent=2)
 print(json.dumps({k:v for k,v in result.items() if k not in ('audit_hashes','km_discrepancies')}))

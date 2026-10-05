@@ -493,8 +493,8 @@
     "incremental_review_scripts": [
       {
         "path": "global-dependency-validation/review-globaldep-update-report-metadata.py",
-        "sha256": "c816845f2532254760e9fc37dfa2c3323eec234f3ff9f94e14006d79254a2c27",
-        "bytes": 7982
+        "sha256": "50bebf9c264d132b50fdff681efdcae61e0355bdfa4c4492902a6a0c9e1a06f6",
+        "bytes": 10703
       },
       {
         "path": "global-dependency-validation/verify-globaldep-update-audit-completion.py",
@@ -524,6 +524,13 @@
         "path": "globaldep-ore10517-retained-error-review.json",
         "sha256": "86a8f3946dca858c36fa10a60920cdffc365a07329cfa7b673896883fe93066e",
         "bytes": 1662
+      }
+    ],
+    "incremental_independent_evidence_gaps": [
+      {
+        "path": "globaldep-ore1194-all-revisions-evidence-gap.json",
+        "sha256": "b5818548c3cc91e1452c8e93d2219dfb2fad32d6c37af7c50ffce7a350085072",
+        "bytes": 42552
       }
     ]
   },
