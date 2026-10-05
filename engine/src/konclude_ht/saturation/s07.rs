@@ -732,11 +732,23 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        self.process_next_successor_extensions_with_deadline(calc_alg_context, None)
+    }
+
+    /// Preserve pending work when the saturation driver's deadline expires.
+    /// Dependent nodes can re-enqueue each other without either callback reporting
+    /// an update, so the queue loop must not defer the deadline to its caller.
+    pub(super) fn process_next_successor_extensions_with_deadline(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+        deadline: Option<std::time::Instant>,
+    ) -> bool {
         let mut extension_processed = false;
         let ext_pro_indi_queue =
             calc_alg_context.saturation_sucessor_extension_individual_node_processing_queue(false);
 
         while !extension_processed
+            && !deadline.is_some_and(|limit| std::time::Instant::now() >= limit)
             && ext_pro_indi_queue.is_some()
             && !calc_alg_context
                 .process_context()
@@ -2113,6 +2125,58 @@ mod tests {
         assert!(ctx
             .saturation_sucessor_extension_individual_node_processing_queue(false)
             .is_none());
+    }
+
+    #[test]
+    fn s07_successor_deadline_interrupts_cyclic_qualified_notifications() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_functional_concepts_extension_processing = true;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let role = make_role(&mut ctx, 8019);
+        let concept = make_concept(&mut ctx, CCATLEAST, role, 1);
+        let descriptor = make_descriptor(&mut ctx, concept, false);
+        let mut first = make_sat_node_with_individual(&mut ctx, 8021);
+        let second = make_sat_node_with_individual(&mut ctx, 8023);
+        for (source, target) in [(first, second), (second, first)] {
+            ctx.process_context_mut()
+                .sat_node_mut(source)
+                .add_copy_depending_individual_node_linker(NegLink {
+                    target,
+                    negated: false,
+                });
+        }
+        algo.add_qualified_functional_atmost_concept_extension_processing(
+            descriptor, &mut first, &mut ctx,
+        );
+        assert!(!algo.process_next_successor_extensions_with_deadline(
+            &mut ctx,
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(10)),
+        ));
+        // Neither callback creates a structural update, but each forwards the
+        // notification to its dependent. The deadline must leave this cycle
+        // queued, so the saturation caller reports an unfinished pass.
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(false);
+        assert!(!ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).is_empty());
+        assert!(algo.has_remaining_extension_processing_nodes(&mut ctx));
+    }
+
+    #[test]
+    fn s07_expired_successor_deadline_preserves_pending_work() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = make_sat_node_with_individual(&mut ctx, 71);
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(true);
+        ctx.process_context_mut()
+            .sat_succ_ext_ind_node_proc_queue_mut(queue)
+            .insert_process_individual(node, 71);
+        let before = ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).clone();
+        assert!(!algo.process_next_successor_extensions_with_deadline(
+            &mut ctx, Some(std::time::Instant::now()),
+        ));
+        assert_eq!(&before, ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue));
+        // The ordinary driver can still consume the retained work afterwards.
+        assert!(!algo.process_next_successor_extensions(&mut ctx));
+        assert!(ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).is_empty());
     }
 
     #[test]

@@ -1,0 +1,131 @@
+{
+  "diagnostic_only": true,
+  "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+  "binary_sha256": "37a80d5227c439a6fcc133c98b60429b2f98e434eacecee5369c10d6319e7735",
+  "runner_sha256": "80317dd6c4dc97d35836e5e7503ad8fc5b7451cef8a906efe4534e3283b79266",
+  "rows": [
+    {
+      "route": "ht_bridge",
+      "flags": {
+        "KM_HT_DDB": "1",
+        "KM_HT_NATIVE_FULL": "1",
+        "KM_CACHE_CONFORMANCE": "1",
+        "KM_HT_SATURATION_BUDGET_CAP_S": "1",
+        "KM_BRIDGE_PROGRESS": "1"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "wall_s": 1.0688498860690743,
+      "raw_sha256": "d12b719a72d4ff3d270bbf6448a67bb3261c0574fc0e6eb74c194b96f130bc53",
+      "stderr_sha256": "75d514d5fda747fd225ff0e553d890d600a1923a3d9a3e3b9238bc7e7cbf580a",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+          "left_raw_sha256": "9b6082195b17a55108092f1f6a68410c3263f0e75f85898cbefff2f46fcb3e79",
+          "right_raw_sha256": "6aacdc36b28e2b6777466f1dd6d1828219c7544c25cc3ab6f1f9119831cc512d",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+          "left_raw_sha256": "9b6082195b17a55108092f1f6a68410c3263f0e75f85898cbefff2f46fcb3e79",
+          "right_raw_sha256": "3b000c338097b67dc006a3d6cc90fde83015cb2eae11453a6461b42a00d52e54",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+          "left_raw_sha256": "9b6082195b17a55108092f1f6a68410c3263f0e75f85898cbefff2f46fcb3e79",
+          "right_raw_sha256": "6acbb8c2021d456bb86c07e6400e47b562b9e9f897957f38f5c3385abd64acc6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+          "left_raw_sha256": "9b6082195b17a55108092f1f6a68410c3263f0e75f85898cbefff2f46fcb3e79",
+          "right_raw_sha256": "f860ad234e4ba71697412a5243cfabe7bb058c71f2430d57328c4d8758400ccf",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      }
+    },
+    {
+      "route": "auto",
+      "flags": {
+        "KM_HT_DDB": "1",
+        "KM_HT_NATIVE_FULL": "1",
+        "KM_CACHE_CONFORMANCE": "1",
+        "KM_HT_SATURATION_BUDGET_CAP_S": "1",
+        "KM_BRIDGE_PROGRESS": "1"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "wall_s": 1.0677543400088325,
+      "raw_sha256": "d12b719a72d4ff3d270bbf6448a67bb3261c0574fc0e6eb74c194b96f130bc53",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+          "left_raw_sha256": "87e44e4d7bcaea7d42db4d558ea06df746d83ad51bf6251af3431d6174177056",
+          "right_raw_sha256": "6aacdc36b28e2b6777466f1dd6d1828219c7544c25cc3ab6f1f9119831cc512d",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+          "left_raw_sha256": "87e44e4d7bcaea7d42db4d558ea06df746d83ad51bf6251af3431d6174177056",
+          "right_raw_sha256": "3b000c338097b67dc006a3d6cc90fde83015cb2eae11453a6461b42a00d52e54",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+          "left_raw_sha256": "87e44e4d7bcaea7d42db4d558ea06df746d83ad51bf6251af3431d6174177056",
+          "right_raw_sha256": "6acbb8c2021d456bb86c07e6400e47b562b9e9f897957f38f5c3385abd64acc6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+          "left_raw_sha256": "87e44e4d7bcaea7d42db4d558ea06df746d83ad51bf6251af3431d6174177056",
+          "right_raw_sha256": "f860ad234e4ba71697412a5243cfabe7bb058c71f2430d57328c4d8758400ccf",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      }
+    }
+  ],
+  "scope": "One-second optional saturation cap; automatic and explicit bridge routes. Not a default-configuration benchmark.",
+  "tests": {
+    "passed": 1471,
+    "failed": 0,
+    "ignored": 7,
+    "log_sha256": "37bd5396ea68a376e4bde02221d29ff8bf2066ba8733759dc74f95fad3014c99"
+  },
+  "source_manifest_sha256": "a4ef3186e2dbf1931b033a9196af496e8047bc1d0fcb627c486f4ae6d6ac7266",
+  "release_approved": false
+}

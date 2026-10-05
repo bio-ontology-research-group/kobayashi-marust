@@ -13030,7 +13030,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 // arenas beyond this point only raises the phase high-water
                 // mark. Invalidate those ids before installing independent
                 // completion caches.
-                ctx.process_context_mut().release_partial_saturation_state();
+                ctx.release_partial_saturation_state();
                 report_bridge_memory("partial-saturation-released");
             }
             if progress {

@@ -1635,6 +1635,19 @@ impl CalculationAlgorithmContextBase {
         &mut self.base.ontology_arenas
     }
 
+    /// Detach terminology references before releasing an interrupted saturation
+    /// graph. Completion's branch ordering reads these links even when the
+    /// saturation cache is disabled.
+    pub fn release_partial_saturation_state(&mut self) {
+        let count = self.ontology_arenas().saturation_concept_reference_linkings().len();
+        for index in 0..count {
+            self.ontology_arenas_mut()
+                .saturation_concept_reference_linking_mut(Id::new(index as Cint64))
+                .set_individual_process_node_for_concept(super::super::process::SatNodeId::NONE);
+        }
+        self.process_context_mut().release_partial_saturation_state();
+    }
+
     /// Borrow the mutable per-probe graph and immutable ontology together.
     ///
     /// Konclude passes both as independent raw pointers. Rust callers that port

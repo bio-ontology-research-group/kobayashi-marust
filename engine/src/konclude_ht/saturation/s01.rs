@@ -1122,7 +1122,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     }
 
                     watch_phase(5);
-                    self.process_next_successor_extensions(calc_alg_context); // 396
+                    self.process_next_successor_extensions_with_deadline(
+                        calc_alg_context,
+                        Some(t0 + budget),
+                    ); // 396
                 }
 
                 if self.conf_check_critical_concepts

@@ -15039,6 +15039,21 @@ fn has_saturated_clashed_flag_for_concept_reads_reference_linking() {
 }
 
 #[test]
+fn partial_saturation_release_detaches_completion_clash_references() {
+    let mut env = build_env();
+    let references = [(env.concept_a, true), (env.top_concept, false)];
+    for (concept, negated) in references {
+        attach_saturation_unsat_reference(&mut env, concept, negated, true);
+        assert!(env.algo.has_saturated_clashed_flag_for_concept(concept, negated, &mut env.ctx));
+    }
+    env.ctx.release_partial_saturation_state();
+    assert_eq!(env.ctx.process_context().sat_node_count(), 0);
+    for (concept, negated) in references {
+        assert!(!env.algo.has_saturated_clashed_flag_for_concept(concept, negated, &mut env.ctx));
+    }
+}
+
+#[test]
 fn add_concept_to_individual_raises_saturated_unsat_clash_descriptor() {
     let mut env = build_env();
     env.algo.conf_concept_unsatisfiability_saturated_testing = true;

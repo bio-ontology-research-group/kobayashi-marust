@@ -1,0 +1,165 @@
+{
+  "job": 53304360,
+  "diagnostic_only": true,
+  "timeout_s": 60,
+  "rows": [
+    {
+      "ontology": "ore_ont_1342",
+      "status": "timeout",
+      "wall_s": 60.05293381586671,
+      "record_sha256": "7c122c0c2de7846351a07a683f7b4a00e039399d0414fd2c31ba9e9f852579d5",
+      "stderr_sha256": "f1ad9358d78950f18d12dddde170e44b0ffaf9ebf0e408a7f84f78d1b44bda66",
+      "trace": [
+        "CONFORMANCE seconds=0.003218 bytes=58368 reused=false ok=true",
+        "CONFORMANCE seconds=0.000004 bytes=58368 reused=true ok=true",
+        "CONFORMANCE seconds=0.000004 bytes=58368 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.00s route=nominals"
+      ]
+    },
+    {
+      "ontology": "ore_ont_14379",
+      "status": "timeout",
+      "wall_s": 60.04129637777805,
+      "record_sha256": "950a91ba314200ae40e6f5e4b711c6d55e784ce7b91fcc5f1dc9b58aba0ecdf5",
+      "stderr_sha256": "a6274aca49d16968cfee4fa510ff95506cb3cc1abf12281d2cba0a8ff59af438",
+      "trace": [
+        "CONFORMANCE seconds=0.003942 bytes=67963 reused=false ok=true",
+        "CONFORMANCE seconds=0.000004 bytes=67963 reused=true ok=true",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "CONFORMANCE seconds=0.000004 bytes=67963 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.02s cached=false sidecar=false",
+        "CONFORMANCE seconds=0.000005 bytes=67963 reused=true ok=true",
+        "CONFORMANCE seconds=0.000003 bytes=67963 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.00s route=ht_bridge",
+        "cb_to_ht [emelim] eliminated 2 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=226 moved=4 tautologies=0",
+        "KM_TIMING compact typed bridge probe declined @ 0.03s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.03s route=nominals"
+      ]
+    },
+    {
+      "ontology": "ore_ont_15167",
+      "status": "timeout",
+      "wall_s": 60.065577952191234,
+      "record_sha256": "471b328eb53f49d4094d5af8375d165ef4d8027026eb2e5fc4c68392a6581bec",
+      "stderr_sha256": "90fb974ffb6335756b5db155d32ca542d24f716e8737dae270412dbe4b85134a",
+      "trace": [
+        "CONFORMANCE seconds=0.001426 bytes=19335 reused=false ok=true",
+        "CONFORMANCE seconds=0.000002 bytes=19335 reused=true ok=true",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "CONFORMANCE seconds=0.000002 bytes=19335 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false",
+        "KM_TIMING frontend done @ 0.00s route=production_all",
+        "cb_to_ht [emelim] eliminated 2 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=70 moved=5 tautologies=0",
+        "KM_TIMING spawn_ht: read+convert 433 clauses (ht_view=433) in 0.00s",
+        "KM_DUMP_TIN clauses=433 dropped=0 fenced=8 nominals=0 inverse=true number=true queries=51 -> \"/ibex/project/c2014/hohndor/km/v150-performance-20261005/timeout-profile-53304360/ore_ont_15167/typed-input.json\"",
+        "KM_TIMING race: HT worker spawned @ 0.02s after the CB stack started",
+        "bridge [source-tbox] axioms=165 eq=4/5 [\"AnthropoGeographicalRelationship\", \"EncompassedArea\", \"GeographicalThing\", \"Location\", \"MondialThing\"] direct=217 role-links=18 absorbed-gci=13 top-gci=0 unsupported=0",
+        "bridge [or-replacements] implications=0 common=16",
+        "bridge [branch-triggers] role-markers=7",
+        "BRIDGE-ENV: 0.00s (named=128, trigger_absorb=true, unsupported=0, independent_abox=false)",
+        "BRIDGE-SOURCE-CLOSURE pairs=40 definition-containment=true",
+        "BRIDGE-SAT-PHASE propagation-direction: 0.00s",
+        "BRIDGE-SATURATION-SEEDS: base=80 extended=99 invalid-special=19 substitute=0 copy=33",
+        "BRIDGE-SAT-PHASE seeds: 0.00s"
+      ]
+    },
+    {
+      "ontology": "ore_ont_3843",
+      "status": "timeout",
+      "wall_s": 60.045379212126136,
+      "record_sha256": "58fcd75d1ecfd95e23b434a82c4cea1af3db53c94fe6f4ebbf5c2161aac0516e",
+      "stderr_sha256": "81ba23cde8c2b89ae74ba91c53946e84d480e4feda5a0c11add876c874f3d18b",
+      "trace": [
+        "CONFORMANCE seconds=0.005728 bytes=114735 reused=false ok=true",
+        "CONFORMANCE seconds=0.000009 bytes=114735 reused=true ok=true",
+        "CONFORMANCE seconds=0.000010 bytes=114735 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.02s cached=false sidecar=false",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.02s route=nominals"
+      ]
+    },
+    {
+      "ontology": "ore_ont_4719",
+      "status": "timeout",
+      "wall_s": 60.04315785691142,
+      "record_sha256": "79a178e4907eb54118890ef8bf15edc36aeef02f2d8d4fa850d04cf0de28d620",
+      "stderr_sha256": "cb0b3cbe8c17085335d153e54daadbdb30e70390b0f2bf0ae197b32667683397",
+      "trace": [
+        "CONFORMANCE seconds=0.005396 bytes=96141 reused=false ok=true",
+        "CONFORMANCE seconds=0.000006 bytes=96141 reused=true ok=true",
+        "CONFORMANCE seconds=0.000006 bytes=96141 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.02s cached=false sidecar=false",
+        "CONFORMANCE seconds=0.000007 bytes=96141 reused=true ok=true",
+        "CONFORMANCE seconds=0.000005 bytes=96141 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.00s route=ht_bridge",
+        "cb_to_ht [emelim] eliminated 0 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=143 moved=0 tautologies=3",
+        "KM_TIMING compact typed bridge probe declined @ 0.03s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.03s route=nominals"
+      ]
+    },
+    {
+      "ontology": "ore_ont_586",
+      "status": "timeout",
+      "wall_s": 60.03584495559335,
+      "record_sha256": "0e68ea564ccd02a550cead8de061d6651220d2ca0b0bc176acfe5bac82d04989",
+      "stderr_sha256": "f6927fa9ef09968162a41b24fc172e7c41234f47d7793c54b5f9841af6044cda",
+      "trace": [
+        "CONFORMANCE seconds=0.018267 bytes=150603 reused=false ok=true",
+        "CONFORMANCE seconds=0.000011 bytes=150603 reused=true ok=true",
+        "CONFORMANCE seconds=0.000009 bytes=150603 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.01s route=nominals"
+      ]
+    },
+    {
+      "ontology": "ore_ont_7342",
+      "status": "timeout",
+      "wall_s": 60.03789793513715,
+      "record_sha256": "091d85ecc5b48bd0c7dde47621c497232145b0919c88a9786de32b56a56f3ff7",
+      "stderr_sha256": "7e424f7ed336d1c74644dce5ad69ccf09016611729dd6a70e47c1f87bebcc7bf",
+      "trace": [
+        "CONFORMANCE seconds=0.007457 bytes=144686 reused=false ok=true",
+        "CONFORMANCE seconds=0.000011 bytes=144686 reused=true ok=true",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "CONFORMANCE seconds=0.000014 bytes=144686 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false",
+        "CONFORMANCE seconds=0.000012 bytes=144686 reused=true ok=true",
+        "CONFORMANCE seconds=0.000016 bytes=144686 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.01s route=ht_bridge",
+        "cb_to_ht [emelim] eliminated 1 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=33 moved=0 tautologies=0",
+        "KM_TIMING compact typed bridge probe declined @ 0.02s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.02s route=nominals"
+      ]
+    },
+    {
+      "ontology": "ore_ont_7828",
+      "status": "timeout",
+      "wall_s": 60.026608522981405,
+      "record_sha256": "bb45fb5db11ddb21989406476222101b37f4ff42f21d2d44f73d4a9b9a1cc8e3",
+      "stderr_sha256": "c0652ce873b750ee1deef5411f33f9f8b83bde5550475c94b574d9cc847a8733",
+      "trace": [
+        "CONFORMANCE seconds=0.011273 bytes=201553 reused=false ok=true",
+        "CONFORMANCE seconds=0.000019 bytes=201553 reused=true ok=true",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "CONFORMANCE seconds=0.000028 bytes=201553 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.01s route=nominals"
+      ]
+    }
+  ],
+  "conclusion": "All eight cases timed out. ORE 15167 enters saturation and does not return. The other seven enter nominal reasoning; three explicitly decline the typed bridge because ABox conversion is incomplete. No conversion guard may be bypassed."
+}

@@ -1,0 +1,60 @@
+{
+  "diagnostic_only": true,
+  "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+  "binary_sha256": "ebfcee19304efe450d9375af3dcd676f2c17088275ace4a18f8eb90c3d77899c",
+  "runner_sha256": "80317dd6c4dc97d35836e5e7503ad8fc5b7451cef8a906efe4534e3283b79266",
+  "rows": [
+    {
+      "route": "ht_bridge",
+      "flags": {
+        "KM_HT_DDB": "1",
+        "KM_HT_NATIVE_FULL": "1",
+        "KM_CACHE_CONFORMANCE": "1",
+        "KM_HT_SATURATION_BUDGET_CAP_S": "1",
+        "KM_BRIDGE_PROGRESS": "1"
+      },
+      "returncode": -6,
+      "timed_out": false,
+      "wall_s": 1.0191439999034628,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "68617e937425ea46797fdf29e9ba61cc4a54c877f216c502bb19e16b669e6a6d"
+    },
+    {
+      "route": "auto",
+      "flags": {
+        "KM_HT_DDB": "1",
+        "KM_HT_NATIVE_FULL": "1",
+        "KM_CACHE_CONFORMANCE": "1",
+        "KM_HT_SATURATION_BUDGET_CAP_S": "1",
+        "KM_BRIDGE_PROGRESS": "1"
+      },
+      "returncode": -9,
+      "timed_out": true,
+      "wall_s": 15.00295500503853,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "scope": "One-second optional saturation cap; automatic and explicit bridge routes. Not a default-configuration benchmark.",
+  "finding": "Honoring the saturation deadline exposes dangling concept-to-saturation node references after partial graph release. Explicit bridge panics in has_saturated_clashed_flag_for_concept; automatic route does not complete within the diagnostic limit.",
+  "backtrace": [
+    "",
+    "thread '<unnamed>' (836674) panicked at src/konclude_ht/model/substrate.rs:175:20:",
+    "index out of bounds: the len is 0 but the index is 46",
+    "stack backtrace:",
+    "   0: __rustc::rust_begin_unwind",
+    "   1: core::panicking::panic_fmt",
+    "   2: core::panicking::panic_bounds_check",
+    "   3: <kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::has_saturated_clashed_flag_for_concept",
+    "   4: <kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::plan_or_processing",
+    "   5: <kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_or_rule",
+    "   6: <kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice",
+    "   7: <kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on",
+    "   8: kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root",
+    "   9: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{closure#31}",
+    "  10: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner",
+    "  11: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption",
+    "  12: kobayashi_marust::konclude_ht::bridge::bridged_classify",
+    "note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace."
+  ]
+}
