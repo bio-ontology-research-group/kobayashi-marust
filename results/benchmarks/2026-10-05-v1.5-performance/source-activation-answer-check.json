@@ -1,0 +1,28 @@
+{
+  "diagnostic_only": true,
+  "cases": [
+    {
+      "revision": 1,
+      "actual_changed_query_rows": 0,
+      "predicted_affected_queries": 4,
+      "missed_changed_rows": [],
+      "fresh_answers_match_stored_rebuild": true,
+      "fresh_sha256": {
+        "/tmp/agent/km-v150-diagnostics/9944-source-0.out": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+        "/tmp/agent/km-v150-diagnostics/9944-source-1.out": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f"
+      }
+    },
+    {
+      "revision": 3,
+      "actual_changed_query_rows": 52,
+      "predicted_affected_queries": 2180,
+      "missed_changed_rows": [],
+      "fresh_answers_match_stored_rebuild": true,
+      "fresh_sha256": {
+        "/tmp/agent/km-v150-diagnostics/9944-source-0.out": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+        "/tmp/agent/km-v150-diagnostics/9944-source-3.out": "6ce671ce30701e3cea56a7be1a90eadd1f9dd86d1e26426cb263a451263daaa0"
+      }
+    }
+  ],
+  "scope": "Two ORE 9944 edits. Independent fresh invocations of the same diagnostic binary agree with stored full rebuilds. Does not establish general soundness or performance."
+}

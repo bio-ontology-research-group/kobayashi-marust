@@ -185,3 +185,18 @@ inputs. Disabling the preliminary in-process engine has median paired runtime
 ratio 0.9988; mean times are 6.526 versus 6.477 seconds. This does not justify
 a global routing default change. `routing-probe-completion.json` records all
 paired times and chunk hashes.
+
+## Stable-source dependency diagnostic
+
+`probe_source_activation.py` compares typed source-axiom metadata rather than
+normalized definer identities. ORE 9944's large edit removes 32 source axioms;
+its changed normalized representation need not imply all 8,008 queries change.
+The conservative source-expression diagnostic marks 2,180 queries and leaves
+5,828 potentially reusable. All 52 actually changed public rows are within
+that set. Fresh invocations agree with the stored full-rebuild outputs for
+both tested edits. The observed typed domain/range differences disappear when
+numeric IDs are resolved to concept names. Evidence is in
+`source-activation-{small,large,answer-check,side-check}.json`.
+This is not a production fingerprint relaxation or a speedup result. The
+source-metadata completeness boundary, handling of every typed field, Lean
+proof, and full update-panel comparisons remain necessary.

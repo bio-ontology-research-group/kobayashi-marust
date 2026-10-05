@@ -53,3 +53,25 @@ definer renumbering changes about 27,000 normalized clauses and changes the
 typed fingerprint. Timing comparisons against fresh reasoning, repeated cluster
 measurements, broader fragment coverage, and the certification boundary remain
 unfinished. No case is removed from the release acceptance workload.
+
+## Stable source-expression diagnostic
+
+A separate diagnostic now lowers source-level `Name`, `And`, and `Exists`
+expressions into stable abstract predicates. Conjunction requires every child;
+existential expressions and their fillers activate each other in an abstraction
+that treats every role as available. Source subclass/equivalence/disjointness
+axioms become Horn rules. The union of old and new source theories determines
+which changed axioms can activate for a public query. This does not modify
+normalization or authorize retained production rows.
+
+For ORE 9944, the large edit removes 32 source axioms. The abstraction marks
+2,180 queries as affected and leaves 5,828 potentially reusable. Fresh complete
+classifications change 52 query rows, all inside the affected set. For the
+single-axiom edit it marks four queries; no public taxonomy row changes.
+The raw domain/range IDs change, but their name-resolved content and the other
+observed typed side fields remain identical. These observations motivate
+stable source dependencies and semantic side-state comparison. Before using
+this in production, the source metadata must account for every premise,
+all `TInput` fields need explicit treatment, and proof and broader measurements
+remain required. See `source-activation-*.json` and
+`probe_source_activation.py` in the v1.5 performance evidence directory.
