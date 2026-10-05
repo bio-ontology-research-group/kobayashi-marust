@@ -1,0 +1,1963 @@
+{
+  "observed_at": "2026-10-05T11:03:30.809757+00:00",
+  "scope": "All 395 completed audit receipts verified against the completion inventory; unavailable comparisons remain excluded from verified paired costs",
+  "comparisons": 198,
+  "outcome_counts": {
+    "hermit-cold-0:timeout": 35,
+    "km-retained-0:timeout": 1,
+    "km-cold-0:timeout": 7,
+    "km-cold-1:timeout": 7,
+    "km-cold-2:timeout": 7,
+    "hermit-cold-0:process_error": 5
+  },
+  "cases": [
+    {
+      "path": "update-audit-53234886/ore_ont_10689/000/audit.json",
+      "audit_sha256": "c98cb28e7de29a4e14844a90d6efa402043f78baca505166bdb1e3e1823a46f6",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10689/001/audit.json",
+      "audit_sha256": "57ab7c634cf0f3475fcf8404233075d6421b7c0b9547fb2e8f1f4a96b6eb5488",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10689/002/audit.json",
+      "audit_sha256": "9f28e3e8368405c8e826ea4cebce99ff3462daee44028ba3182803b792d78418",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10689/003/audit.json",
+      "audit_sha256": "14869eb33eecd22d8502932fd6fac4e433842b6ee21ad38c1dc3f7adb0e18803",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-retained-0",
+          "right": "km-retained-1",
+          "kind": "repeatability"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        },
+        "km-retained-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10689/004/audit.json",
+      "audit_sha256": "b6d86dca1f362d7fcba46f097dc3754e9c8f5358e59202cfa0e1864fedab0619",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10702/001/audit.json",
+      "audit_sha256": "02d1d18f1713813e77c9c535a3c3ce9aa64d5e4d52af91f7d4216421dc4c3bea",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-0",
+          "right": "km-retained-0",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-1",
+          "right": "km-retained-1",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-2",
+          "right": "km-retained-2",
+          "kind": "fresh_vs_retained"
+        }
+      ],
+      "outcomes": {
+        "km-cold-0": {
+          "status": "timeout"
+        },
+        "km-cold-1": {
+          "status": "timeout"
+        },
+        "km-cold-2": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10702/003/audit.json",
+      "audit_sha256": "331ba2a7088acead442e56867882bbbba404f71d068ab5ee7ba586d66c4cc964",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-0",
+          "right": "km-retained-0",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-1",
+          "right": "km-retained-1",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-2",
+          "right": "km-retained-2",
+          "kind": "fresh_vs_retained"
+        }
+      ],
+      "outcomes": {
+        "km-cold-0": {
+          "status": "timeout"
+        },
+        "km-cold-1": {
+          "status": "timeout"
+        },
+        "km-cold-2": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10860/000/audit.json",
+      "audit_sha256": "66470f18eeeb931af130612b2b00f48761aaad12a01f5a0ae06678b5f813a8c8",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "process_error"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10860/001/audit.json",
+      "audit_sha256": "40d1aa40e3cfbfdf90031699bdf1de00ccca7693d32a75921e69adf3833e09b2",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "process_error"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10860/002/audit.json",
+      "audit_sha256": "c1f577e7372ff2ba12aa07645679a078a805f4adbaa9c285b661a083fef31404",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "process_error"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10860/003/audit.json",
+      "audit_sha256": "0f95cd291a9603a75eae266a62a3323b4cdd12326503170775f80b5c1e98f90d",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "process_error"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_10860/004/audit.json",
+      "audit_sha256": "2d6dd3e2bf5e5362d33b7cad080e5eb5b9b5561e13b689d81a8ecadd7a5ac197",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "process_error"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1194/000/audit.json",
+      "audit_sha256": "c511c1f912a7505fb0cded1ee8d73486b5f578aa4aa0463251aa0b4117a0a088",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1194/001/audit.json",
+      "audit_sha256": "6bfdcc5fa405ce89563cd87b51007c859345032f20cf84d5f32f2b6522ac1ea0",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1194/002/audit.json",
+      "audit_sha256": "bcc373e66d845d7cb58c780b2b0175d2404c9cdfaf2aa05228de603778f31317",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1194/003/audit.json",
+      "audit_sha256": "2d643d879ef83c19240b777e49a9c8ad218df4d0514cf7bc90d5fc4fbc1325f5",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1194/004/audit.json",
+      "audit_sha256": "9368ea9bd67bf6fb584998be4bba247c008f03e90d8aed43987b070bbf92f1d4",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1634/000/audit.json",
+      "audit_sha256": "a27bf3850d9084c88b6fbb9be9011e0bc36414d535763ed5d7ad6a71530842ed",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1634/001/audit.json",
+      "audit_sha256": "1c978d0a171a9cd83eb2d56f99b2ee81988c2810b8c4bccbeef6535f6286cbb7",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1634/002/audit.json",
+      "audit_sha256": "0d24ad9adf32dbeaf53f77e2dfc525c5657f72509af788d5e64fda6dde8f07f8",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1634/003/audit.json",
+      "audit_sha256": "e699d0dc320b7f348490a80f85dcc016c5d162d3d0225b36d3e9c648de13c8af",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_1634/004/audit.json",
+      "audit_sha256": "e6865361a61fd37433ce20be00a5385a7b4fb33c13d4235d2f5866c1d24963d7",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_16481/000/audit.json",
+      "audit_sha256": "83cd42fe5d94f80df650e8166af30a4244bf73f6f6cd3e93eae9c7772f6ba9c6",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-0",
+          "right": "km-retained-0",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-1",
+          "right": "km-retained-1",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-2",
+          "right": "km-retained-2",
+          "kind": "fresh_vs_retained"
+        }
+      ],
+      "outcomes": {
+        "km-cold-0": {
+          "status": "timeout"
+        },
+        "km-cold-1": {
+          "status": "timeout"
+        },
+        "km-cold-2": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_16481/001/audit.json",
+      "audit_sha256": "178c53ca77a2d59d15a7590b3c03d704073524bfaf5aefa34feda04aa632172e",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-0",
+          "right": "km-retained-0",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-1",
+          "right": "km-retained-1",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-2",
+          "right": "km-retained-2",
+          "kind": "fresh_vs_retained"
+        }
+      ],
+      "outcomes": {
+        "km-cold-0": {
+          "status": "timeout"
+        },
+        "km-cold-1": {
+          "status": "timeout"
+        },
+        "km-cold-2": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_16481/002/audit.json",
+      "audit_sha256": "c4e2f60089f59b61e78996b50211af004e365f4ef89df9d37e3d6a6c9fb714df",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-0",
+          "right": "km-retained-0",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-1",
+          "right": "km-retained-1",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-2",
+          "right": "km-retained-2",
+          "kind": "fresh_vs_retained"
+        }
+      ],
+      "outcomes": {
+        "km-cold-0": {
+          "status": "timeout"
+        },
+        "km-cold-1": {
+          "status": "timeout"
+        },
+        "km-cold-2": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_16481/003/audit.json",
+      "audit_sha256": "56ea9f577478edd09ed1e807e5ea0934c1d4a79d7282310d4a432be84a7d52f1",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-0",
+          "right": "km-retained-0",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-1",
+          "right": "km-retained-1",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-2",
+          "right": "km-retained-2",
+          "kind": "fresh_vs_retained"
+        }
+      ],
+      "outcomes": {
+        "km-cold-0": {
+          "status": "timeout"
+        },
+        "km-cold-1": {
+          "status": "timeout"
+        },
+        "km-cold-2": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_16481/004/audit.json",
+      "audit_sha256": "f8a8d42dcd07916b5f5b926068b47550c0d4a3e56030a0a6a8e1d53e265440cb",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-0",
+          "right": "km-retained-0",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-1",
+          "right": "km-retained-1",
+          "kind": "fresh_vs_retained"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "km-cold-2",
+          "right": "km-retained-2",
+          "kind": "fresh_vs_retained"
+        }
+      ],
+      "outcomes": {
+        "km-cold-0": {
+          "status": "timeout"
+        },
+        "km-cold-1": {
+          "status": "timeout"
+        },
+        "km-cold-2": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_3575/000/audit.json",
+      "audit_sha256": "69fe171b1eb6347c79e1cba96e418d0948ce619fa6a4d81e79c1394ca4a08ce6",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_3575/001/audit.json",
+      "audit_sha256": "37f968af8cce165f000b1c569eedc572ce6e365ca7f69286b47449b12cf0ace4",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_3575/002/audit.json",
+      "audit_sha256": "e90f365a4654088eb62fae274d10c4b7611e83b26c8fc0761df4058c7884d9dd",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_3575/003/audit.json",
+      "audit_sha256": "4f0778ef6e49c2966f9caa6112aff7eff3a9c256210c0bf1b3febc70f0766286",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_3575/004/audit.json",
+      "audit_sha256": "03a9168aaf74eac009d266968a354cf7e1e30805bb2082d1159e05bff5dabda7",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_5295/000/audit.json",
+      "audit_sha256": "86920cf96da3b21c8b255da902abc7ea1e4262eedfab14ac6651602415dded27",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_5295/001/audit.json",
+      "audit_sha256": "8fc2206673e60fe1d1599936c2a8840bbbf3609c7b3560b76522822831860351",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_5295/002/audit.json",
+      "audit_sha256": "5a56340f6543f2f331e86d00485c89154bc6febf3d4771339dae7d79696af641",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_5295/003/audit.json",
+      "audit_sha256": "089ec879ae529f316ed5f8e717974b97a3d75f0388b827e2d96c34ae5c04260a",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_5295/004/audit.json",
+      "audit_sha256": "2ffa701e11a3e8574d25ea6b538162591b9676e8ba964680277f6eed2cf9227e",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9724/000/audit.json",
+      "audit_sha256": "256a59829fc4968242a6df66018907f373ec60af964932187160ed3d71d93828",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9724/001/audit.json",
+      "audit_sha256": "e486ac56276a6ec47cc99ec920704120d5f6cb8693ca1952370bf60944821f4d",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9724/002/audit.json",
+      "audit_sha256": "cb4c7482116649ccfc21b461f85f20a664726074bfa366bb01a40a304de7bc6d",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9724/003/audit.json",
+      "audit_sha256": "1636a24b7209b1a76bb375a1d7c30a4de7244fc08abe637f3a7e97a4610c2a6d",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9724/004/audit.json",
+      "audit_sha256": "5058cad8e27a9990885c6f6c9be1f8e1f8fde7bc643e5de1098a2f7f5fd707f5",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9944/000/audit.json",
+      "audit_sha256": "7c0af20285406cdb54a103576164d809dd5080ffeca6f0b672ddc84233d2c475",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9944/001/audit.json",
+      "audit_sha256": "e2036b520304e9375f22c751b2054e4ac48f67a6f936aba2aeb52e1aab90b038",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9944/002/audit.json",
+      "audit_sha256": "145d8b14bf0fbd95f83e32ec711f5dd6f99162bc7128aef92cfce8933ebdf907",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9944/003/audit.json",
+      "audit_sha256": "5e2a6ff2dc31c5d46c8e0876774000d3a14a81069fbf3f487ab63167add33765",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    },
+    {
+      "path": "update-audit-53234886/ore_ont_9944/004/audit.json",
+      "audit_sha256": "378bd106fe9a86741c5217078291c709efdfd9d21632a48f892a45a4794ea63b",
+      "comparisons": [
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-cold-2",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-0",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-1",
+          "kind": "reference"
+        },
+        {
+          "status": "comparison_unavailable",
+          "agreement": null,
+          "left": "hermit-cold-0",
+          "right": "km-retained-2",
+          "kind": "reference"
+        }
+      ],
+      "outcomes": {
+        "hermit-cold-0": {
+          "status": "timeout"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "observed_at": "2026-10-05T10:42:25.106420+00:00",
+  "commit": "74f83a3234bbec2a6061dbf0082d0e68f35f01b9",
+  "verified_committed_manifests": {
+    "global-dependency-validation/certification-source-manifest.json": 868,
+    "harness-validation-v3-manifest.json": 172
+  },
+  "indexed_evidence_artifacts": 98,
+  "all_match": true,
+  "release_tag_created": false,
+  "status": "Evidence update committed and verified; final incremental audit and release review remain pending"
+}

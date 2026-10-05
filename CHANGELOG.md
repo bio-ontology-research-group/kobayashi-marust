@@ -2,78 +2,6 @@
 
 ## Unreleased
 
-### v1.4.5 candidate: correctness and comparative benchmarks
-
-- Reject asserted data values outside an applicable finite data range, including
-  inherited constraints on the top data property. ORE 13219 now reports the
-  inconsistency detected by the independent reference reasoners.
-- Preserve the dependency of nominal membership through node merges so that
-  backtracking retains the proof supporting a pending nominal choice. A reduced
-  wine-ontology regression covers this case. Full classifications of ORE 11477,
-  1397, 13954, and 14334 still reach the 240-second benchmark limit; the reduced
-  regression does not establish successful full-ontology classification.
-- Respect the physical orientation of ancestor links when propagating universal
-  restrictions in the completion engine. This removes the false subsumptions
-  observed on ORE 185.
-- Handle floating-point facet ranges over representable float and double values,
-  including signed zero, infinities, NaN, and empty intervals. The corrected
-  taxonomies for ORE 16708 and 3685 agree with HermiT and Konclude.
-- Reset cancellation state between classifications in a retained process so that
-  an earlier cancellation does not abort subsequent justification checks.
-- Keep unresolved equivalent-class definitions out of saturation-only taxonomy
-  answers, and materialize cached disjunctions when reading classification
-  models. Check live ancestor edges before reusing cached universal automata.
-  These changes recover missing subsumptions in ORE 6333, 7877, and 6134.
-  Full taxonomies match JFact, HermiT, and Konclude respectively; reduced
-  source-preserving examples and cache-compatibility tests cover the failures.
-- Preserve global superclass consequences during retained EL replacements.
-  When a changed component reaches a global rule, recompute all class rows:
-  implicit top membership connects rows that share no explicit source symbols.
-  This restores 798 missing entailments on ORE 5295. All five update revisions
-  match fresh classification and Konclude across all three cold and retained
-  repetitions; disconnected components still reuse their closure.
-- Add comparative classification, incremental-update, and justification panels
-  for KM, RustDL, Konclude, HermiT, JFact, Openllet, ELK, Whelk, MORe, and Sequoia.
-  Reports retain preparation failures, invalid-input refusals, timeouts, and
-  incomplete outputs. Performance comparisons use paired verified outcomes;
-  justification verification checks source membership, entailment, and
-  subset-minimality independently. Retained sessions are distinguished from
-  demonstrated internal reuse.
-- Complete and review the 1920-input classification panel: KM produces 1594
-  outputs, rejects 212 invalid inputs, reaches 44 worker time limits, and reaches
-  70 external timeouts. All 45 reasoner-pair statistics are independently
-  recomputed. On the 1195 valid, fully agreeing KM/RustDL cases, the median
-  paired RustDL/KM ratios are 0.595 for wall time and 0.838 for peak memory.
-  Four inputs completed in the preceding candidate run but time out in this
-  run; the report retains these outcomes without substituting earlier timings.
-- Complete and review the justification panel: 80 selected sources yield 124
-  queries from 42 sources, with 24 preparation failures and 14 sources without
-  eligible queries. Across three repetitions, KM has 336 independently verified
-  justifications, 18 worker time-limit errors, and 18 external timeouts. On the
-  336 verified KM/RustDL pairs, median paired RustDL/KM ratios are 0.746 for
-  wall time and 0.630 for peak memory. Failures remain outside paired costs.
-- Complete the incremental measurements on 80 selected sources: 79 prepared
-  sources provide five revisions and three repetitions; one source reaches the
-  preparation time limit. KM's 1185 cold runs produce 1149 outputs, 21 external
-  timeouts, and 15 verified worker time-limit errors. Of 237 retained sessions,
-  204 finish, 24 time out, six exceed the memory limit, and three report an
-  internal worker time limit. For the 948 scheduled updates after initialization,
-  receipts report 206 incremental updates and 615 exact rebuilds, with 121
-  revisions skipped after session failure and six update timeouts. These are
-  measurement outcomes; the full semantic audit and paired-cost review remain
-  pending.
-- Record the independent-reference gap on all five update revisions of ORE
-  1194: all three cold KM repetitions agree, but every other reasoner and the
-  retained KM sessions produce no usable result under the benchmark protocol.
-  These results establish repeatability only; independent correctness and
-  fresh-versus-retained equivalence remain unverified for these revisions.
-- Candidate validation: 2835 Rust tests passed (8 ignored), 31 Java tests passed,
-  plugin installation smoke passed, all four Lean certification gates passed
-  without `sorryAx`, and 68 benchmark-harness tests passed. Incremental
-  correctness audits are still running; this entry does not
-  assert that v1.4.5 is ready for publication. Evidence is under
-  `results/benchmarks/2026-10-04-v1.4.5-comparative/`.
-
 ### Deferred engine thread budget in the production race
 
 - Start the CB stack of `race_cb_vs_ht` before the supervisor reads, converts,
@@ -297,6 +225,95 @@
   It therefore clears 1579's memory target but not its 2.4938-second wall
   target. ORE 6722 improved from 3.59 to 3.42 seconds. The strict score remains
   524/589.
+
+## [1.4.5] - 2026-10-05
+
+### Correctness and comparative benchmarks
+
+- Reject asserted data values outside an applicable finite data range, including
+  inherited constraints on the top data property. ORE 13219 now reports the
+  inconsistency detected by the independent reference reasoners.
+- Preserve the dependency of nominal membership through node merges so that
+  backtracking retains the proof supporting a pending nominal choice. A reduced
+  wine-ontology regression covers this case. Full classifications of ORE 11477,
+  1397, 13954, and 14334 still reach the 240-second benchmark limit; the reduced
+  regression does not establish successful full-ontology classification.
+- Respect the physical orientation of ancestor links when propagating universal
+  restrictions in the completion engine. This removes the false subsumptions
+  observed on ORE 185.
+- Handle floating-point facet ranges over representable float and double values,
+  including signed zero, infinities, NaN, and empty intervals. The corrected
+  taxonomies for ORE 16708 and 3685 agree with HermiT and Konclude.
+- Reset cancellation state between classifications in a retained process so that
+  an earlier cancellation does not abort subsequent justification checks.
+- Keep unresolved equivalent-class definitions out of saturation-only taxonomy
+  answers, and materialize cached disjunctions when reading classification
+  models. Check live ancestor edges before reusing cached universal automata.
+  These changes recover missing subsumptions in ORE 6333, 7877, and 6134.
+  Full taxonomies match JFact, HermiT, and Konclude respectively; reduced
+  source-preserving examples and cache-compatibility tests cover the failures.
+- Preserve global superclass consequences during retained EL replacements.
+  When a changed component reaches a global rule, recompute all class rows:
+  implicit top membership connects rows that share no explicit source symbols.
+  This restores 798 missing entailments on ORE 5295. All five update revisions
+  match fresh classification and Konclude across all three cold and retained
+  repetitions; disconnected components still reuse their closure.
+- Add comparative classification, incremental-update, and justification panels
+  for KM, RustDL, Konclude, HermiT, JFact, Openllet, ELK, Whelk, MORe, and Sequoia.
+  Reports retain preparation failures, invalid-input refusals, timeouts, and
+  incomplete outputs. Performance comparisons use paired verified outcomes;
+  justification verification checks source membership, entailment, and
+  subset-minimality independently. Retained sessions are distinguished from
+  demonstrated internal reuse.
+- Complete and review the 1920-input classification panel: KM produces 1594
+  outputs, rejects 212 invalid inputs, reaches 44 worker time limits, and reaches
+  70 external timeouts. All 45 reasoner-pair statistics are independently
+  recomputed. On the 1195 valid, fully agreeing KM/RustDL cases, the median
+  paired RustDL/KM ratios are 0.595 for wall time and 0.838 for peak memory.
+  Four inputs completed in the preceding candidate run but time out in this
+  run; the report retains these outcomes without substituting earlier timings.
+- Complete and review the justification panel: 80 selected sources yield 124
+  queries from 42 sources, with 24 preparation failures and 14 sources without
+  eligible queries. Across three repetitions, KM has 336 independently verified
+  justifications, 18 worker time-limit errors, and 18 external timeouts. On the
+  336 verified KM/RustDL pairs, median paired RustDL/KM ratios are 0.746 for
+  wall time and 0.630 for peak memory. Failures remain outside paired costs.
+- Complete the incremental measurements on 80 selected sources: 79 prepared
+  sources provide five revisions and three repetitions; one source reaches the
+  preparation time limit. KM's 1185 cold runs produce 1149 outputs, 21 external
+  timeouts, and 15 verified worker time-limit errors. Of 237 retained sessions,
+  204 finish, 24 time out, six exceed the memory limit, and three report an
+  internal worker time limit. For the 948 scheduled updates after initialization,
+  receipts report 206 incremental updates and 615 exact rebuilds, with 121
+  revisions skipped after session failure and six update timeouts. These are
+  measurement outcomes. All 395 revision audits are complete. The KM reference,
+  repeatability, and fresh-versus-retained checks have 4321 taxonomy agreements,
+  145 inconsistent agreements, 198 unavailable comparisons, and no
+  disagreements. Independently recompute all 272 phase-specific method-pair
+  reports and verify 7252 retained-reuse entries against measurement records.
+  All 1977 KM-baseline disagreement records have an agreeing full-DL reference
+  in the same repetition; the raw disagreements remain in the reports.
+- Record the independent-reference gap on all five update revisions of ORE
+  1194: all three cold KM repetitions agree, but every other reasoner and the
+  retained KM sessions produce no usable result under the benchmark protocol.
+  These results establish repeatability only; independent correctness and
+  fresh-versus-retained equivalence remain unverified for these revisions.
+- Retained KM is slower on this workload: on 803 fully agreeing update pairs,
+  median paired retained/fresh ratios are 1.255 for wall time and 1.627 for peak
+  memory. RustDL/KM-cold ratios are 0.538 and 0.867 on 647 agreeing update pairs;
+  RustDL/KM-retained ratios are 0.417 and 0.459 on 592 agreeing update pairs.
+  Initialization has separate statistics. RustDL, MORe, and Sequoia participate
+  through cold reruns; retained-session methods are available for the other
+  seven reasoners. Do not interpret cold reruns as internal incremental reuse.
+- Keep 227 incomplete or dropped-axiom RustDL update outputs out of verified
+  cost pairs. Three retained Konclude execution records marked `ok` have no
+  canonical result and likewise provide no verified pair. Unknown consistency,
+  missing outputs, and failed sessions are never promoted to semantic agreement.
+- Release validation: 2835 Rust tests passed (8 ignored), 31 Java tests passed,
+  plugin installation smoke passed, all four Lean certification gates passed
+  without `sorryAx`, and 68 benchmark-harness tests passed. All four panel
+  reports and the combined readable report have been reviewed. Evidence is under
+  `results/benchmarks/2026-10-04-v1.4.5-comparative/`.
 
 ## [1.4.4] - 2026-10-04
 

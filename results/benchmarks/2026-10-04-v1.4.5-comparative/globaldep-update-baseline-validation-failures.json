@@ -1,0 +1,2097 @@
+{
+  "observed_at": "2026-10-05T11:16:57.113927+00:00",
+  "validation_errors": 227,
+  "diagnostics": {
+    "ValueError: incomplete reasoning or dropped axioms": 227
+  },
+  "cases": [
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/001/audit.json",
+      "audit_sha256": "e2c6e3dcf0a43b43b1743f9387666a31a72334d72f7cd4ddd0eac950e2a43426",
+      "output": "rustdl-cold-0",
+      "record_sha256": "1751f50eaf1b8cf40bf396ae5cfcb11b8d74b373334f16f178fc2ea8c837d859",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/001/audit.json",
+      "audit_sha256": "e2c6e3dcf0a43b43b1743f9387666a31a72334d72f7cd4ddd0eac950e2a43426",
+      "output": "rustdl-cold-1",
+      "record_sha256": "5f44cd59a21aacc36c9bef09406eb753b798cb2b83d2354d79a81ce641311274",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/001/audit.json",
+      "audit_sha256": "e2c6e3dcf0a43b43b1743f9387666a31a72334d72f7cd4ddd0eac950e2a43426",
+      "output": "rustdl-cold-2",
+      "record_sha256": "a2fbee15e35baab2920224bd9ac10ef36ef041f3af838619d755a8acc5d7351f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/000/audit.json",
+      "audit_sha256": "9bbe07bbba7ee5a69c26904d5f01952fe0612f581a95c3481a6d0ec96d137972",
+      "output": "rustdl-cold-0",
+      "record_sha256": "0a5b1a3032634a607546edec76d2d7fc8a692ef079de1f6439d0f24d598195d2",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/000/audit.json",
+      "audit_sha256": "9bbe07bbba7ee5a69c26904d5f01952fe0612f581a95c3481a6d0ec96d137972",
+      "output": "rustdl-cold-1",
+      "record_sha256": "eead935f595bf505b6efd9f4d383e8e373fe1f40d005900ed342cc7a2123febc",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/000/audit.json",
+      "audit_sha256": "9bbe07bbba7ee5a69c26904d5f01952fe0612f581a95c3481a6d0ec96d137972",
+      "output": "rustdl-cold-2",
+      "record_sha256": "0707d0a1d54012f86ced1e03c2e9ebb7887834d1eb1e920de297e1e080e339f9",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/002/audit.json",
+      "audit_sha256": "26bd4162f2143bb6574292be42d2e7eddbdbe9ab94842df9c3823537565405e0",
+      "output": "rustdl-cold-0",
+      "record_sha256": "69b6f8b5830334e21f034b0853694aa1db300d503eb7b0f59668b0ac021ec984",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/002/audit.json",
+      "audit_sha256": "26bd4162f2143bb6574292be42d2e7eddbdbe9ab94842df9c3823537565405e0",
+      "output": "rustdl-cold-1",
+      "record_sha256": "3c56ba1535dffd393d86391704a661f48303bcd56a724ba3dbbe9b6b6e40473f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/002/audit.json",
+      "audit_sha256": "26bd4162f2143bb6574292be42d2e7eddbdbe9ab94842df9c3823537565405e0",
+      "output": "rustdl-cold-2",
+      "record_sha256": "daa052bfdb97754c6fae9811f4445fa999c261a8c23b1b14c6dccc1146d92e45",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/003/audit.json",
+      "audit_sha256": "2a961f487328444627085f1c5f8ee480e7097db51073ca2b09c66a9e6bdf9a80",
+      "output": "rustdl-cold-0",
+      "record_sha256": "08818342f4065f4bc2d63d2a4b05b8eb7620f87e6870b1f84d66bc3480447450",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/003/audit.json",
+      "audit_sha256": "2a961f487328444627085f1c5f8ee480e7097db51073ca2b09c66a9e6bdf9a80",
+      "output": "rustdl-cold-1",
+      "record_sha256": "1ad4e74b5556b22a10ba7c5dca91f6a1381a63312ec1e3bf6225153a5ea5c8d2",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/003/audit.json",
+      "audit_sha256": "2a961f487328444627085f1c5f8ee480e7097db51073ca2b09c66a9e6bdf9a80",
+      "output": "rustdl-cold-2",
+      "record_sha256": "8be0869e2fa0ada560490e7464b263b65f31cdf032904abeb5e4f61de48fec60",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/004/audit.json",
+      "audit_sha256": "88ea55a27d7bbdfc0d7ad5dde3f5df75b5e71c6f086eb8467e9d1c4f92734263",
+      "output": "rustdl-cold-0",
+      "record_sha256": "029a11eaa9d7062227824edf164785185493e6f6be29fd4aec1c8cb51c067ea5",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/004/audit.json",
+      "audit_sha256": "88ea55a27d7bbdfc0d7ad5dde3f5df75b5e71c6f086eb8467e9d1c4f92734263",
+      "output": "rustdl-cold-1",
+      "record_sha256": "59e85b34d6354970028e4436f6811dc72ff0a71d356b32826a78d6e7dc46bc68",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_6446/004/audit.json",
+      "audit_sha256": "88ea55a27d7bbdfc0d7ad5dde3f5df75b5e71c6f086eb8467e9d1c4f92734263",
+      "output": "rustdl-cold-2",
+      "record_sha256": "74014ec5fe80214eddb33f204fcfb8bba4f90ef42cc168c093e809573abed4a3",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/002/audit.json",
+      "audit_sha256": "c4e2f60089f59b61e78996b50211af004e365f4ef89df9d37e3d6a6c9fb714df",
+      "output": "rustdl-cold-0",
+      "record_sha256": "06a4438210734a30ca5b8a6b0e39fb725eeb46976bb844728436c8774051cb5e",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/002/audit.json",
+      "audit_sha256": "c4e2f60089f59b61e78996b50211af004e365f4ef89df9d37e3d6a6c9fb714df",
+      "output": "rustdl-cold-1",
+      "record_sha256": "c8993a315e80d0c41a9c525b1e139c988fb9bfcd28d40078be1aa4f1673db9b9",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/002/audit.json",
+      "audit_sha256": "c4e2f60089f59b61e78996b50211af004e365f4ef89df9d37e3d6a6c9fb714df",
+      "output": "rustdl-cold-2",
+      "record_sha256": "200d41da5826069f5ac52991908b1b4d27397c2697170fef69f96d5ed140dc5b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/003/audit.json",
+      "audit_sha256": "56ea9f577478edd09ed1e807e5ea0934c1d4a79d7282310d4a432be84a7d52f1",
+      "output": "rustdl-cold-0",
+      "record_sha256": "fa1a9a5792aba862caa6af5923bd0d7894f04e5abc4c2100d0a473cf353a81af",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/003/audit.json",
+      "audit_sha256": "56ea9f577478edd09ed1e807e5ea0934c1d4a79d7282310d4a432be84a7d52f1",
+      "output": "rustdl-cold-1",
+      "record_sha256": "10bb2043793ba1840409c40fbc2960b9d09632350176a9475fb35c023840ce4a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/003/audit.json",
+      "audit_sha256": "56ea9f577478edd09ed1e807e5ea0934c1d4a79d7282310d4a432be84a7d52f1",
+      "output": "rustdl-cold-2",
+      "record_sha256": "ed885ae3a7d36f700bc42a0e6c1f295824201fae6e6cdf97bd911ead4901ecd5",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/000/audit.json",
+      "audit_sha256": "83cd42fe5d94f80df650e8166af30a4244bf73f6f6cd3e93eae9c7772f6ba9c6",
+      "output": "rustdl-cold-0",
+      "record_sha256": "c5474b75c9e4d3339f268ec7ba5c51b37537055f0003abf2f5bca4bd0db5de2f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/000/audit.json",
+      "audit_sha256": "83cd42fe5d94f80df650e8166af30a4244bf73f6f6cd3e93eae9c7772f6ba9c6",
+      "output": "rustdl-cold-1",
+      "record_sha256": "cce768ed29586315db58b490362ffefc300e1805731a67b778b0aeea6f53f551",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/000/audit.json",
+      "audit_sha256": "83cd42fe5d94f80df650e8166af30a4244bf73f6f6cd3e93eae9c7772f6ba9c6",
+      "output": "rustdl-cold-2",
+      "record_sha256": "cf495bcc244ad8b8e1494aaced01733936226f71252fb2c884d0d5b4cc4a695a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/001/audit.json",
+      "audit_sha256": "178c53ca77a2d59d15a7590b3c03d704073524bfaf5aefa34feda04aa632172e",
+      "output": "rustdl-cold-0",
+      "record_sha256": "f915218ff95fad2e0f79018b4f4d0751438398a5349c1a447625325d299336cb",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/001/audit.json",
+      "audit_sha256": "178c53ca77a2d59d15a7590b3c03d704073524bfaf5aefa34feda04aa632172e",
+      "output": "rustdl-cold-1",
+      "record_sha256": "130b6a7c68cfc2dee052f7917b935cdd2ec0bda2d32ebf2f16d973bbfbfc1d11",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/001/audit.json",
+      "audit_sha256": "178c53ca77a2d59d15a7590b3c03d704073524bfaf5aefa34feda04aa632172e",
+      "output": "rustdl-cold-2",
+      "record_sha256": "b7002e5e77e4aa2476d80fc638209a7cfbf4a5c3ddd52902a6937f71f4b427af",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/004/audit.json",
+      "audit_sha256": "f8a8d42dcd07916b5f5b926068b47550c0d4a3e56030a0a6a8e1d53e265440cb",
+      "output": "rustdl-cold-0",
+      "record_sha256": "6f6bf1b72511be48f6bb83cdec5938e57e7969e6dfa73aa3645b4b4ecf00cbbe",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/004/audit.json",
+      "audit_sha256": "f8a8d42dcd07916b5f5b926068b47550c0d4a3e56030a0a6a8e1d53e265440cb",
+      "output": "rustdl-cold-1",
+      "record_sha256": "7b206b4286d9a8880b8e729b0a1aba9bbfe9376d4ca270f1b73dcf15d5a88c0e",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16481/004/audit.json",
+      "audit_sha256": "f8a8d42dcd07916b5f5b926068b47550c0d4a3e56030a0a6a8e1d53e265440cb",
+      "output": "rustdl-cold-2",
+      "record_sha256": "c60fcbcfa384b5e7858c2661dd05095716524a37c96a5dd5be49cdafeba459e8",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/002/audit.json",
+      "audit_sha256": "e8fc6e1e4498397b31b5b43aa9ecb23a202530fef15a79e47bdfeb039d26d3a8",
+      "output": "rustdl-cold-0",
+      "record_sha256": "5be4d6e94de268406f7ae75103f769dd2f8dd49d94ec6dc518a1fb1519624487",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/002/audit.json",
+      "audit_sha256": "e8fc6e1e4498397b31b5b43aa9ecb23a202530fef15a79e47bdfeb039d26d3a8",
+      "output": "rustdl-cold-1",
+      "record_sha256": "8b4e047f04fa0857c2b740e3200432f7987320ac661a5961a9636708131acb9c",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/002/audit.json",
+      "audit_sha256": "e8fc6e1e4498397b31b5b43aa9ecb23a202530fef15a79e47bdfeb039d26d3a8",
+      "output": "rustdl-cold-2",
+      "record_sha256": "97cbd15f52e329d64d744822fc5fdc7429bf85aea9f1d8bcc8141d28f8a33311",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/004/audit.json",
+      "audit_sha256": "86134bc44fc6baac9a62ead659d08a5167c030d6525f59609d945f706f40d23a",
+      "output": "rustdl-cold-0",
+      "record_sha256": "69fe21ec5cb11d4a31f704eee844534f5b8aeabeeb80fd185a9e406549a52e85",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/004/audit.json",
+      "audit_sha256": "86134bc44fc6baac9a62ead659d08a5167c030d6525f59609d945f706f40d23a",
+      "output": "rustdl-cold-1",
+      "record_sha256": "e80d15e269fb9347ff85dd360bd6054f1b0124a78fcf7f8fc22920a63603af3a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/004/audit.json",
+      "audit_sha256": "86134bc44fc6baac9a62ead659d08a5167c030d6525f59609d945f706f40d23a",
+      "output": "rustdl-cold-2",
+      "record_sha256": "d39825374113d5ee89539c8915d69e1ac48e5a8bff95be520e3430ab34ea5f38",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/001/audit.json",
+      "audit_sha256": "70568e8626d5f58633ae49617d43f90813916f80250d001664be5a9393354219",
+      "output": "rustdl-cold-0",
+      "record_sha256": "6465ded92cdbb9eedaa2f8d11604d91bddbec8f1b4513f54278fe5305cf46787",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/001/audit.json",
+      "audit_sha256": "70568e8626d5f58633ae49617d43f90813916f80250d001664be5a9393354219",
+      "output": "rustdl-cold-1",
+      "record_sha256": "cad1c082dcbd4228047cf952772ba3ed0a2f0ea1e67baf29722c21a485ea9189",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/001/audit.json",
+      "audit_sha256": "70568e8626d5f58633ae49617d43f90813916f80250d001664be5a9393354219",
+      "output": "rustdl-cold-2",
+      "record_sha256": "73d4892b001b7dce0374a3936a70d41e7f6457eeb67d32276e1a35e85c60114b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/003/audit.json",
+      "audit_sha256": "f071ae85f61d7dc922104e3fb0c31fac927a59a2f36b3ecd6a6411cb75e8a2fe",
+      "output": "rustdl-cold-0",
+      "record_sha256": "0f0e6f0fb8304ef32bfa3edb11f54e386f9c1a1f6b961eb940f20ec974328a62",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/003/audit.json",
+      "audit_sha256": "f071ae85f61d7dc922104e3fb0c31fac927a59a2f36b3ecd6a6411cb75e8a2fe",
+      "output": "rustdl-cold-1",
+      "record_sha256": "cae1f1f58645d89a6e248a67cf81bf93c6c0ffcba0d68c1a1634e8ccd6e9ca7b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/003/audit.json",
+      "audit_sha256": "f071ae85f61d7dc922104e3fb0c31fac927a59a2f36b3ecd6a6411cb75e8a2fe",
+      "output": "rustdl-cold-2",
+      "record_sha256": "353f0ced82b5564c8686dc685c83b6bae612e1ce9db8685aacb0443eae305def",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/000/audit.json",
+      "audit_sha256": "fb87774d9e7bc024973e8d6bb80ebbcd42669d8783e6a71a500689f4a065a219",
+      "output": "rustdl-cold-0",
+      "record_sha256": "d333a161af5c096b4eaa1c8f1ebf6e1aaefcdbcc2cc4c4ce5cbd7cb6c84a8321",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/000/audit.json",
+      "audit_sha256": "fb87774d9e7bc024973e8d6bb80ebbcd42669d8783e6a71a500689f4a065a219",
+      "output": "rustdl-cold-1",
+      "record_sha256": "3a100ea3ef41e993555c7b013b231e7b0b3b1455c0223c813950fb24136e7b54",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_4428/000/audit.json",
+      "audit_sha256": "fb87774d9e7bc024973e8d6bb80ebbcd42669d8783e6a71a500689f4a065a219",
+      "output": "rustdl-cold-2",
+      "record_sha256": "d0d1ed24349afd5d5209b90c7ba1af88029c6f4d40adabb2de44d8510f3e99e4",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/000/audit.json",
+      "audit_sha256": "4e01d1ebdf9ac67fbd422b927c5e54503383f5fd65dbd78d4c187fe6efcaee6e",
+      "output": "rustdl-cold-0",
+      "record_sha256": "141c5d9f4a6dd2fd6954120938f216ab4f252f42bb550e555ebd31d88df35d20",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/000/audit.json",
+      "audit_sha256": "4e01d1ebdf9ac67fbd422b927c5e54503383f5fd65dbd78d4c187fe6efcaee6e",
+      "output": "rustdl-cold-1",
+      "record_sha256": "4a5408e54a6f6ecc9fa65cb4826b4875da98037c141374f804ffcdb429c75f88",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/000/audit.json",
+      "audit_sha256": "4e01d1ebdf9ac67fbd422b927c5e54503383f5fd65dbd78d4c187fe6efcaee6e",
+      "output": "rustdl-cold-2",
+      "record_sha256": "0af59af14e9aeccc9b865fe5fa13beba57260f7993ec08c8da882eaa9d12a9c4",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/001/audit.json",
+      "audit_sha256": "0e10e735798dde81709f7c72d36821de5d0608fbceee7d0daa8b8a033e973657",
+      "output": "rustdl-cold-0",
+      "record_sha256": "243d5c3ee144db2cc7565f9e74d1f7858c84f032c68633e698c865aac9ac832b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/001/audit.json",
+      "audit_sha256": "0e10e735798dde81709f7c72d36821de5d0608fbceee7d0daa8b8a033e973657",
+      "output": "rustdl-cold-1",
+      "record_sha256": "bd526509b419f402f390a99524e5a7f04037f250f6b3d6be0e1d2858ae02e2b2",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/001/audit.json",
+      "audit_sha256": "0e10e735798dde81709f7c72d36821de5d0608fbceee7d0daa8b8a033e973657",
+      "output": "rustdl-cold-2",
+      "record_sha256": "fda9fd0fe387907971439276df4e98d96e054ebdaaa1cb2f64766e39e0fc803e",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/004/audit.json",
+      "audit_sha256": "09403eb4882ace3547e4cf198e8bf2b1ba7f09117c4ef2be3b6519ac100face0",
+      "output": "rustdl-cold-0",
+      "record_sha256": "b1ca8e0786e78250a46d5e040037c81e9f32107062a4f3f1053c1dd6880150b3",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/004/audit.json",
+      "audit_sha256": "09403eb4882ace3547e4cf198e8bf2b1ba7f09117c4ef2be3b6519ac100face0",
+      "output": "rustdl-cold-1",
+      "record_sha256": "86e61b34632cb0181f5cba46fb0a0e9821fe114b6c503133ec03fbb81ea6efb6",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/004/audit.json",
+      "audit_sha256": "09403eb4882ace3547e4cf198e8bf2b1ba7f09117c4ef2be3b6519ac100face0",
+      "output": "rustdl-cold-2",
+      "record_sha256": "1a31f2ebcf658c576e011c6b0e10720738135694c61467adf56e5e11477f2b51",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/002/audit.json",
+      "audit_sha256": "96ee1e46161ce6fbc732c843b284dc1d675ef6b8f2eaab7398a65cc809b95112",
+      "output": "rustdl-cold-0",
+      "record_sha256": "1f62f23d08100753ec602408ee5dfcd79781e6c8a33f247346e3bdb302ab6e0b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/002/audit.json",
+      "audit_sha256": "96ee1e46161ce6fbc732c843b284dc1d675ef6b8f2eaab7398a65cc809b95112",
+      "output": "rustdl-cold-1",
+      "record_sha256": "a9c6494cbc54bc62c9713bd7eceb6d2d26b8539537593b057d99b5ac09c6eebf",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/002/audit.json",
+      "audit_sha256": "96ee1e46161ce6fbc732c843b284dc1d675ef6b8f2eaab7398a65cc809b95112",
+      "output": "rustdl-cold-2",
+      "record_sha256": "f239009f5090d9bb444e295bb6067bd8261008891b8c356c7c7a0dd0c4923aff",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/003/audit.json",
+      "audit_sha256": "8aca2cce24dbbfdf39066ea480a3d35f8f038e3d11e2f93957025e8a18b6de6f",
+      "output": "rustdl-cold-0",
+      "record_sha256": "1901866b6ae6d7d16b186cc15cf925cf23ca6ced7c18f69b4f75ca1786157ce1",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/003/audit.json",
+      "audit_sha256": "8aca2cce24dbbfdf39066ea480a3d35f8f038e3d11e2f93957025e8a18b6de6f",
+      "output": "rustdl-cold-1",
+      "record_sha256": "248e7925483e21e30698d388d24d90b29c9fb35870362c3a7b6952da0f6650b2",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_14746/003/audit.json",
+      "audit_sha256": "8aca2cce24dbbfdf39066ea480a3d35f8f038e3d11e2f93957025e8a18b6de6f",
+      "output": "rustdl-cold-2",
+      "record_sha256": "c1ad70373f446eedf09b0e23b0253b446e9a625a76b354861adf6a3d3d006a41",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_8387/001/audit.json",
+      "audit_sha256": "9dc952c8010f0581f1acc10c46df47ec7c224384ad0e169a23147bfedee3ea9c",
+      "output": "rustdl-cold-1",
+      "record_sha256": "a4bbf8a460588bbb56fdfc262058d51303ca1c4660a80d9853112a23327dc071",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_8387/000/audit.json",
+      "audit_sha256": "a4394291e73eaf8054d9af5b5a7341d155feae21f62ee610b935f7d09f89de9d",
+      "output": "rustdl-cold-0",
+      "record_sha256": "ac8111838b651fbe2d568638ede426fec29890ae8436f3a33bdabe3e46297343",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/003/audit.json",
+      "audit_sha256": "07a815f83a787b982405f8ebe95f8e2ef44aa7a83104aeaef165d8f64c5d5b5c",
+      "output": "rustdl-cold-0",
+      "record_sha256": "81cb9c10dd6ce51086d1f05170b0f119e8d59dd1382f3d1c488f9e251e755b0a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/003/audit.json",
+      "audit_sha256": "07a815f83a787b982405f8ebe95f8e2ef44aa7a83104aeaef165d8f64c5d5b5c",
+      "output": "rustdl-cold-1",
+      "record_sha256": "5663dd49b5bd75ed952c1e76e11878218e45cf119ea13759c16d695419adfd33",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/003/audit.json",
+      "audit_sha256": "07a815f83a787b982405f8ebe95f8e2ef44aa7a83104aeaef165d8f64c5d5b5c",
+      "output": "rustdl-cold-2",
+      "record_sha256": "1ed6aa1624fd5b74e6b8fb1826a6f60ff170b7bbd85f0b9bfb5ff891c0102943",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/001/audit.json",
+      "audit_sha256": "ab314ceface83f079a38c0b6209667685bdbb9025f34e11a925d7feb59e64b2d",
+      "output": "rustdl-cold-0",
+      "record_sha256": "f5f927da5152345cab70d610d35fc0ffeb59fae529a70cb5617829493c7a523a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/001/audit.json",
+      "audit_sha256": "ab314ceface83f079a38c0b6209667685bdbb9025f34e11a925d7feb59e64b2d",
+      "output": "rustdl-cold-1",
+      "record_sha256": "4f50f43c39ef028ac5881b34a34c4bf63cdd760f2e501c01cbfd3c69b31b74f4",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/001/audit.json",
+      "audit_sha256": "ab314ceface83f079a38c0b6209667685bdbb9025f34e11a925d7feb59e64b2d",
+      "output": "rustdl-cold-2",
+      "record_sha256": "e67789aea6fbc1919905ceafe6c3778b34e1e9fbb5bfa578b20a893cfd3fffb2",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/000/audit.json",
+      "audit_sha256": "f0c961fa0c1d12494ab64f4b4e6467928f30ca878161a1ba84be82fe52555307",
+      "output": "rustdl-cold-0",
+      "record_sha256": "ac9f0071852eee2beb9e401d9141a916f1fc42f41a9042ac67e34c8a12bc7309",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/000/audit.json",
+      "audit_sha256": "f0c961fa0c1d12494ab64f4b4e6467928f30ca878161a1ba84be82fe52555307",
+      "output": "rustdl-cold-1",
+      "record_sha256": "e17fa7f87fc8bcfce402e6c50104e5e979f2b3bcc2eb7027bd4339bbc8ac3176",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/000/audit.json",
+      "audit_sha256": "f0c961fa0c1d12494ab64f4b4e6467928f30ca878161a1ba84be82fe52555307",
+      "output": "rustdl-cold-2",
+      "record_sha256": "24f0a68cfa47a40684c641edd0d4e29b715020d6d39cf492d2860f15afce22ef",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/002/audit.json",
+      "audit_sha256": "f000794c6ddf2734f4d03ab48bb5f3740ddd07d9aac32ae015012704f7f76d40",
+      "output": "rustdl-cold-0",
+      "record_sha256": "926460144d126a39b206deabed1890bb5fd95e2af23e991a925355ba68062d28",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/002/audit.json",
+      "audit_sha256": "f000794c6ddf2734f4d03ab48bb5f3740ddd07d9aac32ae015012704f7f76d40",
+      "output": "rustdl-cold-1",
+      "record_sha256": "2d2ac10aaaaa3724ca09e062c27e9a48f4988ac91e2df02a0ce7082ed6e03f58",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/002/audit.json",
+      "audit_sha256": "f000794c6ddf2734f4d03ab48bb5f3740ddd07d9aac32ae015012704f7f76d40",
+      "output": "rustdl-cold-2",
+      "record_sha256": "9829628e2ed04e5f03cecb3b13b919ac8ee49653279a134525730b1d824640f9",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/004/audit.json",
+      "audit_sha256": "b56ae9591a1be33447b47f7911ae53b9d48996753e08a7c439dd3393ca947609",
+      "output": "rustdl-cold-0",
+      "record_sha256": "f1048004cbc1dd3c686584cd6adeb98e99af8b4eebe87473ec645046da483619",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/004/audit.json",
+      "audit_sha256": "b56ae9591a1be33447b47f7911ae53b9d48996753e08a7c439dd3393ca947609",
+      "output": "rustdl-cold-1",
+      "record_sha256": "8b8cd41cbf3968665ac0de94901ac761fe871af56f058e380f1a0db964daf063",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_16359/004/audit.json",
+      "audit_sha256": "b56ae9591a1be33447b47f7911ae53b9d48996753e08a7c439dd3393ca947609",
+      "output": "rustdl-cold-2",
+      "record_sha256": "cb6d3efc89618f8128ae3ecd6f524705369016f3c92c7d041025e0901b307892",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/004/audit.json",
+      "audit_sha256": "5bd7d3d7aaa569b679036d5c110ecfceee0412098e907402a4eefbbe3b3844f5",
+      "output": "rustdl-cold-0",
+      "record_sha256": "8b8975e4bda239c671923d3eec2a9d01dfd24bd0dcb4f9ff5bcbfe7a954a8643",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/004/audit.json",
+      "audit_sha256": "5bd7d3d7aaa569b679036d5c110ecfceee0412098e907402a4eefbbe3b3844f5",
+      "output": "rustdl-cold-1",
+      "record_sha256": "8f72943978f50c64be319b41ffca2af81ee7582e0f8856002883148c0a2ccc2f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/004/audit.json",
+      "audit_sha256": "5bd7d3d7aaa569b679036d5c110ecfceee0412098e907402a4eefbbe3b3844f5",
+      "output": "rustdl-cold-2",
+      "record_sha256": "d442068493e08ff96ef6f584d003e5f6d10f3efb5b8ed91d2913c70d6c8de127",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/002/audit.json",
+      "audit_sha256": "401fec34d2ce1a9463a6263353ff86c2abc5ac2c599c815a9b3a606cb6f0f378",
+      "output": "rustdl-cold-0",
+      "record_sha256": "4ecdf7133ba5733d28d39f57b8fd3e1d0d2cc9000fe5acd8a303456fa46ccdb7",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/002/audit.json",
+      "audit_sha256": "401fec34d2ce1a9463a6263353ff86c2abc5ac2c599c815a9b3a606cb6f0f378",
+      "output": "rustdl-cold-1",
+      "record_sha256": "668ea850dabe779bd793dd6283dc52bf2bd694ebd05547fcd3db173064a23cc2",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/002/audit.json",
+      "audit_sha256": "401fec34d2ce1a9463a6263353ff86c2abc5ac2c599c815a9b3a606cb6f0f378",
+      "output": "rustdl-cold-2",
+      "record_sha256": "aae591a09cec04ce9ff8ad5efd86fa3fe3cf8766bb086f4772dcaf70ac772dfb",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/001/audit.json",
+      "audit_sha256": "3f7e4923f2abda67619528655b29a13755ed806baa926b472afc9e2e3a63f242",
+      "output": "rustdl-cold-0",
+      "record_sha256": "dbbb3fb193c0e9068be9f4ae7cda87f8f86f5b40c8008143c13b7e4714c855c8",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/001/audit.json",
+      "audit_sha256": "3f7e4923f2abda67619528655b29a13755ed806baa926b472afc9e2e3a63f242",
+      "output": "rustdl-cold-1",
+      "record_sha256": "941a3a4e0cf0ffe234f09b2ca8e8de97362dbcf22c7c1c4214d19a117628ed8a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/001/audit.json",
+      "audit_sha256": "3f7e4923f2abda67619528655b29a13755ed806baa926b472afc9e2e3a63f242",
+      "output": "rustdl-cold-2",
+      "record_sha256": "0d664bfa20779982bc09d90c25be0063aaafbccbf2b38dc841d7a6b8736fe770",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/003/audit.json",
+      "audit_sha256": "8b748dd42127dc4b475ee6df61c71190019f934ef4008fa4f6428011342feede",
+      "output": "rustdl-cold-0",
+      "record_sha256": "6f4bdb99720f4893ed066ed77af5c9c2f9746c63a57aa29fcda2d0c7a7460bda",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/003/audit.json",
+      "audit_sha256": "8b748dd42127dc4b475ee6df61c71190019f934ef4008fa4f6428011342feede",
+      "output": "rustdl-cold-1",
+      "record_sha256": "9e31064b12f3598a62efeaac82b1900215e67727e3f867002fe520dab5651988",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/003/audit.json",
+      "audit_sha256": "8b748dd42127dc4b475ee6df61c71190019f934ef4008fa4f6428011342feede",
+      "output": "rustdl-cold-2",
+      "record_sha256": "603785ca8d19161b760f689ec84bba683762b0fc0138b93898f5abe407159838",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/000/audit.json",
+      "audit_sha256": "a2a415339b829303352de98d031ff8bb699c5463de1866361dc7eaee539ccc20",
+      "output": "rustdl-cold-0",
+      "record_sha256": "27710f451b345dea22580354a05695dc24903ecd851d5e28d33316b9b61c4afe",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/000/audit.json",
+      "audit_sha256": "a2a415339b829303352de98d031ff8bb699c5463de1866361dc7eaee539ccc20",
+      "output": "rustdl-cold-1",
+      "record_sha256": "10211a7124ac41bdb6ec2ec662b1b2d3cb7c8dd12c1ae1bf5584729cbaac507a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7011/000/audit.json",
+      "audit_sha256": "a2a415339b829303352de98d031ff8bb699c5463de1866361dc7eaee539ccc20",
+      "output": "rustdl-cold-2",
+      "record_sha256": "acef0e4223923e15addee55d82a711d69f1ae0cef5ecd21c73a8e854cf14e483",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/004/audit.json",
+      "audit_sha256": "ae48ef4eab7e09982e72891fd8d38bb9e32e4cdce6174efb1e498d38b752fdc0",
+      "output": "rustdl-cold-0",
+      "record_sha256": "3611ed62bf2c0a38f9d960a01a29a78b946cd775d7ea3642c4fe3c2a6a122b43",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/004/audit.json",
+      "audit_sha256": "ae48ef4eab7e09982e72891fd8d38bb9e32e4cdce6174efb1e498d38b752fdc0",
+      "output": "rustdl-cold-1",
+      "record_sha256": "8ac74b602c261c8bd2335816bfe5e53212b5b235a6b3271895d8a196ed4a5662",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/004/audit.json",
+      "audit_sha256": "ae48ef4eab7e09982e72891fd8d38bb9e32e4cdce6174efb1e498d38b752fdc0",
+      "output": "rustdl-cold-2",
+      "record_sha256": "d99da8d628c38a11e0efe21f390caf17b2d4e91af12a9f7aaa91805be76493c6",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/002/audit.json",
+      "audit_sha256": "1fbd5297b8a9160f0968945f34c1ea5f6b578a0b274414055eae284d3d6fc827",
+      "output": "rustdl-cold-0",
+      "record_sha256": "b364e4b75321c8b86dcd7b903afc83a6938e0faebc4ec6247bd1737d15132d17",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/002/audit.json",
+      "audit_sha256": "1fbd5297b8a9160f0968945f34c1ea5f6b578a0b274414055eae284d3d6fc827",
+      "output": "rustdl-cold-1",
+      "record_sha256": "d77cf7c2cdd7f9096938fc4e8d59cf309c331467b45b8e2ced3e0d434bb0d296",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/002/audit.json",
+      "audit_sha256": "1fbd5297b8a9160f0968945f34c1ea5f6b578a0b274414055eae284d3d6fc827",
+      "output": "rustdl-cold-2",
+      "record_sha256": "5a1c6bf00c0e3ef068a344e07c49e47aa845132aefc13d5759b2595ae58354a9",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/001/audit.json",
+      "audit_sha256": "8d78428de608de0e0b022794571e0a5e909eace8b33b509706067657ac2b916a",
+      "output": "rustdl-cold-0",
+      "record_sha256": "57606004e32d05eaceabcc5d92d0aa6f71907ddfa57eae056c4412df686fc04d",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/001/audit.json",
+      "audit_sha256": "8d78428de608de0e0b022794571e0a5e909eace8b33b509706067657ac2b916a",
+      "output": "rustdl-cold-1",
+      "record_sha256": "8a913e01936786423703d0ab0008706f6b3a8da1be5f6757eb1da8585f95638e",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/001/audit.json",
+      "audit_sha256": "8d78428de608de0e0b022794571e0a5e909eace8b33b509706067657ac2b916a",
+      "output": "rustdl-cold-2",
+      "record_sha256": "30f3fe36d0acc32b96ce574643ae8995f26cad86226c999e6c700815eec32ae6",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/000/audit.json",
+      "audit_sha256": "b1df0c263399f6b90479225b257f9f2773ed07a9ac3075d6b035e47b4e92ea0d",
+      "output": "rustdl-cold-0",
+      "record_sha256": "53b36e2a2403c634e4c4800f5d07ec8a265106ac73932db4de87ed517119741a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/000/audit.json",
+      "audit_sha256": "b1df0c263399f6b90479225b257f9f2773ed07a9ac3075d6b035e47b4e92ea0d",
+      "output": "rustdl-cold-1",
+      "record_sha256": "4502dfe0ac1e76b4e41b12eaf644aff19b469b47934cf87bea0ae6de40593c4c",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/000/audit.json",
+      "audit_sha256": "b1df0c263399f6b90479225b257f9f2773ed07a9ac3075d6b035e47b4e92ea0d",
+      "output": "rustdl-cold-2",
+      "record_sha256": "22a66778c2d4933d054e1eb7732998aa3b25cdecd1a6a58770b8c3e496349321",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/003/audit.json",
+      "audit_sha256": "346a1ea9d5d3555d03ff6059fabed13d17b80fe23fe732e1449aab748c5c5fe0",
+      "output": "rustdl-cold-0",
+      "record_sha256": "0bdac7eb651df0628c3359dd9c8f3b749bd25783951bd2ef2fb6f0c36e6404b5",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/003/audit.json",
+      "audit_sha256": "346a1ea9d5d3555d03ff6059fabed13d17b80fe23fe732e1449aab748c5c5fe0",
+      "output": "rustdl-cold-1",
+      "record_sha256": "0ea3a22038967187b69e8c4d9abea6aa627df5fd224cd1c25f09dfc623ab1429",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1902/003/audit.json",
+      "audit_sha256": "346a1ea9d5d3555d03ff6059fabed13d17b80fe23fe732e1449aab748c5c5fe0",
+      "output": "rustdl-cold-2",
+      "record_sha256": "2d4661a19dcd75a04000e002df7ed25840e97a0523fbe469a9b7f5828addea48",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/002/audit.json",
+      "audit_sha256": "0aef98124e569e40471f806767886c28846aa0c5c1922ba18284e2a2422506f4",
+      "output": "rustdl-cold-0",
+      "record_sha256": "bdc1e702ef2f51ec4971a2b4fa48aabcc08a4547e13f66519e7b5f8a6c5355fd",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/002/audit.json",
+      "audit_sha256": "0aef98124e569e40471f806767886c28846aa0c5c1922ba18284e2a2422506f4",
+      "output": "rustdl-cold-1",
+      "record_sha256": "01c4c5d47470675d06349ac7edd6a513362d788cc176e7698ef63408dbeb04e8",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/002/audit.json",
+      "audit_sha256": "0aef98124e569e40471f806767886c28846aa0c5c1922ba18284e2a2422506f4",
+      "output": "rustdl-cold-2",
+      "record_sha256": "030194cc6f73ab5b879f4c4ae22ed1cc90afe2feda8de9786d3d71c9134b1365",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/004/audit.json",
+      "audit_sha256": "f851ffa66e2f2baf681a4ac9fe4d7c7ec376b1e1c6810e8a02bbb3f6ccb71c60",
+      "output": "rustdl-cold-0",
+      "record_sha256": "f297884765b702af56d6eecc6021756834f681e4696d72cd9babed305b833785",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/004/audit.json",
+      "audit_sha256": "f851ffa66e2f2baf681a4ac9fe4d7c7ec376b1e1c6810e8a02bbb3f6ccb71c60",
+      "output": "rustdl-cold-1",
+      "record_sha256": "d2ab9dda7a503fb2e9bb258c2b87f46640d89982dddf1ece19ac6fa942411dbf",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/004/audit.json",
+      "audit_sha256": "f851ffa66e2f2baf681a4ac9fe4d7c7ec376b1e1c6810e8a02bbb3f6ccb71c60",
+      "output": "rustdl-cold-2",
+      "record_sha256": "4192e1dc540e7414e00c1848f071c0ab5fa6edc392687b04d7c4f2f22b0f025e",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/000/audit.json",
+      "audit_sha256": "19f4425ecff6329f6208fe81a39908e1c4a7373c0ed9a70d89ae0883947863f4",
+      "output": "rustdl-cold-0",
+      "record_sha256": "b32c4b706eb5089d173d5c16cb6168c737b0fd5809ad075c153e9528a641b52b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/000/audit.json",
+      "audit_sha256": "19f4425ecff6329f6208fe81a39908e1c4a7373c0ed9a70d89ae0883947863f4",
+      "output": "rustdl-cold-1",
+      "record_sha256": "09c3148282b560aee49f33aa5cd483c95f4d59a2398661ba606b433515e1ddf5",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/000/audit.json",
+      "audit_sha256": "19f4425ecff6329f6208fe81a39908e1c4a7373c0ed9a70d89ae0883947863f4",
+      "output": "rustdl-cold-2",
+      "record_sha256": "218c4c77f687398d6c4bffe985eb5033ba87b7974268e85ac72761d74b8f02cd",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/003/audit.json",
+      "audit_sha256": "5ae068ef04eb675524eb5a703b75d62351540295c9d2a91e3173326c0b8f74b7",
+      "output": "rustdl-cold-0",
+      "record_sha256": "8a0768c1530d1ee1b4b56e98dd689a35868de2d6b817ba744dcfcba625c735a9",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/003/audit.json",
+      "audit_sha256": "5ae068ef04eb675524eb5a703b75d62351540295c9d2a91e3173326c0b8f74b7",
+      "output": "rustdl-cold-1",
+      "record_sha256": "46db2de7fff6ced7456a2a7ce6a5f747b73433031e96b931a448dab4bdd169b1",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/003/audit.json",
+      "audit_sha256": "5ae068ef04eb675524eb5a703b75d62351540295c9d2a91e3173326c0b8f74b7",
+      "output": "rustdl-cold-2",
+      "record_sha256": "338c5c19ddb47008c47f280655eb495220eeb1b54316e3a895e1f7f1b88cbbd4",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/001/audit.json",
+      "audit_sha256": "c263279d18499b677ffbd8f57db824cec4875bc6665b2defe38d2ae0d3f2a321",
+      "output": "rustdl-cold-0",
+      "record_sha256": "d2565aa3a5cc0c3a53057fa8242d52820fd3afc2b810bb6faab0e3429ff07a5b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/001/audit.json",
+      "audit_sha256": "c263279d18499b677ffbd8f57db824cec4875bc6665b2defe38d2ae0d3f2a321",
+      "output": "rustdl-cold-1",
+      "record_sha256": "e25b333f5ca64e925d5286c9477a00d2542873bf30da5b3ea39e917d7133c06d",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_9635/001/audit.json",
+      "audit_sha256": "c263279d18499b677ffbd8f57db824cec4875bc6665b2defe38d2ae0d3f2a321",
+      "output": "rustdl-cold-2",
+      "record_sha256": "95ab40fc274bbd4134323fd47ad1d21983e59a242b6739b5aae7f9e49cfcb77d",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/002/audit.json",
+      "audit_sha256": "e0e3c78b1456237bba6dc53db33b301ce160e18923bb3e3c10eac46a8059d6ee",
+      "output": "rustdl-cold-0",
+      "record_sha256": "af3be56f3b06fb92a3b078cc4497ce5aa3d02364ba6286311f8d25593e2bf8c1",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/002/audit.json",
+      "audit_sha256": "e0e3c78b1456237bba6dc53db33b301ce160e18923bb3e3c10eac46a8059d6ee",
+      "output": "rustdl-cold-1",
+      "record_sha256": "3a5fc68fe89b95fda1cb688a66736799ab561baa39c7c08c72af8b243d23c61f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/002/audit.json",
+      "audit_sha256": "e0e3c78b1456237bba6dc53db33b301ce160e18923bb3e3c10eac46a8059d6ee",
+      "output": "rustdl-cold-2",
+      "record_sha256": "a704f71d8b6112cbace6a0e7a21d5cc60bc0064ad83595db8fbce52701b78028",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/001/audit.json",
+      "audit_sha256": "02d1d18f1713813e77c9c535a3c3ce9aa64d5e4d52af91f7d4216421dc4c3bea",
+      "output": "rustdl-cold-0",
+      "record_sha256": "34c87329241e866857259647f3d1082b8c18f04900144c7e5eee873b9fe34177",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/001/audit.json",
+      "audit_sha256": "02d1d18f1713813e77c9c535a3c3ce9aa64d5e4d52af91f7d4216421dc4c3bea",
+      "output": "rustdl-cold-1",
+      "record_sha256": "4a6fcb19587a256edc908f583bc9c8abfcfdf6c872829f0fae675be967943ea3",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/001/audit.json",
+      "audit_sha256": "02d1d18f1713813e77c9c535a3c3ce9aa64d5e4d52af91f7d4216421dc4c3bea",
+      "output": "rustdl-cold-2",
+      "record_sha256": "c48f15e07e54c17266507a54a8d028fbcacfadae06f718cf8d61c97ca2c9cb0d",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/003/audit.json",
+      "audit_sha256": "331ba2a7088acead442e56867882bbbba404f71d068ab5ee7ba586d66c4cc964",
+      "output": "rustdl-cold-0",
+      "record_sha256": "e7e1de4cdec56128d04acd39896e715b2cb477b4421fb88ee8223d945948631f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/003/audit.json",
+      "audit_sha256": "331ba2a7088acead442e56867882bbbba404f71d068ab5ee7ba586d66c4cc964",
+      "output": "rustdl-cold-1",
+      "record_sha256": "3be065f382f3e3e8af68baa4cac80fdff9c4b4216d5e87db2c864e76acce553c",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/003/audit.json",
+      "audit_sha256": "331ba2a7088acead442e56867882bbbba404f71d068ab5ee7ba586d66c4cc964",
+      "output": "rustdl-cold-2",
+      "record_sha256": "4d474b9d31e2e401d24f446685ec200ba8f6999f70e4cfdb6db5f79f1729d4e2",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/000/audit.json",
+      "audit_sha256": "31bd775deb4bb06e60252aef7f529de1fbae8ea93af1e157f9d3283049ae86d5",
+      "output": "rustdl-cold-0",
+      "record_sha256": "34a3387a0e41ea7b63b60b61db0e15206af3aaa6d7b7dfe9cefd21fc18fbb8e7",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/000/audit.json",
+      "audit_sha256": "31bd775deb4bb06e60252aef7f529de1fbae8ea93af1e157f9d3283049ae86d5",
+      "output": "rustdl-cold-1",
+      "record_sha256": "30a3d725e392aa0edb9953e998141f7a4903f8683d1a6e0e2576c5afad124b0d",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/000/audit.json",
+      "audit_sha256": "31bd775deb4bb06e60252aef7f529de1fbae8ea93af1e157f9d3283049ae86d5",
+      "output": "rustdl-cold-2",
+      "record_sha256": "335d781476c7104ad7e4a9a6e17d80fafc3acaa23531511ec170577f8fd9e189",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/004/audit.json",
+      "audit_sha256": "87345bada0794d908d1bc7e9c22ac424a37d1f9485edb6660b2252f1b96943e4",
+      "output": "rustdl-cold-0",
+      "record_sha256": "dfaeb74ec293f33a0d51ea5e260ca73a978a5d5d426bc82eb69cfd201a96bf0e",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/004/audit.json",
+      "audit_sha256": "87345bada0794d908d1bc7e9c22ac424a37d1f9485edb6660b2252f1b96943e4",
+      "output": "rustdl-cold-1",
+      "record_sha256": "4fb8daa38855f9700ae4e4aed570191729868ecd8268d3215c217cf01309efad",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_10702/004/audit.json",
+      "audit_sha256": "87345bada0794d908d1bc7e9c22ac424a37d1f9485edb6660b2252f1b96943e4",
+      "output": "rustdl-cold-2",
+      "record_sha256": "9df9a32fa36b5e9ee91eb8784dcfb00ebdb26237eb6267e4fd4c26eec13d33f0",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/003/audit.json",
+      "audit_sha256": "1bf1cfa1713bc367aaf88821f16e2f77bf6c52db5b2bfc4fbe8fa43dd1935559",
+      "output": "rustdl-cold-0",
+      "record_sha256": "5d925df649d5afac1a5f3c856be6800098557e652b02e8fc436a2da66d86fee5",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/003/audit.json",
+      "audit_sha256": "1bf1cfa1713bc367aaf88821f16e2f77bf6c52db5b2bfc4fbe8fa43dd1935559",
+      "output": "rustdl-cold-1",
+      "record_sha256": "e91fc277badc2d2ff62c0dbd43a953a6ec67d8ff15022d0c9a383545ebd14d58",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/003/audit.json",
+      "audit_sha256": "1bf1cfa1713bc367aaf88821f16e2f77bf6c52db5b2bfc4fbe8fa43dd1935559",
+      "output": "rustdl-cold-2",
+      "record_sha256": "865624627e07e006e985e7b0e1a8515e6eded030598373eb6d180a58d211d79a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/001/audit.json",
+      "audit_sha256": "76379f3cc41506ee7926aecab27156a3d2e9270325334900fa902fd4c38c4cce",
+      "output": "rustdl-cold-0",
+      "record_sha256": "c6af139649b2b7cb4a76f10987014b242a60e5b3f3c9470f1db2725b145cc95f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/001/audit.json",
+      "audit_sha256": "76379f3cc41506ee7926aecab27156a3d2e9270325334900fa902fd4c38c4cce",
+      "output": "rustdl-cold-1",
+      "record_sha256": "a75412ff698023a6408c41b90c8dcd9bb65148860ab80840c1ea1a2552e69054",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/001/audit.json",
+      "audit_sha256": "76379f3cc41506ee7926aecab27156a3d2e9270325334900fa902fd4c38c4cce",
+      "output": "rustdl-cold-2",
+      "record_sha256": "1b63c025fd04815a7303b710bac38ab8d9d29be0cc5664a05f04f54e0a6fcc2c",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/004/audit.json",
+      "audit_sha256": "4dde3cd956c3833177f002ae66abde3f681c255b1338337a695be066cb219489",
+      "output": "rustdl-cold-0",
+      "record_sha256": "8c2d4f353cfe02ec11bea6ecfcc74a4ebd13c7ebf6f9a7908290d70b8a55d7c1",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/004/audit.json",
+      "audit_sha256": "4dde3cd956c3833177f002ae66abde3f681c255b1338337a695be066cb219489",
+      "output": "rustdl-cold-1",
+      "record_sha256": "bf3e26833b964a2b6ad012b49df3d7fc6dea7e189d35925ad68d2d2f9559b03a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/004/audit.json",
+      "audit_sha256": "4dde3cd956c3833177f002ae66abde3f681c255b1338337a695be066cb219489",
+      "output": "rustdl-cold-2",
+      "record_sha256": "601456b71a35c5e09993bb06e1c715424c844ef7228278ad379bf07795077f7a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/002/audit.json",
+      "audit_sha256": "4ab2d0c65d7190e7d3268fe839ac6aa096f439ed0433ef1690b98d5454a839a1",
+      "output": "rustdl-cold-0",
+      "record_sha256": "3f7fb071eaf5f37b47b4a062e4dae353e637325fa0c944f10125a7255e07795a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/002/audit.json",
+      "audit_sha256": "4ab2d0c65d7190e7d3268fe839ac6aa096f439ed0433ef1690b98d5454a839a1",
+      "output": "rustdl-cold-1",
+      "record_sha256": "9a012501772298871228204887ea48d74eee8fdf736eead932cefcf15c9a6cfd",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/002/audit.json",
+      "audit_sha256": "4ab2d0c65d7190e7d3268fe839ac6aa096f439ed0433ef1690b98d5454a839a1",
+      "output": "rustdl-cold-2",
+      "record_sha256": "5f7bbaf4369966179615e209ebfedf046ac67c81dc677adcb27571b73ff4a0c5",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/000/audit.json",
+      "audit_sha256": "33832c9b6bca6b6e660b0f67be54a6caeaaa1935ca8b31bd49b286fb72d93dd8",
+      "output": "rustdl-cold-0",
+      "record_sha256": "8c717ee939b0235068fe31e69349ebe54d6b2027edee6bb55269b084fefa11d6",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/000/audit.json",
+      "audit_sha256": "33832c9b6bca6b6e660b0f67be54a6caeaaa1935ca8b31bd49b286fb72d93dd8",
+      "output": "rustdl-cold-1",
+      "record_sha256": "823137cdcbe889c0837fa90fb07c461f95c9202cfb40cef0e941b89bb01dfe03",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_1461/000/audit.json",
+      "audit_sha256": "33832c9b6bca6b6e660b0f67be54a6caeaaa1935ca8b31bd49b286fb72d93dd8",
+      "output": "rustdl-cold-2",
+      "record_sha256": "840051b057a18f3466f690d40d65306687d9bec87d32a8d29da4cdc5ee812078",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/003/audit.json",
+      "audit_sha256": "4b0dbed9b61f780e0dcdfd1524d0708aca3a2903b088e205c665655fa553db66",
+      "output": "rustdl-cold-0",
+      "record_sha256": "660d3cbfb3477a7f13d833415c804e344f5cc09deea47c261ffd3f981ca09a86",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/003/audit.json",
+      "audit_sha256": "4b0dbed9b61f780e0dcdfd1524d0708aca3a2903b088e205c665655fa553db66",
+      "output": "rustdl-cold-1",
+      "record_sha256": "fd4c708fa667a720771c13a69444dffe5f84c449696d67ed056812211786c0e8",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/003/audit.json",
+      "audit_sha256": "4b0dbed9b61f780e0dcdfd1524d0708aca3a2903b088e205c665655fa553db66",
+      "output": "rustdl-cold-2",
+      "record_sha256": "42b7fbacd66f50f6a3d5379c4d2bbb531d01c79b278b6b22e682805a5cf319cb",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/002/audit.json",
+      "audit_sha256": "6cc5ed754c46de0f3eecf9b402e0d01b77954cd7039dc474c293fd83e661a143",
+      "output": "rustdl-cold-0",
+      "record_sha256": "86fa3a53f0e26487acc85671aaea9a5d388afd8c00c94d000b8e01f928f10018",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/002/audit.json",
+      "audit_sha256": "6cc5ed754c46de0f3eecf9b402e0d01b77954cd7039dc474c293fd83e661a143",
+      "output": "rustdl-cold-1",
+      "record_sha256": "7bea6785d7605f530e5be2bad1dfe9ad5dd7a5ccee859c08e01ca8f77f0e9970",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/002/audit.json",
+      "audit_sha256": "6cc5ed754c46de0f3eecf9b402e0d01b77954cd7039dc474c293fd83e661a143",
+      "output": "rustdl-cold-2",
+      "record_sha256": "0041bcf7b3256c133a812010035dad19da6d225a69611e05ac0bc0b98b65e3a5",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/001/audit.json",
+      "audit_sha256": "4a8b9eb3517cb121611a4a8ef2fe2c4349c980a92222ea68e68665104ee6c91f",
+      "output": "rustdl-cold-0",
+      "record_sha256": "0659c4aebb4ed7e66e3925e8ba0c1a7caa733194725771c668a0a76f04e91542",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/001/audit.json",
+      "audit_sha256": "4a8b9eb3517cb121611a4a8ef2fe2c4349c980a92222ea68e68665104ee6c91f",
+      "output": "rustdl-cold-1",
+      "record_sha256": "80ab0bf1cbda640e52285fa30670d548e97ee443ee721c833dd36dded2f16479",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/001/audit.json",
+      "audit_sha256": "4a8b9eb3517cb121611a4a8ef2fe2c4349c980a92222ea68e68665104ee6c91f",
+      "output": "rustdl-cold-2",
+      "record_sha256": "3d87f8b9aead3c339cae59d2d6dc653cebfee4e93272abb0f6b9701155332dfe",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/000/audit.json",
+      "audit_sha256": "ff94baf682b99f8e61a56df529c94c5be383e4110e8210f7da840d1e2ac601ef",
+      "output": "rustdl-cold-0",
+      "record_sha256": "e8911e624c6a705d8a7f3e4a93f7e599e9093d3e4845c5b1b2d9a1d111478427",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/000/audit.json",
+      "audit_sha256": "ff94baf682b99f8e61a56df529c94c5be383e4110e8210f7da840d1e2ac601ef",
+      "output": "rustdl-cold-1",
+      "record_sha256": "7dc8eafbb544e755de9d54de7f46310d07e3baab961d65dbb7626d1caed5c275",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/000/audit.json",
+      "audit_sha256": "ff94baf682b99f8e61a56df529c94c5be383e4110e8210f7da840d1e2ac601ef",
+      "output": "rustdl-cold-2",
+      "record_sha256": "a4cc52d7d5b3ce31bcb3ab267fe0034fe5e006db18e689a1b36824e98b343184",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/004/audit.json",
+      "audit_sha256": "7c4420c97f82fc038b8e70ced8c148351105032f6e6964fbd7f2a1c2820876c3",
+      "output": "rustdl-cold-0",
+      "record_sha256": "03a2b9d78d3816c366a26ae12f8efcbea94ebe4e4fa624e34a2ec3cc22b8fef4",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/004/audit.json",
+      "audit_sha256": "7c4420c97f82fc038b8e70ced8c148351105032f6e6964fbd7f2a1c2820876c3",
+      "output": "rustdl-cold-1",
+      "record_sha256": "c1dbab15cd91c9b12184583a399ddbdf4548dbea14c33112e12cc25924718062",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2989/004/audit.json",
+      "audit_sha256": "7c4420c97f82fc038b8e70ced8c148351105032f6e6964fbd7f2a1c2820876c3",
+      "output": "rustdl-cold-2",
+      "record_sha256": "ecc2c1f6a40ea148a464864da5f95d8369c6e2f085bc2bded303b03cc7c3aa6c",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/002/audit.json",
+      "audit_sha256": "9daff1b94bb1bac12d528e222eb474282c439f31380f3d78f375e398d6e3212c",
+      "output": "rustdl-cold-0",
+      "record_sha256": "2207c569e482623e5055302e08cf2a5b3ad0222dce87382a858be02a662b2597",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/002/audit.json",
+      "audit_sha256": "9daff1b94bb1bac12d528e222eb474282c439f31380f3d78f375e398d6e3212c",
+      "output": "rustdl-cold-1",
+      "record_sha256": "e97000101aed4462b01f6c5109e6caec30ff8f0e1b1592ff323302326dab7b22",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/002/audit.json",
+      "audit_sha256": "9daff1b94bb1bac12d528e222eb474282c439f31380f3d78f375e398d6e3212c",
+      "output": "rustdl-cold-2",
+      "record_sha256": "3e34f2ce8d4330541c5058d82d93e46c67faea877c311aeeff9d061b187d57d0",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/003/audit.json",
+      "audit_sha256": "ef62b4d68b7c9d5da516e8757253d216250067e6d55009524ce2cf4c818c0f13",
+      "output": "rustdl-cold-0",
+      "record_sha256": "ac53b05b018371cc1cb3693bc32ed7bcf3bb311637430af4b077ed044623c284",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/003/audit.json",
+      "audit_sha256": "ef62b4d68b7c9d5da516e8757253d216250067e6d55009524ce2cf4c818c0f13",
+      "output": "rustdl-cold-1",
+      "record_sha256": "47319257654eb64fd5796fcc82dce69906af8e6ce13c31828cbebe4e135b435f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/003/audit.json",
+      "audit_sha256": "ef62b4d68b7c9d5da516e8757253d216250067e6d55009524ce2cf4c818c0f13",
+      "output": "rustdl-cold-2",
+      "record_sha256": "bbf62e6f89d80b97c557a300c268a25052e1a1294d719e8c70617bee8d9e1e93",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/000/audit.json",
+      "audit_sha256": "e39eb6bb03a5899bb48bf4d5fddaf753a7557abf96553ecd6a19b441caa4a197",
+      "output": "rustdl-cold-0",
+      "record_sha256": "138e5ebddffddbdac69094dfd0f9ce38c2d106cf25724c493f63875219edc195",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/000/audit.json",
+      "audit_sha256": "e39eb6bb03a5899bb48bf4d5fddaf753a7557abf96553ecd6a19b441caa4a197",
+      "output": "rustdl-cold-1",
+      "record_sha256": "7da9c3047df4124e9739a46b617d1fb1985c7aa0c9c5fcbcb8cf05ee6ce37178",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/000/audit.json",
+      "audit_sha256": "e39eb6bb03a5899bb48bf4d5fddaf753a7557abf96553ecd6a19b441caa4a197",
+      "output": "rustdl-cold-2",
+      "record_sha256": "7983dfdcf51ea7c73ef2cdba2a5cc7913b47487e0559feb610cc3f6404745184",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/001/audit.json",
+      "audit_sha256": "66ffcc019a455a4a8d2fb8d7b64992dc477bc0625d498f183f82d1cbe68924a3",
+      "output": "rustdl-cold-0",
+      "record_sha256": "021c455cc5459b76985a8686b223bc7dbe9fc6704b358a5a85ed6bb09d3a766c",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/001/audit.json",
+      "audit_sha256": "66ffcc019a455a4a8d2fb8d7b64992dc477bc0625d498f183f82d1cbe68924a3",
+      "output": "rustdl-cold-1",
+      "record_sha256": "e41a7d8e6d92f248c035a19250e1f9dcb83a57563497e68ec44a6a77164c3b97",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/001/audit.json",
+      "audit_sha256": "66ffcc019a455a4a8d2fb8d7b64992dc477bc0625d498f183f82d1cbe68924a3",
+      "output": "rustdl-cold-2",
+      "record_sha256": "fc09544f25349f58740cc8cb41de57b65d72491b063e629a403df9c7908bce4a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/004/audit.json",
+      "audit_sha256": "37269c90666e9babf8b66762d9b65475a6dab12ccf9cb79b8bdfb76fcb40345a",
+      "output": "rustdl-cold-0",
+      "record_sha256": "b882d8cd73c6b3fd4b847478532d8c289990a64d7f650c9c588528ccf3bc4cc8",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/004/audit.json",
+      "audit_sha256": "37269c90666e9babf8b66762d9b65475a6dab12ccf9cb79b8bdfb76fcb40345a",
+      "output": "rustdl-cold-1",
+      "record_sha256": "d01bbc1b9796e48902b1f1e0c64c75256a1b8a6bb244e9b6c0b4e0bb898c77e0",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_15066/004/audit.json",
+      "audit_sha256": "37269c90666e9babf8b66762d9b65475a6dab12ccf9cb79b8bdfb76fcb40345a",
+      "output": "rustdl-cold-2",
+      "record_sha256": "232840a0e85d57d866dd01fa3d0f1e3648a3b0e113a322cb23f986c07c3557b3",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/004/audit.json",
+      "audit_sha256": "7516a32e101610f8ce8cbe35aa4a793f9c1a13440a276cda41b277b29ba1bd72",
+      "output": "rustdl-cold-0",
+      "record_sha256": "adf74c6037c5379458c50d585e00b59dbaab1b74d3a00a50dc37fcfb8d1827f3",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/004/audit.json",
+      "audit_sha256": "7516a32e101610f8ce8cbe35aa4a793f9c1a13440a276cda41b277b29ba1bd72",
+      "output": "rustdl-cold-1",
+      "record_sha256": "f87bc34bd31747fbe4a11811b048895b836e91d0daf82010245a7ad0fdd14db4",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/004/audit.json",
+      "audit_sha256": "7516a32e101610f8ce8cbe35aa4a793f9c1a13440a276cda41b277b29ba1bd72",
+      "output": "rustdl-cold-2",
+      "record_sha256": "e6ea69b1791886c21f043cd41a063c73054eed753d9cea1d0d3aa8c4dd1a4379",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/001/audit.json",
+      "audit_sha256": "9ece6595fab9a353b661ae4a6ce4b521b36a02bf9502fdf7856b1927238a4b93",
+      "output": "rustdl-cold-0",
+      "record_sha256": "b34b406fec35313b22d9e4d54569b6c3a90f8d83a977ac45e9c3d8a0c155edec",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/001/audit.json",
+      "audit_sha256": "9ece6595fab9a353b661ae4a6ce4b521b36a02bf9502fdf7856b1927238a4b93",
+      "output": "rustdl-cold-1",
+      "record_sha256": "6d5ab4f502004061fdb309f0d96aac3628cddb80eb8516f25dc3e9fbea1996d2",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/001/audit.json",
+      "audit_sha256": "9ece6595fab9a353b661ae4a6ce4b521b36a02bf9502fdf7856b1927238a4b93",
+      "output": "rustdl-cold-2",
+      "record_sha256": "34c0538cd5c03187e1f9cfdd3f892e597417cdad289bda3ad35391fc1a37aac6",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/000/audit.json",
+      "audit_sha256": "9d0933711910da7cf222e85bf2bce47853ba4133398c5863e9445db65cdb32ee",
+      "output": "rustdl-cold-0",
+      "record_sha256": "f4a1fce5eae0242ca305543cfb709635f2dbd57c6ad96721e942d925c8152421",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/000/audit.json",
+      "audit_sha256": "9d0933711910da7cf222e85bf2bce47853ba4133398c5863e9445db65cdb32ee",
+      "output": "rustdl-cold-1",
+      "record_sha256": "204a09d51a5ff574d00d0affa0cd32a0c1328b8913f38f03a433b7489faa5fad",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/000/audit.json",
+      "audit_sha256": "9d0933711910da7cf222e85bf2bce47853ba4133398c5863e9445db65cdb32ee",
+      "output": "rustdl-cold-2",
+      "record_sha256": "4981ef19692da39212b609095b45e0677c582c65afae0deaf5ea30351605a30b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/002/audit.json",
+      "audit_sha256": "dbf4f45f259e377d378f494a58bfbecdab80e946c6e6638adf3860368950cba9",
+      "output": "rustdl-cold-0",
+      "record_sha256": "e0a7411ba02f480ac5fd06d94a58b4cca5e6d76bf5c104f47012d1c224853fdf",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/002/audit.json",
+      "audit_sha256": "dbf4f45f259e377d378f494a58bfbecdab80e946c6e6638adf3860368950cba9",
+      "output": "rustdl-cold-1",
+      "record_sha256": "0b9667eba095ddbf38a2f7716d43521264c7456b1b9658991db23966e599332c",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/002/audit.json",
+      "audit_sha256": "dbf4f45f259e377d378f494a58bfbecdab80e946c6e6638adf3860368950cba9",
+      "output": "rustdl-cold-2",
+      "record_sha256": "e3ba3fd46d5f1d4d990dcbf6685d301c54900d9c470a43fcbcd01164162a9bd8",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/003/audit.json",
+      "audit_sha256": "8d3ac27420433a23026819bc5c7e17d1eaecf12f5a19cf27f0e6e487bc11114e",
+      "output": "rustdl-cold-0",
+      "record_sha256": "b71e67beaf611a832d110f483ddcad09bc406ab6277e9939c09985d2cebe91af",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/003/audit.json",
+      "audit_sha256": "8d3ac27420433a23026819bc5c7e17d1eaecf12f5a19cf27f0e6e487bc11114e",
+      "output": "rustdl-cold-1",
+      "record_sha256": "db3e8b5f99d8e80d42e3ae7fd45d160e6d43603b5690d55f89c8e492af7ec9f3",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_12112/003/audit.json",
+      "audit_sha256": "8d3ac27420433a23026819bc5c7e17d1eaecf12f5a19cf27f0e6e487bc11114e",
+      "output": "rustdl-cold-2",
+      "record_sha256": "c8d7012c24de34f559cb3357aa2453ff0df6f93fe05fd3e65a5c710cfc518cea",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/003/audit.json",
+      "audit_sha256": "1c1e498f8ad2bfe4cb2f63ecce926aa7577e9d59128c4aa99e6dc4cbea14b50f",
+      "output": "rustdl-cold-0",
+      "record_sha256": "a3b66acd2679e0a2a32e39c9cf9de0729437f8e65d0dd0bae925d71368c2b186",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/003/audit.json",
+      "audit_sha256": "1c1e498f8ad2bfe4cb2f63ecce926aa7577e9d59128c4aa99e6dc4cbea14b50f",
+      "output": "rustdl-cold-1",
+      "record_sha256": "34222b588d78c92044e1cbb9a7ea29567c22b24709649f5e3f3e53027a0caa43",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/003/audit.json",
+      "audit_sha256": "1c1e498f8ad2bfe4cb2f63ecce926aa7577e9d59128c4aa99e6dc4cbea14b50f",
+      "output": "rustdl-cold-2",
+      "record_sha256": "5d5dd9c1e6df86fb2119b160cc61706f7064b0718f06dfa4e410b05c3458ab54",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/004/audit.json",
+      "audit_sha256": "f00b8ac8eb170f007cfe5ec0bd78ac6df0c83be89b6ebcad59825a8d6c94da4f",
+      "output": "rustdl-cold-0",
+      "record_sha256": "9f3ca7dec0f22ac043d6d47cc2e3278241e587531df64affc2904d5332cc4a2b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/004/audit.json",
+      "audit_sha256": "f00b8ac8eb170f007cfe5ec0bd78ac6df0c83be89b6ebcad59825a8d6c94da4f",
+      "output": "rustdl-cold-1",
+      "record_sha256": "09861ef5c92519d1307e145f127d2fa70e166071c821f404369aa818d3725399",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/004/audit.json",
+      "audit_sha256": "f00b8ac8eb170f007cfe5ec0bd78ac6df0c83be89b6ebcad59825a8d6c94da4f",
+      "output": "rustdl-cold-2",
+      "record_sha256": "85207fb7382a6c73f793ded08c1a4b86313c1d3deb24f679322e29fe6bf401fe",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/000/audit.json",
+      "audit_sha256": "32f334e68880dd9f310ecbe0fb2bfa18284048dd3cd42e98b200a4903aa8d468",
+      "output": "rustdl-cold-0",
+      "record_sha256": "9d24ec2b352134d78f2d51bf92a6820683024d373189cd3b97b589b757b4625f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/000/audit.json",
+      "audit_sha256": "32f334e68880dd9f310ecbe0fb2bfa18284048dd3cd42e98b200a4903aa8d468",
+      "output": "rustdl-cold-1",
+      "record_sha256": "df00ccdbc4c899749206d1596421aea785e0c1bdbd2c90a6ad210b28b06b7b3f",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/000/audit.json",
+      "audit_sha256": "32f334e68880dd9f310ecbe0fb2bfa18284048dd3cd42e98b200a4903aa8d468",
+      "output": "rustdl-cold-2",
+      "record_sha256": "d7e4d851cd27cda97ecfbf94edd5c1cd18158f50ab2d6d0e79899b7201f83d06",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/002/audit.json",
+      "audit_sha256": "f1687c3d541d8f0ce237f971efe65280afef4a094feb1b0986a0405294ebaa23",
+      "output": "rustdl-cold-0",
+      "record_sha256": "40044b2727f402bfab3eaeb2fd46e077eff04c816ca43612e3f883f991361509",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/002/audit.json",
+      "audit_sha256": "f1687c3d541d8f0ce237f971efe65280afef4a094feb1b0986a0405294ebaa23",
+      "output": "rustdl-cold-1",
+      "record_sha256": "2bcf064247a964362143bbf9d35468f3ea7ed799f028e7cf30f2553c5942a032",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/002/audit.json",
+      "audit_sha256": "f1687c3d541d8f0ce237f971efe65280afef4a094feb1b0986a0405294ebaa23",
+      "output": "rustdl-cold-2",
+      "record_sha256": "288e7dedf394786c14b082f59872ad9daff75a64a1145948cee5173a32de201c",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/001/audit.json",
+      "audit_sha256": "7e517117a9c056afce5a46bb066f2872ae3b500dd5dbe5e2428313ee52e66204",
+      "output": "rustdl-cold-0",
+      "record_sha256": "2cad381dcdcd036334741d5e2751ce01df3cd61ef268ac14a52d60ec6c5b89c9",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/001/audit.json",
+      "audit_sha256": "7e517117a9c056afce5a46bb066f2872ae3b500dd5dbe5e2428313ee52e66204",
+      "output": "rustdl-cold-1",
+      "record_sha256": "696f5e2f06bc529715d78d875a2fad40c7c88bfc2d0eab0744ac076ba8cfd10e",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_2318/001/audit.json",
+      "audit_sha256": "7e517117a9c056afce5a46bb066f2872ae3b500dd5dbe5e2428313ee52e66204",
+      "output": "rustdl-cold-2",
+      "record_sha256": "dee5c90a1d4a2e617be856639a059faeda1b9fc8ca3ced7343100524af80df56",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/003/audit.json",
+      "audit_sha256": "afd16726c024a144cd6c5bba7a4ee1e7821f25ed0ca7e6ad0925a04ff34cb1c4",
+      "output": "rustdl-cold-0",
+      "record_sha256": "35e8d805274d78a0dce6276dff7d788d56f995a6b6fdc5878679009acf411052",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/003/audit.json",
+      "audit_sha256": "afd16726c024a144cd6c5bba7a4ee1e7821f25ed0ca7e6ad0925a04ff34cb1c4",
+      "output": "rustdl-cold-1",
+      "record_sha256": "a9ad1049eb9e1b74f126313793cb4cf56230ab6ec8db0c031f7dbea81577ca0b",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/003/audit.json",
+      "audit_sha256": "afd16726c024a144cd6c5bba7a4ee1e7821f25ed0ca7e6ad0925a04ff34cb1c4",
+      "output": "rustdl-cold-2",
+      "record_sha256": "ab5addd54c03343fb284caff4d5b1ff415f46b27dd64c8a5caf5192229e6d376",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/004/audit.json",
+      "audit_sha256": "2f7fd5552e3278063784581902634ad7623c96a209ef4fa1dc4d2da011bc8c1f",
+      "output": "rustdl-cold-0",
+      "record_sha256": "67361a1867f65bce87463b6c3c98665cdcf44ecffe734ca775b14c2286c233fe",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/004/audit.json",
+      "audit_sha256": "2f7fd5552e3278063784581902634ad7623c96a209ef4fa1dc4d2da011bc8c1f",
+      "output": "rustdl-cold-1",
+      "record_sha256": "773498b9484a466e843e72dfe9f371a156455fe8718fc630477b354af51cfeb8",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/004/audit.json",
+      "audit_sha256": "2f7fd5552e3278063784581902634ad7623c96a209ef4fa1dc4d2da011bc8c1f",
+      "output": "rustdl-cold-2",
+      "record_sha256": "16039dec9ce36ae7005b3daa580149eec394738b225dfad76202aead43a750d9",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/000/audit.json",
+      "audit_sha256": "4311019549e18efda8b9c0a0f215ce87a3228cf7ea8a061df64ae2d5eafc5960",
+      "output": "rustdl-cold-0",
+      "record_sha256": "01f09acff19d19e12cd2b53089a29d82169647c188631f06c2bb8be53987a7b1",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/000/audit.json",
+      "audit_sha256": "4311019549e18efda8b9c0a0f215ce87a3228cf7ea8a061df64ae2d5eafc5960",
+      "output": "rustdl-cold-1",
+      "record_sha256": "d591d0466b66459434ba031fca5c4beccbc9e29762efc47366f0dcad5264db13",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/000/audit.json",
+      "audit_sha256": "4311019549e18efda8b9c0a0f215ce87a3228cf7ea8a061df64ae2d5eafc5960",
+      "output": "rustdl-cold-2",
+      "record_sha256": "c9825fddfb4bea4af29f1ab57d8556ba933979ebcc14ff28d36a227841477b19",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/001/audit.json",
+      "audit_sha256": "1b5af42c7cb5378ba852c35a8bd4c36bbf0dfcbfdd3e3715cbedf46748ca1ecf",
+      "output": "rustdl-cold-0",
+      "record_sha256": "84ba1d36bb9954f69ae853d7200487e9bd0d1007bb74c548b1d105c819118f0d",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/001/audit.json",
+      "audit_sha256": "1b5af42c7cb5378ba852c35a8bd4c36bbf0dfcbfdd3e3715cbedf46748ca1ecf",
+      "output": "rustdl-cold-1",
+      "record_sha256": "589fab52968d94ac9ed6be26ad0f79e052d686010c1386738f4e60b2c1b9bb05",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/001/audit.json",
+      "audit_sha256": "1b5af42c7cb5378ba852c35a8bd4c36bbf0dfcbfdd3e3715cbedf46748ca1ecf",
+      "output": "rustdl-cold-2",
+      "record_sha256": "ae72151788eb7bb118ecf95998c07616d21e593c5830dd627da20ae0ea062056",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/002/audit.json",
+      "audit_sha256": "e07800495e163a33395a1605fe179a252a7bdacbbd1aa7d30d4b15f3ff48f741",
+      "output": "rustdl-cold-0",
+      "record_sha256": "5e42899abc39a088615856bc2c0a8303a394feb5e67e189b44757edec59dea1a",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/002/audit.json",
+      "audit_sha256": "e07800495e163a33395a1605fe179a252a7bdacbbd1aa7d30d4b15f3ff48f741",
+      "output": "rustdl-cold-1",
+      "record_sha256": "2a85477bb8f0abadf5f39bbacdf58dcb6cca9a35dc346f19b563d602fa474728",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    },
+    {
+      "audit": "update-audit-53234886/ore_ont_7464/002/audit.json",
+      "audit_sha256": "e07800495e163a33395a1605fe179a252a7bdacbbd1aa7d30d4b15f3ff48f741",
+      "output": "rustdl-cold-2",
+      "record_sha256": "b375f7e7f1c286a85bb9b2562f65846d440e2bfa64edfac9bdee1b8086ba88ca",
+      "stderr_sha256": "bc0043abd2a67c6c094e2370569b384a9af0320170fcb21a5456c480490bd545",
+      "reason": "ValueError: incomplete reasoning or dropped axioms",
+      "worker_exit": 1
+    }
+  ],
+  "konclude_retained_raw_ok_without_canonical": [
+    {
+      "repetition": 0,
+      "record_sha256": "eab48848c83db34a92ffa87b8eb67c0aac88ba64f7899bd71e689737de92c00d",
+      "session_status": "ok",
+      "revision": {
+        "sha256": "6184283202453f349e3105063e1e91efcdaa38918e38870c2c5a695135fd36d7",
+        "source_sha256": "6e5aa8eed285b6e2e1224c9445d7e67f10e27348770b7e2e3e953b705d157dc4",
+        "conversion_receipt_sha256": "b79cb94f86f124fe18d18adb9a679eff2ac8d83f53e3ce4f065a5bc3431324c3",
+        "revision": 3,
+        "status": "ok",
+        "wall_s": 107.25251824781299,
+        "peak_bytes": 18792812544
+      }
+    },
+    {
+      "repetition": 1,
+      "record_sha256": "78e9dadd80bd4fb2e913f783c7844b532dcca5b719f7bf5df8f96e935e5b300d",
+      "session_status": "ok",
+      "revision": {
+        "sha256": "6184283202453f349e3105063e1e91efcdaa38918e38870c2c5a695135fd36d7",
+        "source_sha256": "6e5aa8eed285b6e2e1224c9445d7e67f10e27348770b7e2e3e953b705d157dc4",
+        "conversion_receipt_sha256": "b79cb94f86f124fe18d18adb9a679eff2ac8d83f53e3ce4f065a5bc3431324c3",
+        "revision": 3,
+        "status": "ok",
+        "wall_s": 102.03486084379256,
+        "peak_bytes": 18791493632
+      }
+    },
+    {
+      "repetition": 2,
+      "record_sha256": "bce713879c9ec08e05c7d4c0666eab64117c46fa61de2505bb9379edc9be99b4",
+      "session_status": "ok",
+      "revision": {
+        "sha256": "6184283202453f349e3105063e1e91efcdaa38918e38870c2c5a695135fd36d7",
+        "source_sha256": "6e5aa8eed285b6e2e1224c9445d7e67f10e27348770b7e2e3e953b705d157dc4",
+        "conversion_receipt_sha256": "b79cb94f86f124fe18d18adb9a679eff2ac8d83f53e3ce4f065a5bc3431324c3",
+        "revision": 3,
+        "status": "ok",
+        "wall_s": 108.13932907022536,
+        "peak_bytes": 18783940608
+      }
+    }
+  ],
+  "scope": "Preserve raw outcomes and exclude missing or rejected canonical outputs from paired costs."
+}

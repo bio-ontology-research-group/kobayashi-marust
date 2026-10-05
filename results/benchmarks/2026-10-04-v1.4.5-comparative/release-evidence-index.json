@@ -1,8 +1,8 @@
 {
-  "observed_at": "2026-10-05T06:24:48.129744+00:00",
-  "status": "incomplete release evidence index; not publication approval",
+  "observed_at": "2026-10-05T11:21:34.081277+00:00",
+  "status": "all benchmark panels reviewed; final commit verification and publication pending",
   "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
-  "development_commit": "323d427694a62105b6bbb8d75be0c0f6d4054561",
+  "development_commit": "74f83a3234bbec2a6061dbf0082d0e68f35f01b9",
   "raw_measurement_root": "ibex:/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004",
   "artifacts": {
     "workload": [
@@ -510,6 +510,16 @@
         "path": "global-dependency-validation/verify-globaldep-update-completion.py",
         "sha256": "ece1151ad4c371217f76fbfc638ce952ef75e0a58af0cdaa91be90b329020414",
         "bytes": 4083
+      },
+      {
+        "path": "global-dependency-validation/review-globaldep-unavailable-final.py",
+        "sha256": "d5f195b10aec1c3cc112100d25dd3c3376937199f4b9c76bf0ffe828c10c8cef",
+        "bytes": 1636
+      },
+      {
+        "path": "global-dependency-validation/review-globaldep-incremental-all-baseline-final.py",
+        "sha256": "9df23f5dd128d7137e6f39cf4f10dbbe58761e67988223a462cbc9cce1b234dd",
+        "bytes": 4160
       }
     ],
     "incremental_partial_all_baseline_triage": [
@@ -532,11 +542,72 @@
         "sha256": "b5818548c3cc91e1452c8e93d2219dfb2fad32d6c37af7c50ffce7a350085072",
         "bytes": 42552
       }
+    ],
+    "incremental_audit_completion": [
+      {
+        "path": "globaldep-update-audit-completion.json",
+        "sha256": "48c2380bf5fea512894e970ace2bc2bdc467a112abd7000a66e7bf3cb9a5cc7f",
+        "bytes": 70746
+      },
+      {
+        "path": "globaldep-update-unavailable-review-final.json",
+        "sha256": "5d3ec119ab0a9791226b1236778ad3a19563b75e9fe9c9d37377e5864b598883",
+        "bytes": 53973
+      }
+    ],
+    "evidence_commit_verification": [
+      {
+        "path": "global-dependency-validation/evidence-gap-commit-verification.json",
+        "sha256": "3c69da94300b7c463a5b342a3e6b9f3b27daee3f2cf386c5ff4640df1ed69a5d",
+        "bytes": 478
+      }
+    ],
+    "incremental_all_baseline_review": [
+      {
+        "path": "globaldep-incremental-all-baseline-review-final.json",
+        "sha256": "773d9aa86de99ef03e6e27f656ba99078432633ba9be6240c78f29f769380766",
+        "bytes": 1177677
+      }
+    ],
+    "final_incremental_and_combined_reports": [
+      {
+        "path": "updates-report-v5-full-global-dependency-53234889.json",
+        "sha256": "559a03d9635cd257ec776e6200b9b0153f80693d9fd345f8082f3e7c447369f1",
+        "bytes": 4871006
+      },
+      {
+        "path": "globaldep-update-report-metadata-review.json",
+        "sha256": "79d693175446592706bcc39bff40b2b7b63212f1582253acc65404a8aff6e0c8",
+        "bytes": 1384449
+      },
+      {
+        "path": "globaldep-update-baseline-validation-failures.json",
+        "sha256": "50e57d53cf41e28c7ec557113b33f1353a20c9dec7e9fc7a9f6debea6298f183",
+        "bytes": 110932
+      },
+      {
+        "path": "globaldep-update-report-review.json",
+        "sha256": "645cc98df9ddbd3a914c9ed32f1f6b27ab0d2f8707764236cee46f9781073f18",
+        "bytes": 6530
+      },
+      {
+        "path": "benchmark-report-53234931.md",
+        "sha256": "51c18d7defb71d8b30a4dd6361f0d42312c7dc51ad6a993fb2f83e6ea45719ac",
+        "bytes": 16093
+      },
+      {
+        "path": "globaldep-combined-report-review.json",
+        "sha256": "a5910e42353abca01e9a9978fadb688b39b1e4306d520931fc08de52b3cac2bb",
+        "bytes": 2307
+      },
+      {
+        "path": "globaldep-final-report-job-completion.json",
+        "sha256": "ee04ac1ff016603ede68db66262be7f53f8043b71e6d740c8c3233886e4a397e",
+        "bytes": 501
+      }
     ]
   },
   "pending": [
-    "Complete incremental audits and review report53234889; all measurements are complete",
-    "Final combined renderer53234931 review and complete discrepancy bindings",
-    "Final release notes and evidence commit; exact tagged-source check; tag and publication"
+    "Final evidence commit, exact tagged-source verification, tag/push and publication verification"
   ]
 }

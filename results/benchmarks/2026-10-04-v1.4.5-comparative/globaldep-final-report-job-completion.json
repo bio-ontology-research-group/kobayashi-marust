@@ -1,0 +1,14 @@
+{
+  "observed_at": "2026-10-05T11:21:34.081277+00:00",
+  "accounting": "53234889|COMPLETED|0:0\n53234931|COMPLETED|0:0\n",
+  "incremental_report": {
+    "path": "updates-report-v5-full-global-dependency-53234889.json",
+    "sha256": "559a03d9635cd257ec776e6200b9b0153f80693d9fd345f8082f3e7c447369f1",
+    "bytes": 4871006
+  },
+  "combined_report": {
+    "path": "benchmark-report-53234931.md",
+    "sha256": "51c18d7defb71d8b30a4dd6361f0d42312c7dc51ad6a993fb2f83e6ea45719ac",
+    "bytes": 16093
+  }
+}
