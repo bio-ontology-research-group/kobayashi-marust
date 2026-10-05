@@ -1,0 +1,18 @@
+{
+  "ontology": "ore_ont_13404",
+  "passed": true,
+  "renaming": {
+    "": "km_src_empty_iri",
+    "__nom__": "__nom__km_src_empty_iri"
+  },
+  "clause_count": 1053,
+  "file_sha256": {
+    "old": "71ef07fb053c14f766a7f74acd8f75570c3c45e887ae93d3738d8df1d378b78e",
+    "new": "51da550038d62f316277839ad10227e3f931a16257c49dba0081d7f8b39ce459",
+    "old-meta": "deb110734672a66d1f588881682d5a27f0a15792db12cbf16d34d65a48753e16",
+    "new-meta": "da0145d7ec57b3d308ee2d4b3583d10c5f8d7061625dca39dcc3718ff9049a78"
+  },
+  "runner_sha256": "a90200efc45d784e12d7e9eb5713a1c3e48a79453e1fe7f681fcbed89d798b4f",
+  "binding_checker_sha256": "25954c9f6247257145c741a773267f473486571d8dcc3977554307379c81e369",
+  "scope": "Source-bound entity renaming and outer clause order only; clause multiplicities, ordered bodies/heads/terms, role chains and all other metadata preserved."
+}

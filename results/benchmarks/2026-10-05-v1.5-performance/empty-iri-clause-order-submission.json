@@ -1,0 +1,8 @@
+{
+  "job_id": 53313782,
+  "submitted_at": "2026-10-05T23:14:50.453046+00:00",
+  "script_sha256": "e6d672f83d7c4744728b3a0fd346800bba1213990eafcb281daae875e6a75eec",
+  "files_manifest_sha256": "5b97fd8e9d2a8b51ef2ec6075c45cdd2266f46c8cb3f2b3a859d1cdf740be840",
+  "release_approved": false,
+  "dependency": "afterok:53312770"
+}

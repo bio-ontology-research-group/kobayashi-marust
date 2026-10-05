@@ -1,0 +1,10 @@
+{
+  "fixture": "ore_ont_13404",
+  "accepted_source_bound_renaming_and_outer_clause_reordering": true,
+  "rejected_corruptions": [
+    "drop_clause",
+    "duplicate_clause",
+    "change_concept",
+    "reverse_body"
+  ]
+}

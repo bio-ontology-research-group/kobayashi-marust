@@ -1,0 +1,9 @@
+{
+  "job_id": 53314782,
+  "previous_job_id": 53313326,
+  "submitted_at": "2026-10-05T23:31:04.028889+00:00",
+  "script_sha256": "19eb720610daf8bc9d24e200e71649d701aa00ef244cfdd37f2d9459ce5324cf",
+  "files_manifest_sha256": "fd2dfa10377ae859c80fdbf6ccced177845d2ec921e9bfdb977a1ebb384477ce",
+  "reason": "Preserve both documented invalid-input diagnostic formats and four identical successful frontend parses whose invalidity is checked later. Exact return codes and output bytes must match.",
+  "release_approved": false
+}

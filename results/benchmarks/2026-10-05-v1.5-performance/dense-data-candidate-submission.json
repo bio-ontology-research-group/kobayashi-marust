@@ -1,0 +1,13 @@
+{
+  "job_id": 53315705,
+  "submitted_at": "2026-10-05T23:45:23.438950+00:00",
+  "script_sha256": "5b78625c233fe6557aaf4c5f189426a26ed4f099c161da63406b1d8d9f33d9a9",
+  "files_manifest_sha256": "02400b940b7fce38f96f6b667799b3bc7720cb69c877ec04e7c051e4c39bbe74",
+  "source_commit": "2d2074f0",
+  "inputs": 1920,
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "singleton_scan_option_enabled": false,
+  "release_approved": false
+}

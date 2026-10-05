@@ -19,6 +19,9 @@ def times(rows):
 
 def summarize(root, job, baseline_path, variant='native'):
     prefix, inventory, runner, flags = {
+        'dense-data': ('dense-data-candidate-', 'dense-data-candidate-artifact.json',
+                       'run_dense_data_candidate.py',
+                       {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1', 'KM_CACHE_CONFORMANCE': '1'}),
         'work-budget': ('work-budget-candidate-', 'work-budget-candidate-artifact.json',
                         'run_work_budget_candidate.py',
                         {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1', 'KM_CACHE_CONFORMANCE': '1'}),
@@ -98,6 +101,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--job', required=True)
     parser.add_argument('--baseline', required=True, type=Path)
-    parser.add_argument('--variant', choices=['native', 'conformance', 'nominal-guard', 'successor-deadline', 'data-source', 'work-budget'], default='native')
+    parser.add_argument('--variant', choices=['native', 'conformance', 'nominal-guard', 'successor-deadline', 'data-source', 'work-budget', 'dense-data'], default='native')
     args = parser.parse_args()
     print(json.dumps(summarize(Path(__file__).resolve().parent, args.job, args.baseline, args.variant), indent=2))

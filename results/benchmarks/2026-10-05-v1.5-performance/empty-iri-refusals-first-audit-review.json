@@ -1,0 +1,12 @@
+{
+  "job_id": 53313326,
+  "complete": true,
+  "inputs": 212,
+  "passed": 199,
+  "failed": 13,
+  "diagnosis": {
+    "line_numbered_invalid_literal_messages_rejected_by_checker": 9,
+    "frontend_accepts_but_classification_rejects": 4
+  },
+  "action": "Run both binaries for every input; accept only identical exit status and stdout/stderr/metadata. Require an OWL 2 DL diagnostic for positive refusal exit codes, accepting its documented line-numbered form. Successful frontend outputs remain excluded from solved classification counts."
+}
