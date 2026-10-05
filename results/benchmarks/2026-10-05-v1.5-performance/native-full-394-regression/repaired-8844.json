@@ -1,0 +1,15 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "41e46cd6d85f3eda53b4bca64651f816cb98557d00f165eb76b082880f0811b0",
+  "source_sha256": "50da71b36b535bd43c28678055a53f3d4af5efd9850883a6f908c43ac7e6c3ab",
+  "baseline_sha256": "ff12b31dbf44285dfb7f25a8286f981502fd8625dd5615ecf2546bdbb7410f8c",
+  "wall_s": 1.4100799940060824,
+  "identical_answer": true,
+  "pairs": 26060,
+  "output_sha256": "379f7c9a59bef623157422beb3b0c938c477ced64abe4ef0f383a2174aaa0493",
+  "flags": {
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_HT_DDB": "1"
+  },
+  "scope": "One local diagnostic run, not a release performance measurement."
+}

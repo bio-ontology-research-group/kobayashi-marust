@@ -222,3 +222,27 @@ still under investigation. `native-full-394-regression/` retains the fixture
 and evidence. The opt-in candidate cannot be promoted while this defect exists,
 regardless of its speed or completed certification gates. The full runs remain
 useful for detecting other defects; their frozen configurations are unchanged.
+
+## Nominal cache-guard repair
+
+ORE 394's minimal fixture identifies a no-op `apply_nominal_rule` in the
+approximation saturation engine. It left the nominal saturation node apparently
+sufficient and without the nominal-connection flag. Completion already declines
+cache replay for nominal-connected nodes, but the missing flag bypassed that
+boundary. The repair marks this incomplete approximation insufficient and
+nominal-connected through the existing propagating status updater. Exact
+completion then performs the nominal reasoning; unrelated saturation reuse
+remains available. Full nominal association expansion in saturation is still
+unimplemented and is not claimed here.
+
+The new regression and all 1,468 affected engine tests pass (seven ignored).
+The rebuilt diagnostic CLI restores all four missing ORE 394 pairs and returns
+the expected minimal entailment. ORE 8844 retains its exact 26,060-pair output
+and completes in 1.41 seconds locally. These single local runs are correctness
+and diagnostic evidence, not release timing claims. The HT gate now explicitly
+includes the nominal-filler regression. The exact source manifest and live
+build/gate handles are in `nominal-guard-source-manifest.json` and
+`nominal-guard-work-state.json`. The standard binary build and HT gate were
+launched; repeat the full frozen audit with the repaired immutable binary
+before considering promotion. Existing full runs still test the earlier
+artifacts and must not be relabeled as testing this repair.

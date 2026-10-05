@@ -1,0 +1,14 @@
+{
+  "observed_at": "2026-10-05T20:42:04.691706+00:00",
+  "ht_gate_session": 39076,
+  "standard_release_build_session": 42337,
+  "diagnostic_binary_sha256": "41e46cd6d85f3eda53b4bca64651f816cb98557d00f165eb76b082880f0811b0",
+  "source_manifest": "nominal-guard-source-manifest.json",
+  "status": "Tests and local public-output comparisons passed; HT gate and standard build running. Poll exact sessions and verify terminal state before continuing.",
+  "next": [
+    "Finish HT gate and capture source-bound receipt",
+    "Finish standard binary build and pin immutable artifact",
+    "Repeat full frozen classification audit with repaired artifact; never overwrite running candidates",
+    "Finish other exact-source gates before any release promotion"
+  ]
+}

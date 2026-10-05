@@ -14175,6 +14175,31 @@ mod tests {
     }
 
     #[test]
+    fn conditional_full_nominal_filler_preserves_asserted_type_subsumption() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into(), "__nom__a".into()],
+            roles: vec!["r".into()],
+            queries: vec![0, 1, 2],
+            // Exercise the conditional-full schedule without global env mutation.
+            number: true,
+            source_axioms: vec![
+                source_subclass(C::Name("A".into()), C::Exists(
+                    R::Name("r".into()), Box::new(C::Nominal("a".into())))),
+                source_subclass(C::Exists(R::Name("r".into()),
+                    Box::new(C::Name("B".into()))), C::Name("C".into())),
+            ],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![C::Name("B".into())])], vec![]),
+            ..Default::default()
+        };
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .expect("nominal-filler classification must complete");
+        assert!(result.consistent);
+        assert!(result.subsumptions.contains(&(0, 2)), "A <= exists r.{{a}}, B(a), exists r.B <= C entails A <= C");
+    }
+
+    #[test]
     fn conditional_full_profile_rejects_konclude_threshold_sized_abox() {
         let mut tin = cached_native_role_input();
         let template = tin.nominal_abox.individuals[0].clone();
