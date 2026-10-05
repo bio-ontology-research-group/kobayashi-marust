@@ -1,0 +1,51 @@
+{
+  "diagnostic_only": true,
+  "artifact_sha256": "4f4f2d9cec9eb83bcb49c2baf51d79b2157354c9808f3b464c5b66a52292f0ab",
+  "session": {
+    "status": "completed",
+    "rc": 0,
+    "wall_s": 6.850464281043969,
+    "diagnostic_only": true
+  },
+  "revisions": {
+    "000.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+    "001.ofn": "8a00ea8beefa1c01b80adf9884167959a8c54dd41a411520ad77ee526a8beb33"
+  },
+  "responses": [
+    {
+      "op": "init",
+      "receipt": null,
+      "retained_backend": true,
+      "revision": 0,
+      "route": "ht_bridge",
+      "status": "ok"
+    },
+    {
+      "op": "replace",
+      "receipt": {
+        "added_normalized_clauses": 0,
+        "added_rules": 0,
+        "invalidated_states": 15225,
+        "meaningful_incremental_update": false,
+        "removed_normalized_clauses": 1,
+        "removed_rules": 0,
+        "retained_states": 0,
+        "reused_edges": 0,
+        "reused_fixpoint": false,
+        "reused_subsumptions": 83281,
+        "revision": 1,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "exact_rebuild"
+      },
+      "retained_backend": true,
+      "revision": 1,
+      "route": "ht_bridge",
+      "status": "ok"
+    }
+  ],
+  "stderr": "KM_TIMING mirror-route: declined by lexical prefilter: bytes=4032315 complements_below=0\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.54s cached=false sidecar=false\nKM_TIMING frontend done @ 0.55s route=ht_bridge\nKM_TIMING spawn_ht: read+convert 40591 clauses (ht_view=40591) in 0.10s\nKM_TIMING engine block done @ 1.56s (subs_keys=8004)\nbridge incremental delta kind=Removal side_changed=false inconsistent=false queries=8008 affected=15225\n",
+  "finding": "One normalized-clause removal leaves typed side data unchanged, but undirected dependency closure marks 15225 concepts affected for 8008 public queries. Adapter exists, yet no query state is retained.",
+  "next_action": "Investigate dependency-supported or locality-based query invalidation, preserving exact subject publication; also retain bounded prior snapshots for restoration without treating that as a fix for deletions."
+}

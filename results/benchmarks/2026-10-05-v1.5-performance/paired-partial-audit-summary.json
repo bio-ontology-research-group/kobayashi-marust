@@ -1,0 +1,274 @@
+{
+  "scope": "partial completed audits only, not release acceptance",
+  "completed_ontology_audits": 12,
+  "cases": [
+    {
+      "ontology": "ore_ont_10174",
+      "job": "53294013",
+      "versions": {
+        "v144": {
+          "verified": 3,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "agreement": 12
+          }
+        },
+        "v145": {
+          "verified": 3,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "agreement": 12
+          }
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_1997",
+      "job": "53294013",
+      "versions": {
+        "v144": {
+          "verified": 3,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "agreement": 9,
+            "taxonomy_disagreement": 3
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_2901",
+      "job": "53294013",
+      "versions": {
+        "v144": {
+          "verified": 3,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "agreement": 9
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_5303",
+      "job": "53294013",
+      "versions": {
+        "v144": {
+          "verified": 3,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "agreement": 9,
+            "taxonomy_disagreement": 3
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_11477",
+      "job": "53294280",
+      "versions": {
+        "v144": {
+          "verified": 0,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "consistency_disagreement": 9
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_1397",
+      "job": "53294280",
+      "versions": {
+        "v144": {
+          "verified": 0,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "consistency_disagreement": 12
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_14334",
+      "job": "53294280",
+      "versions": {
+        "v144": {
+          "verified": 0,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "consistency_disagreement": 12
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_16481",
+      "job": "53294280",
+      "versions": {
+        "v144": {
+          "verified": 0,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "consistency_disagreement": 12
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_2182",
+      "job": "53294280",
+      "versions": {
+        "v144": {
+          "verified": 0,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "consistency_disagreement": 12
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_3010",
+      "job": "53294280",
+      "versions": {
+        "v144": {
+          "verified": 0,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "consistency_disagreement": 12
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_6272",
+      "job": "53294280",
+      "versions": {
+        "v144": {
+          "verified": 0,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "consistency_disagreement": 12
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    },
+    {
+      "ontology": "ore_ont_8786",
+      "job": "53294280",
+      "versions": {
+        "v144": {
+          "verified": 0,
+          "measurement_statuses": {
+            "executed_unvalidated": 3
+          },
+          "comparison_statuses": {
+            "consistency_disagreement": 12
+          }
+        },
+        "v145": {
+          "verified": 0,
+          "measurement_statuses": {
+            "timeout": 3
+          },
+          "comparison_statuses": {}
+        }
+      }
+    }
+  ]
+}

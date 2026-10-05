@@ -117,9 +117,34 @@ release benchmark measurement. An earlier local harness attempt failed
 because this container lacks `/usr/bin/time`; its adapter-error record is
 retained separately.
 
-Backjumping remains disabled by default. A standard release build and the
-HT certification gate are in progress; see `CURRENT-STATE.json` for handles.
+Backjumping remains disabled by default. The standard release build completed
+and was deployed with SHA-256
+`4f4f2d9cec9eb83bcb49c2baf51d79b2157354c9808f3b464c5b66a52292f0ab`.
+The HT certification gate is in progress; see `CURRENT-STATE.json` for handles.
 `run_atmost_candidate.py` and `atmost-candidate.sbatch` prepare an independently
-audited run of the existing 42-case diagnostic selection once the normal
-release binary is ready. This selection cannot establish the full release
+audited run of the existing 42-case diagnostic selection, submitted as job
+53296355 with three repetitions. This selection cannot establish the full release
 objectives, which remain unchanged and unmet.
+
+## Wider matched audit, partial
+
+The next eight completed case audits change the interpretation of the lost
+completion count. On ORE 11477, 1397, 14334, 16481, 2182, 3010, 6272 and 8786,
+all three v1.4.4 runs return a consistency verdict that disagrees with every
+available independent reference. v1.4.5 times out on those cases. They are
+lost output completions, not verified successes lost to a regression. The
+three verified pilot regressions remain confirmed. These partial receipts
+are in `paired-53294280/` and `paired-partial-audit-summary.json`; the remaining
+matched runs and audits are still in progress.
+
+## Incremental invalidation diagnosis
+
+A targeted source-session replay of ORE 9944 confirms that its bridge adapter
+is retained, but removing one normalized clause reclassifies every query.
+The typed side fingerprint is unchanged (`side_changed=false`); the undirected
+dependency closure contains 15,225 concepts for 8,008 public queries. No query
+state survives. `incremental-9944-diagnosis.json` records source hashes,
+receipts and the trace. Its local timing is diagnostic only. This motivates
+finer dependency-supported invalidation, not removal of the typed-state
+guards. Prior-state restoration can help the restoration revisions, but
+would not satisfy the requirement to improve deletion revisions as well.

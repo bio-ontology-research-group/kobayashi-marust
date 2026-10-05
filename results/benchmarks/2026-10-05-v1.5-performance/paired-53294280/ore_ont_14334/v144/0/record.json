@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "baseline": "km",
+  "source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14334.owl",
+  "source_sha256": "99182aadb7a2565bb7664a2443d1ae60df6dbc95e230c15d1a3078f4616e2e64",
+  "runtime_source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14334.owl",
+  "artifact": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+  "artifact_sha256": "941ca25bb4d58c29d78b57eb44598891da6b06b461b9f5ef99f6ff8a8b987a72",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-27-l",
+  "slurm_job_id": "53294911",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "99182aadb7a2565bb7664a2443d1ae60df6dbc95e230c15d1a3078f4616e2e64",
+  "command": [
+    "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+    "classify",
+    "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14334.owl"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "km-json",
+  "cpu_affinity": [
+    36
+  ],
+  "exit_code": 0,
+  "wall_s": 20.156316163018346,
+  "peak_bytes": 39366656,
+  "sampled_peak_bytes": 39366656,
+  "files": {
+    "taxonomy.raw": {
+      "sha256": "c29efaef64e5cad4f587843501fd02366c5597516d2df1f8178386c9e7f29e0f",
+      "bytes": 77
+    },
+    "max-rss-kib.txt": {
+      "sha256": "21eba29b651a5e7e44d6d608b1be6db506cc92d9b2cb1ca0b40f94ea9d077083",
+      "bytes": 6
+    },
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  }
+}
