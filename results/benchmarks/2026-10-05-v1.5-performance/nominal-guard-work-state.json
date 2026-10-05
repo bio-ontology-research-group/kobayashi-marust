@@ -1,14 +1,19 @@
 {
-  "observed_at": "2026-10-05T20:42:04.691706+00:00",
+  "observed_at": "2026-10-05T20:49:55.107369+00:00",
   "ht_gate_session": 39076,
   "standard_release_build_session": 42337,
   "diagnostic_binary_sha256": "41e46cd6d85f3eda53b4bca64651f816cb98557d00f165eb76b082880f0811b0",
   "source_manifest": "nominal-guard-source-manifest.json",
-  "status": "Tests and local public-output comparisons passed; HT gate and standard build running. Poll exact sessions and verify terminal state before continuing.",
+  "status": "All four gates and standard build completed; pinned repaired candidate deployed and full 1920-input audit submitted.",
   "next": [
-    "Finish HT gate and capture source-bound receipt",
-    "Finish standard binary build and pin immutable artifact",
-    "Repeat full frozen classification audit with repaired artifact; never overwrite running candidates",
-    "Finish other exact-source gates before any release promotion"
-  ]
+    "Poll Slurm job 53303803 and preserve frozen configuration",
+    "Aggregate with summarize_full_candidate.py --variant nominal-guard --job 53303803",
+    "Audit correctness and all three performance objectives against the full frozen corpus",
+    "Continue timeout recovery and incremental reuse work; release goals remain unmet"
+  ],
+  "ht_gate_status": "passed, exit 0",
+  "remaining_gates_session": 44894,
+  "remaining_gates_status": "routing, ELC and CB passed, exit 0",
+  "standard_release_build_status": "passed, exit 0",
+  "full_audit_job": "53303803"
 }

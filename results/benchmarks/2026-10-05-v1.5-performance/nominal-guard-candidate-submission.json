@@ -1,0 +1,17 @@
+{
+  "job_id": "53303803",
+  "submitted_utc": "2026-10-05T20:49:55.107369+00:00",
+  "scope": 1920,
+  "array": "0-59%8",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "binary_sha256": "717befb663968adb73010bf5148745712418df2c88efb1aca24ff5e5ab51e0b1",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1"
+  },
+  "certification_receipt": "nominal-guard-certification-receipt.json",
+  "release_requirements_status": "not_achieved"
+}

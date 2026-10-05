@@ -1,0 +1,1227 @@
+{
+  "partial": true,
+  "job": "53298536",
+  "admitted_failure_counts": {
+    "timeout": 45,
+    "internal_worker_timeout": 36
+  },
+  "failures": [
+    {
+      "ontology": "ore_ont_10080",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "21dcb1ad39ddc614f294da663d6590d1a270f539e23427170c0cc7d68a8a0337",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 237.29132880084217
+    },
+    {
+      "ontology": "ore_ont_10230",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "15df8d4064c52f8d65705ac14bfe00d563d7d42fba2e8bf0d3596993d11b2035",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.11776817776263
+    },
+    {
+      "ontology": "ore_ont_10517",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "190d736b4f62813eff8454ce785f6f2738db6e562463231fbc5783cadede7482",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.26429139636457
+    },
+    {
+      "ontology": "ore_ont_10568",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "85b4c2fe3b25762d65ba65edf4d7b56f777b346ff158d5baac4779426979e408",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0741718467325
+    },
+    {
+      "ontology": "ore_ont_1066",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "70b1198acb74ce82b5e2448dc25a79ad2d22ea1ec6a40db6258ff518cd9cdc9d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.05205110646784
+    },
+    {
+      "ontology": "ore_ont_10838",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "293fb1f2d70e09c4d113dd0fe8d0a5b2d3fb909b9baad231aeadbbe0ae9e2bb4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04175848327577
+    },
+    {
+      "ontology": "ore_ont_10926",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "d4689590d8e0d5097038e6f4edd8f3051f12c9453edc51660f025a280bcce9c1",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.06297355517745
+    },
+    {
+      "ontology": "ore_ont_10929",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "17a8a604a99fe67a2e9b869eb440d583a5ba7ff9a907ab6d8bd2fae3a649aa44",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.05157160572708
+    },
+    {
+      "ontology": "ore_ont_11196",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "5bbf7eb2f65c7a9217635f23de04b966d1a97f42ca2ab1612aa0cac965f12d6e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.06673692539334
+    },
+    {
+      "ontology": "ore_ont_1123",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": true,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "3dd64e0043926c849341100b647b8cce5fcb160213bc91c04ad963be9f3143cd",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04848261363804
+    },
+    {
+      "ontology": "ore_ont_11378",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "81515ca8dbb134bd95401dcca0a4a5cdd378c4bcc8ff1fc2613cadef896baaa5",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 236.87280303426087
+    },
+    {
+      "ontology": "ore_ont_11477",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "bcf03ad01a88262cf99a6603b845a2a7bc2f118e16e3b6978c61fb15aea25acf",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.05266854725778
+    },
+    {
+      "ontology": "ore_ont_11553",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "d0854bd3239ea0e468490545aac4f6f1f2632d30f08df43ccf345a89526f04e9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04451858252287
+    },
+    {
+      "ontology": "ore_ont_11647",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "6ac68f31c6cfe38d20e451bebffa73b11eb2f5dee12161926878f5cfe5511388",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.79881968535483
+    },
+    {
+      "ontology": "ore_ont_11695",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "47c74c88a61cd633673fe122d7fad1efc785f60336cbbbfce26bfe7957c366db",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.08897490985692
+    },
+    {
+      "ontology": "ore_ont_1199",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "7421058b0ce339d9db73ef6d2b2689476fad51a25a0ed778e30f02e4bd3ce38e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0586985461414
+    },
+    {
+      "ontology": "ore_ont_12128",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "1d7e471dd39ce7bd845aa9cf175ffa00e473705440e0838fbbe67b5a3c1c88f5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0469224601984
+    },
+    {
+      "ontology": "ore_ont_12191",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "88b0a0f9528ea93c7e7bb077e5fcc2386fdc93ae06e122c6637d27ff02d76da2",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 236.88661190494895
+    },
+    {
+      "ontology": "ore_ont_12451",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "37c02d651211e68820eb02800fba8ea38c9ba92378da25306d920ddf23447a34",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.05939420871437
+    },
+    {
+      "ontology": "ore_ont_12566",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "7618f7ab40cffb23300e6e2d679417c3c82372e6ac51737dd935702229f9733f",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.1349742691964
+    },
+    {
+      "ontology": "ore_ont_12723",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "6e3894d809adc0c8fd2ebaeaef38248b73862aab2aa413a144266bd19ee23ac1",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.02407790720463
+    },
+    {
+      "ontology": "ore_ont_13229",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "ea250617c916c4941bf99a86f6367c0a87e0abe9f07a3771c9a97fe3058e378f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0560917928815
+    },
+    {
+      "ontology": "ore_ont_1342",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "3cca225842803724dcd56a4745031ac05cd29004e8400f5a4eacf061fbc046da",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.15557820349932
+    },
+    {
+      "ontology": "ore_ont_13545",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "c1432d23ec86223aa425bf102d8f97e89826d30f566d71cb8ec053d8b6e4dd64",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.2978858910501
+    },
+    {
+      "ontology": "ore_ont_13700",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "c2df5e6b6b3ec7dd2786b2b1749c7e864956b8a38546dd9e6e52548aec9ec53a",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.4959406554699
+    },
+    {
+      "ontology": "ore_ont_13799",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "1f0376245c02a20aae205fd5a9bdb1ee9deb812e80d49bd6acdf56b6b01efa03",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.26234088093042
+    },
+    {
+      "ontology": "ore_ont_13954",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "238af39b6ac8b9cd449616194c1321129b627cabbeee36927252d2c8b8fc255d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0534160863608
+    },
+    {
+      "ontology": "ore_ont_1397",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "9f020b6c91273e2ee7967611cee64b4681be95459291b838a38bb9f38ab9c66f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.05055054463446
+    },
+    {
+      "ontology": "ore_ont_14334",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "eadfc40633acd91a0d1cfb533f1952af70a12beaeb5c27fd09e89259ea04b193",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04309623502195
+    },
+    {
+      "ontology": "ore_ont_14379",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "843e660debfa9a0a8e2b0548b6c30c48e1afc3a0e58b54e7df2e25278f1e5ed3",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.44425429590046
+    },
+    {
+      "ontology": "ore_ont_14551",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "0c20ab981d26c3d8cba69f4b443934a1c3bf6c7078dbb06b6cdb0673325ecd68",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.84380869939923
+    },
+    {
+      "ontology": "ore_ont_14817",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "17e46b0bfd17f7ae10fb2ee34713b6a73443e8008ac1aaebd7f90315ed272d88",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0361124947667
+    },
+    {
+      "ontology": "ore_ont_15167",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "ab9bb62bdc77ba9d9704e8d791cf40dbdba4d9eee89fd098860cfe3e44e63cd8",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.03001348115504
+    },
+    {
+      "ontology": "ore_ont_15344",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "7b3bd9d51f996a717c30fa7a97c1e2cab6f17368708124a8e1b6ad0ce080528d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.03632174432278
+    },
+    {
+      "ontology": "ore_ont_15526",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "9328ed2a1acb19ce8653c791897be0c3b40ebc531e951a4442ce06ec971da0e6",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04056704044342
+    },
+    {
+      "ontology": "ore_ont_15680",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "7521738f1a50c0ec4421c7bcd1d22fdfee94dd1ae36b712d617461d8c9d89db3",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 236.39522311650217
+    },
+    {
+      "ontology": "ore_ont_15682",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "c8eaf5e54568724ce658edecef767c0828788056441b78a41aa3fb7c43c8f326",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.3235786035657
+    },
+    {
+      "ontology": "ore_ont_15695",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "c6efb5536e71fc650a232118c7545e495ca52731966892390ae37e517ff5067a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04955535754561
+    },
+    {
+      "ontology": "ore_ont_15846",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "5716087092b9c57c609efb3409920e96358b1306d689dabe536ca984e8e18f9e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.07297827117145
+    },
+    {
+      "ontology": "ore_ont_16315",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "c6e6b99f325950dc3f3ac4c7bfc499e3fc2150520ca947ba29127231b95e7ed3",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.07067134976387
+    },
+    {
+      "ontology": "ore_ont_16371",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "18bf1033eedb57af852ba1a3ecf7c05872bc81d846fb23769eac4f729122b8ca",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.20834455825388
+    },
+    {
+      "ontology": "ore_ont_16372",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": true,
+        "elk": false
+      },
+      "record_sha256": "d59dbb79cdbb6cd799b77ee6abd0c6c6abddfe090d89ca2c79f6d1e50d1ce698",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.2286178600043
+    },
+    {
+      "ontology": "ore_ont_16420",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "61b48ec5d8f4e591aa9c1f62650760de01525d1997a22d5462a782c681b6d270",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04802342690527
+    },
+    {
+      "ontology": "ore_ont_16481",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "6b4ae173063651c989689f903805c72ee8fb194ce9e7f98e0a8eb6724b6124d1",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04051589220762
+    },
+    {
+      "ontology": "ore_ont_16511",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "8650a0ea8252e61c2f32dd61de64582d0d08d5c534245addb6d0f3a441857597",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0337286926806
+    },
+    {
+      "ontology": "ore_ont_16666",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "72f60086607aa18a2c4616dd0b8a940d94e45c81c1f79690d576e945b4ed4087",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.9719759952277
+    },
+    {
+      "ontology": "ore_ont_1707",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "bc083e1c4bb5faa4face57baa6e3a0450f3900340d8ca3fcd8953251ac92e7f6",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0575667936355
+    },
+    {
+      "ontology": "ore_ont_1833",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "66448402da8cae5869cf159f50b1366aae490deb9d8d787fb59d4ba98bf47cde",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 237.5955349151045
+    },
+    {
+      "ontology": "ore_ont_2182",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "51e768a3aa7fbc465a4f2d27bfad0988aa4a1ed50c36f6c773e51cb1dc766c58",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.05385513417423
+    },
+    {
+      "ontology": "ore_ont_2504",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "91c77860bd79fd1fe750cde56433b15d8dee9668feaa8cf73885cb7cd2d020a4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.03274449519813
+    },
+    {
+      "ontology": "ore_ont_2548",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "73169befc769f4104c3eea0e09625aea59f77bd00e63631b1365242133f5ec98",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.40139966644347
+    },
+    {
+      "ontology": "ore_ont_2574",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "cfc2d5a7ee5e52a2b51ddb879e1e5016dd85a66327249c1cb7a1e3e55f1af558",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.03864934295416
+    },
+    {
+      "ontology": "ore_ont_2792",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "9c36b10fd516de4aa14be0d9577b274cf0449499c5f694fa2becec11c28329b7",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.9674839861691
+    },
+    {
+      "ontology": "ore_ont_2874",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "d587c18c52129011e5f7d601b91771bfb41e2824e15e008cb1d968aa60909e07",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.05190366506577
+    },
+    {
+      "ontology": "ore_ont_3010",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "9094846b0e6a53501973c5fec2c6a460bb4216d4da4cefd86df17916905a1238",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0435518231243
+    },
+    {
+      "ontology": "ore_ont_3077",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "17171d8d95b17656dec95f2c4f2034457f067ac6a02172c959aa245c47d08080",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 236.51900673098862
+    },
+    {
+      "ontology": "ore_ont_3080",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "11688bfb1ac6a4a0eecd92fa429613e8253c6a743f5e7a4dec9a96194cb8ad6c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0467738993466
+    },
+    {
+      "ontology": "ore_ont_3087",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "529955547ab4f70c1d7c4c0841aa7d466f2ca49545cbb6675335f2f676524361",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.02852191962302
+    },
+    {
+      "ontology": "ore_ont_3215",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "ccd87d1afbd6bf429a2650666259fe08e5cdeb54ca47531c2b2c2507f20ef7d4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.05863373354077
+    },
+    {
+      "ontology": "ore_ont_3843",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "608b44d68b656ecb7b82af8f76bc68c52a693534bead88bdcf4010d1b142dc0d",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.19771832227707
+    },
+    {
+      "ontology": "ore_ont_3914",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "c08b10a6f7efe74bd8a6d035712a8f1c4cc90a40f19de711dc3462211c91445d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.03024505078793
+    },
+    {
+      "ontology": "ore_ont_3917",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "3a2c6d95040a731ef4379a4c6ea56409196f54c5faa895b24366d86227cf7aaf",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 236.42009314708412
+    },
+    {
+      "ontology": "ore_ont_4567",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "ab9d4ccab6b87ee3322babd06db83e432d9df0e929b6bcd7573c0b683d94ac8f",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 236.0443449113518
+    },
+    {
+      "ontology": "ore_ont_4609",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "c02559a647f178ed3c4ad79de0492250c65adb34fcf2935c46620eb5ab959f4f",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 236.42223342694342
+    },
+    {
+      "ontology": "ore_ont_4719",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "1f31eb4a15904a8097044e0fdc2bc3cf3405a460d9238405670dff7198448879",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.19986681640148
+    },
+    {
+      "ontology": "ore_ont_4903",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "843a900475a566a614474a08046ba13bc1337120e8eabd32a4beeccd2e5c2e33",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.3771045114845
+    },
+    {
+      "ontology": "ore_ont_5162",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "946fff918322237d1dea06d64a3376b40f8e0013b8cae484ed1f8f2e64c2f78a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04429062642157
+    },
+    {
+      "ontology": "ore_ont_5359",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "acbffa90fff1dacbd167504db8e573b5e6b6d716ce4a60563e4641c4355090cb",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.04955667071044
+    },
+    {
+      "ontology": "ore_ont_5548",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "e001977f688b12c28000164193a8653e97d57d00640a3403e665603ad5dafc8c",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 237.09901113063097
+    },
+    {
+      "ontology": "ore_ont_5764",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "bf521193a60c06685b917aa18b131998876a7eccc2bece0dd9eed9f18ec04068",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.20843195170164
+    },
+    {
+      "ontology": "ore_ont_5857",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "3a38859b669aa4c28ab957a9a478d1084f1e930c21f55dd74e84b3f9e388e763",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.06835405156016
+    },
+    {
+      "ontology": "ore_ont_586",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "e3bedbdf067318939e573d9963f2c980e0c798b8dc9057e196bd0738b1506a6c",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.21700443327427
+    },
+    {
+      "ontology": "ore_ont_6132",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": true
+      },
+      "record_sha256": "a851ebc108cc2f67a0f5393a770334ca2db39b1656b33ae82061764e6cd347fb",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 239.06767211668193
+    },
+    {
+      "ontology": "ore_ont_6272",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "51f1e395fa83c809445a599906f6f3550ce72eb2078dfc30a523133adfec2ac8",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.03321911394596
+    },
+    {
+      "ontology": "ore_ont_6712",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "f1474de831799ad7f72c4f675f5ca220dc0acfae41b106ef4440015ddf063a0a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.07232948951423
+    },
+    {
+      "ontology": "ore_ont_6952",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "50e2e0dd877b86edd2fa88211599222268d0b77d1de5e6e97553f4c17217af31",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.10117154754698
+    },
+    {
+      "ontology": "ore_ont_699",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "1ac8c9d36e0db7b15e40af2b642f9e0bcad55e4d2ec9482d94ee03a3d2dc5c3d",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 236.3811783157289
+    },
+    {
+      "ontology": "ore_ont_7192",
+      "status": "timeout",
+      "category": "timeout",
+      "stderr_tail": "",
+      "baseline_verified": {
+        "km": false,
+        "konclude": false,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "d898a36a991abb41012c1f38cbdf3aead0d1bbc3541dbee0c696c38997ffb023",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_s": 240.0517126955092
+    },
+    {
+      "ontology": "ore_ont_7342",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit: WARNING: kobayashi-marust additional-nominal budget (4096) exhausted; further Nom conclusions dropped \u2014 classification may be incomplete.",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": true,
+        "elk": true
+      },
+      "record_sha256": "e408425a0111ce9e4f8683636660573b3778e2949a837342ea1335e8bbaa1fe1",
+      "stderr_sha256": "10e772217095c50a79682b8a86c9ffeddd8b623f86649909cecfdc763134ac4b",
+      "wall_s": 235.2065875660628
+    },
+    {
+      "ontology": "ore_ont_7532",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "fd5528f617a12f66650017bd3761e54237eaa1d7defd463948ed4c4d4249d769",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.34938612021506
+    },
+    {
+      "ontology": "ore_ont_7828",
+      "status": "process_error",
+      "category": "internal_worker_timeout",
+      "stderr_tail": "worker engine exceeded its time limit:",
+      "baseline_verified": {
+        "km": false,
+        "konclude": true,
+        "rustdl": false,
+        "elk": false
+      },
+      "record_sha256": "499907b7495e3981846361adae4805eec3b7d3f7af41050a0bb7e224ce664f41",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "wall_s": 235.89590938203037
+    }
+  ],
+  "scope": "Observed completed failure records only; ongoing run, invalid inputs excluded from this diagnosis.",
+  "observed_at": "2026-10-05T20:46:31.413897+00:00"
+}

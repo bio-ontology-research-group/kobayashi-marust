@@ -246,3 +246,27 @@ build/gate handles are in `nominal-guard-source-manifest.json` and
 launched; repeat the full frozen audit with the repaired immutable binary
 before considering promotion. Existing full runs still test the earlier
 artifacts and must not be relabeled as testing this repair.
+
+## Repaired-candidate audit preparation
+
+The repaired source passes all four production Lean gates, including the new
+nominal-filler test. Every gate is tied to the same pinned source manifest,
+rechecked after each gate; no `sorryAx` occurs in the audited surfaces. The next full
+runner, `run_nominal_guard_candidate.py`, changes only the immutable artifact
+inventory and output destination relative to the conformance-cache runner.
+It preserves all 1,920 sources, flags, 240-second/20-GiB/one-CPU limits and
+independent verification. The standard release binary
+`717befb663968adb73010bf5148745712418df2c88efb1aca24ff5e5ab51e0b1`
+passes the minimal regression and is deployed under its immutable hash name.
+Full array job **53303803** runs the repaired candidate. Submission and
+certification receipts are recorded beside the runner; release approval remains
+false until the full objectives and verification requirements are met.
+
+`native-full-failure-diagnosis.json` records 81 observed failures on admitted
+inputs in the earlier run: 45 outer timeouts and 36 internal worker timeouts.
+There are no other admitted process-error categories in this partial snapshot.
+Konclude verifies 44 of these cases. Invalid inputs remain outside this
+performance diagnosis but inside the unchanged full benchmark corpus.
+The internal worker failures occur after 235.1–239.1 seconds (median 235.5),
+so this group does not indicate a short per-probe cutoff that can simply be
+relaxed to recover many cases within the unchanged 240-second outer limit.
