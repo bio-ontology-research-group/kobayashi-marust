@@ -1,0 +1,22 @@
+{
+  "v144": {
+    "artifacts": [
+      {
+        "id": "km",
+        "version": "v144",
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+        "sha256": "941ca25bb4d58c29d78b57eb44598891da6b06b461b9f5ef99f6ff8a8b987a72"
+      }
+    ]
+  },
+  "v145": {
+    "artifacts": [
+      {
+        "id": "km",
+        "version": "v145",
+        "path": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/km-v145-global-dependency",
+        "sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0"
+      }
+    ]
+  }
+}

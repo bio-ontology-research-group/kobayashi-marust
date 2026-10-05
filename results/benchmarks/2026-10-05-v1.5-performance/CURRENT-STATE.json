@@ -1,0 +1,23 @@
+{
+  "status": "pilot_running",
+  "remote_root": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005",
+  "measurement_job": "53294013",
+  "audit_job": "53294117",
+  "pilot_array_indices": [
+    0,
+    1,
+    2,
+    32
+  ],
+  "audit_dependency": "aftercorr:53294013",
+  "remaining_array_indices": "3-31,33-41",
+  "next_actions": [
+    "Poll Slurm jobs 53294013 and 53294117; inspect actual receipts before resubmitting anything.",
+    "Check adapter errors and semantic audits on the four pilot sources.",
+    "If the pilot protocol is valid, submit remaining array indices with paired.sbatch and a matching dependent audit.sbatch.",
+    "Compare versions per ontology and inspect profiles for confirmed regressions.",
+    "Implement and certify improvements; validate full v1.5.0 and v1.5.1 objectives before release."
+  ],
+  "release_requirements_status": "not_achieved",
+  "profile_job": "53294179"
+}
