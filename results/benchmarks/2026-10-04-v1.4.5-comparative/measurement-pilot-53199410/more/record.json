@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "baseline": "more",
+  "source": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+  "source_sha256": "fa4249686374c76b7549f64257f3c117afc6a3ea2a2e8ac7880571a7734bdac0",
+  "runtime_source": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+  "artifact": "/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes/classifier-more.jar",
+  "artifact_sha256": "1097e637fd25f2f64b9fd63c1f0f2ab24c2c2c3a198b7b5c521ea43915840302",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-16-r",
+  "slurm_job_id": "53199547",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "fa4249686374c76b7549f64257f3c117afc6a3ea2a2e8ac7880571a7734bdac0",
+  "command": [
+    "java",
+    "-Xms256m",
+    "-Xmx16g",
+    "-XX:ActiveProcessorCount=1",
+    "-cp",
+    "/ibex/scratch/hohndor/km/paper-benchmark-20260830/runtimes/classifier-more.jar",
+    "org.kmbenchmark.FullIriClassifier3",
+    "org.semanticweb.more.reasoner.MOReReasonerFactory",
+    "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+    "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/measurement-pilot-53199410/more/taxonomy.raw"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "owlapi-tsv",
+  "cpu_affinity": [
+    2
+  ],
+  "exit_code": 0,
+  "wall_s": 1.3142741601914167,
+  "peak_bytes": 80306176,
+  "sampled_peak_bytes": 80306176,
+  "files": {
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "taxonomy.raw": {
+      "sha256": "6aa374762f6a73256d089a5bba286df28fe6cd569e06face44d58906d625c184",
+      "bytes": 234
+    },
+    "stdout": {
+      "sha256": "88cf56cc518a0594d869e2fce0c6074ba4a4bce492ec92c80094b91e234eed81",
+      "bytes": 880
+    },
+    "max-rss-kib.txt": {
+      "sha256": "7d70ec4582c5bf87177734983445f19c25d250d4937cadaac281dd81b7e2f06c",
+      "bytes": 6
+    }
+  }
+}

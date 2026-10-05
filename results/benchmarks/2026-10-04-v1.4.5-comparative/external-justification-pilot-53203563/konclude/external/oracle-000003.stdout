@@ -1,0 +1,18 @@
+{info} 18:40:09:558 >> Starting Konclude ... 
+{info} 18:40:09:558 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 18:40:09:558 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 18 2021)
+
+{info} 18:40:09:560 >> Starting classification for '/ibex/project/c2014/hohndor/km/v145-comparative-20261004/external-justification-pilot-53203563/konclude/external/oracle-000003.owlxml'.
+{info} 18:40:09:561 >> Ontology parsed in 0 ms.
+{info} 18:40:09:562 >> Initializing reasoner. Creating calculation context.
+{info} 18:40:09:572 >> Reasoner initialized with 1 processing unit(s).
+{info} 18:40:09:572 >> Preprocessing ontology 'http://konclude.com/test/kb'.
+{info} 18:40:09:573 >> Finished preprocessing in 1 ms for ontology 'http://konclude.com/test/kb'.
+{info} 18:40:09:573 >> Precomputing ontology 'http://konclude.com/test/kb', expressiveness 'ALI+'.
+{info} 18:40:09:574 >> Finished precomputing in 1 ms for ontology 'http://konclude.com/test/kb'.
+{info} 18:40:09:574 >> Classifying ontology 'http://konclude.com/test/kb', expressiveness 'ALI+'.
+{info} 18:40:09:575 >> Ontology 'http://konclude.com/test/kb' has been sufficiently saturated, extracting data for classification.
+{info} 18:40:09:575 >> Finished class classification in 0 ms for ontology 'http://konclude.com/test/kb'.
+{info} 18:40:09:575 >> Query 'UnnamedClassifyQuery' processed in '0' ms.
+{info} 18:40:09:576 >> Query 'UnnamedWriteClassHierarchyQuery' processed in '1' ms.
+{info} 18:40:09:576 >> Total processing time: 16 ms.

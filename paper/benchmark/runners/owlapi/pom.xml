@@ -20,6 +20,14 @@
         <configuration>
           <includes>
             <include>FullIriClassifier.java</include>
+            <include>IncrementalClassifier.java</include>
+            <include>EntailmentExplanation.java</include>
+            <include>VerifyJustification.java</include>
+            <include>PrepareUpdates.java</include>
+            <include>PrepareQueries.java</include>
+            <include>VerifyUpdates.java</include>
+            <include>SourceSignature.java</include>
+            <include>ExportExplanationAxioms.java</include>
             <include>FreezeImports.java</include>
             <include>ProfileOntology.java</include>
             <include>ConvertSyntax.java</include>

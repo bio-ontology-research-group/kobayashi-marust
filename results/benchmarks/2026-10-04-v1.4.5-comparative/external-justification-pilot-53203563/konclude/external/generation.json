@@ -1,0 +1,10 @@
+{
+  "status": "generated_requires_independent_verification",
+  "method": "external-classification-source-axiom-deletion",
+  "baseline": "konclude",
+  "checks": 4,
+  "axiom_count": 2,
+  "support_sha256": "edc22bc64ff041d6e17a0634120bbc04f3a23dabe469b86430f4e85538e9a08e",
+  "module_sha256": "69c22786ca9ebc04f0cbc9839cdbad4914091a0925eabc8c86ff92c245658ceb",
+  "runner_sha256": "65dc7885ba8c44e7b5711231394f8d8baddfa4a9815ddbdd43e91ce01d6f756e"
+}

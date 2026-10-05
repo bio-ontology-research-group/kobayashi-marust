@@ -1,0 +1,23 @@
+1     [main] INFO  org.semanticweb.more  - loading ontology
+17    [main] INFO  org.semanticweb.more  - 2 axioms in working ontology
+18    [main] INFO  org.semanticweb.more  - extracting ELK-signature
+27    [ForkJoinPool-1-worker-3] INFO  org.semanticweb.more  - 2 axioms in fragment ELK
+31    [main] INFO  org.semanticweb.more  - 5classes in lSignature
+31    [main] INFO  org.semanticweb.more  - 0classes in compSignature
+193   [main] INFO  org.semanticweb.more  - 
+potential subsumption pairs: 25
+
+pairs decided by ELK: 25
+ELK took: 0.162ms
+axioms within ELK's fragment: 2
+
+lSignature of size: 5 (0 classes extra thanks to fancy optimisations
+lSignature extraction took: 0.013
+
+pairs decided by PAGOdA/RDFox: -1
+PAGOdA-style reasoning took: 0.0ms
+PAGOdA-style had to deal with: 0 axioms
+
+pairs decided by HermiT (or other): 0
+HermiT took: 0.0ms
+HermiT had to deal with: 0 axioms

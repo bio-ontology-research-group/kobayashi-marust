@@ -1,0 +1,11 @@
+M	schema	1
+M	factory	org.semanticweb.elk.owlapi.ElkReasonerFactory
+M	reasoner	org.semanticweb.elk.owlapi.ElkReasonerFactory
+C	true
+S	urn:v145:A	urn:v145:B
+S	urn:v145:A	urn:v145:C
+S	urn:v145:B	urn:v145:C
+M	classes	3
+M	unsatisfiable	0
+M	subsumptions	3
+Z	complete

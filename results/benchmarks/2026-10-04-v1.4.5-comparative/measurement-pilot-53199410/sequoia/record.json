@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "baseline": "sequoia",
+  "source": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+  "source_sha256": "fa4249686374c76b7549f64257f3c117afc6a3ea2a2e8ac7880571a7734bdac0",
+  "runtime_source": "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn",
+  "artifact": "/ibex/scratch/hohndor/km/full-panel-20260722/build/sequoia/sequoia-command-line-interface-0.6.1-alpha/bin/sequoia",
+  "artifact_sha256": "a84dfc7b30cb46dfd9333ef89ac6c2b1cd3bb27025777cc02f8c84b6df7a7649",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "620b942044321a997d31e96344487ad85174da82635926456dc9a5fb133ed126",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-16-l",
+  "slurm_job_id": "53199410",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "fa4249686374c76b7549f64257f3c117afc6a3ea2a2e8ac7880571a7734bdac0",
+  "runtime_manifest_sha256": "283a6b1b0f1113a4c40403f81eab28bc972926cd984f9e484a949ffbfbd6f39f",
+  "command": [
+    "/ibex/scratch/hohndor/km/full-panel-20260722/build/sequoia/sequoia-command-line-interface-0.6.1-alpha/bin/sequoia",
+    "-no-version-check",
+    "-main",
+    "com.sequoiareasoner.cli.Sequoia",
+    "classify",
+    "--output",
+    "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/measurement-pilot-53199410/sequoia/taxonomy.raw",
+    "/ibex/project/c2014/hohndor/km/v145-comparative-20261004/native-pilot-53199149/rustdl/000.ofn"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "functional",
+  "cpu_affinity": [
+    2
+  ],
+  "exit_code": 0,
+  "wall_s": 4.008982967585325,
+  "peak_bytes": 188325888,
+  "sampled_peak_bytes": 188325888,
+  "files": {
+    "max-rss-kib.txt": {
+      "sha256": "6ac5f0c8126ea828ef61440d8503ebcd83de98ebd54fd05bc9915225a7a96732",
+      "bytes": 7
+    },
+    "stderr": {
+      "sha256": "feecfffdaf7871b0f06ce0f6c7736e152ae3ec5e3da9c5452a977c331546b5dd",
+      "bytes": 697
+    },
+    "taxonomy.raw": {
+      "sha256": "f9aff7bdd0a3cb09ebedd8b6662fd4630f4a9eda8a91c21f1994a59236313d4e",
+      "bytes": 672
+    },
+    "stdout": {
+      "sha256": "4d5e271c82cc9aa2e58e937c8f7fa72ee03a37e19e6e09347addee55ca607370",
+      "bytes": 229
+    }
+  }
+}

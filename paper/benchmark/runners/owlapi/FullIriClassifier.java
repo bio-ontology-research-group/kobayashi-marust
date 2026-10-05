@@ -53,10 +53,21 @@ public final class FullIriClassifier {
         }
         OWLReasonerFactory reasonerFactory = (OWLReasonerFactory) instance;
         OWLReasoner reasoner = reasonerFactory.createReasoner(ontology);
+        try {
+            writeSnapshot(reasoner, ontology, reasonerFactory, outputPath);
+        } finally {
+            reasoner.dispose();
+        }
+    }
+
+    /** Shared taxonomy contract for fresh and retained-update measurements. */
+    public static void writeSnapshot(OWLReasoner reasoner, OWLOntology ontology,
+            OWLReasonerFactory reasonerFactory, Path outputPath) throws Exception {
+        String factoryClass = reasonerFactory.getClass().getName();
         boolean consistent;
         Set<String> pairs = new TreeSet<>();
         Set<String> unsatisfiable = new TreeSet<>();
-        try {
+        {
             consistent = reasoner.isConsistent();
             if (consistent) {
                 reasoner.precomputeInferences(InferenceType.CLASS_HIERARCHY);
@@ -76,10 +87,10 @@ public final class FullIriClassifier {
                     }
                 }
             }
-        } finally {
-            reasoner.dispose();
         }
 
+        Path temporary = outputPath.resolveSibling(outputPath.getFileName() + ".part");
+        Files.createDirectories(outputPath.getParent());
         try (BufferedWriter out = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
             out.write("M\tschema\t1\n");
             out.write("M\tfactory\t" + clean(factoryClass) + "\n");

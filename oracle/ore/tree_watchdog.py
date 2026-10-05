@@ -279,7 +279,8 @@ class WatchResult:
 
 def monitor(proc, *, timeout, memcap_bytes, root_pgid=None,
             sample_interval=0.02, cgroup_headroom_bytes=None, on_trip=None,
-            proc_fs="/proc", sysfs="/sys/fs/cgroup", now=time.monotonic):
+            proc_fs="/proc", sysfs="/sys/fs/cgroup", now=time.monotonic,
+            until=None):
     """Enforce ``timeout`` and ``memcap_bytes`` on the tree under ``proc``.
 
     ``proc`` is a live ``subprocess.Popen`` started with ``child_preexec`` (so
@@ -301,6 +302,12 @@ def monitor(proc, *, timeout, memcap_bytes, root_pgid=None,
 
     Never raises: measurement failures count as zero for that tick. Returns a
     :class:`WatchResult`.
+
+    For a persistent worker, ``until`` may be a nonblocking completion probe.
+    A true result returns status ``ready`` without killing or reaping the
+    worker. Each call enforces a fresh phase deadline and measures the entire
+    retained process tree, including memory allocated in earlier phases.
+    The caller owns the worker and must eventually close or terminate it.
     """
     root_pid = proc.pid
     if root_pgid is None:
@@ -350,6 +357,13 @@ def monitor(proc, *, timeout, memcap_bytes, root_pgid=None,
             # RSS as the reported peak but stop the run as a memout now.
             status = "memout"
             break
+        if until is not None and until():
+            return WatchResult(
+                status="ready", peak_bytes=peak,
+                cgroup_peak_bytes=cgroup_peak if have_cgroup else None,
+                wall_s=elapsed, killed_by_us=False, returncode=None,
+                members=members,
+            )
         time.sleep(sample_interval)
 
     killed_by_us = False
