@@ -2,6 +2,7 @@ import json,pathlib,collections
 import argparse
 parser=argparse.ArgumentParser(description='Diagnostic abstraction only; never authorizes retained publication.')
 parser.add_argument('old',type=pathlib.Path);parser.add_argument('new',type=pathlib.Path)
+parser.add_argument('--assume-all-roles',action='store_true')
 args=parser.parse_args()
 a=json.loads(args.old.read_text());b=json.loads(args.new.read_text());can=lambda x:json.dumps(x,sort_keys=True);changed=[json.loads(x) for x in set(map(can,a['clauses']))-set(map(can,b['clauses']))]
 def pred(atom):
@@ -44,6 +45,9 @@ for row in a['rbox']:
  else:raise ValueError(row)
  idx=len(rules);rules.append((body,head))
  for x in body:users[x].append(idx)
+if args.assume_all_roles:
+ for symbol in users:
+  if symbol.startswith('r:'):values[symbol]=allbits
 q=collections.deque(range(len(rules)));queued=set(q)
 while q:
  idx=q.popleft();queued.discard(idx);body,head=rules[idx];bits=allbits

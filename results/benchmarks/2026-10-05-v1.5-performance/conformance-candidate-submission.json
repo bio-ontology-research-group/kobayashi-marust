@@ -1,0 +1,16 @@
+{
+  "job_id": "53300563",
+  "submitted_utc": "2026-10-05T19:53:39.304288+00:00",
+  "scope": 1920,
+  "array": "0-59%8",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "binary_sha256": "a138c2c1243e21e6e086e6d8e3a3ec3ad6f7d6b8adb2ff7d4a93239e7019de73",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1"
+  },
+  "release_requirements_status": "not_achieved"
+}

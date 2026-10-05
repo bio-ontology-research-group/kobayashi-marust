@@ -12,14 +12,15 @@
   "audit_dependency": "aftercorr:53294013",
   "remaining_array_indices": "3-31,33-41",
   "next_actions": [
-    "Poll production build session 43025. Verify conformance-cache source manifest, pin new artifact, stage conformance-candidate runner/checksums and submit unchanged full 1920-input panel. NOT YET SUBMITTED.",
+    "Poll conformance full audit 53300563 and original full audit 53298536. Preserve both pinned binary/runner sets.",
     "Poll 1123 regression ablation 53299394: same binary, four flag combinations, three repetitions. Candidate times out where v145 verified in 209.9 seconds; do not promote.",
     "Poll routing diagnostic 53298748 and compare paired verified times across all 32 selected inputs before changing in-process CB scheduling.",
     "Poll full candidate job 53298536; collect all 1920 outcomes and compute coverage, arithmetic mean and median using unchanged verification rules.",
     "Collect remaining three-repeat candidate and matched regression audits from 53296355, 53294280, 53294283.",
     "Keep both optimizations opt-in until full correctness audit supports promotion.",
     "Address median runtime and incremental invalidation; both release objectives remain unmet.",
-    "Investigate repeated check_source validation in classify and frontend; preserve exact validation while eliminating duplicate work to address median runtime."
+    "Investigate repeated check_source validation in classify and frontend; preserve exact validation while eliminating duplicate work to address median runtime.",
+    "Implement and prove conservative conjunctive invalidation for positive Horn bridge inputs: roles treated universally available, typed domain/range concepts seeded globally, unsupported typed states retain existing fallback. Diagnostic 9944 remains eight affected concepts even with all roles globally available."
   ],
   "release_requirements_status": "not_achieved",
   "profile_job": "53294179",
@@ -82,5 +83,8 @@
   "conformance_cache_status": "opt_in_passes_51_tests_and_18_diagnostic_classifications_identical_answers",
   "conformance_cache_production_build_session": 43025,
   "conformance_cache_production_build_log": "/tmp/agent/km-v150-diagnostics/conformance-cache-production-build.log",
-  "candidate_regression_attribution": "Pinned v144 and v145 also time out on current 1123 reruns; do not attribute historical coverage loss to candidate flags."
+  "candidate_regression_attribution": "Pinned v144 and v145 also time out on current 1123 reruns; do not attribute historical coverage loss to candidate flags.",
+  "conformance_cache_production_build_status": "completed",
+  "conformance_candidate_job": "53300563",
+  "conformance_candidate_status": "submitted"
 }

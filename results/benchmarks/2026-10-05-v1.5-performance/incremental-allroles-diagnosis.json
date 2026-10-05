@@ -1,0 +1,17 @@
+{
+  "diagnostic_only": true,
+  "all_concept_seeds": 15291,
+  "affected_concepts": 8,
+  "concepts": [
+    "FBbt_00007444",
+    "FBbt_00007445",
+    "FBbt_00067371",
+    "FBbt_00067372",
+    "Q_3789",
+    "Q_3791",
+    "Q_4257",
+    "Q_4258"
+  ],
+  "limitation": "Diagnostic only. Roles universally available; typed RBox included. No production reuse enabled; publication argument and typed-state guard remain work.",
+  "assume_all_roles": true
+}
