@@ -38,6 +38,17 @@ uses byte hashes directly for unchanged outputs and source-bound renaming for
 changed outputs. Audit failures remain failures, not presumed equivalence.
 The fix has not yet completed a full classification sweep and is not a release.
 
+The first full-audit snapshot records 261 inputs: 235 successful preservation
+checks, including nine with source-bound renaming, and 26 nonzero frontend
+outcomes. All 26 are already-adjudicated invalid inputs; the old frontend
+refuses them before the successful-output checker can compare both binaries.
+This does not yet prove refusal preservation. Supplementary job **53313326**
+checks both binaries on the 212 frozen invalid inputs and requires positive
+refusal exit codes, an explicit OWL 2 DL admission diagnostic, and identical
+stdout, stderr, and metadata. A local ORE 11636 check passes. The original job
+and its failure records remain unchanged; the two audits must be reconciled
+before declaring the full frontend check complete.
+
 Separately, the earlier nominal-guard full sweep **53303803** has completed:
 1,602 verified successes, mean 7.519 seconds, median 0.378 seconds. It still
 fails the v1.5.0 target against Konclude and RustDL, and does not reproduce the

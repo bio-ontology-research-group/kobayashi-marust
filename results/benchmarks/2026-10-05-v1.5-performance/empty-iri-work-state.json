@@ -1,5 +1,5 @@
 {
-  "status": "local validation passed; full-corpus frontend audit queued",
+  "status": "local validation passed; full-corpus frontend and refusal audits active",
   "source_manifest_sha256": "a05d2c9cbf2bdac5acd13f240c009e6e355a2d1820c767318c16cfa1b65b6a9f",
   "source_files": 778,
   "all_four_lean_gates_passed_without_sorryAx": true,
@@ -20,8 +20,9 @@
   "full_classification_includes_this_fix": false,
   "release_approved": false,
   "next": [
-    "Inspect all 1920 frontend audit outcomes, including failures.",
+    "Inspect all 1920 frontend outcomes together with exact refusal audit 53313326; do not treat invalid-input labels alone as preservation proof.",
     "Run frozen full classification with the new artifact after preservation audit.",
     "Continue reducing coverage and runtime gaps to Konclude and RustDL; incremental reuse remains outstanding."
-  ]
+  ],
+  "refusal_job_id": 53313326
 }
