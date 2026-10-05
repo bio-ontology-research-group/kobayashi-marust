@@ -1,0 +1,15 @@
+{
+  "observed_at": "2026-10-05T11:24:29.117003+00:00",
+  "version": "v1.4.5",
+  "commit": "fb42d5228bfaa3248a4de9cb70819daff1aa5265",
+  "tag_object": "ec5b810d118ae9316883885d1419a51a1b6ddbc4",
+  "published_at": "2026-10-05T11:20:54Z",
+  "release_url": "https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.5",
+  "draft": false,
+  "prerelease": false,
+  "workflow_id": 37302334271,
+  "workflow_conclusion": "success",
+  "workflow_url": "https://github.com/bio-ontology-research-group/kobayashi-marust/actions/runs/37302334271",
+  "published_notes_match_committed_notes": true,
+  "published_notes_sha256": "1f23274bbdf771ad95922f91fe834c350e8fb9659c6bd24d970376074573c40b"
+}

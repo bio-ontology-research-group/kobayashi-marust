@@ -1,0 +1,169 @@
+{
+  "observed_at": "2026-10-05T11:25:31.750489+00:00",
+  "release": "v1.4.5",
+  "complete": true,
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "requirements": [
+    {
+      "requirement": "v1.4.4 prerequisite publication",
+      "status": "requirements_verified_and_published",
+      "evidence": {
+        "path": "v144-prerequisite-requirement-audit.json",
+        "sha256": "f487e6ad86e5d08d413559ee6d134ea5049f9677dafaf7c4b846b1870f333569"
+      }
+    },
+    {
+      "requirement": "Full classification panel against baseline reasoners",
+      "status": "report_reviewed",
+      "expected_inputs": 1920,
+      "latest_audited_inputs": 1920,
+      "evidence": {
+        "path": "globaldep-classification-report-review.json",
+        "sha256": "ca04aefbaf094a89b0621e4f33626c650bf5598a1e0f2cf7aff938dac3b8a925"
+      },
+      "reasoners": 10,
+      "pairwise_comparisons": 45,
+      "measurement_completion": {
+        "path": "globaldep-classification-measurement-completion.json",
+        "sha256": "d40f53cd47d9f3916f44296773593e39febc20d40981312fbc841707e98efbeb"
+      }
+    },
+    {
+      "requirement": "Incremental panel, cold and retained sessions, independent revision correctness",
+      "status": "report_reviewed_with_explicit_reference_gap",
+      "selected_sources": 80,
+      "revisions_per_source": 5,
+      "repetitions": 3,
+      "latest_audited_revisions": 395,
+      "evidence": {
+        "path": "globaldep-update-report-review.json",
+        "sha256": "645cc98df9ddbd3a914c9ed32f1f6b27ab0d2f8707764236cee46f9781073f18",
+        "bytes": 6530
+      },
+      "measurement_completion": {
+        "path": "globaldep-update-measurement-completion.json",
+        "sha256": "18eb58c9fae28faf1796a0deae4629272c86a4c76fbdb6f97d7271523747f579",
+        "bytes": 228579
+      },
+      "audit_completion": {
+        "path": "globaldep-update-audit-completion.json",
+        "sha256": "48c2380bf5fea512894e970ace2bc2bdc467a112abd7000a66e7bf3cb9a5cc7f"
+      }
+    },
+    {
+      "requirement": "Justifications, independent entailment and subset-minimality checks, all baselines",
+      "status": "report_reviewed",
+      "reasoners": 10,
+      "pairwise_comparisons": 45,
+      "cases_per_reasoner": 372,
+      "source_preparation_failures": 24,
+      "sources_without_eligible_queries": 14,
+      "evidence": {
+        "path": "globaldep-justification-report-review.json",
+        "sha256": "81b5ec7c0d9f2d88cada5f163dcd0c21584e136cb46ca536b46552fd653ddc22"
+      },
+      "coverage": {
+        "elk": {
+          "verified_evidence_intact": 366,
+          "adapter_or_validation_error": 6
+        },
+        "hermit": {
+          "verified_evidence_intact": 372
+        },
+        "jfact": {
+          "verified_evidence_intact": 354,
+          "generation_timeout": 9,
+          "generation_error": 9
+        },
+        "km": {
+          "verified_evidence_intact": 336,
+          "generation_error": 18,
+          "generation_timeout": 18
+        },
+        "konclude": {
+          "verified_evidence_intact": 249,
+          "generation_timeout": 123
+        },
+        "more": {
+          "verified_evidence_intact": 264,
+          "generation_timeout": 108
+        },
+        "openllet": {
+          "verified_evidence_intact": 372
+        },
+        "rustdl": {
+          "verified_evidence_intact": 369,
+          "generation_timeout": 3
+        },
+        "sequoia": {
+          "generation_error": 156,
+          "verified_evidence_intact": 207,
+          "generation_timeout": 9
+        },
+        "whelk": {
+          "verified_evidence_intact": 318,
+          "adapter_or_validation_error": 9,
+          "generation_timeout": 45
+        }
+      }
+    },
+    {
+      "requirement": "Preparation and conversion cost accounting",
+      "status": "report_reviewed",
+      "evidence": {
+        "path": "global-dependency-preparation-review.json",
+        "sha256": "facda12ec09ecf7fe851c7402bcbc6a59081eb766daaf2b6cc9e688f00a8047d"
+      }
+    },
+    {
+      "requirement": "Rust regression checks on measured candidate",
+      "status": "passed",
+      "evidence": {
+        "path": "global-dependency-validation/rust-test-validation.json",
+        "sha256": "75c6085728d0f44cbb90ff312a8297823a145ffdc67541f77fc47ffdcc62bb49"
+      }
+    },
+    {
+      "requirement": "Java/plugin validation on measured candidate",
+      "status": "passed",
+      "evidence": {
+        "path": "global-dependency-validation/java-plugin-configured-validation.json",
+        "sha256": "afe3a005fb543384b6a793c725e8d15780801b1dd7304a777618f3e3e52bea07"
+      }
+    },
+    {
+      "requirement": "Four Lean gates and no sorryAx",
+      "status": "passed_for_exact_tagged_source",
+      "source_files_verified_now": 868,
+      "changed_source_files": [],
+      "evidence": {
+        "path": "global-dependency-validation/certification-audit.json",
+        "sha256": "c85aed116ac7f49514bbd758e566522d511ccf46193c50bd4ad8e4b2aa9ee99e"
+      }
+    },
+    {
+      "requirement": "Final reproducible report and raw-outcome adjudications",
+      "status": "reviewed",
+      "evidence": {
+        "path": "globaldep-combined-report-review.json",
+        "sha256": "a5910e42353abca01e9a9978fadb688b39b1e4306d520931fc08de52b3cac2bb",
+        "bytes": 2307
+      }
+    },
+    {
+      "requirement": "Exact tagged-source certification and v1.4.5 publication",
+      "status": "verified_and_published",
+      "evidence": {
+        "path": "v1.4.5-publication.json",
+        "sha256": "ad95122bacb2645fd4f00b88cde4872b5cb7ee4f9262ab8886f74cacbdd02ae3"
+      },
+      "exact_source_verification": {
+        "path": "global-dependency-validation/final-release-commit-verification.json",
+        "sha256": "60db807365266d8f130ffd135de8bd6f8050a32cf2ab6c4bfb069b7b0610fef4"
+      }
+    }
+  ],
+  "release_commit": "fb42d5228bfaa3248a4de9cb70819daff1aa5265",
+  "release_url": "https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.5",
+  "v144_tagged_source_files_reverified": 863
+}

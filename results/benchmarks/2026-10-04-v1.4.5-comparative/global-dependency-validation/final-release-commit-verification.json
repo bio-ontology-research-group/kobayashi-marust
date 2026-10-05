@@ -1,0 +1,13 @@
+{
+  "observed_at": "2026-10-05T11:22:41.905813+00:00",
+  "commit": "fb42d5228bfaa3248a4de9cb70819daff1aa5265",
+  "verified_committed_manifests": {
+    "global-dependency-validation/certification-source-manifest.json": 868,
+    "harness-validation-v3-manifest.json": 172
+  },
+  "indexed_evidence_artifacts": 111,
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "release_notes_sha256": "1f23274bbdf771ad95922f91fe834c350e8fb9659c6bd24d970376074573c40b",
+  "source_and_evidence_match": true,
+  "publication_verified": false
+}

@@ -1,0 +1,82 @@
+{
+  "observed_at": "2026-10-05T04:41:10.952772+00:00",
+  "release": "v1.4.4",
+  "tagged_source_files_verified": 863,
+  "status": "original release requirements verified; v1.4.5 remains incomplete",
+  "feature_tests_verified": [
+    "inverse_chain_classification_checks_direction_and_source_name_collision",
+    "inverse_chain_keeps_both_typed_converse_definitions",
+    "source_validation_preserves_dl_safe_rules_and_top_data_ranges",
+    "named_dl_safe_rule_is_fully_representable",
+    "rule_premises_include_inferred_inverse_chain_and_transitive_edges"
+  ],
+  "original_errors_verified": [
+    {
+      "ont": "ore_ont_15687",
+      "outcome": "ok",
+      "baseline_outcome": "err_reject",
+      "reported_outcome": "ok",
+      "execution_record_present": true,
+      "execution_status": "ok",
+      "exit_code": 0,
+      "diagnostic": null,
+      "consistent": true,
+      "dropped": 0,
+      "independent_reference_kind": "checked-output-hash",
+      "independent_source_verified": true,
+      "independent_reference_equal": true
+    },
+    {
+      "ont": "ore_ont_9890",
+      "outcome": "ok",
+      "baseline_outcome": "err_reject",
+      "reported_outcome": "ok",
+      "execution_record_present": true,
+      "execution_status": "ok",
+      "exit_code": 0,
+      "diagnostic": null,
+      "consistent": true,
+      "dropped": 0,
+      "independent_reference_kind": "checked-output-hash",
+      "independent_source_verified": true,
+      "independent_reference_equal": true
+    }
+  ],
+  "full_benchmark_outcomes": {
+    "ok": 1622,
+    "invalid_input": 212,
+    "dnf": 86
+  },
+  "unsupported_outcomes": 0,
+  "invalid_input_explanations_independently_verified": true,
+  "lean_gates": 4,
+  "sorryAx_in_audited_surfaces": false,
+  "rust_tests_passed": 2822,
+  "publication": {
+    "version": "v1.4.4",
+    "commit": "113b5e65d242529f2e3f5024f6482029bf1f8d50",
+    "tag_pushed": true,
+    "published_at": "2026-10-04T13:31:24Z",
+    "release_url": "https://github.com/bio-ontology-research-group/kobayashi-marust/releases/tag/v1.4.4",
+    "draft": false,
+    "prerelease": false,
+    "workflow_id": 37205912309,
+    "workflow_conclusion": "success",
+    "workflow_url": "https://github.com/bio-ontology-research-group/kobayashi-marust/actions/runs/37205912309",
+    "certified_source_files": 863,
+    "committed_source_matches_manifest": true
+  },
+  "evidence": {
+    "full-final-admission-53195718-output-audit.json": "129008a86d802e61eaa4fd6cab266cf6bced2cd3afc7091820679b967a401a5e",
+    "full-final-admission-53195718-adjudication.json": "2294ced40626e1de02182cf0f97038149a291d1c80f87e0e6877155b8ffa84aa",
+    "full-final-admission-53195718-case-records.json": "912b65a13bca0c8547fa6d8b1c7b601efa4e9f2acb9293efd7d5a741c9e91a06",
+    "final-admission-source-manifest.json": "293fd81260c0bbec5e2db94332f6ddd2559e2863ce142ca88682c5b7eb7c10d6",
+    "final-admission-production-gates-audit.json": "c8409f0a9c33e137d2e1ce93c81ffafc21f60702b5e46d14917a94fcf032dfa5",
+    "conformance-final-admission-rust.log": "19fba419d5219b5b51cf381c33e8cc8ac9a58686d0c202664316750ca1121693",
+    "v1.4.4-publication.json": "9ad386541276cb4b46016e9c160d42e81d92a31b773744123640e6038c4d810c",
+    "gold-final-admission-53195719-complete-audit.json": "a408ffa5e4f29bbdb1bd429afd4f42f7d656f1bd32d4b124454e4fc6f6b48e51"
+  },
+  "limits": "The 86 non-completions remain in the denominator; this is not a claim that all ontologies completed or that implemented admission checks decide every OWL 2 DL constraint.",
+  "release_evidence_manifest_files_verified": 1287,
+  "release_evidence_manifest_mismatches": []
+}
