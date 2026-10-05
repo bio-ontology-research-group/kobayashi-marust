@@ -1,0 +1,317 @@
+{
+  "job_id": 53309995,
+  "full_diagnostic_panel_complete": true,
+  "scope": "37 selected worker timeout cases, 60 seconds, instrumented; not release performance metrics.",
+  "status_counts": {
+    "timeout": 34,
+    "executed_unvalidated": 3
+  },
+  "verified_completed_cases": [
+    "ore_ont_10230",
+    "ore_ont_8429",
+    "ore_ont_9864"
+  ],
+  "rows": [
+    {
+      "ontology": "ore_ont_10080",
+      "status": "timeout",
+      "wall_s": 60.05903520435095,
+      "record_sha256": "2dd7f1f6d22f2b07ad635208b7046958ffeb568274a17daf54f6a7d7f3ebb852",
+      "profile_receipt_sha256": "ae40cc64c6852029faa33837b0ba2397a1ae40f530939c5c4d3ad04306d4577c",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_10230",
+      "status": "executed_unvalidated",
+      "wall_s": 7.2692095302045345,
+      "record_sha256": "b632a9e81787e649f8ba550664c0cb7e70e7d14541a325c0df9372e4faddb92f",
+      "profile_receipt_sha256": "83d7895ff137d955b8d90681709b29490db29098db17176ccfa9c0f813ec4339",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_10517",
+      "status": "timeout",
+      "wall_s": 60.020523346960545,
+      "record_sha256": "1a188ed9744f627d105f5f765499d18a2a9f07640512bc18e10ea55d5739de86",
+      "profile_receipt_sha256": "df97a5785461d41be55f3dcb66dc45449f6e0c085639fb9817f505104306d356",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_11378",
+      "status": "timeout",
+      "wall_s": 60.033824156969786,
+      "record_sha256": "a1ecd2e4078d043dcf2beb3b332d17c8fe6ff916e388bb439b221614ba2ea438",
+      "profile_receipt_sha256": "8b04bfe351ad0f90995b467501f53e60e4ea5094b6a7b513070a9779d47dd965",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_11647",
+      "status": "timeout",
+      "wall_s": 60.04133456759155,
+      "record_sha256": "63aa985d352499a88924691edb0afe85b7324ffa3a156a03859528fd4c714fa7",
+      "profile_receipt_sha256": "74ae888206e19f555eefd3c2974b06abd27e605f019e3fde7041a313519381f5",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_12191",
+      "status": "timeout",
+      "wall_s": 60.04381095431745,
+      "record_sha256": "bac53ecef9d709edc376538346f23ce2148d137266ab362b5a797d5eed5beb0c",
+      "profile_receipt_sha256": "eb83cf083e0f33c4d268acab47b8cd38d6f6a2c8c5619d168f49f721f3b3e252",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_12566",
+      "status": "timeout",
+      "wall_s": 60.040715431794524,
+      "record_sha256": "a8b8def1ed5a196d0811bfd7dd41b742f84fcedf703e74a71dfdb68b730f73af",
+      "profile_receipt_sha256": "82370902fe0d8645e855331e6b9b3ffdb18cf1e6c3c022deb0fd0f35807a84c8",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_13545",
+      "status": "timeout",
+      "wall_s": 60.03098885342479,
+      "record_sha256": "8a0d5dd3c0c9e3330c85c73ce331faa702cc4658535a64b781070ed348069d7b",
+      "profile_receipt_sha256": "f98e4a87a3c81510e74727b25821c13a99364c907134bc3bcb5e7ecd71456b50",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_13700",
+      "status": "timeout",
+      "wall_s": 60.04647238738835,
+      "record_sha256": "50478e7b5410ce164ee0538e6b920ecc581baa726a42a34e028ed4f81a4a9a73",
+      "profile_receipt_sha256": "7805effce528bb123b928eed35349e0589c026f205b7c886205f26af852c825b",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_13799",
+      "status": "timeout",
+      "wall_s": 60.03041865490377,
+      "record_sha256": "e558216a3c707344b1222e8e3e72e03e6818aa20077ce852f3be9c14d895845c",
+      "profile_receipt_sha256": "b32830377282592ebbbcb3fa362027b775bc601a4b33f3ccb0d87259bcb433ca",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_14551",
+      "status": "timeout",
+      "wall_s": 60.037543376907706,
+      "record_sha256": "e0f5fa5433ff9836dd4a3015a12aa045dab4bf518606cd82996237c6cc18a73f",
+      "profile_receipt_sha256": "5ce112ce438d4f282b6d35751bc12e9220e50bda9232c2d6703621904113aff8",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_15680",
+      "status": "timeout",
+      "wall_s": 60.042295653373,
+      "record_sha256": "c5e54ead09ac2899d3cd0498561a1981a389315ceedd7fb48bb5384647b47a01",
+      "profile_receipt_sha256": "b1ee60fac21d4055b8ef69f6e86ad237b546c61da2b845b7717fc259c9e53a74",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_15682",
+      "status": "timeout",
+      "wall_s": 60.03183563426137,
+      "record_sha256": "65caf9ff848d24101f59a094832d3ae621aa39d9215f2d075978a4282f39fb28",
+      "profile_receipt_sha256": "c755c3bbc35e5c8ca179bba19ec2bde5a076002523fcee74d7b00ad3c114f147",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_16371",
+      "status": "timeout",
+      "wall_s": 60.03045916184783,
+      "record_sha256": "deecd2c0ade72a13b2ebbc96395019913a39ee7ef750bb90fb77be9c725b7539",
+      "profile_receipt_sha256": "490db80a22b29db9d7af670ef6d083e46e6e37cbdda7c9b88e3c8b1f9b06faa7",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_16372",
+      "status": "timeout",
+      "wall_s": 60.0280759613961,
+      "record_sha256": "5112c67ed4bb0db7b47aed16086a4449f454176b1e66790d81ebdd98224d1ad2",
+      "profile_receipt_sha256": "121e665f4c9ab72bacc5b6c0ddc60caa61fa56860d64acdc448a6958646d6706",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_16666",
+      "status": "timeout",
+      "wall_s": 60.050227999687195,
+      "record_sha256": "7eaa47dce091fcb94369ca7843815cdb6dfba907f9ea7218819c7797bda90318",
+      "profile_receipt_sha256": "2d96430aa59b85171becc4bb5d2f8df9b6244d473b0147f4fb895c5ded9d3881",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_1833",
+      "status": "timeout",
+      "wall_s": 60.03913155756891,
+      "record_sha256": "09639ab148440800e8968d17fc0c89ecba72e1909ee22573cea2c4fbc5a9a6b2",
+      "profile_receipt_sha256": "41ceae933111fd87041750a563e72abcf07ac6966059ec3b066846a7cda09b8d",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_2548",
+      "status": "timeout",
+      "wall_s": 60.04334206879139,
+      "record_sha256": "df2d442e6ab3a8e04c037bf49c4267e739a20c24c74d715e8d7220d4b3817f6e",
+      "profile_receipt_sha256": "4ae7c1f75b6733a271fb7345e8111a489294e5948bffbac67e0dde3a26fe1078",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_2792",
+      "status": "timeout",
+      "wall_s": 60.02484221570194,
+      "record_sha256": "bbbce77277510ac913930ae98fa89c0fddf2caf20dad834ff6b43ea2c714bbf1",
+      "profile_receipt_sha256": "2fcc2606c2a9524d07f1df6e321b18da63e17837b4f1cb4aa64c334168d0e08d",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_3077",
+      "status": "timeout",
+      "wall_s": 60.036479538306594,
+      "record_sha256": "29752c35e979e6691c49358a063ef6e86bb61956aa853cae1a717e606ed8f946",
+      "profile_receipt_sha256": "a1e38cdf1490e3641689245ac1e4af5fe2729ebaf0f4ffc52dd45f93adccc07a",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_3917",
+      "status": "timeout",
+      "wall_s": 60.04993445239961,
+      "record_sha256": "aab71ff87880c542c3295d69adc4f6140e6c1158cf8f65046121ce08b5ec81ed",
+      "profile_receipt_sha256": "6c3a1f68dcce51445b290105136cb2fc8fa7ca1c4533f40041aa947d6bdf793b",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_4567",
+      "status": "timeout",
+      "wall_s": 60.035823142156005,
+      "record_sha256": "ba5ea1dc574e4869a4f3cd17dfacc476008b85e2b55b321bbf03dcb0a96bcb3f",
+      "profile_receipt_sha256": "cc6899933dbb1811f42d58a542d00209d8357b136ee6ffa3491e37a0ccfed50c",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_4609",
+      "status": "timeout",
+      "wall_s": 60.045787738636136,
+      "record_sha256": "59ae37956b50865055def720e7b5bf90837815cc3393aa5dce71ddc598cf0ea9",
+      "profile_receipt_sha256": "35132d2eaa3855d063e18ee66ddec5b4a32f8ea73168f5bfc3e7c22c2e0e810e",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_4903",
+      "status": "timeout",
+      "wall_s": 60.04468613862991,
+      "record_sha256": "83c9202ebd2c6dcc256982f9228ae81d58a379df5fbe9b0a7927b8d5538660bd",
+      "profile_receipt_sha256": "e5d2af7fc0a7c110b465ef4e75c88aa6580263b94412bd5819242b91afa159ce",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_5548",
+      "status": "timeout",
+      "wall_s": 60.0492128636688,
+      "record_sha256": "8b31af07a58989191eda15f5eddc555c0c0b8fdb1579702e733b07b467199f4c",
+      "profile_receipt_sha256": "1545c356997f8b6b95de295c6174ea2ac4c12a238f2bf4395965d6bdf301ab75",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_5764",
+      "status": "timeout",
+      "wall_s": 60.04620521701872,
+      "record_sha256": "75051f0a496003a681702720ec198fc31b46e0100031eab64f7e02f562f8108a",
+      "profile_receipt_sha256": "819a2055e472c087f8fa6c80aefac5e1c68c2e1f08575458d25d1e12ff7032d5",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_5964",
+      "status": "timeout",
+      "wall_s": 60.04210161790252,
+      "record_sha256": "d420cad0f48d6d2f51b99a7d2e13d332f21683004de0f216f8f44a3708d69788",
+      "profile_receipt_sha256": "dcc110db4833055209f48fecb89665d5b6a567a4e19d3de84bd4fceb8fbcb07d",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_6132",
+      "status": "timeout",
+      "wall_s": 60.0488346144557,
+      "record_sha256": "12d85fcdc3ef61e07fbf30f76e1eca685dd48130b1be7bdd391bd655cf139944",
+      "profile_receipt_sha256": "c6c3f253df8b409a0e8d3b2063514c0da1b3b15f66f6ff8b7008c9df8ffe411a",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_699",
+      "status": "timeout",
+      "wall_s": 60.04167294874787,
+      "record_sha256": "2ce73e361d2a947cb4e799d53fed12c602c7f2ef9ee1c6df4fce6c068a96b4ec",
+      "profile_receipt_sha256": "89cb02b166955c752d495cb12488561c49a584c59844b43ecd8866f4a9d376f9",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_7532",
+      "status": "timeout",
+      "wall_s": 60.03213039971888,
+      "record_sha256": "15ef8aadfc55ad47fef9d4dbefd2b2c6919e84d581e67534ae3574486b997e61",
+      "profile_receipt_sha256": "f8c1a2b7d3af39c2bd18f49dc389e3372101685f8afd2cce357844b5a714434c",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_8148",
+      "status": "timeout",
+      "wall_s": 60.042656157165766,
+      "record_sha256": "e9588a498879f1cea8b083d859b2736c2a699552092006aaf3310b8631f3ad51",
+      "profile_receipt_sha256": "067f91963bd27bc6142076eeed1a0a07b894d2a57fb054c28c5ec176adffa7fc",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_8250",
+      "status": "timeout",
+      "wall_s": 60.04594314657152,
+      "record_sha256": "f8a42d68d2aaaa4295adbc22ed2971f75416a86257edcde2bea3d6ac9a20ddc7",
+      "profile_receipt_sha256": "17d1c2beeac1810572716d61cb219da6014c0ab60e1908ee5ba9d6fb60f25735",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_8429",
+      "status": "executed_unvalidated",
+      "wall_s": 1.0432896204292774,
+      "record_sha256": "323c24a999dacfff556e421f1e4995bf3f1fdb03a80d08cce4027a780f6faadf",
+      "profile_receipt_sha256": "fa57b2c05382168365392ad1740d1b1014a7c78dd7137cfec3d1d6a4991ee327",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_9429",
+      "status": "timeout",
+      "wall_s": 60.03120432421565,
+      "record_sha256": "9a3f1d59d652b54dc42c4c2eb9467e743f0b3049156cd709f3ae686794f29d8f",
+      "profile_receipt_sha256": "434e63c9d089e0de60755543470cdb2a57d6ba65de438a78b7dd665db59dfb79",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_9662",
+      "status": "timeout",
+      "wall_s": 60.023673847317696,
+      "record_sha256": "d029d8dbcc9313272093b31411f133d3c9d5182d44302febb0abe6572a358eaa",
+      "profile_receipt_sha256": "45320dbeee345cd015dc9557ed7f8175eadc9b4a3162843cf48182797d02c116",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_9864",
+      "status": "executed_unvalidated",
+      "wall_s": 0.767763389274478,
+      "record_sha256": "0dc7eb4aceb0825e8f9dd7e8911a01e43b79a7049f18c09f993af6e2a795c4c3",
+      "profile_receipt_sha256": "f8c9506a2461836daf04ca1360bf03770b4bc68e04cc6d4f7d3fcfdcc09d6833",
+      "diagnostic_only": true
+    },
+    {
+      "ontology": "ore_ont_9899",
+      "status": "timeout",
+      "wall_s": 60.043257623910904,
+      "record_sha256": "bcf9bdf66ec21bc605bfe146aacb0889bba313596ee76757fe1a128bc0f65b51",
+      "profile_receipt_sha256": "b17d3d77b0649d3702a627e30f0830502e9041a233e47d5afbc1ed505b754bfd",
+      "diagnostic_only": true
+    }
+  ],
+  "next_observations": [
+    "Most remaining cases fall back to the nominal worker after native/source coverage declines.",
+    "ORE 10080 subsequently recovered through source IRI repair and bounded sparse scheduling.",
+    "ORE 7345 remains a full-audit baseline loss; v1.4.5 baseline is 230.65 seconds, close to the 240-second limit. Repeat before attributing this loss to a regression."
+  ]
+}
