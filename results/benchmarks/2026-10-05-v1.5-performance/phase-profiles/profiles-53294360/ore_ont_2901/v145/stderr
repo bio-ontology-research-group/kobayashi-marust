@@ -1,0 +1,847 @@
+KM_TIMING mirror-route: declined: unsupported axiom: DisjointUnion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.03s cached=false sidecar=false
+KM_TIMING frontend done @ 0.03s route=production_all
+cb_to_ht [emelim] eliminated 0 complementary pairs
+cb_to_ht [trigger-absorb] definers=224 moved=0 tautologies=2
+KM_TIMING spawn_ht: read+convert 2121 clauses (ht_view=2121) in 0.02s
+KM_DUMP_TIN clauses=2121 dropped=0 fenced=1 nominals=0 inverse=true number=true queries=700 -> "/ibex/project/c2014/hohndor/km/v150-performance-20261005/tin-53294360-ore_ont_2901-v145.json"
+bridge [source-tbox] axioms=960 eq=0/0 [] direct=967 role-links=0 absorbed-gci=53 top-gci=0 unsupported=0
+bridge [or-replacements] implications=0 common=7
+role-automata begin concepts=1583 next-tag=1592
+bridge [branch-triggers] role-markers=5
+BRIDGE-ENV: 0.00s (named=1178, trigger_absorb=true, unsupported=0, independent_abox=false)
+BRIDGE-SOURCE-CLOSURE pairs=5271 definition-containment=true
+BRIDGE-SAT-PHASE propagation-direction: 0.00s
+BRIDGE-SATURATION-SEEDS: base=804 extended=813 invalid-special=9 substitute=430 copy=345
+BRIDGE-SAT-PHASE seeds: 0.00s
+BRIDGE-SAT-PHASE loop: 0.01s (nodes=931)
+SAT-STATS: insufficient all=0 atmost=0 or=89 eqcand=0 value=0 nominal=0
+BRIDGE-SATURATION-UNKNOWN: no-node=478 insufficient=362 unprocessed=0 eq-candidate=0
+BRIDGE-SAT-PHASE extract: 0.00s
+BRIDGE-SATURATION: 0.01s, answered 0 unsat + 338 sat of 700 subjects (362 residue to probes, known-label-subjects=677, satcache=true)
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=96 end_phase=3 seed=0.000056 search=0.001359 cache=0.012432 labels=0.000005
+BRIDGE-KPSET-MESSAGES subject 96: visits=429 messages=10
+BRIDGE-PREPARE round 0 subject 1/362 deferred=0 permanent=0
+BRIDGE-PREPARE-TIMING subjects=1 elapsed=0.014215 renew=0.000069 completion=0.013879 analysis=0.000247
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=602 end_phase=3 seed=0.000033 search=0.000142 cache=0.000040 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 602: visits=50 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=615 end_phase=3 seed=0.000018 search=0.000114 cache=0.000033 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 615: visits=50 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=842 end_phase=3 seed=0.000027 search=0.000815 cache=0.000137 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 842: visits=287 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=983 end_phase=3 seed=0.000026 search=0.000111 cache=0.000036 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 983: visits=50 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=944 end_phase=3 seed=0.000031 search=0.000654 cache=0.000166 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 944: visits=491 messages=14
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=1050 end_phase=3 seed=0.000038 search=0.000561 cache=0.000101 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 1050: visits=286 messages=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=510 end_phase=3 seed=0.000024 search=0.000126 cache=0.000027 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 510: visits=50 messages=3
+PROGRESS drives=4096 backtracks=6601 nodes=38 inserts=3968 bp_depth=34 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=939 end_phase=3 seed=0.000049 search=0.419695 cache=0.000291 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 939: visits=1188 messages=19
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=700 end_phase=3 seed=0.000054 search=0.000213 cache=0.000065 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 700: visits=123 messages=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=888 end_phase=3 seed=0.000027 search=0.000172 cache=0.000054 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 888: visits=123 messages=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=945 end_phase=3 seed=0.000027 search=0.000252 cache=0.000092 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 945: visits=174 messages=9
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=1049 end_phase=3 seed=0.000032 search=0.000283 cache=0.000040 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 1049: visits=91 messages=9
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=916 end_phase=3 seed=0.000026 search=0.000158 cache=0.000043 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 916: visits=123 messages=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=1000 end_phase=3 seed=0.000023 search=0.000157 cache=0.000048 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 1000: visits=123 messages=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=1029 end_phase=3 seed=0.000031 search=0.000376 cache=0.000072 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 1029: visits=144 messages=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=1031 end_phase=3 seed=0.000029 search=0.000442 cache=0.000039 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 1031: visits=85 messages=5
+PROGRESS drives=4096 backtracks=6732 nodes=48 inserts=6776 bp_depth=39 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=512 end_phase=3 seed=0.000042 search=0.312445 cache=0.000208 labels=0.000004
+BRIDGE-KPSET-MESSAGES subject 512: visits=948 messages=10
+PROGRESS drives=4096 backtracks=6862 nodes=35 inserts=6597 bp_depth=34 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=517 end_phase=3 seed=0.000073 search=0.644194 cache=0.000123 labels=0.000004
+BRIDGE-KPSET-MESSAGES subject 517: visits=516 messages=8
+PROGRESS drives=4096 backtracks=6862 nodes=36 inserts=6695 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=14133 nodes=35 inserts=22557 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=594 end_phase=3 seed=0.000068 search=0.804973 cache=0.000097 labels=0.000004
+BRIDGE-KPSET-MESSAGES subject 594: visits=516 messages=8
+PROGRESS drives=4096 backtracks=6862 nodes=36 inserts=6696 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=14133 nodes=35 inserts=22558 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=663 end_phase=3 seed=0.000089 search=0.798035 cache=0.000070 labels=0.000004
+BRIDGE-KPSET-MESSAGES subject 663: visits=516 messages=8
+PROGRESS drives=4096 backtracks=6862 nodes=36 inserts=6696 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=14133 nodes=35 inserts=22558 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=664 end_phase=3 seed=0.000094 search=0.785925 cache=0.000068 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 664: visits=516 messages=8
+PROGRESS drives=4096 backtracks=6732 nodes=43 inserts=21369 bp_depth=39 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=666 end_phase=3 seed=0.000072 search=0.380355 cache=0.000181 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 666: visits=939 messages=9
+PROGRESS drives=4096 backtracks=6862 nodes=36 inserts=6695 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=14133 nodes=35 inserts=22557 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=793 end_phase=3 seed=0.000068 search=0.746448 cache=0.000085 labels=0.000004
+BRIDGE-KPSET-MESSAGES subject 793: visits=516 messages=8
+PROGRESS drives=4096 backtracks=6862 nodes=36 inserts=6695 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=14133 nodes=35 inserts=22557 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=849 end_phase=3 seed=0.000058 search=0.732751 cache=0.000082 labels=0.000004
+BRIDGE-KPSET-MESSAGES subject 849: visits=516 messages=8
+PROGRESS drives=4096 backtracks=6862 nodes=36 inserts=6695 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=14133 nodes=35 inserts=22557 bp_depth=35 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=876 end_phase=3 seed=0.000058 search=0.703596 cache=0.000074 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 876: visits=516 messages=8
+PROGRESS drives=4096 backtracks=6732 nodes=43 inserts=20915 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=986 end_phase=3 seed=0.000069 search=0.350716 cache=0.000189 labels=0.000004
+BRIDGE-KPSET-MESSAGES subject 986: visits=944 messages=9
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=372 end_phase=3 seed=0.000051 search=0.000192 cache=0.000218 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 372: visits=123 messages=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=514 end_phase=3 seed=0.000028 search=0.000161 cache=0.000051 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 514: visits=123 messages=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=794 end_phase=3 seed=0.000024 search=0.000157 cache=0.000046 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 794: visits=123 messages=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=919 end_phase=3 seed=0.000027 search=0.000148 cache=0.000049 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 919: visits=123 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=597 end_phase=3 seed=0.000026 search=0.000146 cache=0.000046 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 597: visits=123 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=791 end_phase=3 seed=0.000030 search=0.000148 cache=0.000044 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 791: visits=123 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=890 end_phase=3 seed=0.000024 search=0.000145 cache=0.000046 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 890: visits=123 messages=7
+PROGRESS drives=4096 backtracks=7130 nodes=31 inserts=13101 bp_depth=36 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=14561 nodes=29 inserts=30574 bp_depth=32 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=12288 backtracks=21865 nodes=35 inserts=45972 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=16384 backtracks=27509 nodes=35 inserts=45972 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=20480 backtracks=33152 nodes=35 inserts=45972 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=24576 backtracks=40311 nodes=35 inserts=60209 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=28672 backtracks=45953 nodes=35 inserts=60209 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=32768 backtracks=51597 nodes=35 inserts=60209 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=36864 backtracks=58755 nodes=35 inserts=74446 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=40960 backtracks=64399 nodes=35 inserts=74446 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=45056 backtracks=70078 nodes=43 inserts=75541 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=49152 backtracks=77201 nodes=35 inserts=88683 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=53248 backtracks=82844 nodes=35 inserts=88683 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=57344 backtracks=88621 nodes=43 inserts=90318 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=61440 backtracks=95647 nodes=35 inserts=102922 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=65536 backtracks=101290 nodes=35 inserts=102922 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=69632 backtracks=107112 nodes=43 inserts=105004 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=73728 backtracks=114091 nodes=35 inserts=117159 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=77824 backtracks=119735 nodes=35 inserts=117159 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=81920 backtracks=125625 nodes=43 inserts=119722 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=86016 backtracks=132537 nodes=35 inserts=131396 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=90112 backtracks=138181 nodes=35 inserts=131396 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=94208 backtracks=144138 nodes=43 inserts=134450 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=98304 backtracks=150982 nodes=35 inserts=145633 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=102400 backtracks=156625 nodes=35 inserts=145633 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=106496 backtracks=162648 nodes=43 inserts=149168 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=110592 backtracks=169428 nodes=35 inserts=159872 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=114688 backtracks=175071 nodes=35 inserts=159872 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=118784 backtracks=181138 nodes=43 inserts=163852 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=122880 backtracks=187873 nodes=35 inserts=174109 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=126976 backtracks=193517 nodes=35 inserts=174109 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=131072 backtracks=199638 nodes=43 inserts=178553 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=135168 backtracks=206319 nodes=35 inserts=188346 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=139264 backtracks=211961 nodes=35 inserts=188346 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=143360 backtracks=218112 nodes=43 inserts=193204 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=147456 backtracks=224763 nodes=35 inserts=202583 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=151552 backtracks=230408 nodes=35 inserts=202583 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=155648 backtracks=236581 nodes=43 inserts=207846 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=159744 backtracks=243210 nodes=35 inserts=216822 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=163840 backtracks=248853 nodes=35 inserts=216822 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=167936 backtracks=255025 nodes=43 inserts=222439 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=172032 backtracks=261655 nodes=35 inserts=231059 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=176128 backtracks=267297 nodes=35 inserts=231059 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=180224 backtracks=273470 nodes=43 inserts=237034 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=184320 backtracks=280099 nodes=35 inserts=245296 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=188416 backtracks=285744 nodes=35 inserts=245296 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=192512 backtracks=291940 nodes=43 inserts=251675 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=196608 backtracks=298546 nodes=35 inserts=259533 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=200704 backtracks=304188 nodes=35 inserts=259533 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=204800 backtracks=310481 nodes=43 inserts=266450 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=208896 backtracks=316991 nodes=35 inserts=273772 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=212992 backtracks=322634 nodes=35 inserts=273772 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=217088 backtracks=328985 nodes=43 inserts=281160 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=221184 backtracks=335435 nodes=35 inserts=288009 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=225280 backtracks=341080 nodes=35 inserts=288009 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=229376 backtracks=347482 nodes=43 inserts=295854 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=233472 backtracks=353882 nodes=35 inserts=302246 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=237568 backtracks=359525 nodes=35 inserts=302246 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=241664 backtracks=366024 nodes=43 inserts=310629 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=245760 backtracks=372326 nodes=35 inserts=316483 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=249856 backtracks=377969 nodes=35 inserts=316483 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=253952 backtracks=384515 nodes=43 inserts=325315 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=258048 backtracks=390772 nodes=35 inserts=330722 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=262144 backtracks=396416 nodes=35 inserts=330722 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=266240 backtracks=403024 nodes=43 inserts=340048 bp_depth=48 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=270336 backtracks=409218 nodes=35 inserts=344959 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=274432 backtracks=414861 nodes=35 inserts=344959 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=278528 backtracks=421566 nodes=43 inserts=354830 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=282624 backtracks=427663 nodes=35 inserts=359196 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=286720 backtracks=433306 nodes=35 inserts=359196 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=290816 backtracks=440046 nodes=43 inserts=369494 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=294912 backtracks=446108 nodes=35 inserts=373433 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=299008 backtracks=451752 nodes=35 inserts=373433 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=303104 backtracks=458558 nodes=43 inserts=384287 bp_depth=48 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=307200 backtracks=464554 nodes=35 inserts=387672 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=311296 backtracks=470197 nodes=35 inserts=387672 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=315392 backtracks=477105 nodes=43 inserts=399081 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=319488 backtracks=482999 nodes=35 inserts=401909 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=323584 backtracks=488642 nodes=35 inserts=401909 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=327680 backtracks=495579 nodes=43 inserts=413733 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=331776 backtracks=501444 nodes=35 inserts=416146 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=335872 backtracks=507088 nodes=35 inserts=416146 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=339968 backtracks=514089 nodes=43 inserts=428660 bp_depth=48 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=344064 backtracks=519890 nodes=35 inserts=430383 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=348160 backtracks=525532 nodes=35 inserts=430383 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=352256 backtracks=532638 nodes=43 inserts=443456 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=356352 backtracks=538335 nodes=35 inserts=444622 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=360448 backtracks=543979 nodes=35 inserts=444622 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=364544 backtracks=551113 nodes=43 inserts=458110 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=368640 backtracks=556780 nodes=35 inserts=458859 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=372736 backtracks=562424 nodes=35 inserts=458859 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=376832 backtracks=569582 nodes=35 inserts=473096 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=380928 backtracks=575226 nodes=35 inserts=473096 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=385024 backtracks=580869 nodes=35 inserts=473096 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=389120 backtracks=588028 nodes=35 inserts=487333 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=393216 backtracks=593670 nodes=35 inserts=487333 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=397312 backtracks=599314 nodes=35 inserts=487333 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=401408 backtracks=606473 nodes=35 inserts=501572 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=405504 backtracks=612117 nodes=35 inserts=501572 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=409600 backtracks=617760 nodes=35 inserts=501572 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=413696 backtracks=624918 nodes=35 inserts=515809 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=417792 backtracks=630562 nodes=35 inserts=515809 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=421888 backtracks=636209 nodes=43 inserts=516662 bp_depth=47 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=425984 backtracks=643364 nodes=35 inserts=530046 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=430080 backtracks=649008 nodes=35 inserts=530046 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=434176 backtracks=654728 nodes=43 inserts=531393 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=438272 backtracks=661808 nodes=35 inserts=544283 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=442368 backtracks=667452 nodes=35 inserts=544283 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=446464 backtracks=673261 nodes=43 inserts=546154 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=450560 backtracks=680272 nodes=35 inserts=558678 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=454656 backtracks=685914 nodes=35 inserts=558678 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=458752 backtracks=691741 nodes=43 inserts=560818 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=462848 backtracks=698716 nodes=35 inserts=572915 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=466944 backtracks=704360 nodes=35 inserts=572915 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=471040 backtracks=710265 nodes=43 inserts=575558 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=475136 backtracks=717162 nodes=35 inserts=587152 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=479232 backtracks=722805 nodes=35 inserts=587152 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=483328 backtracks=728767 nodes=43 inserts=590264 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=487424 backtracks=735607 nodes=35 inserts=601389 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=491520 backtracks=741250 nodes=35 inserts=601389 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=495616 backtracks=747288 nodes=43 inserts=605004 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=499712 backtracks=754052 nodes=35 inserts=615628 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=503808 backtracks=759697 nodes=35 inserts=615628 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=507904 backtracks=765767 nodes=43 inserts=619666 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=512000 backtracks=772499 nodes=35 inserts=629865 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=516096 backtracks=778142 nodes=35 inserts=629865 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=520192 backtracks=784266 nodes=43 inserts=634365 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=524288 backtracks=790943 nodes=35 inserts=644102 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=528384 backtracks=796586 nodes=35 inserts=644102 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=532480 backtracks=802740 nodes=43 inserts=649016 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=536576 backtracks=809388 nodes=35 inserts=658339 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=540672 backtracks=815032 nodes=35 inserts=658339 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=544768 backtracks=821205 nodes=43 inserts=663650 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=548864 backtracks=827835 nodes=35 inserts=672578 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=552960 backtracks=833478 nodes=35 inserts=672578 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=557056 backtracks=839650 nodes=43 inserts=678245 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=561152 backtracks=846280 nodes=35 inserts=686815 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=565248 backtracks=851922 nodes=35 inserts=686815 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=569344 backtracks=858095 nodes=43 inserts=692840 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=573440 backtracks=864724 nodes=35 inserts=701052 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=577536 backtracks=870369 nodes=35 inserts=701052 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=581632 backtracks=876580 nodes=43 inserts=707511 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=585728 backtracks=883170 nodes=35 inserts=715289 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=589824 backtracks=888813 nodes=35 inserts=715289 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=593920 backtracks=895123 nodes=43 inserts=722288 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=598016 backtracks=901616 nodes=35 inserts=729528 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=602112 backtracks=907258 nodes=35 inserts=729528 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=606208 backtracks=913613 nodes=43 inserts=736972 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=610304 backtracks=920060 nodes=35 inserts=743765 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=614400 backtracks=925705 nodes=35 inserts=743765 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=618496 backtracks=932120 nodes=43 inserts=751679 bp_depth=48 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=622592 backtracks=938507 nodes=35 inserts=758002 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=626688 backtracks=944149 nodes=35 inserts=758002 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=630784 backtracks=950664 nodes=43 inserts=766465 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=634880 backtracks=956951 nodes=35 inserts=772239 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=638976 backtracks=962595 nodes=35 inserts=772239 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=643072 backtracks=969144 nodes=43 inserts=781129 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=647168 backtracks=975396 nodes=35 inserts=786478 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=651264 backtracks=981041 nodes=35 inserts=786478 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=655360 backtracks=987653 nodes=43 inserts=795860 bp_depth=48 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=659456 backtracks=993843 nodes=35 inserts=800715 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=663552 backtracks=999486 nodes=35 inserts=800715 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=667648 backtracks=1006203 nodes=43 inserts=810659 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=671744 backtracks=1012287 nodes=35 inserts=814952 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=675840 backtracks=1017931 nodes=35 inserts=814952 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=679936 backtracks=1024675 nodes=43 inserts=825308 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=684032 backtracks=1030733 nodes=35 inserts=829189 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=688128 backtracks=1036376 nodes=35 inserts=829189 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=692224 backtracks=1043190 nodes=43 inserts=840108 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=696320 backtracks=1049179 nodes=35 inserts=843428 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=700416 backtracks=1054822 nodes=35 inserts=843428 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=704512 backtracks=1061736 nodes=43 inserts=854898 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=708608 backtracks=1067624 nodes=35 inserts=857665 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=712704 backtracks=1073267 nodes=35 inserts=857665 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=716800 backtracks=1080215 nodes=43 inserts=869580 bp_depth=42 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=720896 backtracks=1086069 nodes=35 inserts=871902 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=724992 backtracks=1091713 nodes=35 inserts=871902 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=729088 backtracks=1098722 nodes=43 inserts=884481 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=733184 backtracks=1104514 nodes=35 inserts=886139 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=737280 backtracks=1110157 nodes=35 inserts=886139 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=741376 backtracks=1117270 nodes=43 inserts=899275 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=745472 backtracks=1122960 nodes=35 inserts=900378 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=749568 backtracks=1128603 nodes=35 inserts=900378 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=753664 backtracks=1135748 nodes=43 inserts=913933 bp_depth=42 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=757760 backtracks=1141405 nodes=35 inserts=914615 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=761856 backtracks=1147049 nodes=35 inserts=914615 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=765952 backtracks=1154207 nodes=35 inserts=928852 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=770048 backtracks=1159851 nodes=35 inserts=928852 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=774144 backtracks=1165493 nodes=35 inserts=928852 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=778240 backtracks=1172652 nodes=35 inserts=943089 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=782336 backtracks=1178295 nodes=35 inserts=943089 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=786432 backtracks=1183939 nodes=35 inserts=943089 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=790528 backtracks=1191098 nodes=35 inserts=957328 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-READOFF-TIMING subject=507 end_phase=1 seed=0.000034 search=30.005467 cache=0.000000 labels=0.000000
+BRIDGE-DEFER subject 507: READ-OFF stop after 30.0s (signal=Stop { task_completed: false }, nodes=35, sat-blocks=140, sat-expanded=56088)
+PROGRESS drives=4096 backtracks=7130 nodes=31 inserts=13101 bp_depth=36 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=14561 nodes=29 inserts=30574 bp_depth=32 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=12288 backtracks=21865 nodes=35 inserts=45972 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=16384 backtracks=27509 nodes=35 inserts=45972 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=20480 backtracks=33152 nodes=35 inserts=45972 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=24576 backtracks=40311 nodes=35 inserts=60209 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=28672 backtracks=45953 nodes=35 inserts=60209 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=32768 backtracks=51597 nodes=35 inserts=60209 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=36864 backtracks=58755 nodes=35 inserts=74446 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=40960 backtracks=64399 nodes=35 inserts=74446 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=45056 backtracks=70078 nodes=43 inserts=75541 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=49152 backtracks=77201 nodes=35 inserts=88683 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=53248 backtracks=82844 nodes=35 inserts=88683 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=57344 backtracks=88621 nodes=43 inserts=90318 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=61440 backtracks=95647 nodes=35 inserts=102922 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=65536 backtracks=101290 nodes=35 inserts=102922 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=69632 backtracks=107112 nodes=43 inserts=105004 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=73728 backtracks=114091 nodes=35 inserts=117159 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=77824 backtracks=119735 nodes=35 inserts=117159 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=81920 backtracks=125625 nodes=43 inserts=119722 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=86016 backtracks=132537 nodes=35 inserts=131396 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=90112 backtracks=138181 nodes=35 inserts=131396 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=94208 backtracks=144138 nodes=43 inserts=134450 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=98304 backtracks=150982 nodes=35 inserts=145633 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=102400 backtracks=156625 nodes=35 inserts=145633 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=106496 backtracks=162648 nodes=43 inserts=149168 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=110592 backtracks=169428 nodes=35 inserts=159872 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=114688 backtracks=175071 nodes=35 inserts=159872 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=118784 backtracks=181138 nodes=43 inserts=163852 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=122880 backtracks=187873 nodes=35 inserts=174109 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=126976 backtracks=193517 nodes=35 inserts=174109 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=131072 backtracks=199638 nodes=43 inserts=178553 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=135168 backtracks=206319 nodes=35 inserts=188346 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=139264 backtracks=211961 nodes=35 inserts=188346 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=143360 backtracks=218112 nodes=43 inserts=193204 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=147456 backtracks=224763 nodes=35 inserts=202583 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=151552 backtracks=230408 nodes=35 inserts=202583 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=155648 backtracks=236581 nodes=43 inserts=207846 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=159744 backtracks=243210 nodes=35 inserts=216822 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=163840 backtracks=248853 nodes=35 inserts=216822 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=167936 backtracks=255025 nodes=43 inserts=222439 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=172032 backtracks=261655 nodes=35 inserts=231059 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=176128 backtracks=267297 nodes=35 inserts=231059 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=180224 backtracks=273470 nodes=43 inserts=237034 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=184320 backtracks=280099 nodes=35 inserts=245296 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=188416 backtracks=285744 nodes=35 inserts=245296 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=192512 backtracks=291940 nodes=43 inserts=251675 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=196608 backtracks=298546 nodes=35 inserts=259533 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=200704 backtracks=304188 nodes=35 inserts=259533 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=204800 backtracks=310481 nodes=43 inserts=266450 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=208896 backtracks=316991 nodes=35 inserts=273772 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=212992 backtracks=322634 nodes=35 inserts=273772 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=217088 backtracks=328985 nodes=43 inserts=281160 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=221184 backtracks=335435 nodes=35 inserts=288009 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=225280 backtracks=341080 nodes=35 inserts=288009 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=229376 backtracks=347482 nodes=43 inserts=295854 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=233472 backtracks=353882 nodes=35 inserts=302246 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=237568 backtracks=359525 nodes=35 inserts=302246 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=241664 backtracks=366024 nodes=43 inserts=310629 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=245760 backtracks=372326 nodes=35 inserts=316483 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=249856 backtracks=377969 nodes=35 inserts=316483 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=253952 backtracks=384515 nodes=43 inserts=325315 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=258048 backtracks=390772 nodes=35 inserts=330722 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=262144 backtracks=396416 nodes=35 inserts=330722 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=266240 backtracks=403024 nodes=43 inserts=340048 bp_depth=48 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=270336 backtracks=409218 nodes=35 inserts=344959 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=274432 backtracks=414861 nodes=35 inserts=344959 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=278528 backtracks=421566 nodes=43 inserts=354830 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=282624 backtracks=427663 nodes=35 inserts=359196 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=286720 backtracks=433306 nodes=35 inserts=359196 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=290816 backtracks=440046 nodes=43 inserts=369494 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=294912 backtracks=446108 nodes=35 inserts=373433 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=299008 backtracks=451752 nodes=35 inserts=373433 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=303104 backtracks=458558 nodes=43 inserts=384287 bp_depth=48 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=307200 backtracks=464554 nodes=35 inserts=387672 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=311296 backtracks=470197 nodes=35 inserts=387672 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=315392 backtracks=477105 nodes=43 inserts=399081 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=319488 backtracks=482999 nodes=35 inserts=401909 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=323584 backtracks=488642 nodes=35 inserts=401909 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=327680 backtracks=495579 nodes=43 inserts=413733 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=331776 backtracks=501444 nodes=35 inserts=416146 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=335872 backtracks=507088 nodes=35 inserts=416146 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=339968 backtracks=514089 nodes=43 inserts=428660 bp_depth=48 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=344064 backtracks=519890 nodes=35 inserts=430383 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=348160 backtracks=525532 nodes=35 inserts=430383 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=352256 backtracks=532638 nodes=43 inserts=443456 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=356352 backtracks=538335 nodes=35 inserts=444622 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=360448 backtracks=543979 nodes=35 inserts=444622 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=364544 backtracks=551113 nodes=43 inserts=458110 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=368640 backtracks=556780 nodes=35 inserts=458859 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=372736 backtracks=562424 nodes=35 inserts=458859 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=376832 backtracks=569582 nodes=35 inserts=473096 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=380928 backtracks=575226 nodes=35 inserts=473096 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=385024 backtracks=580869 nodes=35 inserts=473096 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=389120 backtracks=588028 nodes=35 inserts=487333 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=393216 backtracks=593670 nodes=35 inserts=487333 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=397312 backtracks=599314 nodes=35 inserts=487333 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=401408 backtracks=606473 nodes=35 inserts=501572 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=405504 backtracks=612117 nodes=35 inserts=501572 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=409600 backtracks=617760 nodes=35 inserts=501572 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=413696 backtracks=624918 nodes=35 inserts=515809 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=417792 backtracks=630562 nodes=35 inserts=515809 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=421888 backtracks=636209 nodes=43 inserts=516662 bp_depth=47 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=425984 backtracks=643364 nodes=35 inserts=530046 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=430080 backtracks=649008 nodes=35 inserts=530046 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=434176 backtracks=654728 nodes=43 inserts=531393 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=438272 backtracks=661808 nodes=35 inserts=544283 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=442368 backtracks=667452 nodes=35 inserts=544283 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=446464 backtracks=673261 nodes=43 inserts=546154 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=450560 backtracks=680272 nodes=35 inserts=558678 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=454656 backtracks=685914 nodes=35 inserts=558678 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=458752 backtracks=691741 nodes=43 inserts=560818 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=462848 backtracks=698716 nodes=35 inserts=572915 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=466944 backtracks=704360 nodes=35 inserts=572915 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=471040 backtracks=710265 nodes=43 inserts=575558 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=475136 backtracks=717162 nodes=35 inserts=587152 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=479232 backtracks=722805 nodes=35 inserts=587152 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=483328 backtracks=728767 nodes=43 inserts=590264 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=487424 backtracks=735607 nodes=35 inserts=601389 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=491520 backtracks=741250 nodes=35 inserts=601389 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=495616 backtracks=747288 nodes=43 inserts=605004 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=499712 backtracks=754052 nodes=35 inserts=615628 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=503808 backtracks=759697 nodes=35 inserts=615628 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=507904 backtracks=765767 nodes=43 inserts=619666 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=512000 backtracks=772499 nodes=35 inserts=629865 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=516096 backtracks=778142 nodes=35 inserts=629865 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=520192 backtracks=784266 nodes=43 inserts=634365 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=524288 backtracks=790943 nodes=35 inserts=644102 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=528384 backtracks=796586 nodes=35 inserts=644102 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=532480 backtracks=802740 nodes=43 inserts=649016 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=536576 backtracks=809388 nodes=35 inserts=658339 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=540672 backtracks=815032 nodes=35 inserts=658339 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=544768 backtracks=821205 nodes=43 inserts=663650 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=548864 backtracks=827835 nodes=35 inserts=672578 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=552960 backtracks=833478 nodes=35 inserts=672578 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=557056 backtracks=839650 nodes=43 inserts=678245 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=561152 backtracks=846280 nodes=35 inserts=686815 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=565248 backtracks=851922 nodes=35 inserts=686815 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=569344 backtracks=858095 nodes=43 inserts=692840 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=573440 backtracks=864724 nodes=35 inserts=701052 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=577536 backtracks=870369 nodes=35 inserts=701052 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=581632 backtracks=876580 nodes=43 inserts=707511 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=585728 backtracks=883170 nodes=35 inserts=715289 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=589824 backtracks=888813 nodes=35 inserts=715289 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=593920 backtracks=895123 nodes=43 inserts=722288 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=598016 backtracks=901616 nodes=35 inserts=729528 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=602112 backtracks=907258 nodes=35 inserts=729528 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=606208 backtracks=913613 nodes=43 inserts=736972 bp_depth=49 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=610304 backtracks=920060 nodes=35 inserts=743765 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=614400 backtracks=925705 nodes=35 inserts=743765 bp_depth=38 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0

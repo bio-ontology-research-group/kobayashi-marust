@@ -1,5 +1,5 @@
 {
-  "status": "pilot_running",
+  "status": "matched_regressions_confirmed_ddb_candidate_rejected",
   "remote_root": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005",
   "measurement_job": "53294013",
   "audit_job": "53294117",
@@ -12,15 +12,27 @@
   "audit_dependency": "aftercorr:53294013",
   "remaining_array_indices": "3-31,33-41",
   "next_actions": [
-    "Poll measurement jobs 53294013/53294280, audit jobs 53294117/53294283, and phase profile job 53294179. Do not resubmit live or pending jobs.",
-    "Inspect phase profiles and independent comparisons on the three reproduced regressions.",
-    "If a job failed, inspect its receipts/logs and fix the actual cause before restarting.",
-    "Use matched results to implement and certify improvements; full v1.5.0 and v1.5.1 acceptance remains required."
+    "Poll jobs 53294117,53294280,53294283 and 53294731; inspect receipts before any restart.",
+    "Audit all completed 2901 DDB isolation variants against pinned Konclude/HermiT fingerprints.",
+    "If no_skip changes the wrong answer to timeout, investigate DDB mark-driven stack pruning; if cache flags change it, investigate cached dependency provenance.",
+    "Reduce the 2901 wrong-UNSAT case to a regression test before changing default search settings.",
+    "Continue full v1.5.0 classification speed/coverage and v1.5.1 every-case incremental improvement objectives with exact-source Lean release gates."
   ],
   "release_requirements_status": "not_achieved",
   "profile_job": "53294179",
   "remaining_measurement_job": "53294280",
   "remaining_audit_job": "53294283",
   "remaining_measurement_dependency": "afterok:53294117",
-  "remaining_audit_dependency": "aftercorr:53294280"
+  "remaining_audit_dependency": "aftercorr:53294280",
+  "visible_profile_job": "53294360",
+  "ddb_profile_job": "53294493",
+  "ddb_without_semantic_branching_job": "53294622",
+  "ddb_isolation_job": "53294731",
+  "findings": [
+    "v144 matches Konclude and HermiT on 1997, 5303, 2901; default v145 times out on all three.",
+    "Slowdown occurs in completion search, not frontend parsing. Subject 150 read-off grows from 0.031 s to 28.206 s on 1997.",
+    "KM_HT_DDB=1 recovers 1997 and 5303 with independent agreement, but wrongly marks 17 classes unsatisfiable on 2901. Do not enable it by default.",
+    "KM_HT_NO_SEMB=1 does not remove the DDB wrong-UNSAT result on 2901.",
+    "348 measured updates in nominals/certified_nominals/ht_bridge routes all rebuilt."
+  ]
 }

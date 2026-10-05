@@ -1,0 +1,79 @@
+KM_TIMING mirror-route: declined: non-positive residual axiom: ObjectAllValuesFrom(<http://purl.org/biotop/core/dev#hasComponent> <http://purl.org/biotop/core/dev#AminoAcidMonomer>)
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false
+KM_TIMING frontend done @ 0.01s route=production_all1
+cb_to_ht [emelim] eliminated 3 complementary pairs
+cb_to_ht [trigger-absorb] definers=145 moved=6 tautologies=0
+KM_TIMING spawn_ht: read+convert 681 clauses (ht_view=681) in 0.00s
+KM_DUMP_TIN clauses=681 dropped=0 fenced=0 nominals=0 inverse=false number=false queries=93 -> "/ibex/project/c2014/hohndor/km/v150-performance-20261005/tin-53294360-ore_ont_1997-v145.json"
+KM_TIMING race: HT worker spawned @ 0.01s after the CB stack started
+bridge [source-tbox] axioms=223 eq=0/4 ["EntireRNAMolecule", "FattyAcid", "Hydrocarbon", "NucleicAcid"] direct=295 role-links=0 absorbed-gci=21 top-gci=0 unsupported=0
+bridge [or-replacements] implications=0 common=20
+role-automata begin concepts=464 next-tag=473
+bridge [branch-triggers] role-markers=1
+BRIDGE-ENV: 0.02s (named=258, trigger_absorb=true, unsupported=0, independent_abox=false)
+BRIDGE-SOURCE-CLOSURE pairs=189 definition-containment=true
+BRIDGE-SAT-PHASE propagation-direction: 0.00s
+BRIDGE-SATURATION-SEEDS: base=117 extended=130 invalid-special=16 substitute=8 copy=80
+BRIDGE-SAT-PHASE seeds: 0.00s
+BRIDGE-SAT-PHASE loop: 0.00s (nodes=158)
+SAT-STATS: insufficient all=0 atmost=0 or=31 eqcand=0 value=0 nominal=0
+BRIDGE-SATURATION-UNKNOWN: no-node=165 insufficient=78 unprocessed=0 eq-candidate=0
+BRIDGE-SAT-PHASE extract: 0.00s
+BRIDGE-SATURATION: 0.02s, answered 0 unsat + 0 sat of 93 subjects (93 residue to probes, known-label-subjects=88, satcache=true)
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=1 end_phase=3 seed=0.000048 search=0.000439 cache=0.000081 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 1: visits=55 messages=14
+BRIDGE-PREPARE round 0 subject 1/93 deferred=0 permanent=0
+BRIDGE-PREPARE-TIMING subjects=1 elapsed=0.000905 renew=0.000139 completion=0.000588 analysis=0.000164
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=135 end_phase=3 seed=0.000021 search=0.000152 cache=0.000030 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 135: visits=45 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=136 end_phase=3 seed=0.000019 search=0.000153 cache=0.000029 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 136: visits=45 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=33 end_phase=3 seed=0.000023 search=0.001028 cache=0.000108 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 33: visits=251 messages=14
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=109 end_phase=3 seed=0.000028 search=0.003124 cache=0.000035 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 109: visits=107 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=185 end_phase=3 seed=0.000022 search=0.031711 cache=0.000055 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 185: visits=107 messages=9
+PROGRESS drives=4096 backtracks=8180 nodes=60 inserts=375591 bp_depth=30 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=16367 nodes=67 inserts=748173 bp_depth=34 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=12288 backtracks=24565 nodes=60 inserts=1120122 bp_depth=28 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=16384 backtracks=32752 nodes=56 inserts=1492155 bp_depth=33 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=20480 backtracks=40944 nodes=75 inserts=1866343 bp_depth=25 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=24576 backtracks=49138 nodes=63 inserts=2238751 bp_depth=25 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=28672 backtracks=57333 nodes=62 inserts=2618993 bp_depth=31 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=32768 backtracks=65526 nodes=54 inserts=2997961 bp_depth=23 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=150 end_phase=3 seed=0.000043 search=28.205643 cache=0.017333 labels=0.000013
+BRIDGE-KPSET-MESSAGES subject 150: visits=601 messages=22
+PROGRESS drives=4096 backtracks=8181 nodes=59 inserts=572975 bp_depth=37 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=8192 backtracks=16376 nodes=36 inserts=1148300 bp_depth=20 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=12288 backtracks=24564 nodes=64 inserts=1631159 bp_depth=31 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=16384 backtracks=32755 nodes=62 inserts=2134838 bp_depth=21 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=20480 backtracks=40945 nodes=69 inserts=2606327 bp_depth=29 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=24576 backtracks=49141 nodes=54 inserts=3069842 bp_depth=29 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=28672 backtracks=57329 nodes=72 inserts=3573777 bp_depth=21 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+PROGRESS drives=32768 backtracks=65522 nodes=60 inserts=4088108 bp_depth=28 ddb_jumps=0 ddb_pops=0 ddb_fallbacks=0 ddb_marks=0 ddb_line_fails=0
+PROGRESS-DDB already_marked=0 refuted_discards=0
+BRIDGE-READOFF-TIMING subject=156 end_phase=1 seed=0.000079 search=30.016347 cache=0.000000 labels=0.000000
+BRIDGE-DEFER subject 156: READ-OFF stop after 30.4s (signal=Stop { task_completed: false }, nodes=43, sat-blocks=156424, sat-expanded=3521039)

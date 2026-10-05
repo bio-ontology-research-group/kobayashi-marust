@@ -59,3 +59,30 @@ The remaining 38 pairs are queued as job 53294280, dependent on successful
 completion of the pilot audit. Audit jobs 53294117 and 53294283 run after
 their corresponding measurement tasks. See `CURRENT-STATE.json` before
 resuming, to avoid duplicate submissions.
+
+## Completion-search diagnosis
+
+Visible worker traces (job 53294360) show that frontend processing is still
+about 0.02–0.05 seconds. On 1997, read-off for subject 150 grows from 0.031
+seconds to 28.206 seconds; the next subject consumes its 30-second budget.
+The v1.4.4 answers for all three diagnostic ontologies agree with both
+Konclude and HermiT using the pinned source signatures and canonicalization.
+
+The existing `KM_HT_DDB=1` option (job 53294493) finishes 1997 and 5303 in
+1.13 and 1.27 seconds with independent agreement. Its 0.66-second answer on
+2901 is wrong: it marks 17 satisfiable classes unsatisfiable. These are
+instrumented diagnostic times, not release benchmark figures. Removing atomic
+semantic branching (`KM_HT_NO_SEMB=1`, job 53294622) preserves that failure.
+Do not promote DDB to a production default on this evidence. Job 53294731
+separates mark-driven stack skipping from saturation-cache reading/absorption.
+
+`phase-profiles/` retains raw outputs, timing receipts, worker traces, pinned
+reference audits, and independent comparisons. The explicit edge difference
+for 2901 excludes the vacuous edges implied by its erroneous UNSAT verdicts;
+the UNSAT arrays in that artifact are essential to interpreting the error.
+
+For incremental work, `incremental-route-diagnosis.json` groups existing
+v1.4.5 reuse receipts by route. All 348 recorded post-initialization attempts
+through nominals, certified_nominals, and ht_bridge rebuild. This is a concrete
+adapter/reuse coverage gap to address for v1.5.1, in addition to frontend and
+update overhead. The file does not replace the full failure denominator.

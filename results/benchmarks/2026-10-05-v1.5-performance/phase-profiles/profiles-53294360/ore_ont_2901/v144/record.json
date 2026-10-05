@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "baseline": "km",
+  "source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2901.owl",
+  "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+  "runtime_source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2901.owl",
+  "artifact": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+  "artifact_sha256": "941ca25bb4d58c29d78b57eb44598891da6b06b461b9f5ef99f6ff8a8b987a72",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+  "timeout_s": 60,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-26-r",
+  "slurm_job_id": "53294360",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+  "command": [
+    "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+    "classify",
+    "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2901.owl"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "km-json",
+  "cpu_affinity": [
+    13
+  ],
+  "exit_code": 0,
+  "wall_s": 9.229117225855589,
+  "peak_bytes": 75845632,
+  "sampled_peak_bytes": 75845632,
+  "files": {
+    "max-rss-kib.txt": {
+      "sha256": "9d6718a16515ec4a3cbbe5ff415445a44dfb253127ebcfbbfee3de86596aef7f",
+      "bytes": 6
+    },
+    "stderr": {
+      "sha256": "5c22a3e41f94ca389efc199b9eccb028a3ea9ecf20ab659db923d2e6011259b5",
+      "bytes": 114099
+    },
+    "taxonomy.raw": {
+      "sha256": "1c1838c32f38e440b253dd89cb180ef0abc0883f8102c801ea9fdfacca960051",
+      "bytes": 504651
+    }
+  }
+}

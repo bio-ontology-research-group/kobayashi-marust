@@ -1,0 +1,162 @@
+{
+  "scope": "Existing KM post-initialization telemetry; failure coverage remains in original report",
+  "source": "results/benchmarks/2026-10-04-v1.4.5-comparative/updates-report-v5-full-global-dependency-53234889.json",
+  "source_sha256": "559a03d9635cd257ec776e6200b9b0153f80693d9fd345f8082f3e7c447369f1",
+  "groups": {
+    "nominals": {
+      "receipts": 132,
+      "strategies": {
+        "exact_rebuild": 132
+      },
+      "sources": [
+        "ore_ont_10571",
+        "ore_ont_12112",
+        "ore_ont_16371",
+        "ore_ont_2318",
+        "ore_ont_3053",
+        "ore_ont_3205",
+        "ore_ont_5368",
+        "ore_ont_6446",
+        "ore_ont_8631",
+        "ore_ont_9666",
+        "ore_ont_9709"
+      ],
+      "retained_states": 0,
+      "invalidated_states": 423108
+    },
+    "certified_nominals": {
+      "receipts": 132,
+      "strategies": {
+        "exact_rebuild": 132
+      },
+      "sources": [
+        "ore_ont_1340",
+        "ore_ont_1461",
+        "ore_ont_16359",
+        "ore_ont_1902",
+        "ore_ont_2989",
+        "ore_ont_4428",
+        "ore_ont_7011",
+        "ore_ont_7464",
+        "ore_ont_8387",
+        "ore_ont_9635",
+        "ore_ont_9957"
+      ],
+      "retained_states": 0,
+      "invalidated_states": 234087
+    },
+    "certified_el_production": {
+      "receipts": 156,
+      "strategies": {
+        "exact_rebuild": 81,
+        "ht_delta": 39,
+        "el_delta": 24,
+        "cb_delta": 12
+      },
+      "sources": [
+        "ore_ont_10199",
+        "ore_ont_10355",
+        "ore_ont_10389",
+        "ore_ont_11392",
+        "ore_ont_13657",
+        "ore_ont_14746",
+        "ore_ont_2713",
+        "ore_ont_3414",
+        "ore_ont_4724",
+        "ore_ont_5164",
+        "ore_ont_5646",
+        "ore_ont_6800",
+        "ore_ont_8396"
+      ],
+      "retained_states": 549243,
+      "invalidated_states": 2210757
+    },
+    "production_all": {
+      "receipts": 48,
+      "strategies": {
+        "exact_rebuild": 24,
+        "el_delta": 24
+      },
+      "sources": [
+        "ore_ont_15399",
+        "ore_ont_15703",
+        "ore_ont_3842",
+        "ore_ont_9020"
+      ],
+      "retained_states": 11108514,
+      "invalidated_states": 11115498
+    },
+    "elc": {
+      "receipts": 245,
+      "strategies": {
+        "exact_rebuild": 138,
+        "ht_delta": 12,
+        "el_delta": 95
+      },
+      "sources": [
+        "ore_ont_10053",
+        "ore_ont_10689",
+        "ore_ont_11559",
+        "ore_ont_12087",
+        "ore_ont_1212",
+        "ore_ont_12414",
+        "ore_ont_14286",
+        "ore_ont_15397",
+        "ore_ont_2129",
+        "ore_ont_22",
+        "ore_ont_3463",
+        "ore_ont_4662",
+        "ore_ont_4782",
+        "ore_ont_4938",
+        "ore_ont_5295",
+        "ore_ont_5983",
+        "ore_ont_6358",
+        "ore_ont_6409",
+        "ore_ont_6453",
+        "ore_ont_6664",
+        "ore_ont_8982"
+      ],
+      "retained_states": 7197783,
+      "invalidated_states": 141284293
+    },
+    "ht_bridge": {
+      "receipts": 84,
+      "strategies": {
+        "exact_rebuild": 84
+      },
+      "sources": [
+        "ore_ont_10125",
+        "ore_ont_12351",
+        "ore_ont_13897",
+        "ore_ont_1469",
+        "ore_ont_15733",
+        "ore_ont_3575",
+        "ore_ont_9944"
+      ],
+      "retained_states": 0,
+      "invalidated_states": 3169911
+    },
+    "nominal_ni_tbox": {
+      "receipts": 12,
+      "strategies": {
+        "exact_rebuild": 12
+      },
+      "sources": [
+        "ore_ont_10702"
+      ],
+      "retained_states": 0,
+      "invalidated_states": 35925
+    },
+    "nominal_ni_abox": {
+      "receipts": 12,
+      "strategies": {
+        "exact_rebuild": 12
+      },
+      "sources": [
+        "ore_ont_16481"
+      ],
+      "retained_states": 0,
+      "invalidated_states": 8064
+    }
+  }
+}

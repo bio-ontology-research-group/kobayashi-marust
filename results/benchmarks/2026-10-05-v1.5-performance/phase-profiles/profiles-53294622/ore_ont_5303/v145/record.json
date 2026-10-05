@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "baseline": "km",
+  "source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5303.owl",
+  "source_sha256": "0282426b919cc1993b3994d00167232d7882e28938d9d49b48e2248848ef8f50",
+  "runtime_source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5303.owl",
+  "artifact": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/km-v145-global-dependency",
+  "artifact_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+  "timeout_s": 60,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-26-r",
+  "slurm_job_id": "53294673",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "0282426b919cc1993b3994d00167232d7882e28938d9d49b48e2248848ef8f50",
+  "command": [
+    "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/km-v145-global-dependency",
+    "classify",
+    "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5303.owl"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "km-json",
+  "cpu_affinity": [
+    13
+  ],
+  "exit_code": 0,
+  "wall_s": 1.0655986908823252,
+  "peak_bytes": 66748416,
+  "sampled_peak_bytes": 66748416,
+  "files": {
+    "stderr": {
+      "sha256": "d58cf5d62362e3338044551017a8d4c2458f3f8aba2a244ca89c689f60deefca",
+      "bytes": 106697
+    },
+    "max-rss-kib.txt": {
+      "sha256": "5fb32c61facf69722e429a4be6740bcc9c937e8dddad59d7531630c71a71ec1a",
+      "bytes": 6
+    },
+    "taxonomy.raw": {
+      "sha256": "e6b0ef5c1820fae0be428315d550563f1827f09ddbeec3238812fd796bd232ca",
+      "bytes": 22864
+    }
+  }
+}
