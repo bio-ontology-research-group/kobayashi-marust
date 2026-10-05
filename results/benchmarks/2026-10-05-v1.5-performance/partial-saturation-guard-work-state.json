@@ -2,22 +2,33 @@
   "source_manifest": "partial-saturation-guard-source-manifest.json",
   "certification": {
     "session_id": 7079,
-    "status": "running",
+    "status": "completed",
     "driver": "/tmp/agent/km-v150-diagnostics/certify-partial-saturation-guard.py",
-    "receipt": "partial-saturation-guard-certification-receipt.json"
+    "receipt": "partial-saturation-guard-certification-receipt.json",
+    "exit_code": 0
   },
   "standard_build": {
     "session_id": 9164,
-    "status": "running",
-    "log": "/tmp/agent/km-v150-diagnostics/partial-saturation-guard-standard-build.log"
+    "status": "completed",
+    "log": "/tmp/agent/km-v150-diagnostics/partial-saturation-guard-standard-build.log",
+    "exit_code": 0,
+    "binary_sha256": "05ef183194a95b306dbd879b66532aadf2bbded28623bc5d38717952c54efe95",
+    "immutable_binary": "/tmp/agent/km-v150-diagnostics/km-partial-guard-05ef183194a9"
   },
   "diagnostics": "partial-saturation-guard-diagnostics.json",
   "release_approved": false,
   "next_steps": [
-    "Poll the recorded live handles; do not restart on observation timeout.",
-    "Pin the standard binary only after build completion and source-manifest verification.",
-    "Repeat automatic-route diagnostics with the final runner and standard binary.",
-    "Investigate selective abortion of successor queue cycles without a global one-second cap.",
-    "Run the full frozen corpus and compare every release requirement before promotion."
-  ]
+    "Inspect Slurm job 53309442 and aggregate its fixed outcomes without changing its deployed artifacts.",
+    "Investigate selective abortion of unproductive successor queue cycles, preserving productive saturation.",
+    "Resolve remaining slow/refused admitted cases and reduce ordinary-query overhead.",
+    "Require all v1.5.0 comparative targets and then all v1.5.1 incremental targets before declaring the goal complete."
+  ],
+  "full_audit": {
+    "job_id": "53309442",
+    "status": "submitted",
+    "submission": "data-source-candidate-submission.json",
+    "artifact": "data-source-candidate-artifact.json",
+    "variant": "data-source",
+    "scope": "All 1920 frozen inputs, 240 seconds, 20 GiB, one CPU, default saturation budget."
+  }
 }

@@ -1,0 +1,16 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "data-source-partial-guard-05ef183194a9",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-partial-guard-05ef183194a9",
+      "sha256": "05ef183194a95b306dbd879b66532aadf2bbded28623bc5d38717952c54efe95"
+    }
+  ],
+  "source_manifest_sha256": "1684c1930a2907968e6ff5b8c852d05919ef2254fdd28493d0741d9766891a0e",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1"
+  }
+}

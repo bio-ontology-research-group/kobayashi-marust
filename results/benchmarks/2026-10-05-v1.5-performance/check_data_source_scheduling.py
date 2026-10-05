@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--sources', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--cap', type=int, help='Optional saturation cap; default keeps the production budget.')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent
     manifest = json.loads((root / 'full-candidate-inputs.json').read_text())['inputs']
@@ -37,19 +38,23 @@ def main():
         prefix = args.output / name
         raw, stderr = prefix.with_suffix('.json'), prefix.with_suffix('.stderr')
         flags = dict(KM_HT_DDB='1', KM_HT_NATIVE_FULL='1', KM_CACHE_CONFORMANCE='1',
-                     KM_HT_SATURATION_BUDGET_CAP_S='1', KM_TIMING='1')
+                     KM_TIMING='1', KM_THREADS='1', OMP_NUM_THREADS='1', RAYON_NUM_THREADS='1')
+        if args.cap is not None:
+            flags['KM_HT_SATURATION_BUDGET_CAP_S'] = str(args.cap)
         env = {key: value for key, value in os.environ.items() if not key.startswith('KM_')}
         env.update(flags)
+        cpu = min(os.sched_getaffinity(0))
         started = time.monotonic()
         with raw.open('w') as out, stderr.open('w') as err:
             process = subprocess.Popen([str(args.binary.resolve()), 'classify', str(source)],
-                                       env=env, stdout=out, stderr=err, start_new_session=True)
+                                       env=env, stdout=out, stderr=err, start_new_session=True,
+                                       preexec_fn=lambda: os.sched_setaffinity(0, {cpu}))
             try:
                 process.wait(timeout=15)
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
-        row = dict(ontology=name, source_sha256=entry['sha256'], flags=flags,
+        row = dict(ontology=name, source_sha256=entry['sha256'], flags=flags, cpu_affinity=[cpu],
                    returncode=process.returncode, wall_s=time.monotonic()-started,
                    raw_sha256=digest(raw), stderr_sha256=digest(stderr),
                    automatic_reduction_selected='automatic data source accepted: KM_GROUND_RULE_SOURCE'

@@ -1,0 +1,42 @@
+{
+  "observed_at": "2026-10-05T22:10:17.788819+00:00",
+  "summaries": {
+    "nominal-guard": {
+      "job_id": "53303803",
+      "complete_chunks": 43,
+      "recorded_inputs": 1498,
+      "full_measurement_complete": false,
+      "candidate": {
+        "verified_solved": 1263,
+        "mean_s": 7.6987060869329405,
+        "median_s": 0.3597798328846693
+      },
+      "audit_errors": [],
+      "lost_verified_vs_v145_on_observed_cases": []
+    },
+    "successor-deadline": {
+      "job_id": "53306225",
+      "complete_chunks": 20,
+      "recorded_inputs": 754,
+      "full_measurement_complete": false,
+      "candidate": {
+        "verified_solved": 634,
+        "mean_s": 6.632086231937333,
+        "median_s": 0.35016872361302376
+      },
+      "audit_errors": [],
+      "lost_verified_vs_v145_on_observed_cases": [
+        "ore_ont_10140",
+        "ore_ont_1028",
+        "ore_ont_13242",
+        "ore_ont_13276",
+        "ore_ont_1059",
+        "ore_ont_11037",
+        "ore_ont_11495",
+        "ore_ont_11629",
+        "ore_ont_12432"
+      ]
+    }
+  },
+  "scope": "Incomplete full-corpus runs; descriptive progress only, not release claims."
+}
