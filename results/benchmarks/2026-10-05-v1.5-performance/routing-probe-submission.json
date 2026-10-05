@@ -1,0 +1,10 @@
+{
+  "job_id": "53298748",
+  "submitted_utc": "2026-10-05T19:15:12.318572+00:00",
+  "scope": "32 evenly spaced successful-runtime ranks; three repetitions of candidate versus skip_inproc; alternate order; diagnostic only",
+  "limits": {
+    "timeout_s": 240,
+    "memory_mib": 20480,
+    "cpu": 1
+  }
+}

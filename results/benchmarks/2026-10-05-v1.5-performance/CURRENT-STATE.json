@@ -12,6 +12,7 @@
   "audit_dependency": "aftercorr:53294013",
   "remaining_array_indices": "3-31,33-41",
   "next_actions": [
+    "Poll routing diagnostic 53298748 and compare paired verified times across all 32 selected inputs before changing in-process CB scheduling.",
     "Poll full candidate job 53298536; collect all 1920 outcomes and compute coverage, arithmetic mean and median using unchanged verification rules.",
     "Finish exact-source CB gate in session 95224; preserve source until gate ends.",
     "Collect remaining three-repeat candidate and matched regression audits from 53296355, 53294280, 53294283.",
@@ -70,5 +71,7 @@
   "full_candidate_job": "53298536",
   "native_full_build_status": "completed",
   "native_full_certification_session": 95224,
-  "native_full_certification_status": "ht_routing_elc_passed_cb_running"
+  "native_full_certification_status": "ht_routing_elc_passed_cb_running",
+  "routing_probe_job": "53298748",
+  "routing_probe_status": "submitted"
 }
