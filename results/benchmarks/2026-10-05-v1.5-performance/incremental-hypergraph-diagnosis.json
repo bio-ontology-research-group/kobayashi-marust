@@ -1,0 +1,19 @@
+{
+  "diagnostic_only": true,
+  "all_concept_seeds": 15291,
+  "affected_concepts": 8,
+  "concepts": [
+    "FBbt_00007444",
+    "FBbt_00007445",
+    "FBbt_00067371",
+    "FBbt_00067372",
+    "Q_3789",
+    "Q_3791",
+    "Q_4257",
+    "Q_4258"
+  ],
+  "limitation": "Diagnostic only. Typed RBox included; broader typed side-state coverage and publication proof remain unestablished.",
+  "old_undirected_affected": 15225,
+  "fresh_update_taxonomy_changed_pairs": 0,
+  "next_action": "Establish module/model-extension invariant and typed-state guard, then compare proposed retained publication with fresh classification across update corpus before enabling."
+}

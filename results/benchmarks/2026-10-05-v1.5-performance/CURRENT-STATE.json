@@ -17,7 +17,8 @@
     "Poll full candidate job 53298536; collect all 1920 outcomes and compute coverage, arithmetic mean and median using unchanged verification rules.",
     "Collect remaining three-repeat candidate and matched regression audits from 53296355, 53294280, 53294283.",
     "Keep both optimizations opt-in until full correctness audit supports promotion.",
-    "Address median runtime and incremental invalidation; both release objectives remain unmet."
+    "Address median runtime and incremental invalidation; both release objectives remain unmet.",
+    "Investigate repeated check_source validation in classify and frontend; preserve exact validation while eliminating duplicate work to address median runtime."
   ],
   "release_requirements_status": "not_achieved",
   "profile_job": "53294179",
@@ -75,5 +76,6 @@
   "routing_probe_job": "53298748",
   "routing_probe_status": "submitted",
   "incremental_index_status": "implemented_10_ht_and_20_source_tests_pass_original_9944_same_answers_and_receipts",
-  "candidate_regression_ablation_job": "53299394"
+  "candidate_regression_ablation_job": "53299394",
+  "incremental_hypergraph_diagnostic": "8 affected concepts vs 15225 with conjunctive predicate activation including typed RBox; no production reuse authorized"
 }
