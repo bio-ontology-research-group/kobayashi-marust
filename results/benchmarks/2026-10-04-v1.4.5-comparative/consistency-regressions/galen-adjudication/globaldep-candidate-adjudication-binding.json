@@ -1,0 +1,16 @@
+{
+  "observed_at": "2026-10-05T04:23:30.793488+00:00",
+  "candidate_commit": "451495776fde9116ca55c09d6eee25ebd1a6ce2a",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "source_sha256": "6af9fc669cc53b055176b5996faaeb9cfa08ce1902104dad53fab1abb4556217",
+  "current_raw_taxonomy_sha256": "fe7fa5793d9ba7c09dd94a2bdacaf3bde09b8b2d6f31867ed50b9567127a9b2a",
+  "current_audit_sha256": "63691176350a0c95038d150c0cca82872aa98399eee2b3e169144fbc5912556e",
+  "prior_audit_sha256": "d8841dacab7819f175088f8d02e166269726bdbe52483723ae9b2e42bc8e060a",
+  "km_comparisons_identical_to_previous_candidate": true,
+  "evidence": {
+    "adjudication.json": "e2bc7f30f3e6baae07c8fed5ddc2f9e87cc2be0b4c0f25d8eb3920ae66fb2019",
+    "source-subset-evidence.tar.gz": "a2d133d80c80aeb1284914ac3dd1ea09a56152244c8c4ea6b479b4091c054009"
+  },
+  "scope": "Ten additional KM relations relative to Konclude are independently entailed by source subsets. This does not establish every possible ontology consequence. Raw disagreement retained.",
+  "timings_transferred": false
+}

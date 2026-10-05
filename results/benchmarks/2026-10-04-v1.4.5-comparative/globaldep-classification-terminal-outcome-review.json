@@ -1,0 +1,363 @@
+{
+  "observed_at": "2026-10-05T05:07:01.143838+00:00",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "coverage": {
+    "checks_passed:executed_unvalidated": 1594,
+    "invalid_input:process_error": 212,
+    "checks_passed:process_error": 44,
+    "checks_passed:timeout": 70
+  },
+  "admitted_process_errors": [
+    {
+      "ontology": "ore_ont_10080",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "8c1d8a7983eb7c855271f0c8abfa6c8b5a9c70af45e04dfe28130eb61475f0d9",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_10230",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "b2814ed4614944a0a6ff196f6ff19633f864d4c28e63133aba09bea7989beab7",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_10517",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "5869c6b5744209c307d2233aa31d347193c505f1791641e54071c12af9fe0761",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_11378",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "208405603a4875ddae8cc19b6abd9637a862aaf1e1a89243d01a1c355a4e825b",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_11647",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "f2d10815647343eef7ce313b0e58ed28f59b150d99214415983315b747208536",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_12191",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "08ae4107ba7dbc186a5c8fa02b40b1149ef0b316e01ce58dc47cfc5be9d4e9c3",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_12566",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "73cbb8b36cf32dbec2366f152ebfbe4a1032a7fd055e0e6c4a86962e12e9600e",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_1342",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "f9fd5bf80e6a84c2c5afdfde8acc07fd1dba12751b49ba6caf2634eff2770899",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_13545",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "0b360de3e4c231ba84b7e2c566b80fe54977449a6c14a5a544c4f549dfbf50b4",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_13700",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "9cf9d27bb36734fa8fe5ad987e011aad2f21d3b8d1085e9813ef8c4f636d6fe5",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_13799",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "191d2c44cb0e5519f0fe47c98c35bd5a2281fe42004d08a461e0a158cc6de0a2",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_14379",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "087149d327ebdaa089bf0c27eeefc8fad1a1ad25c5ec498f07a7aff3985e3a4e",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_14551",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "59e1384cd147c7550be5192f51d3fec836f76d53fd80fe19ebcece2d5f37841a",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_15680",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "a39e8aff2238a887392127dd6f4b0328f35b577891601320ad7631dffd132eef",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_15682",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "5ef338f23d5a3093e04438c669cef3898f2ae86a3f0e5c3a5130ebe206ade9da",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_16371",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "04f33319a886d8e2e69232b44aea2193dcdaad17082c9872471830723e452382",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_16372",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "bcda6944888084fab6987888791cf1d2d7baabace8b2c1317bc00679d2108a30",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_16666",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "10fdc6e98624f58f3d6b498b56a1cd5a6c049e8249c258182e06b9856be4fbd1",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_1833",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "4544e36efc195fafec8400f58ab530335a37b020ceac23cc516127d3612d8cf1",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_2548",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "cd8871e8d6aea842a717d8b44402faff27725c485fb48458d5a773b6fa0faf30",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_2792",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "fcca969266a44f782dd7d7093f8893cd1b2371f85a25a8f91ee8fbdd85bf1a35",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_3077",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "87ed5ef4f21d0cbdd6fb52b5e875278b9284ed17361fb6d31d4e3a155fa66b1a",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_3843",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "de3b389a037453f0a3a428d99f51af4448335e573b78d084c8f09fcaf661a5a0",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_3917",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "b97adf833e9923b74ae9e2b215b7e84293c787e5bab5ee4dfe57c25fbeb70c40",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_4567",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "f2c726d309a0fcbec9bf57ab74a7a9d547383522c6529519a505b99092799325",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_4609",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "ae10e1699c2a506cdf5023b7f697e8232ce6b371a8b28fe8f751861c6e0a8c17",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_4719",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "364e22a4112866f518ce48d2dae9485aea070d4893a9ceb084d2c48881f2d618",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_4903",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "9ebb91fb33f0beb06ef55555b4cc9fb6641408b3ef7a30decd503e459fc9f28a",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_5548",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: WARNING: kobayashi-marust message fixpoint hit the 25000000 cap; classification may be incomplete (truncated). 96156016 pending messages dropped.\n\n",
+      "record_sha256": "d529085ee3758e922f85821bce6f43b209bc1ae835dae1cebae02c48782cc1bf",
+      "stderr_sha256": "213c1262307cafc03ef9d6553c6e060d964821841f6b966f5dbfa15f62828fc2"
+    },
+    {
+      "ontology": "ore_ont_5764",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "f51505d2418e7f66aa43e30fe31e327469864a2f40f6b3ec06fd8d54a5d2042a",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_586",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "14ab022fa910f6be767b33d9610820b8ac7a90bfb9fd340447087d954b79db26",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_5964",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "668ff90109015a13d9396f93cede496f5c86443b940eb57541fd86e9b159ddef",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_6132",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "29350a0fac23fcfd79b8b6e3ccaa27bb6a9e25bba35729f8ae238fc2b6032b46",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_699",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "1d83242a2824fa319dc7708fbf02794d2836a465507eee970d2cc4eeb1994ca8",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_7342",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: WARNING: kobayashi-marust additional-nominal budget (4096) exhausted; further Nom conclusions dropped \u2014 classification may be incomplete.\n\n",
+      "record_sha256": "d59a90dcddfafa52e5751801bcf85c80937c9f6a624ac3c6f306619ce2defd50",
+      "stderr_sha256": "10e772217095c50a79682b8a86c9ffeddd8b623f86649909cecfdc763134ac4b"
+    },
+    {
+      "ontology": "ore_ont_7532",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "b9fdbb4c5f5a86fc0544982cd9e1765758f112c58f9dddf37a6e54399eaa45b7",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_7828",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "c848c8f8e8127cad1c891548122e7b7742b3619ef07099487d54be956bffb51f",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_8148",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "911ebe6e99ae8163993740c78c1eff0f5da9af96980c9769f100ce3f22fef6e4",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_8250",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "5054a2be0a29b1f46299ea95d24058dd13e733c1956838df7e9d8ee6833cd900",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_8429",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "a5a4b49bd752a31242e505bd314ea656b57e1aa7427918e7e6247e499291e884",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_9429",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "a61df2c2daf55e00f7a786964f8fc10a744078cefe562840f622cab28982a007",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_9662",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "62d0f23c2e8377e132fe4845142ed8dd7b07b5a410ecb4a5092946f3fb8a291e",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_9864",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "9222a8b16a173b06537f896ed936f21dafc3b7808967e650294a6487c99e28d5",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    },
+    {
+      "ontology": "ore_ont_9899",
+      "exit_code": 124,
+      "stderr": "worker engine exceeded its time limit: \n",
+      "record_sha256": "ff4d681dc77666592b57a1b02afb097e355213e5c139757c490411a0115f4674",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876"
+    }
+  ],
+  "status_changes_against_previous_candidate": [
+    {
+      "ontology": "ore_ont_16124",
+      "previous_status": "executed_unvalidated",
+      "current_status": "timeout",
+      "previous_wall_s": 196.7434370443225,
+      "current_wall_s": 240.0307876728475,
+      "source_sha256": "4a48986c3dda60f697fa2fa71ec4d1471942f0aa47e3326405883b0d6ce5f415",
+      "record_sha256": "776a9ee5424c50d2497eb418dbc502941c579517e259278f906e6da86bb3d588",
+      "previous_record_sha256": "4de0443cbbcf62d2f17e4449df3a1c8d6180679b76ee366e16818c373604d534"
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "previous_status": "executed_unvalidated",
+      "current_status": "timeout",
+      "previous_wall_s": 159.32173606939614,
+      "current_wall_s": 240.07363246195018,
+      "source_sha256": "952e7f30bfad73442e10d71171432aebeb345a85b504b8e5c9d1eb7f9c34a2a1",
+      "record_sha256": "83d5b116fb65d3bb6c6d755e21c7a255e2f92eca10dba510b6d8e33dee2b67e5",
+      "previous_record_sha256": "fb4e98713b847358a55cc8e1e28d4950161e70c7225f389dddc63f2a0ac74fea"
+    },
+    {
+      "ontology": "ore_ont_1673",
+      "previous_status": "executed_unvalidated",
+      "current_status": "timeout",
+      "previous_wall_s": 174.20618985965848,
+      "current_wall_s": 240.08185123465955,
+      "source_sha256": "eccfc971c62cf81ee80f00aed483bac97a01220ed4b358956df412f18ab1a17d",
+      "record_sha256": "f6f2bc7b2bd1f57b987e521dec37e6ba094e62bb80038d4e0458796862ff17ad",
+      "previous_record_sha256": "3ab2e011d2ded1fb7d08aacbcdbe8f2f637fae7ba55ff59b27326ab4d3893834"
+    },
+    {
+      "ontology": "ore_ont_16759",
+      "previous_status": "executed_unvalidated",
+      "current_status": "timeout",
+      "previous_wall_s": 183.4198478013277,
+      "current_wall_s": 240.05522383190691,
+      "source_sha256": "08811dde8c0777688b1479b0cd0706fa153076c89e97b767927f921a4e5874f9",
+      "record_sha256": "3d98cef960764005726b0b271ef24d0991b6dd13604f2b6f704ee42361702a69",
+      "previous_record_sha256": "0b3eb8971a7da286178fd752fb0373d63697c1db9bdeac59db89e2be08ab2b03"
+    }
+  ],
+  "scope": "Measurement outcome review, not semantic correctness approval. Original statuses and timings retained."
+}

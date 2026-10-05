@@ -1,0 +1,102 @@
+{
+  "observed_at": "2026-10-05T04:59:58.166156+00:00",
+  "ontology": "ore_ont_7877",
+  "current_audit": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/51/ore_ont_7877/audit.json",
+  "current_audit_sha256": "20247ce310a0593a8fd2b554611ebffd8b2a6bb1e87d65ddf48f207398f980cc",
+  "previous_audit_sha256": "9ec100e2172ceab62f44bb751c7a8948ff7b6d770cad270cc3b1a8be1d628950",
+  "current_km_outcome": {
+    "measurement_status": "executed_unvalidated",
+    "measurement_receipt_sha256": "34c69fc932a933847e396d7fad66001614655f34ec035612a05960e8b64220bc",
+    "status": "canonicalized_requires_comparison",
+    "canonical_sha256": "e9d7fd623d2b1ec3205eda8328af5765cba24c48def1ac9c18ac58ec3a975693"
+  },
+  "comparisons_identical_including_source_and_output_hashes": true,
+  "comparisons": [
+    {
+      "source_sha256": "746dc5741b4ee217c5615d8f4f3839e5048bb77b77f9e5430d821cf6c45a45c1",
+      "left_raw_sha256": "fd5353a5ecd3a12a9624d9350604d6535d02abc68fcb23f7cdf013111f29a474",
+      "right_raw_sha256": "059d9ab04110805ffe2532b7cf534dcdf5a16982b672f94f442a516a484e0a3e",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "taxonomy_disagreement",
+      "agreement": false,
+      "scope": "consistency_and_taxonomy",
+      "left": "elk",
+      "right": "km"
+    },
+    {
+      "source_sha256": "746dc5741b4ee217c5615d8f4f3839e5048bb77b77f9e5430d821cf6c45a45c1",
+      "left_raw_sha256": "3c071b0a059ea8de403bc0614d18edf87803babc98659c355e8080467b9458af",
+      "right_raw_sha256": "059d9ab04110805ffe2532b7cf534dcdf5a16982b672f94f442a516a484e0a3e",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "hermit",
+      "right": "km"
+    },
+    {
+      "source_sha256": "746dc5741b4ee217c5615d8f4f3839e5048bb77b77f9e5430d821cf6c45a45c1",
+      "left_raw_sha256": "9f1091893f909900829f3bb4fc2af662e2db15d9345e6be4eef79d7a99d01eae",
+      "right_raw_sha256": "059d9ab04110805ffe2532b7cf534dcdf5a16982b672f94f442a516a484e0a3e",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "jfact",
+      "right": "km"
+    },
+    {
+      "source_sha256": "746dc5741b4ee217c5615d8f4f3839e5048bb77b77f9e5430d821cf6c45a45c1",
+      "left_raw_sha256": "059d9ab04110805ffe2532b7cf534dcdf5a16982b672f94f442a516a484e0a3e",
+      "right_raw_sha256": "3b939c3741b923dc844b0461ff08a13bc966d149ba05daa4e2c34ba91caccbc3",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "km",
+      "right": "konclude"
+    },
+    {
+      "source_sha256": "746dc5741b4ee217c5615d8f4f3839e5048bb77b77f9e5430d821cf6c45a45c1",
+      "left_raw_sha256": "059d9ab04110805ffe2532b7cf534dcdf5a16982b672f94f442a516a484e0a3e",
+      "right_raw_sha256": "c73cbca7f6441114896320d2a1a50cc5fba2fa472d6d73cad01cefb0b180036c",
+      "left_consistency": true,
+      "right_consistency": null,
+      "status": "conditional_taxonomy_agreement",
+      "agreement": null,
+      "taxonomy_agreement": true,
+      "scope": "taxonomy conditional on consistency",
+      "left": "km",
+      "right": "more"
+    },
+    {
+      "source_sha256": "746dc5741b4ee217c5615d8f4f3839e5048bb77b77f9e5430d821cf6c45a45c1",
+      "left_raw_sha256": "059d9ab04110805ffe2532b7cf534dcdf5a16982b672f94f442a516a484e0a3e",
+      "right_raw_sha256": "3d973136bd447d8a6b852a897293c2c61ddb3ef0154004c216c6b561a06ea8f0",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "km",
+      "right": "openllet"
+    },
+    {
+      "source_sha256": "746dc5741b4ee217c5615d8f4f3839e5048bb77b77f9e5430d821cf6c45a45c1",
+      "left_raw_sha256": "059d9ab04110805ffe2532b7cf534dcdf5a16982b672f94f442a516a484e0a3e",
+      "right_raw_sha256": "38c7053d97c0afbaea59100dfd99477b77039512f261655994d02f53271158d5",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "taxonomy_disagreement",
+      "agreement": false,
+      "scope": "consistency_and_taxonomy",
+      "left": "km",
+      "right": "whelk"
+    }
+  ],
+  "timings_transferred": false
+}

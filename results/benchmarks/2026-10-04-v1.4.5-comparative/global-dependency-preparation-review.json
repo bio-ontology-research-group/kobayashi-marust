@@ -1,0 +1,13 @@
+{
+  "status": "reviewed",
+  "slurm_job": "53234930",
+  "slurm_state": "COMPLETED",
+  "exit_code": "0:0",
+  "report_sha256": "7ef57afbe843057e0c6c9ecd5a0f3077bde89f0db71cbd484f9a534041228f14",
+  "run_set_matches": true,
+  "preparation_evidence_identical_to_previous_reviewed_report": true,
+  "sources": 80,
+  "classification_conversions": {
+    "converted": 1920
+  }
+}

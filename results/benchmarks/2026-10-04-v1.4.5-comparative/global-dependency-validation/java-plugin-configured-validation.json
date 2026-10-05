@@ -1,0 +1,8 @@
+{
+  "verify_exit_code": 0,
+  "binary_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "verify_log_sha256": "8b0851f760917ed7ffc261fc4e07631c23fa7a0e094a4142ca6d845a505dff92",
+  "installation_smoke_exit_code": 0,
+  "installation_smoke_log_sha256": "9dfd91502f5fb4b4d09735912b8c8a6b236e9111effdef6235c9e2c0f3a6df30",
+  "tests_passed": 31
+}

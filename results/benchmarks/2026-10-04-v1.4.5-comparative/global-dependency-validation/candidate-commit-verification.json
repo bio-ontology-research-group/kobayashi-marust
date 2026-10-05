@@ -1,0 +1,10 @@
+{
+  "observed_at": "2026-10-05T04:21:51.686604+00:00",
+  "commit": "451495776fde9116ca55c09d6eee25ebd1a6ce2a",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "certified_source_files": 868,
+  "committed_source_matches_manifest": true,
+  "status": "validated candidate committed locally; full benchmark release remains pending",
+  "release_tag_created": false,
+  "user_AGENTS_changes_preserved": true
+}

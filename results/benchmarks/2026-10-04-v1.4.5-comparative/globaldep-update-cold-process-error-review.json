@@ -1,0 +1,126 @@
+{
+  "observed_at": "2026-10-05T06:22:08.854511+00:00",
+  "status": "all 15 cold process errors are verified internal worker time limits on ore_ont_10517; raw statuses preserved",
+  "cases": [
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-0/cold/000/record.json",
+      "record_sha256": "b6638b0bb00a1cc44195d80229cdba9ae9238f81fcc62906b9e7514debd838a6",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-0/cold/001/record.json",
+      "record_sha256": "62d881aa11af0266b0a53209412acfac86819b56fc030f1fe892980f570237f8",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-0/cold/002/record.json",
+      "record_sha256": "19e687bbfb0b58fa278446701c2e3eb76b6c0311cee29f2b075704704be49729",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-0/cold/003/record.json",
+      "record_sha256": "c27a90c6b347b3ff163b09dd6e611ee19d4f8f53fc3e5d495b697d33851d5c3b",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-0/cold/004/record.json",
+      "record_sha256": "738a901a6a4766076564ab86e20222e79409ca040f6970ac5da33e3547fa537f",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-1/cold/000/record.json",
+      "record_sha256": "6fb7b0db09d10333a8bfb231e74dcd283a1376b8a4ba478f26516f3c4fe496a7",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-1/cold/001/record.json",
+      "record_sha256": "723562fad33eaba41fd1cd5a327fb1116aed401af2ea06ca05c18a03695e3346",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-1/cold/002/record.json",
+      "record_sha256": "6683c1379c705108a532c252968f92b519932c3e0ccce2ca375f2bc62853680c",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-1/cold/003/record.json",
+      "record_sha256": "183d594eab21a4e7315092f517f2d0080c8fc1bfc01fb79d9851c07e44b30983",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-1/cold/004/record.json",
+      "record_sha256": "0e058b45340b34798fa0ed1c36f289a58f401b3626bc59109f39f318533af959",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-2/cold/000/record.json",
+      "record_sha256": "052f70cd0db39cf53f8fa7266be9dae6f4b5f8d00ba760e56b9e1e9df35c7ffc",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-2/cold/001/record.json",
+      "record_sha256": "d767de9ea7d2087359d12e7fcc330d074f98739620250a7cc07d0e21bd23e604",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-2/cold/002/record.json",
+      "record_sha256": "7cdb9b29793c04ea36bb33b159f545ef05ebeb29e566e921de89500a897c871d",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-2/cold/003/record.json",
+      "record_sha256": "447eb974650dc67f1802e53f59ce6e5f168e3fd2686c632609647252f253a463",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    },
+    {
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-2/cold/004/record.json",
+      "record_sha256": "6ac38117c52d36696df8401dfe44bf9bdee4554019fdbdef31e959c0cd76b039",
+      "stderr_sha256": "0845ffd6e25265be76411f97ba57b0a6ec066401169f097b35ad7b99aa08b876",
+      "stderr": "worker engine exceeded its time limit: \n",
+      "exit_code": 124,
+      "raw_status": "process_error"
+    }
+  ]
+}

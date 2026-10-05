@@ -1,0 +1,1931 @@
+{
+  "selection": "20 lowest domain-separated source-hash ranks in each size band; all if fewer than 20",
+  "size_boundaries_bytes": [
+    102400,
+    1048576,
+    10485760
+  ],
+  "eligible_counts": {
+    "1": 513,
+    "2": 481,
+    "3": 325,
+    "0": 389
+  },
+  "selected": [
+    {
+      "ontology": "ore_ont_9709",
+      "sha256": "33e50ffa790ab6e575ad71c5e5dff542e15b873e1a4d36cfaa9a28f2d8bf2653",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9709.owl",
+      "bytes": 26237,
+      "size_band": 0,
+      "selection_rank": "005d9baed3cf7dd7f8a016f4f3bce8d19582f81e41af33781ceccd8cac5cf2d3"
+    },
+    {
+      "ontology": "ore_ont_9635",
+      "sha256": "38ac070da84cef1d2e069700a237f1129bdd9afac0ef8debb1ce60ad92a05677",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9635.owl",
+      "bytes": 31711,
+      "size_band": 0,
+      "selection_rank": "02f159e277541423d168abdfe9fd926593d4877dec3ee18031adea85d12937cb"
+    },
+    {
+      "ontology": "ore_ont_3053",
+      "sha256": "e9e0baaa2cfa0291a30c92f6bb485be29783f2d0173ad32915f1b12693ae3157",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3053.owl",
+      "bytes": 65774,
+      "size_band": 0,
+      "selection_rank": "037d36c3073e5dc4ba618bd910fa8002020caaaa21dd1d4d98a746469e974018"
+    },
+    {
+      "ontology": "ore_ont_9666",
+      "sha256": "95db7994bdeffe5f30dde489a89e260837c2b67efa9b2959cfb9d054220ca286",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9666.owl",
+      "bytes": 49937,
+      "size_band": 0,
+      "selection_rank": "03b0d87270ca6d784501903470783997b399c8e293fa99105a82f81faf3be67b"
+    },
+    {
+      "ontology": "ore_ont_3205",
+      "sha256": "923dfd7497de5fc25b62cc3fa360732c86b4b63c5a42641c994941ba138c4716",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3205.owl",
+      "bytes": 54042,
+      "size_band": 0,
+      "selection_rank": "03d5cbd7003395df332cccd235655885e94185cd6b8ec36684f3778b0af8885c"
+    },
+    {
+      "ontology": "ore_ont_11392",
+      "sha256": "81aaa6ac53e6559ee2cfee6a6140b1aec34fbd275efe2d6f174c0c8b95c2ddff",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_11392.owl",
+      "bytes": 84074,
+      "size_band": 0,
+      "selection_rank": "042e92e83c64c678e890ebead6485126feafad026694b03cbb07e78579ec9358"
+    },
+    {
+      "ontology": "ore_ont_10199",
+      "sha256": "26fd5f8c56eb8baa704011e391234f747d9c4d986beb650e018d20b359bdd2e1",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10199.owl",
+      "bytes": 65582,
+      "size_band": 0,
+      "selection_rank": "0558b88b35a8ec0c69338846a24abb3620c6d72ded02cfb801c9dcd91f289352"
+    },
+    {
+      "ontology": "ore_ont_3842",
+      "sha256": "7b00c22c4ffcb5e80017ddd756938ec1e2cb10ccc1db0057423311498b077459",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3842.owl",
+      "bytes": 25739,
+      "size_band": 0,
+      "selection_rank": "05ef7f5c3b8948122aa34f755986f691d7bd3650ee3adb1bf155e2b8ed54709a"
+    },
+    {
+      "ontology": "ore_ont_10355",
+      "sha256": "7718b2e56ba07304d3ce20233e26c9c87a2df3e142a603f0bb2a462b70b21b0e",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10355.owl",
+      "bytes": 73220,
+      "size_band": 0,
+      "selection_rank": "06779f82d7e56ca2e00d7e03cc6c94ffdfa1a6edf89ce377b7849a9073804cc3"
+    },
+    {
+      "ontology": "ore_ont_4724",
+      "sha256": "5744dd14c6f3cde077aee92cc592e12129b4179f434503e6bf0d45c3cd177959",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4724.owl",
+      "bytes": 40691,
+      "size_band": 0,
+      "selection_rank": "06cf32d0c99f337fde66b6eb647cce3cac199405bc152ba652844e673c2dd39f"
+    },
+    {
+      "ontology": "ore_ont_14746",
+      "sha256": "6cbe54777d14fe4da1ee56daf486d2bc39851f652c9fe3f4432f136d6d1bf0b7",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14746.owl",
+      "bytes": 16263,
+      "size_band": 0,
+      "selection_rank": "07ed02b4b505c81684bc04172f6bae55bdcb5798754b75f37b27f53bb7753b3c"
+    },
+    {
+      "ontology": "ore_ont_3463",
+      "sha256": "f1fe9592a8d48eca155b4f20a274ac17b8b1a099b46214c72e5a6fdb51a836ce",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3463.owl",
+      "bytes": 41645,
+      "size_band": 0,
+      "selection_rank": "08adc7b4c6599cf7b900633c7a15201af38dd199f6e90bb23cc34bc8e6de29dd"
+    },
+    {
+      "ontology": "ore_ont_7464",
+      "sha256": "bb0b018c067faffdc4c9e9c230116dcfe3644abef8f16a46fb645d4b0b00449c",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_7464.owl",
+      "bytes": 34648,
+      "size_band": 0,
+      "selection_rank": "08b8edf4996ca8ce8a71bd10fe1b4923100c128ffb0d247f2b56195526239806"
+    },
+    {
+      "ontology": "ore_ont_5646",
+      "sha256": "3001555c658879cab08b522f14a70962643cfa610805b096f060d7616fc4b457",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5646.owl",
+      "bytes": 27126,
+      "size_band": 0,
+      "selection_rank": "099049732c5c5b60eefc818535e8784f07e63b9b196363f07bf8143bfc6bd32d"
+    },
+    {
+      "ontology": "ore_ont_4428",
+      "sha256": "48234111be2e9a783b51efc83070a219e8b77cebb107f9f1594f128a244c8e90",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4428.owl",
+      "bytes": 50847,
+      "size_band": 0,
+      "selection_rank": "0a774dadb8ff738b047db49f401e8405bffc69056e254ad6a14f81292841015f"
+    },
+    {
+      "ontology": "ore_ont_2989",
+      "sha256": "fe3150cb1af5b52db61db9b77974a623ddf814140ca89d9474197b20b8906eb8",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2989.owl",
+      "bytes": 50808,
+      "size_band": 0,
+      "selection_rank": "0b327a59d4f5f8fe4f46c5b115afa3bf236c9520b5f70172349872a7b7de6413"
+    },
+    {
+      "ontology": "ore_ont_1902",
+      "sha256": "f74ecf902dc976a0d8829151dd475067c5f59d7327a03fb918a283440c16079d",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1902.owl",
+      "bytes": 50847,
+      "size_band": 0,
+      "selection_rank": "0bf1a87176731c4d121e290c38d9cc489c890e45922aa7667e8bc3d82f9afa79"
+    },
+    {
+      "ontology": "ore_ont_16359",
+      "sha256": "c66408039dd671380e42e1170995d7b0e5727d6c8988d5b5400910421d8ed437",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16359.owl",
+      "bytes": 50808,
+      "size_band": 0,
+      "selection_rank": "0c38ecb2a093ea70ac94550bd1b6e4dbc0449584616cbd12c2d5bc7e895fc060"
+    },
+    {
+      "ontology": "ore_ont_15399",
+      "sha256": "0a479a304a3b8603e300fda4a7148cfc9ec9ecfb1a7fab2b2c08c2a9a2b58884",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15399.owl",
+      "bytes": 22671,
+      "size_band": 0,
+      "selection_rank": "0d200de0294f2738a769261302f83fc972ace03c6d9b28f4d759a655bc31b9ae"
+    },
+    {
+      "ontology": "ore_ont_12112",
+      "sha256": "4954e80502b7659af9d24e81deb16fb00c43e969bb2f9a2042b959c51a225604",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12112.owl",
+      "bytes": 102221,
+      "size_band": 0,
+      "selection_rank": "0e955dd9fdb6081dc28640b4ac59cfafbf25c7298ecdffcc6d9ba47783d4ca9b"
+    },
+    {
+      "ontology": "ore_ont_13897",
+      "sha256": "ad711e25b110271db6bb29edb8e82e9a8899b15582fed83c9cbff85103b30b8d",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_13897.owl",
+      "bytes": 135853,
+      "size_band": 1,
+      "selection_rank": "001e65c6e9e78386d2ba757c17dce1196a19d34403c6a9ca706f85873544b5ef"
+    },
+    {
+      "ontology": "ore_ont_13657",
+      "sha256": "21a80c01b413a267bafc10a6ce005ae93783ffb9292cf8d8b323b43d622ff945",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_13657.owl",
+      "bytes": 154402,
+      "size_band": 1,
+      "selection_rank": "0085859f14bb56c51c4de07c523f0f5ce386c712a16a316c1688800d72b147fa"
+    },
+    {
+      "ontology": "ore_ont_8387",
+      "sha256": "eaf45364163c6820327bc61a8a69ef7fe01a20f1a8431e39f3f3da17a12ba99c",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8387.owl",
+      "bytes": 261935,
+      "size_band": 1,
+      "selection_rank": "018c3928609129012c5f1fdcaed6269dacf6d96734829711951afb54b5313c9d"
+    },
+    {
+      "ontology": "ore_ont_8631",
+      "sha256": "28cb23d2a7af79033f6ca271052f19b8c9e55f94e1b7baecbcb26e79eeda31ff",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8631.owl",
+      "bytes": 189816,
+      "size_band": 1,
+      "selection_rank": "01b0b9df3266719b725af2fa4fab07d41e2d90b0c3d665fc0c80697586611ffc"
+    },
+    {
+      "ontology": "ore_ont_5164",
+      "sha256": "94ed848eea182ebd7320e1f9848c5771a4b03671342cb7265cf6ccde2349720a",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5164.owl",
+      "bytes": 115562,
+      "size_band": 1,
+      "selection_rank": "01d2404a5cc2a1668e8cd82d759cd931b363170ab75995a29a8f5610bfe80569"
+    },
+    {
+      "ontology": "ore_ont_8396",
+      "sha256": "ca5c48546f6b7dec77724084a7e3e07d1c94f8b9ded262818f1808247f09a8f3",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8396.owl",
+      "bytes": 223755,
+      "size_band": 1,
+      "selection_rank": "01e54a0e4b136a21dfd17c230f6c4c351fd73d51ed3abd0331d49095de1d037d"
+    },
+    {
+      "ontology": "ore_ont_6446",
+      "sha256": "5bec1016e6e08740f1c442e2fa06ba47ad532ddd549f851bfd4ff89742faf55d",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6446.owl",
+      "bytes": 363870,
+      "size_band": 1,
+      "selection_rank": "0329ef03dd9e6cbbe7362cdf22b9e1861a121b58fd7e5859b11181978c7b8f3c"
+    },
+    {
+      "ontology": "ore_ont_10702",
+      "sha256": "380b3bb8a2d7d3f626053bc69cf5f9096120115556da4df4d52c89ef2e4f490c",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10702.owl",
+      "bytes": 203217,
+      "size_band": 1,
+      "selection_rank": "04f49d18ea8854dd5ffc98b58896852bbbc1e8ebe168f5c5c7bbb2c1b756189f"
+    },
+    {
+      "ontology": "ore_ont_16481",
+      "sha256": "71bd21e769e3b2e8c78db17e226e175c1bbd10aad01f1b5f2329edd15e8d790e",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16481.owl",
+      "bytes": 127666,
+      "size_band": 1,
+      "selection_rank": "0556e5031a09037d69f605d356bf5c9c5995278c9cbaa2069a651fda7c326354"
+    },
+    {
+      "ontology": "ore_ont_9957",
+      "sha256": "8209bad0f3a25c2d14e136523d97df737e6312c62450fb00aa60e56358c1139f",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9957.owl",
+      "bytes": 276517,
+      "size_band": 1,
+      "selection_rank": "06e618e2202a8905bb9c5076ba29f78b2226750077f0607fb021857fecb68028"
+    },
+    {
+      "ontology": "ore_ont_10517",
+      "sha256": "1c346936e8246e0244e6a0c8fc65dc19a2db4f93a4ae2312740b8a01c1222892",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10517.owl",
+      "bytes": 255099,
+      "size_band": 1,
+      "selection_rank": "073f0f0e41f39d4c09391b9810bb603405adbc52cebaae4034bdce0ed8ace100"
+    },
+    {
+      "ontology": "ore_ont_5983",
+      "sha256": "84abfa472b500c3fa5c6308e586bc674f60748fd7ff02549a9d0638a295f5045",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5983.owl",
+      "bytes": 545275,
+      "size_band": 1,
+      "selection_rank": "0748af816acd0505894f40e35a867037e1774bc371a37c12d72b1501a0d7e98d"
+    },
+    {
+      "ontology": "ore_ont_1461",
+      "sha256": "f420d02a89c67a8587ec23d81fa28f4d392c83d372121a6480801b8a057aa159",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1461.owl",
+      "bytes": 154251,
+      "size_band": 1,
+      "selection_rank": "08322babdc0a0b1e0463cb93f14df425e05390c61a07e60459edffcf6bb4e2b9"
+    },
+    {
+      "ontology": "ore_ont_15397",
+      "sha256": "4555de2474f772b234d582e1e6948249a46b2e0616cc6a08c70254c6a9704a1a",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15397.owl",
+      "bytes": 213781,
+      "size_band": 1,
+      "selection_rank": "0a9c12e690d3ceb099f34aae19f4f8494396c031d575279d89799ced071b9635"
+    },
+    {
+      "ontology": "ore_ont_10571",
+      "sha256": "c4e5293b18af4265502795ef077a14e0387ec03b6b1da2d85583b844305dcf69",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10571.owl",
+      "bytes": 109117,
+      "size_band": 1,
+      "selection_rank": "0af699f7063881ea72b77dce96b286b5634702da644bbf05b6c53357becde812"
+    },
+    {
+      "ontology": "ore_ont_2713",
+      "sha256": "f838f4ff67ba90cb127620aa234f075ee2929d9f4b8cab97030ad2831f822e51",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2713.owl",
+      "bytes": 126969,
+      "size_band": 1,
+      "selection_rank": "0b24b621d43b1db5f66680f968c3505d366523a47d495a551e18e5504d457621"
+    },
+    {
+      "ontology": "ore_ont_6409",
+      "sha256": "bf59ca1c4e5a6e396c7bb57e65bd3b1225158128bd2326532f3d4c97033a229a",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6409.owl",
+      "bytes": 365420,
+      "size_band": 1,
+      "selection_rank": "0b3583c25d15d32c7c8aef928aa02fae4795072e0c45e95bae07196931e83524"
+    },
+    {
+      "ontology": "ore_ont_16371",
+      "sha256": "9a73b03a50fb7bf36c20ca490e47e004706a50caf9942d671c9cbd37697581ea",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16371.owl",
+      "bytes": 229621,
+      "size_band": 1,
+      "selection_rank": "0bc07afe60cedb3045270d3ce64d3d26f9f3904a8258fc8704d783a638361d6c"
+    },
+    {
+      "ontology": "ore_ont_10860",
+      "sha256": "480139a6018bc4eb0d35e47edf00a6d257dd87137c1d0f93a27021cf154f4a2d",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10860.owl",
+      "bytes": 365694,
+      "size_band": 1,
+      "selection_rank": "0bdd46d21c688898691ffedc01862bbcacf6147dd4ec0f99ad94d4bc78382c8d"
+    },
+    {
+      "ontology": "ore_ont_7011",
+      "sha256": "e9ac3d87ce6875e1ff4325bb3671c80750b2018ab7fbaea9da979ecfea5dd766",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_7011.owl",
+      "bytes": 103335,
+      "size_band": 1,
+      "selection_rank": "0c0bb13e45eb272c5dcf78a31b5f697e240a9a7037185bef1bef4fbed0b8f7db"
+    },
+    {
+      "ontology": "ore_ont_14286",
+      "sha256": "fcedb2964fd0812123155c19c10d6c948962840092513d75983247f2f6613def",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14286.owl",
+      "bytes": 1321579,
+      "size_band": 2,
+      "selection_rank": "0029ddd0e50d5d47342791718e4679dd98a3f8e97d0d594e84c812e6c4f34321"
+    },
+    {
+      "ontology": "ore_ont_4938",
+      "sha256": "ca82601b20df69ce0caabc981135a87a2f1fdeda824c3be9ccd82c6a2053a6d6",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4938.owl",
+      "bytes": 3602479,
+      "size_band": 2,
+      "selection_rank": "007e433ef095445b0165902034149f6e948f6f5917fff5ce74f3741bd53c4320"
+    },
+    {
+      "ontology": "ore_ont_4662",
+      "sha256": "47193532902e850b9c3d645d72e0fba1f6e2080998b954a5f4a2ca901f43c6a5",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4662.owl",
+      "bytes": 3169283,
+      "size_band": 2,
+      "selection_rank": "014299f180cbe62a17b85415a97390b4342b0e50d2c54682514f66b558cabf88"
+    },
+    {
+      "ontology": "ore_ont_6800",
+      "sha256": "25101ac2633a07501985a4c2075972e9e4588c92e0f557070c20e312d500b93b",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6800.owl",
+      "bytes": 3675829,
+      "size_band": 2,
+      "selection_rank": "024346b47fbe839b79c6d290ce8590b7d3994e04e03d492e18a32a447416042c"
+    },
+    {
+      "ontology": "ore_ont_15733",
+      "sha256": "4409cfd40708dd190553bfdbbfac561a44148ee8097af6d74f67d09270947f24",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15733.owl",
+      "bytes": 5049831,
+      "size_band": 2,
+      "selection_rank": "02b220c8638e0a91d28318f95402d0aa8420aa40291bbfc5346e280168864f63"
+    },
+    {
+      "ontology": "ore_ont_1469",
+      "sha256": "50d7071cfb5fafb83df6515fbabaf21d4af45aaf22a2c0b27682f34b69ebc223",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1469.owl",
+      "bytes": 1446397,
+      "size_band": 2,
+      "selection_rank": "0331fed69bce029de451d3fa6267cdf32154c910c6ca1d0af9747fdcc2d75a27"
+    },
+    {
+      "ontology": "ore_ont_9944",
+      "sha256": "90bdfaec048928e8bbcccdf26608cd95920350adf361f629900f2035740a5c9b",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9944.owl",
+      "bytes": 3172890,
+      "size_band": 2,
+      "selection_rank": "0430425ad9d26c2553965dcfbfa7875b3ecd73c05d7232529540ccf655040911"
+    },
+    {
+      "ontology": "ore_ont_2129",
+      "sha256": "a5ca1c644dd746ff8bc5d66f4bdae37329a7a1c4aea537d9d5f133e6f69222c2",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2129.owl",
+      "bytes": 1808646,
+      "size_band": 2,
+      "selection_rank": "048da10087c4f95d285e04b3b774a29a869a81d49a7e279b3259f128752295c2"
+    },
+    {
+      "ontology": "ore_ont_10389",
+      "sha256": "b1cb89ab206f885ce0ec8e5aaed9e4d1ff3a4082b5cf1d864516edd1c403784a",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10389.owl",
+      "bytes": 1637631,
+      "size_band": 2,
+      "selection_rank": "054d8e106fa0d0ad813eddf5c250c84d3d7b770bece47948a06a5a702240f526"
+    },
+    {
+      "ontology": "ore_ont_6453",
+      "sha256": "2122b18d9db580236747a34685e95221a9997d01118034137164f6e2efa02074",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6453.owl",
+      "bytes": 3015397,
+      "size_band": 2,
+      "selection_rank": "05aab92d2d2c4ceae053eafeda9a50e8fde5591c011c6614bf93ee080d9904d3"
+    },
+    {
+      "ontology": "ore_ont_22",
+      "sha256": "3a29b5f2ea60e19a0b4f797dc738e9be07cc9a160522441748219c5a743ec046",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_22.owl",
+      "bytes": 2170952,
+      "size_band": 2,
+      "selection_rank": "07a9320b497b8078537dca693dfcc285bc9830bc367b9b8fa10ec897df58d0d7"
+    },
+    {
+      "ontology": "ore_ont_9020",
+      "sha256": "43750bf810e094f31d54cf7dbd66621bbc50915fd5776066421507b1d6acb59a",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9020.owl",
+      "bytes": 1633313,
+      "size_band": 2,
+      "selection_rank": "07b481f41f547c1c6acf27961896de6659d461aeccca7952298a61491c873fd2"
+    },
+    {
+      "ontology": "ore_ont_15066",
+      "sha256": "135d75fdfde9ca67d15f9ddaaae2b7932914d424b2f22f658c9c92ab4b328d76",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15066.owl",
+      "bytes": 2358036,
+      "size_band": 2,
+      "selection_rank": "07d1b4955a0faad81b81b4c8e50931bc340ba7e16237b00bbcedc9d8c770c1ff"
+    },
+    {
+      "ontology": "ore_ont_6358",
+      "sha256": "070f8749c9dc5ef87dd680837f7f3b33bfa8de98ca24ce8a2ce85d66841c9169",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6358.owl",
+      "bytes": 2035664,
+      "size_band": 2,
+      "selection_rank": "08be67b89bfe981e015d472b9dfcf15a8a9bcb32b6a5d843a5a12423a116cd6f"
+    },
+    {
+      "ontology": "ore_ont_1340",
+      "sha256": "cbf7b394291f831342a68ee79a3aa077d3555976dbce03f088dcb0ae4f53ee8f",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1340.owl",
+      "bytes": 1322973,
+      "size_band": 2,
+      "selection_rank": "08dce2d984a97ecf57979799a520a93f2e3dcd85a087436f67d47a0e1df04d73"
+    },
+    {
+      "ontology": "ore_ont_1212",
+      "sha256": "275718fd772cb77724e02c4d794665eab71dd6e96aebd536ce38f7187c159a96",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1212.owl",
+      "bytes": 5433507,
+      "size_band": 2,
+      "selection_rank": "0952fbf11bc01d1b61dab0150e6c6c31a243973dfd798c3fafc1489c02d64b29"
+    },
+    {
+      "ontology": "ore_ont_2318",
+      "sha256": "8b134951c6ac91b6c5a23d147dd135fa9d3a6d1f1cba011ef54cf9cb5a9a7dba",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2318.owl",
+      "bytes": 1114845,
+      "size_band": 2,
+      "selection_rank": "0a44dafbba445075a8aacd42428f553cbbf73e806923b75c05b589148d6a1856"
+    },
+    {
+      "ontology": "ore_ont_10053",
+      "sha256": "c3fd4136fd41ee03e2eda4f6702853ebc36b927409649b56e2e067929a8f2b91",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10053.owl",
+      "bytes": 2261412,
+      "size_band": 2,
+      "selection_rank": "0a58851ecce42e0536bad8863fee84755563bacf542578c3510e22c34cdbcbfe"
+    },
+    {
+      "ontology": "ore_ont_1634",
+      "sha256": "26b5981707d08b32fed1d3197e2eb12647b745cd0d5063723c8d766df08f57e4",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1634.owl",
+      "bytes": 9955024,
+      "size_band": 2,
+      "selection_rank": "0b00153559b733938b8a2225ea64d092fbbb423256234e14d6e28a92d15ac2b2"
+    },
+    {
+      "ontology": "ore_ont_5368",
+      "sha256": "6a3ffe6c6740f85ded94c8b3af43cc54a81f82df5291dff19cf0106bac6f6228",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5368.owl",
+      "bytes": 4126729,
+      "size_band": 2,
+      "selection_rank": "0c05ac9d0ff319353007b5ed2f503a48a160f408b4cd53f1bfb683ccf319e633"
+    },
+    {
+      "ontology": "ore_ont_4617",
+      "sha256": "90f7e0e7ce0753aa4eb035dd4761b660130ab272df79cbfdacf453aa12130ddb",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4617.owl",
+      "bytes": 13776462,
+      "size_band": 3,
+      "selection_rank": "0024ca393e371232165f3d2b2970b27df57d7961422a335ec47f0b549422217b"
+    },
+    {
+      "ontology": "ore_ont_14308",
+      "sha256": "d5b344585b3c6679d9c5222bccb402117d4b73f6ccf70cd5f014de7e7dc836b5",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14308.owl",
+      "bytes": 50361313,
+      "size_band": 3,
+      "selection_rank": "00a46f8ae481cb19b7d59e131c345f45fd6586bee5d8a068b26d1f9645a773d7"
+    },
+    {
+      "ontology": "ore_ont_10689",
+      "sha256": "7f8292bea124fb29e961b40226d491453c453d95ff1bd7058a776f1d8b709e8d",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10689.owl",
+      "bytes": 178069556,
+      "size_band": 3,
+      "selection_rank": "00b56593003365ed03203071461e7d0dab9842538e5aa89f0bc8bb3350041483"
+    },
+    {
+      "ontology": "ore_ont_6664",
+      "sha256": "fd457abba81bcd4b45602263e391cd40f9da5782d3325b0bd5f988e080c5342f",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6664.owl",
+      "bytes": 12499390,
+      "size_band": 3,
+      "selection_rank": "015af3a24a022bca7bacf1dfea75cb0e86cf858b6bbaad19916bb0720e2f27d1"
+    },
+    {
+      "ontology": "ore_ont_10125",
+      "sha256": "1f7d138b0f054335a6b520cc1dd98975d2f15772868180189957514f4577f198",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10125.owl",
+      "bytes": 84249159,
+      "size_band": 3,
+      "selection_rank": "01da9b3b455cdbd90f8466d3197b89a88ea5c264274ee4c867b9ad2840036e97"
+    },
+    {
+      "ontology": "ore_ont_14312",
+      "sha256": "538dccbf6247ff24e2ee09c93579119bac8c436fe8e05317b22f715a811e319b",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14312.owl",
+      "bytes": 11065462,
+      "size_band": 3,
+      "selection_rank": "02297a5e61560eaf87fbecce1e0f73532ad9c370c373d5594a098b5b0652e7c1"
+    },
+    {
+      "ontology": "ore_ont_4782",
+      "sha256": "c673612d541539313a97c9b2ddbda91004c33db5dd3f97964a18438b00009863",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4782.owl",
+      "bytes": 17117161,
+      "size_band": 3,
+      "selection_rank": "02fba22213abd1868e48f976a5339ece42c8b103f6a0eb2b240cca34a7597e79"
+    },
+    {
+      "ontology": "ore_ont_11559",
+      "sha256": "535fc07f6de52eed979d57abb59fd9dc787e46f91b5e77c3fa3f6178088c6d51",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_11559.owl",
+      "bytes": 15387518,
+      "size_band": 3,
+      "selection_rank": "02ff52195ff48a67fb42a8fb4396bc154154780c5dcc1673abeb6425b0a95b4e"
+    },
+    {
+      "ontology": "ore_ont_8982",
+      "sha256": "e5b37a8a8ceae41f2e29613ae55bf9bab1ce27d95e1dffaee42a6804f8e15be8",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8982.owl",
+      "bytes": 34361678,
+      "size_band": 3,
+      "selection_rank": "03c2243065a10cff3835e0214484a8bcd9670178e96ec4d9303d5d7e74c6fbda"
+    },
+    {
+      "ontology": "ore_ont_16744",
+      "sha256": "14e1d911dddd8863c088733a4c27ed66a9323e6ea4e12af7b9c3ac3bf816a4fc",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16744.owl",
+      "bytes": 576729915,
+      "size_band": 3,
+      "selection_rank": "04376fd7c8169c5dfcce9b254f15939d0a7074c54afebc85f9212be3c584bda2"
+    },
+    {
+      "ontology": "ore_ont_15929",
+      "sha256": "7ac80d48ad1546e4ebd69d981ff0aa2d4882e36b60957892fe2751390d11e034",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15929.owl",
+      "bytes": 18104594,
+      "size_band": 3,
+      "selection_rank": "04dd250221ecf267160890973e24e5041ce50506b75c15ce7d2b1a188e271f08"
+    },
+    {
+      "ontology": "ore_ont_3414",
+      "sha256": "947e0776637ce17d7acdccc2d7d5a20d6a444786a3d90ac6527eaed5ebed75dd",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3414.owl",
+      "bytes": 11575687,
+      "size_band": 3,
+      "selection_rank": "05d564961b027eb856be83637211d13a1e42d54efae98c7d0bfbce3b2a834c65"
+    },
+    {
+      "ontology": "ore_ont_12087",
+      "sha256": "4b2f8df98ed08eae5f141f8284355bad6eb21d2eba848d02e53be90a753d5c6e",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12087.owl",
+      "bytes": 47033111,
+      "size_band": 3,
+      "selection_rank": "06728c74bc608345dd0aaeda5cb90df55119742852bb3b58d2091e14925e78df"
+    },
+    {
+      "ontology": "ore_ont_12351",
+      "sha256": "2b372e1dc93d1f72e7b6c9a706ae2daf3e54a5c046664eabdb19b3ac2db49143",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12351.owl",
+      "bytes": 108330646,
+      "size_band": 3,
+      "selection_rank": "067edac8488bc3b9c6756c2633fe4c2ed963f0b634d797470715ad66344cd7c7"
+    },
+    {
+      "ontology": "ore_ont_15703",
+      "sha256": "4b4cfcd05dde8dbf4aee52e361fe1a7b8b05f1693a0f0b588fe72f7f5afd3e03",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15703.owl",
+      "bytes": 274783723,
+      "size_band": 3,
+      "selection_rank": "07e2c35a995cbe80627bbb9199eb797a45814d19870a6049ce6b65f8ffb9c021"
+    },
+    {
+      "ontology": "ore_ont_1194",
+      "sha256": "72082c4ce0e5008589256eba0aa50957c04d294ff1e065b18cf014cc59b870e2",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1194.owl",
+      "bytes": 78422379,
+      "size_band": 3,
+      "selection_rank": "08ff32d7fbb57226cdff1d4b72022bd567e33007e446f929d8a9f25ec01a18e1"
+    },
+    {
+      "ontology": "ore_ont_9724",
+      "sha256": "00c80e07aa57578c168d15a1755b62fde41c53dd69a2f04cc5d88c888c8baf19",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9724.owl",
+      "bytes": 10532295,
+      "size_band": 3,
+      "selection_rank": "090da86cc229d4880e07c00f2b7bc510f9668e487ce0477ee9e70a3eac0f8ac8"
+    },
+    {
+      "ontology": "ore_ont_3575",
+      "sha256": "018a85160b201ee17650e3d58440d0b7e0cd5da31c724467e004716bb6f85b43",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3575.owl",
+      "bytes": 42734570,
+      "size_band": 3,
+      "selection_rank": "0a112bb90b28c533f624bf6fc5d1ec241394885633e4dc2579d7dd2a4f6b2837"
+    },
+    {
+      "ontology": "ore_ont_12414",
+      "sha256": "74222767cf34acb29b511bd46517adfb021be04c33239eea3567a59dde24cd36",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12414.owl",
+      "bytes": 20377067,
+      "size_band": 3,
+      "selection_rank": "0bbc4dc29b6b2c2c8d576766277222ace9a0387f1e40fe1570e3afadc4e96fe9"
+    },
+    {
+      "ontology": "ore_ont_5295",
+      "sha256": "4cbc85aacb029a3dff52781e7963c7bc8a99c42449494c4d3faf247fc36b66da",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_5295.owl",
+      "bytes": 41675336,
+      "size_band": 3,
+      "selection_rank": "0c01291e63e1795ed8304703a656ac8d06a82246502c379780edf4920a400df4"
+    }
+  ],
+  "excluded_invalid": [
+    {
+      "ontology": "ore_ont_10058",
+      "sha256": "3a834a2f2a47c2f1306a5607de605c793b687f07e0dc1c5c8b163c761b5a96df",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10127",
+      "sha256": "fc3b31f19ca7e8d872d937042c7e04cc92636ac26983f80b3daabef252df3cee",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2413 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_10173",
+      "sha256": "fb2ceaad068eb4ae5de4089a171c0db5dd5d90373cc89843a3cda24952dae184",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid131 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10197",
+      "sha256": "7e014d1cd7d50bdfc7dcf9d0f9c806ef7bb5c6e707060b8a322fdb742d47dd19",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input:     --> 3077:59\n     |\n3077 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n     |                                                           ^---\n     |\n     = expected SPARQL_BlankNodeLabel, SPARQL_PnameLn, or FullIRI"
+    },
+    {
+      "ontology": "ore_ont_10212",
+      "sha256": "42f93d15a2175565d6759bbee506291eb709595cbd590de3e5bc48d632dab0bf",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid528 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_10270",
+      "sha256": "1ad80f43a85c57905102f6e98f10977575796d7d4c6ea59f393488d3d1b8903d",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid148 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10409",
+      "sha256": "ae17d6ca03e19010ae65c3cab30811471761aa33f4db260b1ee3bb5ea4a414fa",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid141 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10423",
+      "sha256": "0f34a4fedb43a5a22ec97879a7fc6f2dc56874099290e8332f9e31b492efd3d5",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid137 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10588",
+      "sha256": "93f8aaedd4d4b79fe257422d529a4f80c557a033cf28bbd36eda544d163ba91a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10594",
+      "sha256": "0d2fc604447b56834140fe5a6d7549dbe11f179dddc8a3e1b1d6d0310e4306b9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid301 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_1062",
+      "sha256": "0cb3f531617083ec37ca17703023b8eaae30a5a771c35c68432b78f0cc08b34c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid301 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10672",
+      "sha256": "9c90f6c9ac5595c23f09ee8b7d7d3bfe8c381037b8dfbcbaa894bcb74fa29101",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid680 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10697",
+      "sha256": "aa8e15d4758d38ee1ced3e84127371e7b586a9745da99ab5b9f7d8e40ff195a3",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2720 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_10892",
+      "sha256": "9d4d850275a50d4dcbd8875aaa30d41ec921ff24dcb8b9a41780646d9c51428b",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid107 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10906",
+      "sha256": "7ed3841b1a7d6bd515ea104a9a0d07a0a59d15b9767a03793bf67625f5ab10f8",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 363: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_1091",
+      "sha256": "84aab2e6d461c4a4d76af4ef823ee2780c880cf1a5b54019e74029887a4a7b51",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid262 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_10985",
+      "sha256": "0431969399e719eddd39ae1a15f3aacc9a8378ab9c978e27a3ac5a3e32af57b3",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid141 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_11207",
+      "sha256": "c2e9b2669ab63d1d73dc907c7c8f078313ea8f12914eaa0bae4140435551a00c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid4745 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_11289",
+      "sha256": "f9da1d70870bdc4a8ef637f3736a3c6e6e54731e1587ca26b864d3fad27c464f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid164 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_11411",
+      "sha256": "440a1315f07e639b6753902e5c11fdd212ca426e9028173849a784e04288d95e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input:     --> 3077:59\n     |\n3077 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n     |                                                           ^---\n     |\n     = expected SPARQL_BlankNodeLabel, SPARQL_PnameLn, or FullIRI"
+    },
+    {
+      "ontology": "ore_ont_11564",
+      "sha256": "28c99af9e246c80f4c2b5fc04e1f957f232016f54b0f39e529b1da2d111fc815",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_11636",
+      "sha256": "b7273ead39288ff608e9de1aede807b1c7b37219a3c7722f040c37a31d02d07a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid95 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_11696",
+      "sha256": "aa5423172a85629198208d78573990c33b8ed24018ea72f1b899af56b9f9af65",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_1182",
+      "sha256": "ee9b4e91c731381e12e0b506a8d2ac6ccdbbd95a59c5f7a5409d5d1730d68778",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid5336 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_11948",
+      "sha256": "0070d0cb4eb5d92748742ad2fd17a8bf9a1361db487c9662ba4576ef17d7c569",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid164 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_11989",
+      "sha256": "9dce1c71a7a02fec29110a3220ff39c75821cbf1bcc34c35b8f1dec6ff19f2f7",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid150 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_12039",
+      "sha256": "8589b95377b0243634d13ca88944a479549b7a94183009724111dd30c5aa0fcd",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_12203",
+      "sha256": "04f8e7478f80944193e2326598c6d0237c67f685d33f0676ced501ac283a8fcf",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid3281 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_12418",
+      "sha256": "1809bdd6b271278ae17eba56a9a3d8f883ab3fbaf7c58a01e9286ddfd280b4dd",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid167 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_12468",
+      "sha256": "65bf6c72845272768f18dbb3cd314edad91fa15cbe352b6a33696164564f9d80",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_12474",
+      "sha256": "548cf0d3c43d7075f520b3c918251b1b3344eb0e45e5ccb711600cd9d2745c0a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid534 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_1270",
+      "sha256": "a928d1144a7e0b86b62f31ae5f75bc1dc60f827e8e8fd92b3f7557c83a302f6c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: data range <http://sw.opencyc.org/concept/Mx4r1zUywIobEdaAAACQJ5T1Bg> is outside the OWL 2 datatype map and has no datatype definition"
+    },
+    {
+      "ontology": "ore_ont_12884",
+      "sha256": "4b19494b1a742cb911d18f73addd8ec2ec539a8795985700f0c3d424d63e60ec",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid149 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_12901",
+      "sha256": "6b68cf4ade1e3e27961d609ab1e46b456b34617606b9edc2ebad665056895c2d",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1002 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_12955",
+      "sha256": "b87b009996ec748c90ceb94fedb33a483e58baeb21493f6e99d13a73bcafe59c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: literal \"2010-10-21T19:15:25Z\"^^<xsd:dateTime> has no lexical interpretation in the OWL 2 datatype map; custom datatype definitions specify data ranges, not new literal lexical mappings"
+    },
+    {
+      "ontology": "ore_ont_13129",
+      "sha256": "c1841078521c6f983eca6db04b39101b0a0b83a55e7a0c9eefcf4378d08b04dd",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 333: literal \"His father have had diabetes\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_13150",
+      "sha256": "75ed380428ea233a0c088075fe7f62fb28ec7f1d0b16af774087a1107b6bf5fa",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid151 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_13337",
+      "sha256": "9dd28d8316fa9df2d4dd1798b8d136eecc36e0eaa8c6e54b4f0eb9ba2da205ae",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_13647",
+      "sha256": "48f3e546118dc91b27005517fc5276b97613bf1f48d1f91548f23e8648fee304",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid5441 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_13674",
+      "sha256": "51423bbf4905e550a898a2bba58f64f2a5375df45eb0758563c604eb2a69d222",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid167 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_13679",
+      "sha256": "05f6a72df63c7be6425cbf4e957b9a285b0c076c699b3fa8a478c279171cba88",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid165 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_13776",
+      "sha256": "c1f744355f7f56fcb1a8d35eea4dfc329a6573cb4cfc78139b112534ed8c6175",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid169 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_13851",
+      "sha256": "d53ac25485c2f506a54299d85dbfc641b88e67d74f4c0865c49045b46c8c5371",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid210 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_13857",
+      "sha256": "d6d31d81f6d60f958aaa014f49cf15965401d208e1c517541074b71025dcdd5e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid139 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_13880",
+      "sha256": "604a343984299aff40b9a916e52a6b7dfad8f2fd2cd0fca09d8ce72caa56a357",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 379: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_13941",
+      "sha256": "b21abf6250efcca5277c539bfba8f6196df08668846dbbd775cb193d52139ff8",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid126 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14134",
+      "sha256": "016680bbe8375ec847a880278450fb6120b041c578a2d128912da2d9bd812967",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid187 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14154",
+      "sha256": "3b0c0a3b0718a1f7c44451ed6e3333d69919c556d51996040c312c71d5f188aa",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2973 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_14183",
+      "sha256": "b4a7fb67f759da2e0260e0972ab40e193f4608676d89e3ce1bf54ac69b0d8e77",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid294 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14221",
+      "sha256": "46ba916c689a2d2a65df2e1dd4293e5d9dc87b1d498953d5fde577c6c88c1606",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1744 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_14237",
+      "sha256": "4e49722c16814d27b47f77763d15188690c2a0f73a5564213e46f8e1463236b4",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid227 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14255",
+      "sha256": "1c393cf7592e64806cfe3063f9aad1ef440004b5645043bfbbbaeb97a7f8dbd0",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid142 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14294",
+      "sha256": "911e6a354e397a2e4f8831164f53f852e9fcc14ebabfcc6a9fb7d1ee0a6e35a4",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14331",
+      "sha256": "0ab73bbc57a52b265b6f228e5270e896a2a7773a084266ccff200154e36db5f8",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14367",
+      "sha256": "84f740455b4784e971c9e082c6284c8f80075f5a3c9678b5c04fecb09ffa7b20",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14375",
+      "sha256": "021b73ea8a49c9ecce3323c98ac3ce83353e797d5906338d3f2229ffda886660",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1396 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_14452",
+      "sha256": "e97589f7b684d4360f3aea69a41574e10c4d7f459c20c236bf7ddafecb97b405",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14556",
+      "sha256": "39b281dcf2b7473c8cdb41ddf40e103d995e0487222dc2f605299fb5c8988d1a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1002 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_14593",
+      "sha256": "6d2c50d13388e2fa53a315f5c0b7fd4a20f93d2efc95913df2b378a47d5930db",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14601",
+      "sha256": "2c0b7c14f648f188b18a6918cfd2bcb394fbd209880065b2fc032e07cb623f0c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2789 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_14766",
+      "sha256": "e01d61cde7c05c104acd43ce254d03cedee1a5269a9f2bca85bead16e196d16e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid103 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14767",
+      "sha256": "653eca912d83c8e41bb6743719858005a6635f739c110966162d1df96c8fae7c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid291 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_148",
+      "sha256": "976196736f79f9e5fd3f20a5523ce764ad34d6614b4833aea9592de9a27c2699",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid149 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14878",
+      "sha256": "7e50376676d82ed344f023aabc49a2080266ea2d2dc75c48722256d82a80fdbe",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid281 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14896",
+      "sha256": "923bb1961fc3065c4c2f219bfadcfee70387f3aa8d5e0794a7b0c5ed65809b59",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14906",
+      "sha256": "455b529efbea160da5a4ab0c6d124525f700ae47f8bfe73d2f78322a975580b6",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid114 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_14919",
+      "sha256": "1406279a23e4a28cd6355bacfa9a7b8ccd1cd9e99c5761fef172801a94332e11",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid151 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_1517",
+      "sha256": "ab7e71652842c0cb563968e0cd7ac3d3e51a9f59ed2c6177904b4b5274476fab",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid148 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_15184",
+      "sha256": "55cbb50fc7106cc28909a51ba6a54a20f606d97fdda6fdf393ba640a06be0f24",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid140 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_15237",
+      "sha256": "330fbf9a8d34a470c17726d3cec8ceba85d32c017707311bcf1f6dab7a47c87c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1118 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_153",
+      "sha256": "02883ddc0c37c40fdb9ff7e2b066bc373ed07411470a874e217460a171804c7c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_15352",
+      "sha256": "44be1cdfe0d69bddb3b2786785d97f6f0c91a6a8b89335f21deffa67dc38824a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid167 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_1539",
+      "sha256": "bb4da10accfe3bc7655aa07fe1663048bd5804c5bb6f1477bd3e625f8311e5f1",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid126 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_15450",
+      "sha256": "11c7fb78a9d5b69493d02cb3ba72bb58ea18ad535ea564271a966f1335744dc7",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_15516",
+      "sha256": "fe36410fa273546ee38e7a77ae2879f3f95aa1ac93cc021909c680f5fb036d62",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 354: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_15536",
+      "sha256": "69ce84100290df0a3e0ee006637ac75bd62dc7f8a87bbdefc1501964cdf7abef",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2382 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_15544",
+      "sha256": "f99d5f5a8f6956d308ffa2d51efff642aacb7bc65fec458f57e64565146f44ee",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_15621",
+      "sha256": "eb3eca40e0ea8b60c3772d1f7e07bc38a560154a0b7c02be80ba71a5aadef492",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2212 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_15692",
+      "sha256": "f9c405865247b80288f52b85692d374326089a9ef0a6b2206487ec878e6c3a41",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid205 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_15725",
+      "sha256": "90916e5a9ac1a4298955466d29ff95a7f152bf2258d605dcd144486a3062de1f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2040 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_15796",
+      "sha256": "1925648b1b283115a9a194915f61d1a14720eb37c5d7c15e49ff4f9c44b355e4",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid185 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_15991",
+      "sha256": "6a0b2c10f88f53682457373c3cad883c1c4da4ce5db0cbd32c6e87d932bc4f14",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1171 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_16017",
+      "sha256": "4e7643b51b545aa398dc29bc6f5d008640389e36092c03f797bfbc3cc20cd117",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid288 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_16120",
+      "sha256": "4bee61e6dbebdac2771ce8863283c6313baacd6e3b62fc7f1c7fa58b95aa09b6",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid145 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_16414",
+      "sha256": "019512ea7a2442a31630124efd69b767b21aaf324cc37faaa0a15c0da0e0d7e0",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid4369 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_16457",
+      "sha256": "2108a7dab84eb979d4034c8f2ca0f116039f6ca32c5a16e3aa02edafa40097cd",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2482 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_16542",
+      "sha256": "7548531930455d09189588cfa59597949f2a1cbaeb5ec92b9f7e160fc86f86a9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input:      --> 28602:59\n      |\n28602 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n      |                                                           ^---\n      |\n      = expected SPARQL_BlankNodeLabel, SPARQL_PnameLn, or FullIRI"
+    },
+    {
+      "ontology": "ore_ont_16565",
+      "sha256": "9b1390f2c94b581cb2f88be21c6a2f0490f78acf902661641d0d9f05c12485d4",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid148 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_16617",
+      "sha256": "4edcc1c9bda08be5f7933a99d80e0b3ebafac87c76022940b89bca2057a61249",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid210 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_16642",
+      "sha256": "ed318ddc694b7e1a51bc2c514095e022e5af457d370fac56202296553237adbd",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_16738",
+      "sha256": "9c14c5a08c0c34f3383c7b30d81714ec3ac1b68ca37359e610b5e22931ca20e8",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid115 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_16822",
+      "sha256": "1fd281f460adef2ce5c3a00e0b9dd03d26030365f46a5b5ca4a587d8573221cb",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid316 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_1790",
+      "sha256": "a2bf8b5bd1d09681a292bfd042acc8a0a0b04c39a7827da85c195600a9fe7527",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_1870",
+      "sha256": "2d29a1ff65a563409c1416a6dcd53369f0d958382f04a1a673bf3aea34c9c4ec",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid361 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_20",
+      "sha256": "c4582bf1dc1ab963b7a82277c8ec6aca3cb405e81e6b8c3852f9abf10408a74f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input:     --> 1299:160\n     |\n1299 | ObjectPropertyAssertion(<http://www.ontologydesignpatterns.org/ont/lod-analysis-properties.owl#hasDefinedUniverse> <http://purl.org/NET/c4dm/event.owl#factor> <http://www.ontologydesignpatterns.org/ont/lod-analysis-properties-data.owl#[event:Event,]>)\n     |                                                                                                                                                                ^---\n     |\n     = expected SPARQL_BlankNodeLabel, SPARQL_PnameLn, or FullIRI"
+    },
+    {
+      "ontology": "ore_ont_2213",
+      "sha256": "f6f6877de58efe3e47160d1a0278bff4a65238e2edc8d40e4ce619ab2fec2ef9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid146 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_2360",
+      "sha256": "035996336614bf6d268a0003becd11afe4ad500a710d56ba760c92f8f21690d2",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid151 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_237",
+      "sha256": "341f8ba1ec18a33cc451a0fe51203e9aa24a83db08ab4a0dd817a75de3cab037",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 364: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_2513",
+      "sha256": "e509c7f49e5138f94dbaacd8bc123f2462f7b35dc7d226b2a61109e5389e904e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid3879 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_2531",
+      "sha256": "0199600af986cd6396504425f0f3691a4646ae8fb7ec0462d599e806ceca4242",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_259",
+      "sha256": "f19574d8b60e7d59fbaf4a8e8cc22a5eeb01e789d44556a5d15b68fd247b5532",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid193 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_2622",
+      "sha256": "dd76672c61b1d5687a8e6c52d14180924ec8bb9bde0efcb4ce510cd0b8334f68",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2065 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_2664",
+      "sha256": "18c07baa8010ef341fffa4a7145a8a92edb91f9dc3f61fb819136e5ea986c4fa",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid130 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_2669",
+      "sha256": "e0c5414452959475ca00a63761af6869310d43e12d9d7a29f42f2ade2f0b395e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 373: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_2700",
+      "sha256": "f8a25d218fa3f677d878c9cc2787dd94303defa2fe2541808c9061b0c4f486fc",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid288 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_2783",
+      "sha256": "b7f3f79ee8750bc8d98ed3247a89d6b3f2f1d72cc7e45c4b03995e0372ac0153",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid154 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_2817",
+      "sha256": "5d8c013b885f35a65e5731211e9721fec80495f5ef76cc5270cdcae0cbda3672",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid159 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_290",
+      "sha256": "aa1bac9af7a2026af39c003d5d41a9566bb9ccba5518b9b3ff53667a8c7cce96",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_3050",
+      "sha256": "a1381c508b9ad37364c28de76e64f55cc2281d4321b25761b8db1e79a037a5c4",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid145 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_3114",
+      "sha256": "c21be8c071f0782a4ff72ceccbc0398ccf2d1600bea5f17d23ea22b995c3e4f9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid85 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_3133",
+      "sha256": "4f8a466aba4a50216cbaac23129312cea94d5cac08057be8c991686a9d79f309",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid3779 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_3164",
+      "sha256": "a71c1eb9b7399cb9000fc74bdf440cdef75364ce9d817cce2e1345c1e8cceba8",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2198 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_3214",
+      "sha256": "c975a0604b2df253c8dfdf457db1f68794c0093ccf83de183fd18c32d6865f7a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid288 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_3255",
+      "sha256": "615d86ca66711a978e1d401a65f75c7bb7b3c4f6997cddab3d94afb950678042",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1129 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_3329",
+      "sha256": "72e93c461a490ce08df5a7fca99123e74e6cdd0cc90ff024809b77bc120eda5e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_3357",
+      "sha256": "82f5a9a5c3a344123fee45b4178659681d145091b0cb6a0eeb094aeb95e0beec",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid845 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_336",
+      "sha256": "c923d69f67c688c406a7fe28b2cc06fd09eb9559f1d1f46672782eb2e1dfac0a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid288 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_3500",
+      "sha256": "bdcad256f81d953de3040c9a2bc65bd9388b62c2df67bc3c5e5d6efc6279a179",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid294 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_3584",
+      "sha256": "c0cfb7a622b03a3a9ba54fdf225d17e8eefde8c24ae21252ba99edebbd13c391",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid169 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_3658",
+      "sha256": "c8084740875f30011ff2fb62c325e0dcbaec0faa15ae02df6742f58affa50a60",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid4585 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_3795",
+      "sha256": "f91b648dd9e78bb37424a254f052071680562bf89824082dfb66dbbf2842d79e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid129 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4049",
+      "sha256": "adcdb8aa37ed499d3121f1d83b135b052e9c3b4c9e84f6f50c59dd6721e453a2",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: literal \"4.0E7\"^^<http://dbpedia.org/datatype/usDollar> has no lexical interpretation in the OWL 2 datatype map; custom datatype definitions specify data ranges, not new literal lexical mappings"
+    },
+    {
+      "ontology": "ore_ont_4092",
+      "sha256": "4a5b3127fcd6812d0fe5933bce14885a46ecb2094753a00ca46e7f0b14ccc304",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid101 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4162",
+      "sha256": "bf393fcd8cb279e192ee750473d8787e2af6cb63978ac2e80b774006208849d6",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid209 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4187",
+      "sha256": "49ab8adca440ee2752a56a854647ff50fd4f4919b9e12d3a7b2004dbb05fcdc8",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2460 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_4188",
+      "sha256": "64e6877a1c1fc2cdb8a58b4bd54a4887ac50de6e57b7cc4c1246208410f3f6ad",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid129 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4210",
+      "sha256": "9ce803920aa514c77b4e78db325c4cd9288ff2eda3a568a1b1522262bafd6f16",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid114 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4263",
+      "sha256": "a18e5b6dab0197d5e4a996e73d7f1fe7cc8144368d9849fbdbecdf52869cbf4b",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid169 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4423",
+      "sha256": "acbda8e9c6de5d1dd577621bf5ef221148172b49cf17589dc83605f7fdcc1e84",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid301 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4429",
+      "sha256": "a1ed4047b659a2e1312d02f9994744d63a49b00eec862158e8e9caf445b61db5",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4510",
+      "sha256": "9d6246688fe292693f91ced5d096d3c732ccfa1bcf5fb57bad1f25ae2aa8766a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1120 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_4515",
+      "sha256": "d2fee52ae04125f4aaa66827526a2d142cc26b47ab5ad29ddad7b7ec021860a3",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4581",
+      "sha256": "7d686dd120b24d587e4ed2e9624f5b5c5c42aeccb6ce04d7a038d85e96acc797",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid150 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4587",
+      "sha256": "8250b11ad734a4d1951cfde067205a72850625e07da72e1ea4e378ac142c77b9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid335 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4770",
+      "sha256": "f80ea20d434a19c1434b00670d790e53c0002678370b1fd58f9211bac277105e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid243 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4834",
+      "sha256": "40804b294628af2cc4d6c6b8aa0ecbb87b1378f750277b8264da12e5ccfb3210",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid259 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_4911",
+      "sha256": "ab79968fe69e5948db726a35e25bede5717a01893dcca2c55b6522b8d120571f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid3494 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_4958",
+      "sha256": "a8e6ebe2174d2f38e6051b9cba19a89c08a229073ba0bd9e13cf37f82a4cca5e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid103 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_5092",
+      "sha256": "84cc569c695f2d78be0caf46833c05757f1f2dcc2ae65546831136c5bbb70cfa",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid141 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_5103",
+      "sha256": "7ee96bc7befaf0b8007436c48d42677c4591963281301f663ac124e6f4397e5a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1118 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_5206",
+      "sha256": "c9a11f7e233a41ac69764c416368e86b0d3b638e32c9a286983ff150da9b509b",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 361: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_5298",
+      "sha256": "6efca419f5fb294769fbbe7859291a38154125abeb108a4a56527c337dd3234e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_5398",
+      "sha256": "af642511c6bae4ab2c1d50e2807a42cee1a141bea8824f7b8032c9155cd25ffb",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid311 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_5448",
+      "sha256": "cd1af8be04bd8d9f7c10ae998de9d30bc5d647f27d5f2fcc15748f75af48b454",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid151 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_5539",
+      "sha256": "ee115016d57e142b420612ab498befef2122da595ff0007b4f6ad199294226e9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 361: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_5543",
+      "sha256": "9c4991ebbe068bd88d6f3759c76409ba5e17e1ccfa31f7af56b5ea701c9097b3",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid167 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_5695",
+      "sha256": "e636a6d3826c0ee286ef43931c9b39ce35cbd5c9ea6622dad5ea264632a1b5c9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1295 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_5753",
+      "sha256": "44afd9c9bd3b2f9ea24e55115b637b434994bc55de13e0efc0cb75101b759b8e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input:    --> 330:169\n    |\n330 | ObjectPropertyAssertion(<http://www.ontologydesignpatterns.org/ont/lod-analysis-properties.owl#hasUniverseObservation> <http://data.linkedmdb.org/resource/movie/actor> <http://www.ontologydesignpatterns.org/ont/lod-analysis-properties-data.owl#LinkedMDB:[mdb_movie:film,foaf:Person]>)\n    |                                                                                                                                                                         ^---\n    |\n    = expected SPARQL_BlankNodeLabel, SPARQL_PnameLn, or FullIRI"
+    },
+    {
+      "ontology": "ore_ont_5943",
+      "sha256": "9d061aaa87c25a68dc89cc78376229a9246b18f7cb2b6d2fa38701be78ba39ed",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid324 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6060",
+      "sha256": "ea759863a6e37dac2f3207bb34089aba06b600b4b3390058c7d82710a36dacc3",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid276 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6266",
+      "sha256": "07387f6f0953ea3de5710e25e2e12c9a322cbb664838328d33094397840a8434",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid168 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6444",
+      "sha256": "af7b0effe044d06914e5dae3731fa0d83df82d4462d6074f90a05e618d9c1880",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1154 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_6469",
+      "sha256": "c1555054b65973fdec18745977cb62bf4c639519ae0b51c00fbb07e364ade4f9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid142 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6504",
+      "sha256": "660c94a2d2143e85d8e8a98c0d65fec5e7ff8b6d36dcc981c28348d97edd7538",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid210 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6535",
+      "sha256": "e07c387f7cbed4d2083f494d444fe2e45d945eb7800bb64c90c12aeb3301dc06",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid135 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6627",
+      "sha256": "73b29d17e3aa77a27b3a74c0dd819333230f0b7570ff07c78555e15915d68039",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: <http://www.geneontology.org/formats/oboInOwl#conflicts> is used as AnnotationProperty but has no matching declaration"
+    },
+    {
+      "ontology": "ore_ont_6635",
+      "sha256": "65b31f36a8122ca1eae6564ae5fa7633b249c1f2ba53970dbeaf457db63c857e",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: data range <http://www.w3.org/2001/XMLSchema.xsd#NCName> is outside the OWL 2 datatype map and has no datatype definition"
+    },
+    {
+      "ontology": "ore_ont_6729",
+      "sha256": "dfaec39a5ea2e74e081245ad4a895706650895488ef6dddbf6dc64b23308043d",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6765",
+      "sha256": "fa886bb466507ba72ad435422bc8c628d3767acf5cb943a605e140f34cf36697",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6815",
+      "sha256": "0f5db4e7d22d5f36bd04617d563855f5e2bc8d119c4d34001df22cfc52372258",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid137 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6847",
+      "sha256": "a911b19b5cb4d564710bcc570d0a04fc536d61eb30ce36354ea58a958527beae",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid103 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_6892",
+      "sha256": "08a50d41ae5660ef366a09be48bbe030bfeb7dccc58851bd4aa6634ea86f9355",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid151 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7014",
+      "sha256": "2f82ff8061ab38874ef440e16c4681e6f040ad2802a1fcbf57545bdd333063c0",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid319 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7025",
+      "sha256": "baeac37afed87621e58ed4bd8ed6e2da979b0b8114cb73f1abdb9aabf89093da",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid302 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7079",
+      "sha256": "ab8cd4e50426d6e35f70f6998089ec740722e27742924fbf2419ff96176c4e42",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid209 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7084",
+      "sha256": "e29e7cd92a76ab5114ef1cc1614bbcc8c8334d58c8f274c5fe54948e796c50cd",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid151 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7102",
+      "sha256": "671ea9ec187a77dafce2d113085619624ca06f603847b73a6afd04ad329fcb17",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid151 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7237",
+      "sha256": "006cfc456e6f8137f76d39c41eea396048b1baea982b8cc32252d70991830533",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid310 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7320",
+      "sha256": "88d7bba7a0f670d7261641d9c4b3494bc5b98762d53788354a78bddca1c59a4f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid235 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7399",
+      "sha256": "dc35ffaee2b7b3a4e8d0dc929d4f27e845f47716f77989c09fa1f63e5453f758",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7474",
+      "sha256": "8fea85781d39b12157215a8b38b2e4fb6876d8bc7db5f00ed489bb784150b297",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid150 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7537",
+      "sha256": "b7988c4eeec037984b2922aaf2025c24e27d4eec6f7ccbc941a843c6cc5a1807",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid323 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7569",
+      "sha256": "1da5a35a8f15cf60ea88d14153a25e37f7951c8f2f5c604280ac415febdc0db9",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid301 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7646",
+      "sha256": "d7ff028cc60300907a94ebb378c6813f0aaf4981a16d18fd9bfcbe353e74ef94",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: <http://purl.obolibrary.org/obo/IAO_0000116> is used as AnnotationProperty but has no matching declaration"
+    },
+    {
+      "ontology": "ore_ont_770",
+      "sha256": "396ec18126411e28a7ee72982bc7fcfca2a40f16a25d1621ecd9c4f0748efa1b",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid302 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7758",
+      "sha256": "f82305d292b8333ee8faa7d37fd43745591e609345461e92d10b55c7f82cdacc",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid144 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_7914",
+      "sha256": "bfd003b43e573acfbaf62d1456cdff714f26ace592287a0bc262910419113037",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: <http://www.geneontology.org/formats/oboInOwl#conflicts> is used as AnnotationProperty but has no matching declaration"
+    },
+    {
+      "ontology": "ore_ont_7944",
+      "sha256": "4eeea125a04eb4268a01c524d0deaf4c6809e6b204e9c99dc6d982995c20cfeb",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid311 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8171",
+      "sha256": "17c537dd9cc3da351cee84a08a57381f5f7c244d5b73a5edc427897cbfc044cd",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid194 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8280",
+      "sha256": "9a72cf6570f9d36e57b6ceb05a125eadc62ed51fb5c29eb0789d1627766feeef",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input at line 356: literal \"NULL\"^^rdfs:Literal uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."
+    },
+    {
+      "ontology": "ore_ont_8286",
+      "sha256": "d8ab23276c25298c46a1662104378016fb49ea5598e37ac9a9d147f11fa662c0",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8322",
+      "sha256": "00bde32b7144881a5f3b2b98f53e086acfbcb2a5e6e8edd01194f55cdc733d5f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid149 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8326",
+      "sha256": "3c70da6fd3979f615c48ec74c538c5327c77aac9b2efda61c1ceb7e38258a4dc",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8359",
+      "sha256": "af2bf838545e604e069926f4c38de22b3eb99c93e6260e3321d937bfbb8ddc8f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid150 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8417",
+      "sha256": "6e6b070cf4e1d133c5fa8a6cf67b2d917f396f7239cb6c96adc05f43422fe772",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8431",
+      "sha256": "11c1c7acb3cf68d21a70619fd89e190c1f7d0aecc58b0c8aecc6ea22d6fd53b6",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid361 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8668",
+      "sha256": "5db5bd9382b0f2c449053e3286970c07db5b48263dc3ae8b468e2b7c3b0ad5a4",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid288 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8684",
+      "sha256": "0c42bc1547982f4a7cfb67620897254d0b9959fae9c1d3705d54925e58d81053",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid146 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8688",
+      "sha256": "0175d02274576305b494e1bdd5f9d704f753be341999809eef3ba611bec87be3",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid169 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8719",
+      "sha256": "634fa236b4399bfa6c6786056aab20a362afc803f343f9cbfdf37b946593313b",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid169 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_891",
+      "sha256": "5ede74c31f8a36befa08907497f0decbbda136e41b33f51befc939495f063d96",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid368 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_8999",
+      "sha256": "4440e4d46e0e00259b4568bf4c5242fee582b92196f69467c5ab92e274467ed4",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid90 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_9037",
+      "sha256": "9b2a7fa806f3cb557b2a69d65a35b8740c3c213365182774cc95c9d6b78db3ab",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid166 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_9088",
+      "sha256": "e43aa883da518785861d4a70020e45cb14d4025c6257642d31ff154a01b9c114",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid2 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_9186",
+      "sha256": "408c2779c69fc213312c5e73c45b13d53ad91a37ba18ed893bc8577cf78e65ab",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid169 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_9249",
+      "sha256": "755db83651e219abe6bce438c40be4dd2cb75acbc1852fbc1fff0f2ea01caa34",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid323 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_9382",
+      "sha256": "01d53e29ee3d5612c9a1f55c56eb824864e414ad65f3f87ed0f39fbcc9d7e079",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_950",
+      "sha256": "ef02f1e8f4280292648ed6cc03ab29490524d66ddcd39998c5acaef4d87e49f3",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid1000 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_9534",
+      "sha256": "d871fa4c2520a8b31cbc083dc8cb04a236a52b6297c454605b0ca912443cdc90",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid152 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_9558",
+      "sha256": "f43ad23f6fff0444b95714b48532d4810d72355be81333043304a553afc4900b",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid141 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_960",
+      "sha256": "cc2e7101c85531e0deed75990f7e848c8a19d6530033489f744ed0d960c3cb9a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid141 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_9600",
+      "sha256": "d56974687279c95f3a5f8eca1195af9a1e9265cec929dbd8d19c73f0fe26660d",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: malformed xsd:pattern: FORX0002: invalid regular expression: unrecognised escape \\~"
+    },
+    {
+      "ontology": "ore_ont_9654",
+      "sha256": "9b80e89d2d93b66d438ba597a125905f576fd0871502a000ac3676db87eb2513",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid6460 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_9663",
+      "sha256": "13497cacd9c6fc1035450e50255c8f2d605a7aa85829958aa4c5d9fedfc7c86b",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: <http://www.geneontology.org/formats/oboInOwl#source> is used as AnnotationProperty but has no matching declaration"
+    },
+    {
+      "ontology": "ore_ont_9668",
+      "sha256": "150e9c380d34ff0158c5dccd6ce7941445d5d6e079a16cf3ffd18627b62026f3",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid158 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_9694",
+      "sha256": "98af18bed03ebf001dd8d5c6b4d42e64870cc757d6b98b3083be9b031c622a0a",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input:      --> 13559:59\n      |\n13559 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n      |                                                           ^---\n      |\n      = expected SPARQL_BlankNodeLabel, SPARQL_PnameLn, or FullIRI"
+    },
+    {
+      "ontology": "ore_ont_9758",
+      "sha256": "738154ffdd281d965492b797e9cec30379b76d866a5cf95411f1ec28d67cf86f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid137 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_980",
+      "sha256": "21ce233de5c487a6ceeecd64f13d58b8b9c5b47456d778fdf0fc870e8618076f",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid244 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_9881",
+      "sha256": "ddb85667fb8e3990f2e5dddbfe421a3a669b716fcdb80ba0c596a5d5ae980137",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input:     --> 3015:59\n     |\n3015 | ClassAssertion(<http://grapson.com/expression#Expression> <http://puls.cs.helsinki.fi/med/expression1#en-Baden-W\ufffdrttemberg-N>)\n     |                                                           ^---\n     |\n     = expected SPARQL_BlankNodeLabel, SPARQL_PnameLn, or FullIRI"
+    },
+    {
+      "ontology": "ore_ont_990",
+      "sha256": "654790de855a906889aab0a690396fb1f5593b9183d952b37ed295faefa0976c",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid288 is forbidden in ObjectHasValue"
+    },
+    {
+      "ontology": "ore_ont_9958",
+      "sha256": "2cda3dfb137a3d4d776b35e2eec832bbe9e06a4422d4e24ee4bf22691d941705",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous-individual tree containing _:genid5532 has no node with at most one object-property assertion to a named individual (formal restriction in OWL 2 section 11.2)"
+    },
+    {
+      "ontology": "ore_ont_9972",
+      "sha256": "b04b501018707d2d478ee1c3da9b1174339b513ac6379502a4c13359469b6343",
+      "reason": "invalid_input",
+      "diagnostic": "invalid OWL 2 DL input: anonymous individual _:genid160 is forbidden in ObjectHasValue"
+    }
+  ],
+  "classification_scope": "All 1920 original inputs, including invalid inputs, remain in classification"
+}

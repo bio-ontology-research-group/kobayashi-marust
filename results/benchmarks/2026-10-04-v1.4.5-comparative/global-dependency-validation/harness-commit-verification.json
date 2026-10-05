@@ -1,0 +1,12 @@
+{
+  "observed_at": "2026-10-05T04:25:36.876363+00:00",
+  "commit": "323d427694a62105b6bbb8d75be0c0f6d4054561",
+  "verified_committed_manifests": {
+    "global-dependency-validation/certification-source-manifest.json": 868,
+    "harness-validation-v3-manifest.json": 172
+  },
+  "all_match": true,
+  "code_whitespace_check": "passed",
+  "raw_fixture_whitespace": "preserved original bytes; whole-tree whitespace warnings confined to raw evidence",
+  "release_tag_created": false
+}

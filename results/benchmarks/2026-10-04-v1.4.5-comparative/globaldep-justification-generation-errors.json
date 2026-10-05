@@ -1,0 +1,138 @@
+{
+  "observed_at": "2026-10-05T03:48:31.210939+00:00",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "generation_errors": 18,
+  "counts_by_ontology": {
+    "ore_ont_7011": 9,
+    "ore_ont_8387": 9
+  },
+  "interpretation": "All generation_error outcomes report an internal classification worker time limit. Raw generation_error categories are preserved and excluded from validated paired performance.",
+  "cases": [
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-0/000",
+      "measurement_receipt_sha256": "943550e7ec3b4ed4c64fbe20bb5e063eda3e555ce980b38f358b328bf9e8083e",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-0/001",
+      "measurement_receipt_sha256": "b6e9d726d4af1961553af81025598a42bd338cc8ffc7aad9952ffa5d451e0964",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-0/002",
+      "measurement_receipt_sha256": "27bdc1e3e8ed7f064f2424b5bae7ba28c140ca3a33102a478c03243b5c7e2f1c",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-1/000",
+      "measurement_receipt_sha256": "cd38c1e7cbad234b33870fd529e0e843484a4a627c237bbe3cf62997e087cd4b",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-1/001",
+      "measurement_receipt_sha256": "b8ca15330a208135f866030ca63b7534332ff75561c6aaebd9b4771ce125af8b",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-1/002",
+      "measurement_receipt_sha256": "77fd63f43fa63822c26a4ff5ae42c13c57d4b82a66704f18753f11d38f506401",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-2/000",
+      "measurement_receipt_sha256": "1db3ce0ab1d4cb60ec7ba9f731128a511fc2104630a942651d9e8358ff8057c6",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-2/001",
+      "measurement_receipt_sha256": "9f367d114e490cf0bd552b3ee3caa7cc6ec73a36b2b2b3b5269b73dbb146cfc1",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_7011/km/repetition-2/002",
+      "measurement_receipt_sha256": "500c3ea05e65afa8a3c763199da99107ff9ac287ce4b6fbd4062c4e6d453bc5d",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-0/000",
+      "measurement_receipt_sha256": "7b830297a6e5201a8335d9933d40e1033a7184f6a67f283696d51f28080776af",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-0/001",
+      "measurement_receipt_sha256": "020c1b9fe042ce0b8af34a3b8aab6249b4debf025665a159c3ab5663ecd140c8",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-0/002",
+      "measurement_receipt_sha256": "6529e1c2137e06a4c92b5549aff861955a3872b1d3184b7f76dd7919393e9fdc",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-1/000",
+      "measurement_receipt_sha256": "582ef8eb5e1460ca6df40159df7a28b8c3330633a873eed15ae30c2548546db9",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-1/001",
+      "measurement_receipt_sha256": "c4e8920fc711ae0dfeb4f555ec02d8b9d28f3b6d494c56c04500f2232d5731d6",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-1/002",
+      "measurement_receipt_sha256": "7bc1df0a3b2ae4595157a634564bd984dad304e0af3ca88c19007e70cf6e9a0f",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-2/000",
+      "measurement_receipt_sha256": "ee43ebc0f35c36ece30717281ce559527c29e960aac95b6c5949d0f01e883414",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-2/001",
+      "measurement_receipt_sha256": "024b46c9b5b099c4bebf331c5b8eb318c3a48b340ff509bf570c62eceec8ea71",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    },
+    {
+      "case": "java-justifications-53234831/ore_ont_8387/km/repetition-2/002",
+      "measurement_receipt_sha256": "066a64d0a347736897d16f4a11da6d683c59a9d2bd4360090a7637208cedcf8d",
+      "stderr_sha256": "37875ca75ca968739ccebc2f81e2e8cc0ff92ffd2c57813501a2e7a334014f3f",
+      "stderr": "explanation failed: classification oracle: worker engine exceeded its time limit: \n",
+      "generation_exit_code": 1
+    }
+  ]
+}

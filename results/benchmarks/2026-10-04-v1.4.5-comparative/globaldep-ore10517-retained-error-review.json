@@ -1,0 +1,41 @@
+{
+  "observed_at": "2026-10-05T05:46:04.339988+00:00",
+  "ontology": "ore_ont_10517",
+  "status": "retained initialization worker timeouts explained; raw statuses preserved",
+  "records": [
+    {
+      "repetition": 0,
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-0/retained/record.json",
+      "record_sha256": "2652098cb96e059ad2cddf4284c30dee6198c06bd61eb9452b7bc200958b6c94",
+      "response_sha256": "0b51ce8131b4b8611a50bb47f40ed597a49bad62fce9052775fec5ec7e3a3ddf",
+      "response": {
+        "error": "worker engine exceeded its time limit: ",
+        "op": "init",
+        "status": "error"
+      }
+    },
+    {
+      "repetition": 1,
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-1/retained/record.json",
+      "record_sha256": "9f2dc2974d167deb0751237331112c261add4bbea32cbe717fe9a9d0c4ad2c74",
+      "response_sha256": "0b51ce8131b4b8611a50bb47f40ed597a49bad62fce9052775fec5ec7e3a3ddf",
+      "response": {
+        "error": "worker engine exceeded its time limit: ",
+        "op": "init",
+        "status": "error"
+      }
+    },
+    {
+      "repetition": 2,
+      "record": "km-updates-53234830/ore_ont_10517/km/repetition-2/retained/record.json",
+      "record_sha256": "0222b23c7190d414eca97536ffb327a558c7e1edaadb91699ab73dae3f5abbfe",
+      "response_sha256": "0b51ce8131b4b8611a50bb47f40ed597a49bad62fce9052775fec5ec7e3a3ddf",
+      "response": {
+        "error": "worker engine exceeded its time limit: ",
+        "op": "init",
+        "status": "error"
+      }
+    }
+  ],
+  "scope": "Three failed retained initializations and twelve skipped updates are not successful revisions or incremental reuse."
+}

@@ -1,0 +1,78 @@
+{
+  "observed_at": "2026-10-05T05:47:17.003133+00:00",
+  "status": "classification report reviewed; other release panels and publication pending",
+  "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
+  "report": {
+    "path": "classification-report-v4-full-global-dependency-53234888.json",
+    "sha256": "640d6458f54986e94a281c1a885553cc300355ddd94550cf49ce4a35b03ec4d3"
+  },
+  "evidence": [
+    {
+      "path": "globaldep-classification-report-statistics-review.json",
+      "sha256": "59b6528068a9d7adcfc73f8208da76672bd36406f726e2158b2b68494637c62d"
+    },
+    {
+      "path": "globaldep-classification-measurement-completion.json",
+      "sha256": "d40f53cd47d9f3916f44296773593e39febc20d40981312fbc841707e98efbeb"
+    },
+    {
+      "path": "globaldep-classification-audit-completion.json",
+      "sha256": "1ee099aa9f8a4c585c9058471e9540fc037eb168ee362bf12c9937891bb66e2f"
+    },
+    {
+      "path": "globaldep-classification-terminal-outcome-review.json",
+      "sha256": "59da4985002044995561056f2390b9c0837703730e023f49efa7cee7d85e02bb"
+    },
+    {
+      "path": "globaldep-all-baseline-disagreement-review-final.json",
+      "sha256": "e3f474745bc94ca3ec0dec8b5edca26607c9506352b6036608e48a2383c6db03"
+    },
+    {
+      "path": "globaldep-classification-conditional-review.json",
+      "sha256": "acadb7b615ae8735e8b457a2c69e8dcc45c77a3f0e713c4943c3e59b8d97e040"
+    },
+    {
+      "path": "globaldep-classification-regression-review-round1.json",
+      "sha256": "aec61786f6546dccd6f311b679ac518640350b6d82d6553090238d10f8895995"
+    },
+    {
+      "path": "globaldep-ore7877-full-benchmark-review.json",
+      "sha256": "36865d5f0529257aed292e74501d9db5515074dd45ff5e4c91f68aeb0ce51749"
+    }
+  ],
+  "source_count": 1920,
+  "reasoners": 10,
+  "pairs": 45,
+  "baseline_only_pairs_exactly_preserved": 36,
+  "km_coverage": {
+    "checks_passed:executed_unvalidated": 1594,
+    "invalid_input:process_error": 212,
+    "checks_passed:process_error": 44,
+    "checks_passed:timeout": 70
+  },
+  "raw_km_disagreements": {
+    "elk": 219,
+    "rustdl": 6,
+    "whelk": 218,
+    "jfact": 114,
+    "openllet": 10,
+    "konclude": 2,
+    "sequoia": 1
+  },
+  "specific_adjudications": [
+    {
+      "path": "consistency-regressions/galen-adjudication/globaldep-candidate-adjudication-binding.json",
+      "sha256": "3fdd5d9c0d017ec417d27ba22e8bf696ab6ef02814d2449cbe6e6621addfbc0f"
+    },
+    {
+      "path": "consistency-regressions/ore4669-adjudication/globaldep-candidate-adjudication-binding.json",
+      "sha256": "0e1f6678eeadb87265c8867ed21d933ad3db6eee9b5e7b545a59460d2fdb5021"
+    }
+  ],
+  "limits": [
+    "Measured outputs are not blanket correctness claims; all disagreements, failures, invalid inputs and timeouts remain in the report.",
+    "Four previous completions are current external timeouts. Prior timings are not substituted.",
+    "MORe consistency is unknown; conditional comparisons are not full agreements and produce no fully agreeing paired cost statistics.",
+    "GALEN proof covers ten KM-only relations relative to Konclude; ore4669 proof reconstructs additional entailments relative to the shared positive taxonomy; ore3545 finite model proves consistency only."
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/state/tools/temurin-jdk-17.0.20.1+1/jdk-17.0.20.1+1/bin/java",
+    "-Xmx12g",
+    "-XX:ActiveProcessorCount=1",
+    "-cp",
+    "/workspace/v145-tools/km-consistency-diagnosis:/workspace/v145-tools/classifier-hermit.jar",
+    "CheckSubclass",
+    "/workspace/v145-tools/ore4669-review/source.owl",
+    "/workspace/v145-tools/ore4669-review/hermit-probe/explanation.tsv.ofn",
+    "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0006911",
+    "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0006909"
+  ],
+  "status": "ok",
+  "exit_code": 0,
+  "wall_s": 6.3352330540074036,
+  "peak_bytes": 718635008,
+  "stdout": "source_subset=true consistent=true entailed=true\n"
+}

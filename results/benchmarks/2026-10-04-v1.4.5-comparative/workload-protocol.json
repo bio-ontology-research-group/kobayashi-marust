@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "version": "v1.4.5",
+  "frozen_before_comparative_measurements": true,
+  "reasoners": [
+    "km",
+    "rustdl",
+    "konclude",
+    "hermit",
+    "jfact",
+    "openllet",
+    "elk",
+    "whelk",
+    "more",
+    "sequoia"
+  ],
+  "resource_protocol": {
+    "cpu_threads": 1,
+    "memory_mib": 20480,
+    "seconds_per_classification_or_update_or_justification": 240,
+    "raw_statuses_preserved": true
+  },
+  "classification": {
+    "inputs": 1920,
+    "source": "unchanged ORE2015 corpus used for v1.4.4",
+    "repetitions": 1,
+    "scope": "full corpus, including invalid-input and unsupported-profile outcomes"
+  },
+  "incremental": {
+    "selection": "20 domain-separated SHA-256 ranks per original byte-size band: <100KiB, <1MiB, <10MiB, >=10MiB, among 1708 validated inputs; maximum80",
+    "repetitions": 3,
+    "revisions": [
+      "original",
+      "remove first SHA-ranked logical axiom",
+      "restore original",
+      "remove min(32,ceil(logical_axioms/100)) SHA-ranked logical axioms",
+      "restore original"
+    ],
+    "declarations_and_annotations": "preserved in every revision",
+    "modes": [
+      "retained session where supported, recording actual reuse or rebuild",
+      "fresh rebuild for every revision and every reasoner"
+    ],
+    "correctness": "each revision against fresh same-reasoner output and independent reference; inconsistent ontologies compare consistency only, unsatisfiable sets checked separately"
+  },
+  "justification": {
+    "ontology_panel": "same deterministic panel as incremental",
+    "queries_per_ontology": 3,
+    "query_selection": "lowest domain-separated hash ranks of non-reflexive named subclass entailments from a pinned HermiT reference taxonomy, excluding builtin classes, unsatisfiable subclasses and explicitly asserted SubClassOf pairs; fewer if unavailable",
+    "reference_failure": "retain query-preparation failure as a visible outcome, never substitute an easier ontology",
+    "query_modules": "freeze source-bound STAR modules once per query for all reasoners; report preparation cost and source/module sizes",
+    "repetitions": 3,
+    "target": "one source-axiom subset-minimal justification per query",
+    "methods": "native API where available; explicitly labelled common black-box source-deletion adapter otherwise",
+    "validation": "different reasoner confirms source membership, entailment and failure of entailment after each single-axiom deletion; validation time separate from generation"
+  },
+  "reporting": [
+    "all cases and failures, including profile-limited and invalid-input rows",
+    "input and artifact hashes, commands, actual limits, raw outputs and receipts",
+    "paired common-success timing and memory summaries alongside coverage, never success-only rankings",
+    "update reuse strategies and cold-versus-retained costs",
+    "justification sizes, oracle calls when available, generation cost and independent correctness"
+  ],
+  "release_gate": "complete workloads, adjudicated correctness, reproducible records, exact-tagged-source Lean certification, published v1.4.5"
+}

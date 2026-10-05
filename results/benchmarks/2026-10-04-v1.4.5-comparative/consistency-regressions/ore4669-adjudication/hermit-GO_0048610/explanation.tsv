@@ -1,0 +1,24 @@
+M	method	owlapi-black-box
+M	module_preparation	star-extraction
+M	prepare_ns	10583255647
+M	explain_ns	33391520726
+M	module_logical_axioms	111132
+M	module_axioms	184128
+M	entailed	true
+M	explanation_axioms	15
+A	EquivalentClasses(<http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0019065> ObjectComplementOf(ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000051> <http://purl.obolibrary.org/obo/GO_0019065>)) )
+A	EquivalentClasses(<http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/GO_0048610> ObjectComplementOf(ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000051> <http://purl.obolibrary.org/obo/GO_0048610>)) )
+A	EquivalentClasses(<http://purl.obolibrary.org/obo/GO_0048610> ObjectIntersectionOf(<http://purl.obolibrary.org/obo/GO_0009987> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000050> <http://purl.obolibrary.org/obo/GO_0000003>)) )
+A	InverseObjectProperties(<http://purl.obolibrary.org/obo/BFO_0000050> <http://purl.obolibrary.org/obo/BFO_0000051>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0006897> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000051> <http://purl.obolibrary.org/obo/GO_0010324>))
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0006898> <http://purl.obolibrary.org/obo/GO_0006897>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0010324> <http://purl.obolibrary.org/obo/GO_0016044>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0016044> <http://purl.obolibrary.org/obo/GO_0009987>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0019065> <http://purl.obolibrary.org/obo/GO_0006898>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0019065> <http://purl.obolibrary.org/obo/GO_0075509>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0022414> ObjectSomeValuesFrom(<http://purl.obolibrary.org/obo/BFO_0000050> <http://purl.obolibrary.org/obo/GO_0000003>))
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0022415> <http://purl.obolibrary.org/obo/GO_0022414>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0046718> <http://purl.obolibrary.org/obo/GO_0022415>)
+A	SubClassOf(<http://purl.obolibrary.org/obo/GO_0075509> <http://purl.obolibrary.org/obo/GO_0046718>)
+A	TransitiveObjectProperty(<http://purl.obolibrary.org/obo/BFO_0000050>)
+Z	complete
