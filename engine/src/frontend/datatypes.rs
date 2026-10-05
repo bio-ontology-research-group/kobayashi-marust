@@ -790,6 +790,77 @@ struct NumRange {
     max: Option<(Rat, bool)>,
 }
 
+/// Closed interval of representable IEEE values, ordered by bit rank.
+/// Signed zeros have adjacent ranks but compare equal for bounding facets.
+/// NaN is separate and is excluded by every bounding facet (XSD 1.1 §3.3.4).
+#[derive(Clone, Debug)]
+struct FloatRange {
+    part: Partition,
+    lo: u64,
+    hi: u64,
+    nan: bool,
+}
+
+impl FloatRange {
+    fn sign(part: Partition) -> u64 {
+        if part == Partition::Float32 { 1 << 31 } else { 1 << 63 }
+    }
+    fn rank(bits: u64, part: Partition) -> u64 {
+        let sign = Self::sign(part);
+        if bits & sign != 0 { (!bits) & (sign | (sign - 1)) } else { bits | sign }
+    }
+    fn full(part: Partition) -> Self {
+        let inf = if part == Partition::Float32 { 0x7f800000 } else { 0x7ff0000000000000 };
+        Self { part, lo: Self::rank(inf | Self::sign(part), part),
+            hi: Self::rank(inf, part), nan: true }
+    }
+    fn empty(&self) -> bool { self.lo > self.hi && !self.nan }
+    fn value_bits(&self, value: &Val) -> Option<(u64, bool)> {
+        match value {
+            Val::Float32(bits) if self.part == Partition::Float32 =>
+                Some((*bits as u64, f32::from_bits(*bits).is_nan())),
+            Val::Float64(bits) if self.part == Partition::Float64 =>
+                Some((*bits, f64::from_bits(*bits).is_nan())),
+            _ => None,
+        }
+    }
+    fn restrict(&mut self, facet: &str, value: &Val) -> Option<()> {
+        if !matches!(facet, "minInclusive" | "minExclusive" | "maxInclusive" | "maxExclusive") {
+            return None;
+        }
+        let (bits, nan) = self.value_bits(value)?;
+        self.nan = false;
+        if nan { self.lo = 1; self.hi = 0; return Some(()); }
+        let rank = Self::rank(bits, self.part);
+        let sign = Self::sign(self.part);
+        let zero = bits & (sign - 1) == 0;
+        let lower = if zero { sign - 1 } else { rank };
+        let upper = if zero { sign } else { rank };
+        match facet {
+            "minInclusive" => self.lo = self.lo.max(lower),
+            "minExclusive" => self.lo = self.lo.max(upper + 1),
+            "maxInclusive" => self.hi = self.hi.min(upper),
+            "maxExclusive" => self.hi = self.hi.min(lower - 1),
+            _ => unreachable!(),
+        }
+        Some(())
+    }
+    fn contains(&self, value: &Val) -> Option<bool> {
+        if let Some((bits, nan)) = self.value_bits(value) {
+            let rank = Self::rank(bits, self.part);
+            Some(if nan { self.nan } else { self.lo <= rank && rank <= self.hi })
+        } else { val_partition(value).map(|_| false) }
+    }
+    fn subset(&self, other: &Self) -> bool {
+        self.empty() || (self.part == other.part && (!self.nan || other.nan)
+            && (self.lo > self.hi || (other.lo <= self.lo && self.hi <= other.hi)))
+    }
+    fn disjoint(&self, other: &Self) -> bool {
+        self.part != other.part || (!(self.nan && other.nan)
+            && (self.lo > self.hi || other.lo > other.hi || self.hi < other.lo || other.hi < self.lo))
+    }
+}
+
 /// A parsed data range.
 #[derive(Clone, Debug)]
 enum DRange {
@@ -799,6 +870,8 @@ enum DRange {
     Top,
     /// numeric interval (facet restriction over a numeric base)
     Num(NumRange),
+    /// IEEE interval, separate from the real/decimal value space.
+    Float(FloatRange),
     /// explicit enumeration
     OneOf(Vec<Val>),
     /// Complement in the data-value universe, with unknown decisions retained.
@@ -893,6 +966,16 @@ fn range_from_node(node: &Node) -> DRange {
                     Some(b) => b.as_str(),
                     None => return DRange::Unknown,
                 };
+                if let Some(bd) = named_dt(base).filter(|d| matches!(d.part, Partition::Float32 | Partition::Float64)) {
+                    let mut range = FloatRange::full(bd.part);
+                    if (toks.len() - 1) % 2 != 0 { return DRange::Unknown; }
+                    for pair in toks[1..].chunks_exact(2) {
+                        let Some(facet) = builtin_facet_key(&pair[0]) else { return DRange::Unknown; };
+                        let Some((value, _)) = parse_literal(&pair[1]) else { return DRange::Unknown; };
+                        if range.restrict(facet, &value).is_none() { return DRange::Unknown; }
+                    }
+                    return DRange::Float(range);
+                }
                 let bd = match named_dt(base) {
                     // Facet restrictions over IEEE float/double need a
                     // representability-aware interval domain; `NumRange` is a
@@ -1037,6 +1120,7 @@ fn in_num_range(v: &Rat, r: &NumRange) -> Option<bool> {
 /// `v ∈ D`?
 fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
     match d {
+        DRange::Float(r) => r.contains(v),
         DRange::Top => Some(true),
         DRange::Unknown => None,
         DRange::Complement(inner) => val_in_range(v, inner).map(|member| !member),
@@ -1120,6 +1204,15 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
 /// `D1 ⊑ D2`?
 fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
     match (d1, d2) {
+        (DRange::Float(a), _) if a.empty() => Some(true),
+        (DRange::Float(a), DRange::Float(b)) => Some(a.subset(b)),
+        (DRange::Float(a), DRange::Named(b)) => Some(a.part == b.part),
+        (DRange::Named(a), DRange::Float(b)) => Some(
+            matches!(a.part, Partition::Float32 | Partition::Float64)
+                && FloatRange::full(a.part).subset(b)),
+        (DRange::Float(_), DRange::Num(_)) => Some(false),
+        (DRange::Num(_), DRange::Float(_)) => None,
+
         (_, DRange::Top) => Some(true),
         (DRange::Unknown, _) | (_, DRange::Unknown) => None,
         (DRange::OneOf(vals), _) => {
@@ -1322,6 +1415,12 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
 /// `D1 ∩ D2 = ∅`?
 fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
     match (d1, d2) {
+        (DRange::Float(a), _) | (_, DRange::Float(a)) if a.empty() => Some(true),
+        (DRange::Float(a), DRange::Float(b)) => Some(a.disjoint(b)),
+        (DRange::Float(a), DRange::Named(b)) | (DRange::Named(b), DRange::Float(a)) =>
+            Some(a.part != b.part),
+        (DRange::Float(_), DRange::Num(_)) | (DRange::Num(_), DRange::Float(_)) => Some(true),
+
         (DRange::Unknown, _) | (_, DRange::Unknown) => None,
         (DRange::Top, _) | (_, DRange::Top) => Some(false), // named ranges are non-empty
         (DRange::OneOf(vals), other) | (other, DRange::OneOf(vals)) => {
@@ -1411,6 +1510,7 @@ fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
 /// Enumerate a finite range up to `cap` values (for the covering clause).
 fn enumerate_range(d: &DRange, cap: usize) -> Option<Vec<String>> {
     match d {
+        DRange::Float(r) if r.empty() => Some(vec![]),
         DRange::OneOf(_) => None, // handled via the serialized literals directly
         DRange::Named(nd) if nd.finite_bool => Some(vec![
             "\"true\"^^xsd:boolean".to_string(),
@@ -1916,6 +2016,49 @@ pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DL
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ieee_facet_ranges_preserve_discrete_bounds_and_partitions() {
+        for kind in ["float", "double"] {
+            let range = |facet: &str, value: &str| parse_complex(&format!(
+                "DatatypeRestriction(xsd:{kind} xsd:{facet} \"{value}\"^^xsd:{kind})"));
+            let fast = range("maxExclusive", "0.01");
+            let very_fast = range("maxExclusive", "0.002");
+            assert_eq!(range_subsumed(&very_fast, &fast), Some(true));
+            assert_eq!(range_subsumed(&fast, &very_fast), Some(false));
+            assert_eq!(range_subsumed(&fast, &range_of_named(&format!("xsd:{kind}"))), Some(true));
+            assert_eq!(range_subsumed(&range_of_named(&format!("xsd:{kind}")), &fast), Some(false));
+            assert_eq!(range_disjoint(&fast, &range_of_named("xsd:decimal")), Some(true));
+            let zero = parse_complex(&format!("DatatypeRestriction(xsd:{kind} xsd:minInclusive \"-0\"^^xsd:{kind} xsd:maxInclusive \"0\"^^xsd:{kind})"));
+            for lexical in ["0", "-0"] {
+                let value = parse_literal(&format!("\"{lexical}\"^^xsd:{kind}")).unwrap().0;
+                assert_eq!(val_in_range(&value, &zero), Some(true));
+                assert_eq!(val_in_range(&value, &range("minExclusive", "0")), Some(false));
+                assert_eq!(val_in_range(&value, &range("maxExclusive", "-0")), Some(false));
+            }
+            let nan = parse_literal(&format!("\"NaN\"^^xsd:{kind}")).unwrap().0;
+            assert_eq!(val_in_range(&nan, &fast), Some(false));
+            for facet in ["minInclusive", "minExclusive", "maxInclusive", "maxExclusive"] {
+                assert_eq!(enumerate_range(&range(facet, "NaN"), 8), Some(vec![]));
+            }
+            assert_eq!(enumerate_range(&range("minExclusive", "INF"), 8), Some(vec![]));
+            assert_eq!(enumerate_range(&range("maxExclusive", "-INF"), 8), Some(vec![]));
+            let inf = parse_literal(&format!("\"INF\"^^xsd:{kind}")).unwrap().0;
+            assert_eq!(val_in_range(&inf, &range("minInclusive", "INF")), Some(true));
+            let tiny = if kind == "float" { "1.40129846e-45" } else { "4.9406564584124654e-324" };
+            let gap = parse_complex(&format!("DatatypeRestriction(xsd:{kind} xsd:minExclusive \"0\"^^xsd:{kind} xsd:maxExclusive \"{tiny}\"^^xsd:{kind})"));
+            assert_eq!(enumerate_range(&gap, 8), Some(vec![]));
+            let repeated = parse_complex(&format!("DatatypeRestriction(xsd:{kind} xsd:maxInclusive \"0\"^^xsd:{kind} xsd:maxExclusive \"-0\"^^xsd:{kind})"));
+            assert_eq!(range_subsumed(&repeated, &range("maxExclusive", "0")), Some(true));
+            assert_eq!(range_disjoint(&repeated, &zero), Some(true));
+        }
+        let a = parse_complex("DatatypeRestriction(xsd:float xsd:minInclusive \"1\"^^xsd:float)");
+        let b = parse_complex("DatatypeRestriction(xsd:double xsd:minInclusive \"1\"^^xsd:double)");
+        assert_eq!(range_disjoint(&a, &b), Some(true));
+        assert_eq!(range_subsumed(&a, &b), Some(false));
+        assert!(matches!(parse_complex("DatatypeRestriction(xsd:float xsd:minInclusive \"1\"^^xsd:double)"), DRange::Unknown));
+    }
+
+
     #[test]
     fn relation_decidability_rejects_unknowns_and_accepts_concrete_values() {
         let names = ["__dt__string", "__dt__float",

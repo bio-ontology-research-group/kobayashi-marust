@@ -206,17 +206,30 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
 
-        // (2) inverse: the predecessor via the ancestor link.
+        // (2) the opposite endpoint of the ancestor link. Signed role
+        // installation can store this edge in either physical direction.
         let anc_link: EdgeId = pc.node(source).get_ancestor_link();
         if anc_link.is_some() {
             let e = pc.edge(anc_link);
             let edge_role: RoleId = e.get_link_role();
-            let pred: NodeId = e.get_source_individual();
-            if edge_role.is_some() && pred.is_some() {
-                let inv_matches =
-                    self.ht_signed_role_matches(edge_role, role, true, calc_alg_context);
-                if inv_matches && !out.iter().any(|&(_, node)| node == pred) {
-                    out.push((anc_link, pred));
+            let edge_source = e.get_source_individual();
+            let edge_destination = e.get_destination_individual();
+            if edge_role.is_some() && edge_source.is_some() && edge_destination.is_some() {
+                let source_id = pc.node(source).individual_node_id();
+                // Compare logical IDs because branch localization can replace
+                // the queried node without replacing the edge's endpoint.
+                let (opposite, inverse) = if pc.node(edge_source).individual_node_id() == source_id {
+                    (edge_destination, false)
+                } else if pc.node(edge_destination).individual_node_id() == source_id {
+                    (edge_source, true)
+                } else {
+                    (NodeId::NONE, false)
+                };
+                if opposite.is_some()
+                    && self.ht_signed_role_matches(edge_role, role, inverse, calc_alg_context)
+                    && !out.iter().any(|&(_, node)| node == opposite)
+                {
+                    out.push((anc_link, opposite));
                 }
             }
         }

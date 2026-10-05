@@ -25821,6 +25821,32 @@ fn role_hierarchy_forall() {
 /// must propagate C BACK to the root (the predecessor). After the run the ROOT carries
 /// C, reached purely through the inverse role.
 #[test]
+fn forall_ancestor_link_respects_physical_orientation() {
+    use super::super::model::role::Role;
+    use super::super::model::substrate::NegLink;
+
+    // A symmetric role installs both directions; the last (inverse) link
+    // becomes the child's ancestor link. Neither direction implies a self edge.
+    for inverse in [false, true] {
+        let mut env = build_env();
+        let parent = env.root;
+        let child = env.algo.create_new_individual(
+            TrackPointId::NONE, false, &mut env.ctx,
+        );
+        let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+        env.ctx.ontology_arenas_mut().role_mut(role).set_inverse_role(role);
+        let link = env.algo.create_new_individuals_links_reapplyed(
+            parent, child,
+            &[NegLink { target: role, negated: inverse }],
+            role, TrackPointId::NONE, false, &mut env.ctx,
+        );
+        env.ctx.process_context_mut().node_mut(child).set_ancestor_link(link);
+        let targets = env.algo.ht_all_rule_targets(child, role, &env.ctx);
+        assert_eq!(targets, vec![parent], "inverse ancestor edge: {inverse}");
+    }
+}
+
+#[test]
 fn inverse_role_propagation() {
     use super::super::model::op;
     use super::super::model::role::Role;
@@ -27516,4 +27542,39 @@ fn retained_class_job_skips_optional_early_singleton_scan() {
     assert!(!env.algo.singleton_base_prepared,
         "restored class jobs must not rescan their already prepared base early");
     assert!(!env.ctx.has_pending_signal());
+}
+
+#[test]
+fn satisfiable_cache_automaton_checks_live_edge_to_ancestor() {
+    use super::super::model::{op, role::Role};
+    let mut env = build_env();
+    let mut parent = env.root;
+    let child = test_node_at_depth(&mut env, 4, 1);
+    register_test_node(&mut env, child);
+    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let filler = atom_concept_with_tag(&mut env, 9101);
+    let mut all = Concept::new();
+    all.set_concept_tag(9102);
+    all.set_operator_code(op::CCAQALL);
+    all.set_role(role);
+    all.add_operand_linker(filler, false);
+    all.set_operand_count(1);
+    let all = env.ctx.ontology_arenas_mut().alloc_concept(all);
+    env.ctx.process_context_mut().node_reapply_concept_label_set(parent);
+    assert!(env.algo.is_satisfiable_cached_automat_concept_compatible(
+        child, all, false, parent, &mut env.ctx,
+    ), "without a backward edge there is no ancestor obligation");
+    let dependency = env.ctx.get_or_create_base_dependency_track_point();
+    env.algo.create_new_individuals_link_reapplyed(
+        child, child, parent, role, dependency, &mut env.ctx,
+    );
+    assert!(!env.algo.is_satisfiable_cached_automat_concept_compatible(
+        child, all, false, parent, &mut env.ctx,
+    ), "the cached universal cannot be reused until its ancestor filler holds");
+    env.algo.add_concept_to_individual(
+        filler, false, &mut parent, dependency, false, true, &mut env.ctx,
+    );
+    assert!(env.algo.is_satisfiable_cached_automat_concept_compatible(
+        child, all, false, parent, &mut env.ctx,
+    ), "a satisfied ancestor obligation allows reuse");
 }

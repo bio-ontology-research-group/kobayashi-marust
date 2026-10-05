@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+### v1.4.5 candidate: correctness and comparative benchmarks
+
+- Reject asserted data values outside an applicable finite data range, including
+  inherited constraints on the top data property. ORE 13219 now reports the
+  inconsistency detected by the independent reference reasoners.
+- Preserve the dependency of nominal membership through node merges so that
+  backtracking retains the proof supporting a pending nominal choice. A reduced
+  wine-ontology regression covers this case. Full classifications of ORE 11477,
+  1397, 13954, and 14334 still reach the 240-second benchmark limit; the reduced
+  regression does not establish successful full-ontology classification.
+- Respect the physical orientation of ancestor links when propagating universal
+  restrictions in the completion engine. This removes the false subsumptions
+  observed on ORE 185.
+- Handle floating-point facet ranges over representable float and double values,
+  including signed zero, infinities, NaN, and empty intervals. The corrected
+  taxonomies for ORE 16708 and 3685 agree with HermiT and Konclude.
+- Reset cancellation state between classifications in a retained process so that
+  an earlier cancellation does not abort subsequent justification checks.
+- Keep unresolved equivalent-class definitions out of saturation-only taxonomy
+  answers, and materialize cached disjunctions when reading classification
+  models. Check live ancestor edges before reusing cached universal automata.
+  These changes recover missing subsumptions in ORE 6333, 7877, and 6134.
+  Full taxonomies match JFact, HermiT, and Konclude respectively; reduced
+  source-preserving examples and cache-compatibility tests cover the failures.
+- Preserve global superclass consequences during retained EL replacements.
+  When a changed component reaches a global rule, recompute all class rows:
+  implicit top membership connects rows that share no explicit source symbols.
+  This restores 798 missing entailments on ORE 5295. All five update revisions
+  match fresh classification; disconnected components still reuse their closure.
+- Add comparative classification, incremental-update, and justification panels
+  for KM, RustDL, Konclude, HermiT, JFact, Openllet, ELK, Whelk, MORe, and Sequoia.
+  Reports retain preparation failures, invalid-input refusals, timeouts, and
+  incomplete outputs. Performance comparisons use paired verified outcomes;
+  justification verification checks source membership, entailment, and
+  subset-minimality independently. Retained sessions are distinguished from
+  demonstrated internal reuse.
+- Candidate validation: 2835 Rust tests passed (8 ignored), 31 Java tests passed,
+  plugin installation smoke passed, all four Lean certification gates passed
+  without `sorryAx`, and 68 benchmark-harness tests passed. Full comparative
+  measurements and correctness audits are still running; this entry does not
+  assert that v1.4.5 is ready for publication. Evidence is under
+  `results/benchmarks/2026-10-04-v1.4.5-comparative/`.
+
 ### Deferred engine thread budget in the production race
 
 - Start the CB stack of `race_cb_vs_ht` before the supervisor reads, converts,

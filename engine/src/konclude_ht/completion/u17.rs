@@ -562,6 +562,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         allow_preprocess: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        if super::sat_no_root_initialization() {
+            return false;
+        }
         let concept_data = calc_alg_context
             .ontology_arenas()
             .concept(concept)
@@ -1010,6 +1013,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         last_sat_cach_possible_con_des: &mut ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        if super::sat_no_successor_label_replay() {
+            return false;
+        }
         use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as SatF;
         if saturation_indi_node.is_none() {
             return false;

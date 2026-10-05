@@ -106,6 +106,8 @@ cached_completion_flag!(bridge_watch_singleton_enabled, "KM_BRIDGE_WATCH_SINGLET
 cached_completion_flag!(bridge_watch_atmost_enabled, "KM_BRIDGE_WATCH_ATMOST");
 cached_completion_flag!(bridge_cache_debug_enabled, "KM_BRIDGE_CACHE_DEBUG");
 cached_completion_flag!(sat_absorb_debug_enabled, "KM_SAT_ABSORB_DEBUG");
+cached_completion_flag!(sat_no_root_initialization, "KM_HT_NO_SAT_ROOT_INITIALIZATION");
+cached_completion_flag!(sat_no_successor_label_replay, "KM_HT_NO_SAT_SUCCESSOR_LABEL_REPLAY");
 cached_completion_flag!(ht_or_trace_enabled, "KM_HT_OR_TRACE");
 cached_completion_flag!(ht_ddb_no_skip_enabled, "KM_HT_DDB_NO_SKIP");
 cached_completion_flag!(ht_atmost_rest_enabled, "KM_HT_ATMOST_REST");

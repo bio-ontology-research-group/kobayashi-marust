@@ -11586,6 +11586,19 @@ fn affected_el_symbols(
             }
         }
     }
+    // Every concept row implicitly contains top, even when its source clauses
+    // share no symbols with a global rule. If the affected component reaches
+    // such a rule, its consequences can occur in every row: the explicit-symbol
+    // graph no longer proves that the other rows are independent. Include both
+    // snapshots so deletions cannot retain consequences of an old global rule.
+    if old.iter().chain(new).any(|clause| {
+        changed_clause_is_global(clause)
+            && el_clause_symbols(clause)
+                .iter()
+                .any(|symbol| affected.contains(symbol))
+    }) {
+        return None;
+    }
     Some(affected)
 }
 

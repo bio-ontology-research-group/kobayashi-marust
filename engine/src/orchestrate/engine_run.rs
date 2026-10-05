@@ -25,8 +25,9 @@ use super::{Config, OrchestrateError};
 // owl_classify's `_LIVE_ENGINES` / `_RACE_WON`. A race winner (tableau/HT/elc)
 // calls `cancel_and_kill_engines`, which SIGKILLs every live engine child and
 // stops any subsequent spawn (e.g. the adaptive single-threaded retry) from
-// starting. Process-global is correct: `km classify` handles one ontology per
-// process, so there is no cross-ontology leakage to reset.
+// starting. Sequential library classifications reset this flag at entry after
+// the preceding race has joined all its arms. Concurrent calls are unsupported:
+// routing also uses process-global environment settings.
 static LIVE: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 static CANCEL: AtomicBool = AtomicBool::new(false);
 

@@ -1730,9 +1730,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .node(ancestor_indi_node)
                 .individual_node_id();
             if calc_alg_context
-                .process_context()
-                .node(individual_node)
-                .has_role_successor_to_individual_id(role, anc_id, true)
+                .process_context_mut()
+                .node_has_role_successor_to_individual_id(
+                    individual_node, role, anc_id, true,
+                )
             {
                 let op_con_linker: Vec<_> = calc_alg_context
                     .ontology_arenas()

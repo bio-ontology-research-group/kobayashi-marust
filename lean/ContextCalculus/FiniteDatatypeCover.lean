@@ -44,4 +44,18 @@ theorem singleton_cover_excludes_distinct_successors {O : Type u} {D : Type v}
 #print axioms alias_cover
 #print axioms singleton_cover_excludes_distinct_successors
 
+/-- An asserted value unequal to every member of an exhaustive range cannot
+occur in a model of the range axiom. Value equality, not lexical spelling,
+is the premise used by the finite data-ABox precheck. -/
+theorem asserted_value_outside_cover {O : Type u} {D : Type v}
+    (role : O → D → Prop) (range : D → Prop) (values : List D)
+    (range_axiom : ∀ a x, role a x → range x)
+    (covered : ∀ x, range x → ∃ value, value ∈ values ∧ x = value)
+    (a : O) (x : D) (asserted : role a x)
+    (outside : ∀ value, value ∈ values → x ≠ value) : False := by
+  obtain ⟨value, member, equal⟩ := covered x (range_axiom a x asserted)
+  exact outside value member equal
+
+#print axioms asserted_value_outside_cover
+
 end ContextCalculus.FiniteDatatypeCover

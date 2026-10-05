@@ -546,6 +546,8 @@ pub struct Ext {
     /// (a ≤n merge); `resolve` follows the chain. Trail-recorded (`Trail::Merge`).
     number: bool,
     merged: Vec<Option<Node>>,
+    /// Dependencies justifying each redirect, undone with Trail::Merge.
+    merge_deps: Vec<DepSet>,
     merges: u64,
 
     // ---- incremental ("watch") disjunction bookkeeping (KM_HT_WATCH) ----
@@ -677,6 +679,7 @@ impl Ext {
             unsupported: false,
             number: std::env::var_os("KM_HT_NUMBER").is_some(),
             merged: Vec::new(),
+            merge_deps: Vec::new(),
             merges: 0,
             watch: false,
             lit_disj: HashMap::new(),
@@ -1078,6 +1081,7 @@ impl Ext {
         self.blockable.push(blockable);
         self.globals_fired.push(false);
         self.merged.push(None);
+        self.merge_deps.push(dep_empty());
         if self.incroblig {
             self.node_obligs.push(Vec::new());
         }
@@ -1264,6 +1268,7 @@ impl Ext {
         }
         self.trail.push(Trail::Merge(victim));
         self.merged[victim] = Some(survivor);
+        self.merge_deps[victim] = mdep.clone();
         let cs: Vec<(CLit, DepSet)> = self.concepts[victim]
             .iter()
             .map(|(k, v)| (*k, v.clone()))
@@ -1339,12 +1344,34 @@ impl Ext {
                 if self.resolve(keep) == self.resolve(o) {
                     continue;
                 }
-                let dk = self.concepts[self.resolve(keep)]
-                    .get(&lit)
-                    .cloned()
-                    .unwrap_or(None);
-                let dobj = self.concepts[o].get(&lit).cloned().unwrap_or(None);
-                let mdep = dep_union(&dk, &dobj);
+                // Pending choices may add membership to a previously merged
+                // carrier. Its representative need not carry that new literal
+                // yet. Use the actual carrier's evidence and every equality on
+                // its redirect path, never an empty default for a missing fact.
+                let carrier_dep = |target: Node| {
+                    // Preserve the existing representative proof when present.
+                    // One membership witness suffices; unioning unrelated
+                    // witnesses would needlessly prevent useful backjumps.
+                    if let Some(dep) = self.concepts[target].get(&lit) {
+                        return dep.clone();
+                    }
+                    let mut best: Option<DepSet> = None;
+                    for &raw in &carriers {
+                        if self.resolve(raw) != target { continue; }
+                        let mut dep = self.concepts[raw].get(&lit)
+                            .expect("registered nominal carrier has its membership").clone();
+                        let mut node = raw;
+                        while let Some(parent) = self.merged[node] {
+                            dep = dep_union(&dep, &self.merge_deps[node]);
+                            node = parent;
+                        }
+                        if best.as_ref().is_none_or(|old| dep_max(&dep) < dep_max(old)) {
+                            best = Some(dep);
+                        }
+                    }
+                    best.expect("nominal representative has a registered carrier")
+                };
+                let mdep = dep_union(&carrier_dep(self.resolve(keep)), &carrier_dep(o));
                 self.merge_into(keep, o, &mdep);
                 changed = true;
                 if self.clash.is_some() {
@@ -1430,6 +1457,7 @@ impl Ext {
                     self.blockable.pop();
                     self.globals_fired.pop();
                     self.merged.pop();
+                    self.merge_deps.pop();
                     if self.incroblig {
                         self.node_obligs.pop();
                     }
@@ -1442,6 +1470,7 @@ impl Ext {
                 Trail::Merge(v) => {
                     if v < self.merged.len() {
                         self.merged[v] = None;
+                        self.merge_deps[v] = dep_empty();
                     }
                 }
                 Trail::NomCarrier(c) => {
@@ -25277,6 +25306,54 @@ mod tests {
         t.set_number(true);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
+    #[test]
+    fn nominal_choice_on_merged_node_keeps_merge_and_choice_dependencies() {
+        let mut e = Ext::new();
+        let left = e.new_root();
+        let right = e.new_root();
+        let stale = e.new_root();
+        const NOM: C = 20;
+        e.nominals.insert(NOM);
+        e.add_concept(right, CLit::pos(NOM), &dep_empty());
+        e.add_distinct(left, right, &dep_empty());
+        let before_merge = e.mark();
+        e.merge_into(left, stale, &dep_add(&dep_empty(), 1));
+        let before_choice = e.mark();
+        e.add_concept(stale, CLit::pos(NOM), &dep_add(&dep_empty(), 2));
+        assert!(e.process_nominals());
+        assert!(e.has_clash());
+        assert!(dep_contains(&e.clash_dep(), 1));
+        assert!(dep_contains(&e.clash_dep(), 2));
+        e.backtrack_to(before_choice);
+        assert!(!e.has_concept(left, CLit::pos(NOM)));
+        assert!(!e.process_nominals());
+        assert!(!e.has_clash());
+        e.backtrack_to(before_merge);
+        assert_eq!(e.resolve(stale), stale);
+        e.add_concept(stale, CLit::pos(NOM), &dep_add(&dep_empty(), 3));
+        assert!(e.process_nominals());
+        assert!(!e.has_clash());
+    }
+
+    #[test]
+    fn nominal_pending_choices_preserve_consistent_wine_fragment() {
+        let input: crate::tableau::TInput = serde_json::from_str(include_str!(
+            "../tests/fixtures/wine_nominal_pending_choice.json"
+        )).unwrap();
+        let mut t = ht(crate::tableau::clauses_of_tinput(&input));
+        t.set_number(true);
+        t.set_nominals(input.nominals.iter().map(|&c| c as C).collect());
+        t.set_native_abox(
+            input.native_abox.individuals.iter().map(|row| (
+                row.proxies.iter().map(|&c| c as C).collect(),
+                row.assertions.iter().map(|&c| c as C).collect(),
+            )).collect(),
+            input.native_abox.different.clone(),
+            Vec::new(),
+        );
+        assert_eq!(t.consistent(&[]), Some(true));
+    }
+
     #[test]
     fn nominal_orule_merge_clash_unsat() {
         // Nominals: A has an r-successor in {o}⊓P and an s-successor in {o}⊓Q with

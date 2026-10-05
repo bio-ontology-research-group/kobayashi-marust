@@ -1,0 +1,549 @@
+{
+  "concepts": [
+    "__nom__Delicate",
+    "Wine__wine",
+    "__nom__Strong",
+    "__nom__Moderate",
+    "Q_177",
+    "__nom__Delicate__wine",
+    "Q_183",
+    "__nom__GamayGrape",
+    "__nom__CabernetFrancGrape",
+    "__nom__Moderate__wine",
+    "__nom__CabernetSauvignonGrape",
+    "Q_203",
+    "__nom__ChardonnayGrape",
+    "__nom__MerlotGrape",
+    "Q_245",
+    "__nom__Strong__wine",
+    "Beaujolais",
+    "Q_184",
+    "Q_199",
+    "Q_198",
+    "Q_202",
+    "Chardonnay",
+    "Q_244",
+    "__nom__MalbecGrape",
+    "__nom__PetiteVerdotGrape",
+    "Q_243",
+    "__nom__BancroftChardonnay",
+    "__nom__ChateauMorgonBeaujolais"
+  ],
+  "roles": [
+    "hasFlavor",
+    "madeFromGrape"
+  ],
+  "clauses": [
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 4,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "e",
+          "r": 0,
+          "neg": false,
+          "c": 5,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 6,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "e",
+          "r": 1,
+          "neg": false,
+          "c": 7,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 6,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 1,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 11,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "e",
+          "r": 1,
+          "neg": false,
+          "c": 12,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 16,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 4,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 16,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 6,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 16,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 17,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 18,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 9,
+          "t": 0
+        },
+        {
+          "k": "c",
+          "neg": false,
+          "c": 15,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 19,
+          "t": 0
+        },
+        {
+          "k": "r",
+          "r": 0,
+          "s": 0,
+          "t": 1
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 18,
+          "t": 1
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 12,
+          "t": 1
+        },
+        {
+          "k": "r",
+          "r": 1,
+          "s": 0,
+          "t": 1
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 11,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 20,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 11,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 17,
+          "t": 0
+        },
+        {
+          "k": "c",
+          "neg": false,
+          "c": 11,
+          "t": 0
+        },
+        {
+          "k": "c",
+          "neg": false,
+          "c": 1,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 20,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 21,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 20,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 20,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 21,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 21,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 19,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 22,
+          "t": 0
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 8,
+          "t": 0
+        },
+        {
+          "k": "c",
+          "neg": false,
+          "c": 10,
+          "t": 0
+        },
+        {
+          "k": "c",
+          "neg": false,
+          "c": 23,
+          "t": 0
+        },
+        {
+          "k": "c",
+          "neg": false,
+          "c": 13,
+          "t": 0
+        },
+        {
+          "k": "c",
+          "neg": false,
+          "c": 24,
+          "t": 0
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 25,
+          "t": 0
+        },
+        {
+          "k": "r",
+          "r": 1,
+          "s": 0,
+          "t": 1
+        }
+      ],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 22,
+          "t": 1
+        }
+      ]
+    },
+    {
+      "body": [],
+      "head": [
+        {
+          "k": "c",
+          "neg": false,
+          "c": 25,
+          "t": 0
+        },
+        {
+          "k": "c",
+          "neg": false,
+          "c": 14,
+          "t": 0
+        }
+      ]
+    }
+  ],
+  "queries": [
+    21
+  ],
+  "dropped": 0,
+  "fenced": [
+    {
+      "reason": "nominal+inverse(SHOI/SHOIQ)",
+      "detail": "74 nominal(s) together with inverse roles"
+    },
+    {
+      "reason": "inverse+number(SHIQ)",
+      "detail": "inverse roles together with number restrictions"
+    }
+  ],
+  "inverse": true,
+  "number": true,
+  "nominals": [
+    26,
+    8,
+    10,
+    12,
+    27,
+    0,
+    5,
+    7,
+    23,
+    13,
+    3,
+    9,
+    24,
+    2,
+    15
+  ],
+  "native_abox": {
+    "complete": true,
+    "individuals": [
+      {
+        "proxies": [
+          26
+        ],
+        "assertions": [
+          21
+        ]
+      },
+      {
+        "proxies": [
+          8
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          10
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          12
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          27
+        ],
+        "assertions": [
+          16
+        ]
+      },
+      {
+        "proxies": [
+          0,
+          5
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          7
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          23
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          13
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          3,
+          9
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          24
+        ],
+        "assertions": []
+      },
+      {
+        "proxies": [
+          2,
+          15
+        ],
+        "assertions": []
+      }
+    ],
+    "different": [
+      [
+        5,
+        9
+      ]
+    ],
+    "role_assertions": [],
+    "negative_role_assertions": []
+  }
+}

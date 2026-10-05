@@ -257,6 +257,8 @@ end ContextCalculus.Hypertableau
 
 #print axioms ContextCalculus.FiniteDatatypeCover.singleton_cover_excludes_distinct_successors
 
+#print axioms ContextCalculus.FiniteDatatypeCover.asserted_value_outside_cover
+
 #print axioms ContextCalculus.DataAssertionNormalization.has_value_iff
 
 #print axioms ContextCalculus.DataAssertionNormalization.alias_assertion_iff

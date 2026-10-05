@@ -83,7 +83,7 @@ pub(crate) fn glue_literal(args: &[&Node], i: usize) -> Option<(String, usize)> 
 /// for complex ranges (facet restrictions, DataOneOf, …).  Adjacent
 /// string-atom + `^^dt`/`@lang` pairs are re-glued into one literal token so
 /// distinct typed literals stay distinct.
-fn serialize_node(n: &Node) -> String {
+pub(super) fn serialize_node(n: &Node) -> String {
     match n {
         Node::Atom(s) => (*s).to_string(),
         Node::List(h, args) => {

@@ -6661,7 +6661,16 @@ fn bridged_classify_subject_with_root(
         ctx.process_context_mut()
             .indi_unsorted_proc_queue_mut(iq)
             .insert_indiviudal_process_node(root);
+        // SAT caching can park disjunctions without expanding their model.
+        // That suffices for a satisfiability verdict, but not for KPSet's
+        // negative evidence from absent named labels. Materialize those
+        // choices during classification read-off; ordinary pair probes keep
+        // the configured absorption optimization. Branch counters below then
+        // distinguish deterministic consequences from candidate subsumers.
+        let cached_disjunction_absorption = algo.conf_sat_exp_cached_disj_absorp;
+        algo.conf_sat_exp_cached_disj_absorp = false;
         let consistent = algo.run_completion_on(ctx);
+        algo.conf_sat_exp_cached_disj_absorp = cached_disjunction_absorption;
         if !consistent {
             return match ctx.pending_signal() {
                 super::completion::clash::CalcSignal::Clash(_) => {
@@ -6829,6 +6838,10 @@ fn analyse_kpset_completion_model(
         );
     }
     for (_, messages, _) in observer.get_told_messages() {
+        if std::env::var_os("KM_KPSET_MESSAGE_TRACE").is_some() {
+            eprintln!("BRIDGE-KPSET-PAYLOAD subject={subject} root-flags={:#x} {messages:?}",
+                process_context.node(root).processing_restriction_flags());
+        }
         classifier.process_classification_message_data_linker(
             &mut state.ontology_item,
             messages,
@@ -8999,9 +9012,12 @@ fn configure_production_completion_saturation_coupling(algo: &mut CompletionTask
     // they park rules while the corresponding cache flag remains valid and the
     // u10/u21 reapply paths restore them if that flag is later abolished.
     let cached_absorption = std::env::var_os("KM_HT_NO_SAT_CACHED_ABSORPTION").is_none();
-    algo.conf_sat_exp_cached_disj_absorp = cached_absorption;
-    algo.conf_sat_exp_cached_merg_absorp = cached_absorption;
-    algo.conf_sat_exp_cached_succ_absorp = cached_absorption;
+    algo.conf_sat_exp_cached_disj_absorp = cached_absorption
+        && std::env::var_os("KM_HT_NO_SAT_CACHED_DISJ_ABSORPTION").is_none();
+    algo.conf_sat_exp_cached_merg_absorp = cached_absorption
+        && std::env::var_os("KM_HT_NO_SAT_CACHED_MERGE_ABSORPTION").is_none();
+    algo.conf_sat_exp_cached_succ_absorp = cached_absorption
+        && std::env::var_os("KM_HT_NO_SAT_CACHED_SUCCESSOR_ABSORPTION").is_none();
     // CCalculationTableauCompletionTaskHandleAlgorithm.cpp ctor line 237.
     algo.conf_saturation_expansion_cache_reading =
         std::env::var_os("KM_HT_NO_SAT_CACHE_READING").is_none();
@@ -11338,7 +11354,24 @@ fn extract_saturation_outcome(
             continue; // unknown — probe needed
         }
         sat_verdict[i] = Some(false);
-        certain_subsumers[i] = Some(subs);
+        // A sufficient saturation node proves satisfiability, but its label
+        // need not contain equivalent classes without absorption candidates.
+        // Konclude's KPSet saturation initialization checks every such class
+        // before declaring the possible-subsumer map complete. Keep this
+        // subject in completion whenever an unresolved definition remains.
+        let missing_equivalence = ctx
+            .ontology_arenas()
+            .get_equivalent_concept_non_candidate_set()
+            .into_iter()
+            .flatten()
+            .any(|concept| {
+                named_index.get(concept).is_some_and(|&index| {
+                    index != i && subs.binary_search(&index).is_err()
+                })
+            });
+        if !missing_equivalence {
+            certain_subsumers[i] = Some(subs);
+        }
     }
     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
         eprintln!(
@@ -20160,6 +20193,17 @@ mod tests {
                 .contains(&host),
             "the retained CCEQ host remains a classification possible-subsumer"
         );
+        let (_algo, mut saturation_ctx, saturation_bridge) =
+            fresh_bridge_env_with_trigger_absorption(&env.tin, true);
+        assert!(run_bridged_saturation(&mut saturation_ctx, &saturation_bridge));
+        let outcome = extract_saturation_outcome(&mut saturation_ctx, &saturation_bridge);
+        let m = env.con_id["M"];
+        let h = env.con_id["H"];
+        assert_eq!(outcome.sat_verdict[m], Some(false));
+        assert!(outcome.certain_subsumers[m].is_none(),
+            "M's saturation label cannot rule out an unabsorbed H definition");
+        assert!(outcome.certain_subsumers[h].is_some(),
+            "the subject itself is not an unresolved equivalent subsumer");
     }
 
     #[test]

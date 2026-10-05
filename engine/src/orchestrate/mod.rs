@@ -959,6 +959,10 @@ fn classify_with_evidence_mode(
     ont: &Path,
     retain_grouped_output: bool,
 ) -> Result<ClassificationEvidence, OrchestrateError> {
+    // Previous race arms have joined before their classification returns.
+    // Sequential library calls (including explanation deletion) must not inherit
+    // the winning race's cancellation of its losing workers.
+    engine_run::reset_cancel();
     // Validate the original source before any rule compilation, projection,
     // route selection, or consistency shortcut can erase invalid literals.
     {
@@ -2673,6 +2677,22 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sequential_classification_does_not_inherit_a_completed_race_cancellation() {
+        let file = super::tmpfile::TempPath::new("-sequential-cancellation.ofn");
+        std::fs::write(file.path(), "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) SubClassOf(<urn:A> <urn:B>))").unwrap();
+        let mut cfg = super::Config::from_env();
+        cfg.elc = false;
+        cfg.elc_portfolio = false;
+        cfg.ht_race = false;
+        cfg.tab_race = false;
+        let expected = super::classify_with_evidence(&cfg, file.path()).unwrap().classification;
+        super::engine_run::cancel_and_kill_engines();
+        let actual = super::classify_with_evidence(&cfg, file.path()).unwrap().classification;
+        assert_eq!(actual, expected);
+        assert!(actual.consistent);
+        assert!(actual.subsumptions.iter().any(|[sub, sup]| sub == "urn:A" && sup == "urn:B"));
+    }
     #[test]
     fn unvalidated_facet_extension_is_refused_before_classification() {
         let file = super::tmpfile::TempPath::new("-facet-extension.ofn");
