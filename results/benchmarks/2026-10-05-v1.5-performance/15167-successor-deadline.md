@@ -8,9 +8,12 @@ deadline outside this queue loop.
 
 The repair passes the existing saturation deadline into the successor queue
 loop. Expiry leaves pending work queued. The enclosing driver detects remaining
-work and returns an unfinished result. The bridge retains already extracted
-monotonic labels for scheduling but disables saturation coupling before exact
-completion. The existing deadline value and default route are
+work and returns an unfinished result. The initial repair retained extracted
+labels for scheduling. Subsequent full-corpus testing exposed that extraction
+also promoted unfinished node statuses to complete verdicts. The follow-up
+guard discards the entire interrupted pass before verdict extraction and runs
+exact completion without those labels or saturation coupling.
+The existing deadline value and default route are
 unchanged. No calculus rule, label, or successful saturation result is altered.
 Callbacks themselves are not preempted; this repair addresses the observed
 between-callback queue cycle.

@@ -16,7 +16,7 @@ manifest_path = root / 'full-candidate-inputs.json'
 manifest = json.loads(manifest_path.read_text())
 inventory_path = root / 'data-source-candidate-artifact.json'
 inventory = json.loads(inventory_path.read_text())
-flags = {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1', 'KM_CACHE_CONFORMANCE': '1', 'KM_HT_SATURATION_BUDGET_CAP_S': '1'}
+flags = {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1', 'KM_CACHE_CONFORMANCE': '1'}
 os.environ.update(flags)
 rows = manifest['inputs'][task * 32:(task + 1) * 32]
 assert len(manifest['inputs']) == 1920 and len(rows) == 32

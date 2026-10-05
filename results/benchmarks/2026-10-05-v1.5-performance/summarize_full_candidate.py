@@ -27,7 +27,7 @@ def summarize(root, job, baseline_path, variant='native'):
         'data-source': ('data-source-candidate-', 'data-source-candidate-artifact.json',
                         'run_data_source_candidate.py',
                         {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1',
-                         'KM_CACHE_CONFORMANCE': '1', 'KM_HT_SATURATION_BUDGET_CAP_S': '1'}),
+                         'KM_CACHE_CONFORMANCE': '1'}),
         'successor-deadline': ('successor-deadline-candidate-', 'successor-deadline-candidate-artifact.json',
                                'run_successor_deadline_candidate.py',
                                {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1',

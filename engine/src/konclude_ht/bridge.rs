@@ -11401,6 +11401,21 @@ fn extract_saturation_outcome(
     }
 }
 
+/// Only a finished saturation task can publish verdicts or complete labels.
+/// Queue exhaustion is a global obligation: per-node status flags alone do not
+/// establish it, and may look sufficient while a dependent queue is unfinished.
+fn extract_finished_saturation_outcome(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    finished: bool,
+) -> Option<SaturationOutcome> {
+    if !finished {
+        ctx.release_partial_saturation_state();
+        return None;
+    }
+    Some(extract_saturation_outcome(ctx, bridged))
+}
+
 /// Saturate the bridged ontology once (dedicated env — the probe env and its
 /// resets are untouched) and extract the verdicts. `None` when the input is
 /// outside the bridge fragment.
@@ -12890,13 +12905,20 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 run_bridged_saturation(&mut ctx, &bridged)
             };
             report_bridge_memory("saturation-complete");
-            // An interrupted approximation pass still contains only monotonic
-            // consequences. Extracted positive labels and clash flags are
-            // sound KPSet seeds; the completed-node guard prevents unfinished
-            // nodes from becoming SAT-certain. Do not couple this partial graph
-            // into completion below.
+            // No partial status flag or label can stand in for global queue
+            // completion. An interrupted pass must leave every subject for the
+            // exact completion path and detach all process-side references.
             let t_extract = std::time::Instant::now();
-            let extracted = extract_saturation_outcome(&mut ctx, &bridged);
+            let extracted = extract_finished_saturation_outcome(
+                &mut ctx, &bridged, saturation_complete,
+            );
+            if !saturation_complete {
+                saturation_ran = false;
+                report_bridge_memory("partial-saturation-released");
+                if progress {
+                    eprintln!("BRIDGE-SATURATION-DISCARDED: unfinished pass, no verdicts reused");
+                }
+            }
             report_bridge_memory("saturation-extracted");
             if progress {
                 eprintln!(
@@ -12904,7 +12926,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     t_extract.elapsed().as_secs_f64()
                 );
             }
-            Some(extracted)
+            extracted
         } else {
             bridged_saturate_with_trigger_absorption(tin, trigger_absorb)
         };
@@ -13023,16 +13045,6 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             kpset_state = Some(state);
             saturation_ran = use_satcache && saturation_complete;
             satcache_active = use_satcache && saturation_complete;
-            if use_satcache && !saturation_complete {
-                // `state` owns every verdict, label and scheduling edge copied
-                // from the interrupted pass. Partial saturation is never
-                // coupled into completion, so retaining its multi-gigabyte
-                // arenas beyond this point only raises the phase high-water
-                // mark. Invalidate those ids before installing independent
-                // completion caches.
-                ctx.release_partial_saturation_state();
-                report_bridge_memory("partial-saturation-released");
-            }
             if progress {
                 eprintln!(
                     "BRIDGE-SATURATION{}: {:.2}s, answered {} unsat + {} sat of {} subjects ({} residue to probes, known-label-subjects={}, satcache={})",
@@ -20282,6 +20294,22 @@ mod tests {
             "M's saturation label cannot rule out an unabsorbed H definition");
         assert!(outcome.certain_subsumers[h].is_some(),
             "the subject itself is not an unresolved equivalent subsumer");
+    }
+
+    #[test]
+    fn unfinished_saturation_seeds_cannot_publish_a_taxonomy() {
+        let ofn = format!("{PREFIX} Declaration(Class(:A)) Declaration(Class(:B)) \
+            Declaration(Class(:C)) SubClassOf(:A :B) SubClassOf(:B :C))");
+        let env = bridge_ofn(&ofn);
+        let (_, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&env.tin, false);
+        build_saturation_seeds(&mut ctx, &bridged);
+        assert!(ctx.process_context().sat_node_count() > 0);
+        // Seed nodes already have ordinary status flags, but the global task
+        // has not processed their consequences or reached its fixpoint.
+        assert!(extract_finished_saturation_outcome(&mut ctx, &bridged, false).is_none());
+        assert_eq!(ctx.process_context().sat_node_count(), 0);
+        let complete = bridged_classify(&env.tin).expect("exact fallback completes");
+        assert!(complete.subsumptions.contains(&(env.con_id["A"], env.con_id["C"])));
     }
 
     #[test]

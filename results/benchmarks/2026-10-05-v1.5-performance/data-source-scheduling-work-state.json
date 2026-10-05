@@ -2,14 +2,18 @@
   "source_manifest": "data-source-scheduling-source-manifest.json",
   "standard_build": {
     "session_id": 94659,
-    "status": "running",
-    "log": "/tmp/agent/km-v150-diagnostics/data-source-scheduling-standard-build.log"
+    "status": "completed",
+    "log": "/tmp/agent/km-v150-diagnostics/data-source-scheduling-standard-build.log",
+    "exit_code": 0,
+    "binary_sha256": "4c9c44f63e066bb649d61e69bf0e14209d339bc65f9bfd3893d110f492fadbea",
+    "immutable_binary": "/tmp/agent/km-v150-diagnostics/km-data-source-4c9c44f63e06"
   },
   "certification": {
     "session_id": 32857,
-    "status": "running",
+    "status": "completed",
     "driver": "/tmp/agent/km-v150-diagnostics/certify-data-source-scheduling.py",
-    "receipt": "data-source-scheduling-certification-receipt.json"
+    "receipt": "data-source-scheduling-certification-receipt.json",
+    "exit_code": 0
   },
   "automatic_diagnostic": {
     "status": "passed",
@@ -18,11 +22,11 @@
     "independent_references_per_case": 4
   },
   "next_steps": [
-    "Poll the exact build and certification handles; do not restart live work.",
-    "Verify source hashes and pin the standard binary after successful completion.",
-    "Repeat check_data_source_scheduling.py with the standard binary.",
-    "Create data-source-candidate-artifact.json and hash manifest, deploy the immutable artifact and submit data-source-candidate.sbatch.",
+    "Follow partial-saturation-guard-work-state.json for the replacement binary and certification.",
+    "Repeat the five data-source scheduling cases with the replacement standard binary and default saturation budget.",
+    "Create and deploy an immutable default-budget candidate only after successful certification and diagnostics.",
     "Retain all 1920 inputs and compare verified outcomes against every required baseline."
   ],
-  "release_approved": false
+  "release_approved": false,
+  "submission_hold": "Superseded by the partial-saturation guard. The prepared, unsubmitted data-source runner now uses the default saturation budget; frozen running audits remain unchanged."
 }

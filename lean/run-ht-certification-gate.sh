@@ -365,6 +365,7 @@ done
     cargo test --release --lib joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes -- --nocapture
     cargo test --release --lib certified_input_coverage_matches_the_lean_truth_table -- --nocapture
     cargo test --release --lib conditional_full_nominal_filler_preserves_asserted_type_subsumption -- --nocapture
+    cargo test --release --lib unfinished_saturation_seeds_cannot_publish_a_taxonomy -- --nocapture
     cargo test --release --lib regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture
     cargo test --release --test ht_taxonomy_certificate -- --nocapture
 )
