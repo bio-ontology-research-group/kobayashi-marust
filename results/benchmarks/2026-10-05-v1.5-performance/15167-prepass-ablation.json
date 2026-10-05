@@ -1,0 +1,17 @@
+{
+  "diagnostic_only": true,
+  "records": [
+    {
+      "flag": "KM_HT_NO_SATURATION",
+      "status": "finished",
+      "exit_code": 0,
+      "wall_s": 0.06458531704265624
+    },
+    {
+      "flag": "KM_HT_NO_SATCACHE",
+      "status": "diagnostic_timeout",
+      "exit_code": -9,
+      "wall_s": 15.136842536041513
+    }
+  ]
+}

@@ -270,3 +270,28 @@ performance diagnosis but inside the unchanged full benchmark corpus.
 The internal worker failures occur after 235.1–239.1 seconds (median 235.5),
 so this group does not indicate a short per-probe cutoff that can simply be
 relaxed to recover many cases within the unchanged 240-second outer limit.
+
+## Remaining-timeout profile and successor-extension stall
+
+Diagnostic job **53304360** profiles eight admitted timeout failures selected
+by their fastest verified Konclude runtimes. Its instrumented 60-second runs
+cannot count toward release acceptance. The original submission 53303950
+failed before reasoning because the caller created an output directory that
+`measure` must create itself; remaining tasks were canceled and the corrected
+runner was resubmitted under a new job ID. Its failed submission is retained.
+
+Local source profiles and guarded route probes distinguish two barriers.
+ORE 1342 and 3843 select the legacy nominal route; the guarded native bridge
+refuses incomplete ABox conversion. No guard was bypassed. ORE 15167 enters
+the bridge but stalls in saturation. Disabling the optional pass completes
+in about 0.065 seconds, with the full result agreeing with Konclude, HermiT,
+Openllet and JFact. This is a manual-route diagnostic, not an automatic-route
+gain. A one-second saturation cap does not stop a 15-second diagnostic run.
+The extended opt-in `KM_SAT_RULE_WATCH` now identifies driver phases and shows
+phase 5, successor extensions, stuck at 1,998 rule applications at both five
+and ten seconds. The next investigation should enter
+`process_next_successor_extensions` and its callbacks, not relax the public
+240-second limit. The normal non-saturation result is unchanged by this
+instrumentation. `15167-*.json`, `bridge-probe.json`, and
+`timeout-source-profiles.json` retain the evidence. The frozen full audits
+continue to use their previously pinned binaries.

@@ -78,6 +78,7 @@ struct SaturationRuleWatch {
     operator: std::sync::atomic::AtomicI64,
     negated: std::sync::atomic::AtomicBool,
     applications: std::sync::atomic::AtomicU64,
+    phase: std::sync::atomic::AtomicU64,
 }
 
 struct SaturationRuleWatchGuard(std::sync::Arc<SaturationRuleWatch>);
@@ -605,6 +606,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 operator: std::sync::atomic::AtomicI64::new(INVALID),
                 negated: std::sync::atomic::AtomicBool::new(false),
                 applications: std::sync::atomic::AtomicU64::new(0),
+                phase: std::sync::atomic::AtomicU64::new(0),
             });
             let observer = std::sync::Arc::clone(&watch);
             std::thread::spawn(move || {
@@ -621,8 +623,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         break;
                     }
                     eprintln!(
-                        "BRIDGE-SAT-RULE-WATCH elapsed={:.1}s applications={} node={} concept={} op={} negated={}",
+                        "BRIDGE-SAT-RULE-WATCH elapsed={:.1}s phase={} applications={} node={} concept={} op={} negated={}",
                         started.elapsed().as_secs_f64(),
+                        observer.phase.load(std::sync::atomic::Ordering::Relaxed),
                         observer
                             .applications
                             .load(std::sync::atomic::Ordering::Relaxed),
@@ -639,6 +642,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             });
             SaturationRuleWatchGuard(watch)
         });
+        // Numeric phases keep the diagnostic observer allocation-free per step:
+        // 1 initialization, 2 rule, 3 conclusion, 4 disjunct extraction,
+        // 5 successor extension, 6 critical concept, 7 critical individuals,
+        // 8 at-most merge, 9 orphaned queue recovery.
+        let watch_phase = |phase| {
+            if let Some(watch) = &rule_watch {
+                watch.0.phase.store(phase, std::sync::atomic::Ordering::Relaxed);
+            }
+        };
         let report_timeout = |stage: &str, this: &Self, ctx: &CalculationAlgorithmContextBase| {
             if progress {
                 let pc = ctx.process_context();
@@ -847,6 +859,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .get_processing_individual();
                             // (separated-saturation + first-processed-node-id tracking,
                             // cpp 338–349: debug/statistics bookkeeping only.)
+                            watch_phase(1);
                             if self.individual_node_initializing(
                                 &mut indi_proc_sat_node,
                                 calc_alg_context,
@@ -1040,6 +1053,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                                 next_census.saturating_add(census_interval);
                                         }
                                     }
+                                    watch_phase(2);
                                     self.apply_tableau_saturation_rule(
                                         &mut indi_proc_sat_node,
                                         concept_saturation_process_linker,
@@ -1060,6 +1074,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .process_context_mut()
                                 .indi_sat_process_node_linker_mut(indi_proc_sat_node_linker)
                                 .clear_processing_queued();
+                            watch_phase(3);
                             self.individual_node_conclusion(
                                 &mut indi_proc_sat_node,
                                 calc_alg_context,
@@ -1086,15 +1101,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     indi_disj_common_con_ext_process_linker,
                                 )
                                 .get_processing_individual();
+                            watch_phase(1);
                             if self.individual_node_initializing(
                                 &mut indi_proc_sat_node,
                                 calc_alg_context,
                             ) {
+                                watch_phase(4);
                                 self.update_extract_disjunct_common_concept(
                                     &mut indi_proc_sat_node,
                                     calc_alg_context,
                                 ); // 379
                             }
+                            watch_phase(3);
                             self.individual_node_conclusion(
                                 &mut indi_proc_sat_node,
                                 calc_alg_context,
@@ -1103,6 +1121,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         }
                     }
 
+                    watch_phase(5);
                     self.process_next_successor_extensions(calc_alg_context); // 396
                 }
 
@@ -1114,8 +1133,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     // therefore un-completed (UNKNOWN to every consumer), a sound defer.
                     while t0.elapsed() < budget && self.has_next_critical_concepts(calc_alg_context)
                     {
+                        watch_phase(6);
                         self.check_next_critical_concepts(calc_alg_context); // 414
                     }
+                    watch_phase(7);
                     self.check_critical_individuals(calc_alg_context); // 416
                 }
 
@@ -1123,6 +1144,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .processing_data_box()
                     .has_saturation_atmost_merging_process_linker()
                 {
+                    watch_phase(8);
                     self.try_atmost_concept_successor_merging(calc_alg_context);
                     // 432
                 }
@@ -1135,6 +1157,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             // a fixpoint, rebuild those ownership links from the authoritative
             // node-local worklists. This adds no rule application and changes
             // no label; it only makes already-created work reachable again.
+            watch_phase(9);
             if self.conf_requeue_orphaned_saturation_work
                 && t0.elapsed() < budget
                 && self.requeue_orphaned_saturation_work(calc_alg_context)

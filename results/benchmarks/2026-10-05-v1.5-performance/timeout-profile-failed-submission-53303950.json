@@ -1,0 +1,11 @@
+{
+  "job_id": "53303950",
+  "submitted_utc": "2026-10-05T20:56:21.523468+00:00",
+  "scope": "Eight selected diagnostic timeout cases, not release acceptance",
+  "timeout_s": 60,
+  "memory_mib": 20480,
+  "array": "0-7%4",
+  "artifact_inventory_sha256": "8350cce9d52f02fbfa22e7d266d9f3cd74dcce3c657ef27bc51b670e4e751bcd",
+  "input_manifest_sha256": "e694db8c701baed7aa657f5375d69581be4ee294ca55295c86b6129e2d42ab63",
+  "status": "startup failure: output directory pre-created before measure(exist_ok=False); pending tasks canceled"
+}
