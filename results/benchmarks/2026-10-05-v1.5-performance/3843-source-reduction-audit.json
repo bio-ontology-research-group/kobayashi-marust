@@ -1,0 +1,49 @@
+{
+  "diagnostic_only": true,
+  "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e",
+  "reference_audit_sha256": "c3f92af50ca8e2696dc83a6f4a58fd30f45b3e2ff24f3c5fd142ccdc57269d32",
+  "binary_sha256": "37a80d5227c439a6fcc133c98b60429b2f98e434eacecee5369c10d6319e7735",
+  "comparisons": {
+    "konclude": {
+      "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e",
+      "left_raw_sha256": "2d7b0044f913f568c11a7da76ae7a8ced4803a2602dc28aab3229dca31756b19",
+      "right_raw_sha256": "360bcefd8a33c42b830c6ef2445f6c4b1b5255d70d7cec8f18423fc451744de0",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "hermit": {
+      "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e",
+      "left_raw_sha256": "2d7b0044f913f568c11a7da76ae7a8ced4803a2602dc28aab3229dca31756b19",
+      "right_raw_sha256": "dfae7e133b178a8cb351b14268f36ced1cb3cd5794f2fc153d94893a3497fd38",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "openllet": {
+      "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e",
+      "left_raw_sha256": "2d7b0044f913f568c11a7da76ae7a8ced4803a2602dc28aab3229dca31756b19",
+      "right_raw_sha256": "086999c2d9399a4c0c9b0f5500d4afacb0be4f3a8721c2c53d52f335e0ee2c51",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "jfact": {
+      "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e",
+      "left_raw_sha256": "2d7b0044f913f568c11a7da76ae7a8ced4803a2602dc28aab3229dca31756b19",
+      "right_raw_sha256": "2df8fd08b5578021d9e973010bc047cb9e526479cff7b9ed519d078cd64e2606",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    }
+  },
+  "scope": "Explicit existing ground-rule source compiler on ORE 3843. Automatic scheduling unchanged."
+}

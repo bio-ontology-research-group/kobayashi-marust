@@ -24,6 +24,10 @@ def summarize(root, job, baseline_path, variant='native'):
         'conformance': ('conformance-candidate-', 'conformance-candidate-artifact.json',
                         'run_conformance_candidate.py',
                         {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1', 'KM_CACHE_CONFORMANCE': '1'}),
+        'data-source': ('data-source-candidate-', 'data-source-candidate-artifact.json',
+                        'run_data_source_candidate.py',
+                        {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1',
+                         'KM_CACHE_CONFORMANCE': '1', 'KM_HT_SATURATION_BUDGET_CAP_S': '1'}),
         'successor-deadline': ('successor-deadline-candidate-', 'successor-deadline-candidate-artifact.json',
                                'run_successor_deadline_candidate.py',
                                {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1',
@@ -91,6 +95,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--job', required=True)
     parser.add_argument('--baseline', required=True, type=Path)
-    parser.add_argument('--variant', choices=['native', 'conformance', 'nominal-guard', 'successor-deadline'], default='native')
+    parser.add_argument('--variant', choices=['native', 'conformance', 'nominal-guard', 'successor-deadline', 'data-source'], default='native')
     args = parser.parse_args()
     print(json.dumps(summarize(Path(__file__).resolve().parent, args.job, args.baseline, args.variant), indent=2))

@@ -1,0 +1,24 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "37a80d5227c439a6fcc133c98b60429b2f98e434eacecee5369c10d6319e7735",
+  "rows": [
+    {
+      "ontology": "ore_ont_1342",
+      "nominal_abox_complete": false,
+      "unsupported": [
+        "6 data-property assertion axiom(s) are unsupported"
+      ],
+      "individuals": 12,
+      "source_sha256": "1faf6c93fa1ee0c3570e0f6c1568852e63c52ec416b5901112312b1bb39765c6"
+    },
+    {
+      "ontology": "ore_ont_3843",
+      "nominal_abox_complete": false,
+      "unsupported": [
+        "2 data-property assertion axiom(s) are unsupported"
+      ],
+      "individuals": 17,
+      "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e"
+    }
+  ]
+}

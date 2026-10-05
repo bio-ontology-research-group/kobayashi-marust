@@ -1,0 +1,5 @@
+{
+  "status": "superseded",
+  "session_id": 35254,
+  "reason": "Automatic ORE 586 check exposed the remaining 256-assertion scheduling bound. Stopped before changing the pinned source; certification will restart after corrected automatic checks pass."
+}

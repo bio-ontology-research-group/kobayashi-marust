@@ -1,0 +1,28 @@
+{
+  "source_manifest": "data-source-scheduling-source-manifest.json",
+  "standard_build": {
+    "session_id": 94659,
+    "status": "running",
+    "log": "/tmp/agent/km-v150-diagnostics/data-source-scheduling-standard-build.log"
+  },
+  "certification": {
+    "session_id": 32857,
+    "status": "running",
+    "driver": "/tmp/agent/km-v150-diagnostics/certify-data-source-scheduling.py",
+    "receipt": "data-source-scheduling-certification-receipt.json"
+  },
+  "automatic_diagnostic": {
+    "status": "passed",
+    "receipt": "data-source-scheduling-automatic-audit.json",
+    "cases": 5,
+    "independent_references_per_case": 4
+  },
+  "next_steps": [
+    "Poll the exact build and certification handles; do not restart live work.",
+    "Verify source hashes and pin the standard binary after successful completion.",
+    "Repeat check_data_source_scheduling.py with the standard binary.",
+    "Create data-source-candidate-artifact.json and hash manifest, deploy the immutable artifact and submit data-source-candidate.sbatch.",
+    "Retain all 1920 inputs and compare verified outcomes against every required baseline."
+  ],
+  "release_approved": false
+}

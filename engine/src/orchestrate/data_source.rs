@@ -52,15 +52,20 @@ fn plan(text: &str) -> Option<&'static str> {
         && crate::frontend::ground_rule_source::compile(text, 100_000).is_ok() {
         return Some("KM_GROUND_RULE_SOURCE");
     }
-    if !(1..=256).contains(&count("DataPropertyAssertion"))
-        || count("FunctionalDataProperty") == 0
-        || source.inverse_functional_role_axioms == 0
-        || source.distinct_classes > 512 || source.distinct_individuals > 512
-        || source.logical_axioms > 4_000 || source.imports != 0
-        || source.rule_axioms != 0 || source.unsupported_rule_axioms != 0 {
+    // Give ground-source compilation a separate class-count cost bound;
+    // keep the existing native/numeric scheduling bounds above unchanged.
+    let bounded_data = source.distinct_classes <= 1024 && source.distinct_individuals <= 512
+        && source.logical_axioms <= 4_000 && source.imports == 0;
+    if !bounded_data || !(1..=512).contains(&count("DataPropertyAssertion"))
+        || source.unsupported_rule_axioms != 0 {
         return None;
     }
-    if crate::frontend::data_abox_projection::project(text).is_ok() {
+    // The complete ground-source compiler also supports non-functional data
+    // assertions. Requiring an inverse-functional object role here stranded
+    // accepted string-valued ABoxes on the nominal CB fallback. Keep bounded
+    // scheduling and independently checked compiler/bridge admission.
+    if count("FunctionalDataProperty") > 0 && source.inverse_functional_role_axioms > 0
+        && crate::frontend::data_abox_projection::project(text).is_ok() {
         Some("KM_DATA_ABOX_PROJECT")
     } else if crate::frontend::ground_rule_source::compile(text, 100_000).is_ok() {
         Some("KM_GROUND_RULE_SOURCE")
@@ -83,8 +88,24 @@ mod tests {
             assert_eq!(plan(&SOURCE.replacen("Ontology(", &format!("Ontology({extra} "), 1)), None);
         }
         assert_eq!(plan(&SOURCE.replace("xsd:string", "<urn:unknown>")), None);
-        assert_eq!(plan(&SOURCE.replace("InverseFunctionalObjectProperty(<urn:r>)", "")), None);
+        assert_eq!(plan(&SOURCE.replace("InverseFunctionalObjectProperty(<urn:r>)", "")),
+            Some("KM_GROUND_RULE_SOURCE"));
     }
+    #[test]
+    fn nonfunctional_string_abox_schedules_only_after_complete_compilation() {
+        let source = r#"Prefix(:=<urn:test:>) Ontology(
+            Declaration(Class(:Author)) Declaration(DataProperty(:name))
+            DataPropertyDomain(:name :Author) DataPropertyRange(:name xsd:string)
+            DataPropertyAssertion(:name :document "first")
+            DataPropertyAssertion(:name :document "second"))"#;
+        assert_eq!(plan(source), Some("KM_GROUND_RULE_SOURCE"));
+        assert_eq!(plan(&source.replace("\"first\"", "\"first\"^^<urn:unknown>")), None);
+        assert_eq!(plan(&source.replace("Ontology(", "Ontology(Import(<urn:missing>)")), None);
+        let oversized = source.replace("Ontology(", &format!("Ontology({}",
+            (0..1025).map(|i| format!("Declaration(Class(:C{i})) ")).collect::<String>()));
+        assert_eq!(plan(&oversized), None);
+    }
+
     #[test]
     fn automatic_rules_require_exact_complete_source_compilation() {
         let source = r#"Ontology(Declaration(NamedIndividual(<urn:a>))
