@@ -255,3 +255,40 @@ Receipts: `source-module-integration-validation.json`,
 `source-module-updates-first.json`, and `source-module-updates-phases.json` in
 the v1.5 performance evidence directory. Run `probe_source_locality_updates.py`
 with `--source-module` to exercise the opt-in path and compare complete answers.
+
+## Compact typed-state fingerprint
+
+The bridge now serializes only the retained side-state fields. The previous
+implementation serialized the complete typed ontology and then discarded
+clauses, source expressions, definers and projection payloads. Exhaustive
+`TInput` destructuring forces future fields to receive an explicit decision.
+Differential tests compare exact bytes with the former serializer for all
+retained fields, optional presence/absence and three real typed revisions.
+All 14 incremental-HT tests and all 24 source-incremental tests pass; the latter
+also pass with both source opt-ins enabled. All four existing certification
+gates pass on the pinned source without `sorryAx`.
+
+Eight alternating measurements per frozen typed revision give median
+fingerprint times of 1.3–1.4 ms, versus 159–166 ms for the former serializer.
+This optimization preserves the fingerprint bytes and is used by every bridge
+session; it does not enable the experimental module path.
+
+Complete update comparisons use the same new binary with two repetitions per
+revision, and every answer agrees with fresh reasoning:
+
+| Retained mode | Small edits faster than fresh | Large edits faster than fresh |
+|---|---:|---:|
+| Source module | 4/4 | 0/4 |
+| Full typed-input reclassification | 0/4 | 0/4 |
+
+Small module updates take 1.478–1.561 seconds, versus 1.603–1.674 seconds fresh.
+Large module updates take 2.160–2.310 seconds, versus 1.583–1.733 seconds fresh.
+Full typed-input reclassification is faster than module reconstruction for
+these larger edits, at 1.962–2.120 seconds, but still slower than its fresh
+comparisons. The per-update release requirement remains unmet. Future work
+must reduce repeated source preparation and full-taxonomy publication, and
+avoid module reconstruction when its preparation costs exceed the savings.
+
+Receipts and all measurements are in `compact-side-fingerprint-probe.json`,
+`compact-side-update-validation.json`, `compact-side-module-updates.json` and
+`compact-side-full-input-updates.json` under the v1.5 performance evidence path.

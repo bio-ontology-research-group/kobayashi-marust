@@ -541,6 +541,51 @@ fn bridge_query_names(input: &TInput) -> Vec<String> {
 }
 
 fn bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoningError> {
+    // Match TInput's wire fields and skip conditions exactly, without first
+    // materializing clauses, source expressions or proof payloads that are
+    // immediately discarded. Exhaustive destructuring forces added fields to
+    // receive an explicit fingerprint decision.
+    let TInput {
+        rule_data_roles, rule_source_classes, rule_source_abox,
+        concepts, roles, dropped, fenced, inverse, number,
+        inverse_cardinality_role_separable, nominals, nominal_abox, native_abox,
+        card_defs, cardinality_exact_pairs, cardinality_projection_complete,
+        chains, transitive, role_domains, role_ranges,
+        clauses: _, queries: _, source_axioms: _, definers: _,
+        direct_projection_source: _, mixed_projection_source: _, bundle_projection_source: _,
+    } = input;
+    let mut side = serde_json::Map::new();
+    macro_rules! field {
+        ($name:ident, $keep:expr) => {
+            if $keep {
+                side.insert(stringify!($name).into(), serde_json::to_value($name)
+                    .map_err(|error| IncrementalReasoningError::HtDeferred {
+                        detail: format!("cannot fingerprint typed bridge state: {error}"),
+                    })?);
+            }
+        };
+    }
+    field!(rule_data_roles, rule_data_roles.is_some());
+    field!(rule_source_classes, rule_source_classes.is_some());
+    field!(rule_source_abox, rule_source_abox.is_some());
+    field!(concepts, true); field!(roles, true);
+    field!(dropped, true); field!(fenced, true); field!(inverse, true); field!(number, true);
+    field!(inverse_cardinality_role_separable, *inverse_cardinality_role_separable);
+    field!(nominals, true);
+    field!(nominal_abox, !nominal_abox.is_empty());
+    field!(native_abox, !native_abox.is_empty());
+    field!(card_defs, !card_defs.is_empty());
+    field!(cardinality_exact_pairs, !cardinality_exact_pairs.is_empty());
+    field!(cardinality_projection_complete, *cardinality_projection_complete);
+    field!(chains, !chains.is_empty()); field!(transitive, !transitive.is_empty());
+    field!(role_domains, !role_domains.is_empty()); field!(role_ranges, !role_ranges.is_empty());
+    serde_json::to_vec(&side).map_err(|error| IncrementalReasoningError::HtDeferred {
+        detail: format!("cannot encode typed bridge fingerprint: {error}"),
+    })
+}
+
+#[cfg(test)]
+fn legacy_bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoningError> {
     let mut side =
         serde_json::to_value(input).map_err(|error| IncrementalReasoningError::HtDeferred {
             detail: format!("cannot fingerprint typed bridge state: {error}"),
@@ -1830,6 +1875,58 @@ fn term_symbols(term: &JTerm, symbols: &mut Vec<Symbol>) {
 mod typed_tests {
     use super::*;
     use crate::orchestrate::cb_to_ht::{NativeIndividualJson, TInput};
+
+    #[test]
+    fn compact_side_fingerprint_is_byte_identical_for_all_retained_fields() {
+        let populated = serde_json::json!({
+            "rule_data_roles": [true,false],
+            "rule_source_classes": {"source":"Ontology()","concept_iris":["urn:A",null]},
+            "rule_source_abox": {"source":"Ontology()","object_properties":"roles", "data_axioms":"data",
+                "rules":"rules", "concept_iris":["urn:A"],"role_iris":["urn:r"],"nominal_iris":["urn:i"]},
+            "concepts":["A","B"],"roles":["r"],"dropped":1,
+            "fenced":[{"reason":"test","detail":"retained"}],"inverse":true,"number":true,
+            "inverse_cardinality_role_separable":true,"nominals":[0],
+            "nominal_abox":{"complete":true,"same":[["i","j"]],"different":[["i","k"]]},
+            "native_abox":{"complete":true,"individuals":[{"proxies":[0],"assertions":[1]}],
+                "different":[[0,1]],"role_assertions":[[0,0,1]],"negative_role_assertions":[[0,1,0]]},
+            "card_defs":[{"marker":0,"min":true,"n":2,"role":0,"filler":1,"exact":true}],
+            "cardinality_exact_pairs":[{"maximum":0,"minimum":1}],"cardinality_projection_complete":true,
+            "chains":[[0,0,0]],"transitive":[0],"role_domains":[[0,0]],"role_ranges":[[0,1]]
+        });
+        let check = |value| {
+            let input:TInput=serde_json::from_value(value).unwrap();
+            assert_eq!(bridge_side_fingerprint(&input).unwrap(),legacy_bridge_side_fingerprint(&input).unwrap());
+        };
+        check(serde_json::json!({}));
+        check(populated.clone());
+        for (key,value) in populated.as_object().unwrap() {
+            let mut only=serde_json::Map::new();only.insert(key.clone(),value.clone());
+            check(serde_json::Value::Object(only));
+            let mut without=populated.as_object().unwrap().clone();without.remove(key);
+            check(serde_json::Value::Object(without));
+        }
+        // Some(empty) remains distinct from absent optional source evidence.
+        check(serde_json::json!({"rule_data_roles":[]}));
+    }
+
+    #[test]
+    fn compact_side_fingerprint_optional_frozen_input_probe() {
+        let Some(path)=std::env::var_os("KM_SIDE_KEY_INPUT") else { return; };
+        let input:TInput=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let mut rows=Vec::new();
+        for repetition in 0..8 {
+            let mut answers=Vec::new();
+            for compact in if repetition%2==0 { [false,true] } else { [true,false] } {
+                let start=std::time::Instant::now();
+                let bytes=if compact { bridge_side_fingerprint(&input) } else { legacy_bridge_side_fingerprint(&input) }.unwrap();
+                rows.push(serde_json::json!({"repetition":repetition,"compact":compact,"elapsed_s":start.elapsed().as_secs_f64(),"bytes":bytes.len()}));
+                answers.push(bytes);
+            }
+            assert_eq!(answers[0],answers[1]);
+        }
+        let output=std::env::var_os("KM_SIDE_KEY_OUTPUT").expect("fingerprint probe output");
+        std::fs::write(output,serde_json::to_vec(&rows).unwrap()).unwrap();
+    }
 
     #[test]
     fn source_side_key_ignores_reindexing_but_retains_constraint_meaning() {

@@ -1,0 +1,324 @@
+{
+  "diagnostic_only": true,
+  "test_binary_sha256": "5afc3810133fdc3d86a0190845ac12c4d7781e637742de9d87f5d4a01f8b5465",
+  "cpu": 0,
+  "records": [
+    {
+      "input_sha256": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+      "input": "/tmp/agent/km-v150-diagnostics/9944-source-0.json",
+      "byte_identical": true,
+      "measurements": [
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.340514849,
+          "repetition": 0
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001596477,
+          "repetition": 0
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001576815,
+          "repetition": 1
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.163412075,
+          "repetition": 1
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.16331572,
+          "repetition": 2
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001363022,
+          "repetition": 2
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001304183,
+          "repetition": 3
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.163057261,
+          "repetition": 3
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.215936265,
+          "repetition": 4
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.00162564,
+          "repetition": 4
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001311441,
+          "repetition": 5
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.168901654,
+          "repetition": 5
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.162951586,
+          "repetition": 6
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001395202,
+          "repetition": 6
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001325582,
+          "repetition": 7
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.195022614,
+          "repetition": 7
+        }
+      ],
+      "legacy_median_s": 0.1661568645,
+      "compact_median_s": 0.001379112
+    },
+    {
+      "input_sha256": "e66a22f09c4d472d5e498d3cd8048db4b4aa96cb389d910abf72fc521d42108f",
+      "input": "/tmp/agent/km-v150-diagnostics/9944-source-1.json",
+      "byte_identical": true,
+      "measurements": [
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.277342961,
+          "repetition": 0
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001331185,
+          "repetition": 0
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001298053,
+          "repetition": 1
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.158038515,
+          "repetition": 1
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.160334535,
+          "repetition": 2
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001318046,
+          "repetition": 2
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001291956,
+          "repetition": 3
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.158845197,
+          "repetition": 3
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.157212726,
+          "repetition": 4
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001370173,
+          "repetition": 4
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001305874,
+          "repetition": 5
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.213622632,
+          "repetition": 5
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.179552022,
+          "repetition": 6
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.001367412,
+          "repetition": 6
+        },
+        {
+          "bytes": 257065,
+          "compact": true,
+          "elapsed_s": 0.00130259,
+          "repetition": 7
+        },
+        {
+          "bytes": 257065,
+          "compact": false,
+          "elapsed_s": 0.158847568,
+          "repetition": 7
+        }
+      ],
+      "legacy_median_s": 0.1595910515,
+      "compact_median_s": 0.00131196
+    },
+    {
+      "input_sha256": "7d33f9ef2dcee90ce9e162e2e570055c8aaf720a724f145a23738ee42923d3f6",
+      "input": "/tmp/agent/km-v150-diagnostics/9944-source-3.json",
+      "byte_identical": true,
+      "measurements": [
+        {
+          "bytes": 256944,
+          "compact": false,
+          "elapsed_s": 0.274501296,
+          "repetition": 0
+        },
+        {
+          "bytes": 256944,
+          "compact": true,
+          "elapsed_s": 0.00132376,
+          "repetition": 0
+        },
+        {
+          "bytes": 256944,
+          "compact": true,
+          "elapsed_s": 0.001298433,
+          "repetition": 1
+        },
+        {
+          "bytes": 256944,
+          "compact": false,
+          "elapsed_s": 0.155152183,
+          "repetition": 1
+        },
+        {
+          "bytes": 256944,
+          "compact": false,
+          "elapsed_s": 0.155708186,
+          "repetition": 2
+        },
+        {
+          "bytes": 256944,
+          "compact": true,
+          "elapsed_s": 0.001325746,
+          "repetition": 2
+        },
+        {
+          "bytes": 256944,
+          "compact": true,
+          "elapsed_s": 0.001333016,
+          "repetition": 3
+        },
+        {
+          "bytes": 256944,
+          "compact": false,
+          "elapsed_s": 0.156298523,
+          "repetition": 3
+        },
+        {
+          "bytes": 256944,
+          "compact": false,
+          "elapsed_s": 0.158509499,
+          "repetition": 4
+        },
+        {
+          "bytes": 256944,
+          "compact": true,
+          "elapsed_s": 0.001371022,
+          "repetition": 4
+        },
+        {
+          "bytes": 256944,
+          "compact": true,
+          "elapsed_s": 0.001310868,
+          "repetition": 5
+        },
+        {
+          "bytes": 256944,
+          "compact": false,
+          "elapsed_s": 0.214029076,
+          "repetition": 5
+        },
+        {
+          "bytes": 256944,
+          "compact": false,
+          "elapsed_s": 0.18206665,
+          "repetition": 6
+        },
+        {
+          "bytes": 256944,
+          "compact": true,
+          "elapsed_s": 0.001353387,
+          "repetition": 6
+        },
+        {
+          "bytes": 256944,
+          "compact": true,
+          "elapsed_s": 0.001318733,
+          "repetition": 7
+        },
+        {
+          "bytes": 256944,
+          "compact": false,
+          "elapsed_s": 0.158664964,
+          "repetition": 7
+        }
+      ],
+      "legacy_median_s": 0.15858723149999998,
+      "compact_median_s": 0.0013247530000000001
+    }
+  ],
+  "source_sha256": "efe38cd29ce7f905e63c41cbbe87d58c001740bd900fc618818ab06c7569b476",
+  "scope": "Pinned local fingerprint microbenchmark only; exact byte comparison against the former implementation on every repetition. Complete update timings remain separate."
+}
