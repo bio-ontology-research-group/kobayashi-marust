@@ -10,6 +10,9 @@ use pest_derive::Parser;
 struct FunctionalSyntax;
 
 pub fn validate(source: &str) -> Result<(), String> {
+    if std::env::var_os("KM_ASCII_IRI_GRAMMAR").is_some() {
+        return validate_iri_cached_ascii(source);
+    }
     if std::env::var_os("KM_FAST_IRI_GRAMMAR").is_some() {
         return validate_iri_cached(source);
     }
@@ -42,6 +45,41 @@ mod iri_cached {
 /// Every distinct spelling is checked with the SAME original FullIRI rule.
 /// The cache is local to this document and contains only successful checks.
 pub fn validate_iri_cached(source: &str) -> Result<(), String> {
+    validate_iri_cached_impl(source, false)
+}
+
+/// Same structural grammar and original-validator fallback, with a sufficient
+/// ASCII HTTP(S) spelling check before invoking the full RFC grammar.
+pub fn validate_iri_cached_ascii(source: &str) -> Result<(), String> {
+    validate_iri_cached_impl(source, true)
+}
+
+fn ascii_http_iri(iri: &str) -> bool {
+    let Some(body) = iri.strip_prefix("<http://")
+        .or_else(|| iri.strip_prefix("<https://"))
+        .and_then(|body| body.strip_suffix('>')) else { return false; };
+    let host_end = body.find(['/', '#']).unwrap_or(body.len());
+    let (host, tail) = body.split_at(host_end);
+    // An alphabetic first byte excludes the grammar's earlier IPv4 branch,
+    // which can consume a numeric host prefix before RegName is considered.
+    if !host.as_bytes().first().is_some_and(u8::is_ascii_alphabetic) {
+        return false;
+    }
+    let unreserved = |byte: u8| byte.is_ascii_alphanumeric()
+        || matches!(byte, b'-' | b'.' | b'_' | b'~');
+    if !host.bytes().all(unreserved) { return false; }
+    let mut fragment = false;
+    tail.bytes().all(|byte| {
+        if byte == b'#' && !fragment {
+            fragment = true;
+            true
+        } else {
+            byte == b'/' || unreserved(byte)
+        }
+    })
+}
+
+fn validate_iri_cached_impl(source: &str, ascii_fast_path: bool) -> Result<(), String> {
     let parsed = match iri_cached::Syntax::parse(iri_cached::Rule::OntologyDocument, source) {
         Ok(parsed) => parsed,
         Err(_) => return validate_original(source),
@@ -55,9 +93,11 @@ pub fn validate_iri_cached(source: &str) -> Result<(), String> {
             iri_cached::Rule::FullIRI => {
                 let iri = pair.as_str();
                 if !validated.contains(iri) {
-                    let checked = FunctionalSyntax::parse(Rule::FullIRI, iri);
-                    let valid = checked.is_ok_and(|mut pairs| pairs.next()
-                        .is_some_and(|p| p.as_span().end() == iri.len()));
+                    let valid = (ascii_fast_path && ascii_http_iri(iri)) || {
+                        let checked = FunctionalSyntax::parse(Rule::FullIRI, iri);
+                        checked.is_ok_and(|mut pairs| pairs.next()
+                            .is_some_and(|p| p.as_span().end() == iri.len()))
+                    };
                     if !valid {
                         // Preserve the original error text and source location.
                         // This slower path is reached only for an invalid IRI.
@@ -75,6 +115,38 @@ pub fn validate_iri_cached(source: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ascii_http_subset_is_accepted_by_original_full_iri_rule() {
+        let mut cases = vec![
+            "<http://purl.obolibrary.org/obo/GO_0008150>".to_owned(),
+            "<https://www.w3.org/2002/07/owl#Thing>".to_owned(),
+            "<http://a>".to_owned(), "<http://a/#>".to_owned(),
+            "<http://a//b/#c/d>".to_owned(),
+        ];
+        for byte in 0..=127u8 {
+            for template in ["<http://a{}b/x#y>", "<http://ab/{}x#y>",
+                "<http://ab/x#{}y>"] {
+                cases.push(template.replace("{}", &char::from(byte).to_string()));
+            }
+        }
+        for iri in cases {
+            if ascii_http_iri(&iri) {
+                let mut pairs = FunctionalSyntax::parse(Rule::FullIRI, &iri).unwrap();
+                assert_eq!(pairs.next().unwrap().as_span().end(), iri.len(), "{iri}");
+            }
+            let source = format!("Ontology(Declaration(Class({iri})))");
+            assert_eq!(validate_original(&source), validate_iri_cached_ascii(&source), "{iri}");
+        }
+        for iri in ["<http://127.0.0.1/a>", "<http://1.2.3.4abc/a>",
+            "<http://[::1]/a>", "<http://a:80/b>", "<http://u@a/b>",
+            "<http://a/b?q=c>", "<http://a/%20>", "<http://a/é>",
+            "<http://a/b#c#d>", "<http:///a>", "<https://a/\\b>"] {
+            assert!(!ascii_http_iri(iri), "specialized check must defer: {iri}");
+            let source = format!("Ontology(Declaration(Class({iri})))");
+            assert_eq!(validate_original(&source), validate_iri_cached_ascii(&source), "{iri}");
+        }
+    }
+
     #[test]
     fn cached_iri_grammar_changes_only_full_iri_recognition() {
         let original = include_str!("../grammars/ofn.pest");
@@ -105,12 +177,14 @@ mod tests {
                 let old = validate_original(&source);
                 let new = validate_iri_cached(&source);
                 assert_eq!(old, new, "{source}");
+                assert_eq!(old, validate_iri_cached_ascii(&source), "{source}");
             }
         }
         for source in ["Ontology(", "Ontology() trailing", "Ontology() Ontology()",
             "Ontology(SubClassOf(<urn:A>))", "Ontology(Annotation(<urn:p> \"<not an IRI>\"))",
             "# <not an IRI>\nOntology()"] {
             assert_eq!(validate_original(source), validate_iri_cached(source), "{source}");
+            assert_eq!(validate_original(source), validate_iri_cached_ascii(source), "{source}");
         }
     }
     mod original {

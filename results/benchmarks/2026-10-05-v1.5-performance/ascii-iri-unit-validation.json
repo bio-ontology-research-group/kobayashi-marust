@@ -1,0 +1,22 @@
+{
+  "before_tests_passed": 6,
+  "after_tests_passed": 7,
+  "diagnostic_only": true,
+  "release_approved": false,
+  "logs": {
+    "/tmp/agent/km-v150-diagnostics/ascii-iri-before-tests.log": {
+      "sha256": "c5474443689e3c60fc8f34611f90da193a3b0dc1dc5e4b39d72ab806d97dd780",
+      "results": [
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    "/tmp/agent/km-v150-diagnostics/ascii-iri-after-tests.log": {
+      "sha256": "29fa3457df3c8a08ee06a6cc1306ac5ecfd5bd370cb390cc284dd25025b7ea56",
+      "results": [
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    }
+  }
+}

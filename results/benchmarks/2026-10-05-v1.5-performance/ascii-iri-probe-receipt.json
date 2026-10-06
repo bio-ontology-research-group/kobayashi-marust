@@ -1,0 +1,18 @@
+{
+  "status": "ok",
+  "exit_code": 0,
+  "wall_s": 0.8676725518889725,
+  "peak_bytes": 9707520,
+  "cpus": 1,
+  "cpu": 0,
+  "diagnostic_only": true,
+  "files": {
+    "/tmp/agent/km-v150-diagnostics/probe-ascii-iri": "8b4d71f532297cf72672286af4dd1a2289705d8b016aa90d62071f89d8dd30b7",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_236.owl": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_11896.owl": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_3250.owl": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+    "/workspace/.work/worktrees/v1.4/results/benchmarks/2026-10-05-v1.5-performance/probe_ascii_iri.rs": "2d95e79e850921f983413261d1af02ff5e8dee242ca6f20870704e70ddc9e7ba",
+    "/workspace/.work/worktrees/v1.4/results/benchmarks/2026-10-05-v1.5-performance/ascii-iri-probe.stdout": "eeacd20815ecdb4bcc616ed28e82a2a606851c29404bd2fbd7554dd755591de5",
+    "engine/vendor/owl-functional-syntax/src/lib.rs": "0b021783feddc0f9d84221f8e432d7cd9e250e1222e8cd03e7ae89120bd6eaed"
+  }
+}

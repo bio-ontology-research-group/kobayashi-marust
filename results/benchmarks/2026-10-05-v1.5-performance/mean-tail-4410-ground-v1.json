@@ -1,0 +1,39 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "binary_sha256": "8b27f06fe8af2f00c88763a00b022c9769a4505c92f68fad8b3b4baa8203eb71",
+  "source_sha256": "4ad47b71cc599170509c5a22129883e023d14d6cfe91f2109e3d575f12fc311c",
+  "flags": {
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_GROUND_RULE_SOURCE": "1",
+    "KM_HT_DDB": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_FAST_IRI_GRAMMAR": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+    "KM_TIMING": "1",
+    "KM_BRIDGE_PROGRESS": "1",
+    "KM_HT_STATS": "1",
+    "KM_CONFORMANCE_TIMING": "1",
+    "KM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1"
+  },
+  "timeout_s": 15,
+  "memory_gib": 20,
+  "cpus": 1,
+  "attempts": [
+    {
+      "route": "ht_bridge",
+      "status": "ok",
+      "exit_code": 3,
+      "wall_s": 2.2108017950085923,
+      "peak_bytes": 94224384,
+      "trace": [
+        "CONFORMANCE seconds=1.055193 bytes=45114936 reused=false ok=true",
+        "CONFORMANCE seconds=0.727922 bytes=45114936 reused=false ok=true",
+        "unsupported: ground-rule source exceeds development size bound"
+      ],
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

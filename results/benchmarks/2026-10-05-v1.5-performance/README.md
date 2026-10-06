@@ -2,6 +2,18 @@
 
 The release objectives are not yet achieved.
 
+## ASCII IRI validation experiment
+
+[The opt-in ASCII HTTP/HTTPS validator](ascii-iri-notes.md) passes all four
+production Lean gates on its pinned source, with no sorryAx. Local grammar-only
+checks improve on the cached validator, but end-to-end performance remains
+unmeasured. Full grammar job 53341336 is running; its first 768 inputs agree
+exactly with the original validator, including error text.
+
+[The shared-runtime tail](mean-tail-4410-notes.md) identifies source conversion
+as the next investigation for 4410: its 45 MB source exceeds the ground-source
+compiler's development size bound and otherwise falls back to nominal reasoning.
+
 ## Completed IRI-cache diagnostic and isolated disjoint-role work
 
 - [IRI-cache full sweep](iri-cached-final-notes.md): all 1,920 inputs recorded,

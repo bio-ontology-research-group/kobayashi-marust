@@ -1,0 +1,59 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "binary_sha256": "8b27f06fe8af2f00c88763a00b022c9769a4505c92f68fad8b3b4baa8203eb71",
+  "source_sha256": "4ad47b71cc599170509c5a22129883e023d14d6cfe91f2109e3d575f12fc311c",
+  "flags": {
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_HT_DDB": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_FAST_IRI_GRAMMAR": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+    "KM_TIMING": "1",
+    "KM_BRIDGE_PROGRESS": "1",
+    "KM_HT_STATS": "1",
+    "KM_CONFORMANCE_TIMING": "1",
+    "KM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1"
+  },
+  "timeout_s": 15,
+  "memory_gib": 20,
+  "cpus": 1,
+  "attempts": [
+    {
+      "route": "auto",
+      "status": "timeout",
+      "exit_code": -9,
+      "wall_s": 15.011359387892298,
+      "peak_bytes": 274907136,
+      "trace": [
+        "CONFORMANCE seconds=0.722533 bytes=45114936 reused=false ok=true",
+        "CONFORMANCE seconds=0.726769 bytes=45114936 reused=false ok=true",
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=45114936 complements_below=0",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=45114936 screen=0.00s",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 2.94s route=nominals"
+      ],
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "route": "ht_bridge",
+      "status": "ok",
+      "exit_code": 3,
+      "wall_s": 4.562799327075481,
+      "peak_bytes": 271613952,
+      "trace": [
+        "CONFORMANCE seconds=0.776192 bytes=45114936 reused=false ok=true",
+        "CONFORMANCE seconds=0.704388 bytes=45114936 reused=false ok=true",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=45114936 screen=0.00s",
+        "KM_TIMING frontend done @ 2.55s route=ht_bridge",
+        "cb_to_ht [emelim] eliminated 0 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=80 moved=0 tautologies=0",
+        "native ABox conversion declined: 9343 data-property assertion axiom(s) are unsupported",
+        "unsupported: ontology is outside the selected HT mechanism's structural gate"
+      ],
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
