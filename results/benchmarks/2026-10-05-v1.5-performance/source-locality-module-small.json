@@ -1,0 +1,10 @@
+{
+  "queries": 4,
+  "source_axioms": 16569,
+  "module_axioms": 656,
+  "selected_axiom_key_sha256": "521265bad1fbbf3846eb028a7f7ca3d57a03bf23f23f3b1edd7e4a2cf2afbebb",
+  "diagnostic_only": true,
+  "source_sha256": "e66a22f09c4d472d5e498d3cd8048db4b4aa96cb389d910abf72fc521d42108f",
+  "focus_sha256": "304d432b893a50e75f25ad09066b1db0c7c8173b94d2b4276e8e89b1da075a1d",
+  "scope": "Module-size estimate only. Exact source rendering, full RBox preservation, projection certification and fresh-answer comparisons remain required."
+}

@@ -390,11 +390,38 @@ impl IncrementalBridgeClassifier {
         input: TInput,
         positive_horn_source: bool,
     ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
+        self.updated_typed_with_source_activation(candidate, changed_clauses, kind, input,
+            positive_horn_source, false)
+    }
+
+    pub(crate) fn source_axioms_match(&self, expected: &[crate::json_io::SourceAxiomMeta]) -> bool {
+        self.input.source_axioms == expected
+    }
+
+    /// `source_covered` requires exact source TBox coverage for both revisions,
+    /// identical public IRI ownership and unchanged complete source RBoxes.
+    pub(crate) fn updated_typed_with_source_activation(
+        &self, candidate: &[JClause], changed_clauses: &[JClause], kind: HtChangeKind,
+        input: TInput, positive_horn_source: bool, source_covered: bool,
+    ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
         let side_fingerprint = bridge_side_fingerprint(&input)?;
         let queries = bridge_query_names(&input);
         let old_queries = bridge_query_names(&self.input);
-        let side_changed = self.side_fingerprint != side_fingerprint || old_queries != queries;
-        let activation = if positive_horn_source && !side_changed && !self.result.inconsistent
+        let source_activation = if source_covered && !self.result.inconsistent {
+            positive_source_side_fingerprint(&self.input)
+                .zip(positive_source_side_fingerprint(&input))
+                .filter(|(old,new)| old == new)
+                .and_then(|_| {
+                    let global = input.role_domains.iter().chain(&input.role_ranges)
+                        .map(|(_,id)| input.concepts.get(*id).cloned()).collect::<Option<Vec<_>>>()?;
+                    crate::incremental_activation::source_affected(
+                        &self.input.source_axioms, &input.source_axioms, &queries, &global)
+                })
+        } else { None };
+        let source_reuse = source_activation.is_some();
+        let side_changed = !source_reuse
+            && (self.side_fingerprint != side_fingerprint || old_queries != queries);
+        let activation = source_activation.or_else(|| if positive_horn_source && !side_changed && !self.result.inconsistent
             && !input.number && input.nominals.is_empty() && input.nominal_abox.is_empty()
             && input.native_abox.is_empty() && input.rule_data_roles.is_none()
             && input.rule_source_classes.is_none() && input.rule_source_abox.is_none()
@@ -407,7 +434,7 @@ impl IncrementalBridgeClassifier {
                 .collect::<Option<Vec<_>>>()
                 .and_then(|global| crate::incremental_activation::affected(
                     &self.source_clauses, candidate, changed_clauses, &queries, &global))
-        } else { None };
+        } else { None });
         let mut affected = activation.unwrap_or_else(||
             affected_concepts(&self.source_clauses, candidate, changed_clauses, &queries));
         // A concept-only replacement has the same dependency boundary as an
@@ -423,7 +450,7 @@ impl IncrementalBridgeClassifier {
         }
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!(
-                "bridge incremental delta kind={kind:?} side_changed={side_changed} inconsistent={} queries={} affected={}",
+                "bridge incremental delta kind={kind:?} side_changed={side_changed} source_locality={source_reuse} inconsistent={} queries={} affected={}",
                 self.result.inconsistent,
                 queries.len(),
                 affected.len()
@@ -524,10 +551,9 @@ fn bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoni
     })
 }
 
-/// Diagnostic only. Source-based reuse additionally needs identical source
+/// Source-based reuse additionally needs identical source
 /// RBoxes, complete positive source metadata and a checked activation boundary.
 /// This value compares only supported typed side constraints by their names.
-#[cfg(test)]
 fn positive_source_side_fingerprint(input: &TInput) -> Option<Vec<u8>> {
     // Deliberately exhaustive: an added typed field must receive an explicit
     // treatment instead of silently disappearing from reuse admission.

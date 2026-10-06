@@ -4,6 +4,11 @@
 source-level bridge sessions. It is off by default. This is not a release
 performance or certification claim.
 
+`KM_INCREMENTAL_SOURCE_LOCALITY=1` enables the newer source-expression path
+described below. It is also off by default and is disabled when HT runtime
+certification is requested. Its first measured updates retain more work but
+are still slower than fresh reasoning; it is not ready for promotion.
+
 The source guard admits positive Horn TBoxes with role inclusions, chains and
 inverses, but excludes individuals, rules, datatypes, cardinalities,
 functionality, disjunction, complement expressions, universal restrictions and
@@ -47,7 +52,7 @@ taxonomy. Only requested affected subjects may replace retained rows.
 Overwriting unrelated rows lost 9,227 pairs in the first ORE 9944 diagnostic;
 restricting replacement restored exact agreement with the full-rebuild result.
 
-For ORE 9944's one-axiom removal and restoration, the prototype retains 8,004
+With normalized-clause analysis, ORE 9944's one-axiom removal and restoration retain 8,004
 of 8,008 public query rows and rebuilds four. Its larger edit still falls back:
 definer renumbering changes about 27,000 normalized clauses and changes the
 typed fingerprint. Timing comparisons against fresh reasoning, repeated cluster
@@ -105,16 +110,15 @@ premises. Complete source coverage, the exact lowering
 of n-ary conjunction/equivalence/disjointness, and the activation algorithm's
 closed-set certificate remain integration obligations.
 
-The Rust `source_affected` diagnostic uses structural source-expression keys
+The Rust `source_affected` analysis uses structural source-expression keys
 across both snapshots, so generated definer names and numeric concept IDs do
 not participate in change detection. It reuses the bounded bit-matrix analysis
-and is compiled only for tests. It does not authorize production reuse or
-alter the current fallback. Finite relational-model tests exercise existential
+and is connected only to the explicit source-locality option. Finite relational-model tests exercise existential
 restrictions, conjunction, equivalence, disjointness, and global top premises.
 
 ## Typed side-state audit
 
-The test-only `positive_source_side_fingerprint` exhaustively destructures
+The guarded `positive_source_side_fingerprint` exhaustively destructures
 `TInput`. A future field therefore requires an explicit decision. It compares
 supported side constraints through unique concept and role names, allowing
 numeric reindexing and private definer churn without changing public meaning.
@@ -133,5 +137,30 @@ key is identical. Mutation tests distinguish changed domains, reversed chain
 operands and inverse flags, and reject unsupported payloads or invalid indices.
 This is necessary but insufficient for reuse. The caller must also require an
 unchanged source RBox: role hierarchy and inverse constraints can live in
-clauses rather than these side vectors. These diagnostics do not alter
-production reuse admission.
+clauses rather than these side vectors.
+
+## Source coverage and first retained execution
+
+The source-locality path reparses each admitted source through a strict axiom
+inventory and compares every normalized TBox axiom with the retained metadata.
+It currently requires expanded entity IRIs and sources at most 8 MiB. Unknown
+constraints, imports, keys, rules, ABoxes and unsupported class constructors
+decline this path. Both revisions must retain the same IRI map and complete
+RBox, and the typed source arrays must match their frontend counterparts.
+The typed-side key independently checks the supported unchanged constraints.
+An uncertain check uses the existing rebuild path.
+
+The first actual five-revision ORE 9944 session exactly matches fresh results.
+It retains 8,004 rows on each small edit and 5,828 on each larger edit, but
+updates take 1.995–2.087 seconds while fresh processes take 1.600–1.652 seconds.
+These are local diagnostics, not a release benchmark. All four updates fail
+the requested speed criterion. See `source-locality-updates-first.json` in the
+v1.5 performance evidence directory.
+
+The bridge still rebuilds the entire native environment and computes full
+source closure before restricting taxonomy probes. A source-locality module
+estimate retains 656/16,569 axioms for the four affected small-edit queries,
+and 7,828/16,538 for the 2,180 affected large-edit queries. Rebuilding an exact
+module is the next candidate optimization. Source rendering, complete RBox
+preservation, projection certification, and fresh-answer validation must
+precede its use; no module is currently substituted into classification.

@@ -85,11 +85,9 @@ pub(crate) fn affected(
         .map(|(_, name)| name.clone()).collect())
 }
 
-/// Source-expression diagnostic for the locality theorem. This is deliberately
-/// not connected to production reuse: typed side-state identity and complete
-/// source coverage must be established by the caller before that is permitted.
-#[cfg(test)]
-fn source_affected(
+/// Source-expression abstraction for the locality theorem. Typed side-state
+/// identity and complete source coverage must be established by the caller.
+pub(crate) fn source_affected(
     old: &[crate::json_io::SourceAxiomMeta], new: &[crate::json_io::SourceAxiomMeta],
     queries: &[String], global: &[String],
 ) -> Option<BTreeSet<String>> {

@@ -58,6 +58,7 @@ enum SourceBackend {
     Bridge {
         classifier: IncrementalBridgeClassifier,
         clauses: Vec<JClause>,
+        source_covered: bool,
     },
     TypedHt {
         classifier: IncrementalHtClassifier,
@@ -195,6 +196,7 @@ impl SourceIncrementalClassifier {
         validate_incremental_source(source)?;
         let frontend = normalize_automatic(source)?;
         let route = frontend.route.clone();
+        let source_covered = source_locality_requested() && positive_source_coverage(source, &frontend);
         if let Some((classifier, classification)) = IncrementalMirrorClassifier::new(source)? {
             return Ok(Self {
                 revision: 0,
@@ -324,6 +326,7 @@ impl SourceIncrementalClassifier {
                         backend: SourceBackend::Bridge {
                             classifier,
                             clauses: Vec::new(),
+                            source_covered,
                         },
                     }
                     .with_live_clauses());
@@ -404,6 +407,7 @@ impl SourceIncrementalClassifier {
             SourceBackend::Bridge {
                 classifier,
                 clauses: frontend.clauses.clone(),
+                source_covered,
             }
         } else if route == "ht_rules" {
             SourceBackend::Rules(IncrementalRulesClassifier::new(
@@ -555,6 +559,7 @@ impl SourceIncrementalClassifier {
         if let SourceBackend::Bridge {
             classifier,
             clauses,
+            source_covered,
         } = &mut self.backend
         {
             let old_ids: Vec<ClauseId> = (0..clauses.len() as ClauseId).collect();
@@ -572,13 +577,20 @@ impl SourceIncrementalClassifier {
             if let Some(input) = with_route_environment(&route_after, || {
                 crate::orchestrate::race::prepare_incremental_bridge(&candidate)
             })? {
+                let candidate_covered = source_locality_requested()
+                    && positive_source_coverage(source, &candidate);
+                let source_activation = candidate_covered && *source_covered
+                    && self.frontend.iri_map == candidate.iri_map
+                    && self.frontend.rbox == candidate.rbox
+                    && classifier.source_axioms_match(&self.frontend.source_axioms)
+                    && input.source_axioms == candidate.source_axioms;
                 let update = with_route_environment(&route_after, || {
                     let activation = std::env::var_os("KM_INCREMENTAL_CONJUNCTIVE").is_some()
                         && self.frontend.iri_map == candidate.iri_map
                         && positive_bridge_activation_profile(&self.frontend)
                         && positive_bridge_activation_profile(&candidate);
-                    classifier.updated_typed_with_activation(
-                        &candidate.clauses, &changed, kind, input, activation)
+                    classifier.updated_typed_with_source_activation(
+                        &candidate.clauses, &changed, kind, input, activation, source_activation)
                 })?;
                 if let Err(error) = &update {
                     if std::env::var_os("KM_TIMING").is_some() {
@@ -590,6 +602,7 @@ impl SourceIncrementalClassifier {
                     let classification = map_incremental_result(&candidate, next.result());
                     *classifier = next;
                     *clauses = candidate.clauses.clone();
+                    *source_covered = candidate_covered;
                     self.revision += 1;
                     self.route = route_after.clone();
                     self.frontend = candidate;
@@ -1150,6 +1163,8 @@ impl SourceIncrementalClassifier {
                     self.backend = SourceBackend::Bridge {
                         classifier,
                         clauses: self.frontend.clauses.clone(),
+                        source_covered: source_locality_requested()
+                            && positive_source_coverage(source, &self.frontend),
                     };
                     return Ok(SourceIncrementalReceipt {
                         revision: self.revision,
@@ -1253,6 +1268,8 @@ impl SourceIncrementalClassifier {
             SourceBackend::Bridge {
                 classifier,
                 clauses: self.frontend.clauses.clone(),
+                source_covered: source_locality_requested()
+                    && positive_source_coverage(source, &self.frontend),
             }
         } else if route_after == "elc" && !self.frontend.abox_inconsistent {
             IncrementalPositiveAboxClassifier::new(&self.frontend)
@@ -1386,6 +1403,59 @@ fn positive_bridge_activation_profile(frontend: &FrontendResult) -> bool {
         && s.min_cardinalities == 0 && s.max_cardinalities == 0 && s.exact_cardinalities == 0
         && s.functional_role_axioms == 0 && s.inverse_functional_role_axioms == 0
         && s.unions == 0 && s.complements == 0 && s.universals == 0 && s.has_self == 0
+}
+
+fn source_locality_requested() -> bool {
+    std::env::var_os("KM_INCREMENTAL_SOURCE_LOCALITY").is_some()
+        && !crate::tableau::ht_lean_certification_requested()
+}
+
+/// Independently reparse the admitted source and require exact TBox metadata.
+/// The strict axiom inventory excludes constraints that the source locality
+/// theorem does not cover. Named role domains/ranges are checked separately
+/// through the typed side key; the complete RBox must remain unchanged.
+fn positive_source_coverage(source: &str, frontend: &FrontendResult) -> bool {
+    use crate::frontend::{iri::IriRegistry, normalise::nnf, parse, sexpr::Node, syntax::Axiom};
+    use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
+    if source.len() > 8 * 1024 * 1024 || !positive_bridge_activation_profile(frontend) {
+        return false;
+    }
+    fn expanded(node: &Node<'_>) -> bool {
+        match node {
+            Node::Atom(name) => name.starts_with('<') && name.ends_with('>'),
+            Node::List("Annotation", _) => true,
+            Node::List(_, children) => children.iter().all(expanded),
+        }
+    }
+    let mut admitted = true;
+    let mut registry = IriRegistry::new();
+    let ontology = parse::parse_axioms_observed(&mut registry, source, |node| {
+        let allowed = match node {
+            Node::Atom(name) => name.starts_with('<') && name.ends_with('>'), // ontology/version IRI
+            Node::List("Annotation" | "AnnotationAssertion", _) => true,
+            Node::List("Declaration", args) => matches!(parse::strip_annotations(args).as_slice(),
+                [Node::List("Class" | "ObjectProperty", _)]) && expanded(node),
+            Node::List("SubClassOf" | "EquivalentClasses" | "DisjointClasses"
+                | "SubObjectPropertyOf" | "EquivalentObjectProperties" | "InverseObjectProperties"
+                | "TransitiveObjectProperty" | "SymmetricObjectProperty" | "AsymmetricObjectProperty"
+                | "ReflexiveObjectProperty" | "IrreflexiveObjectProperty" | "DisjointObjectProperties"
+                | "ObjectPropertyDomain" | "ObjectPropertyRange", _) => expanded(node),
+            _ => false,
+        };
+        admitted &= allowed;
+    });
+    let Ok(ontology) = ontology else { return false; };
+    if !admitted { return false; }
+    let expected: Vec<_> = ontology.tbox().filter_map(|axiom| {
+        let (kind,left,right) = match axiom {
+            Axiom::SubClassOf(a,b) => (SourceAxiomKind::SubClass,a,b),
+            Axiom::EquivalentClasses(a,b) => (SourceAxiomKind::Equivalent,a,b),
+            Axiom::DisjointClasses(a,b) => (SourceAxiomKind::Disjoint,a,b),
+            _ => return None,
+        };
+        Some(SourceAxiomMeta { kind,left:nnf(left),right:nnf(right) })
+    }).collect();
+    expected == frontend.source_axioms
 }
 
 fn validate_incremental_source(source: &str) -> Result<(), String> {
@@ -1767,6 +1837,63 @@ mod tests {
     use crate::orchestrate::Classification;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn source_locality_coverage_rejects_missing_metadata_and_hidden_constraints() {
+        let _lock=lock_environment();
+        let source="Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>))
+            Declaration(ObjectProperty(<urn:r>)) SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> <urn:B>)))";
+        let mut frontend=super::normalize_selected(source,"ht_bridge").unwrap();
+        assert!(super::positive_source_coverage(source,&frontend));
+        let extra=source.replacen("Ontology(","Ontology(HasKey(<urn:A> (<urn:r>) ()) ",1);
+        assert!(!super::positive_source_coverage(&extra,&frontend));
+        let prefixed=source.replace("<urn:A>",":A");
+        assert!(!super::positive_source_coverage(&prefixed,&frontend));
+        frontend.source_axioms.pop();
+        assert!(!super::positive_source_coverage(source,&frontend));
+    }
+
+    #[test]
+    fn source_locality_reuses_rows_across_definer_churn_with_exact_fresh_answers() {
+        let _lock=lock_environment();
+        let declarations="Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>))
+            Declaration(Class(<urn:C>)) Declaration(Class(<urn:X>)) Declaration(Class(<urn:Y>))
+            Declaration(ObjectProperty(<urn:r>)) Declaration(ObjectProperty(<urn:s>))
+            InverseObjectProperties(<urn:r> <urn:s>)";
+        let axioms="SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> <urn:B>))
+            SubClassOf(ObjectSomeValuesFrom(<urn:r> <urn:B>) <urn:C>) SubClassOf(<urn:X> <urn:Y>)";
+        let old=format!("Ontology({declarations} {axioms})");
+        let new=format!("Ontology({declarations} SubClassOf(<urn:X> ObjectSomeValuesFrom(<urn:s> <urn:Y>)) {axioms})");
+        super::with_route_environment("ht_bridge",|| {
+            let before=super::normalize_selected(&old,"ht_bridge").unwrap();
+            let after=super::normalize_selected(&new,"ht_bridge").unwrap();
+            assert!(super::positive_source_coverage(&old,&before));
+            assert!(super::positive_source_coverage(&new,&after));
+            assert_eq!(before.rbox,after.rbox);
+            assert_eq!(before.iri_map,after.iri_map);
+            assert_ne!(before.definers,after.definers);
+            let prepare=|f:&crate::frontend::FrontendResult|
+                crate::orchestrate::race::prepare_incremental_bridge(f).unwrap();
+            let classifier=crate::incremental_ht::IncrementalBridgeClassifier::new_typed(
+                &before.clauses,prepare(&before)).unwrap();
+            let ids=(0..before.clauses.len() as u64).collect::<Vec<_>>();
+            let (removed,added)=clause_delta(&before.clauses,&ids,&after.clauses);
+            let mut changed:Vec<_>=removed.iter().map(|id|before.clauses[*id as usize].clone()).collect();
+            changed.extend(added);
+            let (updated,stats)=classifier.updated_typed_with_source_activation(
+                &after.clauses,&changed,crate::incremental_ht::HtChangeKind::Replacement,
+                prepare(&after),false,true).unwrap();
+            let fresh=crate::incremental_ht::IncrementalBridgeClassifier::new_typed(
+                &after.clauses,prepare(&after)).unwrap();
+            assert!(stats.reused_queries>0);
+            assert!(stats.rebuilt_queries>0);
+            let actual=map_incremental_result(&after,updated.result());
+            let expected=map_incremental_result(&after,fresh.result());
+            assert_eq!(actual.subsumptions,expected.subsumptions);
+            assert_eq!(actual.unsatisfiable,expected.unsatisfiable);
+            assert_eq!(actual.consistent,expected.consistent);
+        }).unwrap();
+    }
 
     #[test]
     fn partial_bridge_update_keeps_unaffected_role_chain_entailments() {

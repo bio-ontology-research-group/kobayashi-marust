@@ -1,0 +1,31 @@
+{
+  "binary": {
+    "path": "/tmp/agent/km-v150-diagnostics/km-source-locality-0a093677ecd7",
+    "sha256": "0a093677ecd73f3bd691d81261c151a1619a122ee12920c045ec5138ffa3ebc2"
+  },
+  "source_manifest_sha256": "c62d74bd71711c29948defc996ea28f4946d22b763ca62c8ae5e7fc1835ded5a",
+  "tests": {
+    "source_incremental_disabled": {
+      "passed": 23,
+      "failed": 0,
+      "log_sha256": "475d5a19233d3b05b42a802edb8c8a91a0b80111fc4a7ba8b264c7400ed79bf8"
+    },
+    "source_incremental_enabled": {
+      "passed": 23,
+      "failed": 0,
+      "log_sha256": "3a7545e905259f74870b8aa1533973f2d7929745886b861f2374cc337a3da574"
+    }
+  },
+  "cli_comparison": {
+    "revisions": 5,
+    "fresh_answers_identical": true,
+    "small_edit_retained_queries": 8004,
+    "large_edit_retained_queries": 5828,
+    "faster_updates": 0,
+    "measured_updates": 4,
+    "receipt_sha256": "01766a7ff90cc95fe2fe449bb0476cb246a0cc6c9bd7e71c19e4554f2235fb65"
+  },
+  "scope": "Opt-in development path only. Default unchanged. Runtime HT certificate requests do not use this path.",
+  "next": "Rebuild a certified source locality module for affected queries, preserving the full RBox and public signature; then repeat every fresh-answer and speed comparison.",
+  "release_approved": false
+}
