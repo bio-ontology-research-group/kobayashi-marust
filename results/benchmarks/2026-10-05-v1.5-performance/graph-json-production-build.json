@@ -1,0 +1,28 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "--manifest-path",
+    "engine/Cargo.toml",
+    "--bin",
+    "km",
+    "-v"
+  ],
+  "source_manifest_sha256": "119c0cd38325328355e365d61883bf115d436d29551369a0c7edd34ff9bd1a55",
+  "runner_sha256": "27d2e25c9282370fea5a6bc564441ddce8e1d0dcd535ac31b34b69170a011bf5",
+  "exit_code": 0,
+  "source_files_rechecked": 705,
+  "build_log_sha256": "e1a73d6c9d2df1560e3ff9e05fc977f5167868c35885e8a256d96facb5eed7bc",
+  "production_profile": true,
+  "profile": {
+    "lto": true,
+    "codegen_units": 1,
+    "incremental": false
+  },
+  "release_approved": false,
+  "binary_sha256": "52397699d8b1f64c7471d197eb175f5184d56a89fe51285c0cf7aec5e9819159",
+  "local_binary": "/tmp/agent/km-v150-diagnostics/km-graph-json-production-52397699d8b1",
+  "rustc_version": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n"
+}

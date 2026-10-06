@@ -1,0 +1,17 @@
+{
+  "complete": true,
+  "complete_chunks": 60,
+  "recorded_inputs": 1920,
+  "exact_agreements": 1919,
+  "differing_results": [],
+  "unresolved": [
+    "ore_ont_15687"
+  ],
+  "release_approved": false,
+  "diagnostic_only": true,
+  "scope": "Standalone default/manual frontend output and refusal equivalence; not classification.",
+  "job_id": "53333815",
+  "unresolved_reason": {
+    "ore_ont_15687": "Both arms exceeded 20 GiB; no completed outputs to compare."
+  }
+}

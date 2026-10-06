@@ -49,6 +49,7 @@ trap cleanup_checker EXIT
         ContextCalculus.AbsorbingTransitivity \
         ContextCalculus.DLSafeAtomicTaxonomyExtension \
         ContextCalculus.DLSafeRuleJoinOrdering \
+        ContextCalculus.TaxonomyGraphSerialization \
         ContextCalculus.DLSafeGroundRuleNormalization \
         ContextCalculus.InverseRoleChainNormalization \
         ContextCalculus.NativeCardinalityNormalization \
@@ -124,6 +125,11 @@ for theorem in \
     DLSafeAtomicTaxonomyExtension.boolean_query_projection_exact \
     DLSafeAtomicTaxonomyExtension.guarded_named_rules_preserved \
     DLSafeAtomicTaxonomyExtension.role_chain_preserved \
+    TaxonomyGraphSerialization.reach_trans \
+    TaxonomyGraphSerialization.replace_edges \
+    TaxonomyGraphSerialization.omit_self_edges \
+    TaxonomyGraphSerialization.map_reach \
+    TaxonomyGraphSerialization.graph_encoding_same_closure \
     DLSafeRuleJoinOrdering.reject_false_premise \
     DLSafeRuleJoinOrdering.accept_true_head \
     DLSafeRuleJoinOrdering.class_domain_restriction \
@@ -308,6 +314,9 @@ fi
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib finite_rule_model_tests
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib empty_grounding_model_tests
     CARGO_TARGET_DIR="$target_root" cargo test --release --test explain_cli
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib orchestrate::tests::graph_json
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib orchestrate::tests::reachability_graph_json
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test graph_json_cli
 )
 
 echo "routing certification gate passed"

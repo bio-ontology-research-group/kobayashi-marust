@@ -15,7 +15,7 @@ def summarize(directory):
         chunk = json.loads(path.read_text())
         for field, file in [('input_manifest_sha256', 'full-candidate-inputs.json'),
                             ('inventory_sha256', 'iri-cached-full-artifact.json'),
-                            ('runner_sha256', 'check_iri_frontend_full.py')]:
+                            ('runner_sha256', 'check_iri_frontend_auto.py')]:
             assert chunk[field] == digest(root / file), (path, field)
         assert (chunk['timeout_s_per_arm'], chunk['memory_gib'], chunk['cpus']) == (240, 20, 1)
         task = int(path.stem)
@@ -46,7 +46,7 @@ def summarize(directory):
                 complete_chunks=complete_chunks, recorded_inputs=len(seen),
                 exact_agreements=len(seen)-len(errors)-len(unresolved),
                 differing_results=errors, unresolved=unresolved, release_approved=False,
-                diagnostic_only=True, scope='Standalone default/manual frontend output and refusal equivalence; not classification.')
+                diagnostic_only=True, scope='Explicit automatic frontend output and refusal equivalence; not classification.')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)

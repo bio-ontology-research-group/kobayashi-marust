@@ -60,6 +60,14 @@ Write the JSON classification result to a file:
 km classify ontology.owl > classification.json
 ```
 
+For an explicit graph representation, use `km classify --json-edges ontology.owl`.
+Its JSON includes `subsumptions_are_graph_edges: true`; consumers must take the
+transitive closure of the `subsumptions` edges to obtain all entailed class
+pairs. The graph can contain redundant edges. Consistency, unsatisfiable
+classes, and dropped-axiom counts retain their usual meaning. Default JSON
+continues to list expanded pairs. The graph option is incompatible with
+`--lines`; `KM_JSON_GRAPH_EDGES=1` enables the same option for benchmark drivers.
+
 Inspect the accepted options and worker commands:
 
 ```sh

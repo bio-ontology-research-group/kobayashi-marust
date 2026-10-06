@@ -1,6 +1,6 @@
 //! `km`: the multi-call entry point — the whole reasoner in one binary.
 //!
-//!   `km classify [--lines] <ont.ofn>`  the pure-Rust classify orchestrator
+//!   `km classify [--lines | --json-edges] <ont.ofn>`  the pure-Rust classify orchestrator
 //!                                      (replacement for `owl_classify.py`)
 //!   `km explain <ont.ofn> ...`          one source-axiom justification
 //!   `km ofn|elc|engine|tableau`        the worker reasoners
@@ -43,7 +43,7 @@ fn main() {
         // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
-            eprintln!("usage: km classify [--lines] [--route ROUTE] [--format FORMAT] <ontology>");
+            eprintln!("usage: km classify [--lines | --json-edges] [--route ROUTE] [--format FORMAT] <ontology>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> subclass <SUB> <SUPER>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
@@ -413,12 +413,14 @@ fn cb_to_ht_cmd() {
 
 fn classify_cmd(rest: &[String]) {
     let mut lines = false;
+    let mut graph_edges = std::env::var("KM_JSON_GRAPH_EDGES").is_ok_and(|v| v == "1");
     let mut route: Option<&str> = None;
     let mut ontology: Option<&str> = None;
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
             "--lines" => lines = true,
+            "--json-edges" => graph_edges = true,
             "--route" => {
                 index += 1;
                 route = rest.get(index).map(String::as_str);
@@ -453,8 +455,12 @@ fn classify_cmd(rest: &[String]) {
         }
         index += 1;
     }
+    if lines && graph_edges {
+        eprintln!("--lines cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
+        exit(2);
+    }
     let Some(ontology) = ontology else {
-        eprintln!("usage: km classify [--lines] [--route ROUTE] [--format FORMAT] <ontology>");
+        eprintln!("usage: km classify [--lines | --json-edges] [--route ROUTE] [--format FORMAT] <ontology>");
         exit(2);
     };
     if let Some(requested) = route {
@@ -482,7 +488,12 @@ fn classify_cmd(rest: &[String]) {
                 use std::io::{BufWriter, Write};
                 let stdout = std::io::stdout();
                 let mut w = BufWriter::new(stdout.lock());
-                if let Err(error) = res.write_json(&mut w) {
+                let written = if graph_edges {
+                    res.write_graph_json(&mut w)
+                } else {
+                    res.write_json(&mut w)
+                };
+                if let Err(error) = written {
                     eprintln!("classification serialise error: {error}");
                     exit(1);
                 }

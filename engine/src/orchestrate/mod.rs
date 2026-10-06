@@ -835,16 +835,56 @@ impl JsonClassification {
     }
 }
 
+impl JsonClassification {
+    /// Emit a graph whose transitive closure is the usual taxonomy. This is an
+    /// explicit alternate representation; the normal JSON API stays expanded.
+    pub fn write_graph_json<W: Write>(&self, writer: W) -> serde_json::Result<()> {
+        let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
+        serde::Serialize::serialize(&JsonClassificationEncoding {
+            result: self, graph_edges: true,
+        }, &mut ser)
+    }
+}
+
+struct JsonClassificationEncoding<'a> {
+    result: &'a JsonClassification,
+    graph_edges: bool,
+}
+
 impl serde::Serialize for JsonClassification {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(&JsonClassificationEncoding {
+            result: self, graph_edges: false,
+        }, serializer)
+    }
+}
+
+impl serde::Serialize for JsonClassificationEncoding<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
 
-        struct GroupedPairs<'a>(&'a GroupedJsonTaxonomy);
+        struct GroupedPairs<'a>(&'a GroupedJsonTaxonomy, bool);
         impl serde::Serialize for GroupedPairs<'_> {
             fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 use serde::ser::SerializeSeq;
                 if let Some(graph) = &self.0.reachability_graph {
                     let mut seq = serializer.serialize_seq(None)?;
+                    if self.1 {
+                        // Same named graph as the expanded encoder. Consumers
+                        // take its closure; omitting self edges preserves it.
+                        // See TaxonomyGraphSerialization.graph_encoding_same_closure.
+                        for (subject, successors) in graph.iter().enumerate() {
+                            for &superclass in successors {
+                                if subject != superclass as usize {
+                                    seq.serialize_element(&(
+                                        self.0.iris[subject].as_ref(),
+                                        self.0.iris[superclass as usize].as_ref(),
+                                    ))?;
+                                }
+                            }
+                        }
+                        return seq.end();
+                    }
                     let mut seen = vec![0u32; graph.len()];
                     let mut generation = 0u32;
                     let mut stack = Vec::new();
@@ -895,15 +935,18 @@ impl serde::Serialize for JsonClassification {
             }
         }
 
-        let mut state = serializer.serialize_struct("Classification", 4)?;
-        state.serialize_field("consistent", &self.classification.consistent)?;
-        if let Some(grouped) = &self.grouped_subsumptions {
-            state.serialize_field("subsumptions", &GroupedPairs(grouped))?;
+        let mut state = serializer.serialize_struct("Classification", if self.graph_edges { 5 } else { 4 })?;
+        state.serialize_field("consistent", &self.result.classification.consistent)?;
+        if let Some(grouped) = &self.result.grouped_subsumptions {
+            state.serialize_field("subsumptions", &GroupedPairs(grouped, self.graph_edges))?;
         } else {
-            state.serialize_field("subsumptions", &self.classification.subsumptions)?;
+            state.serialize_field("subsumptions", &self.result.classification.subsumptions)?;
         }
-        state.serialize_field("unsatisfiable", &self.classification.unsatisfiable)?;
-        state.serialize_field("dropped", &self.classification.dropped)?;
+        state.serialize_field("unsatisfiable", &self.result.classification.unsatisfiable)?;
+        state.serialize_field("dropped", &self.result.classification.dropped)?;
+        if self.graph_edges {
+            state.serialize_field("subsumptions_are_graph_edges", &true)?;
+        }
         state.end()
     }
 }
@@ -2948,6 +2991,97 @@ mod tests {
         let mut actual = Vec::new();
         grouped.write_json(&mut actual).unwrap();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn graph_json_preserves_closure_for_all_three_node_graphs_and_name_aliases() {
+        fn closure(value: &serde_json::Value, names: &[&str]) -> std::collections::BTreeSet<(String, String)> {
+            let mut edges: std::collections::BTreeSet<_> = value["subsumptions"].as_array().unwrap()
+                .iter().map(|p| (p[0].as_str().unwrap().to_owned(), p[1].as_str().unwrap().to_owned())).collect();
+            for &name in names { edges.insert((name.to_owned(), name.to_owned())); }
+            for &middle in names {
+                for &left in names {
+                    for &right in names {
+                        if edges.contains(&(left.to_owned(), middle.to_owned()))
+                            && edges.contains(&(middle.to_owned(), right.to_owned())) {
+                            edges.insert((left.to_owned(), right.to_owned()));
+                        }
+                    }
+                }
+            }
+            edges
+        }
+        for names in [["urn:A", "urn:B", "urn:π"], ["urn:A", "urn:A", "urn:quote\"\n"]] {
+            for bits in 0u32..512 {
+                let graph: Vec<Vec<u32>> = (0..3).map(|a| (0..3)
+                    .filter(|b| bits & (1 << (a * 3 + b)) != 0).collect()).collect();
+                let result = super::JsonClassification {
+                    classification: super::Classification {
+                        consistent: true, subsumptions: vec![], unsatisfiable: vec!["urn:Bottom".into()], dropped: 0,
+                    },
+                    grouped_subsumptions: Some(super::GroupedJsonTaxonomy {
+                        iris: names.iter().map(|s| std::sync::Arc::from(*s)).collect(),
+                        rows: std::collections::BTreeMap::new(), reachability_graph: Some(graph),
+                    }),
+                };
+                let mut expanded = Vec::new();
+                let mut compact = Vec::new();
+                result.write_json(&mut expanded).unwrap();
+                result.write_graph_json(&mut compact).unwrap();
+                let before: serde_json::Value = serde_json::from_slice(&expanded).unwrap();
+                let after: serde_json::Value = serde_json::from_slice(&compact).unwrap();
+                assert_eq!(closure(&before, &names), closure(&after, &names), "graph {bits}");
+                for field in ["consistent", "unsatisfiable", "dropped"] { assert_eq!(before[field], after[field]); }
+                assert!(before.get("subsumptions_are_graph_edges").is_none());
+                assert_eq!(after["subsumptions_are_graph_edges"], true);
+            }
+        }
+    }
+
+    #[test]
+    fn graph_json_preserves_materialized_fallbacks() {
+        for grouped in [false, true] {
+            let result = super::JsonClassification {
+                classification: super::Classification {
+                    consistent: true, subsumptions: vec![["urn:A".into(), "urn:B".into()]],
+                    unsatisfiable: vec![], dropped: 0,
+                },
+                grouped_subsumptions: grouped.then(|| super::GroupedJsonTaxonomy {
+                    iris: vec![std::sync::Arc::from("urn:A"), std::sync::Arc::from("urn:B")],
+                    rows: std::collections::BTreeMap::from([(0, vec![1])]), reachability_graph: None,
+                }),
+            };
+            let mut expanded = Vec::new();
+            let mut compact = Vec::new();
+            result.write_json(&mut expanded).unwrap();
+            result.write_graph_json(&mut compact).unwrap();
+            let before: serde_json::Value = serde_json::from_slice(&expanded).unwrap();
+            let mut after: serde_json::Value = serde_json::from_slice(&compact).unwrap();
+            assert_eq!(after.as_object_mut().unwrap().remove("subsumptions_are_graph_edges"), Some(true.into()));
+            assert_eq!(before, after);
+        }
+    }
+
+    #[test]
+    fn graph_json_keeps_long_chain_output_linear() {
+        let n = 128;
+        let result = super::JsonClassification {
+            classification: super::Classification { consistent: true, subsumptions: vec![], unsatisfiable: vec![], dropped: 0 },
+            grouped_subsumptions: Some(super::GroupedJsonTaxonomy {
+                iris: (0..n).map(|i| std::sync::Arc::from(format!("urn:long-chain:{i:04}"))).collect(),
+                rows: std::collections::BTreeMap::new(),
+                reachability_graph: Some((0..n).map(|i| if i + 1 < n { vec![(i + 1) as u32] } else { vec![] }).collect()),
+            }),
+        };
+        let mut expanded = Vec::new();
+        let mut compact = Vec::new();
+        result.write_json(&mut expanded).unwrap();
+        result.write_graph_json(&mut compact).unwrap();
+        let before: serde_json::Value = serde_json::from_slice(&expanded).unwrap();
+        let after: serde_json::Value = serde_json::from_slice(&compact).unwrap();
+        assert_eq!(before["subsumptions"].as_array().unwrap().len(), n * (n - 1) / 2);
+        assert_eq!(after["subsumptions"].as_array().unwrap().len(), n - 1);
+        assert!(compact.len() * 50 < expanded.len());
     }
 
     #[test]

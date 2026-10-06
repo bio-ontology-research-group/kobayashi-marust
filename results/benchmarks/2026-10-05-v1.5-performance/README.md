@@ -15,8 +15,10 @@ The release objectives are not yet achieved.
   pinned current source rebuilt with production settings; all four source
   certification gates passed. Full performance and coverage results are pending.
 - [IRI grammar equivalence](iri-grammar-final-53332675.json): all 1,920 results
-  and error texts match exactly, with no failed attempts. Full frontend-output
-  comparison is job 53333815; classification is measured separately.
+  and error texts match exactly, with no failed attempts. The default/manual frontend comparison
+  finished with 1,919 exact results and one unresolved case (15687 exceeded
+  20 GiB in both arms). Explicit automatic-route comparison is job 53335909;
+  classification is measured separately.
 - [Classifier snapshot reuse](unique-state-notes.md): 153 focused tests and
   all four certification gates passed. Paired timings are mixed; no isolated
   speedup is established.
