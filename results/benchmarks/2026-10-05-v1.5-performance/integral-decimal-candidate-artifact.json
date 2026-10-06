@@ -1,0 +1,24 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "integral-decimal-07ecfc5aab3f",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-integral-decimal-07ecfc5aab3f",
+      "sha256": "07ecfc5aab3fa91d54f8c99e05642871d6da598c334dd662f374d8ad5907efbf"
+    }
+  ],
+  "source_commit": "2032f765 plus integral-decimal-candidate.patch",
+  "source_manifest_sha256": "82b34da6f574845119ef497249cc9756204a404eca2391a1cbc700a1014a6d7b",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure"
+  ],
+  "release_approved": false,
+  "scope": "Two-case isolated integral-decimal diagnostic; no full corpus or certification claim.",
+  "certification_pending": true
+}

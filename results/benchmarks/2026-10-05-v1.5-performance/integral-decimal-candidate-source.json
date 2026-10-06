@@ -1,0 +1,11 @@
+{
+  "base_commit": "2032f7650acff095d779224e243d173b9c4e2360",
+  "isolated_checkout": "/workspace/.work/worktrees/integral-decimal-probe",
+  "patch_sha256": "274e5cf87b8f5f80c8d11217bec6fa82825785e907be3d2d3a68b63ced2b8105",
+  "changed_files": {
+    "engine/src/frontend/datatypes.rs": "fb388ba76506e7de46db52edc3933a23ba963c43f3c37ea8a85a8ee5209177a6"
+  },
+  "main_worktree_changed": false,
+  "scope": "Isolated candidate while local-universal certification remains running. All 73 datatype tests pass; independent original-ontology validation is Slurm job 53328160.",
+  "release_approved": false
+}

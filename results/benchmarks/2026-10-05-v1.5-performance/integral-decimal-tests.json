@@ -1,0 +1,7 @@
+{
+  "passed": 73,
+  "log_sha256": "44d34216322b2eafc0e515f22caf1fdb6829740d293b8adba767159e7fc40634",
+  "source_manifest_sha256": "82b34da6f574845119ef497249cc9756204a404eca2391a1cbc700a1014a6d7b",
+  "scope": "Datatype unit and bridge regression tests on isolated candidate; no independent ontology result yet.",
+  "release_approved": false
+}

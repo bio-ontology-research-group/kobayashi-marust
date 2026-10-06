@@ -1,0 +1,12 @@
+{
+  "diagnostic_only": true,
+  "status": "timeout",
+  "exit_code": -9,
+  "timeout_s": 10,
+  "source_sha256": "277f0f58ae339105a8f8183c4283cbb432690895f1a6888e847693392e0fe4f1",
+  "binary_sha256": "07ecfc5aab3fa91d54f8c99e05642871d6da598c334dd662f374d8ad5907efbf",
+  "stderr_sha256": "a2f5a023df0807e91604322d378610e4aaa7aa5cc0e05af2d9b82a73e3bb5af1",
+  "stderr": "KM_TIMING ground-rule source: rules=0 instances=0\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false\nKM_TIMING frontend done @ 0.01s route=manual\ncb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=131 moved=0 tautologies=0\nKM_TIMING spawn_ht: read+convert 1019 clauses (ht_view=881) in 0.01s\nKM_DUMP_TIN clauses=1019 dropped=0 fenced=7 nominals=75 inverse=true number=true queries=176 -> \"/tmp/agent/km-v150-diagnostics/integral-decimal-12566/worker-trace/typed-input.json\"\nBRIDGE-PUBLIC-SUBJECTS selected=169 active=176\nBRIDGE-DATATYPE-DEFER: a non-datatype axiom rejects a blank data node\ntableau error: konclude_ht bridge defer\nKM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)\nKM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.02s cached=false sidecar=false\nKM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false\nKM_TIMING frontend done @ 0.02s route=nominals\n",
+  "scope": "Instrumented 10-second local route diagnostic with worker stderr inherited; not a release attempt.",
+  "release_approved": false
+}
