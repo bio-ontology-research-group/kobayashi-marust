@@ -23,3 +23,10 @@ Job 53321214 compares the existing one-worker override against two workers on
 14572, 7361 and 9724. Each case has two repetitions with reversed arm order,
 unchanged immutable binary, and unchanged limits. This is a scheduling diagnostic;
 exact output audits and a full frozen sweep remain necessary before promotion.
+
+The first six completed outputs (both repetitions of 14572 and the first of
+7361, both worker settings) independently agree with the stored full-DL
+references. One worker takes 63.07–64.05 seconds versus 118.15–119.37 seconds
+for two workers. `single-worker-partial-audit.json` records each comparison and
+its hashes. The remaining six measurements were still running when this partial
+audit was recorded; no full-corpus result is replaced by these diagnostics.
