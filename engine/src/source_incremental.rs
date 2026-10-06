@@ -57,7 +57,6 @@ enum SourceBackend {
     PositiveAbox(IncrementalPositiveAboxClassifier),
     Bridge {
         classifier: IncrementalBridgeClassifier,
-        clauses: Vec<JClause>,
         source_covered: bool,
         /// The retained public result is exactly the mapping of internal rows.
         publication_exact: bool,
@@ -327,7 +326,6 @@ impl SourceIncrementalClassifier {
                         classification,
                         backend: SourceBackend::Bridge {
                             classifier,
-                            clauses: Vec::new(),
                             source_covered,
                             publication_exact: true,
                         },
@@ -410,7 +408,6 @@ impl SourceIncrementalClassifier {
             SourceBackend::Bridge {
                 publication_exact: map_incremental_result(&frontend, classifier.result()) == classification,
                 classifier,
-                clauses: frontend.clauses.clone(),
                 source_covered,
             }
         } else if route == "ht_rules" {
@@ -438,9 +435,6 @@ impl SourceIncrementalClassifier {
             *clauses = self.frontend.clauses.clone();
         }
         if let SourceBackend::ProxyCard { clauses, .. } = &mut self.backend {
-            *clauses = self.frontend.clauses.clone();
-        }
-        if let SourceBackend::Bridge { clauses, .. } = &mut self.backend {
             *clauses = self.frontend.clauses.clone();
         }
         if let SourceBackend::QuasiOrder { clauses, .. } = &mut self.backend {
@@ -572,12 +566,14 @@ impl SourceIncrementalClassifier {
 
         if let SourceBackend::Bridge {
             classifier,
-            clauses,
             source_covered,
             publication_exact,
         } = &mut self.backend
         {
             lap("bridge-entry");
+            // The frontend owns the exact normalized clauses for this revision.
+            // Borrow until publication; failed updates leave this snapshot intact.
+            let clauses = &self.frontend.clauses;
             let old_ids: Vec<ClauseId> = (0..clauses.len() as ClauseId).collect();
             let (removed_ids, additions) = clause_delta(clauses, &old_ids, &candidate.clauses);
             lap("clause-delta");
@@ -631,7 +627,6 @@ impl SourceIncrementalClassifier {
                     }
                     *publication_exact = true;
                     *classifier = next;
-                    *clauses = candidate.clauses.clone();
                     *source_covered = candidate_covered;
                     self.revision += 1;
                     self.route = route_after.clone();
@@ -1193,7 +1188,6 @@ impl SourceIncrementalClassifier {
                     self.backend = SourceBackend::Bridge {
                         publication_exact: true,
                         classifier,
-                        clauses: self.frontend.clauses.clone(),
                         source_covered: source_locality_requested()
                             && positive_source_coverage(source, &self.frontend),
                     };
@@ -1299,7 +1293,6 @@ impl SourceIncrementalClassifier {
             SourceBackend::Bridge {
                 publication_exact: map_incremental_result(&self.frontend, classifier.result()) == self.classification,
                 classifier,
-                clauses: self.frontend.clauses.clone(),
                 source_covered: source_locality_requested()
                     && positive_source_coverage(source, &self.frontend),
             }

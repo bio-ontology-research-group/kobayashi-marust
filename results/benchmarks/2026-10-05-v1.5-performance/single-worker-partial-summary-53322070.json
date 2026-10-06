@@ -1,30 +1,30 @@
 {
   "job_id": "53322070",
   "variant": "single-worker",
-  "complete_chunks": 25,
-  "recorded_inputs": 951,
+  "complete_chunks": 32,
+  "recorded_inputs": 1112,
   "full_measurement_complete": false,
   "candidate": {
-    "verified_solved": 813,
-    "mean_s": 7.957540654942742,
+    "verified_solved": 947,
+    "mean_s": 7.73761249611345,
     "median_s": 0.3615208640694618
   },
   "baseline_sha256": "3c35154735b5d5bc2d8aaed9ee2ff1ac881d940f060fcd362b58f45184f0da48",
   "status_counts": {
-    "executed_unvalidated": 813,
-    "process_error": 112,
-    "timeout": 26
+    "executed_unvalidated": 947,
+    "process_error": 134,
+    "timeout": 31
   },
   "audit_errors": [],
   "comparisons": {
     "km": {
       "shared": {
-        "verified_solved": 798,
-        "mean_s": 6.904369405447447,
-        "median_s": 0.34451755322515965
+        "verified_solved": 931,
+        "mean_s": 6.838068172327622,
+        "median_s": 0.3454930782318115
       },
-      "baseline_shared_mean_s": 11.6191821564199,
-      "baseline_shared_median_s": 0.6683296356350183,
+      "baseline_shared_mean_s": 11.241152890932883,
+      "baseline_shared_median_s": 0.6670351568609476,
       "lost_verified": [
         "ore_ont_15687"
       ],
@@ -43,17 +43,18 @@
         "ore_ont_1673",
         "ore_ont_16759",
         "ore_ont_1997",
-        "ore_ont_2901"
+        "ore_ont_2901",
+        "ore_ont_4780"
       ]
     },
     "konclude": {
       "shared": {
-        "verified_solved": 806,
-        "mean_s": 6.788189409374636,
+        "verified_solved": 940,
+        "mean_s": 6.73331823968824,
         "median_s": 0.353209120221436
       },
-      "baseline_shared_mean_s": 2.9083530636407233,
-      "baseline_shared_median_s": 0.2729861233383417,
+      "baseline_shared_mean_s": 3.146470962223062,
+      "baseline_shared_median_s": 0.26554315350949764,
       "lost_verified": [
         "ore_ont_12566",
         "ore_ont_12723",
@@ -71,9 +72,15 @@
         "ore_ont_16372",
         "ore_ont_16481",
         "ore_ont_16511",
+        "ore_ont_16666",
+        "ore_ont_1707",
         "ore_ont_1833",
         "ore_ont_2182",
         "ore_ont_10929",
+        "ore_ont_2504",
+        "ore_ont_2548",
+        "ore_ont_2792",
+        "ore_ont_3010",
         "ore_ont_11477",
         "ore_ont_11647"
       ],
@@ -89,12 +96,12 @@
     },
     "rustdl": {
       "shared": {
-        "verified_solved": 603,
-        "mean_s": 4.729848364466928,
-        "median_s": 0.338208194822073
+        "verified_solved": 700,
+        "mean_s": 4.822007259819657,
+        "median_s": 0.33991765417158604
       },
-      "baseline_shared_mean_s": 5.315632449126313,
-      "baseline_shared_median_s": 0.31167610734701157,
+      "baseline_shared_mean_s": 5.382187172602862,
+      "baseline_shared_median_s": 0.31370401848107576,
       "lost_verified": [
         "ore_ont_12898",
         "ore_ont_15846",
@@ -206,6 +213,9 @@
         "ore_ont_15652",
         "ore_ont_15655",
         "ore_ont_15667",
+        "ore_ont_15733",
+        "ore_ont_15753",
+        "ore_ont_15803",
         "ore_ont_15871",
         "ore_ont_15993",
         "ore_ont_1603",
@@ -220,12 +230,14 @@
         "ore_ont_1634",
         "ore_ont_16359",
         "ore_ont_16371",
+        "ore_ont_16444",
         "ore_ont_1646",
         "ore_ont_16461",
         "ore_ont_16462",
         "ore_ont_16535",
         "ore_ont_16630",
         "ore_ont_16632",
+        "ore_ont_16670",
         "ore_ont_16680",
         "ore_ont_16723",
         "ore_ont_1673",
@@ -261,13 +273,45 @@
         "ore_ont_10888",
         "ore_ont_10894",
         "ore_ont_10949",
+        "ore_ont_257",
         "ore_ont_2677",
         "ore_ont_2678",
         "ore_ont_2703",
+        "ore_ont_2738",
+        "ore_ont_2749",
+        "ore_ont_2826",
+        "ore_ont_2837",
+        "ore_ont_2860",
         "ore_ont_2901",
         "ore_ont_2936",
         "ore_ont_2950",
         "ore_ont_2989",
+        "ore_ont_3022",
+        "ore_ont_3250",
+        "ore_ont_3258",
+        "ore_ont_3260",
+        "ore_ont_3262",
+        "ore_ont_3270",
+        "ore_ont_3281",
+        "ore_ont_3301",
+        "ore_ont_3330",
+        "ore_ont_3341",
+        "ore_ont_338",
+        "ore_ont_3381",
+        "ore_ont_345",
+        "ore_ont_3503",
+        "ore_ont_3545",
+        "ore_ont_3575",
+        "ore_ont_3592",
+        "ore_ont_3639",
+        "ore_ont_3671",
+        "ore_ont_3726",
+        "ore_ont_3775",
+        "ore_ont_3789",
+        "ore_ont_4193",
+        "ore_ont_4198",
+        "ore_ont_4469",
+        "ore_ont_4737",
         "ore_ont_10952",
         "ore_ont_11004",
         "ore_ont_11037",
@@ -318,12 +362,12 @@
     },
     "elk": {
       "shared": {
-        "verified_solved": 707,
-        "mean_s": 5.946089457238391,
-        "median_s": 0.30964749306440353
+        "verified_solved": 823,
+        "mean_s": 6.0296718484177765,
+        "median_s": 0.31245988607406616
       },
-      "baseline_shared_mean_s": 11.123385837372746,
-      "baseline_shared_median_s": 4.324069187045097,
+      "baseline_shared_mean_s": 11.678250629597436,
+      "baseline_shared_median_s": 4.348028622567654,
       "lost_verified": [
         "ore_ont_12898",
         "ore_ont_1342",
@@ -336,6 +380,7 @@
         "ore_ont_10838",
         "ore_ont_10926",
         "ore_ont_10929",
+        "ore_ont_2504",
         "ore_ont_1199"
       ],
       "gained_verified": [
@@ -404,6 +449,7 @@
         "ore_ont_16535",
         "ore_ont_16630",
         "ore_ont_16632",
+        "ore_ont_16669",
         "ore_ont_16680",
         "ore_ont_16708",
         "ore_ont_16744",
@@ -420,9 +466,26 @@
         "ore_ont_2318",
         "ore_ont_10702",
         "ore_ont_10860",
+        "ore_ont_2526",
+        "ore_ont_257",
         "ore_ont_2677",
         "ore_ont_2703",
+        "ore_ont_2738",
+        "ore_ont_2749",
+        "ore_ont_2826",
         "ore_ont_2950",
+        "ore_ont_3053",
+        "ore_ont_3060",
+        "ore_ont_3250",
+        "ore_ont_3258",
+        "ore_ont_3262",
+        "ore_ont_3301",
+        "ore_ont_3381",
+        "ore_ont_3503",
+        "ore_ont_3685",
+        "ore_ont_3708",
+        "ore_ont_4198",
+        "ore_ont_4469",
         "ore_ont_10952",
         "ore_ont_11085",
         "ore_ont_11125",
@@ -450,12 +513,12 @@
   },
   "status_by_admission": {
     "checks_passed": {
-      "executed_unvalidated": 813,
-      "process_error": 13,
-      "timeout": 26
+      "executed_unvalidated": 947,
+      "process_error": 17,
+      "timeout": 31
     },
     "invalid_input": {
-      "process_error": 99
+      "process_error": 117
     }
   },
   "release_approved": false,
