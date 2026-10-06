@@ -404,6 +404,17 @@ impl IncrementalBridgeClassifier {
         &self, candidate: &[JClause], changed_clauses: &[JClause], kind: HtChangeKind,
         input: TInput, positive_horn_source: bool, source_covered: bool,
     ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
+        self.updated_typed_with_source_module(candidate, changed_clauses, kind, input,
+            positive_horn_source, source_covered, |_, _| None)
+    }
+
+    /// A source module callback is eligible only after all source-locality
+    /// guards pass. Declining the module retains the complete-input fallback.
+    pub(crate) fn updated_typed_with_source_module(
+        &self, candidate: &[JClause], changed_clauses: &[JClause], kind: HtChangeKind,
+        input: TInput, positive_horn_source: bool, source_covered: bool,
+        reclassify: impl FnOnce(&TInput, &[usize]) -> Option<crate::konclude_ht::bridge::BridgedClassification>,
+    ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
         let side_fingerprint = bridge_side_fingerprint(&input)?;
         let queries = bridge_query_names(&input);
         let old_queries = bridge_query_names(&self.input);
@@ -469,8 +480,9 @@ impl IncrementalBridgeClassifier {
         rebuilt_ids.sort_unstable();
         rebuilt_ids.dedup();
 
-        let classification =
-            crate::konclude_ht::bridge::bridged_classify_queries(&input, &rebuilt_ids).ok_or_else(
+        let module_result = if source_reuse { reclassify(&input, &rebuilt_ids) } else { None };
+        let classification = module_result.or_else(||
+            crate::konclude_ht::bridge::bridged_classify_queries(&input, &rebuilt_ids)).ok_or_else(
                 || IncrementalReasoningError::HtDeferred {
                     detail: "bridge incremental subject reclassification deferred".into(),
                 },

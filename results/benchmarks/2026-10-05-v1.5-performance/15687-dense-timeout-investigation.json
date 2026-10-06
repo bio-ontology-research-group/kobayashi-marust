@@ -635,5 +635,13 @@
     "Changed scheduling or source processing increases total runtime"
   ],
   "conclusion": "Cause unresolved. Same-node repeated phase diagnostics submitted; retain the failed full-sweep measurement.",
-  "release_approved": false
+  "release_approved": false,
+  "followup": {
+    "audit_file": "15687-candidate-profile-final-audit.json",
+    "audit_sha256": "a4cb24c4bb3ea57d5b428b6adacd23fda6bbfab361670b0071822a7fae0ff6b1",
+    "complete": true,
+    "verified_runs": 4,
+    "timeouts": 2,
+    "conclusion": "Every binary completed at least one verified instrumented repeat within 240 seconds; the dense-data binary completed both. The original full-sweep timeout remains a failure. These repeats show threshold sensitivity, not a consistently reproduced dense-candidate regression; more runtime headroom is needed."
+  }
 }

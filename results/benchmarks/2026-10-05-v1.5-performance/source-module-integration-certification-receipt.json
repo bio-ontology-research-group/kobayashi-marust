@@ -1,0 +1,35 @@
+{
+  "source_manifest_sha256": "65abd1e175f2815110ba57b8b2327138257672c86ec42746b2add04560cebf87",
+  "gates": [
+    {
+      "gate": "ht",
+      "exit_code": 0,
+      "log_sha256": "4c596dcb1e125240e5406411a6fbf168f607b47f6d1b4f14809330c501329381",
+      "surface_sha256": "6196c322785f6f365aac4a74649e00dba4003066f52dbc29adaa301efcfaf646",
+      "sorryAx": false
+    },
+    {
+      "gate": "routing",
+      "exit_code": 0,
+      "log_sha256": "921a23f717830d433c1d47240ba80280acf26f4a9cef3003958aef7e2419280d",
+      "surface_sha256": "53e92b02770f8a91cbddbe226e4c435a0de62b34cca7d218307f320ee51f4f20",
+      "sorryAx": false
+    },
+    {
+      "gate": "elc",
+      "exit_code": 0,
+      "log_sha256": "7c0ed55789dc3f3fb78808a7e49fc9ce29b4de5b7139234a8339b3d9790115c2",
+      "surface_sha256": "445581e25887be15a9f20fecfc1a59a782e58fe0d4decf399b5623e16b2e06f0",
+      "sorryAx": false
+    },
+    {
+      "gate": "cb",
+      "exit_code": 0,
+      "log_sha256": "6384985d847eda61a6c95351ac389163f0e469a6f61e33bad769a5c8f8c44fa7",
+      "surface_sha256": "1d6081fcf45801bb0e8b3a16df7b5dda223de30dfc8da3620e4d800b84a5fe9c",
+      "sorryAx": false
+    }
+  ],
+  "release_approved": false,
+  "source_files_rechecked": 622
+}

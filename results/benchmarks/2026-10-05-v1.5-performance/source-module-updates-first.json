@@ -1,0 +1,286 @@
+{
+  "diagnostic_only": true,
+  "source_module": true,
+  "binary_sha256": "ef7e1258e408fefb841dbebce7f5a0bbaa607d878c5877328907183f94e09064",
+  "sources": {
+    "000.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+    "001.ofn": "8a00ea8beefa1c01b80adf9884167959a8c54dd41a411520ad77ee526a8beb33",
+    "002.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+    "003.ofn": "fe1fdd9ddbcfe8e8eaf75f4fae7765a40b90712397e133f60cce32319d1c49fc",
+    "004.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87"
+  },
+  "records": [
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 0,
+      "wall_s": 3.1250712160253897,
+      "receipt": null
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 1,
+      "wall_s": 1.996920066070743,
+      "receipt": {
+        "added_normalized_clauses": 0,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 1,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 1,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 2,
+      "wall_s": 2.0809944120701402,
+      "receipt": {
+        "added_normalized_clauses": 1,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 0,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 2,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 3,
+      "wall_s": 2.6724721329519525,
+      "receipt": {
+        "added_normalized_clauses": 27103,
+        "added_rules": 0,
+        "invalidated_states": 2180,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 27130,
+        "removed_rules": 0,
+        "retained_states": 5828,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83113,
+        "revision": 3,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 4,
+      "wall_s": 2.7525299850385636,
+      "receipt": {
+        "added_normalized_clauses": 27130,
+        "added_rules": 0,
+        "invalidated_states": 2180,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 27103,
+        "removed_rules": 0,
+        "retained_states": 5828,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83113,
+        "revision": 4,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 0,
+      "wall_s": 1.8661484098993242,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 1,
+      "wall_s": 1.9099411169299856,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 2,
+      "wall_s": 1.8462308519519866,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 3,
+      "wall_s": 1.856657927040942,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 4,
+      "wall_s": 1.824934026109986,
+      "same_answer": true
+    },
+    {
+      "mode": "retained",
+      "repetition": 1,
+      "revision": 0,
+      "wall_s": 3.0828169259475544,
+      "receipt": null
+    },
+    {
+      "mode": "retained",
+      "repetition": 1,
+      "revision": 1,
+      "wall_s": 1.990473878919147,
+      "receipt": {
+        "added_normalized_clauses": 0,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 1,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 1,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 1,
+      "revision": 2,
+      "wall_s": 2.0614871659781784,
+      "receipt": {
+        "added_normalized_clauses": 1,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 0,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 2,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 1,
+      "revision": 3,
+      "wall_s": 2.5345167700434104,
+      "receipt": {
+        "added_normalized_clauses": 27103,
+        "added_rules": 0,
+        "invalidated_states": 2180,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 27130,
+        "removed_rules": 0,
+        "retained_states": 5828,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83113,
+        "revision": 3,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 1,
+      "revision": 4,
+      "wall_s": 2.703333375044167,
+      "receipt": {
+        "added_normalized_clauses": 27130,
+        "added_rules": 0,
+        "invalidated_states": 2180,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 27103,
+        "removed_rules": 0,
+        "retained_states": 5828,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83113,
+        "revision": 4,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "fresh",
+      "repetition": 1,
+      "revision": 0,
+      "wall_s": 1.9386111709754914,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 1,
+      "revision": 1,
+      "wall_s": 1.7788150140549988,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 1,
+      "revision": 2,
+      "wall_s": 1.9079341050237417,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 1,
+      "revision": 3,
+      "wall_s": 1.7986496810335666,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 1,
+      "revision": 4,
+      "wall_s": 1.7763140180613846,
+      "same_answer": true
+    }
+  ],
+  "cpus": 1,
+  "memory_gib": 20,
+  "session_timeout_s": 180,
+  "scope": "Five revisions of one ontology; local timings do not establish the full release target."
+}

@@ -197,8 +197,8 @@ boundary proofs before promotion. The full receipts and script hashes are in
 ## Rust module selection
 
 `incremental_activation::source_module_indices` now computes the same module
-selection directly over numeric expression IDs and per-query bit sets. It is
-not connected to production routing. The eight activation tests pass, including
+selection directly over numeric expression IDs and per-query bit sets. The
+session uses it only under both opt-in flags described below. The eight activation tests pass, including
 192 module-versus-full-theory comparisons over finite relational models and
 checks for conjunctions, global/top seeds, empty query sets, unsupported
 expressions and bit-set word boundaries.
@@ -218,5 +218,40 @@ with `--nocapture`. The output includes selected source indices, source axioms,
 and selection time. Hashes and timings are recorded in
 `results/benchmarks/2026-10-05-v1.5-performance/source-module-rust-validation.json`.
 
-This preserves the existing production path. Guarded Rust rendering, session
-integration, full update timing and proof-to-executable binding remain required.
+This preserves the default production path. The opt-in integration and complete
+update timings are described below; proof-to-executable binding remains required.
+
+## Opt-in module integration and complete update timings
+
+The session path now accepts `KM_INCREMENTAL_SOURCE_MODULE=1` together with
+`KM_INCREMENTAL_SOURCE_LOCALITY=1`. Both remain off by default. The module
+callback runs only after the existing complete-source and unchanged-background
+checks pass. It preserves role axioms and the public class signature, uses full
+IRIs across normalization boundaries, and falls back to complete-input
+classification if preparation, signature validation or classification declines.
+The full current typed input remains available for the next revision. Runtime
+HT certification still disables this experimental path.
+
+All four existing certification gates pass on the pinned source without
+`sorryAx`. All 24 source-incremental tests pass with the flags absent and enabled. Focused
+cases exercise definer renumbering, inverse roles, chains, domains/ranges,
+colliding short names and refusal to call the module without source coverage.
+
+Two repetitions of the four real ORE 9944 updates match the fresh answers
+exactly, but **none is faster**. Small-edit updates take 1.990–2.081 seconds and
+large-edit updates take 2.535–2.753 seconds; corresponding fresh classifications
+take 1.776–1.910 seconds. An additional phase-instrumented repetition also
+matches every answer and remains slower on all four updates.
+
+The instrumented module portion takes 0.276–0.780 seconds. Revalidating and
+normalizing the complete source still costs 0.614–0.837 seconds, other bridge
+update work takes roughly 0.48–0.58 seconds, and publishing the full taxonomy
+costs 0.274–0.398 seconds. Delta construction, typed preparation and coverage
+checks add further work. These are local diagnostic timings, not release
+benchmark claims. The next work must reuse those surrounding computations;
+smaller module classification alone does not meet the per-update speed goal.
+
+Receipts: `source-module-integration-validation.json`,
+`source-module-updates-first.json`, and `source-module-updates-phases.json` in
+the v1.5 performance evidence directory. Run `probe_source_locality_updates.py`
+with `--source-module` to exercise the opt-in path and compare complete answers.

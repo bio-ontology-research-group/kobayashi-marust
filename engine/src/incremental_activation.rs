@@ -173,7 +173,6 @@ pub(crate) fn source_affected(
 /// query. Each query has its own bit: conjuncts reached by different queries
 /// must not combine. All role/background constraints remain the caller's
 /// responsibility, as with `source_affected`.
-#[allow(dead_code)] // Experimental module preparation; not a production route yet.
 pub(crate) fn source_module_indices(
     axioms: &[crate::json_io::SourceAxiomMeta], queries: &[String], global: &[String],
 ) -> Option<Vec<usize>> {
