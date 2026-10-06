@@ -59,6 +59,8 @@ enum SourceBackend {
         classifier: IncrementalBridgeClassifier,
         clauses: Vec<JClause>,
         source_covered: bool,
+        /// The retained public result is exactly the mapping of internal rows.
+        publication_exact: bool,
     },
     TypedHt {
         classifier: IncrementalHtClassifier,
@@ -327,6 +329,7 @@ impl SourceIncrementalClassifier {
                             classifier,
                             clauses: Vec::new(),
                             source_covered,
+                            publication_exact: true,
                         },
                     }
                     .with_live_clauses());
@@ -405,6 +408,7 @@ impl SourceIncrementalClassifier {
         };
         let backend = if let Some(classifier) = seeded_bridge {
             SourceBackend::Bridge {
+                publication_exact: map_incremental_result(&frontend, classifier.result()) == classification,
                 classifier,
                 clauses: frontend.clauses.clone(),
                 source_covered,
@@ -570,6 +574,7 @@ impl SourceIncrementalClassifier {
             classifier,
             clauses,
             source_covered,
+            publication_exact,
         } = &mut self.backend
         {
             lap("bridge-entry");
@@ -618,14 +623,19 @@ impl SourceIncrementalClassifier {
                 }
                 if let Ok((next, stats)) = update {
                     let meaningful = stats.reused_queries > 0;
-                    let classification = map_incremental_result(&candidate, next.result());
+                    if !*publication_exact || !update_mapped_incremental_result(
+                        &self.frontend, &candidate, classifier.result_ref(), next.result_ref(),
+                        &mut self.classification,
+                    ) {
+                        self.classification = map_incremental_result(&candidate, next.result());
+                    }
+                    *publication_exact = true;
                     *classifier = next;
                     *clauses = candidate.clauses.clone();
                     *source_covered = candidate_covered;
                     self.revision += 1;
                     self.route = route_after.clone();
                     self.frontend = candidate;
-                    self.classification = classification;
                     lap("publish");
                     return Ok(SourceIncrementalReceipt {
                         revision: self.revision,
@@ -1181,6 +1191,7 @@ impl SourceIncrementalClassifier {
                     self.frontend = candidate;
                     self.classification = classification;
                     self.backend = SourceBackend::Bridge {
+                        publication_exact: true,
                         classifier,
                         clauses: self.frontend.clauses.clone(),
                         source_covered: source_locality_requested()
@@ -1286,6 +1297,7 @@ impl SourceIncrementalClassifier {
         self.classification = classification;
         self.backend = if let Some(classifier) = seeded_bridge {
             SourceBackend::Bridge {
+                publication_exact: map_incremental_result(&self.frontend, classifier.result()) == self.classification,
                 classifier,
                 clauses: self.frontend.clauses.clone(),
                 source_covered: source_locality_requested()
@@ -1820,6 +1832,56 @@ fn map_incremental_result(
     }
 }
 
+/// Update a public taxonomy whose exact correspondence with `old` was checked
+/// at seeding (or established by a previous full mapping). All mapping inputs
+/// must remain identical. Declining leaves the public result untouched.
+fn update_mapped_incremental_result(
+    before: &FrontendResult, after: &FrontendResult,
+    old: &crate::incremental::IncrementalResult, new: &crate::incremental::IncrementalResult,
+    public: &mut Classification,
+) -> bool {
+    if !public.consistent || old.inconsistent || new.inconsistent
+        || public.dropped != 0 || old.dropped != 0 || new.dropped != 0
+        || !old.unresolved.is_empty() || !new.unresolved.is_empty()
+        || before.iri_map != after.iri_map || before.named != after.named
+        || before.asserted_classes != after.asserted_classes
+        || before.abox_inconsistent != after.abox_inconsistent {
+        return false;
+    }
+    let mapped = |name: &str| after.iri_map.get(name).cloned().unwrap_or_else(|| name.to_owned());
+    let mut changed = std::collections::HashSet::new();
+    for (subject, supers) in &old.subsumptions {
+        if new.subsumptions.get(subject) != Some(supers) { changed.insert(mapped(subject)); }
+    }
+    for subject in new.subsumptions.keys() {
+        if !old.subsumptions.contains_key(subject) { changed.insert(mapped(subject)); }
+    }
+    if changed.is_empty() { return true; }
+    // Recompute every row with a changed public identity, including aliases.
+    // This avoids assuming the internal-to-public map is injective.
+    let rows = new.subsumptions.iter().filter(|(subject, _)| {
+        let name = after.iri_map.get(subject.as_str()).map(String::as_str).unwrap_or(subject);
+        changed.contains(name)
+    }).map(|(subject, supers)| (subject.clone(), supers.clone())).collect();
+    let delta = map_incremental_result(after, crate::incremental::IncrementalResult {
+        subsumptions: rows, inconsistent: false, dropped: 0, unresolved: Vec::new(),
+    });
+    // A newly unsatisfiable asserted individual class makes the entire result
+    // inconsistent, so retain the established full-publication path for it.
+    if !delta.consistent { return false; }
+    public.subsumptions.retain(|pair| !changed.contains(&pair[0]));
+    public.unsatisfiable.retain(|name| !changed.contains(name));
+    public.subsumptions.extend(delta.subsumptions);
+    public.subsumptions.sort_unstable(); public.subsumptions.dedup();
+    public.unsatisfiable.extend(delta.unsatisfiable);
+    public.unsatisfiable.sort_unstable(); public.unsatisfiable.dedup();
+    if std::env::var_os("KM_TIMING").is_some() {
+        eprintln!("source incremental publication changed_public_rows={} total_rows={}",
+            changed.len(), new.subsumptions.len());
+    }
+    true
+}
+
 fn map_el_result(frontend: &FrontendResult, result: crate::elcomplete::ElResult) -> Classification {
     map_incremental_result(
         frontend,
@@ -1980,6 +2042,81 @@ mod tests {
     use crate::orchestrate::Classification;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn publication_delta_matches_full_mapping_across_row_edits_and_aliases() {
+        let _lock = lock_environment();
+        let mut frontend = super::normalize_selected(
+            "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)))",
+            "ht_bridge",
+        ).unwrap();
+        frontend.named = vec!["A".into(), "Alias".into(), "B".into()];
+        frontend.iri_map = [("A".into(), "urn:A".into()),
+            ("Alias".into(), "urn:A".into()), ("B".into(), "urn:B".into())]
+            .into_iter().collect();
+        let result = |mask: usize| {
+            let mut rows = std::collections::BTreeMap::new();
+            for (bit, subject, target) in [(0, "A", "B"), (1, "Alias", "B"),
+                (2, "A", "owl:Nothing"), (3, "B", "A"), (4, "__hidden", "B")] {
+                if mask & (1 << bit) != 0 {
+                    rows.entry(subject.to_owned()).or_insert_with(Vec::new).push(target.to_owned());
+                }
+            }
+            crate::incremental::IncrementalResult {
+                subsumptions: rows, inconsistent: false, dropped: 0, unresolved: vec![],
+            }
+        };
+        for old_mask in 0..32 {
+            for new_mask in 0..32 {
+                let old = result(old_mask);
+                let new = result(new_mask);
+                let mut public = map_incremental_result(&frontend, old.clone());
+                assert!(super::update_mapped_incremental_result(
+                    &frontend, &frontend, &old, &new, &mut public));
+                assert_eq!(public, map_incremental_result(&frontend, new),
+                    "old={old_mask} new={new_mask}");
+            }
+        }
+    }
+
+    #[test]
+    fn publication_delta_declines_changed_mapping_and_inexact_results_without_mutation() {
+        let _lock = lock_environment();
+        let mut frontend = super::normalize_selected(
+            "Ontology(Declaration(Class(<urn:A>)))", "ht_bridge").unwrap();
+        frontend.named = vec!["A".into()];
+        frontend.iri_map = [("A".into(), "urn:A".into())].into_iter().collect();
+        let old = crate::incremental::IncrementalResult {
+            subsumptions: [("A".into(), vec![])].into_iter().collect(),
+            inconsistent: false, dropped: 0, unresolved: vec![],
+        };
+        for variant in 0..8 {
+            let mut after = super::normalize_selected(
+                "Ontology(Declaration(Class(<urn:A>)))", "ht_bridge").unwrap();
+            after.named = frontend.named.clone();
+            after.iri_map = frontend.iri_map.clone();
+            let mut new = old.clone();
+            match variant {
+                0 => { after.iri_map.insert("A".into(), "urn:changed".into()); },
+                1 => after.named.push("B".into()),
+                2 => after.asserted_classes.push("A".into()),
+                3 => after.abox_inconsistent = true,
+                4 => new.inconsistent = true,
+                5 => new.dropped = 1,
+                6 => new.unresolved.push("A".into()),
+                7 => { frontend.asserted_classes.push("A".into());
+                    after.asserted_classes = frontend.asserted_classes.clone();
+                    new.subsumptions.insert("A".into(), vec!["owl:Nothing".into()]); },
+                _ => unreachable!(),
+            }
+            let initial = map_incremental_result(&frontend, old.clone());
+            let mut public = initial.clone();
+            assert!(!super::update_mapped_incremental_result(
+                &frontend, &after, &old, &new, &mut public), "variant={variant}");
+            assert_eq!(public, initial);
+            if variant == 7 { assert!(!map_incremental_result(&after, new).consistent); }
+        }
+    }
 
     #[test]
     fn source_locality_coverage_rejects_missing_metadata_and_hidden_constraints() {

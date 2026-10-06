@@ -370,6 +370,10 @@ impl IncrementalBridgeClassifier {
         self.result.clone()
     }
 
+    pub(crate) fn result_ref(&self) -> &IncrementalResult {
+        &self.result
+    }
+
     pub(crate) fn updated_typed(
         &self,
         candidate: &[JClause],
