@@ -18,6 +18,6 @@ The classification comparison uses the same pinned binary with the flag off/on, 
 
 The first original run on 236 includes a substantial cold-run effect. Both repetitions improve on 236 and 11896; 3250 has no established end-to-end gain. No full-corpus mean, median, or solved-count improvement is claimed.
 
-## Pending corpus check
+## Completed corpus check
 
-IBEX Slurm job 53332675 checks all 1,920 frozen inputs, including the 212 refused inputs. Each grammar arm has 240 seconds and 20 GiB, one CPU. Exact result text, including errors, must agree; timeouts and process failures remain unresolved evidence. This check concerns grammar equivalence, not complete OWL admission, taxonomy correctness, or Lean certification.
+IBEX Slurm job 53332675 completed all 1,920 frozen inputs, including the 212 refused inputs. All original/cached grammar results agree exactly, including error text; neither arm had a timeout or process failure. Each grammar arm retained the 240-second, 20-GiB, one-CPU limits. The pinned IRI-cache source also passed all four production certification gates without sorryAx. This check concerns grammar equivalence, not complete OWL admission, taxonomy correctness, or Lean certification.

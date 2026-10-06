@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "unique-state-d9aebeffbf57",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-unique-state-d9aebeffbf57",
+      "sha256": "d9aebeffbf57754c8add3aaba2f3423ff860fe12cf0de6d200fe2fedbd680088"
+    }
+  ],
+  "source_commit": "ee5fb215 plus pinned within-call classifier state reuse",
+  "source_manifest_sha256": "a1bc44f2ae298b1bf9d5c8d661960e1369d4ecc55cff1e584133bcec5c86ea5b",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+    "KM_FAST_IRI_GRAMMAR": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure"
+  ],
+  "release_approved": false,
+  "scope": "Paired classifier snapshot reuse diagnostic; not full-corpus release acceptance.",
+  "certification_pending": true
+}

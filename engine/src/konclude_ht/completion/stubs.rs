@@ -3033,6 +3033,9 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         concept_reference_linking_datas: &Arena<ConceptSaturationReferenceLinkingData>,
         testing_items: &[OptimizedKPSetClassTestingItem],
     ) -> std::collections::HashMap<ConceptId, ClassificationAnalyserPossibleSubsumptionState> {
+        // All classifier inputs are immutable for this collection. Repeated
+        // labels resolve to the identical snapshot, including candidate order;
+        // retain the first instead of cloning and sorting its map again.
         let mut states = std::collections::HashMap::new();
 
         let root_label_set = process_context
@@ -3046,7 +3049,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 label.concept,
                 label.negated,
                 concepts,
-            ) {
+            ) && !states.contains_key(&label.concept) {
                 if let Some(state) = self
                     .possible_subsumption_state_for_concept_from_classifier_references(
                         label.concept,
@@ -3074,7 +3077,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 visit.label.concept,
                 visit.label.negated,
                 concepts,
-            ) {
+            ) && !states.contains_key(&visit.label.concept) {
                 if let Some(state) = self
                     .possible_subsumption_state_for_concept_from_classifier_references(
                         visit.label.concept,
@@ -10939,6 +10942,69 @@ mod tests {
             state.possible_subsumption_concepts,
             vec![stale_low, stale_high]
         );
+    }
+
+    #[test]
+    fn classification_message_analyser_repeated_snapshot_labels_preserve_candidate_states() {
+        let analyser = SatisfiableTaskClassificationMessageAnalyser;
+        let mut concepts = Arena::new();
+        let testing = concepts.push(concept_with_tag(CCATOM, 10, true));
+        let analysed = concepts.push(concept_with_tag(CCATOM, 30, true));
+        let low = concepts.push(concept_with_tag(CCATOM, 20, true));
+        let high = concepts.push(concept_with_tag(CCATOM, 40, true));
+        let missing = concepts.push(concept_with_tag(CCATOM, 50, true));
+        let mut references = std::collections::HashMap::new();
+        references.insert(analysed, 0);
+        let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
+            testing, 71, 73, references,
+            EFEXTRACTPOSSIBLESUBSUMERSOTHERNODES | EFEXTRACTOTHERNODESMULTIPLEDEPENDENCY,
+        );
+        let mut context = ProcessContext::new();
+        let (root, _) = add_completion_label_set_node(&mut context);
+        let corrected = ClassificationAnalyserCorrectedIndividual {
+            node: root, individual_id: 0, nondeterministically_merged: false,
+        };
+        let process_data = Arena::<ConceptProcessData>::new();
+        let linking_data = Arena::<ConceptSaturationReferenceLinkingData>::new();
+        for initialized in [false, true] {
+            let mut item = OptimizedKPSetClassTestingItem::new();
+            item.set_possible_subsumption_map_initialized(initialized);
+            for concept in [high, low] {
+                item.get_possible_subsumption_map(true).unwrap().insert(concept,
+                    OptimizedKPSetClassPossibleSubsumptionData::new(
+                        OptimizedKPSetClassTestingItemId::new(0)));
+            }
+            item.get_possible_subsumption_map(true).unwrap()
+                .set_remaining_possible_subsumption_count(2);
+            let items = vec![item];
+            for negated_first in [false, true] {
+                let snapshots: Vec<_> = (1..=32).map(|id| ClassificationAnalyserOtherNodeSnapshot {
+                    individual_id: id,
+                    is_nominal_individual_node: false,
+                    has_invalidate_blocker_flags: false,
+                    has_successor_nominal_connection: false,
+                    labels: vec![
+                        ClassificationAnalyserConceptLabel::new(testing, false, Some(1)),
+                        ClassificationAnalyserConceptLabel::new(analysed, negated_first, Some(1)),
+                        ClassificationAnalyserConceptLabel::new(missing, false, Some(1)),
+                        ClassificationAnalyserConceptLabel::new(analysed, false, Some(1)),
+                    ],
+                    single_dependency_label_index: None,
+                    successor_individual_ids: if id == 32 { vec![1] } else { vec![id + 1] },
+                }).collect();
+                let states = analyser.collect_possible_subsumption_states_from_classifier_references_for_snapshots(
+                    &adapter, &context, corrected, &[1, 2], &snapshots, &concepts,
+                    &process_data, &linking_data, &items);
+                assert_eq!(states.len(), 1);
+                assert_eq!(states[&analysed], if initialized {
+                    ClassificationAnalyserPossibleSubsumptionState {
+                        possible_subsumption_map_initialized: true,
+                        remaining_possible_subsumptions: true,
+                        possible_subsumption_concepts: vec![low, high],
+                    }
+                } else { ClassificationAnalyserPossibleSubsumptionState::uninitialized() });
+            }
+        }
     }
 
     #[test]

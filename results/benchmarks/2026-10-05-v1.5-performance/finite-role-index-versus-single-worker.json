@@ -1,0 +1,151 @@
+{
+  "complete": true,
+  "baseline_verified": 1620,
+  "indexed_verified": 1621,
+  "gained_verified": [
+    "ore_ont_12898",
+    "ore_ont_13799"
+  ],
+  "lost_verified": [
+    "ore_ont_1123"
+  ],
+  "uncorroborated_complete": [
+    "ore_ont_4669"
+  ],
+  "changed_cases": {
+    "ore_ont_12898": {
+      "baseline": {
+        "ontology": "ore_ont_12898",
+        "input_admission": "checks_passed",
+        "measurement_status": "timeout",
+        "wall_s": 240.0242954492569,
+        "peak_bytes": 4182962176,
+        "verified_solved": false,
+        "comparisons": {},
+        "measurement_sha256": "aa580917e2914d1b9c2e0ee996c48fe79c080d8427b2fa8ad32748e53c66b139"
+      },
+      "indexed": {
+        "ontology": "ore_ont_12898",
+        "input_admission": "checks_passed",
+        "measurement_status": "executed_unvalidated",
+        "wall_s": 231.39783092215657,
+        "peak_bytes": 4187348992,
+        "verified_solved": true,
+        "comparisons": {
+          "konclude": {
+            "source_sha256": "01d1abfc414a4d3294df89f703de3dac7e593e07421dcb6e17e42f9d7cbf1963",
+            "left_raw_sha256": "384b99ed88f4e6f5ea9718e4cb34d3a65b31a562f525a88b28549736388e6796",
+            "right_raw_sha256": "ec595b4eab7951b9490fe8ae71b1d457ebcb9a010c46e1b87d41128d2c0bea78",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy"
+          }
+        },
+        "measurement_sha256": "fe6b459bc454e6235f120ce40aa89258ca50db0dc57156fda847be9030374c5b",
+        "audit_status": "compared"
+      }
+    },
+    "ore_ont_13799": {
+      "baseline": {
+        "ontology": "ore_ont_13799",
+        "input_admission": "checks_passed",
+        "measurement_status": "process_error",
+        "wall_s": 235.1869882233441,
+        "peak_bytes": 1979482112,
+        "verified_solved": false,
+        "comparisons": {},
+        "measurement_sha256": "16bbd5fd47a2a8fd231492f047a778d30c79dec13f098275c71639884e5e0891"
+      },
+      "indexed": {
+        "ontology": "ore_ont_13799",
+        "input_admission": "checks_passed",
+        "measurement_status": "executed_unvalidated",
+        "wall_s": 0.16040881536900997,
+        "peak_bytes": 37416960,
+        "verified_solved": true,
+        "comparisons": {
+          "konclude": {
+            "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+            "left_raw_sha256": "75072aef768a5b11ae1823bddcb3e3e24018b128fcf18d1264438c05c9a9be4c",
+            "right_raw_sha256": "8209630f83a700ee929291a08e67e1d530fa1f6b1d991ca8b08934fcb5c72e8f",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy"
+          },
+          "hermit": {
+            "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+            "left_raw_sha256": "75072aef768a5b11ae1823bddcb3e3e24018b128fcf18d1264438c05c9a9be4c",
+            "right_raw_sha256": "97d9b3757f8c56a349482407a8c759f3eca135948262f10089fe1822778d507a",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy"
+          },
+          "openllet": {
+            "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+            "left_raw_sha256": "75072aef768a5b11ae1823bddcb3e3e24018b128fcf18d1264438c05c9a9be4c",
+            "right_raw_sha256": "d8f151ee7dc72933ec8291953d1f7ba07b43579574f9601e3708d2f8839fe2c1",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy"
+          },
+          "jfact": {
+            "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+            "left_raw_sha256": "75072aef768a5b11ae1823bddcb3e3e24018b128fcf18d1264438c05c9a9be4c",
+            "right_raw_sha256": "524366f297d4c9f76ad48f4aecd4986ef2a03796d4f3f96ca0ba243b26c136ab",
+            "left_consistency": true,
+            "right_consistency": true,
+            "status": "agreement",
+            "agreement": true,
+            "scope": "consistency_and_taxonomy"
+          }
+        },
+        "measurement_sha256": "4895e586aebcf3e14d051e0ba829fe5d96d0da7e21460e955c34da68b438808e",
+        "audit_status": "compared"
+      }
+    },
+    "ore_ont_1123": {
+      "baseline": {
+        "ontology": "ore_ont_1123",
+        "input_admission": "checks_passed",
+        "measurement_status": "executed_unvalidated",
+        "wall_s": 232.62585686333477,
+        "peak_bytes": 399441920,
+        "verified_solved": true,
+        "comparisons": {
+          "openllet": {
+            "source_sha256": "46295df3b393891fa0680879171770016f4f298adacaf3abf0bab10b2e600c79",
+            "left_raw_sha256": "c29efaef64e5cad4f587843501fd02366c5597516d2df1f8178386c9e7f29e0f",
+            "right_raw_sha256": "8e8d0a736df95c6c03301e7f61af2d29aa60ebac47b5411f7b515e4d07ea61c4",
+            "left_consistency": false,
+            "right_consistency": false,
+            "status": "inconsistent_agreement",
+            "agreement": true,
+            "scope": "consistency"
+          }
+        },
+        "measurement_sha256": "c84e4073f298b5fb5c2ef0b499265158fa1fb6f6b6c2ad105efbe2b53fe41939",
+        "audit_status": "compared"
+      },
+      "indexed": {
+        "ontology": "ore_ont_1123",
+        "input_admission": "checks_passed",
+        "measurement_status": "timeout",
+        "wall_s": 240.0623888783157,
+        "peak_bytes": 405307392,
+        "verified_solved": false,
+        "comparisons": {},
+        "measurement_sha256": "a8491b7b6ffcac6dbcfbbd67d27129688e476945a82ec7ad767d95bf26eaabc4"
+      }
+    }
+  },
+  "build_profile_caveat": "Baseline uses production LTO/codegen settings; indexed binary uses diagnostic overrides. Runtime comparison is confounded; retain all outcomes.",
+  "release_approved": false
+}

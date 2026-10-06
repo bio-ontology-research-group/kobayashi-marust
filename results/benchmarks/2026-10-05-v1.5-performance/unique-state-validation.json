@@ -1,0 +1,8 @@
+{
+  "tests_passed": 153,
+  "tests_failed": 0,
+  "log_sha256": "65be1a01d9af4e820e96bdc704b81998891a560034824bcb871ab4b917bdf9a5",
+  "source_manifest_sha256": "a1bc44f2ae298b1bf9d5c8d661960e1369d4ecc55cff1e584133bcec5c86ea5b",
+  "certification_pending": true,
+  "release_approved": false
+}

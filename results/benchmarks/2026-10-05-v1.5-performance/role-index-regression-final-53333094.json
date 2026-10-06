@@ -1,0 +1,809 @@
+{
+  "job_id": 53333094,
+  "diagnostic_only": true,
+  "complete": true,
+  "records": [
+    {
+      "ontology": "ore_ont_11896",
+      "repetition": 0,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 0.37740831449627876,
+      "verified": true,
+      "record_sha256": "5eafb8a84bbf84ed4429d22eaf7e25c8a900878954bcdcb5599ec97a01a69811",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "d7abe8d12604ebeea4239747ea5516bf0a044d9c2eb9a2bfd74a0177d2d92608",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "cc1e410d8448137217c4212c0cd6e3342635c15a79701c3d165925467c16b93b",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "acbda3cd243c74a1e199bd70354d9f83d444714b8acf0124eba10a28bc61fee3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "a758b02464f017f8b459958e23a0d409dd1638068f23ab9ca35f8a5f97fdcf48",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "7934c3db5ae2b15cae465123654e234a55c632d67a9b53a1d47b3f8ef84b0b1a"
+    },
+    {
+      "ontology": "ore_ont_11896",
+      "repetition": 0,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 0.37641057558357716,
+      "verified": true,
+      "record_sha256": "ec9f08dc3a461b25a5b6f54d315406e89969241e2fd70c1054a3fb82da2c8f15",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "d7abe8d12604ebeea4239747ea5516bf0a044d9c2eb9a2bfd74a0177d2d92608",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "cc1e410d8448137217c4212c0cd6e3342635c15a79701c3d165925467c16b93b",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "acbda3cd243c74a1e199bd70354d9f83d444714b8acf0124eba10a28bc61fee3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "a758b02464f017f8b459958e23a0d409dd1638068f23ab9ca35f8a5f97fdcf48",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "232ecf4aae077c62f2753904b68ba036695b5f7df855ead5182641693d17ca25"
+    },
+    {
+      "ontology": "ore_ont_11896",
+      "repetition": 1,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 0.3686947785317898,
+      "verified": true,
+      "record_sha256": "926b0bcaf385a73967dd2aef866a5c9bd95a18b1a48baba7afc05a11fe620312",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "d7abe8d12604ebeea4239747ea5516bf0a044d9c2eb9a2bfd74a0177d2d92608",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "cc1e410d8448137217c4212c0cd6e3342635c15a79701c3d165925467c16b93b",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "acbda3cd243c74a1e199bd70354d9f83d444714b8acf0124eba10a28bc61fee3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "a758b02464f017f8b459958e23a0d409dd1638068f23ab9ca35f8a5f97fdcf48",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "0317214b1fa2c84244c3e9dcbd456fede8639f42ebe56952a61b33e01b591bd4"
+    },
+    {
+      "ontology": "ore_ont_11896",
+      "repetition": 1,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 0.36727796494960785,
+      "verified": true,
+      "record_sha256": "6ef129a0d8e8ef5f318e383f328b96eaba97293033a9f08d8203a41ef12b1c79",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "d7abe8d12604ebeea4239747ea5516bf0a044d9c2eb9a2bfd74a0177d2d92608",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "cc1e410d8448137217c4212c0cd6e3342635c15a79701c3d165925467c16b93b",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "acbda3cd243c74a1e199bd70354d9f83d444714b8acf0124eba10a28bc61fee3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "a758b02464f017f8b459958e23a0d409dd1638068f23ab9ca35f8a5f97fdcf48",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "d6152a981380ccdb1d433591a3eb156a30994ac7d8a8151689d81b44c9d2ce25"
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "repetition": 0,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 162.1627166941762,
+      "verified": true,
+      "record_sha256": "9f69ecb7c15d23121335eb49cd8536af719474ecdf19a57d4b500d1782e7934d",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "952e7f30bfad73442e10d71171432aebeb345a85b504b8e5c9d1eb7f9c34a2a1",
+          "left_raw_sha256": "f9739a1be27bbf27f16e554307d1e3ee261d91c1ff15c8ee76520043cfc4b887",
+          "right_raw_sha256": "9d888bb86409c59cfb092f02c748b6513c75063c4801e855230a186d4ef82940",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "9ea65753874f67f5195e3f75c6d70503a5def7e8fd6ddb828bda90ec4c31aa31"
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "repetition": 0,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 177.99855808913708,
+      "verified": true,
+      "record_sha256": "bb8b4f472694bf240e5d4f24b013cdab0df6af22f38496c01baae4344ee0eed4",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "952e7f30bfad73442e10d71171432aebeb345a85b504b8e5c9d1eb7f9c34a2a1",
+          "left_raw_sha256": "f9739a1be27bbf27f16e554307d1e3ee261d91c1ff15c8ee76520043cfc4b887",
+          "right_raw_sha256": "9d888bb86409c59cfb092f02c748b6513c75063c4801e855230a186d4ef82940",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "5a11725bd57c1d9ab547a16ec6e38413b7e96f74c8798ce0e0322f782bb12539"
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "repetition": 1,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 203.10630046017468,
+      "verified": true,
+      "record_sha256": "5e674516d302a234029edcbfda836b97dcf17b133cd688deb3f60fe1f65cdf0f",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "952e7f30bfad73442e10d71171432aebeb345a85b504b8e5c9d1eb7f9c34a2a1",
+          "left_raw_sha256": "f9739a1be27bbf27f16e554307d1e3ee261d91c1ff15c8ee76520043cfc4b887",
+          "right_raw_sha256": "9d888bb86409c59cfb092f02c748b6513c75063c4801e855230a186d4ef82940",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "601ab7f08da6957ddf9e1e974277823bc6af28b6d97ae75cb761bc5573b82e01"
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "repetition": 1,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 165.665979873389,
+      "verified": true,
+      "record_sha256": "3ff2a0e198b38568fa9dac511cfa3aa6cda38f6c997eccaa1e50c2158aa4f98c",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "952e7f30bfad73442e10d71171432aebeb345a85b504b8e5c9d1eb7f9c34a2a1",
+          "left_raw_sha256": "f9739a1be27bbf27f16e554307d1e3ee261d91c1ff15c8ee76520043cfc4b887",
+          "right_raw_sha256": "9d888bb86409c59cfb092f02c748b6513c75063c4801e855230a186d4ef82940",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "b189a7faa82b6a96d5de4d911bddcd68b1f6af69ce8b9f7a93c6a253abfe184c"
+    },
+    {
+      "ontology": "ore_ont_236",
+      "repetition": 0,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 0.5395099651068449,
+      "verified": true,
+      "record_sha256": "2a7cf776c693e2b99e66241ff36ad5d5eb6885a0c1ce45cba50fc6944af87fb7",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "e0e50c54a727f2b6dc8079a072c1e42d743f3ca92f4bd3528ce5e7bad3670030",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "b35abea39a212679e3a85c163ec0571a62b75431b8ffec47537df55ee591b887",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "aad7279cea42e3953f724c39fd218842f65545b051c439ca8813f302eb01a331",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "1761343d7b26ccc69903e7f8f1622ffe6c485f9645bffad86e62c4a9bd080744",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "2239d2646e4bad6cc4d539e2275cd16cbcd137b45dc10615165e8d1a58f78686"
+    },
+    {
+      "ontology": "ore_ont_236",
+      "repetition": 0,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 0.5665343645960093,
+      "verified": true,
+      "record_sha256": "ca98f5752d84a1ef61dc514eec1f4b15916e98754c94c89a0a9de786248a51e4",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "e0e50c54a727f2b6dc8079a072c1e42d743f3ca92f4bd3528ce5e7bad3670030",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "b35abea39a212679e3a85c163ec0571a62b75431b8ffec47537df55ee591b887",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "aad7279cea42e3953f724c39fd218842f65545b051c439ca8813f302eb01a331",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "1761343d7b26ccc69903e7f8f1622ffe6c485f9645bffad86e62c4a9bd080744",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "cfa78605c03cb50d17728ad2771231b8a001dc2d0b216c487bbb8cf1a3b150db"
+    },
+    {
+      "ontology": "ore_ont_236",
+      "repetition": 1,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 0.41464056819677353,
+      "verified": true,
+      "record_sha256": "502856e78d534b0999825ef2b359e33c772cc31a5c5a54ea9a6a902b2c68c502",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "e0e50c54a727f2b6dc8079a072c1e42d743f3ca92f4bd3528ce5e7bad3670030",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "b35abea39a212679e3a85c163ec0571a62b75431b8ffec47537df55ee591b887",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "aad7279cea42e3953f724c39fd218842f65545b051c439ca8813f302eb01a331",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "1761343d7b26ccc69903e7f8f1622ffe6c485f9645bffad86e62c4a9bd080744",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "58b7731176f0a327494ad12c07f19f823aabbce7280106d9801253bd2edc3de6"
+    },
+    {
+      "ontology": "ore_ont_236",
+      "repetition": 1,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 0.38253581151366234,
+      "verified": true,
+      "record_sha256": "f55768fa7af1782eb72713bad13700cd2a42dd7c89a3469165e6ca10cd880330",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "e0e50c54a727f2b6dc8079a072c1e42d743f3ca92f4bd3528ce5e7bad3670030",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "b35abea39a212679e3a85c163ec0571a62b75431b8ffec47537df55ee591b887",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "aad7279cea42e3953f724c39fd218842f65545b051c439ca8813f302eb01a331",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "1761343d7b26ccc69903e7f8f1622ffe6c485f9645bffad86e62c4a9bd080744",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "7e2a330511cf71d437ec1cd7a9047a33da37493e355c0a705e40cfec042a6299"
+    },
+    {
+      "ontology": "ore_ont_3250",
+      "repetition": 0,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 0.2927486151456833,
+      "verified": true,
+      "record_sha256": "0835a883e704f681f959776cc3de2925b925be5b9cf79ce90f17c3cf61dc2eb3",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "9b943a31439e0c6972cac5edbe1a09541ca981bc9cd77869e0766e8ef83d51a3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "6167df4b9a7faf3370cd9c06ece81de547c417468ec987ad77eaaaf2a43bea98",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "79d4061aeead1b9ba499aad25ef60329c9890ee98086dcb9ab713d15c0ad8885",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "897249470fe9ca5e11d4cbccaa9dc10f096c1150af908b852caa3b6762020dbd",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "2ae5f760eae0ee5d4586ee98186e0ad4c0098db698b5a645853d6c008a3db1db"
+    },
+    {
+      "ontology": "ore_ont_3250",
+      "repetition": 0,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 0.2937321178615093,
+      "verified": true,
+      "record_sha256": "5fad0f86cc7a17a689cd7b50102d70a7602fb141a8142c31c25e757a2019e68d",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "9b943a31439e0c6972cac5edbe1a09541ca981bc9cd77869e0766e8ef83d51a3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "6167df4b9a7faf3370cd9c06ece81de547c417468ec987ad77eaaaf2a43bea98",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "79d4061aeead1b9ba499aad25ef60329c9890ee98086dcb9ab713d15c0ad8885",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "897249470fe9ca5e11d4cbccaa9dc10f096c1150af908b852caa3b6762020dbd",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "d73a9b9e8dfb2507dd7111a0b2773874300eedfc80038f37eb6a37a86cb19e91"
+    },
+    {
+      "ontology": "ore_ont_3250",
+      "repetition": 1,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 0.4305930659174919,
+      "verified": true,
+      "record_sha256": "a411278ad4ebaa66cdaf74c8f373595fc0a9ca18298346e89ebf78d1fd64456c",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "9b943a31439e0c6972cac5edbe1a09541ca981bc9cd77869e0766e8ef83d51a3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "6167df4b9a7faf3370cd9c06ece81de547c417468ec987ad77eaaaf2a43bea98",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "79d4061aeead1b9ba499aad25ef60329c9890ee98086dcb9ab713d15c0ad8885",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "897249470fe9ca5e11d4cbccaa9dc10f096c1150af908b852caa3b6762020dbd",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "72245b08eaf54430d7953388b634848fd46ff0da7b8bfd5cbffa3580eabdb6fc"
+    },
+    {
+      "ontology": "ore_ont_3250",
+      "repetition": 1,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 0.40280051343142986,
+      "verified": true,
+      "record_sha256": "fdee7cad5120d35540bbdc85d5f0f8444089b6c107a340b7d0fffd3cd5821185",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "9b943a31439e0c6972cac5edbe1a09541ca981bc9cd77869e0766e8ef83d51a3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "6167df4b9a7faf3370cd9c06ece81de547c417468ec987ad77eaaaf2a43bea98",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "79d4061aeead1b9ba499aad25ef60329c9890ee98086dcb9ab713d15c0ad8885",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "897249470fe9ca5e11d4cbccaa9dc10f096c1150af908b852caa3b6762020dbd",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "40c716ab9f568c76d63b3dc0778115173ffe6e641da768e63c7082f1190934fc"
+    },
+    {
+      "ontology": "ore_ont_6948",
+      "repetition": 0,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 30.94046119041741,
+      "verified": true,
+      "record_sha256": "f8c700ac0d28b05c5b823dbba332f595699d3900e455528b763c9b9d6df60349",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "7b81f77cf1c9bd9a42b51b5971e3a5b9bb2340a00c8bedc217cc46333a33d49a",
+          "left_raw_sha256": "41b7864333d0cb00b8de6b893b76292fc6b1594c5b4e51e399cdb524e6436423",
+          "right_raw_sha256": "bee7f2712e0b6a25f13c05f89efdd0a1f2f5c3f91761494cf08e50783a146e30",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "8f589c06ff1a05cc68ee5b0a48462f82753ee785497ebb0b01646c1d75dbd86b"
+    },
+    {
+      "ontology": "ore_ont_6948",
+      "repetition": 0,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 31.865026956424117,
+      "verified": true,
+      "record_sha256": "471f53015628601dc0673699bb8d813402b3dcc2ec25b14b162449d66b3a2c87",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "7b81f77cf1c9bd9a42b51b5971e3a5b9bb2340a00c8bedc217cc46333a33d49a",
+          "left_raw_sha256": "41b7864333d0cb00b8de6b893b76292fc6b1594c5b4e51e399cdb524e6436423",
+          "right_raw_sha256": "bee7f2712e0b6a25f13c05f89efdd0a1f2f5c3f91761494cf08e50783a146e30",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "1bbe87a525294b0c108121b5628256c65a1c33ff0c615610de47aa828cd074cd"
+    },
+    {
+      "ontology": "ore_ont_6948",
+      "repetition": 1,
+      "arm": "indexed",
+      "status": "executed_unvalidated",
+      "wall_s": 31.60823111049831,
+      "verified": true,
+      "record_sha256": "6da5d0debc639d477aa5289691217928b1b08576ce39c457a8b0e20e91492d6e",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "7b81f77cf1c9bd9a42b51b5971e3a5b9bb2340a00c8bedc217cc46333a33d49a",
+          "left_raw_sha256": "41b7864333d0cb00b8de6b893b76292fc6b1594c5b4e51e399cdb524e6436423",
+          "right_raw_sha256": "bee7f2712e0b6a25f13c05f89efdd0a1f2f5c3f91761494cf08e50783a146e30",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "7f203e1734bdd0df3c039f6365b7faaec7467eba0639b0f0774fbd02cb5aa954"
+    },
+    {
+      "ontology": "ore_ont_6948",
+      "repetition": 1,
+      "arm": "baseline",
+      "status": "executed_unvalidated",
+      "wall_s": 31.52066726796329,
+      "verified": true,
+      "record_sha256": "5b65a265ab536c4d6eb725aaff708160347b9ca982e78010aa85e1e986f938d8",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "7b81f77cf1c9bd9a42b51b5971e3a5b9bb2340a00c8bedc217cc46333a33d49a",
+          "left_raw_sha256": "41b7864333d0cb00b8de6b893b76292fc6b1594c5b4e51e399cdb524e6436423",
+          "right_raw_sha256": "bee7f2712e0b6a25f13c05f89efdd0a1f2f5c3f91761494cf08e50783a146e30",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "9b917903813745da96b28d59165f32f0575ffc062d8f24e2a946da3d156c98a2"
+    }
+  ],
+  "release_approved": false,
+  "audit_script_sha256": "a735b970ca3be108317163dee7e73a96bcb25b8416a388c3d747be24b5cc45b5"
+}

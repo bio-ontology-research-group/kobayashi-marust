@@ -2,6 +2,31 @@
 
 The release objectives are not yet achieved.
 
+## Snapshot: production-profile sweep 53334551 submitted
+
+- [Finite-role-index full results](finite-role-index-final-summary-53329459.json):
+  1,621 verified solves, mean 8.312 s, median 0.443 s; all 1,920 inputs retained,
+  zero audit errors. This is a diagnostic-profile binary, not release approval.
+- [Build-profile audit](build-profile-comparison-notes.md): the earlier
+  single-worker baseline used production LTO and one codegen unit; recent
+  diagnostics used no LTO and 16 units. Separate build profiles confound
+  attribution of broad timing changes to source edits.
+- [Production-profile sweep](production-v150-full-notes.md), job 53334551:
+  pinned current source rebuilt with production settings; all four source
+  certification gates passed. Full performance and coverage results are pending.
+- [IRI grammar equivalence](iri-grammar-final-53332675.json): all 1,920 results
+  and error texts match exactly, with no failed attempts. Full frontend-output
+  comparison is job 53333815; classification is measured separately.
+- [Classifier snapshot reuse](unique-state-notes.md): 153 focused tests and
+  all four certification gates passed. Paired timings are mixed; no isolated
+  speedup is established.
+- [Audit failure retained](iri-classification-audit-failure-10689.json): 10689
+  remains unverified in diagnostic sweep 53332943 after canonicalization failed.
+  New production audit records include resource and process-exit details.
+
+The classification coverage target still requires 35 net verified gains over
+1,621 to exceed Konclude's recorded 1,655. Neither release objective is met.
+
 ## Release acceptance
 
 - v1.5.0: lower arithmetic mean runtime, lower median runtime, and strictly

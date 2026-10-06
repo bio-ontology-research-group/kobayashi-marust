@@ -1,0 +1,11 @@
+{
+  "job_id": "53333657",
+  "cases": 3,
+  "repetitions": 2,
+  "arms": 2,
+  "timeout_s_per_arm": 240,
+  "memory_gib": 20,
+  "cpus": 1,
+  "diagnostic_only": true,
+  "release_approved": false
+}
