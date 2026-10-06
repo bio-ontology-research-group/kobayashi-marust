@@ -42,3 +42,39 @@ IBEX job 53330046 tests the same eight coverage-tail inputs under the original
 240-second, 20-GiB, one-CPU limits, with independent output auditing. Its binary
 is pinned and its inventory explicitly records the uncertified experiment.
 The production finite-role-index sweep 53329459 continues independently.
+
+The eight-case diagnostic completed: 12566 and 13799 independently verified,
+three process errors, and three timeouts. The other six failures remain in the
+record. The first experimental binary predates the role-clause guard below;
+its result is not a production certificate.
+
+## Role and concrete-data obligations
+
+`DatatypePaddingRoles.lean` adds 14 checked statements covering role inclusion,
+inverse roles, chains, functionality, disjointness, irreflexivity, domains,
+ranges, singleton nominals, and guarded assignments. It explicitly proves that
+the edgeless extension is not reflexive. A second concrete counterexample shows
+why guarding only role-head endpoints is insufficient: an unguarded body class
+can hold only on the padding carrier and activate a new role conclusion.
+
+The isolated witness search now rejects a role-headed clause unless every
+variable in both its body and head is covered by a role premise. This includes
+variables in class, existential and equality atoms. Separate existing data-role
+guards still enforce permitted endpoint uses. No existing production guard was
+weakened. The new check is necessary for this construction; it is not claimed
+to establish every remaining source obligation by itself.
+
+`DatatypePaddingData.lean` adds seven checked transport lemmas for actual
+two-sorted data roles and value-range predicates: existential and universal
+restrictions, qualified minimum/maximum cardinality, and their edgeless padding
+interpretations. Both new modules use only `propext`, with no `sorryAx`.
+Binding frontend datatype names to the intended value predicates remains an
+explicit obligation, as does reverse transport of arbitrary completion models.
+
+All 74 datatype tests passed after tightening the experimental role guard.
+The new binary still recovers 12566 in a bounded local diagnostic (0.197 s),
+agreeing with Konclude, HermiT, Openllet and JFact. The 13799 control also passes
+with independent agreement (0.132 s). These times are local diagnostics. The
+patch, source manifest and answer receipts are separate from the original
+experiment, preserving its immutable provenance. Production admission and
+release solved counts remain unchanged.
