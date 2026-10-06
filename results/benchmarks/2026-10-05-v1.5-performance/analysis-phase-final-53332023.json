@@ -1,0 +1,144 @@
+{
+  "diagnostic_only": true,
+  "complete": true,
+  "usable_for_phase_diagnosis": true,
+  "missing_timer_groups_on": [],
+  "runner": "profile_analysis_phases_v2.py",
+  "complete_chunks": 3,
+  "rows": [
+    {
+      "ontology": "ore_ont_13276",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.06754926033318,
+      "peak_bytes": 2107723776,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "043f4a0d2c5e4766b0b80f48b440a8815ec1641fec42968ed3702e5d1dc37b3f",
+      "timers": {
+        "event_counts": {
+          "read_off": 24115,
+          "analyser": 168805,
+          "analysis": 24115
+        },
+        "seconds": {
+          "read_off": {
+            "seed": 3.668335000000126,
+            "search": 57.52667499999975,
+            "cache": 11.517502999998486,
+            "labels": 0.1654990000000471
+          },
+          "analysis": {
+            "snapshot": 0.15274400000002153,
+            "analyse": 60.630854000000106,
+            "delivery": 5.311424999999485
+          },
+          "analyser": {
+            "snapshots": 5.967388000000157,
+            "possible-states": 6.049915000000013,
+            "more-information": 2.9740940000000333,
+            "root-messages": 1.1875549999999282,
+            "other-messages": 3.993400999999956,
+            "pseudo-model": 2.5435310000000593,
+            "delivery": 0.08785500000001965
+          }
+        }
+      },
+      "stderr_sha256": "b1283906e1d7956752275969b017d7733278175bf962c9fe87657a911ec71645"
+    },
+    {
+      "ontology": "ore_ont_13242",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 158.46884238533676,
+      "peak_bytes": 6048325632,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "5ed0b7609fdc0a11b3c5f4bdd75f368d749a78130f0933a8483060a3c7396c5a",
+          "left_raw_sha256": "1e4bd7e8da7ed66273b049903917d53fcf6d6fd2c9ce8bf1c46f3369e62cb21b",
+          "right_raw_sha256": "87e84d576ed9f0942bac13ea2c67a2114d10eb28dbbc2a22300c739c1073c603",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "e1e1ddfff973e1bc3baef2822cb3741b6ff895c1dc4f57edf8dc5f7e9f38a0d0",
+      "audit_status": "compared",
+      "timers": {
+        "event_counts": {
+          "read_off": 422,
+          "analyser": 2954,
+          "analysis": 422
+        },
+        "seconds": {
+          "read_off": {
+            "seed": 0.07278799999999999,
+            "search": 15.779383000000012,
+            "cache": 2.0039849999999984,
+            "labels": 0.004569000000000001
+          },
+          "analysis": {
+            "snapshot": 0.002149000000000003,
+            "analyse": 6.217369000000005,
+            "delivery": 0.591399
+          },
+          "analyser": {
+            "snapshots": 0.29532700000000006,
+            "possible-states": 0.09385399999999999,
+            "more-information": 0.10786000000000001,
+            "root-messages": 0.02128800000000001,
+            "other-messages": 0.06789800000000007,
+            "pseudo-model": 0.02549399999999999,
+            "delivery": 0.0011300000000000045
+          }
+        }
+      },
+      "stderr_sha256": "a758fce78550f2565383127999d48418a298f4fc4b04c4b5a78dc1279f59ffa3"
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.06372454948723,
+      "peak_bytes": 2548658176,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "319f485f0aa9c0377b81d71f266677dfd4b07e65645216937e49a09ede409eae",
+      "timers": {
+        "event_counts": {
+          "read_off": 24305,
+          "analyser": 170135,
+          "analysis": 24305
+        },
+        "seconds": {
+          "read_off": {
+            "seed": 3.8620940000001176,
+            "search": 58.56403799999926,
+            "cache": 11.439823999998726,
+            "labels": 0.2439960000000721
+          },
+          "analysis": {
+            "snapshot": 0.1380300000000262,
+            "analyse": 60.52897199999988,
+            "delivery": 5.695077999999644
+          },
+          "analyser": {
+            "snapshots": 5.440613000000128,
+            "possible-states": 6.077273000000063,
+            "more-information": 3.209569000000017,
+            "root-messages": 1.1845279999999434,
+            "other-messages": 4.142061000000312,
+            "pseudo-model": 2.7564109999999995,
+            "delivery": 0.059201000000012036
+          }
+        }
+      },
+      "stderr_sha256": "42310cd53df9be582c8ebfde47fce8181d6b6689ea97847dbe99e6db10ab39eb"
+    }
+  ],
+  "release_approved": false,
+  "interpretation": "Timer groups are nested and must not be added together. Instrumentation adds I/O. These times cannot establish a release speedup."
+}

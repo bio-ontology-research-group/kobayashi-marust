@@ -1,0 +1,11 @@
+{
+  "complete": false,
+  "complete_chunks": 7,
+  "recorded_inputs": 252,
+  "exact_agreements": 252,
+  "differing_results": [],
+  "unresolved": [],
+  "release_approved": false,
+  "diagnostic_only": true,
+  "scope": "Exact grammar results only; not full conformance or classification."
+}

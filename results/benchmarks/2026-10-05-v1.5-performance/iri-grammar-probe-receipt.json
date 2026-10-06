@@ -1,0 +1,30 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "command": [
+    "/tmp/agent/km-v150-diagnostics/probe-iri-grammar",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_236.owl",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_11896.owl",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_3250.owl"
+  ],
+  "status": "ok",
+  "exit_code": 0,
+  "wall_s": 1.8242756789550185,
+  "peak_bytes": 9940992,
+  "cpus": 1,
+  "cpu": 0,
+  "timeout_s": 30,
+  "memory_gib": 20,
+  "files": {
+    "/tmp/agent/km-v150-diagnostics/probe-iri-grammar": "71c18e662c363eb12ae80d44e6366495cf9188a5929db93494a35f0bd4e55b02",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_236.owl": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_11896.owl": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_3250.owl": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+    "results/benchmarks/2026-10-05-v1.5-performance/probe_iri_grammar.rs": "7bf6b9c0f1a1708e51c68089f9d8121723b968ed9946a2e4334fbd3d38ed83b0",
+    "results/benchmarks/2026-10-05-v1.5-performance/iri-grammar-probe.stdout": "7d8096bdb3b755c959267e34656242209413d8831fe8413d578925129cfff4ca",
+    "/tmp/agent/km-v150-diagnostics/iri-grammar-probe.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine/vendor/owl-functional-syntax/src/lib.rs": "0aca2a2c683afe2a42a9aa2aedb7f25d6642e46160dede83bddb29c4c4b45524",
+    "engine/vendor/owl-functional-syntax/grammars/ofn-iri-cached.pest": "cc488e1f0dfe00670a9808e780aab0d1336b8a6bf5b406a446581ec7e78c0c4a",
+    ".work/target-diagnostic/release/deps/libkm_owl_functional_syntax-436c83173c2eeae2.rlib": "8b877336a81c5ca6f96fb467e9f6109ec4f1c6686a54d922959c4ed438401d2b"
+  }
+}

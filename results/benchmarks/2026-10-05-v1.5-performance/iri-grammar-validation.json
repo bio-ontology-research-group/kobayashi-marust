@@ -1,0 +1,16 @@
+{
+  "grammar_tests_passed": 6,
+  "conformance_tests_passed_per_mode": 55,
+  "modes": [
+    "default",
+    "KM_FAST_IRI_GRAMMAR=1"
+  ],
+  "logs": {
+    "iri-cached-conformance-tests.log": "975dd57bef48bbb0b2f3ecd92bd7b4b3577ae4b9d132c76236496a2f3610c475",
+    "iri-default-conformance-tests.log": "0fc06df03d29529c8c269454bbbdcbcd291e3b0056ae542a2c3da546de8091bb",
+    "iri-grammar-unit-tests.log": "5984aa17b5cf804a15ad8b6f2dd8e5ffe5b5e7ee700c6610dfb7d43e0b06d8c3"
+  },
+  "source_manifest_sha256": "e52f9325e92c26f59a2bbc006ef1869b5d880874e956302f027cf109321d3a62",
+  "certification_pending": true,
+  "release_approved": false
+}
