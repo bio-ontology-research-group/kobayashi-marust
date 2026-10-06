@@ -1,0 +1,112 @@
+{
+  "diagnostic_only": true,
+  "production_enabled": false,
+  "before": {
+    "passed": 3,
+    "failed": 1,
+    "failure": "outgoing negative edge omitted"
+  },
+  "after": {
+    "direct_tests_passed": 5,
+    "exhaustive_endpoint_pairs": 72,
+    "nearby_tests_passed": 41,
+    "semantic_controls_passed": 6,
+    "ontology_14379_verified_against": [
+      "konclude",
+      "hermit",
+      "openllet"
+    ],
+    "ontology_14379_wall_s": 1.07426913396921
+  },
+  "lean_relocation_conflict_axioms": [],
+  "logs": {
+    "/tmp/agent/km-v150-diagnostics/data-disjoint-relocation-before-v2.log": {
+      "sha256": "47c11cd8f576718ebcd5fc018e297cf96594a6ac93d1a6276896149e61579c16",
+      "tail": [
+        "",
+        "running 4 tests",
+        "",
+        "thread 'konclude_ht::completion::selftest::disjoint_merge_relocation_preserves_outgoing_negative_edges' (1083235) panicked at src/konclude_ht/completion/selftest.rs:27681:5:",
+        "assertion failed: env.ctx.process_context().node_has_negation_disjoint_to_individual_id(into,",
+        "    negative, 422)",
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+        "test konclude_ht::completion::selftest::disjoint_merge_check_keeps_distinct_sources_separate ... ok",
+        "test konclude_ht::completion::selftest::disjoint_merge_check_preserves_both_edge_dependencies ... ok",
+        "test konclude_ht::completion::selftest::disjoint_merge_relocation_preserves_outgoing_negative_edges ... FAILED",
+        "test konclude_ht::completion::selftest::disjoint_merge_relocation_restores_incoming_edges_on_rollback ... ok",
+        "",
+        "failures:",
+        "",
+        "failures:",
+        "    konclude_ht::completion::selftest::disjoint_merge_relocation_preserves_outgoing_negative_edges",
+        "",
+        "test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 2742 filtered out; finished in 0.00s",
+        "",
+        "error: test failed, to rerun pass `--lib`"
+      ]
+    },
+    "/tmp/agent/km-v150-diagnostics/data-disjoint-relocation-after.log": {
+      "sha256": "a7486fbe3bca1e68a156d37ebf60b3bca0cc9d596a3ccff70029be82fd09266b",
+      "tail": [
+        "    |",
+        "help: consider using `if let` to clear intent",
+        "    |",
+        "143 -     for domain in &paths.domain { axioms.push(format!(\"Declaration(Class({}))\", name(domain)?)); }",
+        "143 +     if let Some(domain) = &paths.domain { axioms.push(format!(\"Declaration(Class({}))\", name(domain)?)); }",
+        "    |",
+        "",
+        "warning: `kobayashi-marust` (lib test) generated 79 warnings (run `cargo fix --lib -p kobayashi-marust --tests` to apply 43 suggestions)",
+        "    Finished `release` profile [optimized] target(s) in 1m 59s",
+        "     Running unittests src/lib.rs (/workspace/.work/target-integral-decimal/release/deps/kobayashi_marust-20a02bdeb710addf)",
+        "",
+        "running 5 tests",
+        "test konclude_ht::completion::selftest::disjoint_merge_check_keeps_distinct_sources_separate ... ok",
+        "test konclude_ht::completion::selftest::disjoint_merge_check_preserves_both_edge_dependencies ... ok",
+        "test konclude_ht::completion::selftest::disjoint_merge_relocation_preserves_outgoing_negative_edges ... ok",
+        "test konclude_ht::completion::selftest::disjoint_merge_relocation_restores_incoming_edges_on_rollback ... ok",
+        "test konclude_ht::completion::selftest::disjoint_merge_check_exhaustive_three_node_endpoint_pairs ... ok",
+        "",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 2742 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "/tmp/agent/km-v150-diagnostics/data-disjoint-relocation-nearby.log": {
+      "sha256": "498d60e2cd02394fa18ff7d43c1de0d031a60376b40f0de197b6037814e5a55a",
+      "tail": [
+        "test konclude_ht::completion::selftest::disjoint_merge_relocation_restores_incoming_edges_on_rollback ... ok",
+        "test konclude_ht::process::context::tests::pn3_context_disjoint_successor_wrappers_install_read_iterate_and_remove ... ok",
+        "test konclude_ht::completion::u33::tests::representatives_joinable_quick_fails_single_binding_disjoint_maps ... ok",
+        "test konclude_ht::process::pn3::tests::pn3_disjoint_link_wrappers_install_read_iterate_and_remove ... ok",
+        "test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::accepts_connected_role_chain_clause ... ok",
+        "test konclude_ht::process::pn3::tests::pn3_disjoint_successor_role_hash_in_context_allocates_once ... ok",
+        "test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::rejects_a_disconnected_head_variable ... ok",
+        "test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::body_equality_connects_components ... ok",
+        "test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::rejects_a_private_proxy_in_the_tbox ... ok",
+        "test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::rejects_a_variable_free_clause ... ok",
+        "test orchestrate::flat_nf1::tests::inert_disjointness_preserves_closure_and_common_descendant_declines ... ok",
+        "test orchestrate::flat_nf1::tests::sparse_horn_declines_a_joint_abox_disjointness_clash ... ok",
+        "test konclude_ht::completion::selftest::disjoint_merge_check_exhaustive_three_node_endpoint_pairs ... ok",
+        "test orchestrate::mirror::tests::refuses_a_disjoint_mirror_role ... ok",
+        "test konclude_ht::bridge::tests::saturation_atmost_disjoint_successors_not_sat_certain ... ok",
+        "test reasoner::tests::disjointness_unsat ... ok",
+        "test konclude_ht::bridge::tests::ddb_preserves_satisfiable_disjoint_cardinality_partition ... ok",
+        "",
+        "test result: ok. 41 passed; 0 failed; 0 ignored; 0 measured; 2706 filtered out; finished in 0.06s",
+        ""
+      ]
+    },
+    "/tmp/agent/km-v150-diagnostics/data-disjoint-relocation-lean.log": {
+      "sha256": "a3e796a4af2103425ef83c0cc9c6f0ee26b4472c1a81c34a8a510e6fb9381dab",
+      "tail": [
+        "'ContextCalculus.DatatypeRoleDisjointness.disjoint_roles_iff' does not depend on any axioms",
+        "'ContextCalculus.DatatypeRoleDisjointness.noninjective_mapping_can_break_disjointness' depends on axioms: [propext]",
+        "'ContextCalculus.DatatypeRoleDisjointness.relocation_conflict_iff' does not depend on any axioms"
+      ]
+    }
+  },
+  "remaining": [
+    "complete datatype realization and runtime proof binding",
+    "full-corpus benchmark"
+  ],
+  "binary_sha256": "ed1f2d1ed54e8fbf22bd93c9b0b233bcae1c2883b5e7e439d408addd4f82704c"
+}

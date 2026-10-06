@@ -37,6 +37,29 @@ theorem noninjective_mapping_can_break_disjointness :
   · intro disjoint
     exact disjoint () ⟨⟨false, rfl, rfl⟩, ⟨true, rfl, rfl⟩⟩
 
+/-- Relocating an edge maps both endpoints. Positive and negative edges may
+coexist after relocation exactly when no original conflicting pair acquires
+the same two endpoints. No injectivity assumption is appropriate for a merge. -/
+def Relocated {Node : Type} (merge : Node → Node)
+    (edge : Node → Node → Prop) (source target : Node) : Prop :=
+  ∃ oldSource oldTarget, edge oldSource oldTarget ∧
+    merge oldSource = source ∧ merge oldTarget = target
+
+theorem relocation_conflict_iff {Node : Type} (merge : Node → Node)
+    (positive negative : Node → Node → Prop) :
+    (∃ source target, Relocated merge positive source target ∧
+      Relocated merge negative source target) ↔
+    (∃ ps pt ns nt, positive ps pt ∧ negative ns nt ∧
+      merge ps = merge ns ∧ merge pt = merge nt) := by
+  constructor
+  · rintro ⟨source, target, ⟨ps, pt, hp, hs, ht⟩,
+      ⟨ns, nt, hn, hns, hnt⟩⟩
+    exact ⟨ps, pt, ns, nt, hp, hn, hs.trans hns.symm, ht.trans hnt.symm⟩
+  · rintro ⟨ps, pt, ns, nt, hp, hn, hs, ht⟩
+    exact ⟨merge ps, merge pt, ⟨ps, pt, hp, rfl, rfl⟩,
+      ⟨ns, nt, hn, hs.symm, ht.symm⟩⟩
+
 end ContextCalculus.DatatypeRoleDisjointness
 #print axioms ContextCalculus.DatatypeRoleDisjointness.disjoint_roles_iff
 #print axioms ContextCalculus.DatatypeRoleDisjointness.noninjective_mapping_can_break_disjointness
+#print axioms ContextCalculus.DatatypeRoleDisjointness.relocation_conflict_iff
