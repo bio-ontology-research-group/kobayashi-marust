@@ -1,0 +1,273 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "production_code_changed": false,
+  "script_hashes": {
+    "probe_source_module.py": "e2fa7b4ff9e19dcd14d4bc41c70552ebe0d51ea3bd38d18bb4dc5124fe158073",
+    "probe_render_source_module.py": "06b6b9de394c8f7866cd1cce224e184fc97db001f8fea7c8ad20506ed55a504d"
+  },
+  "revisions": [
+    {
+      "revision": 1,
+      "diagnostic_only": true,
+      "module": {
+        "queries": 4,
+        "source_axioms": 16569,
+        "module_axioms": 656,
+        "selected_axiom_key_sha256": "521265bad1fbbf3846eb028a7f7ca3d57a03bf23f23f3b1edd7e4a2cf2afbebb"
+      },
+      "preparation_s": 0.6922340049641207,
+      "input_hashes": {
+        "binary": "0a093677ecd73f3bd691d81261c151a1619a122ee12920c045ec5138ffa3ebc2",
+        "source": "8a00ea8beefa1c01b80adf9884167959a8c54dd41a411520ad77ee526a8beb33",
+        "typed": "e66a22f09c4d472d5e498d3cd8048db4b4aa96cb389d910abf72fc521d42108f",
+        "focus": "304d432b893a50e75f25ad09066b1db0c7c8173b94d2b4276e8e89b1da075a1d",
+        "fresh": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+        "previous": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f"
+      },
+      "records": [
+        {
+          "label": "control",
+          "repetition": 0,
+          "wall_s": 2.0008848590077832,
+          "merged_full_agreement": null,
+          "merge_s": null,
+          "agreement": true,
+          "answer_sha256": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+          "source_sha256": "ebad5a65a3b639ce9b1e7dbf07a2997baf2824a52f23ad51d7c84af7e2dd32f1"
+        },
+        {
+          "label": "control",
+          "repetition": 1,
+          "wall_s": 1.6304911860497668,
+          "merged_full_agreement": null,
+          "merge_s": null,
+          "agreement": true,
+          "answer_sha256": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+          "source_sha256": "ebad5a65a3b639ce9b1e7dbf07a2997baf2824a52f23ad51d7c84af7e2dd32f1"
+        },
+        {
+          "label": "module",
+          "repetition": 0,
+          "wall_s": 0.25376867910381407,
+          "merged_full_agreement": true,
+          "merge_s": 0.019719031057320535,
+          "agreement": true,
+          "answer_sha256": "10d4781e5ccbcc899f61cbb84d0c28f24201524183ae353687971fc763a8db68",
+          "source_sha256": "39fff52d228058ccc8f9cd7494dde881cf0a3640c77a4b573bf9d895d73bbfc3"
+        },
+        {
+          "label": "module",
+          "repetition": 1,
+          "wall_s": 0.2507284249877557,
+          "merged_full_agreement": true,
+          "merge_s": 0.023648352012969553,
+          "agreement": true,
+          "answer_sha256": "10d4781e5ccbcc899f61cbb84d0c28f24201524183ae353687971fc763a8db68",
+          "source_sha256": "39fff52d228058ccc8f9cd7494dde881cf0a3640c77a4b573bf9d895d73bbfc3"
+        }
+      ],
+      "cpu": 0,
+      "timeout_s": 180,
+      "memory_gib": 20,
+      "scope": "One-source module rendering and fresh-answer comparison; not end-to-end incremental or release evidence."
+    },
+    {
+      "revision": 2,
+      "diagnostic_only": true,
+      "module": {
+        "queries": 4,
+        "source_axioms": 16570,
+        "module_axioms": 657,
+        "selected_axiom_key_sha256": "7cd1f8147bf2fd19301ba87c15fb909fe87ce1f18925cdf917bb7593c8e7af97"
+      },
+      "preparation_s": 0.6842395439743996,
+      "input_hashes": {
+        "binary": "0a093677ecd73f3bd691d81261c151a1619a122ee12920c045ec5138ffa3ebc2",
+        "source": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+        "typed": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+        "focus": "304d432b893a50e75f25ad09066b1db0c7c8173b94d2b4276e8e89b1da075a1d",
+        "fresh": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+        "previous": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f"
+      },
+      "records": [
+        {
+          "label": "control",
+          "repetition": 0,
+          "wall_s": 1.6697123449994251,
+          "merged_full_agreement": null,
+          "merge_s": null,
+          "agreement": true,
+          "answer_sha256": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+          "source_sha256": "984919a103d39ca6a3e11efeb24f05f57285be7f10cecf95bd97a57d703d2a11"
+        },
+        {
+          "label": "control",
+          "repetition": 1,
+          "wall_s": 1.6740198089974,
+          "merged_full_agreement": null,
+          "merge_s": null,
+          "agreement": true,
+          "answer_sha256": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+          "source_sha256": "984919a103d39ca6a3e11efeb24f05f57285be7f10cecf95bd97a57d703d2a11"
+        },
+        {
+          "label": "module",
+          "repetition": 0,
+          "wall_s": 0.28001404798123986,
+          "merged_full_agreement": true,
+          "merge_s": 0.019693461945280433,
+          "agreement": true,
+          "answer_sha256": "10d4781e5ccbcc899f61cbb84d0c28f24201524183ae353687971fc763a8db68",
+          "source_sha256": "79e181ae26c9249e5c154c3fc5e03011d0858d260e9e470d9f93c8870d19b11d"
+        },
+        {
+          "label": "module",
+          "repetition": 1,
+          "wall_s": 0.2725358579773456,
+          "merged_full_agreement": true,
+          "merge_s": 0.02369729394558817,
+          "agreement": true,
+          "answer_sha256": "10d4781e5ccbcc899f61cbb84d0c28f24201524183ae353687971fc763a8db68",
+          "source_sha256": "79e181ae26c9249e5c154c3fc5e03011d0858d260e9e470d9f93c8870d19b11d"
+        }
+      ],
+      "cpu": 0,
+      "timeout_s": 180,
+      "memory_gib": 20,
+      "scope": "One-source module rendering and fresh-answer comparison; not end-to-end incremental or release evidence."
+    },
+    {
+      "revision": 3,
+      "diagnostic_only": true,
+      "module": {
+        "queries": 2180,
+        "source_axioms": 16538,
+        "module_axioms": 7828,
+        "selected_axiom_key_sha256": "3a6875807d5a0df48c5a99f760d983f54835cc46ae717bd9dd225c60b03acf59"
+      },
+      "preparation_s": 0.7641442460007966,
+      "input_hashes": {
+        "binary": "0a093677ecd73f3bd691d81261c151a1619a122ee12920c045ec5138ffa3ebc2",
+        "source": "fe1fdd9ddbcfe8e8eaf75f4fae7765a40b90712397e133f60cce32319d1c49fc",
+        "typed": "7d33f9ef2dcee90ce9e162e2e570055c8aaf720a724f145a23738ee42923d3f6",
+        "focus": "70c08e2e63b91cae7787e6b94a2211a9cef367963c38d6f8b3bd07d1a45366a3",
+        "fresh": "6ce671ce30701e3cea56a7be1a90eadd1f9dd86d1e26426cb263a451263daaa0",
+        "previous": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f"
+      },
+      "records": [
+        {
+          "label": "control",
+          "repetition": 0,
+          "wall_s": 1.6804356530774385,
+          "merged_full_agreement": null,
+          "merge_s": null,
+          "agreement": true,
+          "answer_sha256": "6ce671ce30701e3cea56a7be1a90eadd1f9dd86d1e26426cb263a451263daaa0",
+          "source_sha256": "b649b85650e60fb6b853ec82351e425f01bfe2bf22a1ccf942bdb6233ea31195"
+        },
+        {
+          "label": "control",
+          "repetition": 1,
+          "wall_s": 1.6447081218939275,
+          "merged_full_agreement": null,
+          "merge_s": null,
+          "agreement": true,
+          "answer_sha256": "6ce671ce30701e3cea56a7be1a90eadd1f9dd86d1e26426cb263a451263daaa0",
+          "source_sha256": "b649b85650e60fb6b853ec82351e425f01bfe2bf22a1ccf942bdb6233ea31195"
+        },
+        {
+          "label": "module",
+          "repetition": 0,
+          "wall_s": 0.8857404870213941,
+          "merged_full_agreement": true,
+          "merge_s": 0.018372638965956867,
+          "agreement": true,
+          "answer_sha256": "0034f8e178f99efc3a8f12b745363c35d973d7931b8b3ef3c557058063e26d2f",
+          "source_sha256": "a4ea1de8c74686f98d38551014433487b7adc079e3bc2b046e4e34962c72d5e7"
+        },
+        {
+          "label": "module",
+          "repetition": 1,
+          "wall_s": 0.889899390982464,
+          "merged_full_agreement": true,
+          "merge_s": 0.019756520981900394,
+          "agreement": true,
+          "answer_sha256": "0034f8e178f99efc3a8f12b745363c35d973d7931b8b3ef3c557058063e26d2f",
+          "source_sha256": "a4ea1de8c74686f98d38551014433487b7adc079e3bc2b046e4e34962c72d5e7"
+        }
+      ],
+      "cpu": 0,
+      "timeout_s": 180,
+      "memory_gib": 20,
+      "scope": "One-source module rendering and fresh-answer comparison; not end-to-end incremental or release evidence."
+    },
+    {
+      "revision": 4,
+      "diagnostic_only": true,
+      "module": {
+        "queries": 2180,
+        "source_axioms": 16570,
+        "module_axioms": 7887,
+        "selected_axiom_key_sha256": "8cc4160a9e0359f1f69b9c23a13dadedf00bcdb3ff5c319e149db2199e9be633"
+      },
+      "preparation_s": 0.7156541310250759,
+      "input_hashes": {
+        "binary": "0a093677ecd73f3bd691d81261c151a1619a122ee12920c045ec5138ffa3ebc2",
+        "source": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+        "typed": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+        "focus": "70c08e2e63b91cae7787e6b94a2211a9cef367963c38d6f8b3bd07d1a45366a3",
+        "fresh": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+        "previous": "6ce671ce30701e3cea56a7be1a90eadd1f9dd86d1e26426cb263a451263daaa0"
+      },
+      "records": [
+        {
+          "label": "control",
+          "repetition": 0,
+          "wall_s": 1.677139273029752,
+          "merged_full_agreement": null,
+          "merge_s": null,
+          "agreement": true,
+          "answer_sha256": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+          "source_sha256": "984919a103d39ca6a3e11efeb24f05f57285be7f10cecf95bd97a57d703d2a11"
+        },
+        {
+          "label": "control",
+          "repetition": 1,
+          "wall_s": 1.6056275469018146,
+          "merged_full_agreement": null,
+          "merge_s": null,
+          "agreement": true,
+          "answer_sha256": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f",
+          "source_sha256": "984919a103d39ca6a3e11efeb24f05f57285be7f10cecf95bd97a57d703d2a11"
+        },
+        {
+          "label": "module",
+          "repetition": 0,
+          "wall_s": 0.9256240139948204,
+          "merged_full_agreement": true,
+          "merge_s": 0.017796311993151903,
+          "agreement": true,
+          "answer_sha256": "e74b260df3ba4d81f06524eca161953f261a91d3c820f6cf909bc9ea780489de",
+          "source_sha256": "d6fd0fb60eb207429a6c28dd839accad64012ef5bcb308d7a26c9c1f6ed71eb4"
+        },
+        {
+          "label": "module",
+          "repetition": 1,
+          "wall_s": 0.9035754259675741,
+          "merged_full_agreement": true,
+          "merge_s": 0.020776986959390342,
+          "agreement": true,
+          "answer_sha256": "e74b260df3ba4d81f06524eca161953f261a91d3c820f6cf909bc9ea780489de",
+          "source_sha256": "d6fd0fb60eb207429a6c28dd839accad64012ef5bcb308d7a26c9c1f6ed71eb4"
+        }
+      ],
+      "cpu": 0,
+      "timeout_s": 180,
+      "memory_gib": 20,
+      "scope": "One-source module rendering and fresh-answer comparison; not end-to-end incremental or release evidence."
+    }
+  ],
+  "conclusion": "All reconstructed controls and all full retained-row merges equal the corresponding fresh answers in both repetitions. Smaller module classification is faster, but preparation removes most of the large-edit gain. This excludes original-source normalization, affected-query discovery, retained-session protocol costs and some serialization, so it does not establish end-to-end incremental speedups.",
+  "next_step": "Implement guarded module extraction/rendering in Rust, reusing parsed source and activation state; validate the complete update path, then broader corpus and publication-boundary proofs."
+}

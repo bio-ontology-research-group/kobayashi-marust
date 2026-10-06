@@ -164,3 +164,32 @@ and 7,828/16,538 for the 2,180 affected large-edit queries. Rebuilding an exact
 module is the next candidate optimization. Source rendering, complete RBox
 preservation, projection certification, and fresh-answer validation must
 precede its use; no module is currently substituted into classification.
+
+## Rendered module and retained-row merge diagnostic
+
+The bounded Python renderer now tests actual modules on all four ORE 9944
+updates. It accepts only declaration-covered, collision-free expanded names,
+positive source expressions and a restricted one-axiom-per-line fixture. It
+keeps every role axiom and declaration. Before testing a module, it reconstructs
+all source TBox axioms from the typed metadata and requires the resulting full
+classification to equal the original fresh answer.
+
+Both repetitions of all four module classifications preserve every affected
+answer. Replacing only affected subjects in the previous complete result also
+reproduces the entire fresh answer, including the two restoration updates.
+
+| Revision | Selected source axioms | Module classification (s) | Full reconstructed control (s) | Python preparation (s) |
+|---|---:|---:|---:|---:|
+| Single-axiom removal | 656 | 0.251–0.254 | 1.630–2.001 | 0.692 |
+| Restoration | 657 | 0.273–0.280 | 1.670–1.674 | 0.684 |
+| 32-axiom removal | 7,828 | 0.886–0.890 | 1.645–1.680 | 0.764 |
+| Restoration | 7,887 | 0.904–0.926 | 1.606–1.677 | 0.716 |
+
+Row merging adds 0.018–0.024 seconds. These are local diagnostic measurements,
+not end-to-end update times. They exclude the original frontend normalization,
+affected-query discovery, retained-session protocol and some serialization.
+Preparation already consumes most of the large-edit gain. No production route
+or default changes. The next implementation must reuse parsed source and
+activation state, measure the complete update path, and finish the publication
+boundary proofs before promotion. The full receipts and script hashes are in
+`results/benchmarks/2026-10-05-v1.5-performance/source-locality-module-render-validation.json`.

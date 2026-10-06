@@ -10,7 +10,7 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'))
 
 
-def analyze(old, new, focus):
+def analyze(old, new, focus, *, include_axioms=False):
     queries = sorted(focus)
     full = (1 << len(queries)) - 1
     values = {canonical({'Name': q}): 1 << i for i, q in enumerate(queries)}
@@ -96,8 +96,11 @@ def analyze(old, new, focus):
             if bits:
                 active.append(key)
                 break
-    return dict(queries=len(queries), source_axioms=len(after), module_axioms=len(active),
-                selected_axiom_key_sha256=hashlib.sha256(canonical(sorted(active)).encode()).hexdigest())
+    result = dict(queries=len(queries), source_axioms=len(after), module_axioms=len(active),
+                  selected_axiom_key_sha256=hashlib.sha256(canonical(sorted(active)).encode()).hexdigest())
+    if include_axioms:
+        result["selected_axioms"] = [after[key] for key in sorted(active)]
+    return result
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
