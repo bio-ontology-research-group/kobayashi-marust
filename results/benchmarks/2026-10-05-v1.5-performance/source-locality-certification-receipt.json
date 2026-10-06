@@ -1,0 +1,26 @@
+{
+  "routing_gate": "passed",
+  "routing_gate_log_sha256": "be1b0c0ec647cb9931ee371e0686aff1e782e3d307ed289ec7e82f849350e3ce",
+  "lean_source_sha256": "0ceb3202626561b8766aab9bdc21b6a87a084426780e4c392b67fc4d99aa6478",
+  "gate_source_sha256": "9e866c550a441f8286e3ef387393f4b50f8c25b2d37f9a1a099bfe3dc7be63a2",
+  "theorems": [
+    "eval_mask",
+    "transfer_model",
+    "inactive_delta_preserves_subsumptions",
+    "inactive_delta_preserves_query_satisfiability"
+  ],
+  "sorryAx": false,
+  "focused_rust_tests": {
+    "passed": 6,
+    "failed": 0,
+    "log_sha256": "4d3a67896ad468a873d462e7a1fcc2b5bde2475cec2f640428cce4cee1bd2a69"
+  },
+  "rust_source_sha256": "6b8824baa46656356fc038fe88a9f54ac20980753e3a27640f6590dd6e0e112a",
+  "real_source_probes": [
+    "9944 one-axiom removal",
+    "9944 32-axiom removal"
+  ],
+  "production_reuse_enabled": false,
+  "scope": "Source-model locality proof and diagnostic lowering. Executable checker binding, complete typed-source coverage, production integration, and full incremental speed comparison remain outstanding.",
+  "release_approved": false
+}

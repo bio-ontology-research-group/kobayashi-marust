@@ -88,3 +88,16 @@ The comparison uses diagnostic builds, not the frozen release executables.
 It closes the source-level preservation question for this production
 representation, but does not establish ordinary-frontend equivalence or
 change the failed original gate to a pass. No release target is established.
+
+The earlier full candidate sweep **53309442** has completed all 1,920 inputs.
+It verifies **1,613** admitted inputs with mean **7.5992 s** and median
+**0.3879 s**, retaining every one of v1.4.5's 1,591 verified solutions and
+adding 22. It produces 1,614 complete outputs; one lacks corroboration.
+The other admitted outcomes are 34 process errors and 60 timeouts. All 212
+invalid inputs remain refused. There are no audit errors.
+On the 1,591 shared KM successes, mean runtime falls from 10.8916 to 7.1805 s
+and median from 0.6913 to 0.3757 s. This candidate still fails the full v1.5.0
+comparison against Konclude and RustDL; the frozen check remains unapproved.
+See [the complete summary](data-source-final-summary-53309442.json) and
+[release-target comparison](data-source-final-release-check.json).
+The newer work-budget and dense-data candidates remain separate sweeps.

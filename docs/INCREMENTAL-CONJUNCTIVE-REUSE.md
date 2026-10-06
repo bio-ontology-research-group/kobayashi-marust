@@ -86,3 +86,27 @@ as a distinguished atom. The routing gate builds and audits all five theorems;
 the gate passes without `sorryAx`. This does not yet prove the OWL lowering,
 typed-state completeness or Rust bit-matrix correspondence. It is a component
 of the required certification boundary, not certification of the optimization.
+
+## Source-model locality proof
+
+`lean/ContextCalculus/IncrementalSourceLocality.lean` now proves the model
+argument for atomic classes, top, bottom, conjunction, and existential
+restrictions. Restrict a model by interpreting inactive atomic classes as
+empty while retaining every role relation. Structural activation establishes
+that active expressions keep their interpretation and inactive expressions
+become empty. Inactive added or removed inclusions then preserve every named
+subsumption and query satisfiability for an active query. Arbitrary fixed
+role-only constraints remain valid because roles do not change.
+
+The proof has four axiom-audited theorems and no `sorryAx`. Class-valued role
+domains/ranges, ABoxes, and other typed side constraints are not silently
+covered by its role-only premise. Complete source coverage, the exact lowering
+of n-ary conjunction/equivalence/disjointness, and the activation algorithm's
+closed-set certificate remain integration obligations.
+
+The Rust `source_affected` diagnostic uses structural source-expression keys
+across both snapshots, so generated definer names and numeric concept IDs do
+not participate in change detection. It reuses the bounded bit-matrix analysis
+and is compiled only for tests. It does not authorize production reuse or
+alter the current fallback. Finite relational-model tests exercise existential
+restrictions, conjunction, equivalence, disjointness, and global top premises.

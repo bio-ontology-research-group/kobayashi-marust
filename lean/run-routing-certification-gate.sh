@@ -39,6 +39,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMConcreteAutomaticSupervisor \
         ContextCalculus.KMIncrementalExplanationCertification \
         ContextCalculus.IncrementalHornActivation \
+        ContextCalculus.IncrementalSourceLocality \
         ContextCalculus.KMAtomicABoxPublication \
         ContextCalculus.ABoxBooleanInclusion \
         ContextCalculus.EndpointTransitivity \
@@ -82,6 +83,10 @@ for theorem in \
     IncrementalHornActivation.inactive_delta_preserves_closure \
     IncrementalHornActivation.entails_iff_derives \
     IncrementalHornActivation.inactive_delta_preserves_entailment \
+    IncrementalSourceLocality.eval_mask \
+    IncrementalSourceLocality.transfer_model \
+    IncrementalSourceLocality.inactive_delta_preserves_subsumptions \
+    IncrementalSourceLocality.inactive_delta_preserves_query_satisfiability \
     ABoxBooleanInclusion.union_operand_included \
     ABoxBooleanInclusion.intersection_operand_included \
     ABoxBooleanInclusion.equivalence_directions \
@@ -268,6 +273,8 @@ fi
         automatic_el_decline_retries_exactly_but_forced_el_remains_atomic
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         source_incremental::tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
+        incremental_activation::tests::
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         frontend::separable_abox_elision_tests::
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_reasoning

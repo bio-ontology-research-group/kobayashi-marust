@@ -85,10 +85,192 @@ pub(crate) fn affected(
         .map(|(_, name)| name.clone()).collect())
 }
 
+/// Source-expression diagnostic for the locality theorem. This is deliberately
+/// not connected to production reuse: typed side-state identity and complete
+/// source coverage must be established by the caller before that is permitted.
+#[cfg(test)]
+fn source_affected(
+    old: &[crate::json_io::SourceAxiomMeta], new: &[crate::json_io::SourceAxiomMeta],
+    queries: &[String], global: &[String],
+) -> Option<BTreeSet<String>> {
+    use crate::frontend::syntax::Concept;
+    use crate::json_io::{JTerm, SourceAxiomKind};
+    struct Lowering {
+        ids: HashMap<Concept, usize>,
+        structural: Vec<JClause>,
+    }
+    fn clause(body: &[usize], head: usize) -> JClause {
+        let atom = |id| JAtom::Concept {
+            concept: format!("source_{id}"), term: JTerm::Var { name: "x".into() },
+        };
+        JClause { body: body.iter().map(|id| atom(*id)).collect(), head: vec![atom(head)] }
+    }
+    impl Lowering {
+        fn expression(&mut self, expression: &Concept, depth: usize) -> Option<usize> {
+            if depth > 64 || self.ids.len() >= 100_000 { return None; }
+            if let Some(id) = self.ids.get(expression) { return Some(*id); }
+            let id = self.ids.len();
+            self.ids.insert(expression.clone(), id);
+            match expression {
+                Concept::Name(_) | Concept::Bottom => {},
+                Concept::Top => self.structural.push(clause(&[], id)),
+                Concept::And(children) => {
+                    let children = children.iter().map(|child| self.expression(child, depth + 1))
+                        .collect::<Option<Vec<_>>>()?;
+                    self.structural.push(clause(&children, id));
+                    for child in children { self.structural.push(clause(&[id], child)); }
+                },
+                Concept::Exists(_, filler) => {
+                    let child = self.expression(filler, depth + 1)?;
+                    // All roles remain fixed in the locality model transfer.
+                    // Forgetting their availability conservatively activates
+                    // an existential whenever its filler is active.
+                    self.structural.push(clause(&[id], child));
+                    self.structural.push(clause(&[child], id));
+                },
+                _ => return None,
+            }
+            Some(id)
+        }
+    }
+    if old.len().saturating_add(new.len()) > 100_000 { return None; }
+    let mut lower = Lowering { ids: HashMap::new(), structural: Vec::new() };
+    let mut snapshots = Vec::new();
+    for axioms in [old, new] {
+        let mut rules = BTreeSet::new();
+        for axiom in axioms {
+            let a = lower.expression(&axiom.left, 0)?;
+            let b = lower.expression(&axiom.right, 0)?;
+            match axiom.kind {
+                SourceAxiomKind::SubClass => { rules.insert((vec![a], b)); },
+                SourceAxiomKind::Equivalent => {
+                    rules.insert((vec![a], b)); rules.insert((vec![b], a));
+                },
+                SourceAxiomKind::Disjoint => {
+                    let bottom = lower.expression(&Concept::Bottom, 0)?;
+                    let mut body = vec![a,b]; body.sort_unstable(); body.dedup();
+                    rules.insert((body, bottom));
+                },
+            }
+        }
+        snapshots.push(rules);
+    }
+    let query_ids = queries.iter().map(|name| lower.expression(&Concept::Name(name.clone()), 0)
+        .map(|id| format!("source_{id}"))).collect::<Option<Vec<_>>>()?;
+    let global_ids = global.iter().map(|name| lower.expression(&Concept::Name(name.clone()), 0)
+        .map(|id| format!("source_{id}"))).collect::<Option<Vec<_>>>()?;
+    let changed: Vec<_> = snapshots[0].symmetric_difference(&snapshots[1])
+        .map(|(body, head)| clause(body, *head)).collect();
+    // Structural rules from both snapshots are always present in the union
+    // abstraction. Only changed source inclusions invalidate query rows.
+    let mut prior = lower.structural;
+    prior.extend(snapshots[0].iter().map(|(body, head)| clause(body, *head)));
+    let after: Vec<_> = snapshots[1].iter().map(|(body, head)| clause(body, *head)).collect();
+    let changed_queries = affected(&prior, &after, &changed, &query_ids, &global_ids)?;
+    Some(queries.iter().zip(query_ids).filter(|(_, id)| changed_queries.contains(id))
+        .map(|(name, _)| name.clone()).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::json_io::JTerm;
+
+    #[test]
+    fn source_locality_preserves_finite_relational_models() {
+        use crate::frontend::syntax::Concept;
+        use crate::json_io::{SourceAxiomMeta, SourceAxiomKind::*};
+        let name = |n| Concept::Name(format!("C{n}"));
+        let some = Concept::Exists(crate::frontend::syntax::Role::Name("r".into()), Box::new(name(1)));
+        let ax = |kind, left, right| SourceAxiomMeta { kind, left, right };
+        let palette = [ax(SubClass, name(0), some.clone()),
+            ax(SubClass, some, name(2)),
+            ax(SubClass, Concept::And(BTreeSet::from([name(0),name(1)])), name(2)),
+            ax(Equivalent, name(1), name(2)), ax(Disjoint, name(0), name(2)),
+            ax(SubClass, Concept::Top, name(1))];
+        fn holds(c: &Concept, x: usize, classes: usize, roles: usize) -> bool {
+            match c {
+                Concept::Name(n) => classes & (1 << (2*n[1..].parse::<usize>().unwrap()+x)) != 0,
+                Concept::Top => true, Concept::Bottom => false,
+                Concept::And(children) => children.iter().all(|c| holds(c,x,classes,roles)),
+                Concept::Exists(_,filler) => (0..2).any(|y|
+                    roles & (1 << (2*x+y)) != 0 && holds(filler,y,classes,roles)),
+                _ => unreachable!(),
+            }
+        }
+        let theories: Vec<Vec<_>> = (0usize..64).map(|mask| palette.iter().enumerate()
+            .filter(|(i,_)| mask & (1 << i) != 0).map(|(_,ax)| ax.clone()).collect()).collect();
+        let mut outcomes = Vec::new();
+        for theory in &theories {
+            let mut entails = [[true; 3]; 3];
+            let mut satisfiable = [false; 3];
+            for classes in 0..64 { for roles in 0..16 {
+                let valid = theory.iter().all(|ax| (0..2).all(|x| {
+                    let left=holds(&ax.left,x,classes,roles);
+                    let right=holds(&ax.right,x,classes,roles);
+                    match ax.kind { SubClass => !left || right,
+                        Equivalent => left == right, Disjoint => !(left && right) }
+                }));
+                if !valid { continue; }
+                for q in 0..3 { for x in 0..2 {
+                    if holds(&name(q),x,classes,roles) {
+                        satisfiable[q]=true;
+                        for target in 0..3 {
+                            entails[q][target] &= holds(&name(target),x,classes,roles);
+                        }
+                    }
+                }}
+            }}
+            outcomes.push((satisfiable,entails));
+        }
+        let queries: Vec<_> = (0..3).map(|i| format!("C{i}")).collect();
+        for mask in 0..64 { for edit in 0..6 {
+            let next=mask ^ (1 << edit);
+            let changed=source_affected(&theories[mask],&theories[next],&queries,&[]).unwrap();
+            for q in 0..3 { if !changed.contains(&queries[q]) {
+                assert_eq!(outcomes[mask].0[q],outcomes[next].0[q],"satisfiability {mask}/{edit}/{q}");
+                assert_eq!(outcomes[mask].1[q],outcomes[next].1[q],"subsumption {mask}/{edit}/{q}");
+            }}
+        }}
+    }
+
+    #[test]
+    fn source_locality_keeps_structural_rules_out_of_the_edit_and_rejects_negation() {
+        use crate::frontend::syntax::Concept;
+        use crate::json_io::{SourceAxiomMeta, SourceAxiomKind};
+        let ax = SourceAxiomMeta { kind: SourceAxiomKind::SubClass,
+            left: Concept::Name("A".into()), right: Concept::Exists(crate::frontend::syntax::Role::Name("r".into()),
+                Box::new(Concept::Name("B".into()))) };
+        let queries = vec!["A".into(),"B".into(),"C".into()];
+        assert_eq!(source_affected(&[], &[ax.clone()], &queries, &[]).unwrap(),
+            BTreeSet::from(["A".into()]));
+        assert!(source_affected(&[ax.clone()], &[ax.clone(),ax.clone()], &queries, &[]).unwrap().is_empty());
+        assert_eq!(source_affected(&[], &[ax.clone()], &queries, &["A".into()]).unwrap(),
+            queries.iter().cloned().collect());
+        let mut outside = ax; outside.right = Concept::Not(Box::new(Concept::Name("B".into())));
+        assert!(source_affected(&[], &[outside], &queries, &[]).is_none());
+    }
+
+    #[test]
+    fn source_locality_optional_frozen_input_probe() {
+        let Some(old_path) = std::env::var_os("KM_SOURCE_ACTIVATION_OLD") else { return; };
+        let new_path = std::env::var_os("KM_SOURCE_ACTIVATION_NEW").expect("paired source probe");
+        let read = |path| serde_json::from_slice::<crate::orchestrate::cb_to_ht::TInput>(
+            &std::fs::read(path).unwrap()).unwrap();
+        let old=read(old_path); let new=read(new_path);
+        let queries: Vec<_> = old.queries.iter().map(|q| old.concepts[*q].clone()).collect();
+        let globals: Vec<_> = [&old,&new].into_iter().flat_map(|input|
+            input.role_domains.iter().chain(&input.role_ranges)
+                .map(|(_,c)| input.concepts[*c].clone())).collect();
+        let start=std::time::Instant::now();
+        let result=source_affected(&old.source_axioms,&new.source_axioms,&queries,&globals).unwrap();
+        eprintln!("source-locality queries={} affected={} reusable={} analysis_s={}",
+            queries.len(),result.len(),queries.len()-result.len(),start.elapsed().as_secs_f64());
+        if let Some(path)=std::env::var_os("KM_SOURCE_ACTIVATION_OUTPUT") {
+            std::fs::write(path,serde_json::to_vec(&result).unwrap()).unwrap();
+        }
+    }
+
     fn clause(body: &[usize], head: &[usize]) -> JClause {
         let atoms = |xs: &[usize]| xs.iter().map(|i| JAtom::Concept {
             concept: format!("C{i}"), term: JTerm::Var { name: "x".into() },
