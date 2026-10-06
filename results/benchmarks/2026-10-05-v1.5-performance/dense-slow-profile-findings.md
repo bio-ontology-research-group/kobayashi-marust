@@ -37,3 +37,28 @@ one worker takes 63.01–64.05 seconds, versus 117.46–119.37 seconds for two.
 job 53322070 now tests the override with the same dense-data binary and the
 unchanged admission, limits and independent auditing. Production defaults remain
 unchanged pending this wider evidence.
+
+The full single-worker sweep 53322070 is complete. Its final summary supersedes
+all partial snapshots: 1,620 independently corroborated completions, mean
+7.609516 seconds and median 0.389301 seconds. All 1,920 inputs are present;
+212 invalid refusals remain, with 27 admitted process errors and 59 timeouts.
+Two additional completed answers lack corroboration and do not count as solved.
+No audit errors occurred.
+
+Compared with the dense candidate, it gains 9791, 13229, 5162, and 14817 and
+loses 12898. The lost case previously took 235.855 seconds and now reaches the
+240-second timeout; a repeated comparison is needed to distinguish scheduling
+effects from deadline variability. On the 1,616 shared verified cases, mean
+runtime decreases from 7.491564 to 7.171215 seconds. These are separate sweeps,
+not repeated paired measurements. Production scheduling remains unchanged.
+
+The candidate still fails the v1.5.0 target: Konclude verifies 1,655 cases with
+lower mean and median times. KM needs 36 net additional verified cases to exceed
+that count. RustDL also retains lower whole-success-subset mean and median
+times. The candidate beats ELK on all three required metrics.
+
+Job 53328863 traces the existing SWRL consistency worker for 3726 and 7278.
+A wrapper records the exact worker input and otherwise-suppressed stderr, then
+executes the pinned certified-source binary. It preserves all consistency and
+source-model checks and independently audits completed classifications. Added
+diagnostic I/O means these timings cannot establish a performance improvement.

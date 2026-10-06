@@ -1,0 +1,22 @@
+{
+  "before_job": 53315705,
+  "after_job": 53322070,
+  "shared_verified": 1616,
+  "before_shared_mean_s": 7.491564327260793,
+  "after_shared_mean_s": 7.171214792453269,
+  "gains": [
+    "ore_ont_9791",
+    "ore_ont_13229",
+    "ore_ont_5162",
+    "ore_ont_14817"
+  ],
+  "losses": [
+    "ore_ont_12898"
+  ],
+  "uncorroborated_complete": [
+    "ore_ont_4669",
+    "ore_ont_3794"
+  ],
+  "scope": "Whole-corpus comparison, not repeated paired timing. Single lost case was previously close to deadline; cause not yet established.",
+  "release_approved": false
+}
