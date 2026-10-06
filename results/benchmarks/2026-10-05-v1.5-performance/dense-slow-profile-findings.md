@@ -30,3 +30,10 @@ references. One worker takes 63.07–64.05 seconds versus 118.15–119.37 second
 for two workers. `single-worker-partial-audit.json` records each comparison and
 its hashes. The remaining six measurements were still running when this partial
 audit was recorded; no full-corpus result is replaced by these diagnostics.
+
+The final audit verifies all 12 outputs from job 53321214. Across all six pairs,
+one worker takes 63.01–64.05 seconds, versus 117.46–119.37 seconds for two.
+`single-worker-final-audit.json` supersedes the partial audit. Full frozen-corpus
+job 53322070 now tests the override with the same dense-data binary and the
+unchanged admission, limits and independent auditing. Production defaults remain
+unchanged pending this wider evidence.

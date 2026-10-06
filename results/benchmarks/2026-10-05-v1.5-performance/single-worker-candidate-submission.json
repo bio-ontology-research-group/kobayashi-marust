@@ -1,0 +1,21 @@
+{
+  "job_id": 53322070,
+  "array": "0-59%8",
+  "diagnostic_only": true,
+  "inputs": 1920,
+  "limits": {
+    "cpus": 1,
+    "timeout_s": 240,
+    "memory_gib": 20
+  },
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1"
+  },
+  "inventory_sha256": "73c19263df79cb742425853763c99428baf5c567d9a3b1e4f68e7ca17b5663c3",
+  "manifest_sha256": "0309377d05dfd0cd81eb46050416272fbd52b16e77f21d9a37d732b352817fb4",
+  "runner_sha256": "ef2f23349a0ed4c9ea3bb639cf8fd0ecb3e5d652ff96e4b3d5ec196493c9ff67",
+  "release_approved": false
+}
