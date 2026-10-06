@@ -1,0 +1,14 @@
+{
+  "source": "lean/ContextCalculus/DatatypePadding.lean",
+  "source_sha256": "7a01fb3ce05b5ab88e471b47f6c5087d262117e55b8e0cb7313496b48ef7dbf2",
+  "log_sha256": "73ef317fe8ed0448f144d618d229fe2668b3a22e38dc8b38ee2adb43d79ca55f",
+  "exit_code": 0,
+  "theorems": 5,
+  "axioms": [
+    "propext",
+    "Quot.sound"
+  ],
+  "sorryAx": false,
+  "scope": "Conditional forward carrier-extension proof only. No executable admission or reverse source-model transport certified.",
+  "release_approved": false
+}
