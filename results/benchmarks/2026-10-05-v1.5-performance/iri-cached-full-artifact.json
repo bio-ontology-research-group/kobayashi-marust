@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "iri-cached-35408ae7e29c",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-iri-cached-35408ae7e29c",
+      "sha256": "35408ae7e29c2ef4c94895e6a9fb7970b4b2acf8bb582c90755953e5908d2c91"
+    }
+  ],
+  "source_commit": "4475c8cb",
+  "source_manifest_sha256": "e52f9325e92c26f59a2bbc006ef1869b5d880874e956302f027cf109321d3a62",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+    "KM_FAST_IRI_GRAMMAR": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure"
+  ],
+  "release_approved": false,
+  "scope": "Frozen 1920-input candidate sweep with independent output audits; grammar differential and exact-source certification pending. Not release approval.",
+  "certification_pending": true
+}

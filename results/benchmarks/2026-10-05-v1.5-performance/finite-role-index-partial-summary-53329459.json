@@ -1,30 +1,30 @@
 {
   "job_id": "53329459",
   "variant": "finite-role-index",
-  "complete_chunks": 53,
-  "recorded_inputs": 1776,
+  "complete_chunks": 57,
+  "recorded_inputs": 1874,
   "full_measurement_complete": false,
   "candidate": {
-    "verified_solved": 1506,
-    "mean_s": 8.088209607998332,
-    "median_s": 0.43145044334232807
+    "verified_solved": 1583,
+    "mean_s": 8.157017658762893,
+    "median_s": 0.43699126690626144
   },
   "baseline_sha256": "3c35154735b5d5bc2d8aaed9ee2ff1ac881d940f060fcd362b58f45184f0da48",
   "status_counts": {
-    "executed_unvalidated": 1507,
-    "process_error": 217,
-    "timeout": 52
+    "executed_unvalidated": 1584,
+    "process_error": 233,
+    "timeout": 57
   },
   "audit_errors": [],
   "comparisons": {
     "km": {
       "shared": {
-        "verified_solved": 1476,
-        "mean_s": 6.9900860946958625,
-        "median_s": 0.41869616508483887
+        "verified_solved": 1551,
+        "mean_s": 7.070903942636248,
+        "median_s": 0.42170900478959084
       },
-      "baseline_shared_mean_s": 10.348763809758958,
-      "baseline_shared_median_s": 0.682403682731092,
+      "baseline_shared_mean_s": 10.436461037028458,
+      "baseline_shared_median_s": 0.6892915647476912,
       "lost_verified": [
         "ore_ont_15687",
         "ore_ont_7345",
@@ -58,19 +58,21 @@
         "ore_ont_5764",
         "ore_ont_586",
         "ore_ont_7342",
+        "ore_ont_7712",
         "ore_ont_7828",
         "ore_ont_8429",
-        "ore_ont_9429"
+        "ore_ont_9429",
+        "ore_ont_9864"
       ]
     },
     "konclude": {
       "shared": {
-        "verified_solved": 1496,
-        "mean_s": 7.206001608587682,
-        "median_s": 0.42455063201487064
+        "verified_solved": 1573,
+        "mean_s": 7.318432098298374,
+        "median_s": 0.42722588777542114
       },
-      "baseline_shared_mean_s": 2.8506450457859507,
-      "baseline_shared_median_s": 0.2570080831646919,
+      "baseline_shared_mean_s": 2.8636611654989785,
+      "baseline_shared_median_s": 0.26216231286525726,
       "lost_verified": [
         "ore_ont_12566",
         "ore_ont_12723",
@@ -110,6 +112,9 @@
         "ore_ont_8148",
         "ore_ont_8250",
         "ore_ont_8273",
+        "ore_ont_8786",
+        "ore_ont_9662",
+        "ore_ont_9899",
         "ore_ont_11477",
         "ore_ont_11647"
       ],
@@ -128,12 +133,12 @@
     },
     "rustdl": {
       "shared": {
-        "verified_solved": 1116,
-        "mean_s": 5.3289058535346445,
-        "median_s": 0.38737193401902914
+        "verified_solved": 1173,
+        "mean_s": 5.286642608189128,
+        "median_s": 0.38171120174229145
       },
-      "baseline_shared_mean_s": 5.025789227284905,
-      "baseline_shared_median_s": 0.3196611125022173,
+      "baseline_shared_mean_s": 5.009485699252273,
+      "baseline_shared_median_s": 0.32103568874299526,
       "lost_verified": [
         "ore_ont_15846",
         "ore_ont_16315",
@@ -142,6 +147,7 @@
         "ore_ont_3087",
         "ore_ont_3914",
         "ore_ont_7557",
+        "ore_ont_8480",
         "ore_ont_1199"
       ],
       "gained_verified": [
@@ -467,6 +473,8 @@
         "ore_ont_7581",
         "ore_ont_7584",
         "ore_ont_7607",
+        "ore_ont_7668",
+        "ore_ont_7712",
         "ore_ont_7729",
         "ore_ont_7730",
         "ore_ont_778",
@@ -494,19 +502,37 @@
         "ore_ont_8429",
         "ore_ont_8441",
         "ore_ont_8445",
+        "ore_ont_85",
         "ore_ont_8737",
         "ore_ont_8781",
+        "ore_ont_8902",
+        "ore_ont_8911",
+        "ore_ont_8941",
+        "ore_ont_8948",
+        "ore_ont_8951",
         "ore_ont_8989",
         "ore_ont_9002",
         "ore_ont_9012",
         "ore_ont_9024",
         "ore_ont_904",
         "ore_ont_9096",
+        "ore_ont_9240",
+        "ore_ont_9248",
+        "ore_ont_9299",
         "ore_ont_9303",
         "ore_ont_934",
         "ore_ont_9422",
         "ore_ont_9429",
+        "ore_ont_955",
+        "ore_ont_9557",
         "ore_ont_9635",
+        "ore_ont_9800",
+        "ore_ont_9835",
+        "ore_ont_9855",
+        "ore_ont_9864",
+        "ore_ont_9890",
+        "ore_ont_9941",
+        "ore_ont_9944",
         "ore_ont_11460",
         "ore_ont_11484",
         "ore_ont_11495",
@@ -539,12 +565,12 @@
     },
     "elk": {
       "shared": {
-        "verified_solved": 1296,
-        "mean_s": 6.513947028101905,
-        "median_s": 0.3675722721964121
+        "verified_solved": 1360,
+        "mean_s": 6.45386813452796,
+        "median_s": 0.3670991472899914
       },
-      "baseline_shared_mean_s": 11.532832437914934,
-      "baseline_shared_median_s": 4.744086995720863,
+      "baseline_shared_mean_s": 11.711408180413384,
+      "baseline_shared_median_s": 4.746911165304482,
       "lost_verified": [
         "ore_ont_1342",
         "ore_ont_13700",
@@ -563,7 +589,9 @@
         "ore_ont_7345",
         "ore_ont_7557",
         "ore_ont_8141",
+        "ore_ont_8480",
         "ore_ont_9027",
+        "ore_ont_9899",
         "ore_ont_1199"
       ],
       "gained_verified": [
@@ -735,6 +763,8 @@
         "ore_ont_7499",
         "ore_ont_7517",
         "ore_ont_7610",
+        "ore_ont_7668",
+        "ore_ont_7712",
         "ore_ont_7730",
         "ore_ont_778",
         "ore_ont_7817",
@@ -756,13 +786,24 @@
         "ore_ont_8445",
         "ore_ont_8460",
         "ore_ont_8737",
+        "ore_ont_8902",
+        "ore_ont_8911",
+        "ore_ont_8948",
         "ore_ont_9012",
         "ore_ont_9024",
         "ore_ont_904",
         "ore_ont_9054",
         "ore_ont_9096",
+        "ore_ont_9240",
+        "ore_ont_9248",
         "ore_ont_9422",
+        "ore_ont_9557",
         "ore_ont_9635",
+        "ore_ont_9835",
+        "ore_ont_9855",
+        "ore_ont_9864",
+        "ore_ont_9890",
+        "ore_ont_9941",
         "ore_ont_11460",
         "ore_ont_11533",
         "ore_ont_11554",
@@ -782,12 +823,12 @@
   },
   "status_by_admission": {
     "checks_passed": {
-      "executed_unvalidated": 1507,
-      "process_error": 25,
-      "timeout": 52
+      "executed_unvalidated": 1584,
+      "process_error": 26,
+      "timeout": 57
     },
     "invalid_input": {
-      "process_error": 192
+      "process_error": 207
     }
   },
   "release_approved": false,

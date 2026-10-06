@@ -1,0 +1,242 @@
+{
+  "diagnostic_only": true,
+  "partial_comparison": true,
+  "shared_verified": 1565,
+  "groups": [
+    {
+      "baseline_time_interval_s": [
+        0,
+        0.1
+      ],
+      "count": 427,
+      "baseline_mean_s": 0.06075242644642639,
+      "indexed_mean_s": 0.08779970278191343,
+      "median_per_case_ratio": 1.0565282418531865
+    },
+    {
+      "baseline_time_interval_s": [
+        0.1,
+        0.5
+      ],
+      "count": 423,
+      "baseline_mean_s": 0.24247824702297402,
+      "indexed_mean_s": 0.28384476033948697,
+      "median_per_case_ratio": 1.0799469461532782
+    },
+    {
+      "baseline_time_interval_s": [
+        0.5,
+        1
+      ],
+      "count": 150,
+      "baseline_mean_s": 0.7294919918229182,
+      "indexed_mean_s": 0.812247337475419,
+      "median_per_case_ratio": 1.090968503801431
+    },
+    {
+      "baseline_time_interval_s": [
+        1,
+        10
+      ],
+      "count": 296,
+      "baseline_mean_s": 3.7658513987537576,
+      "indexed_mean_s": 4.236102935102944,
+      "median_per_case_ratio": 1.0960611348685507
+    },
+    {
+      "baseline_time_interval_s": [
+        10,
+        241
+      ],
+      "count": 269,
+      "baseline_mean_s": 37.88979465473568,
+      "indexed_mean_s": 40.86576057629154,
+      "median_per_case_ratio": 1.071998385884654
+    }
+  ],
+  "largest_increases": [
+    {
+      "ontology": "ore_ont_1673",
+      "baseline_s": 169.88651219569147,
+      "indexed_s": 221.29857433401048
+    },
+    {
+      "ontology": "ore_ont_6948",
+      "baseline_s": 28.733220735564828,
+      "indexed_s": 76.67718622088432
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "baseline_s": 149.82312112301588,
+      "indexed_s": 195.38734352588654
+    },
+    {
+      "ontology": "ore_ont_13229",
+      "baseline_s": 175.0750276837498,
+      "indexed_s": 211.76776098832488
+    },
+    {
+      "ontology": "ore_ont_4412",
+      "baseline_s": 98.58232392370701,
+      "indexed_s": 133.84797471016645
+    },
+    {
+      "ontology": "ore_ont_9835",
+      "baseline_s": 91.74532871693373,
+      "indexed_s": 126.70348441042006
+    },
+    {
+      "ontology": "ore_ont_14817",
+      "baseline_s": 186.1652070749551,
+      "indexed_s": 220.292048657313
+    },
+    {
+      "ontology": "ore_ont_1886",
+      "baseline_s": 146.86068715155125,
+      "indexed_s": 179.28725498728454
+    },
+    {
+      "ontology": "ore_ont_7111",
+      "baseline_s": 115.10993066616356,
+      "indexed_s": 147.27866322733462
+    },
+    {
+      "ontology": "ore_ont_10125",
+      "baseline_s": 78.24200303480029,
+      "indexed_s": 107.69521832838655
+    },
+    {
+      "ontology": "ore_ont_7581",
+      "baseline_s": 91.42797761783004,
+      "indexed_s": 120.28934649936855
+    },
+    {
+      "ontology": "ore_ont_5764",
+      "baseline_s": 61.07805488631129,
+      "indexed_s": 86.62047858722508
+    }
+  ],
+  "source_chunk_hashes": {
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/0.json": "6451c8dbf8cf68954ead3c31f0462842f4c895ff6f28516140792ee5dcf4f9fe",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/1.json": "5e90366cd90b05bcab92850ef5c2d6995c8734f811737dbc2ba2158c647c928d",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/10.json": "f082c284dd21f39aa106ddd57b12764a34d35e39a8103c441ccb232ed821761b",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/11.json": "bd7720dc99b3a0f402672cfa0564f150f879d6e16e0d2d0494f4b88569928108",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/12.json": "c26958940a0b375911b536b75226d9064684bb2b9b53c586ac9ac6c16c2c45f1",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/13.json": "5288a43aecd3f3aabf6a55524ed9642a0eea8156e8d635bc55d58dbfe715041b",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/14.json": "c987da4b928c71274ea0f3cbc06b9271318ca0dda64d72c9a79ece32c4c1bc54",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/15.json": "faa2c1cadd21e1ca2bb78494b0cb75e0573f90f0d45060d678fb47b47b1da4d6",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/16.json": "9129dde11c0af29d77ecbcfea8b3b763f39fd5f40aab0dbccedff59ec047370a",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/17.json": "7de1d68db02989f0c039008b6ee880d34467674d59be8f52a07c5b161c4505fa",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/18.json": "5a356c6047bc0a34441cc5eef294ae78f7bca190f4acd3779a18d2cd865fd4b3",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/19.json": "9bbc0b45ee2f8adc724d6d5e623198d1ce260dc23be97ab52de8d85ce987d67a",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/2.json": "61c958cda2b4b8e72b5312b5fc4a627724789e5eb0c702a6ef5a12d39c23ad92",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/20.json": "10636b902ad1a0400af90c4673f7275c81e2aca5c8f342057c8e75a0cf8cd992",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/21.json": "bec47d5b6972c7ca06cb1be0cb857c3d67682e7d2a310b7a7e5f6fdb7420f213",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/22.json": "99e1b971458e2463bce4a29fc43ce7d5b2c12c907734e9a09319cce3fd7c3ff0",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/23.json": "4c8cfea0870b0d4a704189a72323e72ecfac32034883d4364e57c4b45a32e293",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/24.json": "fead742386fbc7f1ec00d877104607db7d57f718705a3a4e1d58004a4099f79f",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/25.json": "6c1b28a2e7d7c6855ffc141e61eca6472dc0155b752ccd0d15b5504549a2088a",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/26.json": "db67420312f1b7061ef548c206f6798f450abfb7845c96c145e4bb24ce44a608",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/27.json": "2ae33d2e82b741f271547bf2e4a351d329967aeb387bfc0b91c38a7fb91f640d",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/28.json": "b4d3ead91ec81c6b03b26ac24d2b9bfca67163dc384bd6eddf13a021e8b6b079",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/29.json": "4521e2a9b5e8f6f87987bacc5560194ab1c639022c7a2179543e8221955ec081",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/3.json": "045057d885d1f75518fe302c8ac064782f9f7f99a8d3eaa4c229769a68bc428f",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/30.json": "a3e1c55d1abd31f5c26709eb996d2b23f5ceed9f206b578b2caf27505522e42e",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/31.json": "57134a57b484541487285dc1dcd98020b0b5b8cf5e1f304e053d6268f2338bed",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/32.json": "55999cb13f15ff501a209674548817dec204c710734a54848dda2ec244423f83",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/33.json": "63450849a36dfc316d3f29545ee5dc6ec4a2a7e002046f0d224c8fe1f8164c47",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/34.json": "0022bf74ffd6ad2bba8d9623f0c0f799acdc5b9af9f53ecd4b95dd8f13c19b36",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/35.json": "28a9a2cf9f5335b01eb3f77b0ed02b559ccd6cbb77649690792de2136715ea98",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/36.json": "4c31855f5255a932ae3597af6a6abd2d50c84e2b54a58b625be02329e47c7f34",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/37.json": "e95438655d1816739eb75815055b981e9a1c0cd395a88db018862d3eebae56eb",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/38.json": "0d87895492cfdeb1ac098c080be69bc44f487e8fc870b35207a3c5963c526631",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/39.json": "98e2565cbddedb70bdf8e092681f167bb35182721a8cfa41250931abe90b0e68",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/4.json": "4ba7ccbe7b78f93ce5d507878ea7ded1071ad495eb7d77909b3dafb4ba79beab",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/40.json": "0ee69cda3c2954eb6704763e0868b273d9b7c9f2c144b6602993b91aaaf94930",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/41.json": "d0017105f4dee005fe24f180ddf8061f631858a380fcab5dce9ab0cb363b406d",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/42.json": "88923caad9cd93413d8d80ffd0179269e4b252f71d1c0ee83b65fa8b00bb223c",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/43.json": "5c7eb392c8abb9a47c76913e92d3f479e1ed23f5fd16567ff01d629a95e4222f",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/44.json": "8e48d6bd5cd0295b5e94027a09e1438e87c892d79487cbf457fbcb3fb193deee",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/45.json": "20b2d41fd4a2860d3bf4311cb44108c29de9b55a068c2d2e40e0ba5d3d109ac7",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/46.json": "430991039f600d0af58a769c6e8a458e2fa4e6b596a38249f387dd9fa82080a0",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/47.json": "0564168651e4ce1d2ea557e380f109a899885363e656e47857dd86c951bb58ed",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/48.json": "62ca297de505ac24f9ee086aa469cdb7af17b8734746336ec5f556b992669082",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/49.json": "78197e1c60c8731af82d8e53836910263e1d7ec3162b24ec89796b82018c7485",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/5.json": "92bba6cfecd02596c7241ef1d7033b2072fa271c71ee046689315f679981002e",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/50.json": "a889acbc970a47798e255b0b4a027cdf43d041adfcf76717f149f1dc9abe4b2e",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/51.json": "5a741b2a897f9a7823ef6d3a4bb39feaa5c928d52e69d69ca80f28791f5b7580",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/52.json": "e9cf79cc4272c825ae7742430f35b27224808558fbb0622cf5e22b57b9d6e2d3",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/53.json": "be330806b9257a56b381cb0ea282d1b1827cf164df5ca63e1dd6bcbc36f75fd8",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/54.json": "243b179e5a602565743e970ad98af538cd1a5e831b6f0ff5ca42a4d9c9ec1f68",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/55.json": "e9e46fcb843126751f4ddd8a9462beb9df1120347b2313cc6be4133b30157d70",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/56.json": "143804361984d618b8450a402e7e8b76f62ff3bb5a544b6a739655efff41be3b",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/57.json": "0110c347a1c89528f13dba0ab55abb64fd078beb4472542d96ea36dcb2e0cadc",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/58.json": "0179e7eaa3a834553352b2186e80580be0f9920ed5983e1bc55147e05c87996c",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/59.json": "3c16d3caa25c92d5dba2e96f27caa8a9d119dd9a9f5252133e52a883517bb652",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/6.json": "2fa65623ea107ce13eda3e2a80e5d669a7344b8a0d85c2ac178cd0c20be92c9d",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/7.json": "b552ab9e47537840719c726c3c101aa096cd5ce390f8a810cbcea6fd305f59ca",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/8.json": "dea92bb5c8ff9af60aaafccfc0759c29670b8b20358701dfae33de2d195e713e",
+    "results/benchmarks/2026-10-05-v1.5-performance/single-worker-candidate-53322070/chunks/9.json": "8228c4c35347608d6d68c36b223bf198615d86d860e03f31b658526859cf1641",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/0.json": "878ae625210e7ec5ed4953c5d41d372a355c95dbf3629a1f4481de282f81f6a9",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/1.json": "3a5400394754ed3e849dbdb33944294d738b941964af5e78877a668c8f5ab578",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/10.json": "34011f14c211a8731d015d2fb4e91af6ee5f1fe7fcd08068899d4b0d8587ff8b",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/11.json": "533e6da5fcd7388b96305f7f238e5ec2da960df9fcbce1e29b1c76889b8e74e0",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/12.json": "d12e3a3a619752f55b387619ea206648c2c6e84634ff680c8b81de209d0c7b86",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/13.json": "c1798b1f8a110c4b0111759cefec8c98a3aec0784de224428e261d34fe369c85",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/14.json": "5929eea89dd98c3799705a1e9febb3aae0d58d8fb97ff214aa399166168d6fb1",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/15.json": "85a04bb17b8dcaadeb8112752cbf0b81ef336a7caef2ee4e18723f466c7982a8",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/16.json": "495b1a50672d382b3d3dfecb8349db233b825abba58240bf1c9ccdfc4091f3ed",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/17.json": "9d0fb8a3aadab0e2afd8c913156757e935ea85f022af94c76058016942101a11",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/18.json": "f98ca8b6c81ad4d7791581b3d7f32b75a6664d04d14878e8a7929cd8961e2c0e",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/19.json": "0fd3205af61f0f7203be04123bd1e71cb3e267ea5fa8b2381b118512fa7774d2",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/2.json": "b5b75c2e4e33635ecf8287a653c25e5e1834eccfc89999615145c510ef12a523",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/20.json": "a038a6def8c6761abdae717f9a2434b0400ea6df085d7fe46c25249c230e96ad",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/21.json": "b4e953f30a2ff3a557962fb0da328fe76004c08975b464a2343e1871520724cf",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/22.json": "f3d6aface81319e58827719cc88931e2de8e4ef5062388171aa05eefd41fe31d",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/23.json": "8d5529adad3f2a8178b14574e52738e17450829f92e3060b51caffec01bdfc97",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/24.json": "971e0aefa45c7ba2f822213191a0b053039642dee5a1bf9dc05c2d9b10c4ef6f",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/25.json": "ba90ee435ceada5b39e564b00caca1e06332f2ceaca8a24cbc8097b7c1ee0b29",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/26.json": "c8b87b1bfd92e92249f893a83cf45a6381fc5121f326fad1288d17d5d56159ee",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/27.json": "50e35c63c215554b8075f6f0ca6a92208283b7447452f34d0ab61c35e90782a4",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/28.json": "23e208464d06828786349fbe296106c09ffe61076a3e572b9b6004b42fbe48a4",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/29.json": "d9d6e0ec2c238941b5d27f29101413518bb2e4177dcac4cc7ba17abe2acb0322",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/3.json": "4aa57b9f7add994732fc49eec45c8a795eded116919cf96447ce2ef52a526f81",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/30.json": "fe3acde8f1d1541b60ec36a3bc1eeff86107fbb30ca972eb24dbeb77bb9b1168",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/31.json": "caaeef142fc1d43c80f62bde6e8410d440967380896d17fcd5c76c6db384e1a0",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/32.json": "4cb7fa0ea28b28b80358ca32c3b5e9f8d7f4bdb69b95cc8c10aa029a4d99f822",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/33.json": "f9249e9da81d40dc1437fdb9225e61e14bbc1b225d11a6b439f1c515f45993ff",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/34.json": "4b1d5b672cab7393e885d50ba9273bdb5bf2852266167e3edd09f85e9e933091",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/35.json": "0645f34324f88f14cf638df4f90c34c37d9428ba21019907fc04fc6ebabaa635",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/36.json": "0ae1efdbc445effc128c850a911b4f0d99dde68196ac9cc96869f49c0b55332f",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/37.json": "95a4f815eb3c09eb032963de032809e1755dd8d1ee593b5ba0766dfcbe13dcf6",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/38.json": "e13e7b45eb156146d475c1a6f1875642e45c801f033ac3fcefafd9311cfe8ce6",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/39.json": "0646a6f74e3864ac669bdcac4e1ccd9f0ed3174aa97dd72eb1aca351e12c6153",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/4.json": "a2ab0d2831711a6fcafb6df74813deeb30c5af20a9685a36031c11bbe08103a1",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/40.json": "950383eca512688dcbfc81689c196f03882b0c0ac51d46fde39a8f7c4177b9f4",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/41.json": "ee694b424dca7e8483e7638678fa8f3cfd967ac79133435ef50afe984090ae20",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/42.json": "72fbeb57b96c38cf7c427a8df364eaa7640a6b7c359f901a6e7408d2f867a841",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/43.json": "5d86ecd66611cf2ab73fad9dd76df43d28a84fb7015b31a10aa5be27e2771d17",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/44.json": "374f8ca2ca1435222ba701302161b1983a4bd47f468b0a1c84256fc36ba03e42",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/45.json": "52b038768a96ef47fcd9f7c2c14ceaaae74abb330bc4b20a1fff6cc551b005da",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/46.json": "0379d20739e9cfdcde27872f20c7ba6af2373345bdbfa79ba299bbdd70ac8535",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/47.json": "866a9c354e4969b8f7a1cf1511c0e267b4d132af52e01fb1976b0d298e140688",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/48.json": "01f0b7c57708eb86c36aa2dd759311027a9055eb48d8f862b3df776efc79bbac",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/49.json": "c54ce1a0e111306253f3b30bd785d7d0327da7005e74ed42ddaf1e9b08286b12",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/5.json": "02fe3c3915bf181e32534c01c5b7ca408945dc990c23fbf7e0c3e5253bf7fda1",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/50.json": "bd2f33b504724b1848d006888af2a6136869302383a4e120b29cac84ac7f2180",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/51.json": "c7aa4b4629076c2fba59b758c262cf87d401c63cd7777fa49e67cf139701809c",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/52.json": "572ab65eb689c28cef11baf0848137d3a924dd1de5509196cf01f5973f6f8748",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/53.json": "c04d4abb8066c879844c8d464b033251b5b8ae2bfd096d4d233d7f7699a1b1f3",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/54.json": "f5e275dbffb53a8d0e517b5f5247e24a3facdf7f4d7637cceac45d8d51415e82",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/55.json": "108eff1e9fa6fae36f2cfe72515a716ece5cabfcf431843f030fc69d199acb14",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/56.json": "cbbfe99d0aae4f8381784193f99e81761f45772af46b285c8252c2ecb8715f69",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/57.json": "42fb7cafdd06f0b3afe433cd5691ff98342fb517ffc41d298240a9a4161b0e9c",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/58.json": "0b82156ae89706b86ea0e53c660a0042f30ef4a447e1a84f6d6732ddf2caf1ac",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/59.json": "b1fa4e72c311edbd68c38d8435e801a9e06dca805c8e52b3e86db4778e64670e",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/6.json": "dda6b0ee889ed782686d64f1715675fd61ba0f6aa9847de8b9bb050e8cd0fc41",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/7.json": "8d644cf6c7b4efb47b95f8fda2720764d492d96794bf1a58f546ac854c250aba",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/8.json": "36eb4ae8d00228afb4e9aa74bac88279d31fc9cfd270b257332fb1cdd842ade4",
+    "results/benchmarks/2026-10-05-v1.5-performance/finite-role-index-full-53329459/chunks/9.json": "af7464cb4fa60e5617ea82c30b1ad0747a0318ad7804386bab7bf4300b83aeda"
+  },
+  "interpretation": "Descriptive comparison between separate sweeps, not proof of a causal code regression. Same-node alternating pairs are submitted as job 53333094."
+}
