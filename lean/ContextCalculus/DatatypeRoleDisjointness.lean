@@ -59,7 +59,36 @@ theorem relocation_conflict_iff {Node : Type} (merge : Node → Node)
     exact ⟨merge ps, merge pt, ⟨ps, pt, hp, rfl, rfl⟩,
       ⟨ns, nt, hn, hs.symm, ht.symm⟩⟩
 
+/-- Independent oracle for the finite Boolean controls: each role needs a
+nonempty value set, and adjacent roles need disjoint sets. Choosing one value
+per set gives a two-coloring; singleton color sets give the reverse model. -/
+theorem boolean_witnesses_iff_coloring {Vertex : Type}
+    (adjacent : Vertex → Vertex → Prop) :
+    (∃ values : Vertex → Bool → Prop,
+      (∀ vertex, ∃ value, values vertex value) ∧
+      (∀ left right, adjacent left right →
+        ∀ value, ¬ (values left value ∧ values right value))) ↔
+    (∃ color : Vertex → Bool,
+      ∀ left right, adjacent left right → color left ≠ color right) := by
+  classical
+  constructor
+  · rintro ⟨values, inhabited, disjoint⟩
+    let color := fun vertex => Classical.choose (inhabited vertex)
+    have chosen : ∀ vertex, values vertex (color vertex) :=
+      fun vertex => Classical.choose_spec (inhabited vertex)
+    refine ⟨color, ?_⟩
+    intro left right edge equal
+    exact disjoint left right edge (color left)
+      ⟨chosen left, equal.symm ▸ chosen right⟩
+  · rintro ⟨color, proper⟩
+    refine ⟨fun vertex value => value = color vertex, ?_, ?_⟩
+    · intro vertex
+      exact ⟨color vertex, rfl⟩
+    · intro left right edge value both
+      exact proper left right edge (both.1.symm.trans both.2)
+
 end ContextCalculus.DatatypeRoleDisjointness
 #print axioms ContextCalculus.DatatypeRoleDisjointness.disjoint_roles_iff
 #print axioms ContextCalculus.DatatypeRoleDisjointness.noninjective_mapping_can_break_disjointness
 #print axioms ContextCalculus.DatatypeRoleDisjointness.relocation_conflict_iff
+#print axioms ContextCalculus.DatatypeRoleDisjointness.boolean_witnesses_iff_coloring

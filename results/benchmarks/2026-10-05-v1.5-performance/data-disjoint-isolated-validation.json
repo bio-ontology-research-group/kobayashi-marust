@@ -1,0 +1,52 @@
+{
+  "diagnostic_only": true,
+  "production_enabled": false,
+  "binary_sha256": "8b27f06fe8af2f00c88763a00b022c9769a4505c92f68fad8b3b4baa8203eb71",
+  "rust_disjoint_tests_passed": 41,
+  "semantic_controls_passed": 6,
+  "four_role_boolean_graphs_passed": 64,
+  "ontology_14379": {
+    "wall_s": 1.0794832800747827,
+    "independent_agreement": [
+      "konclude",
+      "hermit",
+      "openllet"
+    ]
+  },
+  "proof_scope": "Role-clash clause equivalence, self/inverse disjointness, and Boolean coloring oracle; not whole-path runtime certification.",
+  "remaining": [
+    "concrete datatype model transport and runtime refinement",
+    "exact-source production certification gates",
+    "full-corpus coverage and timing evidence"
+  ],
+  "logs": {
+    "data-disjoint-isolated-tests.log": {
+      "sha256": "fb80b41243560a573a00b195625e39efff747da7f3e16cbadc0f4f7854d4a696",
+      "tail": [
+        "test konclude_ht::bridge::tests::saturation_atmost_disjoint_successors_not_sat_certain ... ok",
+        "test reasoner::tests::disjointness_unsat ... ok",
+        "test konclude_ht::bridge::tests::ddb_preserves_satisfiable_disjoint_cardinality_partition ... ok",
+        "",
+        "test result: ok. 41 passed; 0 failed; 0 ignored; 0 measured; 2709 filtered out; finished in 0.07s",
+        ""
+      ]
+    },
+    "data-disjoint-clause-lean.log": {
+      "sha256": "9df73eed1f9dec50b40fa9e4e43e006776923a27302887f4953daa990031d471",
+      "tail": [
+        "'ContextCalculus.Hypertableau.roleDisjointClause_iff' depends on axioms: [propext]",
+        "'ContextCalculus.Hypertableau.selfDisjointRole_iff_empty' does not depend on any axioms",
+        "'ContextCalculus.Hypertableau.inverseRoleDisjoint_iff' does not depend on any axioms"
+      ]
+    },
+    "data-disjoint-coloring-lean.log": {
+      "sha256": "328162f158125295ab89b441b66f854fdfcb8066c719438556257379b9632581",
+      "tail": [
+        "'ContextCalculus.DatatypeRoleDisjointness.disjoint_roles_iff' does not depend on any axioms",
+        "'ContextCalculus.DatatypeRoleDisjointness.noninjective_mapping_can_break_disjointness' depends on axioms: [propext]",
+        "'ContextCalculus.DatatypeRoleDisjointness.relocation_conflict_iff' does not depend on any axioms",
+        "'ContextCalculus.DatatypeRoleDisjointness.boolean_witnesses_iff_coloring' depends on axioms: [Classical.choice]"
+      ]
+    }
+  }
+}

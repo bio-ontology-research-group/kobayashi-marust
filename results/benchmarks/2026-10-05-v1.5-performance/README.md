@@ -2,6 +2,18 @@
 
 The release objectives are not yet achieved.
 
+## Completed IRI-cache diagnostic and isolated disjoint-role work
+
+- [IRI-cache full sweep](iri-cached-final-notes.md): all 1,920 inputs recorded,
+  1,620 verified solves, mean 7.366 s, median 0.401 s. The original audit failure
+  on 10689 remains a failure. This diagnostic-profile candidate still trails
+  Konclude and does not establish either release target.
+- [Isolated disjoint-role candidate](data-disjoint-isolated-notes.md): removed
+  dependency on the decimal/padding experiments; 41 related Rust tests, six
+  semantic controls and 64 Boolean role graphs pass. The 14379 answer agrees
+  with three independent reasoners. Runtime proof integration and production
+  certification remain pending; the implementation is outside production.
+
 ## Snapshot: production-profile sweep 53334551 submitted
 
 - [Finite-role-index full results](finite-role-index-final-summary-53329459.json):

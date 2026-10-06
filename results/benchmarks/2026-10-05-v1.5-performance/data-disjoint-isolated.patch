@@ -1,0 +1,414 @@
+diff --git a/engine/src/konclude_ht/bridge.rs b/engine/src/konclude_ht/bridge.rs
+index 66cc6632..c8240d3d 100644
+--- a/engine/src/konclude_ht/bridge.rs
++++ b/engine/src/konclude_ht/bridge.rs
+@@ -947,0 +948,10 @@ fn exact_datatype_subrole_clause(clause: &HtClause) -> Option<(usize, usize)> {
++// Diagnostic-only source extension. Production requires a concrete shared-value
++// realization proof, not merely the syntactic role-disjointness clause below.
++fn exact_datatype_disjoint_roles(clause: &HtClause) -> Option<(usize, usize)> {
++    match (clause.body.as_slice(), clause.head.as_slice()) {
++        ([HAtom::Role { r: left, s: x, t: y }, HAtom::Role { r: right, s: xx, t: yy }], [])
++            if x != y && x == xx && y == yy => Some((*left, *right)),
++        _ => None,
++    }
++}
++
+@@ -1354 +1364,4 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
+-        if !functional && !domain && !inclusion {
++        let disjoint = std::env::var_os("KM_EXPERIMENTAL_DATA_ROLE_DISJOINT").is_some()
++            && exact_datatype_disjoint_roles(clause).is_some_and(|(left, right)|
++                datatype_roles.contains(&left) && datatype_roles.contains(&right));
++        if !functional && !domain && !inclusion && !disjoint {
+@@ -5008,0 +5022,21 @@ fn bridge_tinput_with_trigger_absorption(
++        // Diagnostic-only exact role clash encoding. Keep the original guard
++        // and clause evidence; do not count a skipped clause as supported.
++        if std::env::var_os("KM_EXPERIMENTAL_DATA_ROLE_DISJOINT").is_some() {
++            if let Some((left, right)) = exact_datatype_disjoint_roles(cl) {
++                if left < roles.len() && right < roles.len() {
++                    if left == right {
++                        let bot = b.bottom();
++                        let link = super::model::substrate::NegLink { target: bot, negated: false };
++                        b.ctx.ontology_arenas_mut().role_mut(roles[left]).domain_linker.push(link);
++                        b.ctx.ontology_arenas_mut().role_mut(inv_roles[left]).range_linker.push(link);
++                    } else {
++                        for (a, z) in [(roles[left], roles[right]), (roles[right], roles[left]),
++                                       (inv_roles[left], inv_roles[right]), (inv_roles[right], inv_roles[left])] {
++                            b.ctx.ontology_arenas_mut().role_mut(a).add_disjoint_role_linker(
++                                super::model::substrate::NegLink { target: z, negated: false });
++                        }
++                    }
++                    continue;
++                }
++            }
++        }
+@@ -23179,0 +23214,18 @@ mod tests {
++
++#[cfg(test)]
++mod datatype_disjoint_shape_probe {
++    use super::*;
++    #[test]
++    fn only_same_endpoint_clashes_are_data_role_disjointness() {
++        let role = |r, s, t| HAtom::Role { r, s, t };
++        let clause = |a,b| HtClause { body: vec![a,b], head: vec![] };
++        assert_eq!(exact_datatype_disjoint_roles(&clause(role(1,0,1),role(2,0,1))),Some((1,2)));
++        assert_eq!(exact_datatype_disjoint_roles(&clause(role(1,0,1),role(1,0,1))),Some((1,1)));
++        for bad in [clause(role(1,0,1),role(2,1,0)),clause(role(1,0,1),role(2,0,2)),
++                    clause(role(1,0,0),role(2,0,0)),
++                    HtClause { body: vec![role(1,0,1),role(2,0,1)], head: vec![role(3,0,1)] },
++                    HtClause { body: vec![role(1,0,1)], head: vec![] }] {
++            assert_eq!(exact_datatype_disjoint_roles(&bad),None);
++        }
++    }
++}
+diff --git a/engine/src/konclude_ht/completion/selftest.rs b/engine/src/konclude_ht/completion/selftest.rs
+index 90cc06d1..7cb09b54 100644
+--- a/engine/src/konclude_ht/completion/selftest.rs
++++ b/engine/src/konclude_ht/completion/selftest.rs
+@@ -27595,0 +27596,119 @@ fn satisfiable_cache_automaton_checks_live_edge_to_ancestor() {
++
++#[test]
++fn disjoint_merge_check_preserves_both_edge_dependencies() {
++    use super::super::model::role::Role;
++    let mut env = build_env();
++    let mut source = env.root;
++    let mut from = test_node_at_depth(&mut env, 401, 1);
++    let mut into = test_node_at_depth(&mut env, 402, 1);
++    register_test_node(&mut env, from);
++    register_test_node(&mut env, into);
++    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
++    let concept = env.concept_a;
++    let root = env.root;
++    let negative = tracked_concept_clash(&mut env, root, concept, false, DepKind::And, 201, 201);
++    let positive = tracked_concept_clash(&mut env, root, concept, false, DepKind::And, 202, 202);
++    let neg_dep = env.ctx.process_context().clash_desc(negative).get_dependency_track_point();
++    let pos_dep = env.ctx.process_context().clash_desc(positive).get_dependency_track_point();
++    env.algo.create_individual_node_negation_link(&mut source, &mut from, role, neg_dep, &mut env.ctx);
++    env.algo.ht_install_role_successor_edge(source, into, role, pos_dep, &mut env.ctx);
++    assert_eq!(env.ctx.pending_signal(), CalcSignal::Continue);
++    let mut clashes = ClashDescId::NONE;
++    assert!(!env.algo.is_individual_node_disjoint_roles_mergeable(from, into, &mut clashes, &mut env.ctx));
++    let mut dependencies = HashSet::new();
++    while clashes.is_some() {
++        let descriptor = env.ctx.process_context().clash_desc(clashes);
++        dependencies.insert(descriptor.get_dependency_track_point());
++        clashes = descriptor.get_next();
++    }
++    assert_eq!(dependencies, HashSet::from([neg_dep, pos_dep]));
++}
++
++#[test]
++fn disjoint_merge_check_keeps_distinct_sources_separate() {
++    use super::super::model::role::Role;
++    let mut env = build_env();
++    let mut source = env.root;
++    let other_source = test_node_at_depth(&mut env, 403, 0);
++    let mut from = test_node_at_depth(&mut env, 404, 1);
++    let into = test_node_at_depth(&mut env, 405, 1);
++    for node in [other_source, from, into] { register_test_node(&mut env, node); }
++    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
++    env.algo.create_individual_node_negation_link(&mut source, &mut from, role, TrackPointId::NONE, &mut env.ctx);
++    env.algo.ht_install_role_successor_edge(other_source, into, role, TrackPointId::NONE, &mut env.ctx);
++    let mut clashes = ClashDescId::NONE;
++    assert!(env.algo.are_individual_nodes_disjoint_roles_mergeable(from, into, &mut clashes, &mut env.ctx));
++    assert!(clashes.is_none());
++    assert_eq!(env.ctx.pending_signal(), CalcSignal::Continue);
++}
++
++#[test]
++fn disjoint_merge_relocation_restores_incoming_edges_on_rollback() {
++    use super::super::model::role::Role;
++    let mut env = build_env();
++    let mut source = env.root;
++    let mut from = test_node_at_depth(&mut env, 410, 1);
++    let into = test_node_at_depth(&mut env, 411, 1);
++    for node in [from, into] { register_test_node(&mut env, node); }
++    let positive = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
++    let negative = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
++    env.algo.ht_install_role_successor_edge(source, from, positive, TrackPointId::NONE, &mut env.ctx);
++    env.algo.create_individual_node_negation_link(&mut source, &mut from, negative, TrackPointId::NONE, &mut env.ctx);
++    env.ctx.push_branch_epoch();
++    assert!(env.algo.ht_relocate_disjoint_merge_connections(from, into, TrackPointId::NONE, &mut env.ctx));
++    assert!(env.ctx.process_context().node_has_negation_disjoint_to_individual_id(source, negative, 411));
++    assert!(!env.ctx.process_context().node_has_negation_disjoint_to_individual_id(source, negative, 410));
++    assert!(env.ctx.process_context().node_successor_role_iterator(source, 411).has_next());
++    assert!(!env.ctx.process_context().node_successor_role_iterator(source, 410).has_next());
++    env.ctx.pop_branch_epoch();
++    assert!(env.ctx.process_context().node_has_negation_disjoint_to_individual_id(source, negative, 410));
++    assert!(!env.ctx.process_context().node_has_negation_disjoint_to_individual_id(source, negative, 411));
++    assert!(env.ctx.process_context().node_successor_role_iterator(source, 410).has_next());
++    assert!(!env.ctx.process_context().node_successor_role_iterator(source, 411).has_next());
++}
++
++#[test]
++fn disjoint_merge_relocation_preserves_outgoing_negative_edges() {
++    use super::super::model::role::Role;
++    let mut env = build_env();
++    let mut from = test_node_at_depth(&mut env, 420, 1);
++    let into = test_node_at_depth(&mut env, 421, 1);
++    let mut destination = test_node_at_depth(&mut env, 422, 1);
++    for node in [from, into, destination] { register_test_node(&mut env, node); }
++    let negative = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
++    env.algo.create_individual_node_negation_link(&mut from, &mut destination, negative, TrackPointId::NONE, &mut env.ctx);
++    assert!(env.algo.ht_relocate_disjoint_merge_connections(from, into, TrackPointId::NONE, &mut env.ctx));
++    assert!(env.ctx.process_context().node_has_negation_disjoint_to_individual_id(into, negative, 422));
++    assert!(!env.ctx.process_context().node_has_negation_disjoint_to_individual_id(from, negative, 422));
++}
++
++
++#[test]
++fn disjoint_merge_check_exhaustive_three_node_endpoint_pairs() {
++    use super::super::model::role::Role;
++    for ps in 0..3 { for pt in 0..3 { for ns in 0..3 { for nt in 0..3 {
++        // The pre-merge graph is consistent; only equality-induced conflicts
++        // are under test. Include self loops and both edge orientations.
++        if (ps, pt) == (ns, nt) { continue; }
++        let mut env = build_env();
++        let second = test_node_at_depth(&mut env, 431, 1);
++        let third = test_node_at_depth(&mut env, 432, 1);
++        let nodes = [env.root, second, third];
++        for node in nodes { register_test_node(&mut env, node); }
++        let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
++        let mut source = nodes[ns];
++        let mut target = nodes[nt];
++        env.algo.create_individual_node_negation_link(&mut source, &mut target,
++            role, TrackPointId::NONE, &mut env.ctx);
++        env.algo.ht_install_role_successor_edge(nodes[ps], nodes[pt], role,
++            TrackPointId::NONE, &mut env.ctx);
++        assert_eq!(env.ctx.pending_signal(), CalcSignal::Continue);
++        let merge = |i: usize| if i == 0 { 1 } else { i };
++        let expected = (merge(ps), merge(pt)) != (merge(ns), merge(nt));
++        let mut clashes = ClashDescId::NONE;
++        let actual = env.algo.are_individual_nodes_disjoint_roles_mergeable(
++            nodes[0], nodes[1], &mut clashes, &mut env.ctx);
++        assert_eq!(actual, expected, "positive={ps}->{pt}, negative={ns}->{nt}");
++        assert_eq!(clashes.is_none(), expected);
++    }}}}
++}
+diff --git a/engine/src/konclude_ht/completion/u08.rs b/engine/src/konclude_ht/completion/u08.rs
+index a7057f79..3cd3de00 100644
+--- a/engine/src/konclude_ht/completion/u08.rs
++++ b/engine/src/konclude_ht/completion/u08.rs
+@@ -1760,0 +1761,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
++        // Keep experimental role-disjointness merging separate until its
++        // relocation, backtracking and concrete datatype proofs are complete.
++        if std::env::var_os("KM_EXPERIMENTAL_DATA_ROLE_DISJOINT").is_some() {
++            if !self.are_individual_nodes_disjoint_roles_mergeable(
++                indi1, indi2, clash_descriptors, calc_alg_context) {
++                return false;
++            }
++        } else {
+@@ -1776,0 +1785 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
++        }
+diff --git a/engine/src/konclude_ht/completion/u14.rs b/engine/src/konclude_ht/completion/u14.rs
+index d0216601..708015d1 100644
+--- a/engine/src/konclude_ht/completion/u14.rs
++++ b/engine/src/konclude_ht/completion/u14.rs
+@@ -527,28 +527,5 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
+-    /// PORT-PENDING: tests the directed half of the disjoint-role merge check — for
+-    /// each connection of `indi1`, whether merging would create a role link on a role
+-    /// declared disjoint from one already present, which clashes. Driven by the
+-    /// unported `CConnectionSuccessorSet` iterator, the
+-    /// `CDisjointSuccessorRoleIterator` / `CNegationDisjointEdge` machinery,
+-    /// `getRoleSuccessorToIndividualLink`, the clash-descriptor factory, and the
+-    /// sibling `getUpToDateIndividual`.
+-    ///
+-    /// C++ structure (cpp 20767–20863):
+-    /// ```text
+-    /// connSuccSet = indi1->getConnectionSuccessorSet(false); indiID=indi1.id; othIndiID=indi2.id
+-    /// if connSuccSet:
+-    ///   for connID in connSuccSet:
+-    ///     if connID == indiID:               // self links
+-    ///       for disNegLink in indi1->getDisjointSuccessorRoleIterator(indi1):
+-    ///         link = indi2->getRoleSuccessorToIndividualLink(disNegLink.role,indi2,false)
+-    ///         if link: clash(link)+clash(disNegLink); return false
+-    ///     else if othIndiID == connID:       // ancestor/successor merging link clashes (4 self tests)
+-    ///       for disNegLink in indi2->getDisjointSuccessorRoleIterator(indi1):
+-    ///         test indi2→indi2, indi1→indi1, indi2→indi1, indi1→indi2 role-successor links; on hit clash+clash; return false
+-    ///     else:                              // a third connected node connIndi
+-    ///       connIndi = getUpToDateIndividual(connID)
+-    ///       for disNegLink in connIndi->getDisjointSuccessorRoleIterator(indi1):
+-    ///         link = connIndi->getRoleSuccessorToIndividualLink(disNegLink.role,indi2,false); on hit clash+clash; return false
+-    ///       for disNegLink in indi1->getDisjointSuccessorRoleIterator(connIndi):
+-    ///         link = indi2->getRoleSuccessorToIndividualLink(disNegLink.role,connIndi,false); on hit clash+clash; return false
+-    /// return true
+-    /// ```
++    /// Experimental directed check over every incident negative edge. Map both
++    /// endpoints through the proposed equality and check all original positive
++    /// endpoint pairs with the same image. Incoming connections alone omit
++    /// outgoing negative-only edges in the Rust graph representation.
++    /// A conflict retains the original positive and negative dependencies.
+@@ -562,8 +539,46 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
+-        let _ = (indi1, indi2, clash_descriptors, calc_alg_context);
+-        // PORT-PENDING: connection-successor set iterator + disjoint-successor-role
+-        // iterator / negation-disjoint edges + clash factory + getUpToDateIndividual
+-        // unported.
+-        todo!(
+-            "W6-DEFER: isIndividualNodeDisjointRolesMergeable — connection/disjoint-role \
+-             iterators + clash factory unported"
+-        );
++        let pc = calc_alg_context.process_context();
++        let id = pc.node(indi1).individual_node_id();
++        let connections = pc.node_role_neighbor_ids(indi1);
++        let mut checks = Vec::new();
++        for connected_id in connections {
++            let connected = self.get_up_to_date_individual_by_id(connected_id, calc_alg_context);
++            if connected.is_none() {
++                calc_alg_context.raise_stop(false);
++                return false;
++            }
++            for (source, target, target_id) in
++                [(indi1, connected, connected_id), (connected, indi1, id)] {
++                let mut negatives = calc_alg_context.process_context()
++                    .node_disjoint_successor_role_iterator(source, target_id);
++                // Both endpoints are mapped through the equality. Enumerate
++                // every original positive edge with those mapped endpoints.
++                let sources = if source == indi1 || source == indi2 {
++                    vec![indi1, indi2]
++                } else { vec![source] };
++                let targets = if target == indi1 || target == indi2 {
++                    vec![indi1, indi2]
++                } else { vec![target] };
++                let tests: Vec<_> = sources.iter().flat_map(|&s|
++                    targets.iter().map(move |&t| (s, t))).collect();
++                while negatives.has_next() {
++                    checks.push((negatives.next(true), tests.clone()));
++                }
++            }
++        }
++        for (negative, tests) in checks {
++            let edge = calc_alg_context.process_context().disjoint_edge(negative);
++            let role = edge.get_link_role();
++            let negative_dependency = edge.get_dependency_track_point();
++            for (mut source, mut target) in tests {
++                let positive = self.get_individual_node_link(&mut source, &mut target, role, calc_alg_context);
++                if positive.is_some() {
++                    let positive_dependency = calc_alg_context.process_context().edge(positive).get_dependency_track_point();
++                    *clash_descriptors = self.create_clashed_individual_link_descriptor(
++                        *clash_descriptors, positive, positive_dependency, calc_alg_context);
++                    *clash_descriptors = self.create_clashed_negation_disjoint_descriptor(
++                        *clash_descriptors, negative, negative_dependency, calc_alg_context);
++                    return false;
++                }
++            }
++        }
++        true
+diff --git a/engine/src/konclude_ht/completion/u15.rs b/engine/src/konclude_ht/completion/u15.rs
+index 096f3b1b..59b6eaeb 100644
+--- a/engine/src/konclude_ht/completion/u15.rs
++++ b/engine/src/konclude_ht/completion/u15.rs
+@@ -210,0 +211,70 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
++    /// Experimental relocation of positive and negative links through an
++    /// equality merge. Every copied edge carries its original dependency and
++    /// the equality dependency. Arena mutation retains the branch journal.
++    pub(super) fn ht_relocate_disjoint_merge_connections(
++        &mut self, from: NodeId, into: NodeId, merge_dependency: TrackPointId,
++        ctx: &mut CalculationAlgorithmContextBase,
++    ) -> bool {
++        let from_id = ctx.process_context().node(from).individual_node_id();
++        let connections = ctx.process_context().node_role_neighbor_ids(from);
++        let mut neighbors = Vec::new();
++        for id in connections {
++            let node = self.get_up_to_date_individual_by_id(id, ctx);
++            if node.is_none() { ctx.raise_stop(false); return false; }
++            neighbors.push(node);
++        }
++        neighbors.push(from);
++        neighbors.push(into);
++        neighbors.sort_unstable_by_key(|node| node.index());
++        neighbors.dedup();
++        let mut positive = Vec::new();
++        let mut negative = Vec::new();
++        for &neighbor in &neighbors {
++            let neighbor_id = ctx.process_context().node(neighbor).individual_node_id();
++            for (source, target, target_id) in [(from, neighbor, neighbor_id), (neighbor, from, from_id)] {
++                let mut links = ctx.process_context().node_successor_role_iterator(source, target_id);
++                while links.has_next() {
++                    let link = links.next(true);
++                    let edge = ctx.process_context().edge(link);
++                    positive.push((source, target, link, edge.get_link_role(), edge.get_dependency_track_point()));
++                }
++                let mut links = ctx.process_context().node_disjoint_successor_role_iterator(source, target_id);
++                while links.has_next() {
++                    let edge = ctx.process_context().disjoint_edge(links.next(true));
++                    negative.push((source, target, edge.get_link_role(), edge.get_dependency_track_point()));
++                }
++            }
++        }
++        for &(source, target, _, role, old_dependency) in &positive {
++            let source = if source == from { into } else { source };
++            let target = if target == from { into } else { target };
++            let mut dependency = TrackPointId::NONE;
++            let mut into_mut = into;
++            self.create_merged_link_dependency(&mut dependency, &mut into_mut,
++                merge_dependency, old_dependency, ctx);
++            self.ht_install_role_successor_edge(source, target, role, dependency, ctx);
++            if ctx.has_pending_signal() { return false; }
++        }
++        for (source, target, role, old_dependency) in negative {
++            let mut source = if source == from { into } else { source };
++            let mut target = if target == from { into } else { target };
++            let mut dependency = TrackPointId::NONE;
++            let mut into_mut = into;
++            self.create_merged_link_dependency(&mut dependency, &mut into_mut,
++                merge_dependency, old_dependency, ctx);
++            self.create_individual_node_negation_link(&mut source, &mut target, role, dependency, ctx);
++            if ctx.has_pending_signal() { return false; }
++        }
++        for (source, _, link, _, _) in positive {
++            ctx.process_context_mut().node_remove_individual_link(source, link);
++        }
++        for neighbor in neighbors {
++            let neighbor_id = ctx.process_context().node(neighbor).individual_node_id();
++            ctx.process_context_mut().node_remove_disjoint_links(neighbor, from_id);
++            ctx.process_context_mut().node_remove_disjoint_links(from, neighbor_id);
++            ctx.process_context_mut().node_remove_individual_connection(neighbor, from);
++            ctx.process_context_mut().node_remove_individual_connection(from, neighbor);
++        }
++        true
++    }
++
+@@ -354,0 +425,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
++        if std::env::var_os("KM_EXPERIMENTAL_DATA_ROLE_DISJOINT").is_some()
++            && (calc_alg_context.process_context().node(individual).has_disjoint_role_connections()
++                || calc_alg_context.process_context().node(merge_into_individual_node).has_disjoint_role_connections())
++            && !self.ht_relocate_disjoint_merge_connections(individual, merge_into_individual_node,
++                merge_dep_track_point, calc_alg_context) {
++            return;
++        }
++
+diff --git a/engine/src/konclude_ht/process/context.rs b/engine/src/konclude_ht/process/context.rs
+index 3cea8bdd..5f3fe20f 100644
+--- a/engine/src/konclude_ht/process/context.rs
++++ b/engine/src/konclude_ht/process/context.rs
+@@ -7449,0 +7450,21 @@ impl ProcessContext {
++    /// Every incident role neighbour, including outgoing negative-only edges.
++    /// Connection successors alone enumerate incoming links, not this union.
++    pub(crate) fn node_role_neighbor_ids(&self, node: NodeId) -> Vec<Cint64> {
++        let mut ids = Vec::new();
++        let mut incoming = self.node_connection_successor_iterator(node);
++        while incoming.has_next() {
++            ids.push(incoming.next_successor_connection_id(true));
++        }
++        let mut outgoing = self.node_successor_iterator(node);
++        while outgoing.has_next() {
++            ids.push(outgoing.next_individual_id(true));
++        }
++        let negative = self.node(node).use_disjoint_succ_role_hash;
++        if negative.is_some() {
++            ids.extend(self.disjoint_succ_role_hash(negative).successor_ids());
++        }
++        ids.sort_unstable();
++        ids.dedup();
++        ids
++    }
++
+diff --git a/engine/src/konclude_ht/process/distinct.rs b/engine/src/konclude_ht/process/distinct.rs
+index ad6b4d87..f44fb59c 100644
+--- a/engine/src/konclude_ht/process/distinct.rs
++++ b/engine/src/konclude_ht/process/distinct.rs
+@@ -987,0 +988,5 @@ impl DisjointSuccessorRoleHash {
++    /// Destination IDs with stored negative role constraints.
++    pub(crate) fn successor_ids(&self) -> Vec<Cint64> {
++        self.succ_neg_dis_edge_hash.keys().copied().collect()
++    }
++
