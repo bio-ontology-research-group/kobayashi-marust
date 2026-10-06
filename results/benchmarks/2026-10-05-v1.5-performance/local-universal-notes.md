@@ -49,3 +49,8 @@ The first cluster recovery receipt verifies ORE13799 in 0.181 seconds and
 agrees with all four independent references. Four other completed diagnostic
 cases remain failures, and three are still running in the partial receipt.
 The original failures remain unchanged in the full-corpus benchmark.
+
+The completed eight-case Slurm diagnostic has one verified success (13799),
+four process errors and three outer timeouts. The final receipt supersedes
+the partial receipt; no other selected failure is recovered by this guard fix.
+The exact-source certification process remains active.

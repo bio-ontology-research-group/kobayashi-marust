@@ -1,0 +1,60 @@
+{
+  "diagnostic_only": true,
+  "scope": "Frontend relation evidence for the seven integral decimal literal values observed in ORE12566. Synthetic fixture only; original corpus input is unchanged. No production admission change or new solved count.",
+  "binary_sha256": "70b88e594c46761b5227aa93be15b5de8fb991f607ae10138f5b52d7d03e7a91",
+  "fixture_sha256": "9c174b19e5d168a802f6f3a5ad5497b2baa1843993d0cb9eaa855d8d56d9cb0f",
+  "output_sha256": "89c9729119106b63daf1a21673bef10f6063fd2e5b82371ffb50caea61d3b02f",
+  "rows": [
+    {
+      "decimal": "__dt__val__\"12\"^^xsd:decimal",
+      "integer_alias": "__dt__val__\"12\"^^xsd:integer",
+      "bidirectional_inclusion": true,
+      "decimal_range_membership": true,
+      "singleton": true
+    },
+    {
+      "decimal": "__dt__val__\"24\"^^xsd:decimal",
+      "integer_alias": "__dt__val__\"24\"^^xsd:integer",
+      "bidirectional_inclusion": true,
+      "decimal_range_membership": true,
+      "singleton": true
+    },
+    {
+      "decimal": "__dt__val__\"28\"^^xsd:decimal",
+      "integer_alias": "__dt__val__\"28\"^^xsd:integer",
+      "bidirectional_inclusion": true,
+      "decimal_range_membership": true,
+      "singleton": true
+    },
+    {
+      "decimal": "__dt__val__\"29\"^^xsd:decimal",
+      "integer_alias": "__dt__val__\"29\"^^xsd:integer",
+      "bidirectional_inclusion": true,
+      "decimal_range_membership": true,
+      "singleton": true
+    },
+    {
+      "decimal": "__dt__val__\"30\"^^xsd:decimal",
+      "integer_alias": "__dt__val__\"30\"^^xsd:integer",
+      "bidirectional_inclusion": true,
+      "decimal_range_membership": true,
+      "singleton": true
+    },
+    {
+      "decimal": "__dt__val__\"31\"^^xsd:decimal",
+      "integer_alias": "__dt__val__\"31\"^^xsd:integer",
+      "bidirectional_inclusion": true,
+      "decimal_range_membership": true,
+      "singleton": true
+    },
+    {
+      "decimal": "__dt__val__\"7\"^^xsd:decimal",
+      "integer_alias": "__dt__val__\"7\"^^xsd:integer",
+      "bidirectional_inclusion": true,
+      "decimal_range_membership": true,
+      "singleton": true
+    }
+  ],
+  "next_guard_requirement": "Retain exact_swrl_integer lexical/value validation and reject fractional, malformed, exponent-form and unrepresentable decimal values; verify downstream bridge handling and independent original-ontology answers.",
+  "release_approved": false
+}
