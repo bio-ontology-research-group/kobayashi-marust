@@ -6824,6 +6824,8 @@ fn analyse_kpset_completion_model(
     root: NodeId,
     ctx: &mut CalculationAlgorithmContextBase,
 ) {
+    let timing_start = std::env::var_os("KM_BRIDGE_PHASE_TIMING")
+        .is_some().then(std::time::Instant::now);
     let analyser = SatisfiableTaskClassificationMessageAnalyser::default();
     let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_shared_handles(
         state
@@ -6840,6 +6842,7 @@ fn analyse_kpset_completion_model(
         .individual_process_node_vector()
         .clone();
     let max_branch_tag = ctx.processing_data_box().maximum_deterministic_branch_tag();
+    let snapshot_finished = timing_start.map(|_| std::time::Instant::now());
     let mut observer = RecordingClassificationMessageDataObserver::new();
     let testing_items = state
         .ontology_item
@@ -6868,6 +6871,7 @@ fn analyse_kpset_completion_model(
         Some(&mut observer),
     );
     let Some(analysed) = analysed else { return };
+    let analysis_finished = timing_start.map(|_| std::time::Instant::now());
     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
         let message_count: usize = observer
             .get_told_messages()
@@ -6889,6 +6893,14 @@ fn analyse_kpset_completion_model(
             messages,
             ontology.concepts(),
         );
+    }
+    if let (Some(start), Some(snapshot), Some(analysis)) =
+        (timing_start, snapshot_finished, analysis_finished)
+    {
+        eprintln!("BRIDGE-ANALYSIS-TIMING subject={subject} snapshot={:.6} analyse={:.6} delivery={:.6}",
+            snapshot.duration_since(start).as_secs_f64(),
+            analysis.duration_since(snapshot).as_secs_f64(),
+            analysis.elapsed().as_secs_f64());
     }
 }
 

@@ -2668,6 +2668,17 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         memory_pool: Cint64,
         observer: Option<&mut O>,
     ) -> Option<ClassificationAnalyserBoundedIntegrationResult> {
+        // Opt-in observation only: never inspect or change a reasoning verdict.
+        let mut phase_started = std::env::var_os("KM_BRIDGE_PHASE_TIMING")
+            .is_some().then(std::time::Instant::now);
+        let record_phase = |phase: &str, started: &mut Option<std::time::Instant>| {
+            if let Some(last) = started {
+                let now = std::time::Instant::now();
+                eprintln!("BRIDGE-ANALYSER-PHASE concept={} phase={phase} seconds={:.6}",
+                    adapter.get_testing_concept().index(), now.duration_since(*last).as_secs_f64());
+                *last = std::time::Instant::now();
+            }
+        };
         let corrected_individual = self.get_corrected_individual_id(
             process_context,
             constructed_individual_node,
@@ -2680,6 +2691,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 corrected_individual.node,
             );
 
+        record_phase("snapshots", &mut phase_started);
         let possible_subsumption_states = self
             .collect_possible_subsumption_states_from_classifier_references_for_snapshots(
                 adapter,
@@ -2693,6 +2705,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 testing_items,
             );
 
+        record_phase("possible-states", &mut phase_started);
         let concepts_requiring_more_information = {
             let visits = self.collect_other_node_analyse_visits(
                 adapter,
@@ -2710,6 +2723,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             )
         };
 
+        record_phase("more-information", &mut phase_started);
         let root_result = self
             .create_root_classification_message_linkers_from_constructed_node_with_live_equivalent_non_candidates(
                 adapter,
@@ -2727,6 +2741,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 None,
             )?;
 
+        record_phase("root-messages", &mut phase_started);
         let visits = self.collect_other_node_analyse_visits(
             adapter,
             root_result.corrected_individual.individual_id,
@@ -2754,6 +2769,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 None,
             );
 
+        record_phase("other-messages", &mut phase_started);
         let subsum_message_data_linker =
             match (other_subsum_linker, root_result.subsum_message_data_linker) {
                 (Some(other), Some(root)) => Some(other.append_linker(root)),
@@ -2786,6 +2802,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             })
             .flatten();
 
+        record_phase("pseudo-model", &mut phase_started);
         let output = self.deliver_merged_classification_message_data(
             adapter,
             subsum_message_data_linker,
@@ -2795,6 +2812,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             observer,
         );
 
+        record_phase("delivery", &mut phase_started);
         Some(ClassificationAnalyserBoundedIntegrationResult {
             corrected_individual: root_result.corrected_individual,
             max_deterministic_branch_tag: root_result.max_deterministic_branch_tag,

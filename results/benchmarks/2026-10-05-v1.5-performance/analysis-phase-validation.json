@@ -1,0 +1,22 @@
+{
+  "scope": "Opt-in phase instrumentation only; no reasoning semantics changed",
+  "source_manifest_sha256": "7d64d3f1504edecb0e1497c07a931d0a1f6925df6f4dd7ebfff0772fd00de197",
+  "checked_source_files": 624,
+  "logs": {
+    "analysis-phase-build.log": {
+      "sha256": "1b8f898d8d19c984451524b9e198ced4d9be3eedd6b78ac8687eaf0b576bd8cd"
+    },
+    "analysis-phase-tests.log": {
+      "sha256": "2360924f2235003593bbcc045e7953a4ababa54258d776c546d4078571ac42ed",
+      "summary": "test result: ok. 152 passed; 0 failed; 0 ignored; 0 measured; 2588 filtered out; finished in 0.01s"
+    },
+    "analysis-phase-disabled-tests.log": {
+      "sha256": "472a0abcb2b5f310b17600a5445d46a404b4dd765de85ae035440acd35c46c4d",
+      "summary": "test result: ok. 152 passed; 0 failed; 0 ignored; 0 measured; 2588 filtered out; finished in 0.01s"
+    }
+  },
+  "tests_enabled": 152,
+  "tests_disabled": 152,
+  "release_approved": false,
+  "production_certification_pending": true
+}
