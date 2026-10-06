@@ -78,3 +78,36 @@ with independent agreement (0.132 s). These times are local diagnostics. The
 patch, source manifest and answer receipts are separate from the original
 experiment, preserving its immutable provenance. Production admission and
 release solved counts remain unchanged.
+
+## Executable source-GCI witness checking
+
+`DatatypePaddingCheck.lean` adds an executable Boolean evaluator and three
+checked theorems: evaluator equivalence, complete-list GCI-check equivalence,
+and the resulting conditional TBox extension. The axiom audit reports only
+`propext` and `Quot.sound`, with no `sorryAx`.
+
+`DatatypePaddingWitnessCheck.lean` reads the original Rust `source_axioms`
+array and checks every entry against a supplied class valuation. It expands
+equivalences in both directions and disjointness as a negative conjunction.
+The caller cannot select a subset of axioms. It validates constructor shapes
+and all nested fillers, including fillers whose value does not affect an
+edgeless node. It rejects negative cardinalities, universal roles, unknown
+constructors, direct uninterpreted datatype predicates and unexpected axiom
+fields. Nominals and self restrictions are evaluated only for padding truth;
+their lowering does not claim object-side semantic equivalence.
+
+`check_data_padding_witness.py` is the required entry point. It rejects
+duplicate JSON keys before Lean's map parser can erase them, checks private
+byte-identical snapshots, rebuilds imported proof modules, and records source,
+witness, checker and toolchain hashes. This binds execution to the supplied
+typed document; it does not prove that the document includes every original
+OWL axiom or that the decoder agrees with Rust and OWL semantics.
+
+The 12566 witness passes all 311 source axioms, expanded to 324 implications.
+The blank 13799 control passes all 230 source axioms, expanded to 247
+implications. Both witness files and execution receipts are retained.
+The diagnostic reader is separate from production admission. The source
+decoder correspondence proof, concrete datatype/value binding, complete
+RBox/ABox obligations and reverse model transport remain required before
+promoting the experimental path. No benchmark case is counted as newly solved
+on the strength of this padding check alone.

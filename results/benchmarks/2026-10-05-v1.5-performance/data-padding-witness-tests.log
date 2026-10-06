@@ -1,0 +1,30 @@
+valid: accepted
+blank: rejected
+missing-parent: rejected
+both-complements: rejected
+unknown-class: rejected
+duplicate-class: rejected
+extra-witness-field: rejected
+data-existential: rejected
+universal-ordinary-role: accepted
+universal-role: rejected
+negative-cardinality: rejected
+hidden-negative-cardinality: rejected
+unknown-constructor: rejected
+two-constructors: rejected
+bad-arity: rejected
+hidden-bad-filler: rejected
+direct-datatype: rejected
+self-edge: rejected
+zero-minimum: accepted
+positive-minimum: rejected
+disjoint-violation: rejected
+unknown-axiom-kind: rejected
+extra-axiom-field: rejected
+duplicate-json-key: rejected
+non-json-number: rejected
+.
+----------------------------------------------------------------------
+Ran 1 test in 79.448s
+
+OK
