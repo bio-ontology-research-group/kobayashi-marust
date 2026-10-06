@@ -1,0 +1,13 @@
+{
+  "base_commit": "2032f7650acff095d779224e243d173b9c4e2360",
+  "files": {
+    "engine/src/frontend/datatypes.rs": "fb388ba76506e7de46db52edc3933a23ba963c43f3c37ea8a85a8ee5209177a6",
+    "engine/src/konclude_ht/bridge.rs": "a17e765271ef076cbbb64f22178dfcde917926ce01fb8ead32e28505ed309915",
+    "engine/src/konclude_ht/completion/u08.rs": "9ddf7e23db15df7f690b3f0f11c625bbf3cabd9d970c9e2fff76481585171e8b",
+    "engine/src/konclude_ht/completion/u14.rs": "b18b2ff0f0ad71108224b12955c78992948b306aa4510554cc06609bc442732b",
+    "engine/src/konclude_ht/completion/u15.rs": "74c0c8d581ca598d1856e8f97d0a232699ca52ec24e24eae0b7f6aa3e1f92cb2",
+    "engine/src/konclude_ht/completion/selftest.rs": "26ec12e895a95b4957b614676f20b4ab65e2710e5346818b41c362ace796610c"
+  },
+  "patch_sha256": "847e9e5c25826c29e82586b7f81c50f7c27ceadbd1fb146b2639714c43e111db",
+  "production_enabled": false
+}

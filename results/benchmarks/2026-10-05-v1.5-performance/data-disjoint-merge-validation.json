@@ -1,0 +1,16 @@
+{
+  "diagnostic_only": true,
+  "production_enabled": false,
+  "direct_tests_passed": 2,
+  "nearby_disjoint_tests_passed": 38,
+  "semantic_controls_passed": 6,
+  "logs": {
+    "/tmp/agent/km-v150-diagnostics/data-disjoint-merge-tests.log": "cc987bbe7e911d1e0e13873460809b7d5293de56fe55ebe254a6838b35f9c795",
+    "/tmp/agent/km-v150-diagnostics/data-disjoint-nearby-tests.log": "24f8b6b47d8b51806911c6da76a61c9f8aa30ff5443b658f0b5bf61f61f38a97"
+  },
+  "remaining": [
+    "relocation and rollback regressions",
+    "source-binding and Lean certification",
+    "full-corpus benchmark"
+  ]
+}

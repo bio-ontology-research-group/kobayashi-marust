@@ -1,0 +1,449 @@
+diff --git a/engine/src/frontend/datatypes.rs b/engine/src/frontend/datatypes.rs
+index e8307380..ca085cc1 100644
+--- a/engine/src/frontend/datatypes.rs
++++ b/engine/src/frontend/datatypes.rs
+@@ -1606 +1606,4 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
+-            (Val::Num(value), Some("integer" | "int" | "nonNegativeInteger" | "positiveInteger"))
++            // Integral decimal spellings denote the same values as integer
++            // literals. Keep the exact lexical/value check; fractional decimal
++            // values remain outside this atomic bridge admission boundary.
++            (Val::Num(value), Some("decimal" | "integer" | "int" | "nonNegativeInteger" | "positiveInteger"))
+@@ -2535,0 +2539,28 @@ mod tests {
++    #[test]
++    fn bridge_integral_decimal_literals_preserve_integer_value_identity() {
++        for value in -16..=16 {
++            let decimal = format!("__dt__val__\"{value}.000\"^^xsd:decimal");
++            let integer = format!("__dt__val__\"{value}\"^^xsd:integer");
++            assert!(bridge_exact_atomic_name(&decimal));
++            assert_eq!(bridge_exact_value_equal(&decimal, &integer), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&decimal, &integer), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&integer, &decimal), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__integer"), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__decimal"), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__positiveInteger"), Some(value > 0));
++            assert_eq!(bridge_exact_atomic_disjoint(&decimal, "__dt__string"), Some(true));
++        }
++        for spelling in ["+001.000", "1.", " 1.0 "] {
++            let decimal = format!("__dt__val__\"{spelling}\"^^<http://www.w3.org/2001/XMLSchema#decimal>");
++            assert_eq!(bridge_exact_value_equal(&decimal, "__dt__val__\"1\"^^xsd:integer"), Some(true));
++        }
++        assert_eq!(bridge_exact_value_equal("__dt__val__\"-.0\"^^xsd:decimal",
++            "__dt__val__\"0\"^^xsd:integer"), Some(true));
++        for spelling in ["1.5", "-0.25", "1E0", "NaN", "INF", ".", "--1", "1.0.0",
++            "170141183460469231731687303715884105728"] {
++            let decimal = format!("__dt__val__\"{spelling}\"^^xsd:decimal");
++            assert!(!bridge_exact_atomic_name(&decimal), "unsupported or invalid decimal admitted: {spelling}");
++        }
++        assert!(!bridge_exact_atomic_name("__dt__val__\"1.0\"^^<http://example.org/decimal>"));
++    }
++
+diff --git a/engine/src/konclude_ht/bridge.rs b/engine/src/konclude_ht/bridge.rs
+index 837a2be4..5ec8a608 100644
+--- a/engine/src/konclude_ht/bridge.rs
++++ b/engine/src/konclude_ht/bridge.rs
+@@ -872,2 +872,2 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
+-/// Ordinary classes and nominals have no data-domain instances, and ordinary
+-/// object/data roles have no outgoing edge from this element. The built-in
++/// The proposed type supplies ordinary class labels; nominals remain false.
++/// Object/data roles have no outgoing edge from this element. The built-in
+@@ -876 +876 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
+-fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
++fn padding_data_node_holds(concept: &SourceConcept, positive: &std::collections::HashSet<String>) -> Option<bool> {
+@@ -878 +878,3 @@ fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
+-        SourceConcept::Name(_) | SourceConcept::Bottom | SourceConcept::Nominal(_) => false,
++        SourceConcept::Name(name) if name.starts_with("__dt__") => return None,
++        SourceConcept::Name(name) => positive.contains(name),
++        SourceConcept::Bottom | SourceConcept::Nominal(_) => false,
+@@ -880 +882 @@ fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
+-        SourceConcept::Not(operand) => !blank_data_node_holds(operand)?,
++        SourceConcept::Not(operand) => !padding_data_node_holds(operand, positive)?,
+@@ -883 +885 @@ fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
+-                if !blank_data_node_holds(operand)? {
++                if !padding_data_node_holds(operand, positive)? {
+@@ -891 +893 @@ fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
+-                if blank_data_node_holds(operand)? {
++                if padding_data_node_holds(operand, positive)? {
+@@ -919,0 +922,53 @@ fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
++// Experimental source-GCI witness only. No production admission change until
++// concrete datatype transport, RBox/ABox coverage and source binding are proved.
++fn find_data_padding_type(tin: &TInput) -> Option<std::collections::HashSet<String>> {
++    use crate::json_io::SourceAxiomKind;
++    // The source GCI list does not cover every edge-generating RBox clause.
++    // In particular, reflexivity would put a self edge on each added node.
++    // Every variable in a role-headed clause must be guarded by a role premise;
++    // even an unguarded body-class variable could become true only on padding.
++    // Separate datatype-role guards retain endpoint sorts for data roles.
++    for clause in &tin.clauses {
++        if !clause.head.iter().any(|atom| matches!(atom, HAtom::Role { .. })) { continue; }
++        let guarded: std::collections::HashSet<_> = clause.body.iter().flat_map(|atom| {
++            match atom { HAtom::Role { s, t, .. } => vec![*s, *t], _ => Vec::new() }
++        }).collect();
++        if clause.body.iter().chain(&clause.head).any(|atom| match atom {
++            HAtom::Role { s, t, .. } | HAtom::Eq { s, t } => !guarded.contains(s) || !guarded.contains(t),
++            HAtom::Concept { t, .. } | HAtom::Exist { t, .. } => !guarded.contains(t),
++        }) { return None; }
++    }
++    let satisfies = |positive: &std::collections::HashSet<String>| {
++        tin.source_axioms.iter().all(|axiom| {
++            let (Some(left), Some(right)) = (padding_data_node_holds(&axiom.left, positive),
++                padding_data_node_holds(&axiom.right, positive)) else { return false };
++            match axiom.kind {
++                SourceAxiomKind::SubClass => !left || right,
++                SourceAxiomKind::Equivalent => left == right,
++                SourceAxiomKind::Disjoint => !(left && right),
++            }
++        })
++    };
++    let empty = std::collections::HashSet::new();
++    if satisfies(&empty) { return Some(empty); }
++    for seed in tin.concepts.iter().filter(|name| !name.starts_with("__")).take(256) {
++        let mut positive = std::collections::HashSet::from([seed.clone()]);
++        loop {
++            let before = positive.len();
++            for axiom in &tin.source_axioms {
++                if axiom.kind != SourceAxiomKind::SubClass { continue; }
++                let SourceConcept::Name(name) = &axiom.right else { continue };
++                if name.starts_with("__dt__") { continue; }
++                if padding_data_node_holds(&axiom.left, &positive) == Some(true) {
++                    positive.insert(name.clone());
++                }
++            }
++            if positive.len() == before { break; }
++        }
++        // Check every source axiom, including data-bearing ones. A positive
++        // padding class must not activate a missing existential data edge.
++        if satisfies(&positive) { return Some(positive); }
++    }
++    None
++}
++
+@@ -947,0 +1003,10 @@ fn exact_datatype_subrole_clause(clause: &HtClause) -> Option<(usize, usize)> {
++// Diagnostic-only source extension. Production requires a concrete shared-value
++// realization proof, not merely the syntactic role-disjointness clause below.
++fn exact_datatype_disjoint_roles(clause: &HtClause) -> Option<(usize, usize)> {
++    match (clause.body.as_slice(), clause.head.as_slice()) {
++        ([HAtom::Role { r: left, s: x, t: y }, HAtom::Role { r: right, s: xx, t: yy }], [])
++            if x != y && x == xx && y == yy => Some((*left, *right)),
++        _ => None,
++    }
++}
++
+@@ -1215,0 +1281,6 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
++    let padding_type = if std::env::var_os("KM_EXPERIMENTAL_DATA_PADDING").is_some() {
++        let Some(padding) = find_data_padding_type(tin) else {
++            defer!("no checked experimental data padding type was found");
++        };
++        padding
++    } else { std::collections::HashSet::new() };
+@@ -1228,2 +1299,2 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
+-            blank_data_node_holds(&axiom.left),
+-            blank_data_node_holds(&axiom.right),
++            padding_data_node_holds(&axiom.left, &padding_type),
++            padding_data_node_holds(&axiom.right, &padding_type),
+@@ -1354 +1425,4 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
+-        if !functional && !domain && !inclusion {
++        let disjoint = std::env::var_os("KM_EXPERIMENTAL_DATA_ROLE_DISJOINT").is_some()
++            && exact_datatype_disjoint_roles(clause).is_some_and(|(left, right)|
++                datatype_roles.contains(&left) && datatype_roles.contains(&right));
++        if !functional && !domain && !inclusion && !disjoint {
+@@ -5008,0 +5083,21 @@ fn bridge_tinput_with_trigger_absorption(
++        // Diagnostic-only exact role clash encoding. Keep the original guard
++        // and clause evidence; do not count a skipped clause as supported.
++        if std::env::var_os("KM_EXPERIMENTAL_DATA_ROLE_DISJOINT").is_some() {
++            if let Some((left, right)) = exact_datatype_disjoint_roles(cl) {
++                if left < roles.len() && right < roles.len() {
++                    if left == right {
++                        let bot = b.bottom();
++                        let link = super::model::substrate::NegLink { target: bot, negated: false };
++                        b.ctx.ontology_arenas_mut().role_mut(roles[left]).domain_linker.push(link);
++                        b.ctx.ontology_arenas_mut().role_mut(inv_roles[left]).range_linker.push(link);
++                    } else {
++                        for (a, z) in [(roles[left], roles[right]), (roles[right], roles[left]),
++                                       (inv_roles[left], inv_roles[right]), (inv_roles[right], inv_roles[left])] {
++                            b.ctx.ontology_arenas_mut().role_mut(a).add_disjoint_role_linker(
++                                super::model::substrate::NegLink { target: z, negated: false });
++                        }
++                    }
++                    continue;
++                }
++            }
++        }
+@@ -23167,0 +23263,64 @@ mod tests {
++
++#[cfg(test)]
++mod experimental_padding_tests {
++    use super::*;
++
++    #[test]
++    fn datatype_padding_witness_checks_every_source_axiom() {
++        let mut input: TInput = serde_json::from_value(serde_json::json!({
++            "concepts": ["A", "B", "Parent"], "roles": ["data"], "clauses": [],
++            "source_axioms": [
++                {"kind":"equivalent", "left":{"Name":"A"}, "right":{"Not":{"Name":"B"}}},
++                {"kind":"sub-class", "left":{"Name":"A"}, "right":{"Name":"Parent"}},
++                {"kind":"sub-class", "left":{"Name":"B"}, "right":{"Name":"Parent"}}
++            ]
++        })).unwrap();
++        let witness = find_data_padding_type(&input).unwrap();
++        assert!(witness.contains("Parent"));
++        assert_ne!(witness.contains("A"), witness.contains("B"));
++        input.clauses.push(HtClause { body: vec![], head: vec![HAtom::Role { r: 0, s: 0, t: 0 }] });
++        assert!(find_data_padding_type(&input).is_none(), "reflexivity needs a padding edge");
++        input.clauses[0] = HtClause { body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
++            head: vec![HAtom::Role { r: 0, s: 2, t: 2 }] };
++        assert!(find_data_padding_type(&input).is_none(), "a role guard must bind each head endpoint");
++        input.clauses[0].head = vec![HAtom::Role { r: 0, s: 1, t: 0 }];
++        assert!(find_data_padding_type(&input).is_some(), "guarded inverse inclusion is preserved");
++        input.clauses[0].body.push(HAtom::Concept { neg: false, c: 0, t: 2 });
++        assert!(find_data_padding_type(&input).is_none(), "unguarded body labels can hold only on padding");
++        input.clauses[0].body.pop();
++        input.clauses[0].head.push(HAtom::Concept { neg: false, c: 0, t: 2 });
++        assert!(find_data_padding_type(&input).is_none(), "unguarded head labels need separate verification");
++        input.clauses.clear();
++        // Either choice now activates a datatype-bearing existential. Skipping
++        // those axioms would incorrectly accept a padding node with no edge.
++        for name in ["A", "B"] {
++            input.source_axioms.push(serde_json::from_value(serde_json::json!({
++                "kind":"sub-class", "left":{"Name":name},
++                "right":{"Exists":[{"Name":"data"},{"Name":"__dt__integer"}]}
++            })).unwrap());
++        }
++        assert!(find_data_padding_type(&input).is_none());
++        assert_eq!(padding_data_node_holds(&SourceConcept::Nominal("a".into()), &witness), Some(false));
++        assert_eq!(padding_data_node_holds(&SourceConcept::Name("__dt__integer".into()), &witness), None);
++        assert_eq!(padding_data_node_holds(&SourceConcept::Forall(SourceRole::Universal,
++            Box::new(SourceConcept::Top)), &witness), None);
++    }
++}
++
++#[cfg(test)]
++mod datatype_disjoint_shape_probe {
++    use super::*;
++    #[test]
++    fn only_same_endpoint_clashes_are_data_role_disjointness() {
++        let role = |r, s, t| HAtom::Role { r, s, t };
++        let clause = |a,b| HtClause { body: vec![a,b], head: vec![] };
++        assert_eq!(exact_datatype_disjoint_roles(&clause(role(1,0,1),role(2,0,1))),Some((1,2)));
++        assert_eq!(exact_datatype_disjoint_roles(&clause(role(1,0,1),role(1,0,1))),Some((1,1)));
++        for bad in [clause(role(1,0,1),role(2,1,0)),clause(role(1,0,1),role(2,0,2)),
++                    clause(role(1,0,0),role(2,0,0)),
++                    HtClause { body: vec![role(1,0,1),role(2,0,1)], head: vec![role(3,0,1)] },
++                    HtClause { body: vec![role(1,0,1)], head: vec![] }] {
++            assert_eq!(exact_datatype_disjoint_roles(&bad),None);
++        }
++    }
++}
+diff --git a/engine/src/konclude_ht/completion/selftest.rs b/engine/src/konclude_ht/completion/selftest.rs
+index 90cc06d1..6a503d1a 100644
+--- a/engine/src/konclude_ht/completion/selftest.rs
++++ b/engine/src/konclude_ht/completion/selftest.rs
+@@ -27595,0 +27596,48 @@ fn satisfiable_cache_automaton_checks_live_edge_to_ancestor() {
++
++#[test]
++fn disjoint_merge_check_preserves_both_edge_dependencies() {
++    use super::super::model::role::Role;
++    let mut env = build_env();
++    let mut source = env.root;
++    let mut from = test_node_at_depth(&mut env, 401, 1);
++    let mut into = test_node_at_depth(&mut env, 402, 1);
++    register_test_node(&mut env, from);
++    register_test_node(&mut env, into);
++    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
++    let concept = env.concept_a;
++    let root = env.root;
++    let negative = tracked_concept_clash(&mut env, root, concept, false, DepKind::And, 201, 201);
++    let positive = tracked_concept_clash(&mut env, root, concept, false, DepKind::And, 202, 202);
++    let neg_dep = env.ctx.process_context().clash_desc(negative).get_dependency_track_point();
++    let pos_dep = env.ctx.process_context().clash_desc(positive).get_dependency_track_point();
++    env.algo.create_individual_node_negation_link(&mut source, &mut from, role, neg_dep, &mut env.ctx);
++    env.algo.ht_install_role_successor_edge(source, into, role, pos_dep, &mut env.ctx);
++    assert_eq!(env.ctx.pending_signal(), CalcSignal::Continue);
++    let mut clashes = ClashDescId::NONE;
++    assert!(!env.algo.is_individual_node_disjoint_roles_mergeable(from, into, &mut clashes, &mut env.ctx));
++    let mut dependencies = HashSet::new();
++    while clashes.is_some() {
++        let descriptor = env.ctx.process_context().clash_desc(clashes);
++        dependencies.insert(descriptor.get_dependency_track_point());
++        clashes = descriptor.get_next();
++    }
++    assert_eq!(dependencies, HashSet::from([neg_dep, pos_dep]));
++}
++
++#[test]
++fn disjoint_merge_check_keeps_distinct_sources_separate() {
++    use super::super::model::role::Role;
++    let mut env = build_env();
++    let mut source = env.root;
++    let other_source = test_node_at_depth(&mut env, 403, 0);
++    let mut from = test_node_at_depth(&mut env, 404, 1);
++    let into = test_node_at_depth(&mut env, 405, 1);
++    for node in [other_source, from, into] { register_test_node(&mut env, node); }
++    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
++    env.algo.create_individual_node_negation_link(&mut source, &mut from, role, TrackPointId::NONE, &mut env.ctx);
++    env.algo.ht_install_role_successor_edge(other_source, into, role, TrackPointId::NONE, &mut env.ctx);
++    let mut clashes = ClashDescId::NONE;
++    assert!(env.algo.are_individual_nodes_disjoint_roles_mergeable(from, into, &mut clashes, &mut env.ctx));
++    assert!(clashes.is_none());
++    assert_eq!(env.ctx.pending_signal(), CalcSignal::Continue);
++}
+diff --git a/engine/src/konclude_ht/completion/u08.rs b/engine/src/konclude_ht/completion/u08.rs
+index a7057f79..3cd3de00 100644
+--- a/engine/src/konclude_ht/completion/u08.rs
++++ b/engine/src/konclude_ht/completion/u08.rs
+@@ -1760,0 +1761,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
++        // Keep experimental role-disjointness merging separate until its
++        // relocation, backtracking and concrete datatype proofs are complete.
++        if std::env::var_os("KM_EXPERIMENTAL_DATA_ROLE_DISJOINT").is_some() {
++            if !self.are_individual_nodes_disjoint_roles_mergeable(
++                indi1, indi2, clash_descriptors, calc_alg_context) {
++                return false;
++            }
++        } else {
+@@ -1776,0 +1785 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
++        }
+diff --git a/engine/src/konclude_ht/completion/u14.rs b/engine/src/konclude_ht/completion/u14.rs
+index d0216601..b0157cb0 100644
+--- a/engine/src/konclude_ht/completion/u14.rs
++++ b/engine/src/konclude_ht/completion/u14.rs
+@@ -562,8 +562,49 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
+-        let _ = (indi1, indi2, clash_descriptors, calc_alg_context);
+-        // PORT-PENDING: connection-successor set iterator + disjoint-successor-role
+-        // iterator / negation-disjoint edges + clash factory + getUpToDateIndividual
+-        // unported.
+-        todo!(
+-            "W6-DEFER: isIndividualNodeDisjointRolesMergeable — connection/disjoint-role \
+-             iterators + clash factory unported"
+-        );
++        let pc = calc_alg_context.process_context();
++        let id = pc.node(indi1).individual_node_id();
++        let other_id = pc.node(indi2).individual_node_id();
++        let mut connections = pc.node_connection_successor_iterator(indi1);
++        let mut checks = Vec::new();
++        while connections.has_next() {
++            let connected_id = connections.next_successor_connection_id(true);
++            let (pairs, tests) = if connected_id == id {
++                (vec![(indi1, id)], vec![(indi2, indi2)])
++            } else if connected_id == other_id {
++                (vec![(indi2, id)], vec![(indi2, indi2), (indi1, indi1), (indi2, indi1), (indi1, indi2)])
++            } else {
++                let connected = self.get_up_to_date_individual_by_id(connected_id, calc_alg_context);
++                if connected.is_none() {
++                    calc_alg_context.raise_stop(false);
++                    return false;
++                }
++                let mut incoming = calc_alg_context.process_context()
++                    .node_disjoint_successor_role_iterator(connected, id);
++                while incoming.has_next() {
++                    checks.push((incoming.next(true), vec![(connected, indi2)]));
++                }
++                (vec![(indi1, connected_id)], vec![(indi2, connected)])
++            };
++            for (source, target) in pairs {
++                let mut disjoint = calc_alg_context.process_context()
++                    .node_disjoint_successor_role_iterator(source, target);
++                while disjoint.has_next() {
++                    checks.push((disjoint.next(true), tests.clone()));
++                }
++            }
++        }
++        for (negative, tests) in checks {
++            let edge = calc_alg_context.process_context().disjoint_edge(negative);
++            let role = edge.get_link_role();
++            let negative_dependency = edge.get_dependency_track_point();
++            for (mut source, mut target) in tests {
++                let positive = self.get_individual_node_link(&mut source, &mut target, role, calc_alg_context);
++                if positive.is_some() {
++                    let positive_dependency = calc_alg_context.process_context().edge(positive).get_dependency_track_point();
++                    *clash_descriptors = self.create_clashed_individual_link_descriptor(
++                        *clash_descriptors, positive, positive_dependency, calc_alg_context);
++                    *clash_descriptors = self.create_clashed_negation_disjoint_descriptor(
++                        *clash_descriptors, negative, negative_dependency, calc_alg_context);
++                    return false;
++                }
++            }
++        }
++        true
+diff --git a/engine/src/konclude_ht/completion/u15.rs b/engine/src/konclude_ht/completion/u15.rs
+index 096f3b1b..6ea934e6 100644
+--- a/engine/src/konclude_ht/completion/u15.rs
++++ b/engine/src/konclude_ht/completion/u15.rs
+@@ -210,0 +211,70 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
++    /// Experimental relocation of positive and negative links through an
++    /// equality merge. Every copied edge carries its original dependency and
++    /// the equality dependency. Arena mutation retains the branch journal.
++    fn ht_relocate_disjoint_merge_connections(
++        &mut self, from: NodeId, into: NodeId, merge_dependency: TrackPointId,
++        ctx: &mut CalculationAlgorithmContextBase,
++    ) -> bool {
++        let from_id = ctx.process_context().node(from).individual_node_id();
++        let mut connections = ctx.process_context().node_connection_successor_iterator(from);
++        let mut neighbors = Vec::new();
++        while connections.has_next() {
++            let id = connections.next_successor_connection_id(true);
++            let node = self.get_up_to_date_individual_by_id(id, ctx);
++            if node.is_none() { ctx.raise_stop(false); return false; }
++            neighbors.push(node);
++        }
++        neighbors.push(from);
++        neighbors.push(into);
++        neighbors.sort_unstable_by_key(|node| node.index());
++        neighbors.dedup();
++        let mut positive = Vec::new();
++        let mut negative = Vec::new();
++        for &neighbor in &neighbors {
++            let neighbor_id = ctx.process_context().node(neighbor).individual_node_id();
++            for (source, target, target_id) in [(from, neighbor, neighbor_id), (neighbor, from, from_id)] {
++                let mut links = ctx.process_context().node_successor_role_iterator(source, target_id);
++                while links.has_next() {
++                    let link = links.next(true);
++                    let edge = ctx.process_context().edge(link);
++                    positive.push((source, target, link, edge.get_link_role(), edge.get_dependency_track_point()));
++                }
++                let mut links = ctx.process_context().node_disjoint_successor_role_iterator(source, target_id);
++                while links.has_next() {
++                    let edge = ctx.process_context().disjoint_edge(links.next(true));
++                    negative.push((source, target, edge.get_link_role(), edge.get_dependency_track_point()));
++                }
++            }
++        }
++        for &(source, target, _, role, old_dependency) in &positive {
++            let source = if source == from { into } else { source };
++            let target = if target == from { into } else { target };
++            let mut dependency = TrackPointId::NONE;
++            let mut into_mut = into;
++            self.create_merged_link_dependency(&mut dependency, &mut into_mut,
++                merge_dependency, old_dependency, ctx);
++            self.ht_install_role_successor_edge(source, target, role, dependency, ctx);
++            if ctx.has_pending_signal() { return false; }
++        }
++        for (source, target, role, old_dependency) in negative {
++            let mut source = if source == from { into } else { source };
++            let mut target = if target == from { into } else { target };
++            let mut dependency = TrackPointId::NONE;
++            let mut into_mut = into;
++            self.create_merged_link_dependency(&mut dependency, &mut into_mut,
++                merge_dependency, old_dependency, ctx);
++            self.create_individual_node_negation_link(&mut source, &mut target, role, dependency, ctx);
++            if ctx.has_pending_signal() { return false; }
++        }
++        for (source, _, link, _, _) in positive {
++            ctx.process_context_mut().node_remove_individual_link(source, link);
++        }
++        for neighbor in neighbors {
++            let neighbor_id = ctx.process_context().node(neighbor).individual_node_id();
++            ctx.process_context_mut().node_remove_disjoint_links(neighbor, from_id);
++            ctx.process_context_mut().node_remove_disjoint_links(from, neighbor_id);
++            ctx.process_context_mut().node_remove_individual_connection(neighbor, from);
++        }
++        true
++    }
++
+@@ -354,0 +425,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
++        if std::env::var_os("KM_EXPERIMENTAL_DATA_ROLE_DISJOINT").is_some()
++            && (calc_alg_context.process_context().node(individual).has_disjoint_role_connections()
++                || calc_alg_context.process_context().node(merge_into_individual_node).has_disjoint_role_connections())
++            && !self.ht_relocate_disjoint_merge_connections(individual, merge_into_individual_node,
++                merge_dep_track_point, calc_alg_context) {
++            return;
++        }
++
