@@ -1,0 +1,14 @@
+{
+  "source_manifest_sha256": "4dd79f9fba1ffb5f966f0579c8433a9690526cb1f893db54509ab86a76102203",
+  "gates": [
+    {
+      "gate": "routing",
+      "exit_code": 0,
+      "log_sha256": "378d80e626ec4138b8b66a9cbe0335d4229aca00db078d145feb4688bef86a91",
+      "surface_sha256": "63a89a4a39cf83411ff9778abeab5b302eacd3d2558ec500313e47f18d550bc4",
+      "sorryAx": false
+    }
+  ],
+  "release_approved": false,
+  "source_files_rechecked": 622
+}

@@ -193,3 +193,30 @@ or default changes. The next implementation must reuse parsed source and
 activation state, measure the complete update path, and finish the publication
 boundary proofs before promotion. The full receipts and script hashes are in
 `results/benchmarks/2026-10-05-v1.5-performance/source-locality-module-render-validation.json`.
+
+## Rust module selection
+
+`incremental_activation::source_module_indices` now computes the same module
+selection directly over numeric expression IDs and per-query bit sets. It is
+not connected to production routing. The eight activation tests pass, including
+192 module-versus-full-theory comparisons over finite relational models and
+checks for conjunctions, global/top seeds, empty query sets, unsupported
+expressions and bit-set word boundaries.
+
+On the four frozen ORE 9944 revisions, Rust selection takes 0.025–0.040 seconds
+and chooses exactly the same source axioms as the Python diagnostic. Rendering
+those axioms in canonical order produces byte-identical modules to the four
+previously checked against fresh answers. The remaining Python sort/render
+step takes 0.091–0.276 seconds in this diagnostic; it is not included in the
+Rust selection time. Neither number includes full incremental-session costs.
+
+To reproduce selection, set `KM_SOURCE_MODULE_INPUT` to the frozen typed JSON,
+`KM_SOURCE_MODULE_FOCUS` to the affected-name JSON, and
+`KM_SOURCE_MODULE_OUTPUT` to a new output path, then run the exact library test
+`incremental_activation::tests::source_module_optional_frozen_input_probe`
+with `--nocapture`. The output includes selected source indices, source axioms,
+and selection time. Hashes and timings are recorded in
+`results/benchmarks/2026-10-05-v1.5-performance/source-module-rust-validation.json`.
+
+This preserves the existing production path. Guarded Rust rendering, session
+integration, full update timing and proof-to-executable binding remain required.

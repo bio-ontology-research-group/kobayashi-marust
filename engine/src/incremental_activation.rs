@@ -169,6 +169,113 @@ pub(crate) fn source_affected(
         .map(|(name, _)| name.clone()).collect())
 }
 
+/// Select source axioms whose antecedents activate for at least one requested
+/// query. Each query has its own bit: conjuncts reached by different queries
+/// must not combine. All role/background constraints remain the caller's
+/// responsibility, as with `source_affected`.
+#[allow(dead_code)] // Experimental module preparation; not a production route yet.
+pub(crate) fn source_module_indices(
+    axioms: &[crate::json_io::SourceAxiomMeta], queries: &[String], global: &[String],
+) -> Option<Vec<usize>> {
+    use crate::frontend::syntax::Concept;
+    use crate::json_io::SourceAxiomKind;
+    struct Graph {
+        ids: HashMap<Concept, usize>,
+        rules: Vec<(Vec<usize>, usize)>,
+    }
+    impl Graph {
+        fn expression(&mut self, expression: &Concept, depth: usize) -> Option<usize> {
+            if depth > 64 || self.ids.len() >= 100_000 { return None; }
+            if let Some(&id) = self.ids.get(expression) { return Some(id); }
+            let id = self.ids.len();
+            self.ids.insert(expression.clone(), id);
+            match expression {
+                Concept::Name(_) | Concept::Bottom => {},
+                Concept::Top => self.rules.push((Vec::new(), id)),
+                Concept::And(children) => {
+                    let mut children = children.iter().map(|child| self.expression(child, depth + 1))
+                        .collect::<Option<Vec<_>>>()?;
+                    children.sort_unstable(); children.dedup();
+                    for &child in &children { self.rules.push((vec![id], child)); }
+                    self.rules.push((children, id));
+                },
+                Concept::Exists(_, filler) => {
+                    let child = self.expression(filler, depth + 1)?;
+                    self.rules.push((vec![id], child));
+                    self.rules.push((vec![child], id));
+                },
+                _ => return None,
+            }
+            Some(id)
+        }
+    }
+    if axioms.len() > 100_000 { return None; }
+    let mut graph = Graph { ids: HashMap::new(), rules: Vec::new() };
+    let mut source_rules = Vec::with_capacity(axioms.len());
+    for axiom in axioms {
+        let left = graph.expression(&axiom.left, 0)?;
+        let right = graph.expression(&axiom.right, 0)?;
+        let rules = match axiom.kind {
+            SourceAxiomKind::SubClass => vec![(vec![left], right)],
+            SourceAxiomKind::Equivalent => vec![(vec![left], right), (vec![right], left)],
+            SourceAxiomKind::Disjoint => {
+                let bottom = graph.expression(&Concept::Bottom, 0)?;
+                let mut body = vec![left, right]; body.sort_unstable(); body.dedup();
+                vec![(body, bottom)]
+            },
+        };
+        let mut positions = Vec::new();
+        for rule in rules { positions.push(graph.rules.len()); graph.rules.push(rule); }
+        source_rules.push(positions);
+    }
+    let query_ids = queries.iter().map(|name| graph.expression(&Concept::Name(name.clone()), 0))
+        .collect::<Option<Vec<_>>>()?;
+    let global_ids = global.iter().map(|name| graph.expression(&Concept::Name(name.clone()), 0))
+        .collect::<Option<Vec<_>>>()?;
+    let words = queries.len().div_ceil(64);
+    if graph.rules.len() > 500_000
+        || graph.ids.len().checked_mul(words)?.checked_mul(8)? > 64 * 1024 * 1024 {
+        return None;
+    }
+    let mut values = vec![vec![0u64; words]; graph.ids.len()];
+    for (q, id) in query_ids.into_iter().enumerate() { values[id][q / 64] |= 1 << (q % 64); }
+    let mut full = vec![u64::MAX; words];
+    if queries.len() % 64 != 0 { *full.last_mut()? = (1 << (queries.len() % 64)) - 1; }
+    for id in global_ids { values[id].clone_from(&full); }
+    let mut users = vec![Vec::new(); graph.ids.len()];
+    for (i, (body, _)) in graph.rules.iter().enumerate() {
+        for &id in body { users[id].push(i); }
+    }
+    let mut queue: VecDeque<_> = (0..graph.rules.len()).collect();
+    let mut queued = vec![true; graph.rules.len()];
+    let mut mask = full.clone();
+    while let Some(i) = queue.pop_front() {
+        queued[i] = false;
+        let (body, head) = &graph.rules[i];
+        mask.clone_from(&full);
+        for &id in body {
+            for (word, premise) in mask.iter_mut().zip(&values[id]) { *word &= premise; }
+        }
+        let mut grew = false;
+        for (word, add) in values[*head].iter_mut().zip(&mask) {
+            let next = *word | add; grew |= next != *word; *word = next;
+        }
+        if grew { for &dependent in &users[*head] {
+            if !queued[dependent] { queued[dependent] = true; queue.push_back(dependent); }
+        }}
+    }
+    Some(source_rules.into_iter().enumerate().filter_map(|(axiom, rules)| {
+        let active = rules.into_iter().any(|i| {
+            mask.clone_from(&full);
+            for &id in &graph.rules[i].0 {
+                for (word, premise) in mask.iter_mut().zip(&values[id]) { *word &= premise; }
+            }
+            mask.iter().any(|word| *word != 0)
+        });
+        active.then_some(axiom)
+    }).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,6 +329,13 @@ mod tests {
             outcomes.push((satisfiable,entails));
         }
         let queries: Vec<_> = (0..3).map(|i| format!("C{i}")).collect();
+        for (mask, theory) in theories.iter().enumerate() { for q in 0..3 {
+            let selected = source_module_indices(theory, &[queries[q].clone()], &[]).unwrap();
+            let module: Vec<_> = selected.into_iter().map(|i| theory[i].clone()).collect();
+            let module_mask = theories.iter().position(|t| *t == module).unwrap();
+            assert_eq!(outcomes[mask].0[q], outcomes[module_mask].0[q], "module satisfiability {mask}/{q}");
+            assert_eq!(outcomes[mask].1[q], outcomes[module_mask].1[q], "module subsumption {mask}/{q}");
+        }}
         for mask in 0..64 { for edit in 0..6 {
             let next=mask ^ (1 << edit);
             let changed=source_affected(&theories[mask],&theories[next],&queries,&[]).unwrap();
@@ -267,6 +381,48 @@ mod tests {
         if let Some(path)=std::env::var_os("KM_SOURCE_ACTIVATION_OUTPUT") {
             std::fs::write(path,serde_json::to_vec(&result).unwrap()).unwrap();
         }
+    }
+
+    #[test]
+    fn source_module_keeps_queries_separate_and_handles_global_and_top_seeds() {
+        use crate::frontend::syntax::Concept;
+        use crate::json_io::{SourceAxiomMeta, SourceAxiomKind};
+        let name = |s: &str| Concept::Name(s.into());
+        let conjunction = Concept::And(BTreeSet::from([name("A"), name("B")]));
+        let ax = SourceAxiomMeta { kind: SourceAxiomKind::SubClass, left: conjunction, right: name("C") };
+        let queries = vec!["A".into(), "B".into()];
+        assert!(source_module_indices(&[ax.clone()], &queries, &[]).unwrap().is_empty());
+        assert_eq!(source_module_indices(&[ax.clone()], &queries, &["B".into()]), Some(vec![0]));
+        let top = SourceAxiomMeta { kind: SourceAxiomKind::SubClass, left: Concept::Top, right: name("B") };
+        assert_eq!(source_module_indices(&[ax.clone(), top.clone()], &queries, &[]), Some(vec![0, 1]));
+        assert!(source_module_indices(&[top], &[], &[]).unwrap().is_empty());
+        let mut unsupported = ax;
+        unsupported.right = Concept::Not(Box::new(name("C")));
+        assert!(source_module_indices(&[unsupported], &queries, &[]).is_none());
+        let many: Vec<_> = (0..130).map(|i| format!("C{i}")).collect();
+        let axioms: Vec<_> = [63, 64, 129, 130].into_iter().map(|i| SourceAxiomMeta {
+            kind: SourceAxiomKind::SubClass, left: name(&format!("C{i}")), right: name("D"),
+        }).collect();
+        assert_eq!(source_module_indices(&axioms, &many, &[]), Some(vec![0, 1, 2]));
+    }
+
+    #[test]
+    fn source_module_optional_frozen_input_probe() {
+        let Some(path) = std::env::var_os("KM_SOURCE_MODULE_INPUT") else { return; };
+        let input: crate::orchestrate::cb_to_ht::TInput = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let focus = std::env::var_os("KM_SOURCE_MODULE_FOCUS").expect("module focus file");
+        let focus: serde_json::Value = serde_json::from_slice(&std::fs::read(focus).unwrap()).unwrap();
+        let queries: Vec<String> = serde_json::from_value(focus["affected_names"].clone()).unwrap();
+        let globals: Vec<_> = input.role_domains.iter().chain(&input.role_ranges)
+            .map(|(_,c)| input.concepts[*c].clone()).collect();
+        let start = std::time::Instant::now();
+        let selected = source_module_indices(&input.source_axioms, &queries, &globals).unwrap();
+        let elapsed = start.elapsed().as_secs_f64();
+        let axioms: Vec<_> = selected.iter().map(|i| &input.source_axioms[*i]).collect();
+        let result = serde_json::json!({"selected_indices": selected, "selected_axioms": axioms, "analysis_s": elapsed});
+        let output = std::env::var_os("KM_SOURCE_MODULE_OUTPUT").expect("module output file");
+        std::fs::write(output, serde_json::to_vec(&result).unwrap()).unwrap();
+        eprintln!("source-module queries={} axioms={} analysis_s={elapsed}", queries.len(), axioms.len());
     }
 
     fn clause(body: &[usize], head: &[usize]) -> JClause {
