@@ -1,0 +1,180 @@
+{
+  "job_id": 53320659,
+  "diagnostic_only": true,
+  "records": [
+    {
+      "ontology": "ore_ont_13276",
+      "status": "executed_unvalidated",
+      "wall_s": 145.35307359695435,
+      "record_sha256": "6b87acfd83f7ce33ad0e09b094588f493dc4563cba1f86c1f1b4556ac3d60e8d",
+      "stderr_sha256": "ee42fd1de1af7d10c255567052a3b7ed51aeb9b90b72385f857a9b8982fa396d",
+      "phases": [
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=18629948 complements_below=0",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=18629948 screen=0.00s",
+        "KM_TIMING frontend done @ 3.66s route=production_all",
+        "KM_TIMING spawn_ht: read+convert 176653 clauses (ht_view=176653) in 1.68s",
+        "KM_TIMING race: HT worker spawned @ 4.59s after the CB stack started",
+        "BRIDGE-SAT-PHASE propagation-direction: 0.00s",
+        "BRIDGE-SAT-PHASE seeds: 0.26s",
+        "BRIDGE-SAT-PHASE loop: 1.92s (nodes=32596)",
+        "BRIDGE-SAT-PHASE extract: 0.29s",
+        "BRIDGE-SAT-PHASE prepare-total: 79.14s (24115 subjects)",
+        "BRIDGE-SAT-PHASE kpset-barrier: 0.33s",
+        "BRIDGE-SAT-PHASE verify-total: 43.31s",
+        "KM_TIMING race: HT worker exited @ 132.29s (success=true)",
+        "KM_TIMING race: read_tout done @ 132.30s",
+        "KM_TIMING engine block done @ 141.61s (subs_keys=30877)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_14572",
+      "status": "executed_unvalidated",
+      "wall_s": 119.57223817519844,
+      "record_sha256": "192bbc30d99a0a2988b5b4da8f271495ef5032ff7fe18f21eea29361ce55f872",
+      "stderr_sha256": "f053d2bd357c05367acb5ea0e21b29dc1886875e5869a91e6b3ea3b90251db39",
+      "phases": [
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=10532344 complements_below=0",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=10532344 screen=0.02s",
+        "KM_TIMING frontend done @ 2.37s route=production_all",
+        "KM_TIMING spawn_ht: read+convert 127651 clauses (ht_view=127651) in 0.89s",
+        "BRIDGE-SAT-PHASE propagation-direction: 0.00s",
+        "BRIDGE-SAT-PHASE seeds: 0.13s",
+        "BRIDGE-SAT-PHASE loop: 52.29s (nodes=59019)",
+        "BRIDGE-SAT-PHASE extract: 0.44s",
+        "BRIDGE-SAT-PHASE prepare-total: 0.00s (0 subjects)",
+        "BRIDGE-SAT-PHASE verify-total: 0.00s",
+        "BRIDGE-SAT-PHASE propagation-direction: 0.00s",
+        "BRIDGE-SAT-PHASE seeds: 0.13s",
+        "BRIDGE-SAT-PHASE loop: 51.72s (nodes=59019)",
+        "BRIDGE-SAT-PHASE extract: 0.43s",
+        "BRIDGE-SAT-PHASE prepare-total: 0.00s (0 subjects)",
+        "BRIDGE-SAT-PHASE verify-total: 0.00s",
+        "KM_TIMING sequential bridge accepted after 114.27s",
+        "KM_TIMING engine block done @ 117.39s (subs_keys=23115)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_1886",
+      "status": "executed_unvalidated",
+      "wall_s": 143.7128645759076,
+      "record_sha256": "9dcd81b98d9d0acba20dc56f6d1a3b32ed361187c331375df1069bfa5ba1d612",
+      "stderr_sha256": "6186c92c3a6f94028173dc91376eec0d748942785f6e851d5b4a7899cfd3c472",
+      "phases": [
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=44280574 complements_below=0",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=44280574 screen=0.00s",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=44280574 screen=0.00s",
+        "KM_TIMING frontend done @ 7.03s route=production_all",
+        "KM_TIMING certified ABox production probe declined @ 18.62s: out of fragment: positive EL ABox consistency certificate declined",
+        "KM_TIMING frontend done @ 18.62s route=certified_nominals",
+        "KM_TIMING race: HT not routable @ 37.18s after the CB stack started",
+        "KM_TIMING engine block done @ 136.64s (subs_keys=4557)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_3726",
+      "status": "executed_unvalidated",
+      "wall_s": 111.42809365689754,
+      "record_sha256": "a791813f2605f52f7bb523f59adbd1521086195af32fcbe9401470f52ab72b2e",
+      "stderr_sha256": "475391d94a82a69a14e4e7be0b13c43bfa7c7a8906dd7aa947aee816daada6d3",
+      "phases": [
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=5.70s cached=false sidecar=false",
+        "KM_TIMING rules-consistency input parsed @ 0.14s clauses=8074 rules=2602",
+        "KM_TIMING rules-consistency converted @ 0.17s ht_clauses=10254 queries=178",
+        "KM_TIMING rules-consistency serialized @ 0.19s bytes=3962380",
+        "KM_TIMING rules-consistency worker input sent @ 0.20s",
+        "KM_TIMING rules-consistency worker exited @ 105.65s success=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.00s route=certified_el_production",
+        "KM_TIMING engine block done @ 0.00s (subs_keys=191)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_4410",
+      "status": "executed_unvalidated",
+      "wall_s": 166.83898098021746,
+      "record_sha256": "943b6983719804d5c50b0d03d360f1493c5df1353b527843bcfed4576992479e",
+      "stderr_sha256": "4eb990888936fb51dbddb1fdf4c00fb6e0bf6926b976b8c2ccac098a65633e8a",
+      "phases": [
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=45114936 complements_below=0",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=45114936 screen=0.00s",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 5.38s route=nominals",
+        "KM_TIMING engine block done @ 160.04s (subs_keys=11)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_7278",
+      "status": "executed_unvalidated",
+      "wall_s": 103.28663268499076,
+      "record_sha256": "ab2036bfb6ccedcdfc5a1316aa8dc9ac2ed85b3c79091c6fbf3aa4459f9b14b2",
+      "stderr_sha256": "dc06aa1c0b113cce733f582a43e18aca2e9508887d09ea9fe56761e922591aa1",
+      "phases": [
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=5.81s cached=false sidecar=false",
+        "KM_TIMING rules-consistency input parsed @ 0.14s clauses=8074 rules=2602",
+        "KM_TIMING rules-consistency converted @ 0.17s ht_clauses=10254 queries=178",
+        "KM_TIMING rules-consistency serialized @ 0.18s bytes=3962502",
+        "KM_TIMING rules-consistency worker input sent @ 0.20s",
+        "KM_TIMING rules-consistency worker exited @ 97.40s success=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.00s route=certified_el_production",
+        "KM_TIMING engine block done @ 0.00s (subs_keys=191)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_7361",
+      "status": "executed_unvalidated",
+      "wall_s": 120.78157433867455,
+      "record_sha256": "363b0c102da66577511fe152e2c2e2c497656718bdb25ad8314b5a0c0b5e6ea4",
+      "stderr_sha256": "2b4c634fd248391eb8494ddb17c90b9ebbe2011b81d692d1c53093b5eb1c6684",
+      "phases": [
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=10532345 complements_below=0",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=10532345 screen=0.02s",
+        "KM_TIMING frontend done @ 2.45s route=production_all",
+        "KM_TIMING spawn_ht: read+convert 127651 clauses (ht_view=127651) in 0.89s",
+        "BRIDGE-SAT-PHASE propagation-direction: 0.02s",
+        "BRIDGE-SAT-PHASE seeds: 0.13s",
+        "BRIDGE-SAT-PHASE loop: 52.70s (nodes=59019)",
+        "BRIDGE-SAT-PHASE extract: 0.41s",
+        "BRIDGE-SAT-PHASE prepare-total: 0.00s (0 subjects)",
+        "BRIDGE-SAT-PHASE verify-total: 0.00s",
+        "BRIDGE-SAT-PHASE propagation-direction: 0.00s",
+        "BRIDGE-SAT-PHASE seeds: 0.14s",
+        "BRIDGE-SAT-PHASE loop: 51.73s (nodes=59019)",
+        "BRIDGE-SAT-PHASE extract: 0.40s",
+        "BRIDGE-SAT-PHASE prepare-total: 0.00s (0 subjects)",
+        "BRIDGE-SAT-PHASE verify-total: 0.00s",
+        "KM_TIMING sequential bridge accepted after 114.27s",
+        "KM_TIMING engine block done @ 117.50s (subs_keys=23115)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_9724",
+      "status": "executed_unvalidated",
+      "wall_s": 121.28688920475543,
+      "record_sha256": "250fa1a791ab89c916d7d2999b889a2b61635b711ee4b5d5da83ff9b1eb3a877",
+      "stderr_sha256": "ab0fafe81d4ca264db3626af7370a1b1ce088351f43cbc7050f2d51750d07482",
+      "phases": [
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=10532295 complements_below=0",
+        "KM_TIMING in-process frontend declined by the exact-EL screen: bytes=10532295 screen=0.02s",
+        "KM_TIMING frontend done @ 2.54s route=production_all",
+        "KM_TIMING spawn_ht: read+convert 127651 clauses (ht_view=127651) in 0.90s",
+        "BRIDGE-SAT-PHASE propagation-direction: 0.02s",
+        "BRIDGE-SAT-PHASE seeds: 0.13s",
+        "BRIDGE-SAT-PHASE loop: 52.76s (nodes=59019)",
+        "BRIDGE-SAT-PHASE extract: 0.41s",
+        "BRIDGE-SAT-PHASE prepare-total: 0.00s (0 subjects)",
+        "BRIDGE-SAT-PHASE verify-total: 0.00s",
+        "BRIDGE-SAT-PHASE propagation-direction: 0.00s",
+        "BRIDGE-SAT-PHASE seeds: 0.13s",
+        "BRIDGE-SAT-PHASE loop: 51.99s (nodes=59019)",
+        "BRIDGE-SAT-PHASE extract: 0.41s",
+        "BRIDGE-SAT-PHASE prepare-total: 0.00s (0 subjects)",
+        "BRIDGE-SAT-PHASE verify-total: 0.00s",
+        "KM_TIMING sequential bridge accepted after 114.81s",
+        "KM_TIMING engine block done @ 118.10s (subs_keys=23115)"
+      ]
+    }
+  ],
+  "scope": "Instrumented measurements; outputs not yet independently audited. No release count changes."
+}
