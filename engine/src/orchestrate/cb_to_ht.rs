@@ -1133,6 +1133,9 @@ pub(crate) fn install_nominal_abox_with_same(
             true
         }
         Err(detail) => {
+            if std::env::var_os("KM_TIMING").is_some() {
+                eprintln!("native ABox conversion declined: {detail}");
+            }
             if has_nominal_input
                 && !tin
                     .fenced

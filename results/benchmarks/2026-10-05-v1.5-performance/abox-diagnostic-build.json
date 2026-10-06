@@ -1,0 +1,9 @@
+{
+  "diagnostic_only": true,
+  "build_exit_code": 0,
+  "build_log_sha256": "42471522010b04a88415ab3e7c08b94510eb8ef81d372a70fa8f4fb40efd06d8",
+  "source_file": "engine/src/orchestrate/cb_to_ht.rs",
+  "source_sha256": "28af78c65eaf3204fbe46e843afc53ccd03aed8107be42bc199444f2a8292885",
+  "change": "Print existing refusal detail only when KM_TIMING is set; no semantic decision changed.",
+  "release_approved": false
+}

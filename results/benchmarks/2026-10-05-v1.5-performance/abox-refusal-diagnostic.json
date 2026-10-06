@@ -1,0 +1,45 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "4e8f19bc600eca3f6368c72e397dfa3d1a9d263574de86af1388fc19e15dd015",
+  "source_commit": "ef84dcf1 plus optional ABox refusal diagnostic",
+  "source_change_sha256": "28af78c65eaf3204fbe46e843afc53ccd03aed8107be42bc199444f2a8292885",
+  "attempts": [
+    {
+      "ontology": "ore_ont_1342",
+      "source_sha256": "1faf6c93fa1ee0c3570e0f6c1568852e63c52ec416b5901112312b1bb39765c6",
+      "status": "timeout",
+      "exit_code": -9,
+      "wall_s": 5.023280926048756,
+      "stderr_sha256": "9f6ec8f45c8f9c5542233b443a62737810f6118595942b639dfd31de3a4fb741",
+      "trace": [
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.00s route=nominals"
+      ]
+    },
+    {
+      "ontology": "ore_ont_14379",
+      "source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+      "status": "timeout",
+      "exit_code": -9,
+      "wall_s": 5.008900818997063,
+      "stderr_sha256": "8bee705c2a26ba9de01f2b4c66ceb7332829c0fbea23cc868d7480d6b29d79c7",
+      "trace": [
+        "KM_TIMING ground-rule source: rules=0 instances=0",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false",
+        "KM_TIMING frontend done @ 0.01s route=manual",
+        "KM_TIMING spawn_ht: read+convert 3204 clauses (ht_view=3064) in 0.01s",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.01s route=ht_bridge",
+        "native ABox conversion declined: 34 data-property assertion axiom(s) are unsupported",
+        "KM_TIMING compact typed bridge probe declined @ 0.02s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.02s route=nominals"
+      ]
+    }
+  ],
+  "release_approved": false
+}
