@@ -463,6 +463,20 @@ impl IncrementalBridgeClassifier {
         if side_changed || self.result.inconsistent {
             affected.extend(queries.iter().cloned());
         }
+        let mut deletion_reproved = false;
+        if source_reuse && std::env::var_os("KM_INCREMENTAL_DELETION_SUPPORT").is_some()
+            && !crate::tableau::ht_lean_certification_requested()
+        {
+            if let Some(supported) = crate::incremental_deletion::supported_rows_with_background(
+                &self.input.source_axioms, &input.source_axioms, &queries, &affected, &self.result, Some(&input),
+            ) {
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!("bridge incremental deletion supported_rows={} invalidated_before={}", supported.len(), affected.len());
+                }
+                affected.retain(|q| !supported.contains(q));
+                deletion_reproved = true;
+            }
+        }
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!(
                 "bridge incremental delta kind={kind:?} side_changed={side_changed} source_locality={source_reuse} inconsistent={} queries={} affected={}",
@@ -484,7 +498,13 @@ impl IncrementalBridgeClassifier {
         rebuilt_ids.sort_unstable();
         rebuilt_ids.dedup();
 
-        let module_result = if source_reuse { reclassify(&input, &rebuilt_ids) } else { None };
+        // Pure deletion preserves the prior global model. If every invalidated
+        // row has a fresh source proof, no consistency or subject probe remains.
+        let module_result = if deletion_reproved && rebuilt_ids.is_empty() {
+            Some(crate::konclude_ht::bridge::BridgedClassification {
+                consistent: true, unsatisfiable: Vec::new(), subsumptions: Vec::new(),
+            })
+        } else if source_reuse { reclassify(&input, &rebuilt_ids) } else { None };
         let classification = module_result.or_else(||
             crate::konclude_ht::bridge::bridged_classify_queries(&input, &rebuilt_ids)).ok_or_else(
                 || IncrementalReasoningError::HtDeferred {

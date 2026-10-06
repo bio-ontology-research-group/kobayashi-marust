@@ -27,6 +27,7 @@ def main():
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--repeats', type=int, default=1)
     parser.add_argument('--source-module', action='store_true')
+    parser.add_argument('--deletion-support', action='store_true')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     sources = [args.sources / f'{i:03}.ofn' for i in range(5)]
@@ -37,7 +38,7 @@ def main():
     env.update(KM_HT_DDB='1', KM_HT_NATIVE_FULL='1', KM_CACHE_CONFORMANCE='1',
                KM_THREADS='1', OMP_NUM_THREADS='1', RAYON_NUM_THREADS='1', KM_TIMING='1')
     cpu = min(os.sched_getaffinity(0))
-    receipt = dict(diagnostic_only=True, source_module=args.source_module, binary_sha256=digest(args.binary),
+    receipt = dict(diagnostic_only=True, source_module=args.source_module, deletion_support=args.deletion_support, binary_sha256=digest(args.binary),
                    sources={path.name: digest(path) for path in sources}, records=[],
                    cpus=1, memory_gib=20, session_timeout_s=180,
                    scope='Five revisions of one ontology; local timings do not establish the full release target.')
@@ -57,7 +58,8 @@ def main():
             process = subprocess.Popen([str(args.binary.resolve()), 'incremental-source'],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=error, text=True,
                 env=dict(env, KM_INCREMENTAL_SOURCE_LOCALITY='1',
-                         **({'KM_INCREMENTAL_SOURCE_MODULE':'1'} if args.source_module else {})), preexec_fn=prepare)
+                         **({'KM_INCREMENTAL_SOURCE_MODULE':'1'} if args.source_module else {}),
+                         **({'KM_INCREMENTAL_DELETION_SUPPORT':'1'} if args.deletion_support else {})), preexec_fn=prepare)
             monitored = []
             watcher = threading.Thread(target=lambda: monitored.append(watchdog.monitor(
                 process, timeout=180, memcap_bytes=20 * 1024**3)), daemon=True)

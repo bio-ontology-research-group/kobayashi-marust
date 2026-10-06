@@ -1,0 +1,64 @@
+{
+  "diagnostic_only": true,
+  "module": {
+    "queries": 1130,
+    "source_axioms": 16538,
+    "module_axioms": 5372,
+    "selected_axiom_key_sha256": "beae83d302adc5eb82455349f49ebea6e548ea2fdf75991dea267f3a73a28c78"
+  },
+  "preparation_s": 0.688187688938342,
+  "input_hashes": {
+    "binary": "c30a32ac1d65b71fa6308c03e2081939d1e0535fc745593209a780f816a0c56e",
+    "source": "fe1fdd9ddbcfe8e8eaf75f4fae7765a40b90712397e133f60cce32319d1c49fc",
+    "typed": "7d33f9ef2dcee90ce9e162e2e570055c8aaf720a724f145a23738ee42923d3f6",
+    "focus": "06ba2664b7c3cdb6c27e4d65acc2dc730564b7e6055f8e136ff5e26c5321ab90",
+    "fresh": "6ce671ce30701e3cea56a7be1a90eadd1f9dd86d1e26426cb263a451263daaa0",
+    "previous": "97a95bbfc29dd4c7228f20740a5c0d886ee196a113b1154d785759ca5d90168f"
+  },
+  "records": [
+    {
+      "label": "control",
+      "repetition": 0,
+      "wall_s": 1.7300784739200026,
+      "merged_full_agreement": null,
+      "merge_s": null,
+      "agreement": true,
+      "answer_sha256": "6ce671ce30701e3cea56a7be1a90eadd1f9dd86d1e26426cb263a451263daaa0",
+      "source_sha256": "b649b85650e60fb6b853ec82351e425f01bfe2bf22a1ccf942bdb6233ea31195"
+    },
+    {
+      "label": "control",
+      "repetition": 1,
+      "wall_s": 1.7534157669870183,
+      "merged_full_agreement": null,
+      "merge_s": null,
+      "agreement": true,
+      "answer_sha256": "6ce671ce30701e3cea56a7be1a90eadd1f9dd86d1e26426cb263a451263daaa0",
+      "source_sha256": "b649b85650e60fb6b853ec82351e425f01bfe2bf22a1ccf942bdb6233ea31195"
+    },
+    {
+      "label": "module",
+      "repetition": 0,
+      "wall_s": 0.7346983649767935,
+      "merged_full_agreement": true,
+      "merge_s": 0.017554954974912107,
+      "agreement": true,
+      "answer_sha256": "b3a23f04923906633dbaac2de2040b3c2f29aed66ba925bb70d1baf5af2b9d0f",
+      "source_sha256": "74349581f5a3e8d8cd85899e35741cbb15d28f3c5f1e6f5dc50d03d6c3945d95"
+    },
+    {
+      "label": "module",
+      "repetition": 1,
+      "wall_s": 0.7061431059846655,
+      "merged_full_agreement": true,
+      "merge_s": 0.01810239104088396,
+      "agreement": true,
+      "answer_sha256": "b3a23f04923906633dbaac2de2040b3c2f29aed66ba925bb70d1baf5af2b9d0f",
+      "source_sha256": "74349581f5a3e8d8cd85899e35741cbb15d28f3c5f1e6f5dc50d03d6c3945d95"
+    }
+  ],
+  "cpu": 0,
+  "timeout_s": 180,
+  "memory_gib": 20,
+  "scope": "One-source module rendering and fresh-answer comparison; not end-to-end incremental or release evidence."
+}

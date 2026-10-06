@@ -16,6 +16,7 @@ pub mod frontend;
 pub mod fxhash;
 pub mod incremental;
 mod incremental_activation;
+mod incremental_deletion;
 mod incremental_ht;
 mod incremental_positive_abox;
 mod incremental_rules;

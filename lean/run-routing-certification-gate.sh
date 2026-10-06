@@ -40,6 +40,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMIncrementalExplanationCertification \
         ContextCalculus.IncrementalHornActivation \
         ContextCalculus.IncrementalSourceLocality \
+        ContextCalculus.IncrementalDeletionSupport \
         ContextCalculus.KMAtomicABoxPublication \
         ContextCalculus.ABoxBooleanInclusion \
         ContextCalculus.EndpointTransitivity \
@@ -83,6 +84,13 @@ for theorem in \
     IncrementalHornActivation.inactive_delta_preserves_closure \
     IncrementalHornActivation.entails_iff_derives \
     IncrementalHornActivation.inactive_delta_preserves_entailment \
+    IncrementalDeletionSupport.proof_sound \
+    IncrementalDeletionSupport.satisfies_after_deletion \
+    IncrementalDeletionSupport.consistency_after_deletion \
+    IncrementalDeletionSupport.rederived_deletion_row \
+    IncrementalDeletionSupport.query_sat_after_deletion \
+    IncrementalDeletionSupport.query_unsat_from_proof \
+    IncrementalDeletionSupport.rederived_query_satisfiability \
     IncrementalSourceLocality.eval_mask \
     IncrementalSourceLocality.transfer_model \
     IncrementalSourceLocality.inactive_delta_preserves_subsumptions \
