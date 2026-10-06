@@ -1,5 +1,5 @@
 {
-  "status": "Local correctness/certification gates passed; full classification queued. Frontend preservation established on 1919/1920 inputs; old forced-nominal memory failure unresolved.",
+  "status": "Local correctness/certification gates passed; full classification running. 1919 original frontend outcomes preserved; remaining 15687 symbolic production frontend is byte-identical in source-matched diagnostics. Ordinary frontend memory failures remain.",
   "source_manifest_sha256": "c4ac70b0d661eadd913485c80fdc05836e3d93a935db27611cac0292efaffef2",
   "diagnostic_tests": {
     "data_source": {
@@ -22,12 +22,12 @@
     "frontend_clause_order": 53313782,
     "frontend_refusals": 53314782,
     "frontend_large_validation": 53314986,
-    "dense_data_full": 53315705
+    "dense_data_full": 53315705,
+    "frontend_automatic_validation": 53316202
   },
   "release_approved": false,
   "next": [
-    "Reconcile full frontend gate with exact refusal, clause-order and larger-memory validation receipts.",
-    "Launch frozen full classification with dense routing; compare complete audited metrics to all required competitors.",
+    "Finish full classification sweeps and compare complete audited scores, losses, and matched runtimes with all required competitors.",
     "Keep singleton scan option disabled by default until repeated paired evidence justifies promotion.",
     "Incremental reuse goal remains outstanding.",
     "Investigate whether compact exact functional-data owner inequalities can avoid thousands of literal singleton merges; require model-equivalence proof before implementing a new source reduction."
@@ -38,8 +38,12 @@
     "inputs": 1920,
     "preserved": 1919,
     "unresolved": [
-      "ore_ont_15687"
+      "ore_ont_15687 ordinary frontend representation"
     ],
-    "full_frontend_preservation_passed": false
+    "full_frontend_preservation_passed": false,
+    "symbolic_supplement": "15687-symbolic-preservation.json",
+    "symbolic_supplement_preserved": [
+      "ore_ont_15687"
+    ]
   }
 }

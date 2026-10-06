@@ -68,3 +68,23 @@ refusals. ORE 15687 remains unresolved. Thus preservation is established for
 1,919 inputs, and the full frontend gate is explicitly **not passed**.
 Candidate classification sweep **53315705** uses the frozen full corpus and
 original limits, with the singleton-scan experiment disabled.
+
+Follow-up on 2026-10-06: automatic ordinary `ofn` job **53316202** also exceeds
+20 GiB. Production classification instead selects `symbolic_source` before
+the ordinary frontend for this source's large cardinalities. We built the
+same diagnostic helper against exact engine snapshots `54c91c65` and
+`190d5401`, verified all 376 source files in each snapshot against Git, and
+compared every symbolic frontend field. Both completed under 20 GiB/240 s.
+All 175,535,414 output bytes match, including clauses and all metadata.
+See [the receipt](15687-symbolic-preservation.json) and
+[source/build provenance](15687-symbolic-source-verification.json).
+
+The helper exhaustively destructures `FrontendResult`, so omitted or added
+fields fail compilation. It uses `ofn_to_symbolic_frontend` with the same
+trigger-absorption default as `symbolic_source::classify_text`; it does not run
+reasoning. The package was cleaned between snapshot builds to prevent Cargo
+from reusing artifacts with equal relative paths and older archive timestamps.
+The comparison uses diagnostic builds, not the frozen release executables.
+It closes the source-level preservation question for this production
+representation, but does not establish ordinary-frontend equivalence or
+change the failed original gate to a pass. No release target is established.
