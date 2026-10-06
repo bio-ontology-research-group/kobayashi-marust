@@ -1,0 +1,125 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "input": {
+    "ontology": "ore_ont_14379",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14379.owl",
+    "sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+    "input_admission": "checks_passed",
+    "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/17/ore_ont_14379",
+    "reference_audit_sha256": "4f2257a1804d619c8c8174fe38ba2f1bb457198d747bf7bfec46813261727a1b"
+  },
+  "artifact": {
+    "artifacts": [
+      {
+        "id": "km",
+        "path": "/tmp/agent/km-v150-diagnostics/data-disjoint-14379/km-data-disjoint-shadow-a653b7a52e21",
+        "sha256": "a653b7a52e21c22ae32f64eddcf940d09aac5a50010d73b6dee281d4fa464aa3"
+      }
+    ]
+  },
+  "scope": "Unpromoted shadow with existing padding/decimal changes; 15-second local diagnostic only.",
+  "runner_sha256": "4f91d6c78890228e8a2c58b48d384ebcc4c2f019bbd5b1f59f1e3f2d47170c10",
+  "attempts": [
+    {
+      "arm": "off",
+      "flags": {
+        "KM_HT_DDB": "1",
+        "KM_HT_NATIVE_FULL": "1",
+        "KM_CACHE_CONFORMANCE": "1",
+        "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+        "KM_TIMING": "1",
+        "KM_HT_STATS": "1",
+        "KM_BRIDGE_PROGRESS": "1",
+        "KM_EXPERIMENTAL_DATA_PADDING": "1"
+      },
+      "record": {
+        "status": "timeout",
+        "exit_code": -9,
+        "wall_s": 15.01987088099122,
+        "peak_bytes": 497897472,
+        "source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+        "artifact_sha256": "a653b7a52e21c22ae32f64eddcf940d09aac5a50010d73b6dee281d4fa464aa3",
+        "timeout_s": 15,
+        "memory_mib": 20480,
+        "cpu_threads": 1
+      },
+      "comparisons": {},
+      "verified": false,
+      "stderr_sha256": "5ba5284aaa127f11c13470a41098531c7385f7c870ff7cdda2a5d7044a63db90",
+      "trace": [
+        "KM_TIMING ground-rule source: rules=0 instances=0",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.02s cached=false sidecar=false",
+        "KM_TIMING frontend done @ 0.02s route=manual",
+        "cb_to_ht [emelim] eliminated 2 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=260 moved=4 tautologies=0",
+        "KM_TIMING spawn_ht: read+convert 3204 clauses (ht_view=3064) in 0.01s",
+        "BRIDGE-PUBLIC-SUBJECTS selected=79 active=113",
+        "BRIDGE-DATATYPE-DEFER: a data role occurs in an unsupported non-datatype clause; clause=1239 touched=[17, 26] value={\"body\":[{\"k\":\"r\",\"r\":17,\"s\":0,\"t\":1},{\"k\":\"r\",\"r\":26,\"s\":0,\"t\":1}],\"head\":[]}",
+        "tableau error: konclude_ht bridge defer",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.01s route=ht_bridge",
+        "cb_to_ht [emelim] eliminated 2 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=226 moved=4 tautologies=0",
+        "KM_TIMING compact typed bridge probe declined @ 0.03s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.03s route=nominals"
+      ]
+    },
+    {
+      "arm": "on",
+      "flags": {
+        "KM_HT_DDB": "1",
+        "KM_HT_NATIVE_FULL": "1",
+        "KM_CACHE_CONFORMANCE": "1",
+        "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+        "KM_TIMING": "1",
+        "KM_HT_STATS": "1",
+        "KM_BRIDGE_PROGRESS": "1",
+        "KM_EXPERIMENTAL_DATA_PADDING": "1",
+        "KM_EXPERIMENTAL_DATA_ROLE_DISJOINT": "1"
+      },
+      "record": {
+        "status": "timeout",
+        "exit_code": -9,
+        "wall_s": 15.01291765703354,
+        "peak_bytes": 500551680,
+        "source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+        "artifact_sha256": "a653b7a52e21c22ae32f64eddcf940d09aac5a50010d73b6dee281d4fa464aa3",
+        "timeout_s": 15,
+        "memory_mib": 20480,
+        "cpu_threads": 1
+      },
+      "comparisons": {},
+      "verified": false,
+      "stderr_sha256": "aaa719a6fe09e794de9d8686b193caa1e62e4abd2b250c99de924396b5329b7e",
+      "trace": [
+        "KM_TIMING ground-rule source: rules=0 instances=0",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false",
+        "KM_TIMING frontend done @ 0.01s route=manual",
+        "cb_to_ht [emelim] eliminated 2 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=260 moved=4 tautologies=0",
+        "KM_TIMING spawn_ht: read+convert 3204 clauses (ht_view=3064) in 0.01s",
+        "BRIDGE-PUBLIC-SUBJECTS selected=79 active=113",
+        "bridge [source-tbox] axioms=412 eq=35/39 [\"ObservationEvent\", \"EventStream\", \"ObservationGroup\", \"ObservationSequence\", \"SingleObservation\", \"km_src___ground_assertion_31\", \"km_src___ground_assertion_10\", \"km_src___ground_assertion_11\", \"km_src___ground_assertion_12\", \"km_src___ground_assertion_7\", \"km_src___ground_assertion_8\", \"km_src___ground_assertion_9\", \"km_src___ground_assertion_18\", \"km_src___ground_assertion_17\", \"km_src___ground_assertion_16\", \"km_src___ground_assertion_14\", \"km_src___ground_assertion_15\", \"km_src___ground_assertion_33\", \"km_src___ground_assertion_6\", \"km_src___ground_assertion_13\", \"km_src___ground_assertion_32\", \"km_src___ground_assertion_20\", \"km_src___ground_assertion_28\", \"km_src___ground_assertion_24\", \"km_src___ground_assertion_25\", \"km_src___ground_assertion_19\", \"km_src___ground_assertion_23\", \"km_src___ground_assertion_21\", \"km_src___ground_assertion_22\", \"km_src___ground_assertion_26\", \"km_src___ground_assertion_27\", \"km_src___ground_assertion_29\", \"km_src___ground_assertion_30\", \"km_src___ground_assertion_2\", \"km_src___ground_assertion_4\", \"km_src___ground_assertion_0\", \"km_src___ground_assertion_3\", \"km_src___ground_assertion_5\", \"km_src___ground_assertion_1\"] direct=577 role-links=50 absorbed-gci=19 top-gci=0 unsupported=0",
+        "bridge [or-replacements] implications=0 common=11",
+        "bridge [branch-triggers] role-markers=29",
+        "BRIDGE-ENV: 0.00s (named=576, trigger_absorb=true, unsupported=1, independent_abox=false)",
+        "tableau error: konclude_ht bridge defer",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.01s route=ht_bridge",
+        "cb_to_ht [emelim] eliminated 2 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=226 moved=4 tautologies=0",
+        "KM_TIMING compact typed bridge probe declined @ 0.02s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.02s route=nominals"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "job_id": "53338465",
+  "inputs": 1920,
+  "chunks": 60,
+  "timeout_s": 240,
+  "audit_timeout_s": 600,
+  "memory_gib": 20,
+  "cpus": 1,
+  "scope": "Full frozen graph-output sweep; all original inputs, admission labels and reference audits retained.",
+  "release_approved": false
+}

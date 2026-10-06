@@ -19,6 +19,11 @@ def times(rows):
 
 def summarize(root, job, baseline_path, variant='native'):
     prefix, inventory, runner, flags = {
+        'graph-json': ('graph-json-full-', 'graph-json-full-artifact.json',
+                       'run_graph_json_full.py',
+                       {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1', 'KM_CACHE_CONFORMANCE': '1',
+                        'KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE': '1', 'KM_FAST_IRI_GRAMMAR': '1',
+                        'KM_JSON_GRAPH_EDGES': '1'}),
         'production-v150': ('production-v150-full-', 'production-v150-full-artifact.json',
                            'run_production_v150_full.py',
                            {'KM_HT_DDB': '1', 'KM_HT_NATIVE_FULL': '1', 'KM_CACHE_CONFORMANCE': '1',
@@ -117,6 +122,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--job', required=True)
     parser.add_argument('--baseline', required=True, type=Path)
-    parser.add_argument('--variant', choices=['native', 'conformance', 'nominal-guard', 'successor-deadline', 'data-source', 'work-budget', 'dense-data', 'single-worker', 'finite-role-index', 'iri-cached', 'production-v150'], default='native')
+    parser.add_argument('--variant', choices=['native', 'conformance', 'nominal-guard', 'successor-deadline', 'data-source', 'work-budget', 'dense-data', 'single-worker', 'finite-role-index', 'iri-cached', 'production-v150', 'graph-json'], default='native')
     args = parser.parse_args()
     print(json.dumps(summarize(Path(__file__).resolve().parent, args.job, args.baseline, args.variant), indent=2))

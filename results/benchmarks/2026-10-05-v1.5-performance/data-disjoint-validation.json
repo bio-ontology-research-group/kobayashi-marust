@@ -1,0 +1,14 @@
+{
+  "release_approved": false,
+  "source_manifest_sha256": "7f9cf9c576bfcd4b57a5ac6e2c113f4efa028e0a89359b061f732e77054ee30e",
+  "patch_sha256": "e49b8b89461642f5ecd019e1779086f31e12c6e61041a310936974303d72a21c",
+  "logs": {
+    "data-disjoint-lean.log": "5ffcde4a72c619b9aa0da5acf2b2707c112a130258d93ca21fd691b0591d0543",
+    "data-disjoint-shadow-tests.log": "e4e1c21b955e51a3c483f3c79583567f8ca2c3f2cfbc847bca57c8837ce43988",
+    "data-disjoint-shadow-build.log": "05d60596d2583335a14c75c80b6260a22352d1aac70b46388e85d0ff9062eaf2",
+    "data-disjoint-encoding-build.log": "cb5a6e483e63d440eafff27810dcca74c89737e577f5a3d02fd362b185420227"
+  },
+  "proof_scope": "Shared injective embedding preserves role disjointness. No concrete runtime realization proof or production gate extension.",
+  "shape_test_scope": "One exact-clause recognition test passed before adding the encoder. Runtime controls test the final diagnostic binary; four still defer.",
+  "patch_format": "Unified diff with zero context; apply using git apply --unidiff-zero against the recorded shadow HEAD."
+}

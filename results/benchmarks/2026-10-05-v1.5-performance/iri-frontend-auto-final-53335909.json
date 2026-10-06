@@ -1,0 +1,41 @@
+{
+  "complete": true,
+  "complete_chunks": 60,
+  "recorded_inputs": 1920,
+  "exact_agreements": 1919,
+  "differing_results": [],
+  "unresolved": [
+    "ore_ont_15687"
+  ],
+  "release_approved": false,
+  "diagnostic_only": true,
+  "scope": "Explicit automatic frontend output and refusal equivalence; not classification.",
+  "job_id": "53335909",
+  "unresolved_attempt": {
+    "ontology": "ore_ont_15687",
+    "source_sha256": "e8e00e63ab8bbef80de3059389b565613c3a79c0210c9ed710cc8703d4849791",
+    "input_admission": "checks_passed",
+    "arms": {
+      "cached": {
+        "status": "memout",
+        "exit_code": -9,
+        "wall_s": 30.347488462924957,
+        "peak_bytes": 21496938496,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "meta_sha256": null
+      },
+      "original": {
+        "status": "memout",
+        "exit_code": -9,
+        "wall_s": 30.351094979792833,
+        "peak_bytes": 21475667968,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "meta_sha256": null
+      }
+    },
+    "exact_agreement": false,
+    "outcome": "unresolved"
+  }
+}

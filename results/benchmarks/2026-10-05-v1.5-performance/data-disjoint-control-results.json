@@ -1,0 +1,88 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "e9c5b94612b5f294849bea1634bcbd67ae3d6fd768f17e2f1f5c4ce00616c67b",
+  "flags": {
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_HT_DDB": "1",
+    "KM_HT_ONLY": "bridge",
+    "KM_NOMINALS": "1",
+    "KM_THREADS": "1",
+    "KM_EXPERIMENTAL_DATA_ROLE_DISJOINT": "1",
+    "KM_EXPERIMENTAL_DATA_PADDING": "1",
+    "KM_HT_STATS": "1",
+    "KM_BRIDGE_PROGRESS": "1"
+  },
+  "release_approved": false,
+  "cases": [
+    {
+      "name": "same_value",
+      "expected_consistent": false,
+      "status": "ok",
+      "exit_code": 3,
+      "passed": false,
+      "answer": null,
+      "source_sha256": "04a3e5cac50b8a64cf9344903357e4a0cd2a497ff423a57ab25928ca9f736a33",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=4 moved=0 tautologies=1\nbridge [source-tbox] axioms=4 eq=2/2 [\"km_src___ground_assertion_0\", \"km_src___ground_assertion_1\"] direct=0 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=0\nBRIDGE-ENV: 0.00s (named=12, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=6 extended=6 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=9)\nSAT-STATS: insufficient all=0 atmost=0 or=0 eqcand=0 value=0 nominal=0\ntableau error: konclude_ht bridge defer\nunsupported: selected HT mechanism deferred (worker exit 1)\n"
+    },
+    {
+      "name": "different_values",
+      "expected_consistent": true,
+      "status": "ok",
+      "exit_code": 0,
+      "passed": true,
+      "answer": {
+        "consistent": true,
+        "subsumptions": [],
+        "unsatisfiable": [],
+        "dropped": 0
+      },
+      "source_sha256": "5c62a42d711b2819464dca7ea2056d8b76f44153e08de97b93a1f636c148623b",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=4 moved=0 tautologies=1\nbridge [source-tbox] axioms=4 eq=2/2 [\"km_src___ground_assertion_0\", \"km_src___ground_assertion_1\"] direct=0 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=0\nBRIDGE-ENV: 0.00s (named=11, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=6 extended=6 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=9)\nSAT-STATS: insufficient all=0 atmost=0 or=0 eqcand=0 value=0 nominal=0\nBRIDGE-KPSET-MESSAGES subject 9: visits=0 messages=3\nBRIDGE-PREPARE round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE prepare-total: 0.00s (1 subjects)\nBRIDGE-SAT-PHASE kpset-barrier: 0.00s\nBRIDGE-KPSET-DERIVED subject 9: 0 candidates, no satisfiability job\nBRIDGE-VERIFY round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE verify-total: 0.00s\nBRIDGE-SOURCE-POST-CLOSURE seeded=0 combined=0\n"
+    },
+    {
+      "name": "distinct_objects",
+      "expected_consistent": true,
+      "status": "ok",
+      "exit_code": 3,
+      "passed": false,
+      "answer": null,
+      "source_sha256": "a11dd579910a0d4b2b78081aa22b1c9f6f4b5ebcff15e444dd4a81bdb8d4c30c",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=4 moved=0 tautologies=1\nbridge [source-tbox] axioms=4 eq=2/2 [\"km_src___ground_assertion_0\", \"km_src___ground_assertion_1\"] direct=0 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=0\nBRIDGE-ENV: 0.00s (named=12, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=6 extended=6 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=11)\nSAT-STATS: insufficient all=0 atmost=0 or=0 eqcand=0 value=0 nominal=0\ntableau error: konclude_ht bridge defer\nunsupported: selected HT mechanism deferred (worker exit 1)\n"
+    },
+    {
+      "name": "boolean_two_disjoint",
+      "expected_consistent": true,
+      "status": "ok",
+      "exit_code": 3,
+      "passed": false,
+      "answer": null,
+      "source_sha256": "b9f02cbe25e3effa873b9a266cbd4f30cbc8dbff91e51bb6b112a70fa02c9898",
+      "stderr": "unsupported: source has neither rules nor data assertions to normalize\n"
+    },
+    {
+      "name": "boolean_three_disjoint",
+      "expected_consistent": false,
+      "status": "ok",
+      "exit_code": 3,
+      "passed": false,
+      "answer": null,
+      "source_sha256": "2ea9642e34d0f859abeeba1c60c34c35003441168580b193a7d329440762148b",
+      "stderr": "unsupported: source has neither rules nor data assertions to normalize\n"
+    },
+    {
+      "name": "shared_functional_super",
+      "expected_consistent": false,
+      "status": "ok",
+      "exit_code": 0,
+      "passed": true,
+      "answer": {
+        "consistent": false,
+        "subsumptions": [],
+        "unsatisfiable": [],
+        "dropped": 0
+      },
+      "source_sha256": "d6657bbfabb70e90bdffd06cb09b191748c263be338bb4ad2c414351677836b1",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=4 moved=0 tautologies=1\nbridge [source-tbox] axioms=4 eq=2/2 [\"km_src___ground_assertion_0\", \"km_src___ground_assertion_1\"] direct=0 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=0\nBRIDGE-ENV: 0.00s (named=13, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=6 extended=6 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=9)\nSAT-STATS: insufficient all=0 atmost=0 or=0 eqcand=0 value=0 nominal=0\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#4]\nDDB-LINE branching_level=0\n"
+    }
+  ]
+}

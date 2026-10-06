@@ -1,0 +1,13 @@
+# Data-property disjointness diagnostic
+
+The current main binary refuses ORE14379 at the exact datatype bridge because of the clause hasDestinationMail(x,y) and hasDestinationSMS(x,y) implies bottom. The first shadow experiment recognizes only that exact two-role same-endpoint empty-head shape; reversed endpoints, diagonal edges, other heads and wrong arity remain excluded. Allowing the shape alone exposed a second gap: the bridge builder still counted the clause unsupported.
+
+The second shadow change installs symmetric role-disjointness links on the two role objects and their inverses, using existing completion machinery. A role disjoint with itself receives an empty-role constraint. The entire extension is behind KM_EXPERIMENTAL_DATA_ROLE_DISJOINT and exists only in the isolated integral-decimal-probe checkout. This shadow also contains earlier unpromoted decimal and datatype-padding changes. The patch and source manifest retain the complete combined source.
+
+With the same final shadow binary, flag off hits the 15-second local bound, while flag on classifies 14379 in 1.077 seconds. The complete answer independently agrees with Konclude, HermiT and Openllet. These traced workstation timings are diagnostic only; they do not add a solve to the frozen release sweep.
+
+Six minimal semantic controls were attempted. Different Boolean values on disjoint roles and a shared functional superproperty pass their expected consistency results. Same-value clashes, equal values on different objects, and two/three disjoint Boolean-successor query cases still defer. No wrong answer was emitted in these controls, but the candidate has not passed the necessary runtime coverage checks. The first two Boolean-query attempts used the ground-source compiler without data assertions and were rejected before reaching the target path; the revised query controls use the explicit native bridge and still defer. Both attempts remain recorded.
+
+DatatypeRoleDisjointness.lean proves that a shared injective embedding preserves disjointness in both directions and demonstrates that a noninjective mapping need not preserve it. The first theorem has no axioms; the counterexample uses propext. This is supporting evidence, not a proof that the runtime constructs a suitable value embedding. Production admission remains unchanged.
+
+The initial local driver called a cluster measurement helper requiring /usr/bin/time, absent in this container. Both attempts failed before reasoning. The corrected local driver uses the existing process-tree watchdog directly, one CPU, 20 GiB, a 15-second classification bound and a 60-second audit bound. Original failures and runner versions are retained.

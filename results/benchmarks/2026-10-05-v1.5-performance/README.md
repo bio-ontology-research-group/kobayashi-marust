@@ -17,8 +17,9 @@ The release objectives are not yet achieved.
 - [IRI grammar equivalence](iri-grammar-final-53332675.json): all 1,920 results
   and error texts match exactly, with no failed attempts. The default/manual frontend comparison
   finished with 1,919 exact results and one unresolved case (15687 exceeded
-  20 GiB in both arms). Explicit automatic-route comparison is job 53335909;
-  classification is measured separately.
+  20 GiB in both arms). Explicit automatic-route job 53335909 also
+  finished with 1,919 exact results and the same unresolved input.
+  Classification is measured separately.
 - [Classifier snapshot reuse](unique-state-notes.md): 153 focused tests and
   all four certification gates passed. Paired timings are mixed; no isolated
   speedup is established.
@@ -322,3 +323,21 @@ and ten seconds. The next investigation should enter
 instrumentation. `15167-*.json`, `bridge-probe.json`, and
 `timeout-source-profiles.json` retain the evidence. The frozen full audits
 continue to use their previously pinned binaries.
+
+## Compact output and remaining datatype coverage
+
+The optional graph-output candidate passed all four production certification
+gates. Paired job 53336382 verified all twelve outputs. On 10689 its two-run
+mean is 30.774 s versus 34.747 s expanded, with output shrinking from 1.52 GB
+to 101 MB and essentially unchanged process memory. Control timings do not
+establish a separate speedup. Full frozen-corpus job 53338465 now measures the
+same pinned production binary with graph output; acceptance remains pending.
+Additional large-output pairs are job 53336568; their partial results are
+kept separate from the completed first experiment.
+
+The isolated disjoint-data-property candidate recovers 14379 in a 1.077-second
+local diagnostic, agreeing with Konclude, HermiT and Openllet. Four small
+semantic controls still defer, and concrete datatype-value realization remains
+a proof obligation. No production admission changed. See
+[data-disjoint-notes.md](data-disjoint-notes.md) for source, proof, controls,
+failed driver attempts, and the explicit unpromoted scope.
