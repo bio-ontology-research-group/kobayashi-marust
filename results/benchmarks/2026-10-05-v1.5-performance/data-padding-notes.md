@@ -111,3 +111,41 @@ decoder correspondence proof, concrete datatype/value binding, complete
 RBox/ABox obligations and reverse model transport remain required before
 promoting the experimental path. No benchmark case is counted as newly solved
 on the strength of this padding check alone.
+
+## Source-expression lowering proof
+
+`DatatypePaddingSource.lean` introduces an explicit source-expression syntax
+and semantics, retaining top, bottom, nominals and self restrictions before
+lowering. Role names and inverse flags also survive decoding. Five checked
+statements establish empty-edge cardinality, source-expression lowering,
+Boolean evaluation, source-axiom lowering and whole-list acceptance. The
+checker now calls this proved source-axiom checker directly.
+
+The theorem requires that the checked point has the supplied class valuation
+for names evaluated at that point, is distinct from every named individual
+and has no outgoing edge for any
+interpreted role expression. Under these premises, acceptance is equivalent
+to satisfying every decoded source axiom at that point. Nominal/self lowering
+is proved only at such points; it is not claimed to preserve arbitrary
+object-node semantics. Data-role and inverse-role premises still need to be
+discharged by the concrete model construction.
+
+The class-agreement premise deliberately excludes names below role
+restrictions. Their fillers are not evaluated at an edgeless point. This
+matters for datatype names: an actual data value can belong to an integer
+range even though the ordinary-class witness does not assign that name. A
+global agreement premise over every name would be unnecessarily strong and
+could not discharge that concrete case.
+
+This closes the AST-to-padding-evaluator proof gap. It does not close the
+JSON-to-AST correspondence, frontend source completeness, concrete datatype
+interpretation, RBox/ABox coverage or reverse-model obligations. Earlier
+receipts remain tied to their recorded checker hashes. The new source-reader
+receipts retain identical source/witness bytes, acceptance and axiom counts
+for 12566 and 13799, with the new proof/source hashes recorded separately.
+
+All 33 executable cases passed, including the original 25 unchanged outcomes
+and eight added nominal, self, Boolean and cardinality cases. Both real
+controls retain identical acceptance text and axiom counts. The five new
+statements pass the axiom audit without `sorryAx`; production Rust code and
+admission are unchanged.

@@ -38,8 +38,10 @@ def check(source, witness, lake='lake'):
     source_bytes, witness_bytes = source.read_bytes(), witness.read_bytes()
     receipt = dict(scope='source-GCI padding obligation only', release_approved=False,
                    source_sha256=sha(source_bytes), witness_sha256=sha(witness_bytes),
-                   accepted=False, decoder_semantic_equivalence_proved=False)
+                   accepted=False, source_ast_padding_lowering_proved=True,
+                   decoder_semantic_equivalence_proved=False)
     files = ['lean/DatatypePaddingWitnessCheck.lean',
+             'lean/ContextCalculus/DatatypePaddingSource.lean',
              'lean/ContextCalculus/DatatypePaddingCheck.lean',
              'lean/ContextCalculus/DatatypePadding.lean',
              'lean/ContextCalculus/DatatypeClassTransport.lean',
@@ -57,7 +59,7 @@ def check(source, witness, lake='lake'):
     # Rebuild imported proof modules from the recorded source, so a stale olean
     # cannot make a source-hash receipt appear to cover an unchecked edit.
     try:
-        build = subprocess.run([lake, 'build', 'ContextCalculus.DatatypePaddingCheck'],
+        build = subprocess.run([lake, 'build', 'ContextCalculus.DatatypePaddingSource'],
                                cwd=repo / 'lean', capture_output=True, text=True, timeout=60)
         build_log = build.stdout + build.stderr
         receipt['proof_build_exit_code'] = build.returncode

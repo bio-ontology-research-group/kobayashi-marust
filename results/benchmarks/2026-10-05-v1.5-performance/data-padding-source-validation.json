@@ -1,0 +1,33 @@
+{
+  "scope": "proved source-AST padding lowering and diagnostic reader, not production admission",
+  "proof_statements": 5,
+  "axioms": [
+    "propext",
+    "Quot.sound"
+  ],
+  "sorryAx": false,
+  "cases_passed": 33,
+  "prior_25_cases_unchanged": true,
+  "two_real_controls_unchanged": true,
+  "source_ast_padding_lowering_proved": true,
+  "json_decoder_correspondence_proved": false,
+  "production_admission_changed": false,
+  "release_approved": false,
+  "remaining": [
+    "JSON/source correspondence and frontend completeness",
+    "concrete datatype/value binding",
+    "RBox/ABox model obligations",
+    "reverse model transport",
+    "production certification integration"
+  ],
+  "files_sha256": {
+    "lean/ContextCalculus/DatatypePaddingSource.lean": "7291d32858a5d4c5b016a5aedf2446a2d2759716cc34858a85ae0067f62c504a",
+    "lean/DatatypePaddingWitnessCheck.lean": "09b7c888c78d4e31e09d2482d006e2781710dbf1f97cf767e300fdb2ff787ffb",
+    "results/benchmarks/2026-10-05-v1.5-performance/check_data_padding_witness.py": "c1fc20320562b2b6d289e7ba32913904a9e140ad5eca8590c4e45b28a343ba16",
+    "results/benchmarks/2026-10-05-v1.5-performance/test_data_padding_witness.py": "81e3ac9445a7bf832d71f8cf01dd73bb815129d405b652cb8fba7474f601c8eb",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-source-tests.log": "cdc7629396303862313fa7a257d9cb35473d280b4cc06a2c2da8f2258cb56838",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-source-proof.log": "0892b4659c1d3a0f30a9add9384b5ee4afa09c38706be8e1faacae752d4f595c",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-source-12566-receipt.json": "4573001722d087404ddab2533dfa267546281915d26e5111df7033220ca582d6",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-source-13799-receipt.json": "053d5e959d3a454472895eab44fe838ce1bc7a8630fc0972e3e99675cf3c99c3"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "scope": "source-GCI padding obligation only",
+  "release_approved": false,
+  "source_sha256": "2959b72fb7b4f3f5806148ae8d7587493fda048ae27f31ee5c8d628891194fce",
+  "witness_sha256": "eca66a7a2acbcfea7dfb138233aef887af8547e1dccdc343e02ad63f5678fd16",
+  "accepted": true,
+  "source_ast_padding_lowering_proved": true,
+  "decoder_semantic_equivalence_proved": false,
+  "checker_sources": {
+    "lean/DatatypePaddingWitnessCheck.lean": "09b7c888c78d4e31e09d2482d006e2781710dbf1f97cf767e300fdb2ff787ffb",
+    "lean/ContextCalculus/DatatypePaddingSource.lean": "7291d32858a5d4c5b016a5aedf2446a2d2759716cc34858a85ae0067f62c504a",
+    "lean/ContextCalculus/DatatypePaddingCheck.lean": "333e9e8d40d02e0e00861c7a6adfdef053a43760f8c150257e03999f48642c9b",
+    "lean/ContextCalculus/DatatypePadding.lean": "7a01fb3ce05b5ab88e471b47f6c5087d262117e55b8e0cb7313496b48ef7dbf2",
+    "lean/ContextCalculus/DatatypeClassTransport.lean": "ca545d879b6387b7f609b91a86fb3e4630de4ce5e95552d54033f3fc766bae81",
+    "lean/ContextCalculus/FunctionalDatatypeQuotient.lean": "17237d48978a48161eeb6c653f01c6c3cdb983d8e89dcb5a33d67eeec3ee7e32",
+    "lean/lean-toolchain": "ce4c4e3d87434b9663f46de25ce34b48a0cf0d392e0a320a0787b4674a2d7b61"
+  },
+  "driver_sha256": "c1fc20320562b2b6d289e7ba32913904a9e140ad5eca8590c4e45b28a343ba16",
+  "proof_build_exit_code": 0,
+  "proof_build_log_sha256": "3b768f7a6178045cb646d3b7717bd26a246931f331bbd71a1ed8524e3ec4dc58",
+  "exit_code": 0,
+  "stdout": "Padding GCI obligation accepted: 311 source axioms, 324 implications\n",
+  "stderr": ""
+}
