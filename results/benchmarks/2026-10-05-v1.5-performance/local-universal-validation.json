@@ -1,0 +1,28 @@
+{
+  "tests": {
+    "datatype": 72,
+    "log_sha256": "9cfe917d4f05a24db95681a048041d21009444f42c62be9bc00c8d72ffa3dfad"
+  },
+  "lean_new_lemmas": {
+    "count": 2,
+    "axioms": [],
+    "log_sha256": "b3b007026e4e1b14ddd957c4b794dd9bbb47025ff08854874ff37edae6528992"
+  },
+  "diagnostic_record": {
+    "status": "executed_unvalidated",
+    "exit_code": 0,
+    "wall_s": 0.13449086796026677,
+    "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+    "binary_sha256": "70b88e594c46761b5227aa93be15b5de8fb991f607ae10138f5b52d7d03e7a91",
+    "timeout_s": 30,
+    "memory_gib": 20,
+    "cpus": 1,
+    "watchdog": {
+      "status": "ok",
+      "peak_bytes": 35209216,
+      "wall_s": 0.1301679969765246
+    }
+  },
+  "scope": "Exact global-range redundancy guard. Local timing is not release evidence; independent comparisons are in local-universal-13799-diagnostic.json.",
+  "release_approved": false
+}

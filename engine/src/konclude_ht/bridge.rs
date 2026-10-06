@@ -980,8 +980,23 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .collect();
     let mut role_ranges: HashMap<usize, &str> = HashMap::new();
     let mut role_existentials: Vec<(usize, &str)> = Vec::new();
+    // Collect before walking local restrictions: source order is irrelevant.
+    // A matching global range entails each local universal restriction. Keep
+    // the full source expression in the encoder; this only admits its vocabulary.
+    let global_atomic_ranges: std::collections::HashSet<(&str, &str)> = tin.source_axioms.iter()
+        .filter_map(|axiom| match (axiom.kind, &axiom.left, &axiom.right) {
+            (crate::json_io::SourceAxiomKind::SubClass, SourceConcept::Top,
+             SourceConcept::Forall(SourceRole::Name(role), filler)) => match filler.as_ref() {
+                SourceConcept::Name(datatype)
+                    if crate::frontend::datatypes::bridge_exact_atomic_name(datatype) =>
+                        Some((role.as_str(), datatype.as_str())),
+                _ => None,
+            },
+            _ => None,
+        }).collect();
     fn atomic_datatype_occurrences<'a>(
         concept: &'a SourceConcept,
+        global_atomic_ranges: &std::collections::HashSet<(&str, &str)>,
         out: &mut Vec<(&'a str, &'a str, bool)>,
     ) -> bool {
         match concept {
@@ -990,12 +1005,24 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             // Boolean source expression is retained by the native encoder.
             SourceConcept::And(conjuncts) | SourceConcept::Or(conjuncts) => conjuncts
                 .iter()
-                .all(|conjunct| atomic_datatype_occurrences(conjunct, out)),
+                .all(|conjunct| atomic_datatype_occurrences(conjunct, global_atomic_ranges, out)),
+            SourceConcept::Forall(SourceRole::Name(role), filler)
+                if matches!(filler.as_ref(), SourceConcept::Name(name) if name.starts_with("__dt__")) =>
+            {
+                let SourceConcept::Name(datatype) = filler.as_ref() else { unreachable!() };
+                if !global_atomic_ranges.contains(&(role.as_str(), datatype.as_str())) {
+                    return false;
+                }
+                // Not a new global range and not an existential assertion:
+                // the occurrence list below checks role-local vocabulary only.
+                out.push((role.as_str(), datatype.as_str(), false));
+                true
+            }
             SourceConcept::Exists(SourceRole::Name(role), filler)
             | SourceConcept::AtLeast(0..=2, SourceRole::Name(role), filler)
             | SourceConcept::AtMost(0..=2, SourceRole::Name(role), filler) => {
                 let SourceConcept::Name(datatype) = filler.as_ref() else {
-                    return atomic_datatype_occurrences(filler, out);
+                    return atomic_datatype_occurrences(filler, global_atomic_ranges, out);
                 };
                 if !datatype.starts_with("__dt__") {
                     return true;
@@ -1013,7 +1040,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             | SourceConcept::AtLeast(_, SourceRole::Name(_), filler)
             | SourceConcept::AtMost(_, SourceRole::Name(_), filler)
                 if !matches!(filler.as_ref(), SourceConcept::Name(_)) =>
-                    atomic_datatype_occurrences(filler, out),
+                    atomic_datatype_occurrences(filler, global_atomic_ranges, out),
             _ => !source_concept_contains_internal_datatype(concept),
         }
     }
@@ -1028,7 +1055,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             (crate::json_io::SourceAxiomKind::SubClass, SourceConcept::Name(left), right)
                 if !left.starts_with("__dt__") =>
             {
-                if !atomic_datatype_occurrences(right, &mut occurrences) {
+                if !atomic_datatype_occurrences(right, &global_atomic_ranges, &mut occurrences) {
                     defer!("a datatype restriction has a non-atomic filler");
                 }
             }
@@ -1042,7 +1069,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                         defer!("a datatype range filler has no exact family");
                     }
                     occurrences.push((role.as_str(), datatype.as_str(), true));
-                } else if !atomic_datatype_occurrences(filler, &mut occurrences) {
+                } else if !atomic_datatype_occurrences(filler, &global_atomic_ranges, &mut occurrences) {
                     // Object-property ranges may contain exact data restrictions.
                     // The role-use check below separately excludes a data role
                     // with an object-language filler.
@@ -1065,7 +1092,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 definition,
                 SourceConcept::Name(left),
             ) if !left.starts_with("__dt__") => {
-                if !atomic_datatype_occurrences(definition, &mut occurrences) {
+                if !atomic_datatype_occurrences(definition, &global_atomic_ranges, &mut occurrences) {
                     defer!("a datatype equivalence is not an exact atomic restriction");
                 }
             }
@@ -14629,6 +14656,33 @@ mod tests {
             .expect("the checked 10621 atomic datatype fragment must stay routable");
         assert!(result.consistent);
         assert!(!result.unsatisfiable.contains(&0));
+    }
+
+    #[test]
+    fn exact_atomic_datatype_local_universal_requires_the_identical_global_range() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        let mut tin = exact_atomic_datatype_input();
+        let baseline = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("baseline exact datatype fragment");
+        let restriction = C::Forall(R::Name("pressure_mmHg".into()),
+            Box::new(C::Name("__dt__float".into())));
+        // Put the local axiom before its global range to test source ordering.
+        tin.source_axioms.insert(0, source_subclass(C::Name("A".into()), restriction.clone()));
+        assert!(exact_atomic_datatype_bridge_fragment(&tin, true));
+        let source = tin.source_axioms.clone();
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("a redundant local universal preserves the exact fragment");
+        assert_eq!(result.consistent, baseline.consistent);
+        assert_eq!(result.unsatisfiable, baseline.unsatisfiable);
+        assert_eq!(result.subsumptions, baseline.subsumptions);
+        assert_eq!(tin.source_axioms, source, "source expressions must remain intact");
+        assert!(!exact_atomic_datatype_bridge_fragment(&tin, false));
+        tin.source_axioms[0].right = C::Forall(R::Name("pressure_mmHg".into()),
+            Box::new(C::Name("__dt__integer".into())));
+        assert!(!exact_atomic_datatype_bridge_fragment(&tin, true), "a narrower or unrelated range is not redundant");
+        tin.source_axioms[0].right = restriction.clone();
+        tin.source_axioms.retain(|a| !(a.left == C::Top && a.right == restriction));
+        assert!(!exact_atomic_datatype_bridge_fragment(&tin, true), "local universals must not create global ranges");
     }
 
     #[test]

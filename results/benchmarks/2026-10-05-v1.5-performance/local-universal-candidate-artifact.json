@@ -1,0 +1,24 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "local-universal-70b88e594c46",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-local-universal-70b88e594c46",
+      "sha256": "70b88e594c46761b5227aa93be15b5de8fb991f607ae10138f5b52d7d03e7a91"
+    }
+  ],
+  "source_commit": "24e589ac plus pinned local-universal source changes",
+  "source_manifest_sha256": "f708d757d3f4f275d42cd1f86e926eda85fbee694841134be367fee153af07b0",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure"
+  ],
+  "release_approved": false,
+  "scope": "Eight-case diagnostic; exact-source certification running; no release approval.",
+  "certification_pending": true
+}

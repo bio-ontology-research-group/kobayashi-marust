@@ -1,0 +1,130 @@
+{
+  "job_id": 53326865,
+  "diagnostic_only": true,
+  "completed_cases": 8,
+  "status_counts": {
+    "process_error": 5,
+    "timeout": 3
+  },
+  "rows": [
+    {
+      "ontology": "ore_ont_12566",
+      "status": "process_error",
+      "wall_s": 235.17838899046183,
+      "record_sha256": "5554f648079966bf7809f454b0790ee83ac2782bd1666826ec814e578d6ae47d",
+      "receipt_sha256": "eac835c1692ea54f8a6e99d52018651d68afa25c926f24b546a7383b5b80a490",
+      "stderr_sha256": "a13ca05b8ee52ba1d719c150a0e32f15264aba49db43dd0a4a71d121efc48a36",
+      "phase_lines": [
+        "KM_TIMING frontend done @ 0.01s route=manual",
+        "BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "KM_TIMING frontend done @ 0.02s route=nominals",
+        "KM_TIMING atomic route nominals declined @ 235.06s: worker engine exceeded its time limit: "
+      ]
+    },
+    {
+      "ontology": "ore_ont_1342",
+      "status": "process_error",
+      "wall_s": 235.1267781164497,
+      "record_sha256": "d46bf0088c078a10b350fd8f7b2e9f4223250ab1f2fb98d329d46c402a63a2a9",
+      "receipt_sha256": "87461256b46935abb846833576e68c12efe50eba24e0b94f892c31793de50143",
+      "stderr_sha256": "2a973aeaf5c84761a23f516d18e26dd3b1f6d113030b8eae359bf41dbece97bd",
+      "phase_lines": [
+        "KM_TIMING frontend done @ 0.01s route=nominals",
+        "KM_TIMING atomic route nominals declined @ 235.08s: worker engine exceeded its time limit: "
+      ]
+    },
+    {
+      "ontology": "ore_ont_13799",
+      "status": "process_error",
+      "wall_s": 235.18447326123714,
+      "record_sha256": "bd7ca81b1cae16dd1f91ccf617b6760ddb696cdf7fcf5b4a6fd2761ff73d3cb3",
+      "receipt_sha256": "44b2678c1ef7c7a8599695fb658f8a4448a8d94aa296d5afa8235903c3730efe",
+      "stderr_sha256": "e4e1e4989dc89e153060735cdf8ad0383dc68162cf19064e58d1513b8a2d0036",
+      "phase_lines": [
+        "KM_TIMING frontend done @ 0.02s route=manual",
+        "BRIDGE-DATATYPE-DEFER: a datatype restriction has a non-atomic filler",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING frontend done @ 0.00s route=ht_bridge",
+        "KM_TIMING compact typed bridge probe declined @ 0.02s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING frontend done @ 0.02s route=nominals",
+        "KM_TIMING atomic route nominals declined @ 235.10s: worker engine exceeded its time limit: "
+      ]
+    },
+    {
+      "ontology": "ore_ont_14379",
+      "status": "process_error",
+      "wall_s": 235.32947271503508,
+      "record_sha256": "f6c09120b99e6189cd478837c016a0665ff2ee7e9a00806d8f24462216e8a5fe",
+      "receipt_sha256": "3482643a06a2ae56b41720de71c2ed401b5c06755d0f3559a184d1eda716dfb7",
+      "stderr_sha256": "54ee6d049637cde1e38294437ac785c20b434f800aae7982bd259566733083e6",
+      "phase_lines": [
+        "KM_TIMING frontend done @ 0.01s route=manual",
+        "BRIDGE-DATATYPE-DEFER: a datatype equivalence is not an exact atomic restriction",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "KM_TIMING frontend done @ 0.00s route=ht_bridge",
+        "KM_TIMING compact typed bridge probe declined @ 0.03s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING frontend done @ 0.03s route=nominals",
+        "KM_TIMING atomic route nominals declined @ 235.19s: worker engine exceeded its time limit: "
+      ]
+    },
+    {
+      "ontology": "ore_ont_2182",
+      "status": "timeout",
+      "wall_s": 240.0412887763232,
+      "record_sha256": "22a9820c670fa5ed6d73b1cc2409037e4cc8875e396c6b25689308a22f927f33",
+      "receipt_sha256": "614d6df38736811a4f8dcc5873404762df743587bda74f9dd82bf2cca1247294",
+      "stderr_sha256": "54b8e9bf04bf28cfc09a5e3e0b492f4562b3105eb1c3536bb454ee3a2c736508",
+      "phase_lines": [
+        "KM_TIMING frontend done @ 0.02s route=manual",
+        "BRIDGE-DEFER subject 214: READ-OFF stop after 180.0s (signal=Stop { task_completed: false }, nodes=450, sat-blocks=31051, sat-expanded=691269)",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING frontend done @ 0.03s route=nominal_ni_abox"
+      ]
+    },
+    {
+      "ontology": "ore_ont_6272",
+      "status": "timeout",
+      "wall_s": 240.06220062822104,
+      "record_sha256": "aadb3e2aad854bb6e3e4e270195201f145c6ecef964d08e1e3cad09c15e48748",
+      "receipt_sha256": "c13dbaa4d71101b1cbe413315f4d3f292fffad9a1886869b09a30770dcfa3753",
+      "stderr_sha256": "40d05d94d5778ed8e0efa77e914c7db207f2d2f8d10dfd6b4950b1616c2afaf3",
+      "phase_lines": [
+        "KM_TIMING frontend done @ 0.02s route=manual",
+        "BRIDGE-DEFER subject 214: READ-OFF stop after 180.0s (signal=Stop { task_completed: false }, nodes=461, sat-blocks=30323, sat-expanded=737830)",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING frontend done @ 0.03s route=nominal_ni_abox"
+      ]
+    },
+    {
+      "ontology": "ore_ont_8250",
+      "status": "process_error",
+      "wall_s": 235.43129161931574,
+      "record_sha256": "b95329e5d042cf4b4cbd96a2db1f5df25dc0cf6dbb6c384018d55bafb354e23e",
+      "receipt_sha256": "290c33610859d8c4bcc9f353b52fd512e35b40bd6077eeed6d1b4e0ab8bd8dc1",
+      "stderr_sha256": "dd7872a19002cd813bb09932ab390a71025e604fd1b355551397f0a58ecba79b",
+      "phase_lines": [
+        "KM_TIMING frontend done @ 0.04s route=ht_rules",
+        "KM_TIMING rules-consistency worker exited @ 0.07s success=true",
+        "KM_TIMING atomic route ht_rules declined @ 235.35s: worker engine exceeded its time limit: "
+      ]
+    },
+    {
+      "ontology": "ore_ont_8666",
+      "status": "timeout",
+      "wall_s": 240.04176999256015,
+      "record_sha256": "68842944dffb20e5b776c0cc842a6debfcaac8015552748072701967866b9744",
+      "receipt_sha256": "5562a4ebec89cbb2071a54e160c80608b0319f7a79f2a18aa62bbd37e946471b",
+      "stderr_sha256": "931ab83fcf00a58bed273c1a231a472d1a09e27107848ea0dad546404251be46",
+      "phase_lines": [
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "KM_TIMING frontend done @ 0.01s route=certified_nominals",
+        "BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map",
+        "KM_TIMING race: HT worker exited @ 0.05s (success=false)"
+      ]
+    }
+  ],
+  "release_approved": false
+}
