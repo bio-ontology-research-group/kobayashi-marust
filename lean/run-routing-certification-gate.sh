@@ -87,6 +87,9 @@ for theorem in \
     IncrementalSourceLocality.transfer_model \
     IncrementalSourceLocality.inactive_delta_preserves_subsumptions \
     IncrementalSourceLocality.inactive_delta_preserves_query_satisfiability \
+    IncrementalSourceLocality.mask_preserves_domain \
+    IncrementalSourceLocality.mask_preserves_range \
+    IncrementalSourceLocality.inactive_delta_preserves_subsumptions_with_background \
     ABoxBooleanInclusion.union_operand_included \
     ABoxBooleanInclusion.intersection_operand_included \
     ABoxBooleanInclusion.equivalence_directions \

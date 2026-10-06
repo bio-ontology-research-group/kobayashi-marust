@@ -147,9 +147,63 @@ theorem inactive_delta_preserves_query_satisfiability
       (fun ax h => stable ax (Or.inl h))
       (fun ax h => closed ax (Or.inl h)) removed m valid, x, seed, holds⟩
 
+/-- Domain and range classes must be active for every query. Their role edges
+are retained exactly; these lemmas justify the diagnostic's global seeds. -/
+def Domain (m : Model U) (r c : Nat) : Prop :=
+  ∀ x y, m.roles r x y → m.classes c x
+
+def Range (m : Model U) (r c : Nat) : Prop :=
+  ∀ x y, m.roles r x y → m.classes c y
+
+theorem mask_preserves_domain {active : Expr → Prop} {m : Model U} {r c : Nat}
+    (seed : active (.atom c)) (valid : Domain m r c) :
+    Domain (mask active m) r c := by
+  intro x y edge
+  exact ⟨seed, valid x y edge⟩
+
+theorem mask_preserves_range {active : Expr → Prop} {m : Model U} {r c : Nat}
+    (seed : active (.atom c)) (valid : Range m r c) :
+    Range (mask active m) r c := by
+  intro x y edge
+  exact ⟨seed, valid x y edge⟩
+
+/-- General form allowing unchanged domain/range constraints in addition to
+role-only axioms. The caller must prove that the entire background survives
+masking; there is no permission to ignore other typed input fields. -/
+def SubsumesWith (background : Model U → Prop)
+    (theory : List Axiom) (query target : Nat) : Prop :=
+  ∀ m : Model U, background m → Satisfies m theory →
+    ∀ x, m.classes query x → m.classes target x
+
+theorem inactive_delta_preserves_subsumptions_with_background
+    {old newer : List Axiom} {active : Expr → Prop}
+    (stable : ∀ ax, ax ∈ old ∨ ax ∈ newer →
+      Stable active ax.1 ∧ Stable active ax.2)
+    (closed : ∀ ax, ax ∈ old ∨ ax ∈ newer → active ax.1 → active ax.2)
+    (removed : ∀ ax, ax ∈ old → ax ∉ newer → ¬ active ax.1)
+    (added : ∀ ax, ax ∈ newer → ax ∉ old → ¬ active ax.1)
+    (query target : Nat) (seed : active (.atom query))
+    (background : Model U → Prop)
+    (preserved : ∀ m, background m → background (mask active m)) :
+    SubsumesWith background old query target ↔ SubsumesWith background newer query target := by
+  constructor
+  · intro entails m law valid x holds
+    have restricted := transfer_model
+      (fun ax h => stable ax (Or.inl h))
+      (fun ax h => closed ax (Or.inl h)) removed m valid
+    exact (entails (mask active m) (preserved m law) restricted x ⟨seed, holds⟩).2
+  · intro entails m law valid x holds
+    have restricted := transfer_model
+      (fun ax h => stable ax (Or.inr h))
+      (fun ax h => closed ax (Or.inr h)) added m valid
+    exact (entails (mask active m) (preserved m law) restricted x ⟨seed, holds⟩).2
+
 #print axioms eval_mask
 #print axioms transfer_model
 #print axioms inactive_delta_preserves_subsumptions
 #print axioms inactive_delta_preserves_query_satisfiability
+#print axioms mask_preserves_domain
+#print axioms mask_preserves_range
+#print axioms inactive_delta_preserves_subsumptions_with_background
 
 end ContextCalculus.IncrementalSourceLocality

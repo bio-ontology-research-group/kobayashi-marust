@@ -524,6 +524,53 @@ fn bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoni
     })
 }
 
+/// Diagnostic only. Source-based reuse additionally needs identical source
+/// RBoxes, complete positive source metadata and a checked activation boundary.
+/// This value compares only supported typed side constraints by their names.
+#[cfg(test)]
+fn positive_source_side_fingerprint(input: &TInput) -> Option<Vec<u8>> {
+    // Deliberately exhaustive: an added typed field must receive an explicit
+    // treatment instead of silently disappearing from reuse admission.
+    let TInput {
+        rule_data_roles, rule_source_classes, rule_source_abox,
+        concepts, roles, queries, dropped, fenced, inverse, number,
+        inverse_cardinality_role_separable, nominals, nominal_abox, native_abox,
+        card_defs, cardinality_exact_pairs, cardinality_projection_complete,
+        chains, transitive, role_domains, role_ranges,
+        // These encode the changing theory, its generated implementation, or
+        // its proof provenance. They are NOT certified by this side key.
+        clauses: _, direct_projection_source: _, mixed_projection_source: _,
+        bundle_projection_source: _, definers: _, source_axioms: _,
+    } = input;
+    if rule_data_roles.is_some() || rule_source_classes.is_some() || rule_source_abox.is_some()
+        || *dropped != 0 || !fenced.is_empty() || *number || !nominals.is_empty()
+        || !nominal_abox.is_empty() || !native_abox.is_empty()
+        || !card_defs.is_empty() || !cardinality_exact_pairs.is_empty()
+    { return None; }
+    if concepts.iter().collect::<BTreeSet<_>>().len() != concepts.len()
+        || roles.iter().collect::<BTreeSet<_>>().len() != roles.len()
+    { return None; }
+    let public = queries.iter().map(|id| concepts.get(*id)).collect::<Option<BTreeSet<_>>>()?;
+    if public.len() != queries.len() { return None; }
+    // Generated domain/range markers need structural interpretation. Until
+    // that is established, admit only public named class endpoints.
+    let named_endpoint = |pairs: &[(usize, usize)]| -> Option<BTreeSet<(&String, &String)>> {
+        pairs.iter().map(|(r,c)| {
+            let c=concepts.get(*c)?;
+            if !public.contains(c) { return None; }
+            Some((roles.get(*r)?, c))
+        }).collect()
+    };
+    let domains=named_endpoint(role_domains)?;
+    let ranges=named_endpoint(role_ranges)?;
+    let chains=chains.iter().map(|(a,b,c)| Some((roles.get(*a)?,roles.get(*b)?,roles.get(*c)?)))
+        .collect::<Option<BTreeSet<_>>>()?;
+    let transitive=transitive.iter().map(|r| roles.get(*r)).collect::<Option<BTreeSet<_>>>()?;
+    let roles: BTreeSet<_> = roles.iter().collect();
+    serde_json::to_vec(&(public, roles, inverse, inverse_cardinality_role_separable,
+        cardinality_projection_complete, chains, transitive, domains, ranges)).ok()
+}
+
 fn bridge_result(
     input: &TInput,
     classification: crate::konclude_ht::bridge::BridgedClassification,
@@ -1745,6 +1792,53 @@ fn term_symbols(term: &JTerm, symbols: &mut Vec<Symbol>) {
 mod typed_tests {
     use super::*;
     use crate::orchestrate::cb_to_ht::{NativeIndividualJson, TInput};
+
+    #[test]
+    fn source_side_key_ignores_reindexing_but_retains_constraint_meaning() {
+        let old=TInput { concepts: vec!["A".into(),"B".into(),"Q_old".into()],
+            roles: vec!["r".into(),"s".into()], queries: vec![0,1], inverse:true,
+            chains:vec![(0,1,0)], transitive:vec![0], role_domains:vec![(0,0)],
+            role_ranges:vec![(1,1)], ..Default::default() };
+        let new=TInput { concepts:vec!["Q_new".into(),"B".into(),"A".into()],
+            roles:vec!["s".into(),"r".into()],queries:vec![2,1],inverse:true,
+            chains:vec![(1,0,1)],transitive:vec![1],role_domains:vec![(1,2)],
+            role_ranges:vec![(0,1)],..Default::default() };
+        let key=positive_source_side_fingerprint(&old).unwrap();
+        assert_eq!(Some(key.clone()),positive_source_side_fingerprint(&new));
+        assert_ne!(bridge_side_fingerprint(&old).unwrap(),bridge_side_fingerprint(&new).unwrap());
+        let mut changed=new.clone(); changed.role_domains[0].1=1;
+        assert_ne!(Some(key.clone()),positive_source_side_fingerprint(&changed));
+        let mut changed=new.clone(); changed.chains[0]=(0,1,1);
+        assert_ne!(Some(key.clone()),positive_source_side_fingerprint(&changed));
+        let mut changed=new.clone(); changed.inverse=false;
+        assert_ne!(Some(key.clone()),positive_source_side_fingerprint(&changed));
+        for bad in 0..7 {
+            let mut changed=new.clone();
+            match bad {
+                0 => changed.role_domains[0].1=0, // private definer endpoint
+                1 => changed.chains[0].0=99,
+                2 => changed.number=true,
+                3 => changed.rule_data_roles=Some(vec![]),
+                4 => changed.native_abox.complete=true,
+                5 => changed.dropped=1,
+                _ => changed.concepts.push("A".into()),
+            }
+            assert!(positive_source_side_fingerprint(&changed).is_none(),"guard {bad}");
+        }
+    }
+
+    #[test]
+    fn source_side_key_optional_frozen_input_probe() {
+        let Some(old_path)=std::env::var_os("KM_SOURCE_ACTIVATION_OLD") else { return; };
+        let new_path=std::env::var_os("KM_SOURCE_ACTIVATION_NEW").expect("paired source probe");
+        let read=|path| serde_json::from_slice::<TInput>(&std::fs::read(path).unwrap()).unwrap();
+        let old=read(old_path); let new=read(new_path);
+        let old_key=positive_source_side_fingerprint(&old).expect("supported old typed state");
+        let new_key=positive_source_side_fingerprint(&new).expect("supported new typed state");
+        assert_eq!(old_key,new_key);
+        eprintln!("source-side-key name_resolved_equal=true raw_equal={} bytes={}",
+            bridge_side_fingerprint(&old).unwrap()==bridge_side_fingerprint(&new).unwrap(),old_key.len());
+    }
 
     fn concept_clause(body: usize, head: usize) -> HtClause {
         HtClause {

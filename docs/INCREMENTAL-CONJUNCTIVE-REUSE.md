@@ -98,9 +98,10 @@ become empty. Inactive added or removed inclusions then preserve every named
 subsumption and query satisfiability for an active query. Arbitrary fixed
 role-only constraints remain valid because roles do not change.
 
-The proof has four axiom-audited theorems and no `sorryAx`. Class-valued role
-domains/ranges, ABoxes, and other typed side constraints are not silently
-covered by its role-only premise. Complete source coverage, the exact lowering
+The source proof also treats unchanged background constraints and proves
+domain/range preservation when their named classes are globally active.
+ABoxes and other typed side constraints are not silently covered by these
+premises. Complete source coverage, the exact lowering
 of n-ary conjunction/equivalence/disjointness, and the activation algorithm's
 closed-set certificate remain integration obligations.
 
@@ -110,3 +111,27 @@ not participate in change detection. It reuses the bounded bit-matrix analysis
 and is compiled only for tests. It does not authorize production reuse or
 alter the current fallback. Finite relational-model tests exercise existential
 restrictions, conjunction, equivalence, disjointness, and global top premises.
+
+## Typed side-state audit
+
+The test-only `positive_source_side_fingerprint` exhaustively destructures
+`TInput`. A future field therefore requires an explicit decision. It compares
+supported side constraints through unique concept and role names, allowing
+numeric reindexing and private definer churn without changing public meaning.
+
+| Fields | Diagnostic treatment |
+|---|---|
+| Rule metadata, nominals, ABox payloads, cardinality definitions, dropped/fenced input | Decline reuse admission when present |
+| Queries | Compare public named classes; reject duplicate names or invalid indices |
+| Roles, chains, transitivity | Resolve indices to unique names; preserve chain operand order |
+| Domains and ranges | Resolve role/class names; require public named class endpoints |
+| Inverse and cardinality-projection flags | Retain exact values |
+| Clauses, source axioms, definers, projection certificates | Outside this side key; require independent source coverage and locality validation |
+
+On ORE 9944's larger edit, the raw fingerprint differs but the name-resolved
+key is identical. Mutation tests distinguish changed domains, reversed chain
+operands and inverse flags, and reject unsupported payloads or invalid indices.
+This is necessary but insufficient for reuse. The caller must also require an
+unchanged source RBox: role hierarchy and inverse constraints can live in
+clauses rather than these side vectors. These diagnostics do not alter
+production reuse admission.
