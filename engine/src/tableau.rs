@@ -5342,6 +5342,50 @@ fn atom_of(j: &JAtom) -> Atom {
     }
 }
 
+/// Immutable projections of precisely the live edges in the proposed model.
+/// These indexes change the cost of restricting a universal assignment, not
+/// the assignment set, its sorted enumeration order, or the checking budget.
+#[derive(Default)]
+struct FiniteRoleIndex {
+    sources: HashMap<R, HashSet<Node>>,
+    targets: HashMap<R, HashSet<Node>>,
+    diagonal: HashMap<R, HashSet<Node>>,
+    outgoing: HashMap<(R, Node), HashSet<Node>>,
+    incoming: HashMap<(R, Node), HashSet<Node>>,
+    empty: HashSet<Node>,
+}
+
+impl FiniteRoleIndex {
+    fn insert(&mut self, role: R, source: Node, target: Node) {
+        self.sources.entry(role).or_default().insert(source);
+        self.targets.entry(role).or_default().insert(target);
+        self.outgoing.entry((role, source)).or_default().insert(target);
+        self.incoming.entry((role, target)).or_default().insert(source);
+        if source == target {
+            self.diagonal.entry(role).or_default().insert(source);
+        }
+    }
+
+    fn candidates(&self, role: R, source: Var, target: Var, variable: Var,
+        binding: &HashMap<Var, Node>) -> &HashSet<Node> {
+        debug_assert!(source == variable || target == variable);
+        let candidates = if source == target {
+            self.diagonal.get(&role)
+        } else if source == variable {
+            match binding.get(&target) {
+                Some(&node) => self.incoming.get(&(role, node)),
+                None => self.sources.get(&role),
+            }
+        } else {
+            match binding.get(&source) {
+                Some(&node) => self.outgoing.get(&(role, node)),
+                None => self.targets.get(&role),
+            }
+        };
+        candidates.unwrap_or(&self.empty)
+    }
+}
+
 /// The KM_RULES_CONSISTENCY verdict for an already-parsed `TInput`: seed one
 /// root per nominal (the rule route's `__nom__` ABox seeds), apply the o-rule,
 /// and decide KB consistency on the default Tableau. Runs on a large stack
@@ -5369,11 +5413,11 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
     }
     // Exact relation projections used only to restrict universal assignments
     // that can satisfy the body. Keep retired nodes outside the interpretation.
-    let mut role_edges: HashMap<R, Vec<(Node, Node)>> = HashMap::new();
+    let mut role_edges = FiniteRoleIndex::default();
     let mut successors: HashMap<(R, Node), Vec<Node>> = HashMap::new();
     for &(role, source, target) in &g.edges {
         if g.alive(source) && g.alive(target) {
-            role_edges.entry(role).or_default().push((source, target));
+            role_edges.insert(role, source, target);
             successors.entry((role, source)).or_default().push(target);
         }
     }
@@ -5395,7 +5439,7 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
             }
         })
     }
-    fn check(g: &Graph, domain: &[Node], role_edges: &HashMap<R, Vec<(Node, Node)>>,
+    fn check(g: &Graph, domain: &[Node], role_edges: &FiniteRoleIndex,
         successors: &HashMap<(R, Node), Vec<Node>>, unary_domains: &HashMap<Var, Vec<Node>>, clause: &Clause, vars: &[Var],
         binding: &mut HashMap<Var, Node>, budget: &mut usize) -> Result<(), String> {
         if *budget == 0 { return Err("finite model verification budget exhausted".into()); }
@@ -5413,14 +5457,7 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
             for atom in &clause.body {
                 let next = match atom {
                     Atom::Role { r, s, t } if *s == var || *t == var => {
-                        let mut allowed = HashSet::new();
-                        for &(source, target) in role_edges.get(r).into_iter().flatten() {
-                            if *s == *t && source != target { continue; }
-                            if *s != var && binding.get(s).is_some_and(|&node| node != source) { continue; }
-                            if *t != var && binding.get(t).is_some_and(|&node| node != target) { continue; }
-                            allowed.insert(if *s == var { source } else { target });
-                        }
-                        Some(allowed)
+                        Some(role_edges.candidates(*r, *s, *t, var, binding).clone())
                     }
                     Atom::Eq { s, t } if *s == var && *t != var =>
                         binding.get(t).map(|&node| HashSet::from([node])),
@@ -12158,6 +12195,31 @@ mod tests {
 #[cfg(test)]
 mod finite_rule_model_tests {
     use super::*;
+
+    #[test]
+    fn indexed_role_domains_match_scan_for_every_three_node_relation() {
+        for mask in 0..512usize {
+            let edges: Vec<_> = (0..3).flat_map(|a| (0..3).map(move |b| (a, b)))
+                .filter(|&(a, b)| mask & (1 << (a * 3 + b)) != 0).collect();
+            let mut index = FiniteRoleIndex::default();
+            for &(a, b) in &edges { index.insert(7, a, b); }
+            for role in [7, 8] {
+                for (source, target, variable) in [(0, 1, 0), (0, 1, 1), (0, 0, 0)] {
+                    for other in [None, Some(0), Some(1), Some(2), Some(3)] {
+                        let binding: HashMap<Var, Node> = other.map(|node|
+                            (if variable == 0 { 1 } else { 0 }, node)).into_iter().collect();
+                        let expected: HashSet<_> = edges.iter().copied().filter(|&(a, b)| {
+                            role == 7 && (source != target || a == b)
+                                && (source == variable || binding.get(&source).is_none_or(|&n| n == a))
+                                && (target == variable || binding.get(&target).is_none_or(|&n| n == b))
+                        }).map(|(a, b)| if source == variable { a } else { b }).collect();
+                        assert_eq!(index.candidates(role, source, target, variable, &binding), &expected,
+                            "mask={mask}, role={role}, source={source}, target={target}, variable={variable}, binding={binding:?}");
+                    }
+                }
+            }
+        }
+    }
     fn concept(c: C, t: Var, neg: bool) -> Atom { Atom::Concept { lit: CLit { c, neg }, t } }
     #[test]
     fn pruned_source_rule_join_matches_exhaustive_two_object_models() {

@@ -1,0 +1,102 @@
+{
+  "job_id": 53328863,
+  "diagnostic_only": true,
+  "complete": true,
+  "chunks": [
+    {
+      "task": 0,
+      "sha256": "43a37485a4891a116dc215066936d4661b4a60e4849f340e46271acb0ec88179"
+    },
+    {
+      "task": 1,
+      "sha256": "f4faf83a0622a6bfd448d887d8e0b6d2db523ecd6f7ae78831ba11fea28bfa7d"
+    }
+  ],
+  "outcomes": [
+    {
+      "ontology": "ore_ont_3726",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 102.50518692284822,
+      "peak_bytes": 79159296,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "cfb282680a905312182e84e068cafc6145182726bcfc65dd0ae362e9ab10a5a9",
+          "left_raw_sha256": "83747af513965755df562d2cc28f7e48fb3bf659db99713219f53eaf069320bc",
+          "right_raw_sha256": "41738358514f9c43d9d7adb69e8b619eaed88ebb92d600a583177fef6f035819",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "cfb282680a905312182e84e068cafc6145182726bcfc65dd0ae362e9ab10a5a9",
+          "left_raw_sha256": "83747af513965755df562d2cc28f7e48fb3bf659db99713219f53eaf069320bc",
+          "right_raw_sha256": "2616fcb31325022ff052a88878d8071489db0bed2c1fdf3f26e647341a6cb364",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "cfb282680a905312182e84e068cafc6145182726bcfc65dd0ae362e9ab10a5a9",
+          "left_raw_sha256": "83747af513965755df562d2cc28f7e48fb3bf659db99713219f53eaf069320bc",
+          "right_raw_sha256": "5238847862bf492cfb3972de2b18e0737d6abbbee9b9178eaf943f04bd3c8708",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "7876fba6e8fd506324ee8c22a8500c2b96d3199d8f3841968ffca21fe30f7300",
+      "audit_status": "compared"
+    },
+    {
+      "ontology": "ore_ont_7278",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 101.82603119686246,
+      "peak_bytes": 79130624,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "266688eca16aa5946aecca0be32cbff77d4339551dfcee5c6f55449b082221a5",
+          "left_raw_sha256": "83747af513965755df562d2cc28f7e48fb3bf659db99713219f53eaf069320bc",
+          "right_raw_sha256": "3176354fd5817fe86f5b7caebe3cf8cfd78bbe1ecc027745a842cbe53b5deeb6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "266688eca16aa5946aecca0be32cbff77d4339551dfcee5c6f55449b082221a5",
+          "left_raw_sha256": "83747af513965755df562d2cc28f7e48fb3bf659db99713219f53eaf069320bc",
+          "right_raw_sha256": "2616fcb31325022ff052a88878d8071489db0bed2c1fdf3f26e647341a6cb364",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "266688eca16aa5946aecca0be32cbff77d4339551dfcee5c6f55449b082221a5",
+          "left_raw_sha256": "83747af513965755df562d2cc28f7e48fb3bf659db99713219f53eaf069320bc",
+          "right_raw_sha256": "5238847862bf492cfb3972de2b18e0737d6abbbee9b9178eaf943f04bd3c8708",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "164097dc1ec3cd6848565d354e585b11e7604b81212064b53d25ba00500605c2",
+      "audit_status": "compared"
+    }
+  ],
+  "release_approved": false
+}

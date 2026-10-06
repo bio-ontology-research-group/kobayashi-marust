@@ -1,0 +1,7 @@
+{
+  "focused_tests": 15,
+  "failed": 0,
+  "log_sha256": "3779e797f98a0d8bed1b048dc4d6c166ba031e4e066ea03c67716af62664ff3b",
+  "test_scope": "finite_rule_model_tests; includes exhaustive relation-index and finite-interpretation oracles",
+  "release_approved": false
+}

@@ -1,0 +1,9 @@
+{
+  "job_id": 53329459,
+  "submitted_at": "2026-10-06T04:04:39.700301+00:00",
+  "inputs": 1920,
+  "chunks": 60,
+  "concurrency": 8,
+  "files_sha256": "65ea3a3a150337c841ea0a9cf9a9fd14fffdccfdc841f805bb05c11354555f5a",
+  "release_approved": false
+}
