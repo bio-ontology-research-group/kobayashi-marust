@@ -92,6 +92,124 @@ pub(crate) fn source_affected(
     queries: &[String], global: &[String],
 ) -> Option<BTreeSet<String>> {
     use crate::frontend::syntax::Concept;
+    use crate::json_io::SourceAxiomKind;
+    struct Lowering {
+        ids: HashMap<Concept, usize>,
+        structural: Vec<(Vec<usize>, usize)>,
+    }
+    fn clause(body: &[usize], head: usize) -> (Vec<usize>, usize) {
+        (body.to_vec(), head)
+    }
+    impl Lowering {
+        fn expression(&mut self, expression: &Concept, depth: usize) -> Option<usize> {
+            if depth > 64 || self.ids.len() >= 100_000 { return None; }
+            if let Some(id) = self.ids.get(expression) { return Some(*id); }
+            let id = self.ids.len();
+            self.ids.insert(expression.clone(), id);
+            match expression {
+                Concept::Name(_) | Concept::Bottom => {},
+                Concept::Top => self.structural.push(clause(&[], id)),
+                Concept::And(children) => {
+                    let children = children.iter().map(|child| self.expression(child, depth + 1))
+                        .collect::<Option<Vec<_>>>()?;
+                    self.structural.push(clause(&children, id));
+                    for child in children { self.structural.push(clause(&[id], child)); }
+                },
+                Concept::Exists(_, filler) => {
+                    let child = self.expression(filler, depth + 1)?;
+                    // All roles remain fixed in the locality model transfer.
+                    // Forgetting their availability conservatively activates
+                    // an existential whenever its filler is active.
+                    self.structural.push(clause(&[id], child));
+                    self.structural.push(clause(&[child], id));
+                },
+                _ => return None,
+            }
+            Some(id)
+        }
+    }
+    if old.len().saturating_add(new.len()) > 100_000 { return None; }
+    let mut lower = Lowering { ids: HashMap::new(), structural: Vec::new() };
+    let mut snapshots = Vec::new();
+    for axioms in [old, new] {
+        let mut rules = BTreeSet::new();
+        for axiom in axioms {
+            let a = lower.expression(&axiom.left, 0)?;
+            let b = lower.expression(&axiom.right, 0)?;
+            match axiom.kind {
+                SourceAxiomKind::SubClass => { rules.insert((vec![a], b)); },
+                SourceAxiomKind::Equivalent => {
+                    rules.insert((vec![a], b)); rules.insert((vec![b], a));
+                },
+                SourceAxiomKind::Disjoint => {
+                    let bottom = lower.expression(&Concept::Bottom, 0)?;
+                    let mut body = vec![a,b]; body.sort_unstable(); body.dedup();
+                    rules.insert((body, bottom));
+                },
+            }
+        }
+        snapshots.push(rules);
+    }
+    let query_ids = queries.iter().map(|name| lower.expression(&Concept::Name(name.clone()), 0))
+        .collect::<Option<Vec<_>>>()?;
+    let global_ids = global.iter().map(|name| lower.expression(&Concept::Name(name.clone()), 0))
+        .collect::<Option<Vec<_>>>()?;
+    let changed: Vec<_> = snapshots[0].symmetric_difference(&snapshots[1]).cloned().collect();
+    // Preserve the same union abstraction and symmetric source-rule difference
+    // as the clause-based implementation, without string or JSON atom materialization.
+    let mut rules = lower.structural;
+    rules.extend(snapshots.into_iter().flatten());
+    let words = queries.len().div_ceil(64);
+    if rules.len() > 500_000
+        || lower.ids.len().checked_mul(words)?.checked_mul(8)? > 64 * 1024 * 1024 {
+        return None;
+    }
+    let mut users = vec![Vec::new(); lower.ids.len()];
+    for (index, (body, _)) in rules.iter().enumerate() {
+        for &id in body { users[id].push(index); }
+    }
+    let mut values = vec![vec![0u64; words]; lower.ids.len()];
+    for (index, id) in query_ids.into_iter().enumerate() {
+        values[id][index / 64] |= 1 << (index % 64);
+    }
+    for id in global_ids { values[id].fill(u64::MAX); }
+    let mut queue: VecDeque<_> = (0..rules.len()).collect();
+    let mut queued = vec![true; rules.len()];
+    let mut mask = vec![0u64; words];
+    while let Some(index) = queue.pop_front() {
+        queued[index] = false;
+        let (body, head) = &rules[index];
+        mask.fill(u64::MAX);
+        for &id in body {
+            for (word, premise) in mask.iter_mut().zip(&values[id]) { *word &= premise; }
+        }
+        let mut grew = false;
+        for (word, add) in values[*head].iter_mut().zip(&mask) {
+            let next = *word | add; grew |= next != *word; *word = next;
+        }
+        if grew { for &dependent in &users[*head] {
+            if !queued[dependent] { queued[dependent] = true; queue.push_back(dependent); }
+        }}
+    }
+    let mut changed_queries = vec![0u64; words];
+    for (body, _) in changed {
+        mask.fill(u64::MAX);
+        for id in body {
+            for (word, premise) in mask.iter_mut().zip(&values[id]) { *word &= premise; }
+        }
+        for (word, add) in changed_queries.iter_mut().zip(&mask) { *word |= add; }
+    }
+    Some(queries.iter().enumerate()
+        .filter(|(i, _)| changed_queries[i / 64] & (1 << (i % 64)) != 0)
+        .map(|(_, name)| name.clone()).collect())
+}
+
+#[cfg(test)]
+fn legacy_source_affected(
+    old: &[crate::json_io::SourceAxiomMeta], new: &[crate::json_io::SourceAxiomMeta],
+    queries: &[String], global: &[String],
+) -> Option<BTreeSet<String>> {
+    use crate::frontend::syntax::Concept;
     use crate::json_io::{JTerm, SourceAxiomKind};
     struct Lowering {
         ids: HashMap<Concept, usize>,
@@ -338,6 +456,8 @@ mod tests {
         for mask in 0..64 { for edit in 0..6 {
             let next=mask ^ (1 << edit);
             let changed=source_affected(&theories[mask],&theories[next],&queries,&[]).unwrap();
+            assert_eq!(Some(changed.clone()), legacy_source_affected(
+                &theories[mask], &theories[next], &queries, &[]));
             for q in 0..3 { if !changed.contains(&queries[q]) {
                 assert_eq!(outcomes[mask].0[q],outcomes[next].0[q],"satisfiability {mask}/{edit}/{q}");
                 assert_eq!(outcomes[mask].1[q],outcomes[next].1[q],"subsumption {mask}/{edit}/{q}");
@@ -360,6 +480,59 @@ mod tests {
             queries.iter().cloned().collect());
         let mut outside = ax; outside.right = Concept::Not(Box::new(Concept::Name("B".into())));
         assert!(source_affected(&[], &[outside], &queries, &[]).is_none());
+    }
+
+    #[test]
+    fn numeric_source_activation_matches_clause_oracle_with_globals_and_word_boundaries() {
+        use crate::frontend::syntax::{Concept, Role};
+        use crate::json_io::{SourceAxiomMeta, SourceAxiomKind::*};
+        let name = |n| Concept::Name(format!("C{n}"));
+        let palette = [
+            SourceAxiomMeta { kind: SubClass, left: name(63), right: name(64) },
+            SourceAxiomMeta { kind: Equivalent, left: name(64), right: name(129) },
+            SourceAxiomMeta { kind: SubClass, left: Concept::Top, right: name(2) },
+            SourceAxiomMeta { kind: Disjoint, left: name(63), right: name(2) },
+            SourceAxiomMeta { kind: SubClass, left: Concept::And(BTreeSet::from([name(2), name(129)])), right: name(0) },
+            SourceAxiomMeta { kind: SubClass, left: name(0), right: Concept::Exists(Role::Inverse("r".into()), Box::new(name(1))) },
+        ];
+        for count in [0, 1, 64, 65, 130] {
+            let queries: Vec<_> = (0..count).map(|i| format!("C{i}")).collect();
+            for mask in 0..64 {
+                let old: Vec<_> = palette.iter().enumerate().filter(|(i,_)| mask & (1 << i) != 0)
+                    .map(|(_,a)| a.clone()).collect();
+                let new: Vec<_> = palette.iter().enumerate().filter(|(i,_)| (mask ^ 21) & (1 << i) != 0)
+                    .map(|(_,a)| a.clone()).collect();
+                for globals in [vec![], vec!["C63".into()], vec!["C2".into(), "C129".into()]] {
+                    assert_eq!(source_affected(&old,&new,&queries,&globals),
+                        legacy_source_affected(&old,&new,&queries,&globals), "{count}/{mask}/{globals:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn source_activation_optional_differential_timing() {
+        let Some(output) = std::env::var_os("KM_SOURCE_ACTIVATION_COMPARE") else { return; };
+        let read = |key| serde_json::from_slice::<crate::orchestrate::cb_to_ht::TInput>(
+            &std::fs::read(std::env::var_os(key).expect("paired input")).unwrap()).unwrap();
+        let old = read("KM_SOURCE_ACTIVATION_OLD"); let new = read("KM_SOURCE_ACTIVATION_NEW");
+        let queries: Vec<_> = old.queries.iter().map(|q| old.concepts[*q].clone()).collect();
+        let globals: Vec<_> = [&old,&new].into_iter().flat_map(|input|
+            input.role_domains.iter().chain(&input.role_ranges)
+                .map(|(_,c)| input.concepts[*c].clone())).collect();
+        let mut records = Vec::new();
+        for repeat in 0..8 {
+            let mut answers = Vec::new();
+            for legacy in if repeat % 2 == 0 { [false,true] } else { [true,false] } {
+                let start = std::time::Instant::now();
+                let answer = if legacy { legacy_source_affected(&old.source_axioms,&new.source_axioms,&queries,&globals) }
+                    else { source_affected(&old.source_axioms,&new.source_axioms,&queries,&globals) }.unwrap();
+                records.push(serde_json::json!({"repeat":repeat,"legacy":legacy,"seconds":start.elapsed().as_secs_f64(),"affected":answer.len()}));
+                answers.push(answer);
+            }
+            assert_eq!(answers[0],answers[1]);
+        }
+        std::fs::write(output,serde_json::to_vec_pretty(&records).unwrap()).unwrap();
     }
 
     #[test]

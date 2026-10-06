@@ -1,0 +1,51 @@
+{
+  "diagnostic_only": true,
+  "test_binary_sha256": "bd610f7fb4d918fddc80f5aa6f075091fb1030d793ef54c9ad5d074857ffa0af",
+  "source_manifest_sha256": "2dce41f0c6967a5dbede244216d65631e08abeaabcd58be25481252cc1a72a54",
+  "repeats_per_transition": 8,
+  "alternating_order": true,
+  "exact_affected_sets_equal": true,
+  "transitions": [
+    {
+      "old": 0,
+      "new": 1,
+      "old_input_sha256": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+      "new_input_sha256": "e66a22f09c4d472d5e498d3cd8048db4b4aa96cb389d910abf72fc521d42108f",
+      "measurements_sha256": "a794b98fe4e640c7c1263be3dfaba0bfa34575ccdd6a63b6e8dab5536163211c",
+      "legacy_median_s": 0.14080247,
+      "numeric_median_s": 0.0720784045,
+      "affected": 4
+    },
+    {
+      "old": 1,
+      "new": 0,
+      "old_input_sha256": "e66a22f09c4d472d5e498d3cd8048db4b4aa96cb389d910abf72fc521d42108f",
+      "new_input_sha256": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+      "measurements_sha256": "666f49a9bae39c3e67fec8d74088469af91562245c55b5dee63d5cc74090fbe2",
+      "legacy_median_s": 0.1376750285,
+      "numeric_median_s": 0.0729759695,
+      "affected": 4
+    },
+    {
+      "old": 0,
+      "new": 3,
+      "old_input_sha256": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+      "new_input_sha256": "7d33f9ef2dcee90ce9e162e2e570055c8aaf720a724f145a23738ee42923d3f6",
+      "measurements_sha256": "ef32e9772c8c5178c05125c36124eb87c6d67de2679d1c8b42a11e1e8fd09514",
+      "legacy_median_s": 0.14692665300000002,
+      "numeric_median_s": 0.078313568,
+      "affected": 2180
+    },
+    {
+      "old": 3,
+      "new": 0,
+      "old_input_sha256": "7d33f9ef2dcee90ce9e162e2e570055c8aaf720a724f145a23738ee42923d3f6",
+      "new_input_sha256": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+      "measurements_sha256": "210752246281602f63068543689f48078ed1a0dd66d82318c2844a526b2e58ce",
+      "legacy_median_s": 0.1425890195,
+      "numeric_median_s": 0.0782226975,
+      "affected": 2180
+    }
+  ],
+  "scope": "Local invalidation-analysis timing only. Does not establish end-to-end or release performance."
+}
