@@ -41,3 +41,16 @@ passed both with timing enabled and disabled. All 624 recorded Rust source and
 build-input hashes were rechecked after compilation. IBEX job 53331735 runs
 the three-case diagnostic. Job 53329459 remains the independent full sweep;
 neither job is restarted or replaced by this diagnostic.
+
+Job 53331735 finished all three classifications with independent agreement,
+but did not retain the worker's detailed timers. The orchestrator forwards
+worker stderr only when `KM_HT_STATS` or `KM_HT_TRACE` is set; the first
+diagnostic omitted both. Its outer timing and answer records remain preserved,
+but it is explicitly unusable for the intended phase breakdown.
+
+The summarizer now reports `usable_for_phase_diagnosis` separately from job
+completion and lists cases missing timer groups. The retained first run is a
+real negative check for this distinction: complete, three verified answers,
+and unusable timing evidence. Job 53332023 uses a separate v2 runner with
+`KM_HT_STATS=1`, the same immutable binary, inputs, limits and answer audits.
+The first job is terminal; no live job was restarted.

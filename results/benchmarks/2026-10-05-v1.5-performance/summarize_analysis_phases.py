@@ -33,7 +33,7 @@ def timings(path):
     return {'event_counts': dict(counts), 'seconds': {k: dict(v) for k, v in totals.items()}}
 
 
-def summarize(directory):
+def summarize(directory, runner='profile_analysis_phases.py'):
     root = Path(__file__).resolve().parent
     inventory_path = root / 'analysis-phase-profile-artifact.json'
     manifest_path = root / 'analysis-phase-profile-inputs.json'
@@ -47,7 +47,7 @@ def summarize(directory):
         chunk = json.loads(path.read_text())
         assert chunk['inventory_sha256'] == digest(inventory_path)
         assert chunk['manifest_sha256'] == digest(manifest_path)
-        assert chunk['runner_sha256'] == digest(root / 'profile_analysis_phases.py')
+        assert chunk['runner_sha256'] == digest(root / runner)
         assert chunk['diagnostic_only'] is True
         assert chunk['flags']['KM_BRIDGE_PHASE_TIMING'] == '1'
         complete += chunk['status'] == 'complete'
@@ -66,7 +66,13 @@ def summarize(directory):
             assert outcome.get('audit_status') != 'audit_error', outcome
             results.append(dict(outcome, timers=timings(output / 'stderr'),
                                 stderr_sha256=record['files']['stderr']['sha256']))
-    return dict(diagnostic_only=True, complete=complete == len(inputs) and seen == set(inputs),
+    all_complete = complete == len(inputs) and seen == set(inputs)
+    missing = [r['ontology'] for r in results if any(
+        r['timers']['event_counts'].get(group, 0) == 0
+        for group in ('read_off', 'analysis', 'analyser'))]
+    return dict(diagnostic_only=True, complete=all_complete,
+                usable_for_phase_diagnosis=all_complete and not missing,
+                missing_timer_groups_on=missing, runner=runner,
                 complete_chunks=complete, rows=results, release_approved=False,
                 interpretation='Timer groups are nested and must not be added together. '
                 'Instrumentation adds I/O. These times cannot establish a release speedup.')
@@ -76,9 +82,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory', type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--runner', choices=['profile_analysis_phases.py', 'profile_analysis_phases_v2.py'],
+                        default='profile_analysis_phases.py')
     args = parser.parse_args()
-    result = summarize(args.directory)
+    result = summarize(args.directory, args.runner)
     with args.output.open('x') as output:
         json.dump(result, output, indent=2)
         output.write('\n')
-    print(json.dumps({'complete': result['complete'], 'rows': len(result['rows'])}))
+    print(json.dumps({'complete': result['complete'], 'rows': len(result['rows']),
+                      'usable_for_phase_diagnosis': result['usable_for_phase_diagnosis']}))

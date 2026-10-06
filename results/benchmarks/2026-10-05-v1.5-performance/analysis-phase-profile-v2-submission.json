@@ -1,0 +1,11 @@
+{
+  "job_id": 53332023,
+  "array": "0-2%3",
+  "runner": "profile_analysis_phases_v2.py",
+  "inventory_sha256": "80775b6fc673eb059cb7947d1ca6f96fa6ff76d9a801ac3090e60837bf489850",
+  "files_sha256": "e7d8ab61b777d3d09b4619ed5a184bf5ad27ae83f1bc9212fe770fd4b25048e8",
+  "diagnostic_only": true,
+  "release_approved": false,
+  "prior_terminal_job": 53331735,
+  "change": "Enable KM_HT_STATS so the orchestrator forwards detailed worker stderr."
+}
