@@ -1,7 +1,9 @@
 //! Sound positive ABox consequences. This is an optimization, not a replacement
 //! for rule-aware query reasoning: all original rules and axioms stay present.
 use super::syntax::{Axiom, Concept, Ontology, RuleAtom, RuleTerm};
-use std::collections::{HashMap, HashSet};
+// Membership/lookup tables; iteration order is per-process random as before.
+type HashMap<K, V> = crate::fxhash::FxHashMap<K, V>;
+type HashSet<T> = crate::fxhash::FxHashSet<T>;
 
 fn compatible(term: &RuleTerm, value: &str, binding: &HashMap<String, String>) -> bool {
     match term {
@@ -27,8 +29,8 @@ fn value(term: &RuleTerm, binding: &HashMap<String, String>) -> Option<String> {
 }
 
 pub(super) fn materialize(ontology: &mut Ontology) -> usize {
-    let mut concepts = HashSet::new();
-    let mut roles = HashSet::new();
+    let mut concepts = HashSet::default();
+    let mut roles = HashSet::default();
     let mut inclusions = Vec::new();
     let mut rules = Vec::new();
     let v = |index: usize| RuleTerm::Var(format!("__closure_{index}"));
@@ -86,18 +88,18 @@ pub(super) fn materialize(ontology: &mut Ontology) -> usize {
         // next round. This changes scheduling only; the monotone fixpoint is
         // unchanged when the optional resource bound does not stop expansion.
         // Indexing avoids scanning unrelated predicates per binding.
-        let mut concept_index: HashMap<Concept, Vec<String>> = HashMap::new();
+        let mut concept_index: HashMap<Concept, Vec<String>> = HashMap::default();
         for (concept, individual) in &concepts {
             concept_index.entry(concept.clone()).or_default().push(individual.clone());
         }
-        let mut role_index: HashMap<String, Vec<(String, String)>> = HashMap::new();
+        let mut role_index: HashMap<String, Vec<(String, String)>> = HashMap::default();
         for (role, left, right) in &roles {
             role_index.entry(role.clone()).or_default().push((left.clone(), right.clone()));
         }
         for (body, head) in &rules {
             let mut remaining: Vec<_> = body.iter().collect();
             let mut ordered = Vec::with_capacity(body.len());
-            let mut bound = HashSet::new();
+            let mut bound = HashSet::default();
             while !remaining.is_empty() {
                 let is_bound = |term: &RuleTerm| match term {
                     RuleTerm::Ind(_) => true,
@@ -129,7 +131,7 @@ pub(super) fn materialize(ontology: &mut Ontology) -> usize {
                 }
                 ordered.push(atom);
             }
-            let mut bindings = vec![HashMap::new()];
+            let mut bindings = vec![HashMap::default()];
             for atom in ordered {
                 let mut next = Vec::new();
                 for binding in &bindings {

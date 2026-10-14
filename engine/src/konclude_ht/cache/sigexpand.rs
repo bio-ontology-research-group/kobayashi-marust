@@ -43,7 +43,7 @@ use super::events::{
     EVENT_WRITE_SATISFIABLE_BRANCH_CACHED_ENTRY,
 };
 use super::value::{CacheValue, CacheWriteDataType};
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 const DEFAULT_SIG_EXPANDER_INITIAL_MEMORY_LEVEL_FOR_REF_COUNT_INCREASE: Cint64 = 200 * 1024 * 1024;
 const DEFAULT_SIG_EXPANDER_NEXT_MEMORY_LEVEL_INCREASE_FOR_REF_COUNT: Cint64 = 100 * 1024 * 1024;
@@ -402,7 +402,7 @@ impl Default for SignatureSatisfiableExpanderCacheEntry {
     fn default() -> Self {
         SignatureSatisfiableExpanderCacheEntry {
             context: 0,
-            tag_expander_cache_value_hash: HashMap::new(),
+            tag_expander_cache_value_hash: HashMap::default(),
             det_expand_value_linker: ExpanderCacheValueLinkerId::NONE,
             expand_branched_linker: ExpanderBranchedLinkerId::NONE,
             det_expand_count: 0,
@@ -998,7 +998,7 @@ pub struct SignatureSatisfiableExpanderCacheSlotItem {
     pub next: SigExpanderSlotItemId,
     // KONCLUDE-PORT-NOTE[memory-pool]: `CCACHINGHASH<cint64,…RedirectionItem*>*` pool hash.
     /// `CSignatureSatisfiableExpanderCacheSlotItem::mSigItemHash`.
-    pub sig_item_hash: HashMap<Cint64, SigExpanderRedirectionItemId>,
+    pub sig_item_hash: SigItemHash,
     // KONCLUDE-PORT-NOTE[memory-pool]: `CCACHINGHASH<…Hasher,…RedirectionItem*>*` pool hash.
     /// `CSignatureSatisfiableExpanderCacheSlotItem::mHasherItemHash`.
     pub hasher_item_hash: SigExpanderHasherItemHash,
@@ -1014,7 +1014,7 @@ impl Default for SignatureSatisfiableExpanderCacheSlotItem {
         SignatureSatisfiableExpanderCacheSlotItem {
             memory_pool: 0,
             next: SigExpanderSlotItemId::NONE,
-            sig_item_hash: HashMap::new(),
+            sig_item_hash: SigItemHash::default(),
             hasher_item_hash: Vec::new(),
             reader_sharing_count: 0,
             reader_using: false,
@@ -1063,7 +1063,7 @@ impl SignatureSatisfiableExpanderCacheSlotItem {
     /// Port of `setSignatureItemHash`.
     pub fn set_signature_item_hash(
         &mut self,
-        sig_item_hash: HashMap<Cint64, SigExpanderRedirectionItemId>,
+        sig_item_hash: SigItemHash,
     ) -> &mut Self {
         self.sig_item_hash = sig_item_hash;
         self
@@ -1084,7 +1084,7 @@ impl SignatureSatisfiableExpanderCacheSlotItem {
     }
 
     /// Port of `getSignatureItemHash`.
-    pub fn get_signature_item_hash(&self) -> &HashMap<Cint64, SigExpanderRedirectionItemId> {
+    pub fn get_signature_item_hash(&self) -> &SigItemHash {
         &self.sig_item_hash
     }
 
@@ -1598,6 +1598,65 @@ impl SignatureSatisfiableExpanderCacheEntryWriteData {
 // Facade (`CSignatureSatisfiableExpanderCache`).
 // ===========================================================================
 
+/// Signature -> redirection-item map with O(delta) snapshots.
+///
+/// Konclude publishes a copy of the cache's signature hash to its readers on
+/// every successful expansion write (`createReaderSlotUpdate`); with Qt's
+/// implicitly shared hashes that copy is cheap, but a plain `HashMap` clone
+/// copies the whole ontology-wide map each time (quadratic over a
+/// classification). Entries of this map are only ever inserted, so a frozen
+/// shared base plus a small private delta represents exactly the same set of
+/// pairs; a snapshot clones the `Arc` and the delta, and the delta is folded
+/// into a fresh base once it grows past a size proportional to the square
+/// root of the map. Lookups consult the delta, then the base. No caller
+/// iterates the map, so only membership and lookup are exposed.
+#[derive(Clone, Default)]
+pub struct SigItemHash {
+    base: std::sync::Arc<HashMap<Cint64, SigExpanderRedirectionItemId>>,
+    delta: HashMap<Cint64, SigExpanderRedirectionItemId>,
+}
+
+impl SigItemHash {
+    #[inline]
+    pub fn get(&self, signature: &Cint64) -> Option<&SigExpanderRedirectionItemId> {
+        self.delta.get(signature).or_else(|| self.base.get(signature))
+    }
+
+    #[inline]
+    pub fn contains_key(&self, signature: &Cint64) -> bool {
+        self.delta.contains_key(signature) || self.base.contains_key(signature)
+    }
+
+    /// Insert or replace, returning the previous value like `HashMap::insert`.
+    pub fn insert(
+        &mut self,
+        signature: Cint64,
+        item: SigExpanderRedirectionItemId,
+    ) -> Option<SigExpanderRedirectionItemId> {
+        let previous = self.get(&signature).copied();
+        // The delta is consulted first, so a replacement placed there shadows
+        // any base value exactly.
+        self.delta.insert(signature, item);
+        let threshold = 64 + 4 * (self.base.len() as f64).sqrt() as usize;
+        if self.delta.len() > threshold {
+            let mut merged: HashMap<Cint64, SigExpanderRedirectionItemId> =
+                HashMap::with_capacity_and_hasher(self.base.len() + self.delta.len(), Default::default());
+            merged.extend(self.base.iter().map(|(k, v)| (*k, *v)));
+            merged.extend(self.delta.drain());
+            self.base = std::sync::Arc::new(merged);
+        }
+        previous
+    }
+
+    pub fn len(&self) -> usize {
+        self.base.len() + self.delta.keys().filter(|k| !self.base.contains_key(k)).count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.base.is_empty() && self.delta.is_empty()
+    }
+}
+
 /// Port of `CSignatureSatisfiableExpanderCache` (bases `CThread`,
 /// `CSatisfiableCache`).
 ///
@@ -1611,7 +1670,7 @@ pub struct SignatureSatisfiableExpanderCache {
     pub thread: Cint64,
     // KONCLUDE-PORT-NOTE[memory-pool]: `CCACHINGHASH<cint64,…RedirectionItem*>* mSigItemHash`.
     /// `CSignatureSatisfiableExpanderCache::mSigItemHash`.
-    pub sig_item_hash: HashMap<Cint64, SigExpanderRedirectionItemId>,
+    pub sig_item_hash: SigItemHash,
     // KONCLUDE-PORT-NOTE[memory-pool]: `CCACHINGSET<cint64>* mIncompatibleSigSet`.
     /// `CSignatureSatisfiableExpanderCache::mIncompatibleSigSet`.
     pub incompatible_sig_set: HashSet<Cint64>,
@@ -1670,11 +1729,11 @@ impl Default for SignatureSatisfiableExpanderCache {
     fn default() -> Self {
         SignatureSatisfiableExpanderCache {
             thread: 0,
-            sig_item_hash: HashMap::new(),
-            incompatible_sig_set: HashSet::new(),
-            already_exp_sig_set: HashSet::new(),
+            sig_item_hash: SigItemHash::default(),
+            incompatible_sig_set: HashSet::default(),
+            already_exp_sig_set: HashSet::default(),
             hasher_item_hash: Vec::new(),
-            signature_refer_count_set: HashMap::new(),
+            signature_refer_count_set: HashMap::default(),
             next_cache_entry_required_signature_ref_count:
                 DEFAULT_SIG_EXPANDER_REQUIRED_SIGNATURE_REFERENCE_COUNT_INCREASE,
             next_memory_level_required_signature_ref_count:
@@ -1877,7 +1936,7 @@ impl SignatureSatisfiableExpanderCache {
             ExpanderCacheValueLinkerId::NONE,
             ExpanderCacheValueLinkerId::NONE,
         );
-        let mut tag_cache_value_hash: HashMap<Cint64, CCacheValue> = HashMap::new();
+        let mut tag_cache_value_hash: HashMap<Cint64, CCacheValue> = HashMap::default();
         let values = if cache_value_list.is_some() {
             cache_context
                 .sig_expander_cache_value_list(cache_value_list)
@@ -2212,7 +2271,7 @@ impl SignatureSatisfiableExpanderCache {
                 // that pool.  Merely unlinking the slot retains one full clone
                 // of the ontology-wide signature hash per cache commit.
                 let released_slot = cache_context.sig_expander_slot_item_mut(tmp_slot_linker);
-                released_slot.set_signature_item_hash(HashMap::new());
+                released_slot.set_signature_item_hash(SigItemHash::default());
                 released_slot.set_hasher_item_hash(Vec::new());
                 released_slot.set_next(SigExpanderSlotItemId::NONE);
             } else {
@@ -2662,7 +2721,7 @@ mod tests {
         redirection.init_redirection_item(entry, signature, 0);
         let redirection = ctx.alloc_sig_expander_redirection_item(redirection);
         let mut slot = SignatureSatisfiableExpanderCacheSlotItem::new();
-        let mut hash = HashMap::new();
+        let mut hash = SigItemHash::default();
         hash.insert(signature, redirection);
         slot.set_signature_item_hash(hash);
         slot.inc_reader();

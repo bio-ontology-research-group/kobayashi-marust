@@ -1,5 +1,25 @@
 # AGENTS.md — kobayashi-marust (KM) reasoner
 
+## Current workspace override (2026-10-02)
+
+This section supersedes the historical paths and branch directions below.
+Robert selected this existing **development/v1.4** worktree, including its
+unfinished changes, as the default. Keep those changes; do not switch to
+`payg-strategy` or the older top-level `main` checkout.
+
+- On ws, this worktree is
+  `/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/v1.4`.
+- Inside the ws agent container it is `/workspace/.work/worktrees/v1.4`.
+  Compute in that container already runs on ws. Its writable project files are
+  under `/workspace`; do not use historical home-directory build caches.
+- On the laptop, `~/Public/software/kobayashi-marust` is an SSHFS view of this
+  same ws worktree. Continue to run builds and tests on ws, never on the laptop.
+- The repository root holds shared Git metadata and other preserved worktrees.
+  The v1.4.3 release is its `.work/worktrees/bugfix-v1.4.3` checkout. This
+  development checkout is not the v1.4.3 release.
+- Old resumed conversations retain historical paths in their text. Check the
+  actual cwd and branch before editing; session metadata has been remapped.
+
 Guidance for Codex working in this repository. These instructions OVERRIDE
 default behaviour. Read this fully before building, benchmarking, or editing.
 

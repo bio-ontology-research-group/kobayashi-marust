@@ -9,17 +9,22 @@ use pest_derive::Parser;
 #[grammar = "grammars/ofn.pest"]
 struct FunctionalSyntax;
 
+pub mod fast;
+
+/// Validate a functional-syntax document. Every validator below has the same
+/// accept/reject results and error text; they differ only in cost. The default
+/// is the hand-written recognizer; `KM_GRAMMAR_VALIDATOR` selects another one
+/// (`original`, `iri-cached`, `iri-cached-ascii`) for differential checks.
 pub fn validate(source: &str) -> Result<(), String> {
-    if std::env::var_os("KM_ASCII_IRI_GRAMMAR").is_some() {
-        return validate_iri_cached_ascii(source);
+    match std::env::var("KM_GRAMMAR_VALIDATOR").as_deref() {
+        Ok("original") => validate_original(source),
+        Ok("iri-cached") => validate_iri_cached(source),
+        Ok("iri-cached-ascii") => validate_iri_cached_ascii(source),
+        _ => validate_handwritten(source),
     }
-    if std::env::var_os("KM_FAST_IRI_GRAMMAR").is_some() {
-        return validate_iri_cached(source);
-    }
-    validate_original(source)
 }
 
-fn validate_original(source: &str) -> Result<(), String> {
+pub fn validate_original(source: &str) -> Result<(), String> {
     let parsed = FunctionalSyntax::parse(Rule::OntologyDocument, source)
         .map_err(|error| format!("invalid OWL 2 DL input: {error}"))?;
     for pair in parsed.flatten() {
@@ -54,29 +59,89 @@ pub fn validate_iri_cached_ascii(source: &str) -> Result<(), String> {
     validate_iri_cached_impl(source, true)
 }
 
-fn ascii_http_iri(iri: &str) -> bool {
+/// Byte classes for [`ascii_http_iri`]: bit 0 = `RFC3987_IriUnreserved`
+/// (ASCII part), bit 1 = a path/fragment byte other than `%` and `#`
+/// (`/`, unreserved, sub-delims, `:`, `@`).
+const ASCII_IRI_CLASS: [u8; 256] = {
+    let mut table = [0u8; 256];
+    let mut b = 0;
+    while b < 256 {
+        let c = b as u8;
+        let unreserved = c.is_ascii_alphanumeric() || matches!(c, b'-' | b'.' | b'_' | b'~');
+        let path = unreserved
+            || matches!(c, b'/' | b':' | b'@'
+                | b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b';' | b'=' | b',');
+        table[b] = (unreserved as u8) | ((path as u8) << 1);
+        b += 1;
+    }
+    table
+};
+
+pub(crate) fn ascii_http_iri(iri: &str) -> bool {
     let Some(body) = iri.strip_prefix("<http://")
         .or_else(|| iri.strip_prefix("<https://"))
         .and_then(|body| body.strip_suffix('>')) else { return false; };
-    let host_end = body.find(['/', '#']).unwrap_or(body.len());
+    let body = body.as_bytes();
+    let host_end = body.iter().position(|&b| b == b'/' || b == b'#').unwrap_or(body.len());
     let (host, tail) = body.split_at(host_end);
     // An alphabetic first byte excludes the grammar's earlier IPv4 branch,
     // which can consume a numeric host prefix before RegName is considered.
-    if !host.as_bytes().first().is_some_and(u8::is_ascii_alphabetic) {
+    if !host.first().is_some_and(u8::is_ascii_alphabetic) {
         return false;
     }
-    let unreserved = |byte: u8| byte.is_ascii_alphanumeric()
-        || matches!(byte, b'-' | b'.' | b'_' | b'~');
-    if !host.bytes().all(unreserved) { return false; }
+    if !host.iter().all(|&b| ASCII_IRI_CLASS[b as usize] & 1 != 0) { return false; }
+    // Path segments and the fragment: every byte is `/` or an ASCII
+    // `RFC3987_IriIpChar` (unreserved, sub-delims, `:`, `@`, or a complete
+    // `%` HEXDIG HEXDIG). Each such character is consumed greedily by
+    // `RFC3987_IriSegment` / `RFC3987_IriFragment`, so the grammar reaches the
+    // closing `>` exactly when every byte qualifies. `?` (query) and a second
+    // `#` still defer to the grammar.
     let mut fragment = false;
-    tail.bytes().all(|byte| {
-        if byte == b'#' && !fragment {
+    let mut i = 0;
+    while i < tail.len() {
+        let byte = tail[i];
+        if ASCII_IRI_CLASS[byte as usize] & 2 != 0 {
+            i += 1;
+        } else if byte == b'%' {
+            if i + 2 < tail.len() && tail[i + 1].is_ascii_hexdigit() && tail[i + 2].is_ascii_hexdigit() {
+                i += 3;
+            } else {
+                return false;
+            }
+        } else if byte == b'#' && !fragment {
             fragment = true;
-            true
+            i += 1;
         } else {
-            byte == b'/' || unreserved(byte)
+            return false;
         }
-    })
+    }
+    true
+}
+
+/// Hand-written structural recognizer (`fast`) with the original atomic
+/// `FullIRI` and `BCP47_LanguageTag` rules applied to each distinct spelling.
+/// Any undecided document, IRI, or tag runs the cached pest validator, which
+/// still produces every rejection and its original error text.
+pub fn validate_handwritten(source: &str) -> Result<(), String> {
+    if let Some(recognized) = fast::recognize(source) {
+        let iris_ok = recognized.full_iris.iter().all(|iri| full_iri_accepted(iri, true));
+        let tags_ok = iris_ok && recognized.language_tags.iter().all(|tag| {
+            FunctionalSyntax::parse(Rule::BCP47_LanguageTag, tag)
+                .is_ok_and(|mut pairs| pairs.next().is_some_and(|p| p.as_span().end() == tag.len()))
+        });
+        if tags_ok {
+            return Ok(());
+        }
+    }
+    validate_iri_cached_impl(source, true)
+}
+
+fn full_iri_accepted(iri: &str, ascii_fast_path: bool) -> bool {
+    (ascii_fast_path && ascii_http_iri(iri)) || {
+        let checked = FunctionalSyntax::parse(Rule::FullIRI, iri);
+        checked.is_ok_and(|mut pairs| pairs.next()
+            .is_some_and(|p| p.as_span().end() == iri.len()))
+    }
 }
 
 fn validate_iri_cached_impl(source: &str, ascii_fast_path: bool) -> Result<(), String> {
@@ -93,11 +158,7 @@ fn validate_iri_cached_impl(source: &str, ascii_fast_path: bool) -> Result<(), S
             iri_cached::Rule::FullIRI => {
                 let iri = pair.as_str();
                 if !validated.contains(iri) {
-                    let valid = (ascii_fast_path && ascii_http_iri(iri)) || {
-                        let checked = FunctionalSyntax::parse(Rule::FullIRI, iri);
-                        checked.is_ok_and(|mut pairs| pairs.next()
-                            .is_some_and(|p| p.as_span().end() == iri.len()))
-                    };
+                    let valid = full_iri_accepted(iri, ascii_fast_path);
                     if !valid {
                         // Preserve the original error text and source location.
                         // This slower path is reached only for an invalid IRI.
@@ -125,9 +186,16 @@ mod tests {
         ];
         for byte in 0..=127u8 {
             for template in ["<http://a{}b/x#y>", "<http://ab/{}x#y>",
-                "<http://ab/x#{}y>"] {
+                "<http://ab/x#{}y>", "<http://ab/x{}>", "<http://ab/{}>", "<http://ab/x#{}>",
+                "<http://ab{}>", "<http://ab/%{}0>", "<http://ab/%0{}>", "<http://ab/x#%{}a>"] {
                 cases.push(template.replace("{}", &char::from(byte).to_string()));
             }
+        }
+        for iri in ["<http://purl.obolibrary.org/obo/MGI_MGI%3A1929705-GO%3A0006886>",
+            "<http://purl.obolibrary.org/obo/MGI_MGI:107706>", "<http://a/b:c@d!$&'()*+,;=>",
+            "<http://a/%>", "<http://a/%4>", "<http://a/%4g>", "<http://a/%41%>", "<http://a#b%2Fc>",
+            "<http://a/b%>", "<http://a/:>", "<http://a/@>", "<http://a#:@>", "<http://a:/b>"] {
+            cases.push(iri.to_owned());
         }
         for iri in cases {
             if ascii_http_iri(&iri) {
@@ -139,7 +207,7 @@ mod tests {
         }
         for iri in ["<http://127.0.0.1/a>", "<http://1.2.3.4abc/a>",
             "<http://[::1]/a>", "<http://a:80/b>", "<http://u@a/b>",
-            "<http://a/b?q=c>", "<http://a/%20>", "<http://a/é>",
+            "<http://a/b?q=c>", "<http://a/%2>", "<http://a/é>",
             "<http://a/b#c#d>", "<http:///a>", "<https://a/\\b>"] {
             assert!(!ascii_http_iri(iri), "specialized check must defer: {iri}");
             let source = format!("Ontology(Declaration(Class({iri})))");
@@ -237,6 +305,58 @@ mod tests {
         }
         for iri in ["", ":", "#fragment", "?query", "urn: space", "urn:%"] {
             assert!(validate(&format!("Ontology(Declaration(Class(<{iri}>)))")).is_err(), "{iri}");
+        }
+    }
+
+    #[test]
+    fn handwritten_recognizer_matches_original_on_peg_edge_cases() {
+        let bodies = [
+            "SubClassOf(:A DataSomeValuesFrom(:p xsd:int))",
+            "SubClassOf(:A DataSomeValuesFrom(:p :q xsd:int))",
+            "SubClassOf(:A DataSomeValuesFrom(:p #c\n xsd:int #c\n ))",
+            "SubClassOf(:A DataSomeValuesFrom(xsd:int))",
+            "SubClassOf(:A DataAllValuesFrom(:p DataOneOf(\"a\" \"b\"@en)))",
+            "SubClassOf(:A DataSomeValuesFrom(:p DatatypeRestriction(xsd:int xsd:minInclusive \"1\"^^xsd:int)))",
+            "SubClassOf(:A DataMinCardinality(1 :p))", "SubClassOf(:A DataMinCardinality(1 :p xsd:int))",
+            "SubClassOf(:A ObjectMinCardinality(01:r))", "SubClassOf(:A ObjectExactCardinality(2 :r :B))",
+            "SubClassOf(ObjectSomeValuesFrom:x :B)", "SubClassOf(ObjectSomeValuesFrom: :B)",
+            "SubClassOf( :A :B )", "SubClassOf\n(:A :B)", "SubClassOf(:A#c\n:B)",
+            "SubClassOf(a:b.c :B)", "SubClassOf(a:b. :B)", "SubClassOf(a:b..c :B)", "SubClassOf(a.b:c :B)",
+            "SubClassOf(.a:b :B)", "SubClassOf(a:-b :B)", "SubClassOf(a:1 :B)", "SubClassOf(é:ü·x :B)",
+            "ClassAssertion(:A _:x)", "ClassAssertion(:A _:)", "ClassAssertion(:A _:1.2)",
+            "Annotation(:p \"x\" ^ ^ xsd:string)", "Annotation(:p \"x\"^^)", "Annotation(:p \"x\" @en)",
+            "Annotation(:p \"x\"@en-)", "Annotation(:p \"x\"@x-private)", "Annotation(:p \"x\"@i-klingon)",
+            "Annotation(:p \"x\"@en-GB-oed)", "Annotation(:p \"x\"@123)", "Annotation(:p \"a\\\"b\\\\\")",
+            "Annotation(:p \"x\"\"y\")", "Annotation(:p _:n)", "Annotation(Annotation(:q :v) :p :v)",
+            "Declaration(Annotation(:q :v) Class(:A))", "Declaration(Class (:A))", "Declaration(Classes(:A))",
+            "AnnotationAssertion(:p _:s \"v\")", "AnnotationAssertion(:p :s _:v)",
+            "SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:s)) :t)",
+            "SubObjectPropertyOf(ObjectPropertyChain(:r) :t)", "SubObjectPropertyOf(ObjectInverseOf(:r) :t)",
+            "InverseObjectProperties(:r :s)", "InverseObjectProperties(:r ObjectInverseOf(:s))",
+            "HasKey(:A () ())", "HasKey(:A (:r ObjectInverseOf(:s)) (:d :e))",
+            "DLSafeRule(Body(ClassAtom(:A Variable(:x)) BuiltInAtom(:f \"1\" Variable(:y))) Head())",
+            "DLSafeRule(Body(DataRangeAtom(xsd:int Variable(:x)) SameIndividualAtom(:a _:b)) Head(DifferentIndividualsAtom(Variable(:x) :c)))",
+            "DLSafeRule(Body(DataPropertyAtom(:p :a \"v\")) Head(ObjectPropertyAtom(ObjectInverseOf(:r) :a :b)))",
+            "DescriptionGraph(Nodes(NodeAssertion(:A :n)) Edges(EdgeAssertion(:r :n :n)) MainClasses(:A))",
+            "DatatypeDefinition(:d DataIntersectionOf(xsd:int DataComplementOf(xsd:string)))",
+            "DatatypeDefinition(:d DataUnionOf(xsd:int))", "DisjointUnion(:A :B :C)", "DisjointUnion(:A :B)",
+            "SameIndividual(:a _:b :c)", "NegativeDataPropertyAssertion(:p :a \"1\"^^xsd:int)",
+            "SubClassOf(:A ObjectHasSelf(ObjectInverseOf(:r)))", "SubClassOf(:A ObjectOneOf())",
+            "EquivalentClasses(:A)", "SubClassOf(:A <urn:x> )", "SubClassOf(:A <urn:x>>)", "SubClassOf(:A <urn:x)",
+        ];
+        let mut documents = vec![
+            String::new(), "Ontology()".into(), " Ontology() ".into(), "Ontology()#c".into(), "\u{feff}Ontology()".into(),
+            "Prefix(:=<urn:a:>)Ontology()".into(), "Prefix( : = <urn:a:> ) Ontology()".into(),
+            "Prefix(a.b:=<urn:a:>) Ontology()".into(), "Prefix(a:b:=<urn:a:>) Ontology()".into(),
+            "Ontology(<urn:o> <urn:v> Import(<urn:i>) Annotation(:p :v) SubClassOf(:A :B))".into(),
+            "Ontology(<urn:o> <urn:v> <urn:w>)".into(), "Ontology(SubClassOf(:A :B) Annotation(:p :v))".into(),
+            "Ontology(Import(<urn:i>) Import(a:b))".into(),
+        ];
+        for body in bodies {
+            documents.push(format!("Prefix(:=<urn:a:>) Ontology({body})"));
+        }
+        for text in documents {
+            assert_eq!(validate_handwritten(&text), validate_original(&text), "{text:?}");
         }
     }
 

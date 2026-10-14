@@ -208,6 +208,34 @@ for theorem in atLeast_congr class_preserved tbox_preserved abox_preserved; do
     }
 done
 
+for theorem in formula_transfer sensitive_exact fresh_value_avoids_literals two_distinct_realizers top_positive atomic_cell_decides cell_cover_valid; do
+    grep -Fq "'ContextCalculus.DatatypeCellRealization.$theorem' does not depend on any axioms" "$surface_log" || {
+        echo "missing axiom-free datatype cell realization audit: $theorem" >&2
+        exit 1
+    }
+done
+
+for theorem in asymmetric_iff_disjoint_inverse asymmetric_irreflexive irreflexive_iff_global_not_self irreflexive_of_empty reflexive_role_nonempty mirrored_negation_detects_either_orientation merge_conflict_incident reported_conflict_is_merged_clash top_identity_abox_entailment_iff top_identity_abox_consistent_iff; do
+    grep -Fq "'ContextCalculus.RoleDisjointnessNormalization.$theorem' does not depend on any axioms" "$surface_log" || {
+        echo "missing axiom-free role-disjointness audit: $theorem" >&2
+        exit 1
+    }
+done
+
+for theorem in relocated_link_holds relocated_self_link_holds representative_label_holds realizes_comp; do
+    grep -Fq "'ContextCalculus.MergeRelocation.$theorem'" "$surface_log" || {
+        echo "missing merge-relocation audit: $theorem" >&2
+        exit 1
+    }
+done
+
+for theorem in countermodel_refutes known_super_refutes and_left_necessary and_right_necessary marker_refutes_host marker_extension_conservative marker_extension_implies; do
+    grep -Fq "'ContextCalculus.CandidateModelRefutation.$theorem'" "$surface_log" || {
+        echo "missing candidate-model refutation audit: $theorem" >&2
+        exit 1
+    }
+done
+
 for theorem in sound model_preserved; do
     grep -Fq "'ContextCalculus.SourceSubsumerClosure.$theorem' does not depend on any axioms" "$surface_log" || {
         echo "missing axiom-free source-closure audit: $theorem" >&2
@@ -232,6 +260,13 @@ done
     cargo test --release --lib finite_datatype_cover_controls_cardinality_and_missing_evidence_defers -- --nocapture --test-threads=1
     cargo test --release --lib bridge_plain_string_literal_is_the_xsd_string_abbreviation -- --nocapture --test-threads=1
     cargo test --release --lib bridge_datetime_literals_preserve_owl_value_identity -- --nocapture --test-threads=1
+    cargo test --release --lib bridge_tbox_datatype_extension_ -- --nocapture --test-threads=1
+    cargo test --release --lib bridge_equivalent_non_candidate_definition_is_tested -- --nocapture --test-threads=1
+    cargo test --release --test bridge_conditional_full_replay -- --test-threads=1
+    cargo test --release --lib bridge_role_disjointness_ -- --nocapture --test-threads=1
+    cargo test --release --lib disjoint_role_merge_check_ -- --nocapture --test-threads=1
+    cargo test --release --lib top_identity_abox_separation_certificate_fails_closed -- --nocapture --test-threads=1
+    cargo test --release --test integral_datatype_difference -- --test-threads=1
     cargo test --release --lib explicit_finite_cover_is_not_truncated_by_interval_enumeration_cap -- --nocapture --test-threads=1
     cargo test --release --lib data_domain_zero_cardinality_forces_empty_property -- --nocapture --test-threads=1
     cargo test --release --lib native_same_individual -- --nocapture --test-threads=1
@@ -239,6 +274,10 @@ done
     cargo test --release --lib source_closure_ -- --test-threads=1
     cargo test --release --lib source_post_closure_ -- --test-threads=1
     cargo test --release --lib definition_containment_subsumers_reach_the_classification_output -- --test-threads=1
+    cargo test --release --lib bridge_candidate_ -- --test-threads=1
+    cargo test --release --lib bridge_model_positive_tags_reads_cow_additional_alias_with_local_shadowing -- --test-threads=1
+    cargo test --release --lib classification_message_analyser_visit_reuse_preserves_all_ordered_payloads -- --test-threads=1
+    cargo test --release --lib preferred_nominal_probe_ -- --test-threads=1
     cargo test --release --lib orchestrate::public_subjects::tests -- --test-threads=1
     cargo test --release --lib production_subject_subset_matches_full_taxonomy_projection -- --test-threads=1
     cargo test --release --lib frontend::data_abox_projection:: -- --test-threads=1

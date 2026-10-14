@@ -127,9 +127,17 @@ done
     export KM_CB_TEST_ALLOW_EXTERNAL_SOURCE=1
 
     cargo test --test cb_live_state
+    cargo test --test integral_datatype_difference
+    cargo test --lib bridge_tbox_datatype_extension_integral_difference_covers
     cargo test --test inverse_predecessor_propagation
     cargo test --lib inverse_transitivity_probe_tests
     cargo test --lib rsucc
+    cargo test --lib hyper_pairs_a_self_loop_head_with_itself
+    cargo test --lib central_core_excludes_conditional_triggers
+    cargo test --lib class_trigger_subsumption_drops_inverse_hypothesis_exactly
+    cargo test --lib ground_context_grounds_top_facts_at_individuals
+    cargo test --lib merge_tied_context_receives_ground_facts_of_its_individual
+    cargo test --release --test cb_nominal_merge_import -- --test-threads=1
     cargo test --lib terminal_snapshot_is_exact_stable_and_complete
     cargo test --lib certified_typed_source
     cargo test --lib source_exact_taxonomy_uses_real_production_traces_and_models

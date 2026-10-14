@@ -23,7 +23,7 @@
 //! `CPROCESSHASH` is `CQtManagedRestrictedModificationHash` (a QHash with a
 //! per-test allocator) and `CPROCESSSET` the QSet twin. Per the global `[ownership]`
 //! / `[memory-pool]` decision (`substrate.rs`), the pooled, context-allocated
-//! containers become **owned** `std::collections::HashMap` / `HashSet`; the
+//! containers become **owned** `crate::fxhash::FxHashMap` / `HashSet`; the
 //! `CContext*` ctor argument (the allocator handle) is dropped — the arena owns
 //! storage, the map owns its entries.
 //!
@@ -43,7 +43,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::model::substrate::{Arena, Cint64, Id};
 use super::super::model::RoleId;
@@ -90,7 +90,7 @@ impl DistinctHash {
     /// Port of `CDistinctHash::CDistinctHash(CContext*)` (allocator handle dropped).
     pub fn new() -> Self {
         DistinctHash {
-            hash: HashMap::new(),
+            hash: HashMap::default(),
             groups: None,
         }
     }
@@ -421,12 +421,12 @@ mod compact_distinct_tests {
         assert!(parent.is_individual_distinct(3));
         assert_eq!(parent.distinct_dependency(2, &edges), Some(first));
         let mut iterator = child.get_distinct_iterator();
-        let mut observed = HashMap::new();
+        let mut observed = HashMap::default();
         while iterator.has_next() {
             let (partner, dep) = iterator.next_distinct_individual_id_dep(&edges, true);
             observed.insert(partner, dep);
         }
-        assert_eq!(observed, HashMap::from([(2, second), (4, second)]));
+        assert_eq!(observed, HashMap::from_iter([(2, second), (4, second)]));
         assert_eq!(child.get_distinct_count(), 2);
         assert!(child.install_distinct_group(1, DistinctGroup::new(vec![1, 2, 3], first)));
         assert_eq!(child.distinct_dependency(2, &edges), Some(first));
@@ -513,7 +513,7 @@ impl ConnectionSuccessorSet {
             if let Some(other_conn_set) = conn_succ_set.conn_set.as_ref() {
                 // if (!mConnSet) allocate; else mConnSet->clear()
                 match self.conn_set.as_mut() {
-                    None => self.conn_set = Some(HashSet::new()),
+                    None => self.conn_set = Some(HashSet::default()),
                     Some(s) => s.clear(),
                 }
 
@@ -568,7 +568,7 @@ impl ConnectionSuccessorSet {
         if self.anc_conn_id != indi_id {
             if self.anc_conn_id != ANC_CONN_NONE {
                 if self.conn_set.is_none() {
-                    let mut new_set = HashSet::new();
+                    let mut new_set = HashSet::default();
                     new_set.insert(self.anc_conn_id);
                     self.conn_set = Some(new_set);
                 }
@@ -771,7 +771,7 @@ impl ConnectionSuccessorCorrectionHash {
     /// Port of `CConnectionSuccessorCorrectionHash::CConnectionSuccessorCorrectionHash`.
     pub fn new() -> Self {
         ConnectionSuccessorCorrectionHash {
-            hash: HashMap::new(),
+            hash: HashMap::default(),
         }
     }
 
@@ -879,7 +879,7 @@ impl DisjointSuccessorRoleHash {
     /// Port of `CDisjointSuccessorRoleHash::CDisjointSuccessorRoleHash(CProcessContext*)`.
     pub fn new() -> Self {
         DisjointSuccessorRoleHash {
-            succ_neg_dis_edge_hash: HashMap::new(),
+            succ_neg_dis_edge_hash: HashMap::default(),
         }
     }
 
@@ -929,7 +929,7 @@ impl DisjointSuccessorRoleHash {
         let data = self.succ_neg_dis_edge_hash.entry(successor).or_default();
         if !data.located {
             // newNegDisSet = allocate; mLocNegDisSet = newNegDisSet; mUseNegDisSet = newNegDisSet;
-            data.use_neg_dis_set = Some(HashMap::new());
+            data.use_neg_dis_set = Some(HashMap::default());
             data.located = true;
         }
         data.use_neg_dis_set.as_mut().unwrap()
@@ -983,6 +983,14 @@ impl DisjointSuccessorRoleHash {
     pub fn remove_disjoint_successor_role_links(&mut self, succ_indi: Cint64) -> &mut Self {
         self.succ_neg_dis_edge_hash.remove(&succ_indi);
         self
+    }
+
+    /// Destination individual ids with at least one stored negation edge,
+    /// in ascending order (deterministic iteration over the hash keys).
+    pub(crate) fn successor_ids(&self) -> Vec<Cint64> {
+        let mut ids: Vec<Cint64> = self.succ_neg_dis_edge_hash.keys().copied().collect();
+        ids.sort_unstable();
+        ids
     }
 
     /// Port of `CDisjointSuccessorRoleHash::getDisjointRoleIterator`.

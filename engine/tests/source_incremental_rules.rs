@@ -72,6 +72,8 @@ Ontology(
 fn run_source_commands(commands: &[serde_json::Value]) -> Vec<serde_json::Value> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_km"))
         .arg("incremental-source")
+        // The legacy per-route adapter session is what these receipts describe.
+        .env("KM_SOURCE_SESSION", "legacy")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -128,6 +130,8 @@ fn isolated_rule_projection_is_rechecked_when_a_named_body_becomes_active() {
 fn rules_route_retains_taxonomy_across_abox_clash_and_retraction() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_km"))
         .arg("incremental-source")
+        // The legacy per-route adapter session is what these receipts describe.
+        .env("KM_SOURCE_SESSION", "legacy")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

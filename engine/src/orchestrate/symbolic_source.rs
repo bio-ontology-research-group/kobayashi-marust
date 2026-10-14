@@ -9,7 +9,10 @@ use std::path::Path;
 pub(super) fn automatic_candidate(path: &Path) -> Result<Option<String>, OrchestrateError> {
     if std::fs::metadata(path)?.len() > 64 * 1024 * 1024 { return Ok(None); }
     let text = std::fs::read_to_string(path)?;
-    if high_object_cardinality_without_rules(&text) { Ok(Some(text)) } else { Ok(None) }
+    let high = crate::frontend::conformance::cached_source_facts(&text)
+        .map_or_else(|| high_object_cardinality_without_rules(&text),
+            |facts| facts.high_object_cardinality_without_rules);
+    if high { Ok(Some(text)) } else { Ok(None) }
 }
 
 fn high_object_cardinality_without_rules(text: &str) -> bool {
@@ -121,5 +124,40 @@ mod tests {
             assert!(!result.consistent);
             assert!(result.subsumptions.is_empty() && result.unsatisfiable.is_empty());
         }
+    }
+}
+
+#[cfg(test)]
+mod facts_tests {
+    /// With `KM_CORPUS_DIR`, check every corpus document: the fact computed in
+    /// the shared conformance traversal equals the token scan it replaces.
+    #[test]
+    fn cached_cardinality_fact_equals_the_token_scan() {
+        let decl = "Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) \
+            Declaration(ObjectProperty(<urn:r>)) Declaration(ObjectProperty(<urn:s>))";
+        let mut docs = [
+            "SubClassOf(<urn:A> ObjectMinCardinality(128 <urn:r>))",
+            "SubClassOf(<urn:A> ObjectMaxCardinality(127 <urn:r>))",
+            "SubClassOf(<urn:A> ObjectExactCardinality(999 <urn:r> <urn:B>)) DLSafeRule(Body() Head())",
+            "SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> ObjectMinCardinality(200 <urn:s>)))",
+        ].map(|axioms| format!("Ontology({decl} {axioms})")).to_vec();
+        if let Some(dir) = std::env::var_os("KM_CORPUS_DIR") {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if std::fs::metadata(&path).unwrap().len() <= 8 * 1024 * 1024 {
+                    docs.push(std::fs::read_to_string(path).unwrap());
+                }
+            }
+        }
+        std::env::set_var("KM_CACHE_CONFORMANCE", "1");
+        let mut compared = 0;
+        for text in docs {
+            if crate::frontend::conformance::check_user_source(&text).is_err() { continue; }
+            let facts = crate::frontend::conformance::cached_source_facts(&text).expect("cached facts");
+            assert_eq!(facts.high_object_cardinality_without_rules,
+                super::high_object_cardinality_without_rules(&text));
+            compared += 1;
+        }
+        assert!(compared >= 3);
     }
 }

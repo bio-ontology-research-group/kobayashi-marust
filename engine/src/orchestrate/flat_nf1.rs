@@ -31,10 +31,18 @@ const OWL_THING: &str = "http://www.w3.org/2002/07/owl#Thing";
 const OWL_NOTHING: &str = "http://www.w3.org/2002/07/owl#Nothing";
 
 fn valid_full_iri(iri: &str) -> bool {
-    !iri.is_empty()
-        && !iri
-            .chars()
-            .any(|ch| ch.is_whitespace() || matches!(ch, '<' | '>' | '"' | '{' | '}' | '|'))
+    if iri.is_empty() {
+        return false;
+    }
+    // ASCII fast path: the only ASCII `char::is_whitespace` code points are
+    // U+0009..=U+000D and U+0020, so this byte test is the char test below.
+    if iri.is_ascii() {
+        return !iri.bytes().any(|b| {
+            matches!(b, b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | b' ' | b'<' | b'>' | b'"' | b'{' | b'}' | b'|')
+        });
+    }
+    !iri.chars()
+        .any(|ch| ch.is_whitespace() || matches!(ch, '<' | '>' | '"' | '{' | '}' | '|'))
 }
 
 fn input_format_allows_direct(value: Option<&str>) -> bool {

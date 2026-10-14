@@ -20,7 +20,7 @@ fn render(node: &Node<'_>) -> String {
 }
 
 fn retained_axiom(node: &Node<'_>, definitions:&mut BTreeMap<String,String>,
-    occupied:&mut BTreeSet<String>) -> Result<String,String> {
+    occupied:&mut BTreeSet<String>, next_assertion: &mut usize) -> Result<String,String> {
     let Node::List(kind,args) = node else { return Ok(render(node)) };
     if !matches!(*kind,"DataPropertyAssertion"|"NegativeDataPropertyAssertion") {
         return Ok(render(node));
@@ -34,9 +34,9 @@ fn retained_axiom(node: &Node<'_>, definitions:&mut BTreeMap<String,String>,
     }
     let value=format!("DataHasValue({property} {literal})");
     let alias=definitions.entry(value).or_insert_with(|| {
-        let mut next=0usize;
         loop {
-            let name=format!("__ground_assertion_{next}");next+=1;
+            let name=format!("__ground_assertion_{}", *next_assertion);
+            *next_assertion += 1;
             if occupied.insert(name.clone()) {break format!("<urn:km:ground-rule#{name}>")}
         }
     }).clone();
@@ -114,13 +114,16 @@ pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, S
     let mut assertion_definitions: BTreeMap<String,String> = definitions.iter()
         .map(|(c,n)|Ok((concept(c,&name)?,name(n)?)))
         .collect::<Result<_,String>>()?;
+    // Occupied names only grow. Every skipped index stays occupied, so the
+    // next free index is exactly the one a fresh search from zero would find.
+    let mut next_assertion = 0usize;
     while parser.peek().is_some() {
         let node=parser.parse()?;
         match node {
             Node::List("Prefix",_)=>prefixes.push(render(&node)),
             Node::List("Ontology",children) if retained.is_none()=> {
                 retained=Some(children.into_iter().filter(|node|node.head()!=Some("DLSafeRule"))
-                    .map(|node|retained_axiom(&node,&mut assertion_definitions,&mut occupied)).collect::<Result<Vec<_>,_>>()?);
+                    .map(|node|retained_axiom(&node,&mut assertion_definitions,&mut occupied,&mut next_assertion)).collect::<Result<Vec<_>,_>>()?);
             }
             _=>return Err("ground-rule source requires one ontology and prefix declarations".into()),
         }
@@ -227,9 +230,26 @@ mod tests {
         let text=r#"NegativeDataPropertyAssertion(Annotation(<http://km.test/note> "retained") <http://km.test/p> <http://km.test/a> "NULL"^^xsd:string)"#;
         let node=Parser::new(text).parse().unwrap();
         let mut definitions=BTreeMap::new(); let mut occupied=BTreeSet::new();
-        let transformed=retained_axiom(&node,&mut definitions,&mut occupied).unwrap();
+        let mut next = 0;
+        let transformed=retained_axiom(&node,&mut definitions,&mut occupied,&mut next).unwrap();
         assert_eq!(transformed,r#"ClassAssertion(Annotation(<http://km.test/note> "retained") ObjectComplementOf(<urn:km:ground-rule#__ground_assertion_0>) <http://km.test/a>)"#);
         assert_eq!(definitions.keys().next().unwrap(),r#"DataHasValue(<http://km.test/p> "NULL"^^xsd:string)"#);
-        assert!(retained_axiom(&Parser::new(&text.replace("xsd:string","rdfs:Literal")).parse().unwrap(),&mut definitions,&mut occupied).is_err());
+        assert!(retained_axiom(&Parser::new(&text.replace("xsd:string","rdfs:Literal")).parse().unwrap(),&mut definitions,&mut occupied,&mut next).is_err());
+    }
+
+    #[test]
+    fn assertion_aliases_keep_lowest_free_names_and_reuse_duplicates() {
+        let mut definitions = BTreeMap::new();
+        let mut occupied = [0, 2, 5].into_iter()
+            .map(|i| format!("__ground_assertion_{i}")).collect();
+        let mut next = 0;
+        for (value, expected) in [("red",1),("blue",3),("red",1),("green",4),("yellow",6)] {
+            let text = format!("DataPropertyAssertion(<urn:p> <urn:a> \"{value}\"^^xsd:string)");
+            let node = Parser::new(&text).parse().unwrap();
+            let actual = retained_axiom(&node, &mut definitions, &mut occupied, &mut next).unwrap();
+            assert_eq!(actual, format!("ClassAssertion( <urn:km:ground-rule#__ground_assertion_{expected}> <urn:a>)"));
+        }
+        assert_eq!(definitions.len(), 4);
+        assert_eq!(next, 7);
     }
 }

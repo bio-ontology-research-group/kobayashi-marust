@@ -32,7 +32,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::algorithm::{CompletionTaskHandleAlgorithm, IMMEDIATELY_PROCESS_PRIORITY};
 use super::context::CalculationAlgorithmContextBase;

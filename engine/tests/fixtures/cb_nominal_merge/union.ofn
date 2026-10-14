@@ -1,0 +1,9 @@
+Prefix(:=<http://f/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://f/o>
+Declaration(Class(:A1)) Declaration(Class(:A2)) Declaration(Class(:A5)) Declaration(Class(:A6)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:t)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))
+SubClassOf(ObjectOneOf(:c) :A5)
+SubClassOf(:A1 ObjectOneOf(:b))
+SubClassOf(ObjectOneOf(:c) ObjectUnionOf(:A1 :A2))
+SubClassOf(:A2 ObjectOneOf(:b))
+)

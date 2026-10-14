@@ -65,7 +65,7 @@
     clippy::type_complexity
 )]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::VariableId;
@@ -617,7 +617,7 @@ impl VariableBindingPathMap {
     pub fn new(process_context: Cint64) -> Self {
         VariableBindingPathMap {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1316,7 +1316,7 @@ impl VariableBindingPathJoiningHash {
     pub fn new(context: Cint64) -> Self {
         VariableBindingPathJoiningHash {
             context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1626,7 +1626,7 @@ impl VariableBindingTriggerHash {
     pub fn new(context: Cint64) -> Self {
         VariableBindingTriggerHash {
             context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1768,7 +1768,7 @@ impl VariableBindingPathMergingHash {
     pub fn new(process_context: Cint64) -> Self {
         VariableBindingPathMergingHash {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1954,7 +1954,7 @@ impl RepresentativeVariableBindingPathMap {
     pub fn new(process_context: Cint64) -> Self {
         RepresentativeVariableBindingPathMap {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 

@@ -741,7 +741,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         let ctx = calc_alg_context.process_context();
         let mut stack: Vec<(TrackPointId, usize)> = vec![(tp, 2)];
-        let mut seen: std::collections::HashSet<usize> = Default::default();
+        let mut seen: crate::fxhash::FxHashSet<usize> = Default::default();
         let mut lines = 0;
         while let Some((t, d)) = stack.pop() {
             if t.is_none() || lines > 24 || d > 12 {

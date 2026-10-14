@@ -76,8 +76,11 @@ pub fn maybe_enable_debug() {
 // ---------------------------------------------------------------------------
 // ofn — OWL functional-syntax normalisation frontend
 // ---------------------------------------------------------------------------
+/// Serialized with [`crate::json_io::write_clause_led_json`]: `clauses` is
+/// written first by the fast clause writer, the remaining fields by serde.
 #[derive(serde::Serialize)]
 struct OfnOutput {
+    #[serde(skip)]
     clauses: Vec<JClause>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     rbox: Vec<Vec<String>>,
@@ -111,8 +114,11 @@ struct OfnMeta {
     route: String,
 }
 
+/// Serialized with [`crate::json_io::write_clause_led_json`]: `clauses` is
+/// written first by the fast clause writer, the remaining fields by serde.
 #[derive(serde::Serialize)]
 struct OfnClausesOnly {
+    #[serde(skip)]
     clauses: Vec<JClause>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     rbox: Vec<Vec<String>>,
@@ -132,7 +138,59 @@ struct OfnClausesOnly {
 /// optional `--meta <meta.json>` and `--elc-binary <clauses.bin>` outputs. (For
 /// the standalone `ofn` binary this is `env::args()[1..]`; for `km ofn` it is
 /// `env::args()[2..]`.)
+/// Environment variable through which `km classify` / `km explain` hand
+/// their process id to the worker subprocesses they spawn.
+pub const SUPERVISOR_PID_ENV: &str = "KM_SUPERVISOR_PID";
+
+/// Make this worker exit when its supervisor is gone.
+///
+/// Workers outlived a killed `km classify` unless the caller killed the whole
+/// process group. `PR_SET_PDEATHSIG` alone does not fit: Linux delivers it
+/// when the forking *thread* exits, and the supervisor spawns workers from
+/// short-lived race threads. Instead a sleeping watchdog thread checks every
+/// 100 ms whether the worker was reparented (its parent, the supervisor or a
+/// wrapper such as `nice` that exec'd into us, exited) or the supervisor
+/// process no longer exists, and then exits at once. The startup check
+/// covers a supervisor that died before the watchdog was armed. Only active
+/// when the supervisor exported its pid, so standalone worker runs are
+/// unaffected. Scheduling only: a live supervisor never triggers it.
+pub fn die_with_supervisor() {
+    #[cfg(target_os = "linux")]
+    {
+        let Some(supervisor) = std::env::var(SUPERVISOR_PID_ENV)
+            .ok()
+            .and_then(|v| v.parse::<libc::pid_t>().ok())
+            .filter(|&pid| pid > 1)
+        else {
+            return;
+        };
+        let parent = unsafe { libc::getppid() };
+        let supervisor_gone = move || unsafe {
+            libc::kill(supervisor, 0) != 0
+                && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        };
+        if parent == 1 || supervisor_gone() {
+            unsafe { libc::_exit(137) };
+        }
+        let _ = std::thread::Builder::new()
+            .name("km-supervisor-watch".into())
+            .stack_size(64 << 10)
+            .spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if unsafe { libc::getppid() } != parent || supervisor_gone() {
+                    unsafe { libc::_exit(137) };
+                }
+            });
+    }
+}
+
+/// Output buffer of the frontend worker's clause, meta and sidecar streams.
+/// The default 8 KiB buffer turns a multi-hundred-MB clause stream into tens
+/// of thousands of small writes; the bytes written are unchanged.
+const OFN_WRITE_BUFFER: usize = 1 << 20;
+
 pub fn run_ofn(args: &[String]) {
+    die_with_supervisor();
     use crate::frontend::ofn_to_clauses;
     if args.is_empty() {
         eprintln!("usage: ofn <ontology.ofn> [--meta <meta.json>] [--elc-binary <clauses.bin>]");
@@ -165,7 +223,16 @@ pub fn run_ofn(args: &[String]) {
             exit(1);
         }
     };
-    let result = match ofn_to_clauses(&text) {
+    // Only the orchestrator sets this, on this worker's command alone, naming
+    // the exact file it registered as its own rewrite of a validated source.
+    let trusted_rewrite = std::env::var_os(crate::orchestrate::TRUSTED_REWRITE_ENV)
+        .is_some_and(|trusted| std::path::Path::new(&trusted) == std::path::Path::new(path));
+    let parsed = if trusted_rewrite {
+        crate::frontend::with_trusted_rewrite(|| ofn_to_clauses(&text))
+    } else {
+        ofn_to_clauses(&text)
+    };
+    let result = match parsed {
         Ok(r) => r,
         Err(e) => {
             eprintln!("out of fragment: {}", e.0);
@@ -190,7 +257,7 @@ pub fn run_ofn(args: &[String]) {
     if result.el_rbox_safe && binary_el_route {
         if let Some(binary_path) = elc_binary_path {
             let write_result = std::fs::File::create(binary_path).and_then(|file| {
-                let mut writer = std::io::BufWriter::new(file);
+                let mut writer = std::io::BufWriter::with_capacity(OFN_WRITE_BUFFER, file);
                 crate::json_io::write_elc_binary(&mut writer, &result.clauses)?;
                 writer.flush()
             });
@@ -207,7 +274,7 @@ pub fn run_ofn(args: &[String]) {
     drop(text);
     // Stream JSON to a buffered stdout (the clause array dominates peak memory).
     let stdout = std::io::stdout();
-    let mut w = std::io::BufWriter::new(stdout.lock());
+    let mut w = std::io::BufWriter::with_capacity(OFN_WRITE_BUFFER, stdout.lock());
     let binary_only = binary_written
         && !result.profile.positive_el_abox_materializable
         && result.profile.source.rule_axioms == 0;
@@ -225,7 +292,7 @@ pub fn run_ofn(args: &[String]) {
         };
         match std::fs::File::create(mp) {
             Ok(f) => {
-                let mut mw = std::io::BufWriter::new(f);
+                let mut mw = std::io::BufWriter::with_capacity(OFN_WRITE_BUFFER, f);
                 if let Err(e) = serde_json::to_writer(&mut mw, &meta) {
                     eprintln!("meta serialise error: {}", e);
                     exit(1);
@@ -244,7 +311,7 @@ pub fn run_ofn(args: &[String]) {
         // full JSON side channels and therefore retain established output.
         if binary_only {
             let _ = w.flush();
-            return;
+            exit_without_teardown();
         }
         let out = OfnClausesOnly {
             clauses: result.clauses,
@@ -255,10 +322,11 @@ pub fn run_ofn(args: &[String]) {
             nominal_abox: result.nominal_abox,
             rules: result.rules,
         };
-        if let Err(e) = serde_json::to_writer(&mut w, &out) {
+        if let Err(e) = crate::json_io::write_clause_led_json(&mut w, &out.clauses, &out) {
             eprintln!("serialise error: {}", e);
             exit(1);
         }
+        finish_ofn_output(w);
     } else {
         let out = OfnOutput {
             clauses: result.clauses,
@@ -275,13 +343,30 @@ pub fn run_ofn(args: &[String]) {
             source_axioms: result.source_axioms,
             rules: result.rules,
         };
-        if let Err(e) = serde_json::to_writer(&mut w, &out) {
+        if let Err(e) = crate::json_io::write_clause_led_json(&mut w, &out.clauses, &out) {
             eprintln!("serialise error: {}", e);
             exit(1);
         }
+        finish_ofn_output(w);
     }
+}
+
+/// Terminate the clause stream, flush it and end the worker.
+fn finish_ofn_output<W: Write>(mut w: W) -> ! {
     let _ = w.write_all(b"\n");
     let _ = w.flush();
+    drop(w);
+    exit_without_teardown()
+}
+
+/// End the frontend worker once every output is written and flushed, while
+/// the frontend result is still in scope. Running the destructors of the
+/// multi-gigabyte clause, source-axiom and meta structures first only returns
+/// memory the exiting process hands back anyway (measured: about 5 s on
+/// ORE 7646). `run_ofn` is the whole body of the `ofn` worker process, so
+/// nothing runs after it; stdout and the meta file are flushed before this.
+fn exit_without_teardown() -> ! {
+    exit(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +382,7 @@ struct ElcOutput {
 }
 
 pub fn run_elc() {
+    die_with_supervisor();
     use crate::elcomplete;
     use std::time::Instant;
     let timing = std::env::var("KM_ELC_TIMING").is_ok();
@@ -432,9 +518,22 @@ pub fn run_incremental() {
 pub fn run_source_incremental() {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
-    let reader = std::io::BufReader::new(stdin.lock());
-    let writer = std::io::BufWriter::new(stdout.lock());
-    if let Err(error) = crate::source_incremental::run_jsonl_session(reader, writer) {
+    let reader = std::io::BufReader::with_capacity(1 << 20, stdin.lock());
+    // Large requests and answers cross pipes: a 1 MiB pipe buffer (when the kernel
+    // allows it; failure is harmless) needs far fewer reader wake-ups.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::fcntl(0, libc::F_SETPIPE_SZ, 1 << 20);
+        libc::fcntl(1, libc::F_SETPIPE_SZ, 1 << 20);
+    }
+    let writer = std::io::BufWriter::with_capacity(1 << 20, stdout.lock());
+    // KM_SOURCE_SESSION=legacy keeps the earlier per-route adapter session.
+    let result = if std::env::var("KM_SOURCE_SESSION").is_ok_and(|v| v == "legacy") {
+        crate::source_incremental::run_jsonl_session(reader, writer)
+    } else {
+        crate::incr_session::run_jsonl_session(reader, writer)
+    };
+    if let Err(error) = result {
         eprintln!("source incremental session I/O error: {error}");
         exit(1);
     }
@@ -444,6 +543,7 @@ pub fn run_source_incremental() {
 // engine — the consequence-based disjunctive context saturation reasoner
 // ---------------------------------------------------------------------------
 pub fn run_engine() {
+    die_with_supervisor();
     use crate::reasoner::Reasoner;
     maybe_enable_debug();
     // KM_PROF_TIME: coarse whole-run phase timers (read+parse / build /
@@ -7516,6 +7616,7 @@ mod cb_derivation_candidate_tests {
 // tableau — the ALC(HOQ) hypertableau (TInput on stdin -> TOutput on stdout)
 // ---------------------------------------------------------------------------
 pub fn run_tableau() {
+    die_with_supervisor();
     maybe_enable_debug();
     let mut buf = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut buf) {

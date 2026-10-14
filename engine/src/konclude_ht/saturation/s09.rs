@@ -97,7 +97,7 @@ use super::satellites::{
     IndividualSaturationSuccessorLinkDataLinkerId, SaturationDisjunctExtractionLinker,
     SaturationModificationProcessUpdateType, SaturationSuccessorDataId,
 };
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 fn native_nominal_prefix_is_insufficient(
     prefixes: Option<&HashMap<Cint64, Vec<(ConceptId, bool)>>>,
@@ -1248,18 +1248,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         let mut mergeable_cardinality: Cint64 = 0;
                         if found_cardinality >= allowed_cardinality && found_cardinality > 1 {
                             // check whether some trivial merging is possible
-                            let mut remain_mergeable_card_hash: std::collections::HashMap<
+                            let mut remain_mergeable_card_hash: crate::fxhash::FxHashMap<
                                 SaturationSuccessorDataId,
                                 Cint64,
-                            > = std::collections::HashMap::new();
-                            let mut merge_distint_hash: std::collections::HashMap<
+                            > = crate::fxhash::FxHashMap::default();
+                            let mut merge_distint_hash: crate::fxhash::FxHashMap<
                                 SaturationSuccessorDataId,
                                 Vec<SaturationSuccessorDataId>,
-                            > = std::collections::HashMap::new();
-                            let mut merge_distint_set: std::collections::HashSet<(
+                            > = crate::fxhash::FxHashMap::default();
+                            let mut merge_distint_set: crate::fxhash::FxHashSet<(
                                 SaturationSuccessorDataId,
                                 SaturationSuccessorDataId,
-                            )> = std::collections::HashSet::new();
+                            )> = crate::fxhash::FxHashSet::default();
 
                             if merging_succ_data_linker.is_some() {
                                 if self.conf_simple_merging_test_for_atmost_critical_testing {
@@ -1455,7 +1455,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             if label.is_none() {
                 return true;
             }
-            let mut saturated = HashSet::new();
+            let mut saturated = HashSet::default();
             let mut descriptor = calc_alg_context
                 .process_context()
                 .reapply_con_sat_label_set(label)
@@ -2026,8 +2026,8 @@ mod tests {
     ) {
         let literal = (ConceptId::new(17), false);
         (
-            HashMap::from([(7, vec![literal])]),
-            HashSet::from([literal]),
+            HashMap::from_iter([(7, vec![literal])]),
+            HashSet::from_iter([literal]),
         )
     }
 
@@ -2057,14 +2057,14 @@ mod tests {
         assert!(native_nominal_prefix_is_insufficient(
             Some(&prefixes),
             7,
-            Some(&HashSet::new()),
+            Some(&HashSet::default()),
         ));
     }
 
     #[test]
     fn native_nominal_prefix_polarity_mismatch_is_insufficient() {
         let (prefixes, _) = nominal_prefix_fixture();
-        let saturated = HashSet::from([(ConceptId::new(17), true)]);
+        let saturated = HashSet::from_iter([(ConceptId::new(17), true)]);
         assert!(native_nominal_prefix_is_insufficient(
             Some(&prefixes),
             7,

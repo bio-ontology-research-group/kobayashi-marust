@@ -85,7 +85,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::concept_process::ConceptProcessDataId;
 use super::super::model::op::CCFS_PROPAGATION_TYPE;

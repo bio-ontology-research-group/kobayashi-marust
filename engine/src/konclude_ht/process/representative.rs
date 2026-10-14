@@ -65,7 +65,7 @@
     clippy::type_complexity
 )]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, VariableId};
@@ -138,7 +138,7 @@ impl RepresentativeVariableBindingPathSetJoiningKeyDataMap {
     pub fn new(process_context: Cint64) -> Self {
         Self {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -241,7 +241,7 @@ impl RepresentativeVariableBindingPathSetJoiningKeyMap {
     pub fn new(process_context: Cint64) -> Self {
         Self {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -362,7 +362,7 @@ impl RepresentativeJoiningCommonKeyMap {
     pub fn new(process_context: Cint64) -> Self {
         Self {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -569,7 +569,7 @@ impl RepresentativeVariableBindingPathSetJoiningHash {
     pub fn new(process_context: Cint64) -> Self {
         Self {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -720,7 +720,7 @@ impl RepresentativeJoiningHash {
     pub fn new(process_context: Cint64) -> Self {
         Self {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1094,7 +1094,7 @@ impl RepresentativeVariableBindingPathJoiningKeyHash {
         Self {
             process_context,
             next_rep_var_bind_path_joining_key_tag: 1,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1418,7 +1418,7 @@ impl RepresentativeContainingMap {
     pub fn new(process_context: Cint64) -> Self {
         RepresentativeContainingMap {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1526,7 +1526,7 @@ impl ConceptRepresentativePropagationSetHash {
     pub fn new(process_context: Cint64) -> Self {
         ConceptRepresentativePropagationSetHash {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1657,7 +1657,7 @@ impl RepresentativeVariableBindingPathSetHash {
     pub fn new(process_context: Cint64) -> Self {
         RepresentativeVariableBindingPathSetHash {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1970,7 +1970,7 @@ impl RepresentativeVariableBindingPathHash {
     pub fn new(process_context: Cint64) -> Self {
         Self {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -2698,7 +2698,7 @@ impl RepresentativePropagationMap {
     pub fn new(process_context: Cint64) -> Self {
         RepresentativePropagationMap {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 

@@ -16,9 +16,15 @@ use std::path::Path;
 use std::process::exit;
 
 use kobayashi_marust::cli;
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use kobayashi_marust::orchestrate::{self, Config, OrchestrateError};
 
 fn main() {
+    #[cfg(feature = "sample-profiler")]
+    kobayashi_marust::sample_prof::install();
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("classify") => classify_cmd(&args[2..]),
@@ -30,6 +36,13 @@ fn main() {
         Some("tableau") => cli::run_tableau(),
         Some("incremental") => cli::run_incremental(),
         Some("incremental-source") => cli::run_source_incremental(),
+        Some("locality-probe") if args.len() == 4 => {
+            let read = |p: &str| std::fs::read_to_string(p).unwrap_or_else(|e| { eprintln!("{p}: {e}"); exit(2) });
+            match kobayashi_marust::source_locality::probe(&read(&args[2]), &read(&args[3])) {
+                Ok(line) => println!("{line}"),
+                Err(e) => { eprintln!("locality probe: {e}"); exit(1) }
+            }
+        }
         // Single-pass Konclude-compatible expressivity and structural stats.
         // The same profile is carried by the normal classify frontend meta, so
         // offline training and production routing cannot drift.
@@ -59,6 +72,9 @@ fn main() {
 }
 
 fn explain_cmd(rest: &[String]) {
+    // Workers watch this pid and exit when the supervisor is gone
+    // (`cli::die_with_supervisor`). Set before any thread is spawned.
+    std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());
     use kobayashi_marust::orchestrate::explain::{self, ExplainError, Options, Query};
 
     let usage = || {
@@ -412,6 +428,9 @@ fn cb_to_ht_cmd() {
 }
 
 fn classify_cmd(rest: &[String]) {
+    // Workers watch this pid and exit when the supervisor is gone
+    // (`cli::die_with_supervisor`). Set before any thread is spawned.
+    std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());
     let mut lines = false;
     let mut graph_edges = std::env::var("KM_JSON_GRAPH_EDGES").is_ok_and(|v| v == "1");
     let mut route: Option<&str> = None;
@@ -485,6 +504,9 @@ fn classify_cmd(rest: &[String]) {
     if !lines {
         match orchestrate::classify_json(&cfg, Path::new(ontology)) {
             Ok(res) => {
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!("KM_TIMING mark: classify_json returned");
+                }
                 use std::io::{BufWriter, Write};
                 let stdout = std::io::stdout();
                 let mut w = BufWriter::new(stdout.lock());
@@ -499,6 +521,9 @@ fn classify_cmd(rest: &[String]) {
                 }
                 let _ = w.write_all(b"\n");
                 let _ = w.flush();
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!("KM_TIMING mark: output written");
+                }
                 return;
             }
             Err(OrchestrateError::OutOfFragment(e)) => {

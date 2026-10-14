@@ -27,5 +27,9 @@ pub mod orchestrate;
 pub mod reasoner;
 pub mod role_automaton;
 pub mod routing;
+#[cfg(feature = "sample-profiler")]
+pub mod sample_prof;
 pub mod source_incremental;
+pub mod source_locality;
+pub mod incr_session;
 pub mod tableau;

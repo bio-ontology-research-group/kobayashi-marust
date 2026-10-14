@@ -220,6 +220,7 @@ impl Route {
         for (key, value) in COMMON_SETTINGS.iter().chain(self.settings()) {
             std::env::set_var(key, value);
         }
+        cap_worker_threads_to_available_cpus();
     }
 
     /// A route that starts exactly one terminating classification mechanism.
@@ -539,6 +540,51 @@ pub(crate) fn functional_data_abox_bridge_candidate(profile: &OntologyProfile) -
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
 }
+
+/// Schedule a wall-clock-bounded native bridge attempt in front of the
+/// automatic nominal leaves whose first worker is not the native bridge alone:
+/// the exact nominal CB calculus (`nominals`), the typed-ABox SHOIQ portfolio
+/// (`nominal_ni_abox`, selected inside the frontend from `nominals`), and the
+/// certified nominal portfolio (`certified_nominals`, which otherwise runs the
+/// bridge concurrently with nominal CB and so shares the CPU with it).
+///
+/// The bridge is complete-answer-or-defer for exactly the singleton/ABox
+/// semantics these leaves exist for. A bridge answer is therefore publishable
+/// whenever it exists, and a refusal, defer, worker error, or budget expiry
+/// returns to the unchanged leaf. This predicate affects attempt order only;
+/// `select` and the supervisor fallback are unchanged.
+///
+/// The cardinality-proxy leaves are excluded: their bridge attempts defer at
+/// the budget on the measured members, adding the full budget for no answer.
+///
+/// The bounds are cost bounds, not semantic admission: the attempt re-runs
+/// the frontend under the bridge bundle, so it is scheduled only where that
+/// second pass is cheap relative to the deadline. Rules are excluded because
+/// the native bridge refuses them before any search. Sources already given
+/// the unbounded typed/functional-data bridge-first attempt keep that
+/// schedule.
+pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let existing_bridge_first = compact_typed_bridge_first_candidate(profile)
+        || functional_data_abox_bridge_candidate(profile);
+    matches!(
+        selected,
+        Route::Nominals | Route::NominalNiAbox | Route::CertifiedNominals
+    ) && !existing_bridge_first
+        && matches!(
+            semantic_fragment(profile),
+            SemanticFragment::Nominal | SemanticFragment::NativeBridgeAbox
+        )
+        && source.file_bytes <= BOUNDED_BRIDGE_FIRST_MAX_BYTES
+        && source.logical_axioms <= BOUNDED_BRIDGE_FIRST_MAX_LOGICAL_AXIOMS
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
+/// Cost bounds of [`bounded_bridge_first_candidate`]'s second frontend pass.
+const BOUNDED_BRIDGE_FIRST_MAX_BYTES: u64 = 4 << 20;
+const BOUNDED_BRIDGE_FIRST_MAX_LOGICAL_AXIOMS: u64 = 20_000;
 
 /// Automatic nominal routes that replaced the historical TBox-only production
 /// schedule because its CB fallback did not carry singleton/ABox semantics.
@@ -1174,67 +1220,6 @@ pub(crate) fn nominal_ni_abox_candidate(profile: &OntologyProfile) -> bool {
         && profile.expressivity.functionality
 }
 
-/// Retained complete ground-clause HT route for the compact SHOIF(D) ABox
-/// shape represented by ORE6934.
-///
-/// The worker keeps every normalized ground clause and deliberately does not
-/// install the same typed ABox a second time as native nominal state. The
-/// source fingerprint is a scheduling fence, while the HT conversion and
-/// classifier still consume the complete normalized input. This route was
-/// independently reproduced from the retained binary and compared exactly
-/// against the gold taxonomy before promotion.
-fn ground_clause_general_ht_candidate(profile: &OntologyProfile) -> bool {
-    let source = &profile.source;
-    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
-
-    profile.expressivity.code == "SHOIF(D)"
-        && source.imports == 0
-        && source.rule_axioms == 0
-        && source.unsupported_rule_axioms == 0
-        && source.logical_axioms == 2_857
-        && source.tbox_axioms == 529
-        && source.rbox_axioms == 141
-        && source.abox_axioms == 2_187
-        && source.distinct_classes == 144
-        && source.distinct_object_properties == 93
-        && source.distinct_data_properties == 56
-        && source.distinct_individuals == 538
-        && source.class_assertions == 526
-        && source.role_assertions == 1_660
-        && source.nominals == 10
-        && source.min_cardinalities == 2
-        && source.max_cardinalities == 11
-        && source.exact_cardinalities == 15
-        && source.qualified_cardinalities == 3
-        && source.role_chain_axioms == 0
-        && source.inverse_functional_role_axioms == 1
-        && count("DataPropertyAssertion") == 624
-        && count("DifferentIndividuals") == 1
-        && count("InverseObjectProperties") == 21
-}
-
-/// Compact nominal ontologies for which the converted-input HT certificate is
-/// much cheaper than materializing every individual in CB root contexts.
-///
-/// This source profile gate schedules only an attempt. `ht_general`
-/// independently checks complete clause coverage and returns DEFER on any
-/// unsupported construct; automatic dispatch then runs the unchanged exact
-/// nominal fallback. The complement fence avoids a measured family in which
-/// HT remains exact but is slower than production completion.
-fn compact_nominal_general_ht_candidate(profile: &OntologyProfile) -> bool {
-    let source = &profile.source;
-    source.abox_axioms > 0
-        && source.role_assertions > 0
-        && source.imports == 0
-        && source.rule_axioms == 0
-        && source.unsupported_rule_axioms == 0
-        && (6_000..=8_000).contains(&source.logical_axioms)
-        && (1_500..=2_500).contains(&source.abox_axioms)
-        && source.complements == 0
-        && source.unions <= 2
-        && (source.unions > 0 || source.role_assertions >= 400)
-}
-
 /// Native completion handles inverse-chain singleton constraints without the
 /// conditional labels accumulated by shared CB query contexts. The bridge
 /// checks complete source coverage; automatic dispatch retains nominal CB.
@@ -1290,24 +1275,6 @@ fn data_assertion_native_bridge_candidate(profile: &OntologyProfile) -> bool {
         && source.has_values == 0
         && source.role_chain_axioms == 0
         && profile.expressivity.inverse
-        && source.imports == 0
-        && source.rule_axioms == 0
-        && source.unsupported_rule_axioms == 0
-}
-
-/// Large SRIQ terminology with a small positive ABox for which the general HT
-/// conversion is complete and avoids the more expensive cardinality-proxy
-/// portfolio. The source gate only schedules the certified attempt; a
-/// converted-input refusal restores the exact nominal fallback.
-fn large_card_general_ht_candidate(profile: &OntologyProfile) -> bool {
-    let source = &profile.source;
-    profile.card_number_role_separable
-        && source.logical_axioms >= 10_000
-        && source.abox_axioms > 0
-        && source.abox_axioms <= 500
-        && source.unions >= 100
-        && source.qualified_cardinalities > 0
-        && source.role_chain_axioms > 0
         && source.imports == 0
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
@@ -2321,19 +2288,16 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if small_class_identity_abox_production_candidate(profile) => {
             Route::Nominals
         }
-        SemanticFragment::Nominal if high_unqualified_cardinality_shoq_candidate(profile) => {
-            Route::HtShoq
-        }
-        SemanticFragment::Nominal if compact_role_assertion_general_ht_candidate(profile) => {
-            Route::HtGeneral
-        }
-        SemanticFragment::Nominal if compact_nominal_general_ht_candidate(profile) => {
-            Route::HtGeneral
-        }
-        SemanticFragment::Nominal if large_card_general_ht_candidate(profile) => Route::HtGeneral,
-        SemanticFragment::Nominal if ground_clause_general_ht_candidate(profile) => {
-            Route::HtGeneral
-        }
+        // `ht_shoq` is a measurement arm (docs/ROUTING.md): ORE 10702 is a
+        // known incomplete counterexample and no runtime certificate checks its
+        // answer, so it is not selected automatically.
+        // `ht_general` (the unrestricted historical hypertableau forced onto
+        // inverse/nominal/number inputs by KM_HT_FORCE) has no completeness
+        // or soundness contract on these fragments: forced runs publish wrong
+        // answers on ORE 11647, 12566 and 16372 (SHOIQ(D) ABoxes). Its only
+        // runtime check is lossless clause coverage, which does not certify
+        // the search. It is therefore never an automatic route
+        // (docs/ROUTING.md); nominal inputs keep the certified routes below.
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
         }
@@ -2378,7 +2342,11 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if typed_object_abox_bridge_candidate(profile) => {
             Route::CertifiedNominals
         }
-        SemanticFragment::Nominal if nominal_ni_tbox_candidate(profile) => Route::NominalNiTbox,
+        // `nominal_ni_tbox` is not an automatic route: its runtime checks
+        // (zero dropped clauses, SHOIQ fences, absence of NI premises in the
+        // completed models) accept ORE 16372 and publish `consistent` for an
+        // inconsistent ontology, so only an exact source-count fence kept it
+        // safe, and fingerprint predicates are not admissible routing.
         // Every remaining ABox stays on the exact nominal calculus. The
         // certified proxy route above is complete-answer-or-defer and carries
         // this same nominal fallback, so a source-profile false positive can
@@ -2522,11 +2490,13 @@ impl EnvironmentGuard {
             .chain(std::iter::once("KM_GROUND_RULE_SOURCE"))
             .chain(std::iter::once("KM_GROUND_PRIVATE_CLASS_FILE"))
             .chain(std::iter::once("KM_BRIDGE_PUBLIC_SUBJECT_FILE"))
+            .chain(std::iter::once("KM_PUBLIC_SUBJECT_IRIS_FILE"))
             .chain(std::iter::once("KM_DATA_ABOX_PROJECT"))
             .chain(std::iter::once("KM_EL_ABOX_CHECK"))
             .chain(std::iter::once("KM_NO_SEPARABLE_ABOX_ELISION"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
+            .chain(std::iter::once("KM_DATA_ASSERTION_AS_CLASS"))
             .chain(ROUTE_KEYS.iter().copied())
             .map(|key| (key, std::env::var_os(key)))
             .collect();
@@ -2542,6 +2512,24 @@ impl Drop for EnvironmentGuard {
             } else {
                 std::env::remove_var(key);
             }
+        }
+    }
+}
+
+/// Route bundles name the CB worker thread count of the machine they were
+/// tuned on (`KM_THREADS=16`, or 8). On a smaller CPU set those extra worker
+/// threads only time-slice the same cores: under a one-CPU limit a fifteen-
+/// thread speculative CB arm takes about fifteen sixteenths of the CPU from a
+/// concurrently racing single-threaded HT worker, and the parallel engine
+/// pays coordination and per-thread arena costs for no parallelism. Never
+/// request more CB worker threads than the process may run on. Thread count
+/// is scheduling only: the CB saturation is monotone and confluent, so the
+/// derived fixpoint (and every published answer) is unchanged.
+pub(crate) fn cap_worker_threads_to_available_cpus() {
+    let available = std::thread::available_parallelism().map_or(1, |n| n.get());
+    if let Some(requested) = std::env::var("KM_THREADS").ok().and_then(|v| v.parse::<usize>().ok()) {
+        if requested > available {
+            std::env::set_var("KM_THREADS", available.to_string());
         }
     }
 }
@@ -3942,6 +3930,52 @@ mod tests {
     }
 
     #[test]
+    fn bounded_bridge_first_only_precedes_nominal_leaves_and_keeps_selection() {
+        let mut profile = union_free_disjointness_terminology_profile();
+        profile.source.abox_axioms = 1;
+        profile.source.class_assertions = 1;
+        profile.source.file_bytes = 1 << 20;
+        assert_eq!(select(&profile), Route::Nominals);
+        assert!(bounded_bridge_first_candidate(Route::Nominals, &profile));
+        // The attempt is an ordering choice in front of the unchanged leaf:
+        // selection and the supervisor fallback are untouched.
+        assert_eq!(select(&profile), Route::Nominals);
+        assert_eq!(automatic_atomic_fallback(Route::HtBridge, &profile), Some(Route::Nominals));
+        assert!(bounded_bridge_first_candidate(Route::NominalNiAbox, &profile));
+        assert!(bounded_bridge_first_candidate(Route::CertifiedNominals, &profile));
+        // Leaves that already start the bridge alone, non-nominal leaves and
+        // the cardinality-proxy leaves are never preceded by the attempt.
+        for route in [
+            Route::HtBridge,
+            Route::HtGeneral,
+            Route::CertifiedCardProxyAbox,
+            Route::CertifiedCardNominals,
+            Route::ProductionAll,
+            Route::Elc,
+            Route::NominalNiTbox,
+        ] {
+            assert!(!bounded_bridge_first_candidate(route, &profile), "{route:?}");
+        }
+        // Cost bounds on the second frontend pass.
+        let mut large = profile.clone();
+        large.source.file_bytes = (4 << 20) + 1;
+        assert!(!bounded_bridge_first_candidate(Route::Nominals, &large));
+        let mut large = profile.clone();
+        large.source.logical_axioms = 20_001;
+        assert!(!bounded_bridge_first_candidate(Route::Nominals, &large));
+        // The bridge refuses rules before search; imports are never routed.
+        let mut rules = profile.clone();
+        rules.source.rule_axioms = 1;
+        assert!(!bounded_bridge_first_candidate(Route::Nominals, &rules));
+        let mut imports = profile.clone();
+        imports.source.imports = 1;
+        assert!(!bounded_bridge_first_candidate(Route::Nominals, &imports));
+        // A nominal-free terminology is outside the scope.
+        let terminology = union_free_disjointness_terminology_profile();
+        assert!(!bounded_bridge_first_candidate(Route::Nominals, &terminology));
+    }
+
+    #[test]
     fn bounded_non_el_cb_gate_never_preempts_an_exact_fragment_route() {
         // Any ABox leaves the nominal-free fragment this screen is scoped to.
         let mut profile = union_free_disjointness_terminology_profile();
@@ -4239,41 +4273,6 @@ mod tests {
     }
 
     #[test]
-    fn retained_ground_clause_profile_selects_isolated_general_ht() {
-        let mut profile = OntologyProfile::default();
-        profile.expressivity.code = "SHOIF(D)".into();
-        let source = &mut profile.source;
-        source.logical_axioms = 2_857;
-        source.tbox_axioms = 529;
-        source.rbox_axioms = 141;
-        source.abox_axioms = 2_187;
-        source.distinct_classes = 144;
-        source.distinct_object_properties = 93;
-        source.distinct_data_properties = 56;
-        source.distinct_individuals = 538;
-        source.class_assertions = 526;
-        source.role_assertions = 1_660;
-        source.nominals = 10;
-        source.min_cardinalities = 2;
-        source.max_cardinalities = 11;
-        source.exact_cardinalities = 15;
-        source.qualified_cardinalities = 3;
-        source.inverse_functional_role_axioms = 1;
-        source
-            .axiom_types
-            .insert("DataPropertyAssertion".into(), 624);
-        source.axiom_types.insert("DifferentIndividuals".into(), 1);
-        source
-            .axiom_types
-            .insert("InverseObjectProperties".into(), 21);
-
-        assert!(ground_clause_general_ht_candidate(&profile));
-        assert_eq!(select(&profile), Route::HtGeneral);
-        profile.source.class_assertions += 1;
-        assert!(!ground_clause_general_ht_candidate(&profile));
-    }
-
-    #[test]
     fn isolated_nominal_queries_keep_the_complete_nominal_route() {
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 4;
@@ -4359,7 +4358,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_nominal_profile_schedules_certified_general_ht() {
+    fn compact_nominal_profile_never_selects_uncertified_general_ht() {
         let mut profile = OntologyProfile::default();
         profile.expressivity.nominal_individual = true;
         profile.source.logical_axioms = 7_000;
@@ -4367,28 +4366,11 @@ mod tests {
         profile.source.abox_axioms = 2_000;
         profile.source.role_assertions = 600;
         profile.source.unions = 2;
-
-        assert!(compact_nominal_general_ht_candidate(&profile));
-        assert_eq!(select(&profile), Route::HtGeneral);
-
-        profile.source.complements = 1;
-        assert!(!compact_nominal_general_ht_candidate(&profile));
-        assert_eq!(select(&profile), Route::Nominals);
-
-        profile.source.complements = 0;
-        profile.source.unions = 0;
-        profile.source.role_assertions = 399;
-        assert!(!compact_nominal_general_ht_candidate(&profile));
-        assert_eq!(select(&profile), Route::Nominals);
-
-        profile.source.unions = 2;
-        profile.source.role_assertions = 0;
-        assert!(!compact_nominal_general_ht_candidate(&profile));
-        assert_eq!(select(&profile), Route::Nominals);
+        assert_ne!(select(&profile), Route::HtGeneral);
     }
 
     #[test]
-    fn large_card_profile_schedules_certified_general_ht() {
+    fn large_card_profile_never_selects_uncertified_general_ht() {
         let mut profile = OntologyProfile::default();
         profile.card_number_role_separable = true;
         profile.source.logical_axioms = 11_821;
@@ -4397,20 +4379,11 @@ mod tests {
         profile.source.unions = 381;
         profile.source.qualified_cardinalities = 1;
         profile.source.role_chain_axioms = 6;
-
-        assert!(large_card_general_ht_candidate(&profile));
-        assert_eq!(select(&profile), Route::HtGeneral);
-
-        profile.source.logical_axioms = 2_168;
-        profile.source.abox_axioms = 2_004;
-        profile.source.unions = 9;
-        profile.source.role_chain_axioms = 0;
-        assert!(!large_card_general_ht_candidate(&profile));
-        assert_eq!(select(&profile), Route::CertifiedCardProxyAbox);
+        assert_ne!(select(&profile), Route::HtGeneral);
     }
 
     #[test]
-    fn high_unqualified_cardinality_profile_schedules_shoq() {
+    fn high_unqualified_cardinality_profile_never_selects_uncertified_shoq() {
         let mut profile = OntologyProfile::default();
         profile.expressivity.nominal = true;
         profile.expressivity.nominal_individual = true;
@@ -4423,7 +4396,8 @@ mod tests {
         profile.source.nominals = 63;
 
         assert!(high_unqualified_cardinality_shoq_candidate(&profile));
-        assert_eq!(select(&profile), Route::HtShoq);
+        // The uncertified SHOQ arm is never an automatic route.
+        assert_ne!(select(&profile), Route::HtShoq);
 
         profile.source.qualified_cardinalities = 1;
         profile.expressivity.qualified_cardinality = true;
@@ -5207,7 +5181,7 @@ mod tests {
     }
 
     #[test]
-    fn flat_role_rich_abox_tries_complete_ht_before_nominal_cb() {
+    fn flat_role_rich_abox_keeps_certified_nominal_route() {
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 521;
         profile.source.abox_axioms = 382;
@@ -5218,7 +5192,9 @@ mod tests {
         profile.clauses.clauses = 557;
 
         assert!(compact_role_assertion_general_ht_candidate(&profile));
-        assert_eq!(select(&profile), Route::HtGeneral);
+        // The predicate only tunes an explicitly requested ht_general run;
+        // automatic routing never selects the uncertified arm.
+        assert_ne!(select(&profile), Route::HtGeneral);
 
         profile.source.role_chain_axioms = 1;
         assert!(!compact_role_assertion_general_ht_candidate(&profile));

@@ -19,7 +19,9 @@
 //! without any empty range, the property IRI is resolved (`reg.short`) only
 //! when a constraint is actually emitted.
 
-use std::collections::{HashMap, HashSet};
+// Membership/lookup tables; iteration order is per-process random as before.
+type HashMap<K, V> = crate::fxhash::FxHashMap<K, V>;
+type HashSet<T> = crate::fxhash::FxHashSet<T>;
 
 use super::clauses::{constraint, var_x, var_y, Atom, DLClause};
 use super::iri::IriRegistry;
@@ -50,7 +52,7 @@ impl DataRanges {
         };
         if let Node::List("DataOneOf", lits) = args[1] {
             let refs: Vec<&Node> = lits.iter().collect();
-            let mut set = HashSet::new();
+            let mut set = HashSet::default();
             let mut complete = true;
             let mut index = 0;
             while index < refs.len() {

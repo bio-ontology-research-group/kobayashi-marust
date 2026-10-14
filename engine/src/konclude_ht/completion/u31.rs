@@ -65,7 +65,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::substrate::Id;
 use super::super::process::NodeId;
@@ -310,7 +310,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         if con_set_list.len() == 67 {
             let mut contain_all = true;
-            let mut test_concept_set_string_set: HashSet<String> = HashSet::new();
+            let mut test_concept_set_string_set: HashSet<String> = HashSet::default();
             // cpp 4632: the `containAll &&` guard is invariant-true during this
             // build loop (containAll is only cleared afterwards), so a plain
             // iteration is behaviourally identical.

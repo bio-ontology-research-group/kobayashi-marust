@@ -51,7 +51,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::model::concept_process::{ConceptProcessData, UnsatisfiableCachingTags};
 use super::super::model::ontology::OntologyArenas;
@@ -176,7 +176,7 @@ impl OccurrenceUnsatisfiableCacheEntriesHash {
     /// — the default ctor sets `referenceCount = 1`.
     pub fn new() -> Self {
         OccurrenceUnsatisfiableCacheEntriesHash {
-            entries: HashMap::new(),
+            entries: HashMap::default(),
             reference_count: 1,
         }
     }

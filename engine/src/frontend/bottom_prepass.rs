@@ -17,7 +17,10 @@
 //! a search-cap hit are treated as `top`, so they can only lose a certificate.
 //! Every emitted bottom constraint is therefore an entailed OWL consequence.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+// Membership/lookup tables; iteration order is per-process random as before.
+type HashMap<K, V> = crate::fxhash::FxHashMap<K, V>;
+type HashSet<T> = crate::fxhash::FxHashSet<T>;
 
 use super::clauses::{Atom, DLClause};
 use super::iri::IriRegistry;
@@ -299,6 +302,9 @@ pub struct BottomPrepass {
     functional: HashSet<String>,
     different: HashSet<(String, String)>,
     disjoint: HashSet<(usize, usize)>,
+    /// `disjoint` indexed by endpoint (filled by `certify` once every name
+    /// has an id); see `selected_types_clash`.
+    disjoint_partners: Vec<Vec<usize>>,
     role_supers: HashMap<String, Vec<String>>,
     inverse_roles: HashMap<String, Vec<String>>,
 }
@@ -461,6 +467,12 @@ impl BottomPrepass {
         if self.names.is_empty() {
             return BottomPrepassResult::default();
         }
+        let mut disjoint_partners = vec![Vec::new(); self.names.len()];
+        for &(left, right) in &self.disjoint {
+            disjoint_partners[left].push(right);
+            disjoint_partners[right].push(left);
+        }
+        self.disjoint_partners = disjoint_partners;
 
         let children = class_children(&self.supers);
         let role_closure = role_super_closure(&self, role_constraints);
@@ -569,13 +581,19 @@ impl BottomPrepass {
         // consequence.
         let mut forced_ids: BTreeSet<(usize, usize)> = BTreeSet::new();
         let mut incompatible_ids: BTreeSet<(usize, usize)> = BTreeSet::new();
+        // The factors depend on the role only; compute them once per role.
+        let mut factors_by_role: HashMap<&str, Vec<&ClassConstraint>> = HashMap::default();
         for owner in 0..self.names.len() {
-            if bottom[owner] {
+            if bottom[owner] || self.existentials[owner].is_empty() {
                 continue;
             }
             let owner_closure = type_closure(&[owner], &self);
             for (role, _) in &self.existentials[owner] {
-                let factors = owner_context_factors(role, &self, role_constraints, &role_closure);
+                let factors: &Vec<&ClassConstraint> = factors_by_role
+                    .entry(role.as_str())
+                    .or_insert_with(|| {
+                        owner_context_factors(role, &self, role_constraints, &role_closure)
+                    });
                 if factors.is_empty() {
                     continue;
                 }
@@ -586,7 +604,7 @@ impl BottomPrepass {
                 // factors.  Multi-name alternatives remain represented by the
                 // full bounded search below and are not weakened into pairwise
                 // constraints.
-                for factor in &factors {
+                for factor in factors {
                     for alternative in &factor.alternatives {
                         if alternative.len() != 1 {
                             continue;
@@ -608,7 +626,7 @@ impl BottomPrepass {
 
                 let Some(Some(common)) = viable_context_common_types(
                     owner,
-                    &factors,
+                    factors,
                     &self,
                     &values,
                     &bottom,
@@ -690,7 +708,7 @@ fn role_super_closure(
         roles.extend(restrictions.iter().map(|(role, _)| role.clone()));
     }
 
-    let mut out = HashMap::new();
+    let mut out = HashMap::default();
     for role in roles {
         let mut seen = BTreeSet::from([role.clone()]);
         let mut queue = VecDeque::from([role.clone()]);
@@ -777,7 +795,7 @@ fn distinct_data_pairs(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let mut pairs = HashSet::new();
+    let mut pairs = HashSet::default();
     for (index, left) in names.iter().enumerate() {
         for right in names.iter().skip(index + 1) {
             // The prepass may turn this verdict into a named-class bottom
@@ -1202,13 +1220,25 @@ fn selected_types_clash(
         queue.extend(prepass.supers[class].iter().copied());
     }
     let types: Vec<usize> = closure.into_iter().collect();
-    if types.iter().enumerate().any(|(index, left)| {
-        types.iter().skip(index + 1).any(|right| {
-            prepass
-                .disjoint
-                .contains(&ordered_usize_pair(*left, *right))
+    // Two distinct selected types are disjoint iff one of them lists the other
+    // as a disjoint partner; scanning the (sorted) types' partners decides the
+    // same condition as testing every pair of types.
+    let pair_clash = if prepass.disjoint_partners.len() == prepass.names.len() {
+        types.iter().any(|&left| {
+            prepass.disjoint_partners[left]
+                .iter()
+                .any(|&right| right != left && types.binary_search(&right).is_ok())
         })
-    }) {
+    } else {
+        types.iter().enumerate().any(|(index, left)| {
+            types.iter().skip(index + 1).any(|right| {
+                prepass
+                    .disjoint
+                    .contains(&ordered_usize_pair(*left, *right))
+            })
+        })
+    };
+    if pair_clash {
         return true;
     }
     value_maps_clash(

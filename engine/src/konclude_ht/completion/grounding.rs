@@ -20,7 +20,7 @@ use super::super::process::varbind::{
 };
 use super::super::process::{ConDescId, NodeId};
 use super::context::CalculationAlgorithmContext;
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 /// Port of `TConceptPropagationBindingPair`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -275,7 +275,7 @@ impl ConceptNominalSchemaGroundingHandler {
             .collect();
         nom_schema_concepts.sort_by_key(|concept| concept.raw);
 
-        let mut selected = HashMap::new();
+        let mut selected = HashMap::default();
         let mut new_grounded_con_linker = Vec::new();
         self.create_nominal_schema_grounding_concepts_rec(
             0,
@@ -400,7 +400,7 @@ impl ConceptNominalSchemaGroundingHandler {
             let mut nominal_schema_var_binded_nominal_hash: HashMap<
                 ConceptId,
                 Vec<ConceptPropagationBindingPair>,
-            > = HashMap::new();
+            > = HashMap::default();
             let mut all_nominal_concept_set: Option<Vec<ConceptId>> = None;
 
             let mut var_bind_des_it: VarBindingDescriptorId = calc_alg_context
@@ -538,7 +538,7 @@ impl ConceptNominalSchemaGroundingHandler {
             let mut nominal_schema_var_binded_nominal_hash: HashMap<
                 ConceptId,
                 Vec<ConceptPropagationBindingPair>,
-            > = HashMap::new();
+            > = HashMap::default();
             let mut all_nominal_concept_set: Option<Vec<ConceptId>> = None;
 
             let mut var_bind_des_it: VarBindingDescriptorId = calc_alg_context
@@ -917,14 +917,14 @@ mod tests {
         let nominal = ctx.ontology_arenas_mut().alloc_concept(nominal);
 
         let mut templ = super::super::super::model::ontology::NominalSchemaTemplate::new();
-        let mut template_hash = HashMap::new();
+        let mut template_hash = HashMap::default();
         template_hash.insert(nom_var, vec![nom_var]);
         templ.set_template_concept_nominal_schema_concept_hash(template_hash);
         let templ = ctx
             .ontology_arenas_mut()
             .alloc_nominal_schema_template(templ);
 
-        let mut bindings = HashMap::new();
+        let mut bindings = HashMap::default();
         bindings.insert(
             nom_var,
             ConceptPropagationBindingPair {
@@ -966,7 +966,7 @@ mod tests {
         let source = ctx.ontology_arenas_mut().alloc_concept(source);
 
         let mut templ = super::super::super::model::ontology::NominalSchemaTemplate::new();
-        let mut template_hash = HashMap::new();
+        let mut template_hash = HashMap::default();
         template_hash.insert(source, vec![nom_var]);
         template_hash.insert(nom_var, vec![nom_var]);
         templ.set_template_concept_nominal_schema_concept_hash(template_hash);
@@ -974,7 +974,7 @@ mod tests {
             .ontology_arenas_mut()
             .alloc_nominal_schema_template(templ);
 
-        let mut bindings = HashMap::new();
+        let mut bindings = HashMap::default();
         bindings.insert(
             nom_var,
             ConceptPropagationBindingPair {
@@ -1041,7 +1041,7 @@ mod tests {
         let conjunction = ctx.ontology_arenas_mut().alloc_concept(conjunction);
 
         let mut templ = super::super::super::model::ontology::NominalSchemaTemplate::new();
-        let mut template_hash = HashMap::new();
+        let mut template_hash = HashMap::default();
         template_hash.insert(conjunction, vec![nom_var_a, nom_var_b]);
         template_hash.insert(nom_var_a, vec![nom_var_a]);
         template_hash.insert(nom_var_b, vec![nom_var_b]);
@@ -1050,7 +1050,7 @@ mod tests {
             .ontology_arenas_mut()
             .alloc_nominal_schema_template(templ);
 
-        let mut bindings = HashMap::new();
+        let mut bindings = HashMap::default();
         bindings.insert(
             nom_var_a,
             ConceptPropagationBindingPair {
@@ -1152,10 +1152,10 @@ mod tests {
 
         let mut templ = super::super::super::model::ontology::NominalSchemaTemplate::new();
         templ.set_template_concept(nom_var_concept);
-        let mut template_set = std::collections::HashSet::new();
+        let mut template_set = crate::fxhash::FxHashSet::default();
         template_set.insert(nom_var_concept);
         templ.set_nominal_schema_concept_set(template_set);
-        let mut template_hash = HashMap::new();
+        let mut template_hash = HashMap::default();
         template_hash.insert(nom_var_concept, vec![nom_var_concept]);
         templ.set_template_concept_nominal_schema_concept_hash(template_hash);
         let templ = ctx
@@ -1243,10 +1243,10 @@ mod tests {
 
         let mut templ = super::super::super::model::ontology::NominalSchemaTemplate::new();
         templ.set_template_concept(nom_var_concept);
-        let mut template_set = std::collections::HashSet::new();
+        let mut template_set = crate::fxhash::FxHashSet::default();
         template_set.insert(nom_var_concept);
         templ.set_nominal_schema_concept_set(template_set);
-        let mut template_hash = HashMap::new();
+        let mut template_hash = HashMap::default();
         template_hash.insert(nom_var_concept, vec![nom_var_concept]);
         templ.set_template_concept_nominal_schema_concept_hash(template_hash);
         let templ = ctx
@@ -1353,10 +1353,10 @@ mod tests {
 
         let mut templ = super::super::super::model::ontology::NominalSchemaTemplate::new();
         templ.set_template_concept(nom_var_concept);
-        let mut template_set = std::collections::HashSet::new();
+        let mut template_set = crate::fxhash::FxHashSet::default();
         template_set.insert(nom_var_concept);
         templ.set_nominal_schema_concept_set(template_set);
-        let mut template_hash = HashMap::new();
+        let mut template_hash = HashMap::default();
         template_hash.insert(nom_var_concept, vec![nom_var_concept]);
         templ.set_template_concept_nominal_schema_concept_hash(template_hash);
         let templ = ctx
@@ -3428,10 +3428,10 @@ mod tests {
 
         let mut templ = super::super::super::model::ontology::NominalSchemaTemplate::new();
         templ.set_template_concept(nom_var_concept);
-        let mut template_set = std::collections::HashSet::new();
+        let mut template_set = crate::fxhash::FxHashSet::default();
         template_set.insert(nom_var_concept);
         templ.set_nominal_schema_concept_set(template_set);
-        let mut template_hash = HashMap::new();
+        let mut template_hash = HashMap::default();
         template_hash.insert(nom_var_concept, vec![nom_var_concept]);
         templ.set_template_concept_nominal_schema_concept_hash(template_hash);
         let templ = ctx

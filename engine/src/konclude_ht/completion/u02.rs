@@ -31,7 +31,9 @@ use super::context::CalculationAlgorithmContextBase;
 pub(super) struct SingletonLabelCache {
     scans: usize, pub(super) hits: usize, misses: usize, invalidations: usize,
     epoch: u64,
-    labels: std::collections::HashMap<usize, (
+    /// Sorted singleton tags the cached entry lists were filtered to.
+    filter_tags: Vec<Cint64>,
+    labels: crate::fxhash::FxHashMap<usize, (
         Vec<std::sync::Arc<super::super::process::satellites::ReapplyConceptLabelSet>>,
         Vec<(Cint64, ConDescId)>,
         Vec<usize>,
@@ -845,6 +847,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // the clash is being recovered from — clear it (the C++ catch consumes the
         // exception, then `clashedBacktracking` re-drives the chosen branch).
         calc_alg_context.clear_pending_signal();
+        // The clash aborted the processing of the then-current node. Konclude
+        // runs the next alternative as a fresh task whose context has no
+        // current node; the in-process restore rolls the graph back but not
+        // this pointer. A stale current node makes
+        // `add_individual_to_processing_queue_based_on_processing_concepts`
+        // treat that node as "being processed" and skip queueing it, so
+        // concepts the next alternative adds to it (e.g. through a merge) were
+        // never processed and the drive ended on an incomplete graph
+        // (fuzz case 1002: a merged root's `some t.A6` never expanded).
+        calc_alg_context.base.set_current_individual_node(NodeId::NONE);
 
         self.ht_check_epoch_alignment("advance", calc_alg_context);
         // KM_BRIDGE_SEARCH_LOG: post-restore label of the advanced node — the
@@ -1823,7 +1835,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             };
             eprintln!("DEP-CHAIN[{n2}] ({kind_str}):");
             let mut stack: Vec<(TrackPointId, usize)> = vec![(des_tp, 1)];
-            let mut seen: std::collections::HashSet<usize> = Default::default();
+            let mut seen: crate::fxhash::FxHashSet<usize> = Default::default();
             let mut lines = 0;
             while let Some((t, d)) = stack.pop() {
                 if lines > 64 || d > 14 {
@@ -1884,10 +1896,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     pub(super) fn singleton_first_carriers(
         &self,
         calc_alg_context: &CalculationAlgorithmContextBase,
-    ) -> std::collections::HashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
+    ) -> crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
         let ctx = calc_alg_context.process_context();
         let onto = calc_alg_context.ontology_arenas();
-        let mut carriers: std::collections::HashMap<_, Vec<_>> = self.singleton_concepts.iter()
+        let mut carriers: crate::fxhash::FxHashMap<_, Vec<_>> = self.singleton_concepts.iter()
             .map(|&concept| (onto.concept(concept).get_concept_tag(), Vec::new())).collect();
         // Most visited labels are not literal singleton tags. An exact,
         // bounded bitmap rejects those misses before hashing. Sparse or
@@ -1940,36 +1952,58 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
         cache: &mut SingletonLabelCache,
-    ) -> std::collections::HashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
+    ) -> crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
         let epoch = calc_alg_context.process_context_mut().singleton_cache_scan_epoch();
         let changed = calc_alg_context.process_context_mut().take_singleton_changed_descriptors();
         if cache.epoch != epoch {
             cache.invalidations += 1;
             // Include negative and shadowed descriptors in the dependency
             // vector: polarity changes can create a previously absent carrier.
-            cache.labels.retain(|_, entry| !changed.iter().any(|id| entry.2.binary_search(id).is_ok()));
+            // Same retained set either way: an entry is dropped iff one of its
+            // descriptor ids changed. With many changes, probe each entry's
+            // (short) id list against a set instead of binary-searching every
+            // changed id in every entry.
+            if changed.len() > 16 {
+                let changed_set: crate::fxhash::FxHashSet<usize> = changed.iter().copied().collect();
+                cache.labels.retain(|_, entry| !entry.2.iter().any(|id| changed_set.contains(id)));
+            } else if !changed.is_empty() {
+                cache.labels.retain(|_, entry| !changed.iter().any(|id| entry.2.binary_search(id).is_ok()));
+            }
             cache.epoch = epoch;
         }
         let ctx = calc_alg_context.process_context();
         let onto = calc_alg_context.ontology_arenas();
-        let mut carriers: std::collections::HashMap<_, Vec<_>> = self.singleton_concepts.iter()
+        let mut carriers: crate::fxhash::FxHashMap<_, Vec<_>> = self.singleton_concepts.iter()
             .map(|&concept| (onto.concept(concept).get_concept_tag(), Vec::new())).collect();
-        // Most visited labels are not literal singleton tags. An exact,
-        // bounded bitmap rejects those misses before hashing. Sparse or
-        // extreme tag ranges retain the original map-only lookup.
-        let membership = carriers.keys().min().copied().zip(carriers.keys().max().copied())
-            .and_then(|(first, last)| {
-                let span = usize::try_from(last.checked_sub(first)?.checked_add(1)?).ok()?;
-                if span > 1_048_576 { return None; }
-                let mut bits = vec![0u64; span.div_ceil(64)];
-                for &tag in carriers.keys() {
-                    let offset = (tag - first) as usize;
-                    bits[offset / 64] |= 1 << (offset % 64);
-                }
-                Some((first, bits))
-            });
+        // Cached entries keep only singleton-tag entries, so the per-scan
+        // loop below touches nothing else. The filter is exact: every other
+        // entry would be dropped by the `carriers` lookup anyway. Entries
+        // filtered for a different tag set are discarded.
+        let mut filter_tags: Vec<Cint64> = carriers.keys().copied().collect();
+        filter_tags.sort_unstable();
+        if cache.filter_tags != filter_tags {
+            cache.labels.clear();
+            cache.filter_tags = filter_tags;
+        }
+        // Phantom intervals as a sorted, merged list swept with a cursor:
+        // the same membership test as `intervals.iter().any(..)` per node,
+        // without rescanning every interval for every node.
+        let mut phantoms = self.phantom_node_intervals.clone();
+        phantoms.sort_unstable();
+        let mut merged_phantoms: Vec<(usize, usize)> = Vec::with_capacity(phantoms.len());
+        for (a, b) in phantoms {
+            if a >= b { continue; }
+            match merged_phantoms.last_mut() {
+                Some(last) if a <= last.1 => last.1 = last.1.max(b),
+                _ => merged_phantoms.push((a, b)),
+            }
+        }
+        let mut phantom_cursor = 0usize;
         for i in 0..ctx.node_count() {
-            if self.phantom_node_intervals.iter().any(|&(a, b)| i >= a && i < b) { continue; }
+            while phantom_cursor < merged_phantoms.len() && merged_phantoms[phantom_cursor].1 <= i {
+                phantom_cursor += 1;
+            }
+            if merged_phantoms.get(phantom_cursor).is_some_and(|&(a, _)| a <= i) { continue; }
             let node_id = NodeId::new(i as Cint64);
             let node = ctx.node(node_id);
             if node.has_merged_into_individual_node_id() { continue; }
@@ -1978,10 +2012,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // Label order cannot change the first two nodes for any tag:
             // nodes are visited in reference order and duplicate keys below
             // cannot insert the same node twice.
-            let snapshots = ctx.singleton_label_snapshot(label);
             let entry = cache.labels.entry(label.index()).or_insert_with(|| (Vec::new(), Vec::new(), Vec::new()));
-            let unchanged = entry.0.len() == snapshots.len() && entry.0.iter().zip(&snapshots)
-                .all(|(a,b)| std::sync::Arc::ptr_eq(a,b));
+            let unchanged = ctx.singleton_label_snapshot_matches(label, &entry.0);
             if unchanged { cache.hits += 1; }
             if !unchanged {
                 cache.misses += 1;
@@ -1990,18 +2022,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 ctx.label_set_visit_stored_descriptors(label, |tag, descriptor, additional| {
                     if descriptor.is_some() { entry.2.push(descriptor.index()); }
                     if descriptor.is_none() || ctx.con_desc(descriptor).is_negated() { return; }
+                    if !carriers.contains_key(&tag) { return; }
                     if additional && ctx.label_set(label).concept_des_dep_map.contains_key(&tag) { return; }
                     entry.1.push((tag,descriptor));
                 });
                 entry.2.sort_unstable();
                 entry.2.dedup();
-                entry.0 = snapshots;
+                entry.0 = ctx.singleton_label_snapshot(label);
             }
             for &(tag, descriptor) in &entry.1 {
-                if let Some((first,bits)) = &membership {
-                    let Some(offset) = tag.checked_sub(*first).and_then(|n| usize::try_from(n).ok()) else { continue; };
-                    if bits.get(offset / 64).is_none_or(|word| word & (1 << (offset % 64)) == 0) { continue; }
-                }
                 if let Some(pair) = carriers.get_mut(&tag) {
                     if pair.len() < 2 && pair.last().is_none_or(|&(last,_)| last != node_id) {
                         pair.push((node_id,ctx.con_desc(descriptor).get_dependency_track_point()));

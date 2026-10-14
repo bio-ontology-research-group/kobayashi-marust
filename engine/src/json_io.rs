@@ -433,6 +433,200 @@ pub fn is_elc_output_binary(bytes: &[u8]) -> bool {
 /// Write the clause-only input consumed by exact EL completion in a compact,
 /// versioned representation. The ordinary JSON file remains authoritative for
 /// every non-EL route and fallback.
+/// Append `value` as a JSON string, byte-for-byte as `serde_json`'s compact
+/// serializer writes it: `"` and `\` are backslash-escaped, the control bytes
+/// 0x08, 0x09, 0x0A, 0x0C and 0x0D use their short escapes, every other byte
+/// below 0x20 becomes `\u00xx` (lowercase hex), and everything else, including
+/// non-ASCII UTF-8, is copied verbatim.
+fn push_json_str(out: &mut Vec<u8>, value: &str) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let bytes = value.as_bytes();
+    out.push(b'"');
+    let mut start = 0;
+    for (index, &byte) in bytes.iter().enumerate() {
+        let escape: &[u8] = match byte {
+            b'"' => b"\\\"",
+            b'\\' => b"\\\\",
+            0x08 => b"\\b",
+            0x09 => b"\\t",
+            0x0A => b"\\n",
+            0x0C => b"\\f",
+            0x0D => b"\\r",
+            0x00..=0x1F => {
+                out.extend_from_slice(&bytes[start..index]);
+                out.extend_from_slice(b"\\u00");
+                out.push(HEX[(byte >> 4) as usize]);
+                out.push(HEX[(byte & 0xF) as usize]);
+                start = index + 1;
+                continue;
+            }
+            _ => continue,
+        };
+        out.extend_from_slice(&bytes[start..index]);
+        out.extend_from_slice(escape);
+        start = index + 1;
+    }
+    out.extend_from_slice(&bytes[start..]);
+    out.push(b'"');
+}
+
+fn push_json_term(out: &mut Vec<u8>, term: &JTerm) {
+    match term {
+        JTerm::Var { name } => {
+            out.extend_from_slice(br#"{"kind":"var","name":"#);
+            push_json_str(out, name);
+        }
+        JTerm::Ind { name } => {
+            out.extend_from_slice(br#"{"kind":"ind","name":"#);
+            push_json_str(out, name);
+        }
+        JTerm::Aux { root, label } => {
+            out.extend_from_slice(br#"{"kind":"aux","root":"#);
+            push_json_str(out, root);
+            out.extend_from_slice(br#","label":["#);
+            for (index, (name, value)) in label.iter().enumerate() {
+                if index > 0 {
+                    out.push(b',');
+                }
+                out.push(b'[');
+                push_json_str(out, name);
+                out.push(b',');
+                out.extend_from_slice(value.to_string().as_bytes());
+                out.push(b']');
+            }
+            out.push(b']');
+        }
+        JTerm::Fun { function, arg } => {
+            out.extend_from_slice(br#"{"kind":"fun","function":"#);
+            push_json_str(out, function);
+            out.extend_from_slice(br#","arg":"#);
+            push_json_term(out, arg);
+        }
+    }
+    out.push(b'}');
+}
+
+fn push_json_atom(out: &mut Vec<u8>, atom: &JAtom) {
+    match atom {
+        JAtom::Concept { concept, term } => {
+            out.extend_from_slice(br#"{"kind":"concept","concept":"#);
+            push_json_str(out, concept);
+            out.extend_from_slice(br#","term":"#);
+            push_json_term(out, term);
+        }
+        JAtom::Role { role, source, target } => {
+            out.extend_from_slice(br#"{"kind":"role","role":"#);
+            push_json_str(out, role);
+            out.extend_from_slice(br#","source":"#);
+            push_json_term(out, source);
+            out.extend_from_slice(br#","target":"#);
+            push_json_term(out, target);
+        }
+        JAtom::Eq { left, right } => {
+            out.extend_from_slice(br#"{"kind":"eq","left":"#);
+            push_json_term(out, left);
+            out.extend_from_slice(br#","right":"#);
+            push_json_term(out, right);
+        }
+    }
+    out.push(b'}');
+}
+
+fn push_json_atoms(out: &mut Vec<u8>, atoms: &[JAtom]) {
+    out.push(b'[');
+    for (index, atom) in atoms.iter().enumerate() {
+        if index > 0 {
+            out.push(b',');
+        }
+        push_json_atom(out, atom);
+    }
+    out.push(b']');
+}
+
+/// Serialize an object whose first field is `"clauses"` and whose remaining
+/// fields are `rest` (a struct with exactly the remaining fields, in order and
+/// with the same serde attributes). The output is byte-identical to deriving
+/// `Serialize` on the combined struct and calling `serde_json::to_writer`; the
+/// clause array is written directly, without serde's per-token dispatch,
+/// because it dominates the frontend's output volume.
+pub fn write_clause_led_json<W: Write, T: Serialize>(
+    writer: &mut W,
+    clauses: &[JClause],
+    rest: &T,
+) -> io::Result<()> {
+    const FLUSH_AT: usize = 1 << 20;
+    let mut out: Vec<u8> = Vec::with_capacity(FLUSH_AT + 4096);
+    out.extend_from_slice(br#"{"clauses":["#);
+    for (index, clause) in clauses.iter().enumerate() {
+        if index > 0 {
+            out.push(b',');
+        }
+        out.extend_from_slice(br#"{"body":"#);
+        push_json_atoms(&mut out, &clause.body);
+        out.extend_from_slice(br#","head":"#);
+        push_json_atoms(&mut out, &clause.head);
+        out.push(b'}');
+        if out.len() >= FLUSH_AT {
+            writer.write_all(&out)?;
+            out.clear();
+        }
+    }
+    out.push(b']');
+    writer.write_all(&out)?;
+    let tail = serde_json::to_vec(rest).map_err(io::Error::from)?;
+    // `tail` is a JSON object: "{}" or "{...}". Continue the open object.
+    if tail.len() <= 2 {
+        writer.write_all(b"}")
+    } else {
+        writer.write_all(b",")?;
+        writer.write_all(&tail[1..])
+    }
+}
+
+fn ref_vec_is_empty<T>(value: &&Vec<T>) -> bool {
+    value.is_empty()
+}
+fn ref_option_is_none<T>(value: &&Option<T>) -> bool {
+    value.is_none()
+}
+fn ref_nominal_abox_is_empty(value: &&NominalAboxMeta) -> bool {
+    value.is_empty()
+}
+
+/// The fields of [`JInput`] after `clauses`, in declaration order and with the
+/// same skip rules, borrowed for [`write_jinput_json`].
+#[derive(Serialize)]
+struct JInputRest<'a> {
+    #[serde(skip_serializing_if = "ref_option_is_none")]
+    cb_typed_source: &'a Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "ref_vec_is_empty")]
+    rbox: &'a Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "ref_vec_is_empty")]
+    cardinalities: &'a Vec<CardMeta>,
+    #[serde(skip_serializing_if = "ref_vec_is_empty")]
+    definers: &'a Vec<DefinerMeta>,
+    #[serde(skip_serializing_if = "ref_vec_is_empty")]
+    source_axioms: &'a Vec<SourceAxiomMeta>,
+    #[serde(skip_serializing_if = "ref_nominal_abox_is_empty")]
+    nominal_abox: &'a NominalAboxMeta,
+    #[serde(skip_serializing_if = "ref_vec_is_empty")]
+    rules: &'a Vec<JRule>,
+}
+
+/// Byte-identical to `serde_json::to_writer(writer, input)`.
+pub fn write_jinput_json<W: Write>(writer: &mut W, input: &JInput) -> io::Result<()> {
+    let rest = JInputRest {
+        cb_typed_source: &input.cb_typed_source,
+        rbox: &input.rbox,
+        cardinalities: &input.cardinalities,
+        definers: &input.definers,
+        source_axioms: &input.source_axioms,
+        nominal_abox: &input.nominal_abox,
+        rules: &input.rules,
+    };
+    write_clause_led_json(writer, &input.clauses, &rest)
+}
+
 pub fn write_elc_binary<W: Write>(mut writer: W, clauses: &[JClause]) -> io::Result<()> {
     writer.write_all(ELC_BINARY_MAGIC)?;
     write_len(&mut writer, clauses.len())?;
@@ -748,5 +942,94 @@ mod elc_binary_tests {
         let subject_offset = ELC_OUTPUT_BINARY_MAGIC.len() + 1 + 4 + 4 + 4 + 1 + 4;
         bytes[subject_offset..subject_offset + 4].copy_from_slice(&9u32.to_le_bytes());
         assert!(decode_elc_output_binary(&bytes).is_err());
+    }
+}
+
+#[cfg(test)]
+mod fast_clause_json_tests {
+    use super::*;
+
+    fn term_samples() -> Vec<JTerm> {
+        vec![
+            JTerm::Var { name: "x".into() },
+            JTerm::Ind { name: "a \"quoted\" \\ back\u{1}\u{8}\t\n\u{c}\r\u{1f}\u{7f} ü ∃ 😀".into() },
+            JTerm::Aux { root: "r".into(), label: vec![("p".into(), -3), ("q\n".into(), i64::MAX), ("".into(), i64::MIN)] },
+            JTerm::Aux { root: "empty".into(), label: vec![] },
+            JTerm::Fun {
+                function: "f".into(),
+                arg: Box::new(JTerm::Fun { function: "g\\".into(), arg: Box::new(JTerm::Var { name: "y".into() }) }),
+            },
+        ]
+    }
+
+    fn clauses() -> Vec<JClause> {
+        let terms = term_samples();
+        let mut out = vec![JClause { body: vec![], head: vec![] }];
+        for (index, term) in terms.iter().enumerate() {
+            let other = terms[(index + 1) % terms.len()].clone();
+            out.push(JClause {
+                body: vec![
+                    JAtom::Concept { concept: format!("C{index}\u{0}"), term: term.clone() },
+                    JAtom::Role { role: "r/\"".into(), source: term.clone(), target: other.clone() },
+                ],
+                head: vec![JAtom::Eq { left: other, right: term.clone() }],
+            });
+        }
+        out
+    }
+
+    /// Manual benchmark: KM_JSON_BENCH=<clauses.json> cargo test --release
+    /// --lib fast_jinput_writer_bench -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn fast_jinput_writer_bench() {
+        let path = std::env::var("KM_JSON_BENCH").expect("KM_JSON_BENCH");
+        let input: JInput = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        for _ in 0..3 {
+            let started = std::time::Instant::now();
+            let mut expected = Vec::new();
+            serde_json::to_writer(&mut expected, &input).unwrap();
+            let serde_s = started.elapsed().as_secs_f64();
+            let started = std::time::Instant::now();
+            let mut actual = Vec::new();
+            write_jinput_json(&mut actual, &input).unwrap();
+            let fast_s = started.elapsed().as_secs_f64();
+            let started = std::time::Instant::now();
+            let tail = serde_json::to_vec(&JInputRest {
+                cb_typed_source: &input.cb_typed_source, rbox: &input.rbox,
+                cardinalities: &input.cardinalities, definers: &input.definers,
+                source_axioms: &input.source_axioms, nominal_abox: &input.nominal_abox,
+                rules: &input.rules }).unwrap();
+            let tail_s = started.elapsed().as_secs_f64();
+            eprintln!("bytes={} tail_bytes={} serde={serde_s:.3}s fast={fast_s:.3}s (of which tail {tail_s:.3}s) identical={}",
+                expected.len(), tail.len(), actual == expected);
+        }
+    }
+
+    #[test]
+    fn fast_jinput_writer_is_byte_identical_to_serde() {
+        let mut input = JInput {
+            clauses: clauses(),
+            cb_typed_source: None,
+            rbox: vec![],
+            cardinalities: vec![],
+            definers: vec![],
+            source_axioms: vec![],
+            nominal_abox: NominalAboxMeta::default(),
+            rules: vec![],
+        };
+        for round in 0..3 {
+            let expected = serde_json::to_vec(&input).unwrap();
+            let mut actual = Vec::new();
+            write_jinput_json(&mut actual, &input).unwrap();
+            assert_eq!(String::from_utf8(actual).unwrap(), String::from_utf8(expected).unwrap(), "round {round}");
+            // Exercise the non-empty tail and the empty clause array.
+            input.rbox = vec![vec!["a".into(), "b\"".into()]];
+            input.cb_typed_source = Some(serde_json::json!({"k": [1, "v"]}));
+            input.nominal_abox.complete = true;
+            if round == 1 {
+                input.clauses.clear();
+            }
+        }
     }
 }

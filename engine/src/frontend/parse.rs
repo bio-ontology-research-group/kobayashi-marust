@@ -483,6 +483,31 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 reg.short(args[1].as_atom().unwrap_or("")),
             ));
         }
+        // OWL 2 Direct Semantics: `DataPropertyAssertion(p a v)` holds iff
+        // `a` is an instance of `DataHasValue(p v)` (Lean
+        // `DatatypeValueEmbedding.has_value_iff`). Carry it as that class
+        // assertion, built exactly like a TBox `DataHasValue`. Only a named
+        // property, a named individual and one glued literal are converted;
+        // anything else stays dropped and keeps the coverage diagnostic.
+        "DataPropertyAssertion"
+            if data_assertion_as_class_enabled()
+                && args.len() >= 3
+                && matches!(args[0], Node::Atom(_))
+                && matches!(args[1], Node::Atom(_)) =>
+        {
+            let refs: Vec<&Node> = std::iter::once(args[0]).chain(args[2..].iter().copied()).collect();
+            if let Some((literal, used)) = glue_literal(&refs, 1) {
+                if refs.len() == 1 + used {
+                    let role = Role::Name(reg.short(args[0].as_atom().unwrap_or("")));
+                    let value = dt_value_concept(&refs, 1);
+                    let individual = reg.short(args[1].as_atom().unwrap_or(""));
+                    o.defer_data_assertion_as_class(
+                        Axiom::ConceptAssertion(Concept::Exists(role, Box::new(value)), individual),
+                        literal,
+                    );
+                }
+            }
+        }
         "ObjectPropertyAssertion" => {
             let (role, inverse) = match args[0] {
                 Node::Atom(_) => (role_str(reg, args[0])?, false),
@@ -837,7 +862,37 @@ where
         }
         Ok(())
     })?;
+    ontology.commit_data_assertions_as_class(data_assertion_literal_cap());
     Ok(())
+}
+
+/// Positive data-property assertions are carried as `DataHasValue` class
+/// assertions only on request (`KM_DATA_ASSERTION_AS_CLASS`), which the
+/// orchestrator sets inside the bounded native-bridge attempt. Every other
+/// frontend pass leaves them unsupported, exactly as before.
+fn data_assertion_as_class_enabled() -> bool {
+    #[cfg(test)]
+    if let Some(enabled) = TEST_DATA_ASSERTION_AS_CLASS.with(|flag| flag.get()) {
+        return enabled;
+    }
+    std::env::var_os("KM_DATA_ASSERTION_AS_CLASS").is_some_and(|value| value != "0")
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only, thread-local stand-in for `KM_DATA_ASSERTION_AS_CLASS`, so
+    /// tests do not mutate the environment seen by concurrent tests.
+    static TEST_DATA_ASSERTION_AS_CLASS: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Largest number of distinct literals the conversion may introduce
+/// (`KM_DATA_ASSERTION_LITERAL_CAP`, default 512). The datatype relation
+/// clauses are pairwise in the value vocabulary.
+fn data_assertion_literal_cap() -> usize {
+    std::env::var("KM_DATA_ASSERTION_LITERAL_CAP")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(512)
 }
 
 /// Source-level ABox axiom screen. This is used only to avoid constructing a
@@ -885,6 +940,55 @@ mod axiom_drop_regression_tests {
         let mut reg = IriRegistry::new();
         let o = parse_axioms(&mut reg, txt).expect("parse");
         o.tbox().chain(o.rbox()).chain(o.abox()).cloned().collect()
+    }
+
+    fn parse_with_data_assertion_conversion(enabled: bool, text: &str) -> Ontology {
+        TEST_DATA_ASSERTION_AS_CLASS.with(|flag| flag.set(Some(enabled)));
+        let ontology = parse_axioms(&mut IriRegistry::new(), text).expect("parse");
+        TEST_DATA_ASSERTION_AS_CLASS.with(|flag| flag.set(None));
+        ontology
+    }
+
+    #[test]
+    fn data_assertions_stay_unconverted_unless_requested() {
+        let text = "Ontology(DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer))";
+        let ontology = parse_with_data_assertion_conversion(false, text);
+        assert_eq!(ontology.data_assertions_as_class(), 0);
+        assert_eq!(ontology.abox().count(), 0);
+    }
+
+    #[test]
+    fn requested_data_assertion_becomes_its_has_value_class_assertion() {
+        let text = "Ontology(DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
+                    DataPropertyAssertion(<p> <b> \"2\"^^xsd:integer))";
+        let ontology = parse_with_data_assertion_conversion(true, text);
+        assert_eq!(ontology.data_assertions_as_class(), 2);
+        let mut registry = IriRegistry::new();
+        let explicit = parse_axioms(&mut registry,
+            "Ontology(ClassAssertion(DataHasValue(<p> \"1\"^^xsd:integer) <a>) \
+             ClassAssertion(DataHasValue(<p> \"2\"^^xsd:integer) <b>))").unwrap();
+        assert_eq!(ontology.abox().collect::<Vec<_>>(), explicit.abox().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn data_assertion_literal_cap_declines_the_whole_conversion() {
+        let mut ontology = Ontology::new();
+        let assertion = |individual: &str, value: &str| Axiom::ConceptAssertion(
+            Concept::Exists(Role::Name("p".into()), Box::new(Concept::Name(format!("__dt__val__{value}")))),
+            individual.into(),
+        );
+        ontology.defer_data_assertion_as_class(assertion("a", "1"), "1".into());
+        ontology.defer_data_assertion_as_class(assertion("b", "1"), "1".into());
+        ontology.commit_data_assertions_as_class(1);
+        assert_eq!(ontology.data_assertions_as_class(), 2);
+        // A later call that would exceed the cap adds nothing and declines
+        // every further conversion.
+        ontology.defer_data_assertion_as_class(assertion("c", "2"), "2".into());
+        ontology.commit_data_assertions_as_class(1);
+        ontology.defer_data_assertion_as_class(assertion("d", "1"), "1".into());
+        ontology.commit_data_assertions_as_class(1);
+        assert_eq!(ontology.data_assertions_as_class(), 2);
+        assert_eq!(ontology.abox().count(), 2);
     }
 
     #[test]

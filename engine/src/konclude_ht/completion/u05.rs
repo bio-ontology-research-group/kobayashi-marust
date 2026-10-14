@@ -375,11 +375,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .concept(concept)
             .get_operator_code();
-        let op_concepts: Vec<NegLink<ConceptId>> = calc_alg_context
-            .ontology_arenas()
-            .concept(concept)
-            .get_operand_list()
-            .to_vec();
+        let op_concepts: smallvec::SmallVec<[NegLink<ConceptId>; 4]> =
+            smallvec::SmallVec::from_slice(
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operand_list(),
+            );
 
         if op_code == op::CCAQAND || op_code == op::CCIMPLAQAND || op_code == op::CCBRANCHAQAND {
             for op_link in &op_concepts {

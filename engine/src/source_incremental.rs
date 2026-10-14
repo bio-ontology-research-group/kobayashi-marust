@@ -2733,25 +2733,19 @@ Ontology(
     }
 
     #[test]
-    fn automatic_general_ht_route_retains_clause_only_nominal_probes() {
+    fn automatic_route_never_selects_uncertified_general_ht() {
+        // `ht_general` is a measurement arm without a certificate; automatic
+        // incremental sessions keep a certified nominal route and still agree
+        // with fresh classification after source edits.
         let _environment = lock_environment();
         let before = compact_general_ht_source(false);
         let after = compact_general_ht_source(true);
         let mut session = SourceIncrementalClassifier::new(&before).unwrap();
-        assert_eq!(session.route(), "ht_general");
-        assert!(session.retained_backend());
-
-        let addition = session.replace_source(&after).unwrap();
-        assert_eq!(addition.strategy, ChangeStrategy::HtDelta);
-        assert!(addition.meaningful_incremental_update);
-        assert!(addition.retained_states > 0);
+        assert_ne!(session.route(), "ht_general");
+        session.replace_source(&after).unwrap();
         let fresh = SourceIncrementalClassifier::new(&after).unwrap();
         assert_eq!(session.classification(), fresh.classification());
-
-        let removal = session.replace_source(&before).unwrap();
-        assert_eq!(removal.strategy, ChangeStrategy::HtDelta);
-        assert!(removal.meaningful_incremental_update);
-        assert!(removal.retained_states > 0);
+        session.replace_source(&before).unwrap();
         let restored = SourceIncrementalClassifier::new(&before).unwrap();
         assert_eq!(session.classification(), restored.classification());
     }

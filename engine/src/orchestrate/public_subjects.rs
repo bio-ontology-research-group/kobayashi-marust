@@ -12,6 +12,18 @@ pub(crate) fn select(named:&[String],map:&BTreeMap<String,String>,private:&BTree
     if found!=private {return Err("private source classes missing from named frontend signature".into());}
     Ok(result.into_iter().collect())
 }
+/// Frontend names whose full IRI is in `wanted` (the retained session's
+/// reclassified subjects). Absent IRIs select nothing; never alters the input.
+pub(crate) fn select_iris(named:&[String],map:&BTreeMap<String,String>,wanted:&BTreeSet<String>)
+    -> Vec<String> {
+    let wanted:BTreeSet<_>=wanted.iter().map(|s|iri(s)).collect();
+    let mut result=BTreeSet::new();
+    for name in named {
+        let full=map.get(name).map(|s|iri(s)).unwrap_or(name);
+        if wanted.contains(full) { result.insert(name.clone()); }
+    }
+    result.into_iter().collect()
+}
 /// `eligible` is the frontend's named signature, which also contains roles
 /// and individuals. Intersect it with the converter's actual class subjects.
 /// Do not require every registry symbol to be a class concept.
@@ -35,6 +47,12 @@ pub(crate) fn resolve(concepts:&[String],queries:&[usize],eligible:&[String])->O
         let private=BTreeSet::from(["urn:generated#same".into()]);
         assert_eq!(select(&named,&map,&private).unwrap(),vec!["__ground_like_user_class","public"]);
         assert!(select(&named,&map,&BTreeSet::from(["urn:missing".into()])).is_err());
+    }
+    #[test] fn iri_selection_ignores_absent_subjects() {
+        let named=vec!["a".into(),"b".into(),"c".into()];
+        let map=BTreeMap::from([("a".into(),"<urn:x#A>".into()),("b".into(),"urn:x#B".into())]);
+        let wanted=BTreeSet::from(["urn:x#A".into(),"<urn:x#B>".into(),"urn:x#Missing".into()]);
+        assert_eq!(select_iris(&named,&map,&wanted),vec!["a","b"]);
     }
     #[test] fn query_selection_is_exact_and_keeps_input_unchanged() {
         let concepts=vec!["A".into(),"helper".into(),"B".into()];let queries=vec![0,1,2];

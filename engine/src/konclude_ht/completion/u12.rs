@@ -475,7 +475,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     merge_prev_dep_track_point,
                     link_prev_dep_track_point,
                 );
-            let _ = process_indi;
+            // Konclude `initMERGEDLINKDependencyNode(nullptr, processIndi, ...)`
+            // (CDependencyFactory.cpp 424): the node carries the merge-into individual.
+            ht_set_dependency_individual(dep_node, *process_indi, calc_alg_context);
         }
         dep_node
     }
@@ -502,7 +504,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     merge_prev_dep_track_point,
                     individual_prev_dep_track_point,
                 );
-            let _ = process_indi;
+            // Konclude `initMERGEDIndividualDependencyNode(processIndi, ...)` (CDependencyFactory.cpp 610).
+            ht_set_dependency_individual(dep_node, *process_indi, calc_alg_context);
         }
         dep_node
     }
@@ -521,7 +524,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             dep_node = calc_alg_context
                 .process_context_mut()
                 .create_merge_dependency_node(branch_node, con_des, prev_dep_track_point);
-            let _ = process_indi;
+            // Konclude `initMERGEDependencyNode(branchNode, conDes, processIndi, ...)` (CDependencyFactory.cpp 492).
+            ht_set_dependency_individual(dep_node, *process_indi, calc_alg_context);
         }
         dep_node
     }
@@ -569,7 +573,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     prev_dep_track_point,
                     prev_other_dep_track_point,
                 );
-            let _ = process_indi;
+            // Konclude `initSAMEINDIVIDUALSMERGEDependencyNode(processIndi, ...)` (CDependencyFactory.cpp 623).
+            ht_set_dependency_individual(dep_node, *process_indi, calc_alg_context);
         }
         dep_node
     }
@@ -660,5 +665,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
              role-successor iterators + createClashedConceptDescriptor + Task communicator unported \
              (getSuccessorIndividual + raise_clash/raise_stop now available)"
         );
+    }
+}
+
+/// `CDependencyNode::initDependencyNode(type, individualNode, ...)` stores the
+/// appropriate individual (`getAppropriateIndividualNode`). Konclude passes
+/// `processIndi` for the merge family (MERGEDLINK, MERGEDINDIVIDUAL, MERGE,
+/// SAMEINDIVIDUALSMERGE). The u29 tracked-clash construction resolves a link /
+/// distinct / dependency descriptor's individual through this field
+/// (`getCoresspondingIndividualNodeFromDependency`, cpp 7975-7995); a NONE
+/// individual marks the descriptor a TRACKING ERROR, which aborts the whole
+/// dependency-directed analysis of that clash (`initialize_tracking_line`
+/// returns false) and drops the search into the chronological fallback.
+/// Measured on ore_ont_16481 (Wine, subject Muscadet): every relocated
+/// at-most successor link carried such a NONE-individual MERGEDLINK track
+/// point, so no at-most refutation could ever reach the nominal choice that
+/// created the link and the probe enumerated ~170 unrelated ABox decisions
+/// chronologically (deferred after 220 s; Konclude needs 0.2 s).
+fn ht_set_dependency_individual(
+    dep_node: DependencyId,
+    individual: NodeId,
+    calc_alg_context: &mut CalculationAlgorithmContextBase,
+) {
+    if dep_node.is_some() {
+        calc_alg_context
+            .process_context_mut()
+            .dep_node_mut(dep_node)
+            .base_mut()
+            .individual_node = individual;
     }
 }

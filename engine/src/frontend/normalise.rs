@@ -13,7 +13,8 @@
 //! exactly like Python's frozen dataclasses.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+// Membership/lookup tables; iteration order is per-process random as before.
+type HashMap<K, V> = crate::fxhash::FxHashMap<K, V>;
 
 use super::clauses::{clause, constraint, fact, var_x, var_y, Atom, DLClause, Term};
 use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role};
@@ -61,7 +62,7 @@ impl GroundHooks {
     /// Check symbolic bounds against structural definer provenance. This is
     /// only the metadata correspondence check, not a publication certificate.
     pub fn native_cardinalities_match_provenance(&self) -> bool {
-        let mut definitions = HashMap::new();
+        let mut definitions = HashMap::default();
         for definition in &self.definers {
             if definitions.insert(definition.marker.as_str(), definition).is_some() {
                 return false;
@@ -70,8 +71,8 @@ impl GroundHooks {
         // Validate constructor shape and require a finite, acyclic expression
         // graph. Unknown operands may be atomic source names; defined operands
         // must terminate rather than referring to themselves through a cycle.
-        let mut pending = HashMap::new();
-        let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut pending = HashMap::default();
+        let mut dependents: HashMap<&str, Vec<&str>> = HashMap::default();
         for definition in &self.definers {
             let arity = definition.operands.len();
             let role = definition.role.as_deref().is_some_and(|r| !r.is_empty());
@@ -104,7 +105,7 @@ impl GroundHooks {
             }
         }
         if visited != definitions.len() { return false; }
-        let mut bounds = HashMap::new();
+        let mut bounds = HashMap::default();
         for bound in &self.cardinalities {
             if bounds.insert(bound.marker.as_str(), bound).is_some() {
                 return false;
@@ -325,7 +326,8 @@ impl Clausifier {
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             native_cardinality_only,
             color_cardinality: std::env::var_os("KM_CARDINALITY_COLORS").is_some(),
-            trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
+            trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some()
+                || test_trigger_absorb(),
         }
     }
 
@@ -1192,6 +1194,22 @@ impl Clausifier {
         ));
     }
 
+    /// Mark every existential filler reachable through the Boolean structure
+    /// of a structurally triggerable antecedent as a negative occurrence.
+    /// Triggerable concepts contain no negation, so this adds only Horn
+    /// recognition clauses.
+    fn mark_trigger_fillers(&mut self, c: &Concept) {
+        match c {
+            Concept::And(cs) | Concept::Or(cs) => {
+                for d in cs {
+                    self.mark_trigger_fillers(d);
+                }
+            }
+            Concept::Exists(_, f) | Concept::AtLeast(1, _, f) => self.mark_polarity(f, true),
+            _ => {}
+        }
+    }
+
     fn mark_subclass_polarity(&mut self, sub: &Concept, sup: &Concept) {
         // The structural compiler expands Boolean antecedents directly and
         // reifies only existential restrictions. Those restriction definitions
@@ -1202,6 +1220,12 @@ impl Clausifier {
             if let Some((trigger_sub, trigger_sup)) = Self::triggered_orientation(sub, sup) {
                 debug_assert!(Self::structurally_triggerable(&trigger_sub));
                 self.mark_polarity(&trigger_sup, false);
+                // The trigger's existential restrictions share their definer
+                // with any positive occurrence, and the definer's recognition
+                // clause reads the reified filler. That filler therefore needs
+                // its negative (recognition) direction too, or an And/Or filler
+                // first seen positively never fires (A8 ≡ ∃s.(A1 ⊓ A5)).
+                self.mark_trigger_fillers(&trigger_sub);
                 return;
             }
         }
@@ -2282,4 +2306,23 @@ mod nnf_cow_tests {
         assert_eq!(abox, abox_ref);
         assert!(tbox.len() > 10);
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only, thread-local stand-in for `KM_TRIGGER_ABSORB`, so library
+    /// tests can build the production source-mode bridge input without
+    /// mutating the process environment seen by concurrently running tests.
+    pub(crate) static TEST_TRIGGER_ABSORB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn test_trigger_absorb() -> bool {
+    TEST_TRIGGER_ABSORB.with(|flag| flag.get())
+}
+
+#[cfg(not(test))]
+#[inline(always)]
+fn test_trigger_absorb() -> bool {
+    false
 }

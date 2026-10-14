@@ -64,7 +64,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::base::BackendCache;
@@ -3308,11 +3308,11 @@ mod tests {
         let old_ontology = ctx.alloc_ontology_data(OntologyData::new());
         let new_ontology = ctx.alloc_ontology_data(OntologyData::new());
         let mut old_slot = BackendRepresentativeMemoryCacheSlotItem::new();
-        old_slot.set_ontology_identifier_data_hash(HashMap::from([(7, old_ontology)]));
+        old_slot.set_ontology_identifier_data_hash(HashMap::from_iter([(7, old_ontology)]));
         old_slot.inc_reader();
         let old_slot = ctx.alloc_backend_slot_item(old_slot);
         let mut new_slot = BackendRepresentativeMemoryCacheSlotItem::new();
-        new_slot.set_ontology_identifier_data_hash(HashMap::from([(7, new_ontology)]));
+        new_slot.set_ontology_identifier_data_hash(HashMap::from_iter([(7, new_ontology)]));
         new_slot.inc_reader();
         let new_slot = ctx.alloc_backend_slot_item(new_slot);
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
@@ -3337,11 +3337,11 @@ mod tests {
         let new_ontology = ctx.alloc_ontology_data(OntologyData::new());
         let fixed_ontology = ctx.alloc_ontology_data(OntologyData::new());
         let mut old_slot = BackendRepresentativeMemoryCacheSlotItem::new();
-        old_slot.set_ontology_identifier_data_hash(HashMap::from([(7, old_ontology)]));
+        old_slot.set_ontology_identifier_data_hash(HashMap::from_iter([(7, old_ontology)]));
         old_slot.inc_reader();
         let old_slot = ctx.alloc_backend_slot_item(old_slot);
         let mut new_slot = BackendRepresentativeMemoryCacheSlotItem::new();
-        new_slot.set_ontology_identifier_data_hash(HashMap::from([(9, new_ontology)]));
+        new_slot.set_ontology_identifier_data_hash(HashMap::from_iter([(9, new_ontology)]));
         new_slot.inc_reader();
         let new_slot = ctx.alloc_backend_slot_item(new_slot);
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
@@ -3372,7 +3372,7 @@ mod tests {
         ontology.set_recomputation_reference_linker(rec_ref, &mut ctx);
         let ontology = ctx.alloc_ontology_data(ontology);
         let mut slot = BackendRepresentativeMemoryCacheSlotItem::new();
-        slot.set_ontology_identifier_data_hash(HashMap::from([(7, ontology)]));
+        slot.set_ontology_identifier_data_hash(HashMap::from_iter([(7, ontology)]));
         slot.inc_reader();
         let slot = ctx.alloc_backend_slot_item(slot);
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
@@ -3397,7 +3397,7 @@ mod tests {
         ontology.set_minimum_valid_recomputation_id(3);
         let ontology = ctx.alloc_ontology_data(ontology);
         let mut slot = BackendRepresentativeMemoryCacheSlotItem::new();
-        slot.set_ontology_identifier_data_hash(HashMap::from([(7, ontology)]));
+        slot.set_ontology_identifier_data_hash(HashMap::from_iter([(7, ontology)]));
         let slot = ctx.alloc_backend_slot_item(slot);
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         reader.ontology_identifier = 7;
@@ -3416,10 +3416,10 @@ mod tests {
         used_ontology.inc_usage_count(1);
         let used_ontology = ctx.alloc_ontology_data(used_ontology);
         let mut unused_slot = BackendRepresentativeMemoryCacheSlotItem::new();
-        unused_slot.set_ontology_identifier_data_hash(HashMap::from([(1, unused_ontology)]));
+        unused_slot.set_ontology_identifier_data_hash(HashMap::from_iter([(1, unused_ontology)]));
         let unused_slot = ctx.alloc_backend_slot_item(unused_slot);
         let mut used_slot = BackendRepresentativeMemoryCacheSlotItem::new();
-        used_slot.set_ontology_identifier_data_hash(HashMap::from([(2, used_ontology)]));
+        used_slot.set_ontology_identifier_data_hash(HashMap::from_iter([(2, used_ontology)]));
         used_slot.inc_reader();
         let used_slot = ctx.alloc_backend_slot_item(used_slot);
         let mut cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
@@ -3461,7 +3461,7 @@ mod tests {
             LabelCacheItemType::NeighbourInstantiatedRoleSetCombinationLabel;
         let combination_label = ctx.alloc_label_cache_item(combination_label);
 
-        let mut index_hash = HashMap::new();
+        let mut index_hash = HashMap::default();
         index_hash.insert(det_label, 0);
         index_hash.insert(nondet_label, 1);
         let index_data =
@@ -3486,7 +3486,7 @@ mod tests {
         let mut nondet_resolving = LabelCacheItemTagLabelResolvingDataLinker::new();
         nondet_resolving.init_tag_label_resolving_data(nondet_label, 1, false);
         let nondet_resolving = ctx.alloc_tag_label_resolving_data_linker(nondet_resolving);
-        let mut resolving_hash = HashMap::new();
+        let mut resolving_hash = HashMap::default();
         resolving_hash.insert(91, det_resolving);
         resolving_hash.insert(-91, nondet_resolving);
         let resolving_ext =
@@ -5771,12 +5771,12 @@ impl Default for BackendRepresentativeMemoryCache {
             backend_cache_base: BackendCache::new(),
             config: INVALID,
             debug_ontology: INVALID,
-            indi_context_count_hash: HashMap::new(),
+            indi_context_count_hash: HashMap::default(),
             indi_context_debugging_count: 50,
-            ontology_identifier_data_hash: HashMap::new(),
-            fixed_ontology_identifier_data_hash: HashMap::new(),
+            ontology_identifier_data_hash: HashMap::default(),
+            fixed_ontology_identifier_data_hash: HashMap::default(),
             fixed_ontology_identifier_data_hash_lock: INVALID,
-            tmp_indi_indirectly_conn_nom_label_item_hash: HashMap::new(),
+            tmp_indi_indirectly_conn_nom_label_item_hash: HashMap::default(),
             tmp_indi_assoc_prev_update_id: 0,
             propagation_cut_indi_set: Vec::new(),
             checking_remaining_incompletely_handled_count: 0,
@@ -5804,9 +5804,9 @@ impl Default for BackendRepresentativeMemoryCache {
             reader_slot_released_count: 0,
             incompletely_associated_individual_set: Vec::new(),
             cache_stat: CacheStatistics::new(),
-            tmp_prop_cut_indi_array_neighbours_handling_data_hash: HashMap::new(),
+            tmp_prop_cut_indi_array_neighbours_handling_data_hash: HashMap::default(),
             tmp_complete_neighbour_same_indi_merging_set: Vec::new(),
-            tmp_det_same_merging_completion_reference_hash: HashMap::new(),
+            tmp_det_same_merging_completion_reference_hash: HashMap::default(),
             slot_linker: Vec::new(),
             last_updated_slot_linker: SlotItemId::NONE,
             reader_linker: Vec::new(),
@@ -5828,7 +5828,7 @@ impl Default for BackendRepresentativeMemoryCache {
             slot_update_waiting_max_count: 0,
             conf_direct_update_synchronization: false,
             direct_update_sync_mutex: INVALID,
-            deterministic_same_handling_installation_data_hash: HashMap::new(),
+            deterministic_same_handling_installation_data_hash: HashMap::default(),
             conf_propagation_cut_propagated_concept_direct_installation: true,
             conf_max_incompletely_handled_individuals_retrieval_count: -1,
             conf_max_cache_data_update_writing_count: -1,

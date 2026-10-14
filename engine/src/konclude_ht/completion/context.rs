@@ -908,6 +908,10 @@ pub struct CalculationAlgorithmContextBase {
     /// untracked clash descriptor is a tracking ERROR that aborts the whole
     /// `clashedBacktracking` analysis.
     pub base_independent_track_point: TrackPointId,
+    /// Retained-base class jobs: lengths of the append-only dependency-spine
+    /// arenas when the deterministic consistency base was retained (see
+    /// `ProcessContext::truncate_dependency_spine`). `None` everywhere else.
+    pub retained_spine_watermark: Option<[usize; 6]>,
     /// `CIndividualNodeManager* mIndiNodeManager`.
     pub indi_node_manager: Id<IndividualNodeManager>,
     /// `CUnsatisfiableCacheHandler* mUnsatCacheHandler`.
@@ -962,6 +966,7 @@ impl CalculationAlgorithmContextBase {
             base_dep_node: Id::NONE,
             databox_epoch_stack: Vec::new(),
             base_independent_track_point: Id::NONE,
+            retained_spine_watermark: None,
             indi_node_manager: Id::NONE,
             unsat_cache_handler: Id::NONE,
             clash_descriptor_factory: Id::NONE,

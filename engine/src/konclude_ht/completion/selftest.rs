@@ -36,7 +36,7 @@
 
 #![cfg(test)]
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::cache::context::CacheContext;
 use super::super::cache::satnode::{
@@ -231,11 +231,11 @@ fn referred_individual_tracking_vector_copies_merges_and_tests_affected_sets() {
         .unwrap()
         .is_extended());
 
-    let indirectly_changed = HashSet::from([2]);
-    let changed_compatible = HashSet::from([7]);
+    let indirectly_changed = HashSet::from_iter([2]);
+    let changed_compatible = HashSet::from_iter([7]);
     assert!(!base.are_individuals_affected(&indirectly_changed, &changed_compatible));
 
-    let indirectly_changed = HashSet::from([3]);
+    let indirectly_changed = HashSet::from_iter([3]);
     assert!(base.are_individuals_affected(&indirectly_changed, &changed_compatible));
 }
 
@@ -3077,7 +3077,7 @@ fn unit21_test_all_successors_processed_accepts_empty_successor_tree() {
     install_cacheable_test_label(&mut env, child, 2271);
     install_cacheable_test_label(&mut env, grandchild, 2272);
 
-    let mut processed = HashSet::new();
+    let mut processed = HashSet::default();
     assert!(env
         .algo
         .test_all_successors_processed_and_write_satisfiable_cache(
@@ -3117,7 +3117,7 @@ fn unit21_test_all_successors_processed_rejects_pending_successor_queue() {
         env.ctx.process_context_mut(),
     );
 
-    let mut processed = HashSet::new();
+    let mut processed = HashSet::default();
     assert!(!env
         .algo
         .test_all_successors_processed_and_write_satisfiable_cache(
@@ -9085,7 +9085,7 @@ fn label_set_iterator_snapshots_shared_additional_alias() {
     let mut env = build_env();
     let concept = concept_with_tag(&mut env, 960);
     let des = descriptor(&mut env, concept);
-    let mut owned = HashMap::new();
+    let mut owned = HashMap::default();
     owned.insert(
         960,
         ConceptDescriptorDependencyReapplyData {
@@ -9146,7 +9146,7 @@ fn label_set_equal_set_reads_shared_additional_alias() {
     let mut env = build_env();
     let concept = concept_with_tag(&mut env, 965);
     let shared_des = descriptor(&mut env, concept);
-    let mut prev_owned = HashMap::new();
+    let mut prev_owned = HashMap::default();
     prev_owned.insert(
         965,
         ConceptDescriptorDependencyReapplyData {
@@ -9170,7 +9170,7 @@ fn label_set_equal_set_reads_shared_additional_alias() {
     let child_id = env.ctx.process_context_mut().alloc_label_set(child);
 
     let other_des = descriptor(&mut env, concept);
-    let mut other_owned = HashMap::new();
+    let mut other_owned = HashMap::default();
     other_owned.insert(
         965,
         ConceptDescriptorDependencyReapplyData {
@@ -11752,7 +11752,7 @@ fn backtrack_non_deterministic_branching_clashed_descriptor_marks_branch_with_op
     let mut line = TrackedClashedDependencyLine::new();
     line.init_tracked_clashed_dependency_line(false, 0, 210);
     line.sort_in_tracked_clashed_descriptors(before, false, &mut env.ctx);
-    let mut involved = HashSet::new();
+    let mut involved = HashSet::default();
     involved.insert(990);
     line.set_involved_individual_tracking_set(Some(involved));
 
@@ -24041,7 +24041,7 @@ fn all_target_lookup_respects_signed_role_direction() {
         .set_ancestor_link(edge);
 
     assert_eq!(
-        env.algo.ht_all_rule_target_links(root, role_r, &env.ctx),
+        env.algo.ht_all_rule_target_links(root, role_r, &env.ctx).to_vec(),
         vec![(edge, child)],
     );
     assert!(
@@ -27370,11 +27370,11 @@ fn singleton_index_matches_reference_carriers_and_dependencies() {
         descriptor.set_dependency_track_point(env.ctx.get_or_create_base_dependency_track_point());
         let id = env.ctx.process_context_mut().alloc_con_desc(descriptor);
         let tag = env.ctx.ontology_arenas().concept(concept).get_concept_tag();
-        let mut map = HashMap::new(); map.insert(tag, ConceptDescriptorDependencyReapplyData {
+        let mut map = HashMap::default(); map.insert(tag, ConceptDescriptorDependencyReapplyData {
             concept_descriptor: id, pos_neg_reapply_queue: Default::default(),
         });
         let mut label = ReapplyConceptLabelSet::new(INVALID); label.concept_count = 1;
-        if layout == 0 { label.concept_des_dep_map = map; }
+        if layout == 0 { label.concept_des_dep_map = map.into(); }
         else {
             let mut parent = ReapplyConceptLabelSet::new(INVALID);
             parent.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(map);
@@ -27460,7 +27460,7 @@ fn singleton_index_matches_reference_carriers_and_dependencies() {
         compare(&mut env,&mut cache);
         env.ctx.process_context_mut().label_set_mut(parent).additional_concept_des_dep_map = AdditionalDesDepMapRef::Null;
         compare(&mut env,&mut cache);
-        let mut map=HashMap::new();map.insert(91000,ConceptDescriptorDependencyReapplyData {
+        let mut map=HashMap::default();map.insert(91000,ConceptDescriptorDependencyReapplyData {
             concept_descriptor:descriptor,pos_neg_reapply_queue:Default::default() });
         env.ctx.process_context_mut().label_set_mut(parent).additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(map);
         compare(&mut env,&mut cache);
@@ -27592,4 +27592,238 @@ fn satisfiable_cache_automaton_checks_live_edge_to_ancestor() {
     assert!(env.algo.is_satisfiable_cached_automat_concept_compatible(
         child, all, false, parent, &mut env.ctx,
     ), "a satisfied ancestor obligation allows reuse");
+}
+
+#[test]
+fn disjoint_role_merge_check_preserves_both_edge_dependencies() {
+    use super::super::model::role::Role;
+    let mut env = build_env();
+    let mut source = env.root;
+    let mut from = test_node_at_depth(&mut env, 401, 1);
+    let into = test_node_at_depth(&mut env, 402, 1);
+    register_test_node(&mut env, from);
+    register_test_node(&mut env, into);
+    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let concept = env.concept_a;
+    let root = env.root;
+    let negative = tracked_concept_clash(&mut env, root, concept, false, DepKind::And, 201, 201);
+    let positive = tracked_concept_clash(&mut env, root, concept, false, DepKind::And, 202, 202);
+    let neg_dep = env.ctx.process_context().clash_desc(negative).get_dependency_track_point();
+    let pos_dep = env.ctx.process_context().clash_desc(positive).get_dependency_track_point();
+    env.algo.create_individual_node_negation_link(&mut source, &mut from, role, neg_dep, &mut env.ctx);
+    env.algo.ht_install_role_successor_edge(source, into, role, pos_dep, &mut env.ctx);
+    assert_eq!(env.ctx.pending_signal(), CalcSignal::Continue);
+    let mut clashes = ClashDescId::NONE;
+    assert!(!env.algo.are_individual_nodes_disjoint_roles_mergeable(from, into, &mut clashes, &mut env.ctx));
+    let mut dependencies: HashSet<TrackPointId> = HashSet::default();
+    while clashes.is_some() {
+        let descriptor = env.ctx.process_context().clash_desc(clashes);
+        dependencies.insert(descriptor.get_dependency_track_point());
+        clashes = descriptor.get_next();
+    }
+    assert_eq!(dependencies, [neg_dep, pos_dep].into_iter().collect::<HashSet<_>>());
+}
+
+#[test]
+fn disjoint_role_merge_check_keeps_distinct_sources_separate() {
+    use super::super::model::role::Role;
+    let mut env = build_env();
+    let mut source = env.root;
+    let other_source = test_node_at_depth(&mut env, 403, 0);
+    let mut from = test_node_at_depth(&mut env, 404, 1);
+    let into = test_node_at_depth(&mut env, 405, 1);
+    for node in [other_source, from, into] { register_test_node(&mut env, node); }
+    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    env.algo.create_individual_node_negation_link(&mut source, &mut from, role, TrackPointId::NONE, &mut env.ctx);
+    env.algo.ht_install_role_successor_edge(other_source, into, role, TrackPointId::NONE, &mut env.ctx);
+    let mut clashes = ClashDescId::NONE;
+    assert!(env.algo.are_individual_nodes_disjoint_roles_mergeable(from, into, &mut clashes, &mut env.ctx));
+    assert!(clashes.is_none());
+    assert_eq!(env.ctx.pending_signal(), CalcSignal::Continue);
+}
+
+#[test]
+fn disjoint_role_merge_check_exhaustive_three_node_endpoint_pairs() {
+    use super::super::model::role::Role;
+    for ps in 0..3 { for pt in 0..3 { for ns in 0..3 { for nt in 0..3 {
+        // The pre-merge graph is clash-free; only equality-induced
+        // conflicts are under test. Include self loops and both orientations.
+        if (ps, pt) == (ns, nt) { continue; }
+        let mut env = build_env();
+        let second = test_node_at_depth(&mut env, 431, 1);
+        let third = test_node_at_depth(&mut env, 432, 1);
+        let nodes = [env.root, second, third];
+        for node in nodes { register_test_node(&mut env, node); }
+        let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+        let mut source = nodes[ns];
+        let mut target = nodes[nt];
+        env.algo.create_individual_node_negation_link(&mut source, &mut target,
+            role, TrackPointId::NONE, &mut env.ctx);
+        env.algo.ht_install_role_successor_edge(nodes[ps], nodes[pt], role,
+            TrackPointId::NONE, &mut env.ctx);
+        assert_eq!(env.ctx.pending_signal(), CalcSignal::Continue);
+        // Merge nodes[0] into nodes[1].
+        let merge = |i: usize| if i == 0 { 1 } else { i };
+        let expected = (merge(ps), merge(pt)) != (merge(ns), merge(nt));
+        let mut clashes = ClashDescId::NONE;
+        let actual = env.algo.are_individual_nodes_disjoint_roles_mergeable(
+            nodes[0], nodes[1], &mut clashes, &mut env.ctx);
+        assert_eq!(actual, expected, "positive={ps}->{pt}, negative={ns}->{nt}");
+        assert_eq!(clashes.is_none(), expected);
+    }}}}
+}
+
+#[test]
+fn disjoint_role_merge_check_reads_positive_links_through_the_inverse() {
+    // A positive fact stored at its other endpoint under the inverse role
+    // conflicts with a negation edge once the endpoints are identified.
+    use super::super::model::role::Role;
+    let mut env = build_env();
+    let a = env.root;
+    let b = test_node_at_depth(&mut env, 441, 1);
+    let c = test_node_at_depth(&mut env, 442, 1);
+    for node in [b, c] { register_test_node(&mut env, node); }
+    let role = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let inverse = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    env.ctx.ontology_arenas_mut().role_mut(role).set_inverse_role(inverse);
+    env.ctx.ontology_arenas_mut().role_mut(inverse).set_inverse_role(role);
+    // ¬role(a, b); role(a, c) stored at c as inverse(c, a). Merge b into c.
+    let (mut source, mut target) = (a, b);
+    env.algo.create_individual_node_negation_link(&mut source, &mut target, role, TrackPointId::NONE, &mut env.ctx);
+    env.algo.ht_install_role_successor_edge(c, a, inverse, TrackPointId::NONE, &mut env.ctx);
+    let mut clashes = ClashDescId::NONE;
+    assert!(!env.algo.are_individual_nodes_disjoint_roles_mergeable(b, c, &mut clashes, &mut env.ctx));
+    assert!(clashes.is_some());
+}
+
+// Preferred-key performance probe must preserve the existing main-map-only
+// boolean semantics, including additional-map omissions and local shadowing.
+fn preferred_nominal_probe_node(env: &mut SelfTestEnv, layout: usize) -> NodeId {
+    let node = env.ctx.process_context_mut().alloc_node(IndividualProcessNode::new(Id::NONE));
+    env.ctx.process_context_mut().node_mut(node).set_individual_node_id(20_000 + node.index() as i64);
+    if layout == 0 { return node; }
+    let mut label = ReapplyConceptLabelSet::new(INVALID);
+    let mut insert = |tag, negative, absent: bool| {
+        let descriptor = if absent { ConDescId::NONE } else {
+            let concept = atom_concept_with_tag(env, tag);
+            concept_descriptor_with_dependency(env, concept, negative, TrackPointId::NONE)
+        };
+        (tag, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: descriptor, pos_neg_reapply_queue: Default::default(),
+        })
+    };
+    match layout {
+        1 => {}, // present empty label
+        2 | 3 | 9 | 10 => {
+            let (tag, data) = insert(900, layout == 3 || layout == 10, false);
+            label.concept_des_dep_map.insert(tag, data);
+            if layout >= 9 {
+                for tag in 1000..1080 {
+                    let (tag, data) = insert(tag, false, false);
+                    label.concept_des_dep_map.insert(tag, data);
+                }
+            }
+        },
+        4 | 6 => { // absent preferred tag, possible clash elsewhere
+            let (tag, data) = insert(901, layout == 6, false);
+            label.concept_des_dep_map.insert(tag, data);
+        },
+        5 => {
+            let (tag, data) = insert(900, false, true);
+            label.concept_des_dep_map.insert(tag, data);
+        },
+        7 | 8 => {
+            let (tag, data) = insert(900, false, false);
+            let mut map = HashMap::default(); map.insert(tag, data);
+            let mut parent = ReapplyConceptLabelSet::new(INVALID);
+            parent.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(map);
+            let parent = env.ctx.process_context_mut().alloc_label_set(parent);
+            label.additional_concept_des_dep_map = AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+                label_set: parent, which: AdditionalMapSlot::Additional,
+            });
+            if layout == 8 {
+                let concept = atom_concept_with_tag(env, 900);
+                let descriptor = concept_descriptor_with_dependency(env, concept, true, TrackPointId::NONE);
+                label.concept_des_dep_map.insert(900, ConceptDescriptorDependencyReapplyData {
+                    concept_descriptor: descriptor, pos_neg_reapply_queue: Default::default(),
+                });
+            }
+        },
+        _ => unreachable!(),
+    }
+    label.concept_count = label.concept_des_dep_map.len() as i64 + if layout == 7 { 1 } else { 0 };
+    let label = env.ctx.process_context_mut().alloc_label_set(label);
+    env.ctx.process_context_mut().node_mut(node).set_reapply_concept_label_set(label);
+    node
+}
+
+fn preferred_nominal_probe_decision(env: &SelfTestEnv, left: NodeId, right: NodeId, tag: i64) -> bool {
+    env.algo.ht_main_labels_clash_at_tag(left, right, tag, &env.ctx)
+        || !env.algo.ht_individuals_mergeable(left, right, &env.ctx)
+}
+
+#[test]
+fn preferred_nominal_probe_matches_full_scan_all_main_map_layouts() {
+    let mut env = build_env();
+    let nodes: Vec<_> = (0..11).map(|layout| preferred_nominal_probe_node(&mut env, layout)).collect();
+    for (i, &left) in nodes.iter().enumerate() {
+        for (j, &right) in nodes.iter().enumerate() {
+            for tag in [900, 901, 777] {
+                let full = !env.algo.ht_individuals_mergeable(left, right, &env.ctx);
+                assert_eq!(preferred_nominal_probe_decision(&env, left, right, tag), full,
+                    "layouts={i},{j} preferred={tag}");
+            }
+        }
+    }
+    assert!(env.algo.ht_main_labels_clash_at_tag(nodes[2], nodes[3], 900, &env.ctx));
+    assert!(!env.algo.ht_main_labels_clash_at_tag(nodes[7], nodes[3], 900, &env.ctx),
+        "alias-only labels retain old main-map semantics");
+    assert!(env.algo.ht_main_labels_clash_at_tag(nodes[8], nodes[2], 900, &env.ctx),
+        "local descriptor takes precedence over inherited opposite polarity");
+}
+
+#[test]
+fn preferred_nominal_probe_preserves_distinct_dependency_and_pending_state() {
+    let mut env = build_env();
+    let left = preferred_nominal_probe_node(&mut env, 2);
+    let right = preferred_nominal_probe_node(&mut env, 2);
+    let dependency = real_dependency_track_point(&mut env, left, ConDescId::NONE, DepKind::Or, 1189, 7);
+    env.algo.ht_make_individuals_distinct(&[left, right], dependency, &mut env.ctx);
+    let snapshot = |env: &SelfTestEnv| {
+        let nodes: Vec<_> = [left, right].into_iter().map(|id| {
+            let node = env.ctx.process_context().node(id);
+            (node.indi_id, node.use_distinct_hash, node.use_reapply_con_label_set,
+                node.dep_track_point, node.processing_restriction_flags, node.localization_tag)
+        }).collect();
+        (nodes, format!("{:?}", env.ctx.pending_signal()),
+            env.ctx.process_context().branch_epoch_depth(), env.ctx.process_context().node_count())
+    };
+    let before = snapshot(&env);
+    assert!(!env.algo.ht_main_labels_clash_at_tag(left, right, 900, &env.ctx));
+    assert!(!env.algo.ht_individuals_mergeable(left, right, &env.ctx));
+    assert!(preferred_nominal_probe_decision(&env, left, right, 900));
+    let after = snapshot(&env);
+    assert_eq!(before, after, "read-only probe leaves node, distinct, dependency and pending state intact");
+    let mut clashes = ClashDescId::NONE;
+    assert!(!env.algo.ht_individuals_mergeable_with_clashes(left, right, &mut clashes, &mut env.ctx));
+    assert_eq!(env.ctx.process_context().clash_desc(clashes).get_dependency_track_point(), dependency);
+}
+
+#[test]
+fn preferred_nominal_probe_tracks_cow_local_write_and_rollback() {
+    let mut env = build_env();
+    let left = preferred_nominal_probe_node(&mut env, 2);
+    let right = preferred_nominal_probe_node(&mut env, 3);
+    assert!(preferred_nominal_probe_decision(&env, left, right, 900));
+    let label = env.ctx.process_context().node(right).use_reapply_con_label_set;
+    env.ctx.process_context_mut().push_branch_epoch();
+    let concept = atom_concept_with_tag(&mut env, 900);
+    let descriptor = concept_descriptor_with_dependency(&mut env, concept, false, TrackPointId::NONE);
+    env.ctx.process_context_mut().label_set_mut(label).concept_des_dep_map.insert(900,
+        ConceptDescriptorDependencyReapplyData { concept_descriptor: descriptor, pos_neg_reapply_queue: Default::default() });
+    assert!(!preferred_nominal_probe_decision(&env, left, right, 900));
+    assert!(!env.algo.ht_label_concept_clash_set(left, right, &env.ctx));
+    env.ctx.process_context_mut().pop_branch_epoch();
+    assert!(preferred_nominal_probe_decision(&env, left, right, 900));
+    assert!(env.algo.ht_label_concept_clash_set(left, right, &env.ctx));
 }

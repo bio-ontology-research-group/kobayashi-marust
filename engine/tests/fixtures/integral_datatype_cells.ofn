@@ -1,0 +1,13 @@
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x>
+Declaration(DataProperty(<http://x#p>))
+Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) Declaration(Class(<http://x#Low>)) Declaration(Class(<http://x#High>))
+DataPropertyRange(<http://x#p> xsd:integer)
+EquivalentClasses(<http://x#Low> DataSomeValuesFrom(<http://x#p> DatatypeRestriction(xsd:integer xsd:maxInclusive "24"^^xsd:integer)))
+EquivalentClasses(<http://x#High> DataSomeValuesFrom(<http://x#p> DatatypeRestriction(xsd:integer xsd:minExclusive "24"^^xsd:integer)))
+SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> DatatypeRestriction(xsd:integer xsd:maxExclusive "100"^^xsd:integer)))
+SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> DatatypeRestriction(xsd:integer xsd:minInclusive "8"^^xsd:integer)))
+SubClassOf(<http://x#A> ObjectComplementOf(<http://x#Low>))
+SubClassOf(<http://x#A> ObjectComplementOf(<http://x#High>))
+SubClassOf(<http://x#B> DataSomeValuesFrom(<http://x#p> xsd:integer))
+)

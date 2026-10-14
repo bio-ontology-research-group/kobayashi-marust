@@ -524,34 +524,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::isIndividualNodeDisjointRolesMergeable`.
     ///
-    /// PORT-PENDING: tests the directed half of the disjoint-role merge check — for
-    /// each connection of `indi1`, whether merging would create a role link on a role
-    /// declared disjoint from one already present, which clashes. Driven by the
-    /// unported `CConnectionSuccessorSet` iterator, the
-    /// `CDisjointSuccessorRoleIterator` / `CNegationDisjointEdge` machinery,
-    /// `getRoleSuccessorToIndividualLink`, the clash-descriptor factory, and the
-    /// sibling `getUpToDateIndividual`.
-    ///
-    /// C++ structure (cpp 20767–20863):
-    /// ```text
-    /// connSuccSet = indi1->getConnectionSuccessorSet(false); indiID=indi1.id; othIndiID=indi2.id
-    /// if connSuccSet:
-    ///   for connID in connSuccSet:
-    ///     if connID == indiID:               // self links
-    ///       for disNegLink in indi1->getDisjointSuccessorRoleIterator(indi1):
-    ///         link = indi2->getRoleSuccessorToIndividualLink(disNegLink.role,indi2,false)
-    ///         if link: clash(link)+clash(disNegLink); return false
-    ///     else if othIndiID == connID:       // ancestor/successor merging link clashes (4 self tests)
-    ///       for disNegLink in indi2->getDisjointSuccessorRoleIterator(indi1):
-    ///         test indi2→indi2, indi1→indi1, indi2→indi1, indi1→indi2 role-successor links; on hit clash+clash; return false
-    ///     else:                              // a third connected node connIndi
-    ///       connIndi = getUpToDateIndividual(connID)
-    ///       for disNegLink in connIndi->getDisjointSuccessorRoleIterator(indi1):
-    ///         link = connIndi->getRoleSuccessorToIndividualLink(disNegLink.role,indi2,false); on hit clash+clash; return false
-    ///       for disNegLink in indi1->getDisjointSuccessorRoleIterator(connIndi):
-    ///         link = indi2->getRoleSuccessorToIndividualLink(disNegLink.role,connIndi,false); on hit clash+clash; return false
-    /// return true
-    /// ```
+    /// Tests whether identifying `indi1` with `indi2` would place a positive
+    /// link and a negation (disjoint-role) edge of the same role between the
+    /// same endpoints; see the port note in the body.
     pub fn is_individual_node_disjoint_roles_mergeable(
         &mut self,
         indi1: NodeId,
@@ -559,14 +534,126 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         clash_descriptors: &mut ClashDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let _ = (indi1, indi2, clash_descriptors, calc_alg_context);
-        // PORT-PENDING: connection-successor set iterator + disjoint-successor-role
-        // iterator / negation-disjoint edges + clash factory + getUpToDateIndividual
-        // unported.
-        todo!(
-            "W6-DEFER: isIndividualNodeDisjointRolesMergeable — connection/disjoint-role \
-             iterators + clash factory unported"
-        );
+        // KONCLUDE-PORT-NOTE[api]: Konclude walks `indi1`'s connection
+        // successor set and tests the endpoint images case by case (self
+        // links, the ancestor/successor pair, third nodes). The Rust graph
+        // keeps a positive link at one endpoint only and relocates fewer
+        // links on a merge, so this port tests the complete condition: every
+        // negation edge incident to `indi1` (stored at `indi1`, or stored at
+        // a neighbour towards `indi1`) is mapped through the identification
+        // `indi1 := indi2`, and every positive link with the same role
+        // between preimages of the mapped endpoints, stored in either
+        // orientation, is a conflict. Each reported conflict is a genuine
+        // clash of the merged graph, and Konclude's cases are among those
+        // tested.
+        let (indi_id, neighbours) = {
+            let pc = calc_alg_context.process_context();
+            (pc.node(indi1).individual_node_id(), pc.node_role_neighbor_ids(indi1))
+        };
+        // (negation edge, its source, its destination) incident to indi1.
+        let mut incident: Vec<(super::super::process::DisjointEdgeId, NodeId, NodeId)> = Vec::new();
+        for conn_id in neighbours {
+            let conn = if conn_id == indi_id {
+                indi1
+            } else {
+                let node = calc_alg_context
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(conn_id);
+                if node.is_none() {
+                    // An unresolvable neighbour cannot be checked: defer
+                    // instead of admitting a possibly clashing merge.
+                    calc_alg_context.raise_stop(false);
+                    return false;
+                }
+                node
+            };
+            for (negative, _) in self.ht_negation_edges(indi1, conn_id, calc_alg_context) {
+                incident.push((negative, indi1, conn));
+            }
+            if conn != indi1 {
+                for (negative, _) in self.ht_negation_edges(conn, indi_id, calc_alg_context) {
+                    incident.push((negative, conn, indi1));
+                }
+            }
+        }
+        let preimages = |node: NodeId| -> Vec<NodeId> {
+            if node == indi1 || node == indi2 { vec![indi1, indi2] } else { vec![node] }
+        };
+        let mut conflict: Option<(super::super::process::DisjointEdgeId, EdgeId)> = None;
+        'scan: for (negative, source, destination) in incident {
+            let role = calc_alg_context.process_context().disjoint_edge(negative).get_link_role();
+            let inverse = calc_alg_context.ontology_arenas().role(role).get_inverse_role();
+            for &a in &preimages(source) {
+                for &b in &preimages(destination) {
+                    let mut link = self.ht_role_link(a, b, role, calc_alg_context);
+                    if link.is_none() && inverse.is_some() {
+                        link = self.ht_role_link(b, a, inverse, calc_alg_context);
+                    }
+                    if link.is_some() {
+                        conflict = Some((negative, link));
+                        break 'scan;
+                    }
+                }
+            }
+        }
+        if let Some((negative, link)) = conflict {
+            let link_dep = calc_alg_context
+                .process_context()
+                .edge(link)
+                .get_dependency_track_point();
+            let negative_dep = calc_alg_context
+                .process_context()
+                .disjoint_edge(negative)
+                .get_dependency_track_point();
+            *clash_descriptors = self.create_clashed_individual_link_descriptor(
+                *clash_descriptors,
+                link,
+                link_dep,
+                calc_alg_context,
+            );
+            *clash_descriptors = self.create_clashed_negation_disjoint_descriptor(
+                *clash_descriptors,
+                negative,
+                negative_dep,
+                calc_alg_context,
+            );
+            return false;
+        }
+        true
+    }
+
+    /// The negation edges stored at `source` towards individual id
+    /// `destination_id`, with their roles (`getDisjointSuccessorRoleIterator`).
+    pub(crate) fn ht_negation_edges(
+        &self,
+        source: NodeId,
+        destination_id: Cint64,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Vec<(super::super::process::DisjointEdgeId, super::super::model::RoleId)> {
+        let pc = calc_alg_context.process_context();
+        let mut it = pc.node_disjoint_successor_role_iterator(source, destination_id);
+        let mut out = Vec::new();
+        while it.has_next() {
+            let negative = it.next(true);
+            if negative.is_some() {
+                out.push((negative, pc.disjoint_edge(negative).get_link_role()));
+            }
+        }
+        out.sort_unstable_by_key(|(negative, _)| negative.index());
+        out
+    }
+
+    /// `source->getRoleSuccessorToIndividualLink(role, destination, false)`.
+    pub(crate) fn ht_role_link(
+        &mut self,
+        source: NodeId,
+        destination: NodeId,
+        role: super::super::model::RoleId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> EdgeId {
+        let (mut source, mut destination) = (source, destination);
+        self.get_individual_node_link(&mut source, &mut destination, role, calc_alg_context)
     }
 
     // =======================================================================
@@ -588,6 +675,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> NodeId {
         let prefered = *prefered_merge_into_individual_node;
         let indiv2 = *individual2;
+
+        // Both handles already denote ONE completion node. Konclude never
+        // reaches this: every caller first consults the target's individual
+        // merging hash (phase 6 of `mergeIndividualNode`, not yet ported in
+        // `merge_individual_node_into`), which records the individuals merged
+        // into it. Without that record the backend-reuse same-individual merge
+        // (cpp 25084-25110) resolved both representative ids to the surviving
+        // node of an earlier SameIndividual merge and merged it into itself:
+        // `merge_individual_node_into(x, x)` prunes `x` and drops its pending
+        // reapply work (measured: a new hasColor predecessor never received the
+        // nominal's `forall hasColor-` trigger, so a satisfiable probe ignored
+        // `Muscadet <= WhiteNonSweetWine`; ore_ont_13954/1397/11477).
+        // Merging a node with itself is the identity.
+        if prefered == indiv2 {
+            return prefered;
+        }
 
         let mut switch_nodes = false;
 

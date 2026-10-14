@@ -17,7 +17,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 use std::sync::Arc;
 
 /// Declare zero-size adapter marker structs.
@@ -278,7 +278,7 @@ impl Default for SatisfiableTaskClassificationMessageAdapter {
             testing_concept: ConceptId::NONE,
             testing_ontology: INVALID,
             classification_message_data_observer: INVALID,
-            concept_reference_linking_data_hash: Arc::new(HashMap::new()),
+            concept_reference_linking_data_hash: Arc::new(HashMap::default()),
             extraction_flags: 0,
         }
     }
@@ -291,7 +291,7 @@ impl SatisfiableTaskClassificationMessageAdapter {
             testing_concept,
             testing_ontology: INVALID,
             classification_message_data_observer: INVALID,
-            concept_reference_linking_data_hash: Arc::new(HashMap::new()),
+            concept_reference_linking_data_hash: Arc::new(HashMap::default()),
             extraction_flags,
         }
     }
@@ -603,7 +603,7 @@ mod tests {
     fn classification_message_adapter_ports_full_constructor_and_any_flag_test() {
         let concept = Id::<concept::Concept>::new(5);
         let linked_concept = Id::<concept::Concept>::new(7);
-        let mut con_ref_hash = HashMap::new();
+        let mut con_ref_hash = HashMap::default();
         con_ref_hash.insert(linked_concept, 97);
 
         let mut adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
@@ -650,7 +650,7 @@ mod tests {
     fn classification_message_adapter_shares_immutable_reference_table() {
         let concept = Id::<concept::Concept>::new(5);
         let linked_concept = Id::<concept::Concept>::new(7);
-        let shared = Arc::new(HashMap::from([(linked_concept, 97)]));
+        let shared = Arc::new(HashMap::from_iter([(linked_concept, 97)]));
         let mut adapter = SatisfiableTaskClassificationMessageAdapter::new_with_shared_handles(
             concept,
             11,

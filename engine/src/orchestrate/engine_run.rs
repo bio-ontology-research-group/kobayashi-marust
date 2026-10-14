@@ -206,6 +206,29 @@ fn deregister(pid: u32) {
     }
 }
 
+/// Run a helper subprocess of a race arm (not an engine) under the same
+/// cancellation set as the engines: it is not started once a race has been
+/// won, and a winner's `cancel_and_kill_engines` SIGKILLs it. Returns `None`
+/// when the spawn was skipped or failed. Cancellation only ever happens after
+/// the winning answer has been fixed, so the losing arm's result that this
+/// shortens is discarded either way.
+pub(crate) fn status_cancellable(cmd: &mut std::process::Command) -> Option<std::process::ExitStatus> {
+    if CANCEL.load(Ordering::SeqCst) {
+        return None;
+    }
+    let mut child = cmd.spawn().ok()?;
+    let pid = child.id();
+    register(pid);
+    // A winner that cancelled between the check above and `register` did not
+    // see this pid; honour its cancellation here.
+    if CANCEL.load(Ordering::SeqCst) {
+        let _ = child.kill();
+    }
+    let status = child.wait();
+    deregister(pid);
+    status.ok()
+}
+
 /// Preserve Unix signal termination instead of collapsing every signal to -1.
 pub(crate) fn exit_status_code(status: &std::process::ExitStatus) -> i32 {
     status.code().unwrap_or_else(|| {

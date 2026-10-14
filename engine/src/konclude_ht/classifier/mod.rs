@@ -7,7 +7,8 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::completion::context::CalculationAlgorithmContext;
 use super::model::concept::Concept;
@@ -130,24 +131,24 @@ impl OptimizedKPSetRoleOntologyClassificationItem {
     pub fn new() -> Self {
         Self {
             individual_dependence_tracking_collector: IndividualDependenceTrackingCollectorId::NONE,
-            role_sat_item_hash: HashMap::new(),
+            role_sat_item_hash: HashMap::default(),
             sat_test_item_container: Vec::new(),
             top_sat_test_item: OptimizedKPSetRoleTestingItemId::NONE,
             bottom_sat_test_item: OptimizedKPSetRoleTestingItemId::NONE,
             next_item_list: Vec::new(),
-            next_cand_item_set: HashSet::new(),
-            remaining_cand_item_set: HashSet::new(),
+            next_cand_item_set: HashSet::default(),
+            remaining_cand_item_set: HashSet::default(),
             next_poss_subsum_item_list: Vec::new(),
-            current_poss_subsum_item_set: HashSet::new(),
+            current_poss_subsum_item_set: HashSet::default(),
             remaining_sat_tests: 0,
             running_sat_tests: 0,
             satisfiable_item_list: Vec::new(),
-            concept_ref_link_data: HashMap::new(),
+            concept_ref_link_data: HashMap::default(),
             satisfiable_testing_phase_finished: false,
             possible_subsumption_testing_phase_finished: false,
             remaining_possible_subsumption_tests: 0,
             running_possible_subsumption_tests: 0,
-            rem_poss_class_testing_set: HashSet::new(),
+            rem_poss_class_testing_set: HashSet::default(),
             calculated_possible_subsum_count: 0,
             calculated_true_possible_subsum_count: 0,
             calculated_false_possible_subsum_count: 0,
@@ -158,14 +159,14 @@ impl OptimizedKPSetRoleOntologyClassificationItem {
             temporary_role_classification_ontology: INVALID,
             temporary_top_concept: ConceptId::NONE,
             temporary_top_data_range_concept: ConceptId::NONE,
-            marker_concept_instances_item_hash: HashMap::new(),
+            marker_concept_instances_item_hash: HashMap::default(),
             temporary_all_propagation_concept: ConceptId::NONE,
             temporary_propagation_individual: IndividualId::NONE,
             temporary_marker_individual: IndividualId::NONE,
             current_calculating_count: 0,
             hierarchy_construction_failed: false,
             reused_statistics_collections: Vec::new(),
-            work_item_hash: HashMap::new(),
+            work_item_hash: HashMap::default(),
         }
     }
 
@@ -730,26 +731,26 @@ impl OptimizedKPSetClassOntologyClassificationItem {
     pub fn new() -> Self {
         Self {
             individual_dependence_tracking_collector: IndividualDependenceTrackingCollectorId::NONE,
-            concept_sat_item_hash: HashMap::new(),
+            concept_sat_item_hash: HashMap::default(),
             sat_test_item_container: Vec::new(),
             top_sat_test_item: OptimizedKPSetClassTestingItemId::NONE,
             bottom_sat_test_item: OptimizedKPSetClassTestingItemId::NONE,
             next_item_list: Vec::new(),
-            next_cand_item_set: HashSet::new(),
-            remaining_cand_item_set: HashSet::new(),
+            next_cand_item_set: HashSet::default(),
+            remaining_cand_item_set: HashSet::default(),
             next_poss_subsum_item_list: Vec::new(),
-            current_poss_subsum_item_set: HashSet::new(),
+            current_poss_subsum_item_set: HashSet::default(),
             remaining_sat_tests: 0,
             running_sat_tests: 0,
             satisfiable_item_list: Vec::new(),
-            concept_ref_link_data: HashMap::new(),
+            concept_ref_link_data: HashMap::default(),
             satisfiable_testing_phase_finished: false,
             possible_subsumption_testing_phase_finished: false,
             remaining_possible_subsumption_tests: 0,
             running_possible_subsumption_tests: 0,
-            rem_poss_class_testing_set: HashSet::new(),
-            equivalent_concept_non_candidate_set: HashSet::new(),
-            equivalent_concept_candidate_hash: HashMap::new(),
+            rem_poss_class_testing_set: HashSet::default(),
+            equivalent_concept_non_candidate_set: HashSet::default(),
+            equivalent_concept_candidate_hash: HashMap::default(),
             calculated_possible_subsum_count: 0,
             calculated_true_possible_subsum_count: 0,
             calculated_false_possible_subsum_count: 0,
@@ -760,7 +761,7 @@ impl OptimizedKPSetClassOntologyClassificationItem {
             current_calculating_count: 0,
             taxonomy_construction_failed: false,
             reused_statistics_collections: Vec::new(),
-            work_item_hash: HashMap::new(),
+            work_item_hash: HashMap::default(),
         }
     }
 
@@ -2476,7 +2477,7 @@ impl OptimizedKPSetRoleTestingItem {
             temporary_propagation_concept: ConceptId::NONE,
             temporary_exist_concept: ConceptId::NONE,
             satisfiable_role_hierarchy_node: 0,
-            subsuming_role_item_set: HashSet::new(),
+            subsuming_role_item_set: HashSet::default(),
             subsuming_role_item_list: Vec::new(),
             successor_item_list: Vec::new(),
             pred_counter: 0,
@@ -2490,8 +2491,8 @@ impl OptimizedKPSetRoleTestingItem {
             possible_subsumption_map: None,
             poss_subsum_map_initialized: false,
             propagation_connected: false,
-            up_propagation_item_set: HashSet::new(),
-            down_propagation_item_set: HashSet::new(),
+            up_propagation_item_set: HashSet::default(),
+            down_propagation_item_set: HashSet::default(),
             possible_subsumed_list: None,
             possible_subsumed_set: None,
         }
@@ -2810,7 +2811,7 @@ impl OptimizedKPSetRoleTestingItem {
         create: bool,
     ) -> Option<&mut HashSet<OptimizedKPSetRoleTestingItemId>> {
         if self.possible_subsumed_set.is_none() && create {
-            self.possible_subsumed_set = Some(HashSet::new());
+            self.possible_subsumed_set = Some(HashSet::default());
         }
         self.possible_subsumed_set.as_mut()
     }
@@ -3322,7 +3323,7 @@ impl OptimizedKPSetClassTestingItem {
             testing_concept: ConceptId::NONE,
             individual_dependence_tracking_marker: IndividualDependenceTrackingMarkerId::NONE,
             satisfiable_concept_hierarchy_node: 0,
-            subsuming_concept_item_set: HashSet::new(),
+            subsuming_concept_item_set: HashSet::default(),
             subsuming_concept_item_list: Vec::new(),
             successor_item_list: Vec::new(),
             pred_counter: 0,
@@ -3338,8 +3339,8 @@ impl OptimizedKPSetClassTestingItem {
             propagation_connected: false,
             pseudo_model: ClassificationClassPseudoModel::new(),
             pseudo_model_initialized: false,
-            up_propagation_item_set: HashSet::new(),
-            down_propagation_item_set: HashSet::new(),
+            up_propagation_item_set: HashSet::default(),
+            down_propagation_item_set: HashSet::default(),
             possible_subsumed_list: None,
             possible_subsumed_set: None,
             fast_sat_cache_entry: 0,
@@ -3669,7 +3670,7 @@ impl OptimizedKPSetClassTestingItem {
         create: bool,
     ) -> Option<&mut HashSet<OptimizedKPSetClassTestingItemId>> {
         if self.possible_subsumed_set.is_none() && create {
-            self.possible_subsumed_set = Some(HashSet::new());
+            self.possible_subsumed_set = Some(HashSet::default());
         }
         self.possible_subsumed_set.as_mut()
     }
@@ -4211,6 +4212,19 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
             item_ids[subject] = item_id;
             debug_assert_eq!(item_id.index(), subject_by_item.len());
             subject_by_item.push(subject);
+            // COptimizedKPSetClassSubsumptionClassifierThread initialization
+            // (cpp 241-250): every active class concept that is still a CCEQ
+            // definition and has no partial-equivalence candidate joins the
+            // equivalent non-candidate set. Such a concept can subsume a class
+            // whose completion model never decides it (lazy unfolding adds
+            // neither B nor ¬B), so the TELLCLASSINITIALIZEPOSSIBLESUBSUM
+            // receive branch must keep it as a possible subsumer instead of
+            // invalidating every candidate when the ordinary list is empty.
+            if concepts.get(concept).get_operator_code() == CCEQ
+                && !ont_item.get_equivalent_concept_candidate_hash().contains_key(&concept)
+            {
+                ont_item.get_equivaltent_concept_non_candidate_set_mut().insert(concept);
+            }
         }
 
         // Konclude always creates a classifier item for owl:Thing and uses it
@@ -4568,7 +4582,7 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
                     .into_iter()
                     .collect()
             } else {
-                HashSet::new()
+                HashSet::default()
             };
 
             if !item_has_map && !item_initialized {
@@ -8192,7 +8206,7 @@ mod tests {
             ConceptId::new(7),
             19,
             23,
-            HashMap::new(),
+            HashMap::default(),
             0,
         );
         let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -8220,7 +8234,7 @@ mod tests {
                 ConceptId::new(7),
                 19,
                 INVALID,
-                HashMap::new(),
+                HashMap::default(),
                 0,
             );
         let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -8242,7 +8256,7 @@ mod tests {
             ConceptId::new(7),
             19,
             23,
-            HashMap::new(),
+            HashMap::default(),
             0,
         );
         assert!(!deliver_classification_message_data_to_observer(
@@ -8286,7 +8300,7 @@ mod tests {
             ConceptId::new(7),
             31,
             observer_handle,
-            HashMap::new(),
+            HashMap::default(),
             0,
         );
 
@@ -8324,7 +8338,7 @@ mod tests {
             ConceptId::new(7),
             31,
             stale_handle,
-            HashMap::new(),
+            HashMap::default(),
             0,
         );
 
@@ -8345,7 +8359,7 @@ mod tests {
                 ConceptId::new(7),
                 31,
                 INVALID,
-                HashMap::new(),
+                HashMap::default(),
                 0,
             );
         let linker = ClassificationMessageDataLinker::from_message(
@@ -8401,7 +8415,7 @@ mod tests {
         let con_proc_data_id = concept_process_datas.push(con_proc_data);
         analyse_concept.set_concept_data(con_proc_data_id.raw);
         let analyse_concept = concepts.push(analyse_concept);
-        let mut fallback_hash = HashMap::new();
+        let mut fallback_hash = HashMap::default();
         fallback_hash.insert(analyse_concept, fallback_item_id.raw);
         let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
             analyse_concept,
@@ -11033,7 +11047,7 @@ mod tests {
         let mut subsumer_concept = Concept::new();
         subsumer_concept.set_concept_data(con_pro_data_id.raw);
         let subsumer_concept_id = concepts.push(subsumer_concept);
-        let mut fallback_hash = HashMap::new();
+        let mut fallback_hash = HashMap::default();
         fallback_hash.insert(subsumer_concept_id, fallback_item.raw);
 
         let mut item = OptimizedKPSetClassTestingItem::new();

@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::SatNodeId;
@@ -30,7 +30,7 @@ impl SuccessorConnectedNominalSet {
     /// Port of `CSuccessorConnectedNominalSet::CSuccessorConnectedNominalSet`.
     pub fn new() -> Self {
         Self {
-            nominal_set: HashSet::new(),
+            nominal_set: HashSet::default(),
         }
     }
 

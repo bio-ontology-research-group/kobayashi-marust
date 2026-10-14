@@ -1,6 +1,9 @@
 //! Fail-closed certificates for source SWRL rules that need no worker rule.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+// Membership/lookup tables; iteration order is per-process random as before.
+type HashMap<K, V> = crate::fxhash::FxHashMap<K, V>;
+type HashSet<T> = crate::fxhash::FxHashSet<T>;
 
 use super::sexpr::Node;
 
@@ -276,7 +279,7 @@ impl RuleCertificateScan {
                     if exact_role != role {
                         continue;
                     }
-                    let mut seed = HashMap::new();
+                    let mut seed = HashMap::default();
                     if !bind(source_term, source, &mut seed) {
                         continue;
                     }
@@ -428,7 +431,7 @@ impl RuleCertificateScan {
             return false;
         }
 
-        let mut types: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut types: HashMap<&str, Vec<&str>> = HashMap::default();
         for (i, c) in &self.class_assertions {
             types.entry(i).or_default().push(c);
         }
@@ -477,13 +480,13 @@ impl RuleCertificateScan {
     }
 
     fn superclass_closure(&self) -> HashMap<&str, HashSet<&str>> {
-        let mut direct: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut direct: HashMap<&str, Vec<&str>> = HashMap::default();
         for (sub, sup) in &self.named_subclasses {
             direct.entry(sub).or_default().push(sup);
         }
-        let mut result = HashMap::new();
+        let mut result = HashMap::default();
         for start in direct.keys().copied() {
-            let mut seen = HashSet::new();
+            let mut seen = HashSet::default();
             let mut queue: VecDeque<_> = direct.get(start).into_iter().flatten().copied().collect();
             while let Some(next) = queue.pop_front() {
                 if seen.insert(next) {
@@ -542,7 +545,7 @@ fn same_rule_after_identifying(source: &Rule, candidate: &Rule, left: &Term, rig
         })
     }
     fn set(v: &[Atom], l: &Term, r: &Term) -> Option<HashSet<Atom>> {
-        let mut out = HashSet::new();
+        let mut out = HashSet::default();
         for value in v {
             if matches!(value, Atom::Builtin(..)) {
                 continue;

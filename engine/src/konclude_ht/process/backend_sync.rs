@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::cache::backend_data::IndividualAssociationDataId;
 use super::super::model::substrate::{Cint64, Id, INVALID};
@@ -121,10 +121,10 @@ impl Default for IndividualNodeBackendCacheSynchronisationData {
             concept_set_label_processed_node_linker: Vec::new(),
             neighbour_label_representative_expansion_linker: Vec::new(),
             backend_neighbour_expansion_queue: INVALID,
-            neighbour_expansion_data_hash: HashMap::new(),
-            neighbour_label_expansion_data_hash: HashMap::new(),
-            role_neighbour_expansion_data_hash: HashMap::new(),
-            role_representative_neighbour_count_hash: HashMap::new(),
+            neighbour_expansion_data_hash: HashMap::default(),
+            neighbour_label_expansion_data_hash: HashMap::default(),
+            role_neighbour_expansion_data_hash: HashMap::default(),
+            role_representative_neighbour_count_hash: HashMap::default(),
         }
     }
 }

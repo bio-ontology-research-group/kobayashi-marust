@@ -41,7 +41,9 @@ trap cleanup_checker EXIT
         ContextCalculus.IncrementalHornActivation \
         ContextCalculus.IncrementalSourceLocality \
         ContextCalculus.IncrementalDeletionSupport \
+        ContextCalculus.IncrementalModuleReuse \
         ContextCalculus.KMAtomicABoxPublication \
+        ContextCalculus.HypertableauABoxQuotient \
         ContextCalculus.ABoxBooleanInclusion \
         ContextCalculus.EndpointTransitivity \
         ContextCalculus.EndpointRoleHierarchy \
@@ -92,6 +94,26 @@ for theorem in \
     IncrementalDeletionSupport.query_sat_after_deletion \
     IncrementalDeletionSupport.query_unsat_from_proof \
     IncrementalDeletionSupport.rederived_query_satisfiability \
+    IncrementalModuleReuse.module_entails \
+    IncrementalModuleReuse.unaffected_query \
+    IncrementalModuleReuse.sandwich_query \
+    IncrementalModuleReuse.deletion_no_new_consequence \
+    IncrementalModuleReuse.inconsistent_superset \
+    IncrementalModuleReuse.module_inconsistent \
+    IncrementalModuleReuse.merged_publication_exact \
+    IncrementalModuleReuse.locality_sound \
+    IncrementalModuleReuse.axiom_local_sound \
+    IncrementalModuleReuse.eval_mask_agree \
+    IncrementalModuleReuse.sat_mask_agree \
+    IncrementalModuleReuse.local_of_nonLocal \
+    IncrementalModuleReuse.isModule_of_closed \
+    IncrementalModuleReuse.tbox_entails_iff \
+    IncrementalModuleReuse.localityN_sound \
+    IncrementalModuleReuse.nominal_module_entails_iff \
+    IncrementalModuleReuse.nominal_module_outside \
+    IncrementalModuleReuse.nominal_unaffected_query \
+    IncrementalModuleReuse.told_sound \
+    IncrementalModuleReuse.told_row_exact \
     IncrementalSourceLocality.eval_mask \
     IncrementalSourceLocality.transfer_model \
     IncrementalSourceLocality.inactive_delta_preserves_subsumptions \
@@ -266,7 +288,16 @@ for theorem in \
     AutomaticRouter.sound_and_complete \
     WireSelection.check_sound \
     automatic_specialist_decline_has_coverage \
-    CertifiedSupervisor.sound_and_complete
+    CertifiedSupervisor.sound_and_complete \
+    NativeABox.models_of_homomorphism \
+    NativeABox.fullSatisfiable_of_homomorphism \
+    NativeABox.entailsSubWith_of_homomorphism \
+    NativeABox.unsatisfiableConceptWith_of_homomorphism \
+    NativeABox.entailsSubWith_iff_of_sandwich \
+    NativeABox.unsatisfiableConceptWith_iff_of_sandwich \
+    NativeABox.unsatisfiableConceptWith_iff_of_modelAmalgamationFor \
+    NativeABox.entailsSubWith_iff_of_quotient \
+    NativeABox.unsatisfiableConceptWith_iff_of_quotient
 do
     grep -q "$theorem" "$surface_log" || {
         echo "missing routing certification-surface axiom audit: $theorem" >&2
@@ -291,9 +322,16 @@ fi
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         source_incremental::tests::
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
+        source_locality::tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
+        incr_session::tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --test source_module_reuse
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         incremental_activation::tests::
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         frontend::separable_abox_elision_tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
+        orchestrate::abox_quotient::tests::
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_reasoning
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_cb_reasoning
     CARGO_TARGET_DIR="$target_root" cargo test --release --test incremental_ht_reasoning

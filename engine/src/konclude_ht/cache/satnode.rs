@@ -27,7 +27,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::process::context::ProcessContext;
@@ -325,7 +325,7 @@ impl Default for AssociatedConceptExpansion {
     fn default() -> Self {
         AssociatedConceptExpansion {
             kind: AssociatedConceptExpansionKind::Concept,
-            concept_expansion_hash: HashMap::new(),
+            concept_expansion_hash: HashMap::default(),
             concept_expansion_linker: Vec::new(),
             concept_expansion_count: 0,
             dependent_nominal_set: Id::NONE,

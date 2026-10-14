@@ -38,7 +38,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Arena, Cint64};
 use super::super::model::RoleId;
@@ -418,7 +418,7 @@ impl ReapplyRoleSuccessorHash {
             let referred_prev_link_set = role_succ_data.prev_link_set.take();
 
             // newLinkSet allocated empty; mLinkSet = newLinkSet; mPrevLinkSet = nullptr.
-            role_succ_data.link_set = Some(HashMap::new());
+            role_succ_data.link_set = Some(HashMap::default());
             role_succ_data.prev_link_set = None;
             role_succ_data.located_link_set = true;
 
@@ -502,7 +502,7 @@ impl ReapplyRoleSuccessorHash {
             role_succ_data.link_set.as_mut().unwrap().remove(&coup_id);
         } else if role_succ_data.link_linker.is_some() {
             // replace by set
-            let mut new_link_set: HashMap<Cint64, EdgeId> = HashMap::new();
+            let mut new_link_set: HashMap<Cint64, EdgeId> = HashMap::default();
             role_succ_data.located_link_set = true;
             let mut link_it = role_succ_data.link_linker;
             while link_it.is_some() {
@@ -545,7 +545,7 @@ impl ReapplyRoleSuccessorHash {
                 .remove(&searched_coupled_id);
         } else if role_succ_data.link_linker.is_some() {
             // replace by set
-            let mut new_link_set: HashMap<Cint64, EdgeId> = HashMap::new();
+            let mut new_link_set: HashMap<Cint64, EdgeId> = HashMap::default();
             role_succ_data.located_link_set = true;
             let mut link_it = role_succ_data.link_linker;
             while link_it.is_some() {
@@ -584,7 +584,7 @@ impl ReapplyRoleSuccessorHash {
             if role_succ_data.link_linker.is_some() {
                 if locateable && role_succ_data.link_set.is_none() && role_succ_data.link_count >= 5
                 {
-                    let mut new_link_set: HashMap<Cint64, EdgeId> = HashMap::new();
+                    let mut new_link_set: HashMap<Cint64, EdgeId> = HashMap::default();
                     let mut link_it = role_succ_data.link_linker;
                     let mut searched_link = EdgeId::NONE;
                     while link_it.is_some() {

@@ -1,0 +1,12 @@
+Prefix(:=<http://f/>)
+Ontology(<http://f/o>
+Declaration(Class(:A1))
+Declaration(Class(:A3))
+Declaration(Class(:A5))
+Declaration(NamedIndividual(:a))
+Declaration(NamedIndividual(:b))
+Declaration(NamedIndividual(:c))
+SubClassOf(ObjectOneOf(:c) :A5)
+SubClassOf(:A1 ObjectOneOf(:b))
+SubClassOf(ObjectOneOf(:c) :A1)
+)

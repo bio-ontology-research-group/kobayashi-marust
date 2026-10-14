@@ -6,7 +6,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::model::ontology::OntologyArenas;
 use super::model::substrate::NegLink;
@@ -146,7 +146,7 @@ impl SatisfiableCalculationTaskFromCalculationJobGenerator {
                 + 1,
         );
         let mut first_possible_individual_node_id = base_individual_node_id;
-        let mut localized_base_task_nodes = HashSet::new();
+        let mut localized_base_task_nodes = HashSet::default();
         for assertion in staged_assertions {
             let (mut individual_node_id, nominal_individual) =
                 match assertion.get_individual_target() {

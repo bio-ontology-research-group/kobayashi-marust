@@ -984,6 +984,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des)
             .get_dependency_track_point();
+        if self.defer_or_branching && operands.len() >= 2 {
+            self.deferred_or_branchings.push((process_indi, con_des, dep_track_point));
+            return true;
+        }
 
         // concept->getOperandList() — the disjunction's operands (lives in the
         // ctx-owned concept arena; collected to an owned Vec before the &mut calls,

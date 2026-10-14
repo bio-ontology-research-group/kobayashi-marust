@@ -30,6 +30,8 @@ Ontology(
 fn nominal_cb_addition_retains_state_and_equals_fresh_classify() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_km"))
         .arg("incremental-source")
+        // The legacy per-route adapter session is what these receipts describe.
+        .env("KM_SOURCE_SESSION", "legacy")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

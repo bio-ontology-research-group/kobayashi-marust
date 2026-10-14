@@ -154,9 +154,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         merge_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        if pred.is_none() || pred == into || from == into {
+        if pred.is_none() || from == into {
             return false;
         }
+        // Merging a successor into its own predecessor (`pred == into`)
+        // turns every `pred→from` link into a self link of `into`
+        // (Konclude phase 5: `createNewIndividualsLinkReapplyed(creator,
+        // locConnIndi = mergeInto, mergeInto, role)`, and the reverse loop
+        // re-creates the inverse self link). The reapply queues then fire
+        // `∀`, `¬∃R.Self` and number restrictions over the self link.
+        let self_loop = pred == into;
         let from_id = calc_alg_context
             .process_context()
             .node(from)
@@ -176,6 +183,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             v
         };
+        let mut links = links;
+        if self_loop {
+            let inverses: Vec<(super::super::model::RoleId, TrackPointId)> = links.iter()
+                .filter_map(|&(role, dep)| {
+                    let inverse = calc_alg_context.ontology_arenas().role(role).get_inverse_role();
+                    inverse.is_some().then_some((inverse, dep))
+                })
+                .collect();
+            for entry in inverses {
+                if !links.iter().any(|&(role, _)| role == entry.0) {
+                    links.push(entry);
+                }
+            }
+        }
         let mut added = false;
         for (role, link_dep_track_point) in links {
             // hasRoleSuccessorToIndividual(role, into) — skip existing.
@@ -196,6 +217,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 link_dep_track_point,
                 calc_alg_context,
             );
+            // createNewIndividualsLinkReapplyed (cpp 22355): the relocated
+            // link's own disjoint-role negation edges, then the negation
+            // check of `installIndividualNodeRoleLinkReapplied`. The reverse
+            // loop of Konclude's phase 5 re-creates the mirrored `into→pred`
+            // links; the Rust graph keeps the link at `pred` only, so the
+            // mirrored negation edges and checks are performed here.
+            if !self.ht_relocated_link_disjoint_roles(
+                pred,
+                into,
+                role,
+                new_dep_track_point,
+                calc_alg_context,
+            ) {
+                return added;
+            }
             self.ht_install_role_successor_edge(
                 pred,
                 into,
@@ -204,8 +240,376 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
             );
             added = true;
+            if calc_alg_context.has_pending_signal() {
+                return added;
+            }
         }
+        // neg/disjoint links between `pred` and `from` (cpp 21226–21258):
+        // re-created between `pred` and `into` under a MERGEDLINK dependency
+        // through createIndividualNodeNegationLink, which clashes against an
+        // existing positive link of the same role.
+        self.ht_relocate_negation_links(pred, from, into, merge_dep_track_point, calc_alg_context);
         added
+    }
+
+    /// Disjoint-role processing of one relocated positive link
+    /// `source --role--> destination`. Returns false if a clash was raised.
+    pub(crate) fn ht_relocated_link_disjoint_roles(
+        &mut self,
+        source: NodeId,
+        destination: NodeId,
+        role: super::super::model::RoleId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let inverse = calc_alg_context.ontology_arenas().role(role).get_inverse_role();
+        let mut orientations = vec![(source, destination, role)];
+        if inverse.is_some() {
+            orientations.push((destination, source, inverse));
+        }
+        for (from_node, to_node, link_role) in orientations {
+            let disjoint = calc_alg_context
+                .ontology_arenas()
+                .role(link_role)
+                .get_disjoint_role_list()
+                .to_vec();
+            if !disjoint.is_empty() {
+                let (mut s, mut d) = (from_node, to_node);
+                self.create_individual_node_disjoint_roles_links(
+                    &mut s,
+                    &mut d,
+                    &disjoint,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return false;
+                }
+            }
+            // installIndividualNodeRoleLink: a stored negation edge for this
+            // role towards the destination clashes with the new link.
+            let destination_id = calc_alg_context
+                .process_context()
+                .node(to_node)
+                .individual_node_id();
+            let negative = calc_alg_context
+                .process_context()
+                .node_disjoint_successor_role_link(from_node, link_role, destination_id);
+            if negative.is_some() {
+                let negative_dep = calc_alg_context
+                    .process_context()
+                    .disjoint_edge(negative)
+                    .get_dependency_track_point();
+                // Konclude allocates the link before this test; the clash
+                // carries the link and the negation edge.
+                let mut edge = super::super::process::edge::IndividualLinkEdge::new();
+                edge.creator = from_node;
+                edge.set_source_individual(from_node);
+                edge.set_destination_individual(to_node);
+                edge.set_link_role(link_role);
+                edge.set_dependency_track_point(dep_track_point);
+                let link = calc_alg_context.process_context_mut().alloc_edge(edge);
+                let mut clash = self.create_clashed_individual_link_descriptor(
+                    super::super::process::ClashDescId::NONE,
+                    link,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                clash = self.create_clashed_negation_disjoint_descriptor(
+                    clash,
+                    negative,
+                    negative_dep,
+                    calc_alg_context,
+                );
+                calc_alg_context.raise_clash(clash);
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Relocate the negation edges between `pred` and the merged-away
+    /// `from` onto `into` (Konclude merge phase 5, neg/disjoint part).
+    pub(crate) fn ht_relocate_negation_links(
+        &mut self,
+        pred: NodeId,
+        from: NodeId,
+        into: NodeId,
+        merge_dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if pred.is_none() || from == into {
+            return;
+        }
+        let (pred_id, from_id, into_id) = {
+            let pc = calc_alg_context.process_context();
+            (
+                pc.node(pred).individual_node_id(),
+                pc.node(from).individual_node_id(),
+                pc.node(into).individual_node_id(),
+            )
+        };
+        let plan = if pred == from {
+            // self edges of the merged node become self edges of `into`.
+            vec![(self.ht_negation_edges(from, from_id, calc_alg_context), into, into, into_id)]
+        } else {
+            // connected → merged: pred→from becomes pred→into, and
+            // merged → connected: from→pred becomes into→pred.
+            let pred = if pred == into { into } else { pred };
+            let pred_id = if pred == into { into_id } else { pred_id };
+            vec![
+                (self.ht_negation_edges(pred, from_id, calc_alg_context), pred, into, into_id),
+                (self.ht_negation_edges(from, pred_id, calc_alg_context), into, pred, pred_id),
+            ]
+        };
+        for (relocations, source, destination, destination_id) in plan {
+            for (negative, role) in relocations {
+                if calc_alg_context
+                    .process_context()
+                    .node_has_negation_disjoint_to_individual_id(source, role, destination_id)
+                {
+                    continue;
+                }
+                let old_dep = calc_alg_context
+                    .process_context()
+                    .disjoint_edge(negative)
+                    .get_dependency_track_point();
+                let mut new_dep = TrackPointId::NONE;
+                let mut into_mut = into;
+                self.create_merged_link_dependency(
+                    &mut new_dep,
+                    &mut into_mut,
+                    merge_dep_track_point,
+                    old_dep,
+                    calc_alg_context,
+                );
+                let (mut s, mut d) = (source, destination);
+                self.create_individual_node_negation_link(
+                    &mut s,
+                    &mut d,
+                    role,
+                    new_dep,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Neighbours of `individual` (its predecessors from the connection-
+    /// successor set and the destinations of its successor links), resolved
+    /// to live nodes, in a deterministic order.
+    fn ht_live_neighbours(
+        &mut self,
+        individual: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Vec<NodeId> {
+        let mut ids: Vec<Cint64> = Vec::new();
+        {
+            let pc = calc_alg_context.process_context();
+            let conn = pc.node_connection_successor_set_existing(individual);
+            if conn.is_some() {
+                let mut it = pc.conn_succ_set(conn).get_connection_successor_iterator();
+                while it.has_next() {
+                    ids.push(it.next(true));
+                }
+            }
+            let mut it = pc.node_successor_iterator(individual);
+            while it.has_next() {
+                let link = it.next_link(false);
+                let id = it.next_individual_id(true);
+                if link.is_some() {
+                    ids.push(id);
+                }
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        let own_id = calc_alg_context.process_context().node(individual).individual_node_id();
+        let mut out = Vec::new();
+        for id in ids {
+            if id == own_id {
+                continue;
+            }
+            let node = calc_alg_context
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(id);
+            if node.is_none() || node.index() >= calc_alg_context.process_context().node_count() {
+                continue;
+            }
+            let n = calc_alg_context.process_context().node(node);
+            if n.has_merged_into_individual_node_id() || n.has_purged_blocked_processing_restriction_flags() {
+                continue;
+            }
+            out.push(node);
+        }
+        out
+    }
+
+    /// `individual -> individual` links become `into -> into` links
+    /// (cpp 21122–21148, unconditional in Konclude's walk).
+    fn ht_relocate_self_links(
+        &mut self,
+        individual: NodeId,
+        into: NodeId,
+        merge_dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let own_id = calc_alg_context.process_context().node(individual).individual_node_id();
+        let links: Vec<(super::super::model::RoleId, TrackPointId)> = {
+            let pc = calc_alg_context.process_context();
+            let mut it = pc.node_successor_role_iterator(individual, own_id);
+            let mut v = Vec::new();
+            while it.has_next() {
+                let link = it.next(true);
+                if link.is_some() {
+                    let e = pc.edge(link);
+                    v.push((e.get_link_role(), e.get_dependency_track_point()));
+                }
+            }
+            v
+        };
+        for (role, link_dep_track_point) in links {
+            if self
+                .ht_role_successor_links(into, role, calc_alg_context)
+                .iter()
+                .any(|&(_, s)| s == into)
+            {
+                continue;
+            }
+            let mut new_dep_track_point = TrackPointId::NONE;
+            let mut into_mut = into;
+            self.create_merged_link_dependency(
+                &mut new_dep_track_point,
+                &mut into_mut,
+                merge_dep_track_point,
+                link_dep_track_point,
+                calc_alg_context,
+            );
+            if !self.ht_relocated_link_disjoint_roles(into, into, role, new_dep_track_point, calc_alg_context) {
+                return;
+            }
+            self.ht_install_role_successor_edge(into, into, role, new_dep_track_point, calc_alg_context);
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+        }
+    }
+
+    /// Merge phase 5, self-link and nominal arms (cpp 21122–21196). Self
+    /// links of `individual` become self links of `into`. Every link between
+    /// `individual` and a connected nominal node (or, when `individual` is a
+    /// nominal, any connected node other than its own tree children, cpp
+    /// 21155) moves onto `into` in both directions, through the reapplying
+    /// link install; links between `individual` and `into` itself become self
+    /// links of `into`. The ancestor arm is handled by the caller. Without
+    /// this, a nominal's links to a node merged away by a ≤n / NI merge only
+    /// point at the ghost, which `ht_role_successor_links` filters, so the
+    /// nominal's ≤n and ∀ restrictions never see the merge target (fuzz case
+    /// 1002: two r-predecessors of `a` under InverseFunctional(r) unmerged).
+    fn ht_relocate_nominal_connections(
+        &mut self,
+        individual: NodeId,
+        into: NodeId,
+        ancestor: NodeId,
+        merge_dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let individual_nominal = calc_alg_context
+            .process_context()
+            .node(individual)
+            .is_nominal_individual_node();
+        let neighbours = self.ht_live_neighbours(individual, calc_alg_context);
+        self.ht_relocate_self_links(individual, into, merge_dep_track_point, calc_alg_context);
+        if calc_alg_context.has_pending_signal() {
+            return;
+        }
+        for neighbour in neighbours {
+            if neighbour == ancestor {
+                continue;
+            }
+            let neighbour_nominal = calc_alg_context
+                .process_context()
+                .node(neighbour)
+                .is_nominal_individual_node();
+            if !individual_nominal && !neighbour_nominal {
+                continue;
+            }
+            if individual_nominal && !neighbour_nominal {
+                let mut child = neighbour;
+                if self.get_ancestor_individual(&mut child, calc_alg_context) == individual {
+                    continue;
+                }
+            }
+            // neighbour -> individual becomes neighbour -> into
+            // (`ht_relocate_incoming_links` builds self loops when
+            // `neighbour == into`).
+            self.ht_relocate_incoming_links(
+                neighbour,
+                individual,
+                into,
+                merge_dep_track_point,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+            // and reverse: individual -> neighbour becomes into -> neighbour.
+            let neighbour_id = calc_alg_context.process_context().node(neighbour).individual_node_id();
+            let links: Vec<(super::super::model::RoleId, TrackPointId)> = {
+                let pc = calc_alg_context.process_context();
+                let mut it = pc.node_successor_role_iterator(individual, neighbour_id);
+                let mut v = Vec::new();
+                while it.has_next() {
+                    let link = it.next(true);
+                    if link.is_some() {
+                        let e = pc.edge(link);
+                        v.push((e.get_link_role(), e.get_dependency_track_point()));
+                    }
+                }
+                v
+            };
+            for (role, link_dep_track_point) in links {
+                if self
+                    .ht_role_successor_links(into, role, calc_alg_context)
+                    .iter()
+                    .any(|&(_, s)| s == neighbour)
+                {
+                    continue;
+                }
+                let mut new_dep_track_point = TrackPointId::NONE;
+                let mut into_mut = into;
+                self.create_merged_link_dependency(
+                    &mut new_dep_track_point,
+                    &mut into_mut,
+                    merge_dep_track_point,
+                    link_dep_track_point,
+                    calc_alg_context,
+                );
+                if !self.ht_relocated_link_disjoint_roles(
+                    into,
+                    neighbour,
+                    role,
+                    new_dep_track_point,
+                    calc_alg_context,
+                ) {
+                    return;
+                }
+                self.ht_install_role_successor_edge(
+                    into,
+                    neighbour,
+                    role,
+                    new_dep_track_point,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
+        }
     }
 
     pub fn merge_individual_node_into(
@@ -374,9 +778,77 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+            // The self-link and nominal arms of the same walk (cpp 21122–21196):
+            // see `ht_relocate_nominal_connections`.
+            self.ht_relocate_nominal_connections(
+                individual,
+                merge_into_individual_node,
+                from_ancestor,
+                merge_dep_track_point,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
         }
-        // W6-DEFER[api]: the nominal neighbour backend-expansion sub-block + the
-        // neg/disjoint-link relocation remain deferred with the W6 Cache layer.
+        // neg/disjoint links (cpp 21226–21258): Konclude re-creates them for
+        // every connected node it keeps (nominals, the ancestor, successors of
+        // the merge target). Negation edges are stored mirrored at both
+        // endpoints, so `individual`'s own disjoint hash lists every node it
+        // shares one with. Relocate them all except those to `individual`'s
+        // own tree children, which `pruneSuccessors` below discards. A kept
+        // negation edge is an entailed fact about the merged element, so
+        // keeping more of them than Konclude's guard never admits a model
+        // Konclude rejects.
+        if calc_alg_context.process_context().node(individual).has_disjoint_role_connections() {
+            let neighbours: Vec<Cint64> = {
+                let pc = calc_alg_context.process_context();
+                let hash = pc.node(individual).use_disjoint_succ_role_hash;
+                if hash.is_some() { pc.disjoint_succ_role_hash(hash).successor_ids() } else { Vec::new() }
+            };
+            for neighbour_id in neighbours {
+                let neighbour = calc_alg_context
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(neighbour_id);
+                if neighbour.is_none() {
+                    calc_alg_context.raise_stop(false);
+                    return;
+                }
+                if neighbour == individual {
+                    // individual→individual negation edges become self edges.
+                    self.ht_relocate_negation_links(
+                        individual,
+                        individual,
+                        merge_into_individual_node,
+                        merge_dep_track_point,
+                        calc_alg_context,
+                    );
+                } else {
+                    let mut child = neighbour;
+                    let parent = self.get_ancestor_individual(&mut child, calc_alg_context);
+                    let pruned_child = parent == individual
+                        && !calc_alg_context.process_context().node(neighbour).is_nominal_individual_node();
+                    if !pruned_child {
+                        self.ht_relocate_negation_links(
+                            neighbour,
+                            individual,
+                            merge_into_individual_node,
+                            merge_dep_track_point,
+                            calc_alg_context,
+                        );
+                    }
+                }
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
+        }
+        // W6-DEFER[api]: the nominal neighbour backend-expansion sub-block
+        // remains deferred with the W6 Cache layer.
 
         // ---- phase 6: nominal merge bookkeeping ---------------------------------
         // `IndividualMergingHash` and the node nominal accessors are live, but

@@ -107,21 +107,29 @@ pub struct Arena<T> {
     /// `Vec` normally doubles at capacity, which can request multiple GiB at
     /// once for saturation arenas containing tens of millions of records.
     tight_growth: bool,
-    /// Branch-epoch watermarks (in-process COW): allocation lengths at each
-    /// open epoch; `pop_epoch*` truncates back. Empty when no epoch is open —
-    /// all epoch machinery is then zero-cost.
+    /// Watermark-ONLY epochs (eager): allocation lengths at each open
+    /// watermark-only epoch; `pop_epoch_watermark` truncates back.
     wm_stack: Vec<usize>,
-    /// Journal frames (one per open epoch, for journal-enabled pushes): the
-    /// first in-place mutation of a slot BELOW the frame's watermark saves a
-    /// clone; `pop_epoch` replays the saves in reverse. Slots at/above the
-    /// watermark die on truncate and are never saved.
+    /// Number of open JOURNALED epochs. Opening one is O(1): its frame is
+    /// materialized lazily, on the first allocation, removal, truncation or
+    /// journaled mutation inside it (see `materialize_epoch_frame`).
+    open_depth: usize,
+    /// Materialized journal frames, ordered by depth. One frame covers the
+    /// contiguous run of open depths `lo..=hi` that were opened while the arena
+    /// was untouched; all of them share one watermark, exactly as the eager
+    /// scheme (one frame pushed per opened epoch) would have recorded.
     journal_stack: Vec<EpochJournalFrame<T>>,
 }
 
-/// One epoch's first-touch save frame (see [`Arena::get_mut_journaled`]).
+/// One run of open epochs' first-touch save frame (see
+/// [`Arena::get_mut_journaled`]). Only the innermost depth `hi` of the run can
+/// receive saves: the shallower depths of the run were never touched while
+/// they were innermost.
 pub struct EpochJournalFrame<T> {
+    lo: usize,
+    hi: usize,
     watermark: usize,
-    saved_keys: std::collections::HashSet<usize>,
+    saved_keys: crate::fxhash::FxHashSet<usize>,
     saves: Vec<(usize, T)>,
 }
 
@@ -131,6 +139,7 @@ impl<T> Default for Arena<T> {
             items: Vec::new(),
             tight_growth: false,
             wm_stack: Vec::new(),
+            open_depth: 0,
             journal_stack: Vec::new(),
         }
     }
@@ -151,6 +160,7 @@ impl<T> Arena<T> {
     }
     #[inline]
     pub fn push(&mut self, v: T) -> Id<T> {
+        self.materialize_epoch_frame();
         if self.tight_growth && self.items.len() == self.items.capacity() {
             let additional = (self.items.capacity() / 4).max(4_096);
             self.items.reserve_exact(additional);
@@ -164,6 +174,7 @@ impl<T> Arena<T> {
     #[inline]
     pub fn pop_last_if(&mut self, id: Id<T>) -> bool {
         if id.is_some() && id.index().checked_add(1) == Some(self.items.len()) {
+            self.materialize_epoch_frame();
             self.items.pop();
             true
         } else {
@@ -217,6 +228,7 @@ impl<T> Arena<T> {
     /// Backtrack: drop everything allocated since `mark`.
     #[inline]
     pub fn truncate_to(&mut self, mark: usize) {
+        self.materialize_epoch_frame();
         self.items.truncate(mark);
     }
     /// End one calculation task while retaining this arena's backing storage
@@ -230,6 +242,7 @@ impl<T> Arena<T> {
     pub fn clear_preserving_capacity(&mut self) {
         self.items.clear();
         self.wm_stack.clear();
+        self.open_depth = 0;
         self.journal_stack.clear();
     }
     /// Drop every object and return the backing allocations to the allocator.
@@ -274,7 +287,29 @@ impl<T> Arena<T> {
     /// True when any epoch is open (journaled or watermark-only).
     #[inline]
     pub fn epoch_open(&self) -> bool {
-        !self.wm_stack.is_empty()
+        self.open_depth > 0 || !self.wm_stack.is_empty()
+    }
+    /// Materialize the frame of the innermost open journaled epoch before the
+    /// first change of this arena inside it. Every open depth above the last
+    /// materialized frame was opened while the arena was untouched, so the
+    /// current length is the allocation length at each of their openings —
+    /// the watermark the eager scheme recorded for every one of them.
+    #[inline]
+    fn materialize_epoch_frame(&mut self) {
+        let depth = self.open_depth;
+        if depth == 0 {
+            return;
+        }
+        let lo = self.journal_stack.last().map_or(1, |frame| frame.hi + 1);
+        if lo <= depth {
+            self.journal_stack.push(EpochJournalFrame {
+                lo,
+                hi: depth,
+                watermark: self.items.len(),
+                saved_keys: crate::fxhash::FxHashSet::default(),
+                saves: Vec::new(),
+            });
+        }
     }
 }
 
@@ -283,28 +318,37 @@ impl<T: Clone> Arena<T> {
     /// mutations of pre-epoch slots are rolled back (first-touch clone).
     #[inline]
     pub fn push_epoch(&mut self) {
-        let wm = self.items.len();
-        self.wm_stack.push(wm);
-        self.journal_stack.push(EpochJournalFrame {
-            watermark: wm,
-            saved_keys: std::collections::HashSet::new(),
-            saves: Vec::new(),
-        });
+        self.open_depth += 1;
     }
     /// Close a journaled epoch: replay the saves in reverse, then truncate.
     pub fn pop_epoch(&mut self) {
-        if let Some(frame) = self.journal_stack.pop() {
-            // truncate FIRST (frees slots the saves may index past? saves are
-            // all below the watermark by construction, so order is free; do
-            // saves last so restored content is final).
-            if let Some(wm) = self.wm_stack.pop() {
-                self.items.truncate(wm);
-            }
+        let depth = self.open_depth;
+        if depth == 0 {
+            return;
+        }
+        self.open_depth = depth - 1;
+        let Some(frame) = self.journal_stack.last_mut() else {
+            return;
+        };
+        if frame.hi != depth {
+            // Untouched during the closed epoch: nothing to roll back.
+            return;
+        }
+        self.items.truncate(frame.watermark);
+        if frame.lo == depth {
+            let frame = self.journal_stack.pop().expect("checked above");
             for (ix, v) in frame.saves.into_iter().rev() {
                 self.items[ix] = v;
             }
-        } else if let Some(wm) = self.wm_stack.pop() {
-            self.items.truncate(wm);
+        } else {
+            // The shallower depths of the run keep the same watermark and,
+            // never touched while innermost, have no saves of their own.
+            frame.hi = depth - 1;
+            frame.saved_keys.clear();
+            let saves = std::mem::take(&mut frame.saves);
+            for (ix, v) in saves.into_iter().rev() {
+                self.items[ix] = v;
+            }
         }
     }
     /// The mutate path under branch epochs: the first mutation of a
@@ -314,7 +358,9 @@ impl<T: Clone> Arena<T> {
     /// immutable-model / cross-task state keep the raw `get_mut`.
     #[inline]
     pub fn get_mut_journaled(&mut self, id: Id<T>) -> &mut T {
-        if let Some(frame) = self.journal_stack.last_mut() {
+        if self.open_depth > 0 {
+            self.materialize_epoch_frame();
+            let frame = self.journal_stack.last_mut().expect("materialized");
             let ix = id.index();
             if ix < frame.watermark && frame.saved_keys.insert(ix) {
                 let clone = self.items[ix].clone();
@@ -431,5 +477,73 @@ mod tests {
         assert_eq!(*arena.get(super::Id::new(7)), 7);
         let reused = arena.push(10_001);
         assert_eq!(reused.index(), transient.index());
+    }
+    /// The lazily materialized journal must be observationally identical to
+    /// the eager one-frame-per-epoch scheme. Reference model: an explicit
+    /// stack of (length, full snapshot) per open epoch.
+    #[test]
+    fn lazy_epoch_frames_match_eager_snapshots_under_random_operations() {
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = move |bound: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % bound
+        };
+        for _round in 0..200 {
+            let mut arena: Arena<u64> = Arena::new();
+            let mut model: Vec<u64> = Vec::new();
+            let mut snapshots: Vec<Vec<u64>> = Vec::new();
+            for _ in 0..(next(8) as usize) {
+                let v = next(1000);
+                arena.push(v);
+                model.push(v);
+            }
+            for _step in 0..400 {
+                match next(7) {
+                    0 | 1 => {
+                        arena.push_epoch();
+                        snapshots.push(model.clone());
+                    }
+                    2 => {
+                        if let Some(snapshot) = snapshots.pop() {
+                            arena.pop_epoch();
+                            model = snapshot;
+                        }
+                    }
+                    3 => {
+                        let v = next(1000);
+                        let id = arena.push(v);
+                        assert_eq!(id.index(), model.len());
+                        model.push(v);
+                    }
+                    4 | 5 => {
+                        if !model.is_empty() {
+                            let ix = next(model.len() as u64) as usize;
+                            let v = next(1000);
+                            *arena.get_mut_journaled(super::Id::new(ix as i64)) = v;
+                            model[ix] = v;
+                        }
+                    }
+                    _ => {
+                        // `pop_last_if` reclaims a just-allocated tail object:
+                        // only objects allocated inside the innermost epoch.
+                        let floor = snapshots.last().map_or(0, |snapshot| snapshot.len());
+                        if model.len() > floor {
+                            let last = super::Id::new(model.len() as i64 - 1);
+                            assert!(arena.pop_last_if(last));
+                            model.pop();
+                        }
+                    }
+                }
+                assert_eq!(arena.len(), model.len());
+                assert!(arena.iter().copied().eq(model.iter().copied()));
+                assert_eq!(arena.epoch_open(), !snapshots.is_empty());
+            }
+            while let Some(snapshot) = snapshots.pop() {
+                arena.pop_epoch();
+                assert!(arena.iter().copied().eq(snapshot.iter().copied()));
+            }
+        }
     }
 }

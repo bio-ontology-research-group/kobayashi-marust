@@ -2158,12 +2158,15 @@ impl SaturationTaskHandleAlgorithm {
                         .process_context_mut()
                         .role_sat_proc_linker_mut(tmp_role_linker)
                         .set_next(old_head);
-                    calc_alg_context
-                        .process_context_mut()
-                        .sat_indi_node_functional_concept_ext_data_mut(
-                            functional_concepts_extension,
-                        )
-                        .functionality_added_role_process_linker = tmp_role_linker;
+                    {
+                        let data = calc_alg_context
+                            .process_context_mut()
+                            .sat_indi_node_functional_concept_ext_data_mut(
+                                functional_concepts_extension,
+                            );
+                        data.functionality_added_role_process_linker = tmp_role_linker;
+                        data.functionality_added_roles.insert(role);
+                    }
                     role_linker_it = calc_alg_context
                         .process_context()
                         .role_sat_proc_linker(role_linker_it)

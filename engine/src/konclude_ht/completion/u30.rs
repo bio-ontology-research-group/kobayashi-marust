@@ -63,7 +63,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 use std::hash::{Hash, Hasher};
 
 use super::super::model::op::CCNOMINAL;
@@ -182,7 +182,7 @@ impl Default for TrackedClashedDependencyLine {
             prev_levels_tracked_non_det_clashes: ClashDescId::NONE,
             prev_levels_tracked_non_det_branching_clashes: ClashDescId::NONE,
             free_tracked_clashed_descriptors: ClashDescId::NONE,
-            clashed_set: HashSet::new(),
+            clashed_set: HashSet::default(),
             involved_individual_set: None,
         }
     }
@@ -1018,7 +1018,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
         tmp_mem_man: Cint64,
     ) -> ClashDescId {
-        let mut test_clashed_set: HashSet<TrackedClashedDescriptorHasher> = HashSet::new();
+        let mut test_clashed_set: HashSet<TrackedClashedDescriptorHasher> = HashSet::default();
         let mut track_point_it = calc_alg_context
             .process_context()
             .dep_node(non_det_branch_dep_node)

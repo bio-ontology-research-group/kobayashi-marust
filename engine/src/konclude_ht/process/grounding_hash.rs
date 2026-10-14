@@ -9,7 +9,7 @@
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::ConceptId;
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 /// `CConceptNominalSchemaGroundingData*` → `ConceptNominalSchemaGroundingDataId`.
 pub type ConceptNominalSchemaGroundingDataId = Id<ConceptNominalSchemaGroundingData>;
@@ -129,7 +129,7 @@ impl ConceptNominalSchemaGroundingHash {
     pub fn new(process_context: Cint64) -> Self {
         ConceptNominalSchemaGroundingHash {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 

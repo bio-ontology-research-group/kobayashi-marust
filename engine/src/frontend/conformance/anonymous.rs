@@ -107,10 +107,23 @@ impl Graph {
 }
 
 pub(super) fn check(text: &str, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
-    let mut graph = Graph::default();
+    let mut checker = Checker::default();
     crate::frontend::parse::for_each_ontology_child(text, |node|
-        graph.observe(node, prefixes).map_err(crate::frontend::parse::OutOfFragment)).map_err(|e| e.0)?;
-    graph.finish()
+        checker.observe(node, prefixes).map_err(crate::frontend::parse::OutOfFragment)).map_err(|e| e.0)?;
+    checker.finish()
+}
+
+/// Streaming form of [`check`]: observe each ontology child in order, then finish.
+#[derive(Default)]
+pub(super) struct Checker(Graph);
+
+impl Checker {
+    pub(super) fn observe(&mut self, node: &Node<'_>, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
+        self.0.observe(node, prefixes)
+    }
+    pub(super) fn finish(self) -> Result<(), String> {
+        self.0.finish()
+    }
 }
 
 #[cfg(test)]

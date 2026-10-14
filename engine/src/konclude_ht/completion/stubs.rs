@@ -128,7 +128,7 @@ pub struct SaturatedSuccessorMergeJob {
     pub existential_sat_node: SatNodeId,
     pub successor_list: Vec<SatNodeId>,
     pub trivial_successor_propagated_concept_list: Vec<(ConceptId, bool)>,
-    pub backward_role_set: std::collections::HashSet<RoleId>,
+    pub backward_role_set: crate::fxhash::FxHashSet<RoleId>,
 }
 
 /// Branch selected by
@@ -146,7 +146,7 @@ pub struct SaturatedSuccessorMergeDispatch {
     pub existential_sat_node: SatNodeId,
     pub successor_list: Vec<SatNodeId>,
     pub trivial_successor_propagated_concept_list: Vec<(ConceptId, bool)>,
-    pub backward_role_set: std::collections::HashSet<RoleId>,
+    pub backward_role_set: crate::fxhash::FxHashSet<RoleId>,
     pub remaining_merging_depth: Cint64,
 }
 
@@ -828,7 +828,7 @@ impl SatisfiableExpanderCacheHandler {
         let ancestor_depth = process_context
             .node(individual_node)
             .individual_ancestor_depth();
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = crate::fxhash::FxHashSet::default();
         loop {
             if !seen.insert(dep_track_point) {
                 return true;
@@ -875,7 +875,7 @@ impl SatisfiableExpanderCacheHandler {
         concept_tag: Cint64,
         dep_track_point: TrackPointId,
         dep_hash: &mut SignatureSatisfiableExpanderDepHash,
-        not_branch_concepts: Option<&std::collections::HashSet<Cint64>>,
+        not_branch_concepts: Option<&crate::fxhash::FxHashSet<Cint64>>,
         branched: &mut bool,
     ) -> bool {
         if dep_track_point.is_none() {
@@ -926,7 +926,7 @@ impl SatisfiableExpanderCacheHandler {
         concept_tag: Cint64,
         initial_track_point: TrackPointId,
         dep_hash: &mut SignatureSatisfiableExpanderDepHash,
-        not_branch_concepts: Option<&std::collections::HashSet<Cint64>>,
+        not_branch_concepts: Option<&crate::fxhash::FxHashSet<Cint64>>,
         branched: &mut bool,
     ) -> bool {
         if initial_track_point.is_none() {
@@ -936,7 +936,7 @@ impl SatisfiableExpanderCacheHandler {
             .node(individual_node)
             .individual_ancestor_depth();
         let initial = (base_depth, initial_track_point);
-        let mut dependencies = std::collections::HashSet::from([initial]);
+        let mut dependencies = [initial].into_iter().collect::<crate::fxhash::FxHashSet<_>>();
         let mut pending = std::collections::VecDeque::from([initial]);
         while let Some((ancestor_depth, track_point_id)) = pending.pop_front() {
             if track_point_id.is_none() {
@@ -1464,7 +1464,7 @@ impl SatisfiableExpanderCacheHandler {
         let mut branched_values = Vec::new();
         let mut last_cached_descriptor_reached = false;
         let mut caching_error = false;
-        let mut not_branch_concepts = std::collections::HashSet::new();
+        let mut not_branch_concepts = crate::fxhash::FxHashSet::default();
 
         for descriptor in descriptors_newest_first {
             let concept_tag = process_context
@@ -1934,11 +1934,11 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         constructed_individual_node: NodeId,
         individual_node_vector: &IndividualProcessNodeVector,
         max_deterministic_branch_tag: Cint64,
-        possible_subsumption_states: &std::collections::HashMap<
+        possible_subsumption_states: &crate::fxhash::FxHashMap<
             ConceptId,
             ClassificationAnalyserPossibleSubsumptionState,
         >,
-        equivalent_non_candidate_concepts: &std::collections::HashMap<ConceptId, Vec<ConceptId>>,
+        equivalent_non_candidate_concepts: &crate::fxhash::FxHashMap<ConceptId, Vec<ConceptId>>,
         concepts: &Arena<Concept>,
     ) -> Option<ClassificationAnalyserRootBranchResult> {
         if adapter.get_testing_concept().is_none() || constructed_individual_node.is_none() {
@@ -2049,7 +2049,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         constructed_individual_node: NodeId,
         individual_node_vector: &IndividualProcessNodeVector,
         max_deterministic_branch_tag: Cint64,
-        possible_subsumption_states: &std::collections::HashMap<
+        possible_subsumption_states: &crate::fxhash::FxHashMap<
             ConceptId,
             ClassificationAnalyserPossibleSubsumptionState,
         >,
@@ -2133,7 +2133,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 );
             let possible_subsumer_template =
                 Self::possible_subsumer_message_template(&labels, concepts);
-            let label_tags: std::collections::HashSet<Cint64> = labels
+            let label_tags: crate::fxhash::FxHashSet<Cint64> = labels
                 .iter()
                 .map(|label| Self::concept_tag(label.concept, concepts))
                 .collect();
@@ -2189,12 +2189,12 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         constructed_individual_node: NodeId,
         individual_node_vector: &IndividualProcessNodeVector,
         max_deterministic_branch_tag: Cint64,
-        possible_subsumption_states: &std::collections::HashMap<
+        possible_subsumption_states: &crate::fxhash::FxHashMap<
             ConceptId,
             ClassificationAnalyserPossibleSubsumptionState,
         >,
-        equivalent_non_candidate_concepts: &std::collections::HashMap<ConceptId, Vec<ConceptId>>,
-        concepts_requiring_more_information: &std::collections::HashSet<ConceptId>,
+        equivalent_non_candidate_concepts: &crate::fxhash::FxHashMap<ConceptId, Vec<ConceptId>>,
+        concepts_requiring_more_information: &crate::fxhash::FxHashSet<ConceptId>,
         other_node_snapshot_nodes: &[NodeId],
         concepts: &Arena<Concept>,
         roles: &Arena<Role>,
@@ -2241,7 +2241,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             &root_successor_individual_ids,
             &other_node_snapshots,
         );
-        let mut analysed_concepts = std::collections::HashSet::new();
+        let mut analysed_concepts = crate::fxhash::FxHashSet::default();
         let (other_subsum_linker, other_poss_linker) = self
             .create_other_node_classification_message_linkers(
                 adapter,
@@ -2320,11 +2320,11 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         constructed_individual_node: NodeId,
         individual_node_vector: &IndividualProcessNodeVector,
         max_deterministic_branch_tag: Cint64,
-        possible_subsumption_states: &std::collections::HashMap<
+        possible_subsumption_states: &crate::fxhash::FxHashMap<
             ConceptId,
             ClassificationAnalyserPossibleSubsumptionState,
         >,
-        equivalent_non_candidate_concepts: &std::collections::HashMap<ConceptId, Vec<ConceptId>>,
+        equivalent_non_candidate_concepts: &crate::fxhash::FxHashMap<ConceptId, Vec<ConceptId>>,
         other_node_snapshot_nodes: &[NodeId],
         concepts: &Arena<Concept>,
         concept_process_datas: &Arena<ConceptProcessData>,
@@ -2419,7 +2419,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         constructed_individual_node: NodeId,
         individual_node_vector: &IndividualProcessNodeVector,
         max_deterministic_branch_tag: Cint64,
-        equivalent_non_candidate_concepts: &std::collections::HashMap<ConceptId, Vec<ConceptId>>,
+        equivalent_non_candidate_concepts: &crate::fxhash::FxHashMap<ConceptId, Vec<ConceptId>>,
         other_node_snapshot_nodes: &[NodeId],
         concepts: &Arena<Concept>,
         concept_process_datas: &Arena<ConceptProcessData>,
@@ -2473,12 +2473,12 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         constructed_individual_node: NodeId,
         individual_node_vector: &IndividualProcessNodeVector,
         max_deterministic_branch_tag: Cint64,
-        possible_subsumption_states: &std::collections::HashMap<
+        possible_subsumption_states: &crate::fxhash::FxHashMap<
             ConceptId,
             ClassificationAnalyserPossibleSubsumptionState,
         >,
-        equivalent_non_candidate_concepts: &std::collections::HashMap<ConceptId, Vec<ConceptId>>,
-        concepts_requiring_more_information: &std::collections::HashSet<ConceptId>,
+        equivalent_non_candidate_concepts: &crate::fxhash::FxHashMap<ConceptId, Vec<ConceptId>>,
+        concepts_requiring_more_information: &crate::fxhash::FxHashSet<ConceptId>,
         root_successor_individual_ids: &[Cint64],
         other_node_snapshots: &[ClassificationAnalyserOtherNodeSnapshot],
         concepts: &Arena<Concept>,
@@ -2503,7 +2503,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             root_successor_individual_ids,
             other_node_snapshots,
         );
-        let mut analysed_concepts = std::collections::HashSet::new();
+        let mut analysed_concepts = crate::fxhash::FxHashSet::default();
         let (other_subsum_linker, other_poss_linker) = self
             .create_other_node_classification_message_linkers(
                 adapter,
@@ -2578,7 +2578,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         constructed_individual_node: NodeId,
         individual_node_vector: &IndividualProcessNodeVector,
         max_deterministic_branch_tag: Cint64,
-        equivalent_non_candidate_concepts: &std::collections::HashMap<ConceptId, Vec<ConceptId>>,
+        equivalent_non_candidate_concepts: &crate::fxhash::FxHashMap<ConceptId, Vec<ConceptId>>,
         concepts: &Arena<Concept>,
         concept_process_datas: &Arena<ConceptProcessData>,
         concept_reference_linking_datas: &Arena<ConceptSaturationReferenceLinkingData>,
@@ -2668,6 +2668,30 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         memory_pool: Cint64,
         observer: Option<&mut O>,
     ) -> Option<ClassificationAnalyserBoundedIntegrationResult> {
+        self.analyse_live_classification_messages_impl(adapter, process_context, ontology, constructed_individual_node, individual_node_vector, max_deterministic_branch_tag, concepts, concept_process_datas, concept_reference_linking_datas, saturation_concept_reference_linkings, testing_items, roles, has_value_space_triggers, memory_pool, observer, true)
+    }
+
+    fn analyse_live_classification_messages_impl<
+        O: ClassificationMessageDataObserver,
+    >(
+        &self,
+        adapter: &SatisfiableTaskClassificationMessageAdapter,
+        process_context: &mut ProcessContext,
+        ontology: &OntologyArenas,
+        constructed_individual_node: NodeId,
+        individual_node_vector: &IndividualProcessNodeVector,
+        max_deterministic_branch_tag: Cint64,
+        concepts: &Arena<Concept>,
+        concept_process_datas: &Arena<ConceptProcessData>,
+        concept_reference_linking_datas: &Arena<ConceptSaturationReferenceLinkingData>,
+        saturation_concept_reference_linkings: &Arena<SaturationConceptReferenceLinking>,
+        testing_items: &[OptimizedKPSetClassTestingItem],
+        roles: &Arena<Role>,
+        has_value_space_triggers: bool,
+        memory_pool: Cint64,
+        observer: Option<&mut O>,
+        reuse_visits: bool,
+    ) -> Option<ClassificationAnalyserBoundedIntegrationResult> {
         // Opt-in observation only: never inspect or change a reasoning verdict.
         let mut phase_started = std::env::var_os("KM_BRIDGE_PHASE_TIMING")
             .is_some().then(std::time::Instant::now);
@@ -2692,13 +2716,20 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             );
 
         record_phase("snapshots", &mut phase_started);
+        // All consumers inspect the same owned snapshots and immutable adapter.
+        // Preserve their BFS/label order while avoiding repeated index/visit allocation.
+        let shared_visits = reuse_visits.then(|| self.collect_other_node_analyse_visits(
+            adapter, corrected_individual.individual_id,
+            &root_successor_individual_ids, &other_node_snapshots,
+        ));
         let possible_subsumption_states = self
-            .collect_possible_subsumption_states_from_classifier_references_for_snapshots(
+            .collect_possible_subsumption_states_from_classifier_references_for_snapshots_with_visits(
                 adapter,
                 process_context,
                 corrected_individual,
                 &root_successor_individual_ids,
                 &other_node_snapshots,
+                shared_visits.as_deref(),
                 concepts,
                 concept_process_datas,
                 concept_reference_linking_datas,
@@ -2707,12 +2738,16 @@ impl SatisfiableTaskClassificationMessageAnalyser {
 
         record_phase("possible-states", &mut phase_started);
         let concepts_requiring_more_information = {
-            let visits = self.collect_other_node_analyse_visits(
-                adapter,
-                corrected_individual.individual_id,
-                &root_successor_individual_ids,
-                &other_node_snapshots,
-            );
+            let fresh_visits;
+            let visits = if let Some(visits) = shared_visits.as_deref() {
+                visits
+            } else {
+                fresh_visits = self.collect_other_node_analyse_visits(
+                    adapter, corrected_individual.individual_id,
+                    &root_successor_individual_ids, &other_node_snapshots,
+                );
+                &fresh_visits
+            };
             self.collect_other_node_concepts_requiring_more_information(
                 adapter,
                 &visits,
@@ -2742,13 +2777,26 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             )?;
 
         record_phase("root-messages", &mut phase_started);
-        let visits = self.collect_other_node_analyse_visits(
-            adapter,
-            root_result.corrected_individual.individual_id,
-            &root_successor_individual_ids,
-            &other_node_snapshots,
-        );
-        let mut analysed_concepts = std::collections::HashSet::new();
+        let fresh_visits;
+        let visits = if root_result.corrected_individual.individual_id == corrected_individual.individual_id {
+            if let Some(visits) = shared_visits.as_deref() {
+                visits
+            } else {
+                fresh_visits = self.collect_other_node_analyse_visits(
+                    adapter, root_result.corrected_individual.individual_id,
+                    &root_successor_individual_ids, &other_node_snapshots,
+                );
+                &fresh_visits
+            }
+        } else {
+            // Root bookkeeping may have changed its representative. Retain the original traversal.
+            fresh_visits = self.collect_other_node_analyse_visits(
+                adapter, root_result.corrected_individual.individual_id,
+                &root_successor_individual_ids, &other_node_snapshots,
+            );
+            &fresh_visits
+        };
+        let mut analysed_concepts = crate::fxhash::FxHashSet::default();
         let (other_subsum_linker, other_poss_linker) = self
             .create_other_node_classification_message_linkers_with_live_equivalent_non_candidates(
                 adapter,
@@ -2934,14 +2982,14 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         concept_process_datas: &Arena<ConceptProcessData>,
         concept_reference_linking_datas: &Arena<ConceptSaturationReferenceLinkingData>,
         testing_items: &[OptimizedKPSetClassTestingItem],
-    ) -> Option<std::collections::HashMap<ConceptId, ClassificationAnalyserPossibleSubsumptionState>>
+    ) -> Option<crate::fxhash::FxHashMap<ConceptId, ClassificationAnalyserPossibleSubsumptionState>>
     {
         let corrected_individual = self.get_corrected_individual_id(
             process_context,
             constructed_individual_node,
             individual_node_vector,
         )?;
-        let mut states = std::collections::HashMap::new();
+        let mut states = crate::fxhash::FxHashMap::default();
 
         let root_label_set = process_context
             .node(corrected_individual.node)
@@ -3032,11 +3080,27 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         concept_process_datas: &Arena<ConceptProcessData>,
         concept_reference_linking_datas: &Arena<ConceptSaturationReferenceLinkingData>,
         testing_items: &[OptimizedKPSetClassTestingItem],
-    ) -> std::collections::HashMap<ConceptId, ClassificationAnalyserPossibleSubsumptionState> {
+    ) -> crate::fxhash::FxHashMap<ConceptId, ClassificationAnalyserPossibleSubsumptionState> {
+        self.collect_possible_subsumption_states_from_classifier_references_for_snapshots_with_visits(adapter, process_context, corrected_individual, root_successor_individual_ids, other_node_snapshots, None, concepts, concept_process_datas, concept_reference_linking_datas, testing_items)
+    }
+
+    fn collect_possible_subsumption_states_from_classifier_references_for_snapshots_with_visits(
+        &self,
+        adapter: &SatisfiableTaskClassificationMessageAdapter,
+        process_context: &ProcessContext,
+        corrected_individual: ClassificationAnalyserCorrectedIndividual,
+        root_successor_individual_ids: &[Cint64],
+        other_node_snapshots: &[ClassificationAnalyserOtherNodeSnapshot],
+        shared_visits: Option<&[ClassificationAnalyserOtherNodeVisit]>,
+        concepts: &Arena<Concept>,
+        concept_process_datas: &Arena<ConceptProcessData>,
+        concept_reference_linking_datas: &Arena<ConceptSaturationReferenceLinkingData>,
+        testing_items: &[OptimizedKPSetClassTestingItem],
+    ) -> crate::fxhash::FxHashMap<ConceptId, ClassificationAnalyserPossibleSubsumptionState> {
         // All classifier inputs are immutable for this collection. Repeated
         // labels resolve to the identical snapshot, including candidate order;
         // retain the first instead of cloning and sorting its map again.
-        let mut states = std::collections::HashMap::new();
+        let mut states = crate::fxhash::FxHashMap::default();
 
         let root_label_set = process_context
             .node(corrected_individual.node)
@@ -3065,12 +3129,14 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             }
         }
 
-        let visits = self.collect_other_node_analyse_visits(
-            adapter,
-            corrected_individual.individual_id,
-            root_successor_individual_ids,
-            other_node_snapshots,
-        );
+        let fresh_visits;
+        let visits = if let Some(visits) = shared_visits { visits } else {
+            fresh_visits = self.collect_other_node_analyse_visits(
+                adapter, corrected_individual.individual_id,
+                root_successor_individual_ids, other_node_snapshots,
+            );
+            &fresh_visits
+        };
         for visit in visits {
             if self.is_possible_subsumption_state_candidate(
                 adapter.get_testing_concept(),
@@ -3492,7 +3558,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         process_context: &mut ProcessContext,
         successor_list: &mut Vec<SatNodeId>,
         trivial_successor_propagated_concept_list: &mut Vec<(ConceptId, bool)>,
-        backward_role_set: &mut std::collections::HashSet<RoleId>,
+        backward_role_set: &mut crate::fxhash::FxHashSet<RoleId>,
     ) -> bool {
         if role.is_none() || role.index() >= roles.len() {
             return false;
@@ -3605,7 +3671,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         successor_list: &[SatNodeId],
         next_successor_list: &mut Vec<SatNodeId>,
         next_trivial_successor_propagated_concept_list: &mut Vec<(ConceptId, bool)>,
-        next_backward_role_set: &mut std::collections::HashSet<RoleId>,
+        next_backward_role_set: &mut crate::fxhash::FxHashSet<RoleId>,
         successor_influence_concepts: &[(RoleId, (ConceptId, bool))],
     ) -> bool {
         if role.is_none() || role.index() >= roles.len() {
@@ -3760,11 +3826,11 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         existential_indi_node: SatNodeId,
         successor_list: &[SatNodeId],
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         concepts: &Arena<Concept>,
         process_context: &ProcessContext,
     ) -> Option<(
-        std::collections::HashMap<Cint64, ConceptNegationTriggerItem>,
+        crate::fxhash::FxHashMap<Cint64, ConceptNegationTriggerItem>,
         Vec<(RoleId, (ConceptId, bool))>,
     )> {
         for succ_indi_node in successor_list.iter().copied() {
@@ -3804,7 +3870,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         }
 
         let mut concept_negation_trigger_hash =
-            std::collections::HashMap::<Cint64, ConceptNegationTriggerItem>::new();
+            crate::fxhash::FxHashMap::<Cint64, ConceptNegationTriggerItem>::default();
         let mut successor_influence_concepts = Vec::new();
         for (concept, negation) in trivial_successor_propagated_concept_list.iter().copied() {
             if concept.is_none() || concept.index() >= concepts.len() {
@@ -3855,7 +3921,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         successor_list: &[SatNodeId],
         concepts: &Arena<Concept>,
         process_context: &ProcessContext,
-        concept_negation_trigger_hash: &mut std::collections::HashMap<
+        concept_negation_trigger_hash: &mut crate::fxhash::FxHashMap<
             Cint64,
             ConceptNegationTriggerItem,
         >,
@@ -3967,13 +4033,13 @@ impl SatisfiableTaskClassificationMessageAnalyser {
     /// saturated node already prepended exactly as the C++ code does.
     pub fn collect_multiple_successor_recursive_merge_jobs_from_triggers(
         &self,
-        concept_negation_trigger_hash: &std::collections::HashMap<
+        concept_negation_trigger_hash: &crate::fxhash::FxHashMap<
             Cint64,
             ConceptNegationTriggerItem,
         >,
         successor_list: &[SatNodeId],
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         successor_influence_concepts: &[(RoleId, (ConceptId, bool))],
         concepts: &Arena<Concept>,
         roles: &Arena<Role>,
@@ -4005,7 +4071,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 let role = concept_ref.get_role();
                 let mut next_successor_list = Vec::new();
                 let mut next_trivial_successor_propagated_concept_list = Vec::new();
-                let mut next_backward_role_set = std::collections::HashSet::new();
+                let mut next_backward_role_set = crate::fxhash::FxHashSet::default();
 
                 if !self.collect_successor_merging_nodes_and_concepts_for_saturation_node(
                     sat_indi_node,
@@ -4068,7 +4134,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         existential_indi_node: SatNodeId,
         successor_list: &[SatNodeId],
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         remaining_merging_depth: Cint64,
         remaining_merging_count: &mut Cint64,
     ) -> Option<SaturatedSuccessorMergeDispatch> {
@@ -4164,7 +4230,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         existential_indi_node: SatNodeId,
         successor_list: &[SatNodeId],
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         remaining_merging_depth: Cint64,
         remaining_merging_count: &mut Cint64,
         concepts: &Arena<Concept>,
@@ -4366,7 +4432,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         &self,
         existential_indi_node: SatNodeId,
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         concepts: &Arena<Concept>,
         process_context: &ProcessContext,
     ) -> Option<SingleSaturatedSuccessorMergeState> {
@@ -4543,7 +4609,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 let role = concept_ref.get_role();
                 let mut next_successor_list = Vec::new();
                 let mut next_trivial_successor_propagated_concept_list = Vec::new();
-                let mut next_backward_role_set = std::collections::HashSet::new();
+                let mut next_backward_role_set = crate::fxhash::FxHashSet::default();
 
                 if !self.collect_successor_merging_nodes_and_concepts_for_saturation_node(
                     existential_indi_node,
@@ -4674,7 +4740,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     if !creation_role_linker.negated && creation_role_linker.target == *role {
                         let mut next_successor_list = Vec::new();
                         let mut next_trivial_successor_propagated_concept_list = Vec::new();
-                        let mut next_backward_role_set = std::collections::HashSet::new();
+                        let mut next_backward_role_set = crate::fxhash::FxHashSet::default();
 
                         if !self.collect_successor_merging_nodes_and_concepts_for_saturation_node(
                             extension_source_indi_node,
@@ -4732,7 +4798,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         existential_indi_node: SatNodeId,
         successor_list: &[SatNodeId],
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         remaining_merging_depth: Cint64,
         remaining_merging_count: &mut Cint64,
         concepts: &Arena<Concept>,
@@ -4811,7 +4877,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         existential_indi_node: SatNodeId,
         successor_list: &[SatNodeId],
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         remaining_merging_depth: Cint64,
         remaining_merging_count: &mut Cint64,
         concepts: &Arena<Concept>,
@@ -4899,7 +4965,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         existential_indi_node: SatNodeId,
         successor_list: &[SatNodeId],
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         remaining_merging_depth: Cint64,
         remaining_merging_count: &mut Cint64,
         concepts: &Arena<Concept>,
@@ -4997,7 +5063,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         existential_indi_node: SatNodeId,
         successor_list: &[SatNodeId],
         trivial_successor_propagated_concept_list: &[(ConceptId, bool)],
-        backward_role_set: &std::collections::HashSet<RoleId>,
+        backward_role_set: &crate::fxhash::FxHashSet<RoleId>,
         remaining_merging_depth: Cint64,
         remaining_merging_count: &mut Cint64,
         concepts: &Arena<Concept>,
@@ -5178,7 +5244,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         for (role, ext_sat_indi_node) in candidates {
             let mut successor_list = Vec::new();
             let mut trivial_successor_propagated_concept_list = Vec::new();
-            let mut backward_role_set = std::collections::HashSet::new();
+            let mut backward_role_set = crate::fxhash::FxHashSet::default();
 
             if !self.collect_successor_merging_nodes_and_concepts_for_completion_node(
                 indi_node,
@@ -5297,7 +5363,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     let role = concept_ref.get_role();
                     let mut successor_list = Vec::new();
                     let mut trivial_successor_propagated_concept_list = Vec::new();
-                    let mut backward_role_set = std::collections::HashSet::new();
+                    let mut backward_role_set = crate::fxhash::FxHashSet::default();
 
                     if !self.collect_successor_merging_nodes_and_concepts_for_completion_node(
                         indi_node,
@@ -5435,7 +5501,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     let role = concept_ref.get_role();
                     let mut successor_list = Vec::new();
                     let mut trivial_successor_propagated_concept_list = Vec::new();
-                    let mut backward_role_set = std::collections::HashSet::new();
+                    let mut backward_role_set = crate::fxhash::FxHashSet::default();
 
                     if !self.collect_successor_merging_nodes_and_concepts_for_completion_node(
                         indi_node,
@@ -5945,7 +6011,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
     ) -> bool {
         if Self::operator_code(equiv_concept, concepts) == CCEQ {
             let mut alternatives_set = Vec::new();
-            let mut test_saturated_merged_hash = std::collections::HashMap::new();
+            let mut test_saturated_merged_hash = crate::fxhash::FxHashMap::default();
             let mut one_merge_satisfiable_flag = false;
             let mut all_merge_unsatisfiable_flag = true;
             if self.collect_equivalence_concept_alternatives(
@@ -6034,7 +6100,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         test_concept: ConceptId,
         test_concept_negation: bool,
         alternatives_set: &mut Vec<(ConceptId, bool)>,
-        test_saturated_merged_hash: &mut std::collections::HashMap<
+        test_saturated_merged_hash: &mut crate::fxhash::FxHashMap<
             (ConceptId, bool),
             SaturatedMergedTestItem,
         >,
@@ -6063,7 +6129,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
 
         *all_merge_unsatisfiable_flag = true;
         let mut alternative_exp_list = std::collections::VecDeque::new();
-        let mut alternative_exp_set = std::collections::HashSet::new();
+        let mut alternative_exp_set = crate::fxhash::FxHashSet::default();
         let initial_pair = (test_concept, test_concept_negation);
         alternative_exp_list.push_back(initial_pair);
         alternative_exp_set.insert(initial_pair);
@@ -6167,7 +6233,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         concept: ConceptId,
         negated: bool,
         depth: Cint64,
-        tested_individuals_set: &mut std::collections::HashSet<NodeId>,
+        tested_individuals_set: &mut crate::fxhash::FxHashSet<NodeId>,
         last_node: NodeId,
         concepts: &Arena<Concept>,
         process_context: &ProcessContext,
@@ -6439,7 +6505,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         &self,
         indi_node: NodeId,
         alternatives_set: &[(ConceptId, bool)],
-        test_saturated_merged_hash: &mut std::collections::HashMap<
+        test_saturated_merged_hash: &mut crate::fxhash::FxHashMap<
             (ConceptId, bool),
             SaturatedMergedTestItem,
         >,
@@ -6735,11 +6801,11 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             return Vec::new();
         }
 
-        let snapshot_by_id: std::collections::HashMap<_, _> = node_snapshots
+        let snapshot_by_id: crate::fxhash::FxHashMap<_, _> = node_snapshots
             .iter()
             .map(|snapshot| (snapshot.individual_id, snapshot))
             .collect();
-        let mut processed_individuals = std::collections::HashSet::new();
+        let mut processed_individuals = crate::fxhash::FxHashSet::default();
         let mut queue = std::collections::VecDeque::new();
         let mut visits = Vec::new();
 
@@ -6791,7 +6857,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         }
 
         let base_individual_id = process_context.node(base_node).individual_node_id();
-        let mut processed_individuals = std::collections::HashSet::new();
+        let mut processed_individuals = crate::fxhash::FxHashSet::default();
         let mut queue = std::collections::VecDeque::new();
         let mut root_successor_individual_ids = Vec::new();
         let mut snapshots = Vec::new();
@@ -6862,8 +6928,8 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         concept_process_datas: &Arena<ConceptProcessData>,
         concept_reference_linking_datas: &Arena<ConceptSaturationReferenceLinkingData>,
         testing_items: &[OptimizedKPSetClassTestingItem],
-    ) -> std::collections::HashSet<ConceptId> {
-        let mut concepts_requiring_more_information = std::collections::HashSet::new();
+    ) -> crate::fxhash::FxHashSet<ConceptId> {
+        let mut concepts_requiring_more_information = crate::fxhash::FxHashSet::default();
         for visit in visits {
             if is_more_classification_information_required_for_concept(
                 visit.label.concept,
@@ -7190,7 +7256,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         testing_concept: ConceptId,
         label: ClassificationAnalyserConceptLabel,
         more_concept_classification_information_required: bool,
-        analysed_concepts: &mut std::collections::HashSet<ConceptId>,
+        analysed_concepts: &mut crate::fxhash::FxHashSet<ConceptId>,
         concepts: &Arena<Concept>,
     ) -> Option<ClassificationAnalyserOtherNodeCandidate> {
         if label.concept == testing_concept
@@ -7226,19 +7292,19 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         testing_concept: ConceptId,
         visits: &[ClassificationAnalyserOtherNodeVisit],
         node_snapshots: &[ClassificationAnalyserOtherNodeSnapshot],
-        concepts_requiring_more_information: &std::collections::HashSet<ConceptId>,
-        analysed_concepts: &mut std::collections::HashSet<ConceptId>,
-        possible_subsumption_states: &std::collections::HashMap<
+        concepts_requiring_more_information: &crate::fxhash::FxHashSet<ConceptId>,
+        analysed_concepts: &mut crate::fxhash::FxHashSet<ConceptId>,
+        possible_subsumption_states: &crate::fxhash::FxHashMap<
             ConceptId,
             ClassificationAnalyserPossibleSubsumptionState,
         >,
-        equivalent_non_candidate_concepts: &std::collections::HashMap<ConceptId, Vec<ConceptId>>,
+        equivalent_non_candidate_concepts: &crate::fxhash::FxHashMap<ConceptId, Vec<ConceptId>>,
         concepts: &Arena<Concept>,
     ) -> (
         Option<ClassificationMessageDataLinker>,
         Option<ClassificationMessageDataLinker>,
     ) {
-        let snapshot_by_id: std::collections::HashMap<_, _> = node_snapshots
+        let snapshot_by_id: crate::fxhash::FxHashMap<_, _> = node_snapshots
             .iter()
             .map(|snapshot| (snapshot.individual_id, snapshot))
             .collect();
@@ -7318,9 +7384,9 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         testing_concept: ConceptId,
         visits: &[ClassificationAnalyserOtherNodeVisit],
         node_snapshots: &[ClassificationAnalyserOtherNodeSnapshot],
-        concepts_requiring_more_information: &std::collections::HashSet<ConceptId>,
-        analysed_concepts: &mut std::collections::HashSet<ConceptId>,
-        possible_subsumption_states: &std::collections::HashMap<
+        concepts_requiring_more_information: &crate::fxhash::FxHashSet<ConceptId>,
+        analysed_concepts: &mut crate::fxhash::FxHashSet<ConceptId>,
+        possible_subsumption_states: &crate::fxhash::FxHashMap<
             ConceptId,
             ClassificationAnalyserPossibleSubsumptionState,
         >,
@@ -7337,7 +7403,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         Option<ClassificationMessageDataLinker>,
         Option<ClassificationMessageDataLinker>,
     ) {
-        let snapshot_by_id: std::collections::HashMap<_, _> = node_snapshots
+        let snapshot_by_id: crate::fxhash::FxHashMap<_, _> = node_snapshots
             .iter()
             .map(|snapshot| (snapshot.individual_id, snapshot))
             .collect();
@@ -7494,7 +7560,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 Option<ConceptId>,
             )],
         >,
-        label_tags: Option<&std::collections::HashSet<Cint64>>,
+        label_tags: Option<&crate::fxhash::FxHashSet<Cint64>>,
         concepts: &Arena<Concept>,
     ) -> Option<ClassificationMessageDataPayload> {
         // Only initialization messages consume the owned candidate list.
@@ -7561,7 +7627,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 Option<ConceptId>,
             )],
         >,
-        cached_label_tags: Option<&std::collections::HashSet<Cint64>>,
+        cached_label_tags: Option<&crate::fxhash::FxHashSet<Cint64>>,
         concepts: &Arena<Concept>,
     ) -> Option<ClassificationMessageDataPayload> {
         if !adapter.has_extraction_flags(extraction_flag) || testing_concept.is_none() {
@@ -8041,7 +8107,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
     ) {
         let mut role_entries = Vec::new();
         let mut process_items = Vec::new();
-        let mut processed_roles = std::collections::HashSet::new();
+        let mut processed_roles = crate::fxhash::FxHashSet::default();
 
         for (node_id, non_deterministic_connected) in &process_item.nodes {
             if node_id.is_none() {
@@ -8071,7 +8137,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 let mut lower_at_most_bound: Cint64 = Cint64::MAX;
                 let mut has_deterministic_successor = false;
                 let mut succ_nodes = Vec::new();
-                let mut seen_successor_ids = std::collections::HashSet::new();
+                let mut seen_successor_ids = crate::fxhash::FxHashSet::default();
 
                 for (succ_source_node, _) in &process_item.nodes {
                     if succ_source_node.is_none() {
@@ -8431,7 +8497,7 @@ mod tests {
         EFEXTRACTSUBSUMERSOTHERNODES, EFEXTRACTSUBSUMERSROOTNODE,
     };
     use super::*;
-    use std::collections::HashMap;
+    use crate::fxhash::FxHashMap as HashMap;
 
     fn concept_with_tag(op_code: Cint64, tag: Cint64, named: bool) -> Concept {
         let mut concept = Concept::new();
@@ -8599,7 +8665,7 @@ mod tests {
             .alloc_sig_expander_redirection_item(redirection);
 
         let mut slot = SignatureSatisfiableExpanderCacheSlotItem::new();
-        let mut sig_hash = HashMap::new();
+        let mut sig_hash = crate::konclude_ht::cache::sigexpand::SigItemHash::default();
         sig_hash.insert(signature, redirection);
         slot.set_signature_item_hash(sig_hash);
         slot.inc_reader();
@@ -9826,8 +9892,8 @@ mod tests {
                 constructed,
                 &node_vector,
                 5,
-                &std::collections::HashMap::new(),
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashMap::default(),
                 &concepts,
             )
             .expect("root branch result");
@@ -9902,8 +9968,8 @@ mod tests {
                 root,
                 &node_vector,
                 0,
-                &std::collections::HashMap::new(),
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashMap::default(),
                 &concepts,
             )
             .expect("root branch result");
@@ -10039,7 +10105,7 @@ mod tests {
             testing,
             71,
             73,
-            std::collections::HashMap::new(),
+            crate::fxhash::FxHashMap::default(),
             EFEXTRACTSUBSUMERSROOTNODE
                 | EFEXTRACTPOSSIBLESUBSUMERSROOTNODE
                 | EFEXTRACTSUBSUMERSOTHERNODES
@@ -10047,7 +10113,7 @@ mod tests {
                 | EFEXTRACTOTHERNODESSINGLEDEPENDENCY
                 | EFEXTRACTIDENTIFIERPSEUDOMODEL,
         );
-        let mut required = std::collections::HashSet::new();
+        let mut required = crate::fxhash::FxHashSet::default();
         required.insert(other_analyse);
         let mut observer = RecordingClassificationMessageDataObserver::new();
 
@@ -10059,8 +10125,8 @@ mod tests {
                 root,
                 &node_vector,
                 0,
-                &std::collections::HashMap::new(),
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashMap::default(),
                 &required,
                 &[other],
                 &concepts,
@@ -10120,7 +10186,7 @@ mod tests {
             testing,
             71,
             73,
-            std::collections::HashMap::new(),
+            crate::fxhash::FxHashMap::default(),
             0,
         );
         let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -10133,9 +10199,9 @@ mod tests {
                 root,
                 &node_vector,
                 0,
-                &std::collections::HashMap::new(),
-                &std::collections::HashMap::new(),
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashSet::default(),
                 &[],
                 &concepts,
                 &roles,
@@ -10205,7 +10271,7 @@ mod tests {
         );
         add_role_link(&mut process_context, root, other, role, ancestor_track);
 
-        let mut con_ref_hash = std::collections::HashMap::new();
+        let mut con_ref_hash = crate::fxhash::FxHashMap::default();
         con_ref_hash.insert(other_analyse, 0);
         let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
             testing,
@@ -10227,8 +10293,8 @@ mod tests {
                 root,
                 &node_vector,
                 0,
-                &std::collections::HashMap::new(),
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashMap::default(),
                 &[other],
                 &concepts,
                 &concept_process_datas,
@@ -10302,7 +10368,7 @@ mod tests {
         );
         add_role_link(&mut process_context, root, other, role, ancestor_track);
 
-        let mut con_ref_hash = std::collections::HashMap::new();
+        let mut con_ref_hash = crate::fxhash::FxHashMap::default();
         con_ref_hash.insert(other_analyse, 0);
         let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
             testing,
@@ -10324,7 +10390,7 @@ mod tests {
                 root,
                 &node_vector,
                 0,
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
                 &concepts,
                 &concept_process_datas,
                 &concept_reference_linking_datas,
@@ -10392,7 +10458,7 @@ mod tests {
             testing,
             71,
             73,
-            std::collections::HashMap::new(),
+            crate::fxhash::FxHashMap::default(),
             EFEXTRACTPOSSIBLESUBSUMERSROOTNODE,
         );
         let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -10435,6 +10501,75 @@ mod tests {
         assert!(init_message
             .get_class_eq_concept_non_candidate_possible_subsumer_list()
             .is_none());
+    }
+
+    #[test]
+    fn classification_message_analyser_visit_reuse_preserves_all_ordered_payloads() {
+        fn run(reuse: bool, merged: bool, value_triggers: bool) -> (String, usize) {
+            let analyser = SatisfiableTaskClassificationMessageAnalyser;
+            let mut context = ProcessContext::new();
+            let mut vector = IndividualProcessNodeVector::new();
+            let mut concepts = Arena::new();
+            let mut ontology = OntologyArenas::new();
+            let testing = concepts.push(concept_with_tag(CCATOM, 10, true));
+            let analysed = concepts.push(concept_with_tag(CCATOM, 20, true));
+            let possible = concepts.push(concept_with_tag(CCATOM, 30, true));
+            let mut eq = concept_with_tag(CCEQ, 40, true);
+            eq.add_operand_linker(possible, false);
+            let eq = concepts.push(eq);
+            for tag in [10, 20, 30] { ontology.alloc_concept(concept_with_tag(CCATOM, tag, true)); }
+            let mut ontology_eq = concept_with_tag(CCEQ, 40, true);
+            ontology_eq.add_operand_linker(possible, false);
+            assert_eq!(ontology.alloc_concept(ontology_eq), eq);
+            ontology.insert_equivalent_concept_non_candidate(eq);
+            let mut roles = Arena::new();
+            let role = roles.push(role_with_tag(5, false));
+            assert_eq!(ontology.alloc_role(role_with_tag(5, false)), role);
+            let root = add_identified_node(&mut context, 1);
+            let representative = if merged { add_identified_node(&mut context, 4) } else { root };
+            vector.set_data(1, root).set_data(4, representative);
+            if merged { context.node_mut(root).set_merged_into_individual_node_id(4); }
+            let deterministic = add_branch_track_point(&mut context, 0);
+            let branch = add_branch_track_point(&mut context, 1);
+            let root_labels = context.alloc_label_set(ReapplyConceptLabelSet::new(0));
+            context.node_mut(representative).set_reapply_concept_label_set(root_labels);
+            for concept in [testing, possible] {
+                add_label_descriptor(&mut context, root_labels, &concepts, concept, false, deterministic);
+            }
+            for id in [2, 3] {
+                let node = add_identified_node(&mut context, id);
+                vector.set_data(id, node);
+                context.node_mut(node).set_individual_ancestor_depth(1);
+                let labels = context.alloc_label_set(ReapplyConceptLabelSet::new(0));
+                context.node_mut(node).set_reapply_concept_label_set(labels);
+                let ancestor = add_dependency_track_point(&mut context, DepKind::Some, representative, TrackPointId::NONE);
+                add_label_descriptor(&mut context, labels, &concepts, analysed, false, ancestor);
+                add_label_descriptor(&mut context, labels, &concepts, possible, false, branch);
+                add_role_link(&mut context, representative, node, role, ancestor);
+            }
+            let mut references = crate::fxhash::FxHashMap::default();
+            references.insert(analysed, 0);
+            let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(testing, 71, 73, references, crate::konclude_ht::task::adapters::EFEXTRACTALL);
+            let process_data = Arena::<ConceptProcessData>::new();
+            let reference_data = Arena::<ConceptSaturationReferenceLinkingData>::new();
+            let saturation_data = Arena::<SaturationConceptReferenceLinking>::new();
+            let items = vec![OptimizedKPSetClassTestingItem::new()];
+            let mut observer = RecordingClassificationMessageDataObserver::new();
+            let result = analyser.analyse_live_classification_messages_impl(
+                &adapter, &mut context, &ontology, root, &vector, 0, &concepts,
+                &process_data, &reference_data, &saturation_data, &items, &roles,
+                value_triggers, 103, Some(&mut observer), reuse,
+            ).unwrap();
+            assert!(result.output.delivered_to_observer);
+            assert!(result.other_node_visit_count > 0);
+            (format!("{:?}", observer.get_told_messages()), result.other_node_visit_count)
+        }
+        eprintln!("ordered visit bytes={}", std::mem::size_of::<ClassificationAnalyserOtherNodeVisit>());
+        for merged in [false, true] {
+            for value_triggers in [false, true] {
+                assert_eq!(run(false, merged, value_triggers), run(true, merged, value_triggers));
+            }
+        }
     }
 
     #[test]
@@ -10482,7 +10617,7 @@ mod tests {
                 testing,
                 71,
                 73,
-                std::collections::HashMap::new(),
+                crate::fxhash::FxHashMap::default(),
                 EFEXTRACTSUBSUMERSROOTNODE | EFEXTRACTIDENTIFIERPSEUDOMODEL,
             );
             let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -10565,7 +10700,7 @@ mod tests {
                 testing,
                 71,
                 73,
-                std::collections::HashMap::new(),
+                crate::fxhash::FxHashMap::default(),
                 EFEXTRACTSUBSUMERSROOTNODE | EFEXTRACTIDENTIFIERPSEUDOMODEL,
             ),
         );
@@ -10651,7 +10786,7 @@ mod tests {
                 testing,
                 181,
                 191,
-                std::collections::HashMap::new(),
+                crate::fxhash::FxHashMap::default(),
                 EFEXTRACTSUBSUMERSROOTNODE | EFEXTRACTIDENTIFIERPSEUDOMODEL,
             ),
         );
@@ -10732,7 +10867,7 @@ mod tests {
                 testing,
                 223,
                 observer_handle,
-                std::collections::HashMap::new(),
+                crate::fxhash::FxHashMap::default(),
                 EFEXTRACTSUBSUMERSROOTNODE,
             ),
         );
@@ -10840,7 +10975,7 @@ mod tests {
             testing,
             71,
             73,
-            std::collections::HashMap::new(),
+            crate::fxhash::FxHashMap::default(),
             EFEXTRACTPOSSIBLESUBSUMERSOTHERNODES | EFEXTRACTOTHERNODESSINGLEDEPENDENCY,
         );
         let concept_process_datas = Arena::<ConceptProcessData>::new();
@@ -10856,8 +10991,8 @@ mod tests {
                 root,
                 &node_vector,
                 0,
-                &std::collections::HashMap::new(),
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashMap::default(),
                 &[other],
                 &concepts,
                 &concept_process_datas,
@@ -10888,7 +11023,7 @@ mod tests {
         let analysed = concepts.push(concept_with_tag(CCATOM, 30, true));
         let stale_low = concepts.push(concept_with_tag(CCATOM, 20, true));
         let stale_high = concepts.push(concept_with_tag(CCATOM, 40, true));
-        let mut con_ref_hash = std::collections::HashMap::new();
+        let mut con_ref_hash = crate::fxhash::FxHashMap::default();
         con_ref_hash.insert(analysed, 0);
         let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
             ConceptId::new(999),
@@ -10953,7 +11088,7 @@ mod tests {
         let low = concepts.push(concept_with_tag(CCATOM, 20, true));
         let high = concepts.push(concept_with_tag(CCATOM, 40, true));
         let missing = concepts.push(concept_with_tag(CCATOM, 50, true));
-        let mut references = std::collections::HashMap::new();
+        let mut references = crate::fxhash::FxHashMap::default();
         references.insert(analysed, 0);
         let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
             testing, 71, 73, references,
@@ -11052,7 +11187,7 @@ mod tests {
             root_track,
         );
 
-        let mut con_ref_hash = std::collections::HashMap::new();
+        let mut con_ref_hash = crate::fxhash::FxHashMap::default();
         con_ref_hash.insert(root_possible, 0);
         let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
             testing,
@@ -11089,7 +11224,7 @@ mod tests {
                 root,
                 &node_vector,
                 0,
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
                 &[],
                 &concepts,
                 &concept_process_datas,
@@ -11797,7 +11932,7 @@ mod tests {
         process_context.node_add_role_reapply_concept_descriptor(node, super_role, reapply);
         let mut successors = Vec::new();
         let mut trivial = Vec::new();
-        let mut backward_roles = std::collections::HashSet::new();
+        let mut backward_roles = crate::fxhash::FxHashSet::default();
 
         assert!(
             analyser.collect_successor_merging_nodes_and_concepts_for_completion_node(
@@ -11858,7 +11993,7 @@ mod tests {
         process_context.node_add_role_reapply_concept_descriptor(node, super_role, reapply);
         let mut successors = Vec::new();
         let mut trivial = Vec::new();
-        let mut backward_roles = std::collections::HashSet::new();
+        let mut backward_roles = crate::fxhash::FxHashSet::default();
 
         assert!(
             analyser.collect_successor_merging_nodes_and_concepts_for_completion_node(
@@ -11912,7 +12047,7 @@ mod tests {
         process_context.node_add_role_reapply_concept_descriptor(node, super_role, reapply);
         let mut successors = Vec::new();
         let mut trivial = Vec::new();
-        let mut backward_roles = std::collections::HashSet::new();
+        let mut backward_roles = crate::fxhash::FxHashSet::default();
 
         assert!(
             !analyser.collect_successor_merging_nodes_and_concepts_for_completion_node(
@@ -11965,7 +12100,7 @@ mod tests {
         );
         let mut next_successors = Vec::new();
         let mut next_trivial = Vec::new();
-        let mut next_backward_roles = std::collections::HashSet::new();
+        let mut next_backward_roles = crate::fxhash::FxHashSet::default();
 
         assert!(
             analyser.collect_successor_merging_nodes_and_concepts_for_saturation_node(
@@ -12009,7 +12144,7 @@ mod tests {
         let sub = concepts.push(concept_with_tag(CCSUB, 31, true));
         let mut next_successors = Vec::new();
         let mut next_trivial = Vec::new();
-        let mut next_backward_roles = std::collections::HashSet::new();
+        let mut next_backward_roles = crate::fxhash::FxHashSet::default();
 
         assert!(
             analyser.collect_successor_merging_nodes_and_concepts_for_saturation_node(
@@ -12059,7 +12194,7 @@ mod tests {
         add_backward_reapply_for_role(&mut process_context, succ_node, super_role, con_sat_des);
         let mut next_successors = Vec::new();
         let mut next_trivial = Vec::new();
-        let mut next_backward_roles = std::collections::HashSet::new();
+        let mut next_backward_roles = crate::fxhash::FxHashSet::default();
 
         assert!(
             analyser.collect_successor_merging_nodes_and_concepts_for_saturation_node(
@@ -12121,7 +12256,7 @@ mod tests {
         );
         let mut next_successors = Vec::new();
         let mut next_trivial = Vec::new();
-        let mut next_backward_roles = std::collections::HashSet::new();
+        let mut next_backward_roles = crate::fxhash::FxHashSet::default();
 
         assert!(
             analyser.collect_successor_merging_nodes_and_concepts_for_saturation_node(
@@ -12169,7 +12304,7 @@ mod tests {
         add_backward_reapply_for_role(&mut process_context, succ_node, super_role, con_sat_des);
         let mut next_successors = Vec::new();
         let mut next_trivial = Vec::new();
-        let mut next_backward_roles = std::collections::HashSet::new();
+        let mut next_backward_roles = crate::fxhash::FxHashSet::default();
 
         assert!(
             !analyser.collect_successor_merging_nodes_and_concepts_for_saturation_node(
@@ -12206,7 +12341,7 @@ mod tests {
         all.set_role(role);
         all.add_operand_linker(operand, true);
         let all = concepts.push(all);
-        let backward_roles = std::collections::HashSet::new();
+        let backward_roles = crate::fxhash::FxHashSet::default();
 
         let (trigger_hash, influence) = analyser
             .prepare_multiple_saturated_successor_merge_triggers(
@@ -12240,7 +12375,7 @@ mod tests {
         let role = RoleId::new(7);
         process_context.sat_node_add_backward_propagation_link(successor, role, source);
         let concepts = Arena::<Concept>::new();
-        let mut backward_roles = std::collections::HashSet::new();
+        let mut backward_roles = crate::fxhash::FxHashSet::default();
         backward_roles.insert(role);
 
         assert!(analyser
@@ -12262,7 +12397,7 @@ mod tests {
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
         let sub = concepts.push(concept_with_tag(CCSUB, 31, true));
-        let backward_roles = std::collections::HashSet::new();
+        let backward_roles = crate::fxhash::FxHashSet::default();
 
         let (trigger_hash, influence) = analyser
             .prepare_multiple_saturated_successor_merge_triggers(
@@ -12281,7 +12416,7 @@ mod tests {
         all.set_role(RoleId::new(7));
         all.add_operand_linker(sub, false);
         let all = concepts.push(all);
-        let mut blocked_roles = std::collections::HashSet::new();
+        let mut blocked_roles = crate::fxhash::FxHashSet::default();
         blocked_roles.insert(RoleId::new(7));
         assert!(analyser
             .prepare_multiple_saturated_successor_merge_triggers(
@@ -12311,7 +12446,7 @@ mod tests {
             true,
             INVALID,
         );
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
 
         assert!(analyser.merge_successor_saturation_label_triggers(
             &[sat_node],
@@ -12344,7 +12479,7 @@ mod tests {
             false,
             INVALID,
         );
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
         trigger_hash.insert(
             concepts.get(concept).get_concept_tag(),
             ConceptNegationTriggerItem {
@@ -12380,7 +12515,7 @@ mod tests {
                     imp_reapply_con_sat_des: super::super::super::saturation::satellites::ImplicationReapplyConceptSaturationDescriptorId::new(77),
                 },
             );
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
 
         assert!(analyser.merge_successor_saturation_label_triggers(
             &[sat_node],
@@ -12433,7 +12568,7 @@ mod tests {
             false,
             INVALID,
         );
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
 
         assert!(analyser.merge_successor_saturation_label_triggers(
             &[original],
@@ -12472,7 +12607,7 @@ mod tests {
             false,
             INVALID,
         );
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
 
         assert!(analyser.merge_successor_saturation_label_triggers(
             &[original],
@@ -12508,7 +12643,7 @@ mod tests {
             .sat_node_mut(original)
             .set_substitute_individual_node(substitute);
         add_saturation_concept_reference(&mut process_context, original, reference, false);
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
         trigger_hash.insert(
             concepts.get(reference).get_concept_tag(),
             ConceptNegationTriggerItem {
@@ -12538,7 +12673,7 @@ mod tests {
             .sat_node_mut(original)
             .set_substitute_individual_node(substitute);
         add_saturation_concept_reference(&mut process_context, original, reference, false);
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
         trigger_hash.insert(
             concepts.get(reference).get_concept_tag(),
             ConceptNegationTriggerItem {
@@ -12575,7 +12710,7 @@ mod tests {
             .set_substitute_individual_node(final_node);
         add_saturation_concept_reference(&mut process_context, original, first, false);
         add_saturation_concept_reference(&mut process_context, middle, second, true);
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
 
         assert!(analyser.merge_successor_saturation_label_triggers(
             &[original],
@@ -12645,7 +12780,7 @@ mod tests {
             &mut concept_reference_linking_datas,
             ext_ref_data,
         );
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
         trigger_hash.insert(
             concepts.get(some).get_concept_tag(),
             ConceptNegationTriggerItem {
@@ -12661,7 +12796,7 @@ mod tests {
                 &trigger_hash,
                 &[],
                 &[],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &[(role, (operand, false))],
                 &concepts,
                 &roles,
@@ -12708,7 +12843,7 @@ mod tests {
             &mut concept_reference_linking_datas,
             ext_ref_data,
         );
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
         trigger_hash.insert(
             concepts.get(some).get_concept_tag(),
             ConceptNegationTriggerItem {
@@ -12724,7 +12859,7 @@ mod tests {
                 &trigger_hash,
                 &[],
                 &[],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &[],
                 &concepts,
                 &roles,
@@ -12744,7 +12879,7 @@ mod tests {
                 &trigger_hash,
                 &[],
                 &[(trivial, true)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &[],
                 &concepts,
                 &roles,
@@ -12796,7 +12931,7 @@ mod tests {
         let mut some = concept_with_tag(CCSOME, 41, true);
         some.set_role(role);
         let some = concepts.push(some);
-        let mut trigger_hash = std::collections::HashMap::new();
+        let mut trigger_hash = crate::fxhash::FxHashMap::default();
         trigger_hash.insert(
             concepts.get(some).get_concept_tag(),
             ConceptNegationTriggerItem {
@@ -12812,7 +12947,7 @@ mod tests {
                 &trigger_hash,
                 &[],
                 &[],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &[(role, (operand, false))],
                 &concepts,
                 &roles,
@@ -12834,7 +12969,7 @@ mod tests {
         let existential = SatNodeId::new(7);
         let successor = SatNodeId::new(11);
         let trivial = ConceptId::new(13);
-        let mut backward_roles = std::collections::HashSet::new();
+        let mut backward_roles = crate::fxhash::FxHashSet::default();
         backward_roles.insert(RoleId::new(17));
         let mut remaining_count = 100;
 
@@ -12875,7 +13010,7 @@ mod tests {
                 existential,
                 &[successor_a, successor_b],
                 &[],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 2,
                 &mut remaining_count,
             )
@@ -12897,7 +13032,7 @@ mod tests {
                 SatNodeId::new(7),
                 &[SatNodeId::new(11)],
                 &[],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 0,
                 &mut count,
             )
@@ -12910,7 +13045,7 @@ mod tests {
                 SatNodeId::new(7),
                 &[SatNodeId::new(11)],
                 &[],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 1,
                 &mut count,
             )
@@ -12934,7 +13069,7 @@ mod tests {
             SatNodeId::new(7),
             &[SatNodeId::new(11)],
             &[],
-            &std::collections::HashSet::new(),
+            &crate::fxhash::FxHashSet::default(),
             0,
             &mut count,
             &concepts,
@@ -12952,7 +13087,7 @@ mod tests {
             SatNodeId::new(7),
             &[SatNodeId::new(11)],
             &[],
-            &std::collections::HashSet::new(),
+            &crate::fxhash::FxHashSet::default(),
             1,
             &mut count,
             &concepts,
@@ -12969,7 +13104,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_saturated_successor_job_dispatches_share_count_budget() {
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
-        let mut first_backward = std::collections::HashSet::new();
+        let mut first_backward = crate::fxhash::FxHashSet::default();
         first_backward.insert(RoleId::new(31));
         let jobs = vec![
             SaturatedSuccessorMergeJob {
@@ -12982,7 +13117,7 @@ mod tests {
                 existential_sat_node: SatNodeId::new(17),
                 successor_list: vec![SatNodeId::new(19), SatNodeId::new(23)],
                 trivial_successor_propagated_concept_list: Vec::new(),
-                backward_role_set: std::collections::HashSet::new(),
+                backward_role_set: crate::fxhash::FxHashSet::default(),
             },
         ];
         let mut count = 2;
@@ -13037,7 +13172,7 @@ mod tests {
             existential_sat_node: existential,
             successor_list: vec![existential],
             trivial_successor_propagated_concept_list: Vec::new(),
-            backward_role_set: std::collections::HashSet::new(),
+            backward_role_set: crate::fxhash::FxHashSet::default(),
         };
         let mut remaining_count = 3;
 
@@ -13097,7 +13232,7 @@ mod tests {
             existential_sat_node: existential,
             successor_list: vec![existential],
             trivial_successor_propagated_concept_list: vec![(trivial, true)],
-            backward_role_set: std::collections::HashSet::new(),
+            backward_role_set: crate::fxhash::FxHashSet::default(),
         };
         let mut remaining_count = 5;
 
@@ -13137,7 +13272,7 @@ mod tests {
             .prepare_single_saturated_successor_merge_state(
                 existential,
                 &[(sub, true)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &concepts,
                 &process_context,
             )
@@ -13168,7 +13303,7 @@ mod tests {
             .prepare_single_saturated_successor_merge_state(
                 existential,
                 &[(sub, true)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &concepts,
                 &process_context,
             )
@@ -13188,7 +13323,7 @@ mod tests {
             .prepare_single_saturated_successor_merge_state(
                 existential,
                 &[(sub, true)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &concepts,
                 &process_context,
             )
@@ -13213,7 +13348,7 @@ mod tests {
             .prepare_single_saturated_successor_merge_state(
                 original,
                 &[(sub, true)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &concepts,
                 &process_context,
             )
@@ -13224,7 +13359,7 @@ mod tests {
             .prepare_single_saturated_successor_merge_state(
                 original,
                 &[(sub, true)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &concepts,
                 &process_context,
             )
@@ -13250,7 +13385,7 @@ mod tests {
             .prepare_single_saturated_successor_merge_state(
                 existential,
                 &[(all, false)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 &concepts,
                 &process_context,
             )
@@ -13260,7 +13395,7 @@ mod tests {
             vec![(role, (operand, true))]
         );
 
-        let mut backward_roles = std::collections::HashSet::new();
+        let mut backward_roles = crate::fxhash::FxHashSet::default();
         backward_roles.insert(role);
         assert!(analyser
             .prepare_single_saturated_successor_merge_state(
@@ -13727,7 +13862,7 @@ mod tests {
                 existential,
                 &[existential],
                 &[(trivial, true)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 4,
                 &mut remaining_count,
                 &concepts,
@@ -13822,7 +13957,7 @@ mod tests {
                 trigger_source,
                 &[trigger_source, linked_source],
                 &[(trivial, true)],
-                &std::collections::HashSet::new(),
+                &crate::fxhash::FxHashSet::default(),
                 5,
                 &mut remaining_count,
                 &concepts,
@@ -14482,7 +14617,7 @@ mod tests {
         let concept_reference_linking_datas = Arena::<ConceptSaturationReferenceLinkingData>::new();
         let saturation_reference_linkings = Arena::<SaturationConceptReferenceLinking>::new();
         let concept = concepts.push(concept_with_tag(CCATOM, 31, true));
-        let mut merge_hash = std::collections::HashMap::new();
+        let mut merge_hash = crate::fxhash::FxHashMap::default();
         let mut one_satisfiable = false;
         let mut all_unsatisfiable = true;
 
@@ -14550,7 +14685,7 @@ mod tests {
             true,
             INVALID,
         );
-        let mut merge_hash = std::collections::HashMap::new();
+        let mut merge_hash = crate::fxhash::FxHashMap::default();
         let mut one_satisfiable = false;
         let mut all_unsatisfiable = true;
 
@@ -14594,7 +14729,7 @@ mod tests {
         conjunction.add_operand_linker(some, true);
         let conjunction = concepts.push(conjunction);
         let mut alternatives = Vec::new();
-        let mut merge_hash = std::collections::HashMap::new();
+        let mut merge_hash = crate::fxhash::FxHashMap::default();
         let mut one_satisfiable = false;
         let mut all_unsatisfiable = true;
 
@@ -14638,7 +14773,7 @@ mod tests {
         let saturation_reference_linkings = Arena::<SaturationConceptReferenceLinking>::new();
         let some = concepts.push(concept_with_tag(CCSOME, 31, true));
         let mut alternatives = Vec::new();
-        let mut merge_hash = std::collections::HashMap::new();
+        let mut merge_hash = crate::fxhash::FxHashMap::default();
         merge_hash.insert(
             (some, false),
             SaturatedMergedTestItem {
@@ -14690,7 +14825,7 @@ mod tests {
             TrackPointId::NONE,
         );
         let mut alternatives = Vec::new();
-        let mut merge_hash = std::collections::HashMap::new();
+        let mut merge_hash = crate::fxhash::FxHashMap::default();
         let mut one_satisfiable = false;
         let mut all_unsatisfiable = true;
 
@@ -14728,7 +14863,7 @@ mod tests {
         let saturation_reference_linkings = Arena::<SaturationConceptReferenceLinking>::new();
         let concept = concepts.push(concept_with_tag(CCATOM, 31, true));
         let mut alternatives = Vec::new();
-        let mut merge_hash = std::collections::HashMap::new();
+        let mut merge_hash = crate::fxhash::FxHashMap::default();
         let mut one_satisfiable = false;
         let mut all_unsatisfiable = true;
 
@@ -14771,7 +14906,7 @@ mod tests {
         aqchoose.add_operand_linker(chosen_some, true);
         let aqchoose = concepts.push(aqchoose);
         let mut alternatives = Vec::new();
-        let mut merge_hash = std::collections::HashMap::new();
+        let mut merge_hash = crate::fxhash::FxHashMap::default();
         let mut one_satisfiable = false;
         let mut all_unsatisfiable = true;
 
@@ -14819,7 +14954,7 @@ mod tests {
             concept,
             false,
             0,
-            &mut std::collections::HashSet::new(),
+            &mut crate::fxhash::FxHashSet::default(),
             NodeId::NONE,
             &concepts,
             &process_context,
@@ -14857,7 +14992,7 @@ mod tests {
             concept,
             false,
             0,
-            &mut std::collections::HashSet::new(),
+            &mut crate::fxhash::FxHashSet::default(),
             NodeId::NONE,
             &concepts,
             &process_context,
@@ -14893,7 +15028,7 @@ mod tests {
             concept,
             false,
             0,
-            &mut std::collections::HashSet::new(),
+            &mut crate::fxhash::FxHashSet::default(),
             NodeId::NONE,
             &concepts,
             &process_context,
@@ -14943,7 +15078,7 @@ mod tests {
             conjunction,
             true,
             0,
-            &mut std::collections::HashSet::new(),
+            &mut crate::fxhash::FxHashSet::default(),
             NodeId::NONE,
             &concepts,
             &process_context,
@@ -14988,7 +15123,7 @@ mod tests {
             all,
             false,
             0,
-            &mut std::collections::HashSet::new(),
+            &mut crate::fxhash::FxHashSet::default(),
             NodeId::NONE,
             &concepts,
             &process_context,
@@ -15011,7 +15146,7 @@ mod tests {
             concept,
             false,
             6,
-            &mut std::collections::HashSet::new(),
+            &mut crate::fxhash::FxHashSet::default(),
             NodeId::NONE,
             &concepts,
             &process_context,
@@ -15604,7 +15739,7 @@ mod tests {
             ConceptId::new(7),
             19,
             23,
-            std::collections::HashMap::new(),
+            crate::fxhash::FxHashMap::default(),
             0,
         );
         let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -15646,7 +15781,7 @@ mod tests {
             ConceptId::new(7),
             19,
             23,
-            std::collections::HashMap::new(),
+            crate::fxhash::FxHashMap::default(),
             0,
         );
         let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -15684,7 +15819,7 @@ mod tests {
             ConceptId::new(7),
             19,
             INVALID,
-            std::collections::HashMap::new(),
+            crate::fxhash::FxHashMap::default(),
             0,
         );
         let no_observer: Option<&mut RecordingClassificationMessageDataObserver> = None;
@@ -15864,7 +15999,7 @@ mod tests {
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
         let analyse_concept = concepts.push(concept_with_tag(CCATOM, 20, true));
-        let mut analysed_concepts = std::collections::HashSet::new();
+        let mut analysed_concepts = crate::fxhash::FxHashSet::default();
 
         let candidate = analyser
             .select_other_node_analyse_candidate(
@@ -15932,7 +16067,7 @@ mod tests {
                 true,
             ),
         ] {
-            let mut analysed_concepts = std::collections::HashSet::new();
+            let mut analysed_concepts = crate::fxhash::FxHashSet::default();
             assert!(analyser
                 .select_other_node_analyse_candidate(
                     testing_concept,
@@ -16631,9 +16766,9 @@ mod tests {
             label: snapshots[0].labels[0],
             is_single_dependency_descriptor: true,
         }];
-        let mut required = std::collections::HashSet::new();
+        let mut required = crate::fxhash::FxHashSet::default();
         required.insert(analyse_concept);
-        let mut analysed = std::collections::HashSet::new();
+        let mut analysed = crate::fxhash::FxHashSet::default();
 
         let (class_linker, poss_linker) = analyser
             .create_other_node_classification_message_linkers(
@@ -16643,8 +16778,8 @@ mod tests {
                 &snapshots,
                 &required,
                 &mut analysed,
-                &std::collections::HashMap::new(),
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashMap::default(),
                 &concepts,
             );
 
@@ -16726,10 +16861,10 @@ mod tests {
                 is_single_dependency_descriptor: true,
             },
         ];
-        let mut required = std::collections::HashSet::new();
+        let mut required = crate::fxhash::FxHashSet::default();
         required.insert(first_analyse);
         required.insert(second_analyse);
-        let mut analysed = std::collections::HashSet::new();
+        let mut analysed = crate::fxhash::FxHashSet::default();
 
         let (class_linker, poss_linker) = analyser
             .create_other_node_classification_message_linkers(
@@ -16739,8 +16874,8 @@ mod tests {
                 &snapshots,
                 &required,
                 &mut analysed,
-                &std::collections::HashMap::new(),
-                &std::collections::HashMap::new(),
+                &crate::fxhash::FxHashMap::default(),
+                &crate::fxhash::FxHashMap::default(),
                 &concepts,
             );
 

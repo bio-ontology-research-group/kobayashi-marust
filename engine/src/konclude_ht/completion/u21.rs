@@ -69,7 +69,7 @@
 #![allow(unused_variables)]
 #![allow(unused_mut)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::cache::context::CacheContext;
 use super::super::cache::satnode::DependentNominalSetId;
@@ -1134,7 +1134,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 indi_node_vec.get_item_count(),
             )
         };
-        let mut processed_node_set = HashSet::new();
+        let mut processed_node_set = HashSet::default();
         let mut node_cached = false;
 
         while indi_idx < indi_count {
@@ -1464,6 +1464,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let mut new_sat_cached = false;
 
         // CSatisfiableExpanderCacheHandler* satExpHandler = calcAlgContext->getUsedSatisfiableExpanderCacheHandler();
+        //
+        // KM-SOUNDNESS-GATE[nominal-satexp]: nominal individual nodes neither
+        // read nor write the satisfiable expander cache. The cache keys a
+        // deterministic label EXTENSION on the label signature and records, per
+        // added concept, which label concepts it depends on
+        // (`simple/complex_dependency_tracking`). That locality argument uses
+        // the individual ANCESTOR DEPTH to separate a node's own derivations
+        // from imported ones, and every nominal node has depth 0: a concept
+        // merged into nominal `b` from nominal `a` (MERGEDCONCEPT, no
+        // individual) through a NOMINAL merge step (individual `a`, depth 0)
+        // is recorded as a local consequence of `{b}` although `a`'s concept
+        // came from a nondeterministic choice. Measured on ore_ont_16481: one
+        // class probe wrote `{SauvignonBlancGrape} -> {CheninBlancGrape}` for
+        // the SauvignonBlancGrape node, a later probe replayed it as a
+        // deterministic (EXPANDED/CONNECTION/base) fact and the DDB analysis
+        // root-cancelled Sancerre and Gamay (both satisfiable). Skipping the
+        // cache only removes an optimisation: the node is expanded by the
+        // ordinary rules, so the probe's verdict cannot change for a sound
+        // cache and no longer depends on earlier probes for nominal nodes.
+        // Konclude excludes query roots and base-task construct nodes via
+        // PRFINVALIDBLOCKINGORCACHING (CSatisfiableCalculationTaskFromCalculation
+        // JobGenerator.cpp 451-453); this gate extends the exclusion to every
+        // nominal node.
         if !calc_alg_context
             .process_context()
             .node(individual_node)
@@ -1472,6 +1495,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     | Node::PRF_INVALIDBLOCKINGORCACHING
                     | Node::PRF_SATURATIONBLOCKINGCACHED,
             )
+            && !calc_alg_context
+                .process_context()
+                .node(individual_node)
+                .is_nominal_individual_node()
         {
             // can only be satisfiable-cached if there is no nominal
             if self.conf_sat_exp_cache_retrieval

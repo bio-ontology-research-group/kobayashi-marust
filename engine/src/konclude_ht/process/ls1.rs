@@ -36,7 +36,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::ontology::OntologyArenas;
 use super::super::model::substrate::Cint64;
@@ -312,10 +312,10 @@ impl ReapplyConceptLabelSet {
         ls: &ReapplyConceptLabelSet,
     ) -> HashMap<Cint64, ConceptDescriptorDependencyReapplyData> {
         match &ls.additional_concept_des_dep_map {
-            AdditionalDesDepMapRef::Null => HashMap::new(),
+            AdditionalDesDepMapRef::Null => HashMap::default(),
             AdditionalDesDepMapRef::Owned(m) => Self::clone_map(m),
             // Arena-free fallback; see `clone_additional_contents_in_context`.
-            AdditionalDesDepMapRef::Shared(_) => HashMap::new(),
+            AdditionalDesDepMapRef::Shared(_) => HashMap::default(),
         }
     }
 
@@ -324,11 +324,11 @@ impl ReapplyConceptLabelSet {
         ls: &ReapplyConceptLabelSet,
     ) -> HashMap<Cint64, ConceptDescriptorDependencyReapplyData> {
         match &ls.additional_concept_des_dep_map {
-            AdditionalDesDepMapRef::Null => HashMap::new(),
+            AdditionalDesDepMapRef::Null => HashMap::default(),
             AdditionalDesDepMapRef::Owned(m) => Self::clone_map(m),
             AdditionalDesDepMapRef::Shared(alias) => {
                 Self::additional_alias_map_in_context(ctx, *alias)
-                    .map_or_else(HashMap::new, Self::clone_map)
+                    .map_or_else(HashMap::default, Self::clone_map)
             }
         }
     }
@@ -406,7 +406,7 @@ impl ReapplyConceptLabelSet {
             if share {
                 // share branch (lines 71–72): value-copy prev's main map + copy the
                 // additional-map pointer.
-                self.concept_des_dep_map = Self::clone_map(&prev.concept_des_dep_map);
+                self.concept_des_dep_map = Self::clone_map(&prev.concept_des_dep_map).into();
                 self.additional_concept_des_dep_map = Self::copy_additional_ref(prev_id, prev);
             } else {
                 // rebuild branch (lines 74–85).
@@ -469,7 +469,7 @@ impl ReapplyConceptLabelSet {
             let share = (!prev_add_present && prev_main_size <= 50)
                 || (prev_add_present && prev_main_size * 10 < prev.additional_size_in_context(ctx));
             if share {
-                self.concept_des_dep_map = Self::clone_map(&prev.concept_des_dep_map);
+                self.concept_des_dep_map = Self::clone_map(&prev.concept_des_dep_map).into();
                 self.additional_concept_des_dep_map = Self::copy_additional_ref(prev_id, prev);
             } else {
                 self.concept_des_dep_map.clear();
@@ -1249,7 +1249,9 @@ impl ReapplyConceptLabelSet {
                 pos_neg_reapply_queue: v.pos_neg_reapply_queue.clone(),
             })
             .collect();
-        entries.sort_by_key(|e| e.key);
+        // HashMap keys are unique, so an unstable sort yields the same order
+        // without the stable sort's scratch allocation.
+        entries.sort_unstable_by_key(|e| e.key);
         entries
     }
 
@@ -1269,7 +1271,7 @@ impl ReapplyConceptLabelSet {
         get_all_structure: bool,
     ) -> ReapplyConceptLabelSetIterator {
         if get_sorted || get_dependencies || get_all_structure {
-            let main = Self::snapshot_sorted_entries(&self.concept_des_dep_map);
+            let main = self.concept_des_dep_map.sorted_entries();
             // C++: `if (mAdditionalConceptDesDepMap) … addBegin/addEnd … else empty`.
             let additional = match &self.additional_concept_des_dep_map {
                 AdditionalDesDepMapRef::Null => Vec::new(),
@@ -1305,7 +1307,7 @@ impl ReapplyConceptLabelSet {
         get_all_structure: bool,
     ) -> ReapplyConceptLabelSetIterator {
         if get_sorted || get_dependencies || get_all_structure {
-            let main = Self::snapshot_sorted_entries(&self.concept_des_dep_map);
+            let main = self.concept_des_dep_map.sorted_entries();
             let additional = match &self.additional_concept_des_dep_map {
                 AdditionalDesDepMapRef::Null => Vec::new(),
                 AdditionalDesDepMapRef::Owned(m) => Self::snapshot_sorted_entries(m),
@@ -2207,7 +2209,7 @@ mod tests {
     fn init_in_context_uses_shared_additional_size_for_share_decision() {
         let mut ctx = ProcessContext::new();
         let mut target = ReapplyConceptLabelSet::new(INVALID);
-        let mut target_additional = HashMap::new();
+        let mut target_additional = HashMap::default();
         for tag in 1000..1040 {
             target_additional.insert(tag, data(ConDescId::new(tag)));
         }
@@ -2242,7 +2244,7 @@ mod tests {
     fn init_in_context_clones_shared_additional_contents_for_rebuild() {
         let mut ctx = ProcessContext::new();
         let mut target = ReapplyConceptLabelSet::new(INVALID);
-        let mut target_additional = HashMap::new();
+        let mut target_additional = HashMap::default();
         for tag in 2000..2040 {
             target_additional.insert(tag, data(ConDescId::new(tag)));
         }
@@ -2283,7 +2285,7 @@ mod tests {
     fn iterator_in_context_snapshots_shared_additional_alias() {
         let mut ctx = ProcessContext::new();
         let mut target = ReapplyConceptLabelSet::new(INVALID);
-        let mut target_additional = HashMap::new();
+        let mut target_additional = HashMap::default();
         target_additional.insert(3000, data(ConDescId::new(300)));
         target.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(target_additional);
         let target_id = ctx.alloc_label_set(target);
@@ -2314,7 +2316,7 @@ mod tests {
         queue.set_dynamic_pos_neg_reapply_des_linker(reapply_head);
 
         let mut target = ReapplyConceptLabelSet::new(INVALID);
-        let mut target_additional = HashMap::new();
+        let mut target_additional = HashMap::default();
         target_additional.insert(
             4000,
             ConceptDescriptorDependencyReapplyData {

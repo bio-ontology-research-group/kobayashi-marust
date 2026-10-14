@@ -34,7 +34,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::backend::{
@@ -334,7 +334,7 @@ impl Default for LabelCacheItem {
             context: INVALID,
             cache_item_type: LabelCacheItemType::default(),
             signature: 0,
-            tag_value_hash: HashMap::new(),
+            tag_value_hash: HashMap::default(),
             value_linker: Vec::new(),
             value_count: 0,
             indi_association_count: 0,
@@ -487,7 +487,7 @@ impl Default for CardinalityCacheItem {
             cache_entry_id: 0,
             context: INVALID,
             signature: 0,
-            tag_card_value_hash: HashMap::new(),
+            tag_card_value_hash: HashMap::default(),
             cardinality_value_linker: Vec::new(),
             cardinality_value_count: 0,
         }
@@ -2732,10 +2732,10 @@ impl Default for OntologyData {
         OntologyData {
             ontology_identifer: 0,
             usage_count: 0,
-            sig_label_item_hash: vec![HashMap::new(); LABEL_CACHE_ITEM_TYPE_COUNT],
+            sig_label_item_hash: vec![HashMap::default(); LABEL_CACHE_ITEM_TYPE_COUNT],
             next_entry_id: 0,
-            indi_id_asso_data_hash: HashMap::new(),
-            nominal_indi_id_indirect_connection_data_hash: HashMap::new(),
+            indi_id_asso_data_hash: HashMap::default(),
+            nominal_indi_id_indirect_connection_data_hash: HashMap::default(),
             max_stored_indvidual_id: 0,
             indi_id_asso_data_vector_size: 0,
             indi_id_asso_data_vector: Vec::new(),
@@ -2773,7 +2773,7 @@ impl Default for OntologyData {
             recomputation_reference_linker: Id::NONE,
             last_active_recomputation_reference_linker: Id::NONE,
             ontology_data_update_id: 0,
-            recomputation_id_releasing_individual_association_map: HashMap::new(),
+            recomputation_id_releasing_individual_association_map: HashMap::default(),
             release_queued_individual_association_context_linker: Vec::new(),
         }
     }
@@ -4981,7 +4981,7 @@ mod tests {
         let other = tag_label_linker(&mut ctx, LabelCacheItemId::new(33), 3, true);
         let mut extension = LabelCacheItemExtensionData::TagLabelResolving {
             context: INVALID,
-            tag_label_resolving_data_linker_hash: HashMap::new(),
+            tag_label_resolving_data_linker_hash: HashMap::default(),
         };
 
         extension
@@ -5012,7 +5012,7 @@ mod tests {
         let second = tag_label_linker(&mut ctx, LabelCacheItemId::new(22), 2, false);
         let mut extension = LabelCacheItemExtensionData::TagLabelResolving {
             context: INVALID,
-            tag_label_resolving_data_linker_hash: HashMap::new(),
+            tag_label_resolving_data_linker_hash: HashMap::default(),
         };
 
         extension.append_tag_label_resolving_data_linker(91, first, &mut ctx);
@@ -5033,7 +5033,7 @@ mod tests {
     fn cardinality_extension_init_resets_inline_hash() {
         let mut extension = LabelCacheItemExtensionData::Cardinality {
             context: INVALID,
-            role_cardinality_data_hash: HashMap::new(),
+            role_cardinality_data_hash: HashMap::default(),
         };
         let mut old_data = LabelCacheItemCardinalityData::new();
         old_data.init_cardinality_data(3, 5);

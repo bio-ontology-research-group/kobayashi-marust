@@ -17,7 +17,8 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
@@ -947,6 +948,22 @@ pub struct CompletionTaskHandleAlgorithm {
     /// `clearIndiProcessingQueue = true`), so no retained node is scheduled
     /// unless a rule applied to the new assumption root reaches it.
     pub retained_base_node_count: usize,
+    /// KM-BRIDGE: when armed, the processing databox at the moment the FIRST
+    /// branch point (an empty OR stack) is opened is captured together with
+    /// its node, before the branch's epoch. The epoch journals restore the
+    /// graph and queue contents to that moment on rollback; this databox
+    /// restores the queue references, so a rolled-back base can resume every
+    /// pending deterministic task instead of dropping it.
+    pub capture_first_fork_databox: bool,
+    pub first_fork_databox: Option<Box<super::super::process::databox::ProcessingDataBox>>,
+    pub first_fork_node: NodeId,
+    /// KM-BRIDGE drain: while set, a disjunction that would open a branch is
+    /// recorded in `deferred_or_branchings` (node, descriptor, dependency)
+    /// instead, so the completion runs every deterministic rule to its
+    /// fixpoint first. Any other branch kind sets `drain_aborted`.
+    pub defer_or_branching: bool,
+    pub deferred_or_branchings: Vec<(NodeId, super::super::process::ConDescId, TrackPointId)>,
+    pub drain_aborted: bool,
     /// KM-BRIDGE (Stage 8): OR branch points opened on a node that already
     /// existed in the retained base (arena index `< retained_base_node_count`).
     pub or_branch_open_retained_node_count: u64,
@@ -1549,7 +1566,7 @@ impl CompletionTaskHandleAlgorithm {
             max_blocking_caching_saved_candidate_count: 0,
             map_comparison_direct_lookup_factor: 20,
             last_config: Id::NONE,
-            unsat_caching_signature_set: HashSet::new(),
+            unsat_caching_signature_set: HashSet::default(),
             process_rule_to_task_processing_verification_count: 0,
             remain_process_rule_to_task_processing_verification: 0,
 
@@ -1560,13 +1577,13 @@ impl CompletionTaskHandleAlgorithm {
 
             conf_possible_instance_individuals_merging: false,
 
-            indi_node_init_concept_sig_count_hash: HashMap::new(),
-            closed_branch_level_count_hash: HashMap::new(),
-            signature_indi_node_status_hash: HashMap::new(),
-            signature_indi_node_pred_dep_hash: HashMap::new(),
+            indi_node_init_concept_sig_count_hash: HashMap::default(),
+            closed_branch_level_count_hash: HashMap::default(),
+            signature_indi_node_status_hash: HashMap::default(),
+            signature_indi_node_pred_dep_hash: HashMap::default(),
             indi_node_count_map: BTreeMap::new(),
             indi_node_count_list: Vec::new(),
-            critical_concept_set_string_set: HashSet::new(),
+            critical_concept_set_string_set: HashSet::default(),
             found_critical_concept_set: false,
 
             debug_task_id_vector: [0; DEBUG_TASK_ID_VECTOR_SIZE],
@@ -1636,10 +1653,16 @@ impl CompletionTaskHandleAlgorithm {
             some_rule_on_saturation_blocked_count: 0,
             some_rule_succ_block_not_absorbable_count: 0,
             retained_base_node_count: 0,
+            capture_first_fork_databox: false,
+            first_fork_databox: None,
+            first_fork_node: NodeId::NONE,
+            defer_or_branching: false,
+            deferred_or_branchings: Vec::new(),
+            drain_aborted: false,
             or_branch_open_retained_node_count: 0,
             or_branch_open_nominal_node_count: 0,
             or_branch_open_fresh_node_count: 0,
-            native_reuse_activated_individuals: HashSet::new(),
+            native_reuse_activated_individuals: HashSet::default(),
             native_reuse_activation_reached_count: 0,
             native_reuse_activation_repeat_count: 0,
             native_reuse_activation_no_record_count: 0,
@@ -1709,13 +1732,13 @@ impl CompletionTaskHandleAlgorithm {
             over_jumped_non_deterministic_decision_count: 0,
             relevant_non_deterministic_decision_count: 0,
 
-            cached_indi_associated_concept_set_hash: HashMap::new(),
+            cached_indi_associated_concept_set_hash: HashMap::default(),
 
             first_blocking_test_debug_written: false,
             first_binding_creation_debug_written: false,
 
-            prop_cutted_indi_ids: HashSet::new(),
-            prop_cutted_expanded_indi_ids: HashSet::new(),
+            prop_cutted_indi_ids: HashSet::default(),
+            prop_cutted_expanded_indi_ids: HashSet::default(),
 
             next_reporting_expansion_count: 1000,
             last_recomputation_task_id: 0,
@@ -1725,9 +1748,9 @@ impl CompletionTaskHandleAlgorithm {
             or_branch_stack: Vec::new(),
             or_backtrack_count: 0,
             or_branch_open_count: 0,
-            or_branch_learning_stats: HashMap::new(),
+            or_branch_learning_stats: HashMap::default(),
             conf_cache_oriented_or_ordering: false,
-            native_nominal_backend_replay: std::sync::Arc::new(HashMap::new()),
+            native_nominal_backend_replay: std::sync::Arc::new(HashMap::default()),
             native_selective_neighbour_expansion_declined: false,
             ddb_root_cancelled: false,
             drive_deadline: None,
@@ -1806,6 +1829,23 @@ impl CompletionTaskHandleAlgorithm {
         node: NodeId,
         calc_alg_context: &super::context::CalculationAlgorithmContextBase,
     ) {
+        if self.defer_or_branching {
+            // Only disjunctions can be deferred; any other branch kind ends
+            // the drain attempt (its state is discarded by the caller).
+            self.drain_aborted = true;
+        }
+        // Every branch kind records its opening here, right after its own
+        // epoch push and before the first alternative changes anything. The
+        // databox is not journaled, so this is the databox of the fork state
+        // the epoch restores (see `capture_first_fork_databox`).
+        if self.capture_first_fork_databox
+            && self.or_branch_stack.is_empty()
+            && calc_alg_context.process_context().branch_epoch_depth() <= 1
+        {
+            self.first_fork_databox =
+                Some(Box::new(calc_alg_context.processing_data_box().clone()));
+            self.first_fork_node = node;
+        }
         self.or_branch_open_count += 1;
         if node.is_none() || node.index() >= calc_alg_context.process_context().node_count() {
             return;

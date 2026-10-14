@@ -19,6 +19,7 @@ mod flat_nf1;
 pub mod frontend_run;
 pub mod input;
 pub mod mirror;
+mod abox_quotient;
 mod positive_abox_quotient;
 mod symbolic_source;
 mod data_source;
@@ -493,6 +494,98 @@ fn run_atomic_cb(cfg: &Config, clauses_path: &Path) -> Result<EngineOut, Orchest
     parse_out(&res)
 }
 
+/// Wall-clock deadline of the innermost speculative native-bridge attempt.
+///
+/// A speculative attempt (the bridge-first schedule in front of a nominal
+/// leaf) is only a scheduling choice: the native bridge is complete-answer-or-defer, and the caller
+/// always resumes the unchanged exact route after a decline. Bounding the
+/// attempt therefore cannot change any published answer; it only stops an
+/// expensive defer (or an expensive success) from consuming the budget the
+/// exact route needs. Nested attempts keep the earlier deadline.
+static BRIDGE_ATTEMPT_DEADLINE: std::sync::Mutex<Option<std::time::Instant>> =
+    std::sync::Mutex::new(None);
+
+/// Restores the enclosing deadline when a speculative attempt returns.
+struct BridgeAttemptDeadline {
+    previous: Option<std::time::Instant>,
+}
+
+impl BridgeAttemptDeadline {
+    fn install(budget: std::time::Duration) -> Self {
+        let mut slot = BRIDGE_ATTEMPT_DEADLINE.lock().unwrap();
+        let previous = *slot;
+        let deadline = std::time::Instant::now() + budget;
+        *slot = Some(previous.map_or(deadline, |earlier| earlier.min(deadline)));
+        BridgeAttemptDeadline { previous }
+    }
+}
+
+impl Drop for BridgeAttemptDeadline {
+    fn drop(&mut self) {
+        *BRIDGE_ATTEMPT_DEADLINE.lock().unwrap() = self.previous;
+    }
+}
+
+fn bridge_attempt_deadline() -> Option<std::time::Instant> {
+    *BRIDGE_ATTEMPT_DEADLINE.lock().unwrap()
+}
+
+/// Default wall-clock bound of the bridge-first attempt before a nominal leaf.
+const BRIDGE_FIRST_BUDGET_S: u64 = 20;
+
+/// Default wall-clock bound of the data-free subset inconsistency attempt of
+/// the ABox quotient path.
+const DATA_FREE_SUBSET_BUDGET_S: u64 = 20;
+
+/// Default wall-clock bound of the second bridge-first attempt that carries
+/// data-property assertions as `DataHasValue` class assertions. It runs only
+/// after the historical attempt declined, so a decline here adds at most this
+/// bound to the unchanged schedule; the measured answers arrive within 2 s.
+const DATA_ASSERTION_BRIDGE_BUDGET_S: u64 = 5;
+
+/// Budget (seconds) of a speculative attempt, overridable for measurement.
+/// `0` disables the bound and restores the unbounded historical schedule.
+fn speculative_bridge_budget(key: &str, default_s: u64) -> Option<std::time::Duration> {
+    let seconds = std::env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(default_s);
+    (seconds > 0).then(|| std::time::Duration::from_secs(seconds))
+}
+
+/// Run the selected native bridge in an isolated worker bounded by the
+/// enclosing speculative-attempt deadline. The worker, its converted input,
+/// and its complete-answer-or-defer read-off are the established
+/// `KM_NO_INPROC_HT` bridge path; only the wall-clock bound is new. A
+/// timeout, refusal, or defer is an honest decline (no partial output can
+/// escape), so the caller's exact fallback stays authoritative.
+fn run_budgeted_bridge_attempt(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &HashSet<String>,
+    cached_input: &mut Option<crate::json_io::JInput>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
+    if let Some(input) = cached_input.take() {
+        // The typed in-process handoff skipped the clause file. Serialize the
+        // identical frontend value exactly as the uncached frontend would.
+        let mut w = std::io::BufWriter::new(File::create(clauses_path)?);
+        serde_json::to_writer(&mut w, &input)?;
+        w.flush()?;
+    }
+    let deadline = bridge_attempt_deadline().unwrap_or_else(std::time::Instant::now);
+    if deadline <= std::time::Instant::now() {
+        return Err(OrchestrateError::OutOfFragment(
+            "speculative native bridge attempt exhausted its budget".into(),
+        ));
+    }
+    match race::run_ht_only_until(cfg, clauses_path, named, deadline)? {
+        Some(out) => Ok(Some(out)),
+        None => Err(OrchestrateError::OutOfFragment(
+            "speculative native bridge attempt deferred or exceeded its budget".into(),
+        )),
+    }
+}
+
 /// Dispatch an isolated top-level mechanism. `None` means the explicitly
 /// requested historical portfolio; every other variant returns one worker's
 /// answer or an honest out-of-fragment/error result, never a fallback answer.
@@ -526,6 +619,15 @@ fn run_atomic_mechanism(
         Mechanism::Cb => {
             drop(cached_input.take());
             run_atomic_cb(cfg, clauses_path).map(Some)
+        }
+        // Bridge-only worker inside a bounded speculative attempt. Identify it
+        // by its bridge-only specialist selection rather than by the route
+        // label, which recursive attempts may freeze as `manual`.
+        Mechanism::Ht
+            if bridge_attempt_deadline().is_some()
+                && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge") =>
+        {
+            run_budgeted_bridge_attempt(cfg, clauses_path, named, cached_input)
         }
         Mechanism::Ht => {
             if matches!(
@@ -704,6 +806,7 @@ fn use_elc_portfolio(elc: bool, elc_portfolio: bool, is_giant: bool, tab_race: b
 fn try_inproc_engine(
     clauses_path: &Path,
     budget: std::time::Duration,
+    ht_first_probe: Option<&dyn Fn() -> Option<race::HtFirstProbe>>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     use crate::json_io::JInput;
     let buf = std::fs::read(clauses_path)?;
@@ -725,11 +828,14 @@ fn try_inproc_engine(
     // (keeping HT recovery for e.g. 5303). A completed run is byte-identical
     // to the forked engine worker, minus the fork/stdin overhead.
     let (tx, rx) = std::sync::mpsc::channel();
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let worker_cancel = cancel.clone();
     std::thread::Builder::new()
         .name("inproc-cb".into())
         .stack_size(256 << 20)
         .spawn(move || {
             use crate::reasoner::Reasoner;
+            crate::engine::set_thread_cancel_flag(worker_cancel.clone());
             let mut r = Reasoner::new(&clauses);
             // The String-owning `JClause` block is fully interned into the
             // Reasoner; free it before saturation rather than holding it (it
@@ -740,6 +846,10 @@ fn try_inproc_engine(
                 return;
             }
             r.saturate();
+            if worker_cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                // The supervisor stopped waiting; skip output assembly.
+                return;
+            }
             let out = inproc_engine_out(&mut r);
             // Contexts, arenas, and indexes are dead once the answer is out.
             drop(r);
@@ -749,10 +859,90 @@ fn try_inproc_engine(
             bin: "inproc-cb".into(),
             source: e,
         })?;
-    match rx.recv_timeout(budget) {
-        Ok(Some(out)) => Ok(Some(out)),
-        Ok(None) => Ok(None), // declined (definer disjunction / incomplete closure)
-        Err(_) => Ok(None),   // overran the budget ⇒ fall through (bounded mem)
+    let timing = std::env::var_os("KM_TIMING").is_some();
+    let started = std::time::Instant::now();
+    let deadline = started + budget;
+    // After a short head start, run the race's HT-first worker beside the
+    // in-process engine (see `race::HtFirstProbe`). The race accepts that
+    // worker's answer at once whenever the in-process engine overruns, so
+    // holding a millisecond bridge answer behind the full budget only adds
+    // the budget to the wall. KM_INPROC_HT_PROBE_S sets the head start; a
+    // negative value disables the probe.
+    let probe_after = std::env::var("KM_INPROC_HT_PROBE_S")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(0.25);
+    let first_wait = if ht_first_probe.is_some() && probe_after >= 0.0 {
+        std::time::Duration::from_secs_f64(probe_after).min(budget)
+    } else {
+        budget
+    };
+    let stop_inproc = |why: &str| {
+        // Stop the abandoned saturation so it no longer competes with the
+        // fallback for CPU. KM_INPROC_NO_CANCEL keeps the old detached
+        // behaviour for A/B.
+        if std::env::var_os("KM_INPROC_NO_CANCEL").is_none() {
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if timing {
+            eprintln!("KM_TIMING in-process engine {why}; cancelled");
+        }
+    };
+    use std::sync::mpsc::RecvTimeoutError;
+    match rx.recv_timeout(first_wait) {
+        Ok(out) => return Ok(out), // answer, or declined (definer disjunction / incomplete closure)
+        Err(RecvTimeoutError::Disconnected) => return Ok(None),
+        Err(RecvTimeoutError::Timeout) => {}
+    }
+    let mut probe = if first_wait < budget {
+        ht_first_probe.and_then(|spawn| spawn())
+    } else {
+        None
+    };
+    if timing && probe.is_some() {
+        eprintln!(
+            "KM_TIMING in-process engine: HT-first probe started @ {:.2}s",
+            started.elapsed().as_secs_f64()
+        );
+    }
+    loop {
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            drop(probe);
+            stop_inproc(&format!("overran its {:.1}s budget", budget.as_secs_f64()));
+            return Ok(None);
+        }
+        let wait = if probe.is_some() {
+            std::time::Duration::from_millis(2).min(deadline - now)
+        } else {
+            deadline - now
+        };
+        match rx.recv_timeout(wait) {
+            Ok(out) => return Ok(out), // the probe (if any) is killed on drop
+            Err(RecvTimeoutError::Disconnected) => return Ok(None),
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+        if let Some(p) = probe.as_mut() {
+            match p.poll() {
+                race::HtFirstProbeState::Running => {}
+                race::HtFirstProbeState::NoAnswer => {
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING in-process engine: HT-first probe gave no accepted answer @ {:.2}s",
+                            started.elapsed().as_secs_f64()
+                        );
+                    }
+                    probe = None;
+                }
+                race::HtFirstProbeState::Accepted(out) => {
+                    stop_inproc(&format!(
+                        "superseded by the HT-first answer @ {:.2}s",
+                        started.elapsed().as_secs_f64()
+                    ));
+                    return Ok(Some(out));
+                }
+            }
+        }
     }
 }
 
@@ -832,6 +1022,88 @@ impl JsonClassification {
     pub fn write_json<W: Write>(&self, writer: W) -> serde_json::Result<()> {
         let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
         serde::Serialize::serialize(self, &mut ser)
+    }
+}
+
+/// Per-subject taxonomy rows (the retained source session's representation).
+/// `rows` holds the exact expanded relation the JSON encoder emits: every
+/// subject's non-reflexive named superclasses.
+pub struct TaxonomyRows {
+    pub consistent: bool,
+    pub dropped: usize,
+    pub unsatisfiable: Vec<String>,
+    pub iris: Vec<Arc<str>>,
+    pub rows: Vec<(u32, Vec<u32>)>,
+}
+
+impl JsonClassification {
+    /// The same relation as [`JsonClassification::write_json`], grouped by
+    /// subject id instead of serialised.
+    pub fn into_rows(self) -> TaxonomyRows {
+        let c = self.classification;
+        let Some(g) = self.grouped_subsumptions else {
+            let mut ids: HashMap<Arc<str>, u32> = HashMap::new();
+            let mut iris: Vec<Arc<str>> = Vec::new();
+            let mut grouped: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+            let mut id = |name: &str, iris: &mut Vec<Arc<str>>| -> u32 {
+                if let Some(&i) = ids.get(name) {
+                    return i;
+                }
+                let key: Arc<str> = name.into();
+                let i = iris.len() as u32;
+                iris.push(key.clone());
+                ids.insert(key, i);
+                i
+            };
+            for [a, b] in &c.subsumptions {
+                let (a, b) = (id(a, &mut iris), id(b, &mut iris));
+                grouped.entry(a).or_default().push(b);
+            }
+            return TaxonomyRows {
+                consistent: c.consistent,
+                dropped: c.dropped,
+                unsatisfiable: c.unsatisfiable,
+                iris,
+                rows: grouped.into_iter().collect(),
+            };
+        };
+        let rows = if let Some(graph) = &g.reachability_graph {
+            let mut seen = vec![false; graph.len()];
+            let mut out = Vec::new();
+            let mut stack = Vec::new();
+            for (subject, successors) in graph.iter().enumerate() {
+                let mut reached: Vec<u32> = Vec::new();
+                seen[subject] = true;
+                stack.extend(successors.iter().copied());
+                while let Some(superclass) = stack.pop() {
+                    let index = superclass as usize;
+                    if seen[index] {
+                        continue;
+                    }
+                    seen[index] = true;
+                    reached.push(superclass);
+                    stack.extend(graph[index].iter().copied());
+                }
+                seen[subject] = false;
+                for &r in &reached {
+                    seen[r as usize] = false;
+                }
+                if !reached.is_empty() {
+                    reached.sort_unstable();
+                    out.push((subject as u32, reached));
+                }
+            }
+            out
+        } else {
+            g.rows.into_iter().filter(|(_, v)| !v.is_empty()).collect()
+        };
+        TaxonomyRows {
+            consistent: c.consistent,
+            dropped: c.dropped,
+            unsatisfiable: c.unsatisfiable,
+            iris: g.iris,
+            rows,
+        }
     }
 }
 
@@ -958,10 +1230,68 @@ pub fn classify_json(
     ont: &Path,
 ) -> Result<JsonClassification, OrchestrateError> {
     validate_user_input(ont)?;
+    timing_mark("validate_user_input done");
     classify_with_evidence_mode(initial_cfg, ont, true).map(|evidence| JsonClassification {
         classification: evidence.classification,
         grouped_subsumptions: evidence.grouped_subsumptions,
     })
+}
+
+/// `KM_TIMING` diagnostic marker; output only, no behavior.
+/// Paths of documents this process wrote itself as a conformance-preserving
+/// rewrite of a source that already passed validation earlier in the same
+/// classification (see `TrustedRewrite`).
+static TRUSTED_REWRITES: std::sync::Mutex<Vec<std::path::PathBuf>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Explicit proof, held by the orchestrator, that `path` is its own rewrite of
+/// a validated source. Only the rewrite producers below register a path, right
+/// after writing a fresh temporary file and only from a classification whose
+/// own input has already passed `check_source` (or `check_user_source`); each
+/// producer's module documents why it emits only constructs taken verbatim
+/// from that source plus trivially conformant constructs of its own. The
+/// trust ends with the guard. Nothing is inferred from document content: an
+/// unregistered path, including any user input, is always validated.
+pub(crate) struct TrustedRewrite(std::path::PathBuf);
+
+impl TrustedRewrite {
+    fn register(path: &Path) -> TrustedRewrite {
+        TRUSTED_REWRITES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(path.to_path_buf());
+        TrustedRewrite(path.to_path_buf())
+    }
+}
+
+impl Drop for TrustedRewrite {
+    fn drop(&mut self) {
+        let mut paths = TRUSTED_REWRITES.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(index) = paths.iter().position(|path| *path == self.0) {
+            paths.swap_remove(index);
+        }
+    }
+}
+
+/// Whether `path` is a registered rewrite (see `TrustedRewrite`).
+pub(crate) fn is_trusted_rewrite(path: &Path) -> bool {
+    std::env::var_os("KM_NO_TRUSTED_REWRITES").is_none()
+        && TRUSTED_REWRITES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .any(|trusted| trusted == path)
+}
+
+/// Environment variable naming the one document an `ofn` worker may read
+/// without re-validating it, set by the orchestrator on that child's command
+/// only, for a registered rewrite.
+pub const TRUSTED_REWRITE_ENV: &str = "KM_TRUSTED_REWRITE_SOURCE";
+
+fn timing_mark(label: &str) {
+    if std::env::var_os("KM_TIMING").is_some() {
+        eprintln!("KM_TIMING mark: {label}");
+    }
 }
 
 // Public source validation is separate from generated projections and
@@ -969,13 +1299,15 @@ pub fn classify_json(
 fn validate_user_input(ont: &Path) -> Result<(), OrchestrateError> {
     let prepared = input::prepare(ont)?;
     let source = std::fs::read_to_string(prepared.path())?;
-    if crate::frontend::conformance::has_imports(&source).map_err(OrchestrateError::from_conformance)? {
-        return Err(OrchestrateError::OutOfFragment(
-            "cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into()));
+    // has_imports, check_source, check_iri_prefixes, check_declarations: same
+    // order and messages, one shared parse (see check_user_source).
+    match crate::frontend::conformance::check_user_source(&source) {
+        Ok(()) => Ok(()),
+        Err(crate::frontend::conformance::UserSourceError::Imports) => Err(OrchestrateError::OutOfFragment(
+            "cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into())),
+        Err(crate::frontend::conformance::UserSourceError::Invalid(message)) =>
+            Err(OrchestrateError::from_conformance(message)),
     }
-    crate::frontend::conformance::check_source(&source).map_err(OrchestrateError::from_conformance)?;
-    crate::frontend::conformance::check_iri_prefixes(&source).map_err(OrchestrateError::from_conformance)?;
-    crate::frontend::conformance::check_declarations(&source).map_err(OrchestrateError::from_conformance)
 }
 
 fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Option<u32> {
@@ -1008,7 +1340,12 @@ fn classify_with_evidence_mode(
     engine_run::reset_cancel();
     // Validate the original source before any rule compilation, projection,
     // route selection, or consistency shortcut can erase invalid literals.
-    {
+    // A registered rewrite (`TrustedRewrite`) is the orchestrator's own
+    // conformance-preserving rewrite of a source this classification already
+    // validated; re-validating it only repeats that check.
+    if is_trusted_rewrite(ont) {
+        timing_mark("trusted rewrite: source re-validation skipped");
+    } else {
         let prepared_input = input::prepare(ont)?;
         let source = std::fs::read_to_string(prepared_input.path())?;
         if crate::frontend::conformance::has_imports(&source).map_err(OrchestrateError::from_conformance)? {
@@ -1019,6 +1356,7 @@ fn classify_with_evidence_mode(
             &source,
         ).map_err(OrchestrateError::from_conformance)?;
     }
+    timing_mark("second source check done");
     let automatic_requested = std::env::var("KM_ROUTE")
         .map(|route| route == crate::routing::Route::Auto.as_str())
         .unwrap_or(false);
@@ -1086,6 +1424,9 @@ fn classify_with_evidence_mode(
     // their existing path; source reduction must not bypass them.
     if automatic_requested && !crate::tableau::ht_lean_certification_requested() {
         if let Some(mode) = data_source::automatic_candidate(ont)? {
+            if std::env::var_os("KM_TIMING").is_some() {
+                eprintln!("KM_TIMING automatic data source attempt: {mode}");
+            }
             let attempt = {
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
                 if mode == "native" {
@@ -1112,6 +1453,7 @@ fn classify_with_evidence_mode(
             }
         }
     }
+    timing_mark("data source candidate done");
     if std::env::var_os("KM_SYMBOLIC_SOURCE_BRIDGE").is_some() {
         return symbolic_source::classify(ont);
     }
@@ -1133,6 +1475,7 @@ fn classify_with_evidence_mode(
             }
         }
     }
+    timing_mark("symbolic candidate done");
     // Preserve an explicit HT worker-count measurement across both the outer
     // route selection and any complete HT probe selected by that route.
     let ht_par_request = std::env::var_os("KM_HT_PAR");
@@ -1152,6 +1495,7 @@ fn classify_with_evidence_mode(
     {
         if let Some(quotient) = positive_abox_quotient::try_build(ont)? {
             let attempt = {
+                let _trusted = TrustedRewrite::register(quotient.path());
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
                 std::env::set_var("KM_POSITIVE_ABOX_QUOTIENT_ACTIVE", "1");
                 classify_with_evidence_mode(initial_cfg, quotient.path(), retain_grouped_output)
@@ -1172,6 +1516,191 @@ fn classify_with_evidence_mode(
                     "KM_TIMING positive ABox quotient declined @ {:.2}s",
                     t_start.elapsed().as_secs_f64()
                 );
+            }
+        }
+    }
+    // Large ABox over a TBox closed under disjoint unions (no nominals,
+    // universal role, keys, or rules). The quotient Q of the ABox satisfies
+    // T ∪ Q consistent ⇒ T ∪ A consistent (see `abox_quotient`), and for a
+    // consistent ABox the named taxonomy equals the TBox taxonomy
+    // (HypertableauDisjointUnionABoxProjection). The ordinary certified
+    // pipeline classifies T ∪ Q; only a certified consistent, complete answer
+    // is published. A quotient clash or decline falls through unchanged.
+    if automatic_requested
+        && !quotient_active
+        && std::env::var_os("KM_ABOX_QUOTIENT_ACTIVE").is_none()
+        && std::env::var_os("KM_NO_ABOX_QUOTIENT").is_none()
+        && !crate::tableau::ht_lean_certification_requested()
+    {
+        if let Some(quotient) = abox_quotient::try_build(ont)? {
+            if timing {
+                eprintln!(
+                    "KM_TIMING ABox quotient built @ {:.2}s: individuals={} blocks={} assertions={} -> {}",
+                    t_start.elapsed().as_secs_f64(),
+                    quotient.individuals,
+                    quotient.blocks,
+                    quotient.assertions,
+                    quotient.quotient_assertions,
+                );
+            }
+            // With TBox nominals the taxonomy is published only when the
+            // TBox-only taxonomy (a lower bound by monotonicity) equals the
+            // quotient taxonomy (an upper bound: every model of T ∪ Q is a
+            // model of T ∪ A on the same domain). Compare flat rows.
+            let sandwich = quotient.tbox.is_some();
+            let certified = |evidence: &ClassificationEvidence| {
+                evidence.classification.consistent
+                    && evidence.classification.dropped == 0
+                    && evidence.consistency_certified
+            };
+            let run = |path: &Path, grouped: bool| {
+                let _trusted = TrustedRewrite::register(path);
+                let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                std::env::set_var("KM_ABOX_QUOTIENT_ACTIVE", "1");
+                let attempt = classify_with_evidence_mode(initial_cfg, path, grouped);
+                std::env::remove_var("KM_ABOX_QUOTIENT_ACTIVE");
+                attempt
+            };
+            // A quotient that only repeats source assertions is a subset of
+            // the source, and so is its data-free part. When the native
+            // bridge certifies that data-free part inconsistent within a
+            // bounded attempt, the source is inconsistent: publish the fixed
+            // inconsistent answer (Lean `ABoxBooleanInclusion.inconsistent_subset`,
+            // audited by the routing gate). The datatype admission of the
+            // bridge otherwise defers such inputs to the full quotient run.
+            if quotient.subset_of_source && quotient.atomic_classes.is_none() {
+                if let Some(data_free) = abox_quotient::data_free_subset(quotient.path.path())? {
+                    if let Some(budget) = speculative_bridge_budget(
+                        "KM_DATA_FREE_SUBSET_BUDGET_S",
+                        DATA_FREE_SUBSET_BUDGET_S,
+                    ) {
+                        // Consistency only: an empty public-subject list makes
+                        // the bridge decide consistency (native nominal
+                        // consistency, or owl:Thing) and test no class.
+                        let no_subjects = tmpfile::TempPath::new("-no-subjects.json");
+                        std::fs::write(no_subjects.path(), b"[]")?;
+                        let probe = {
+                            let _trusted = TrustedRewrite::register(data_free.path());
+                            let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                            let _deadline = BridgeAttemptDeadline::install(budget);
+                            std::env::set_var("KM_ABOX_QUOTIENT_ACTIVE", "1");
+                            crate::routing::Route::HtBridge.apply_environment();
+                            std::env::set_var("KM_ROUTE", crate::routing::Route::HtBridge.as_str());
+                            std::env::set_var("KM_BRIDGE_PUBLIC_SUBJECT_FILE", no_subjects.path());
+                            let bridge_cfg = Config::from_env();
+                            let attempt = classify_with_evidence_mode(&bridge_cfg, data_free.path(), false);
+                            std::env::remove_var("KM_ABOX_QUOTIENT_ACTIVE");
+                            attempt
+                        };
+                        let inconsistent = matches!(&probe, Ok(evidence)
+                            if !evidence.classification.consistent
+                                && evidence.classification.dropped == 0
+                                && evidence.consistency_certified);
+                        if timing {
+                            eprintln!(
+                                "KM_TIMING ABox quotient data-free subset @ {:.2}s: inconsistent={inconsistent}",
+                                t_start.elapsed().as_secs_f64()
+                            );
+                        }
+                        if inconsistent {
+                            return Ok(ClassificationEvidence {
+                                classification: Classification {
+                                    consistent: false,
+                                    subsumptions: vec![],
+                                    unsatisfiable: vec![],
+                                    dropped: 0,
+                                },
+                                grouped_subsumptions: None,
+                                consistency_certified: true,
+                            });
+                        }
+                    }
+                }
+            }
+            let mut attempt = run(quotient.path.path(), retain_grouped_output && !sandwich);
+            if let (Ok(evidence), Some(classes)) = (&attempt, &quotient.atomic_classes) {
+                if let Some(class) = classes
+                    .iter()
+                    .find(|class| abox_quotient::marks_unsatisfiable(evidence, class))
+                {
+                    attempt = Err(OrchestrateError::OutOfFragment(format!(
+                        "ABox quotient asserts the unsatisfiable class {class}"
+                    )));
+                }
+            }
+            // A quotient that only repeats source assertions is a subset of
+            // the source ontology: its certified inconsistency is the
+            // source's inconsistency, and the classification of an
+            // inconsistent ontology is the fixed inconsistent answer. This
+            // replaces a decline that would classify the full source again.
+            if let Ok(evidence) = &attempt {
+                if quotient.subset_of_source
+                    && quotient.atomic_classes.is_none()
+                    && !evidence.classification.consistent
+                    && evidence.classification.dropped == 0
+                    && evidence.consistency_certified
+                {
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING ABox quotient (source subset) inconsistent @ {:.2}s",
+                            t_start.elapsed().as_secs_f64()
+                        );
+                    }
+                    return Ok(ClassificationEvidence {
+                        classification: Classification {
+                            consistent: false,
+                            subsumptions: vec![],
+                            unsatisfiable: vec![],
+                            dropped: 0,
+                        },
+                        grouped_subsumptions: None,
+                        consistency_certified: true,
+                    });
+                }
+            }
+            if let (Ok(evidence), Some(tbox)) = (&attempt, &quotient.tbox) {
+                if certified(evidence) {
+                    let agrees = match run(tbox.path(), false) {
+                        Ok(lower) => {
+                            certified(&lower)
+                                && abox_quotient::same_taxonomy(
+                                    &lower.classification,
+                                    &evidence.classification,
+                                )
+                        }
+                        Err(_) => false,
+                    };
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING ABox quotient TBox sandwich @ {:.2}s: agrees={agrees}",
+                            t_start.elapsed().as_secs_f64()
+                        );
+                    }
+                    if !agrees {
+                        attempt = Err(OrchestrateError::OutOfFragment(
+                            "ABox quotient taxonomy exceeds the TBox taxonomy".into(),
+                        ));
+                    }
+                }
+            }
+            match attempt {
+                Ok(evidence) if certified(&evidence) => {
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING ABox quotient accepted @ {:.2}s",
+                            t_start.elapsed().as_secs_f64()
+                        );
+                    }
+                    return Ok(evidence);
+                }
+                _ => {
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING ABox quotient declined @ {:.2}s",
+                            t_start.elapsed().as_secs_f64()
+                        );
+                    }
+                }
             }
         }
     }
@@ -1226,6 +1755,8 @@ fn classify_with_evidence_mode(
     }
     let (clauses_path, meta, mut cached_input, elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+    // Owned here so it is released with this classification on every path.
+    let mut positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
     let _public_subject_file = if let Some(path) = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE") {
         let private: std::collections::BTreeSet<String> = serde_json::from_slice(&std::fs::read(path)?)
             .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?;
@@ -1235,6 +1766,17 @@ fn classify_with_evidence_mode(
         std::fs::write(file.path(),serde_json::to_vec(&names)
             .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?)?;
         std::env::set_var("KM_BRIDGE_PUBLIC_SUBJECT_FILE",file.path());
+        Some(file)
+    } else if let Some(path) = std::env::var_os("KM_PUBLIC_SUBJECT_IRIS_FILE") {
+        // Retained-session subject restriction: the complete revision is
+        // classified; only the bridge's subject probes are restricted.
+        let wanted: std::collections::BTreeSet<String> = serde_json::from_slice(&std::fs::read(path)?)
+            .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?;
+        let names = public_subjects::select_iris(&meta.named, &meta.iri_map, &wanted);
+        let file = tmpfile::TempPath::new("-public-subjects.json");
+        std::fs::write(file.path(), serde_json::to_vec(&names)
+            .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?)?;
+        std::env::set_var("KM_BRIDGE_PUBLIC_SUBJECT_FILE", file.path());
         Some(file)
     } else { None };
 
@@ -1271,10 +1813,92 @@ fn classify_with_evidence_mode(
         .route
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
+    // The ABox quotient is a scheduling device for the unchanged ontology. A
+    // quotient (typically its TBox-only atomic form) routed to the certified-EL
+    // attempt can spend the whole budget before that attempt refuses, whereas
+    // the original ontology takes a different exact route. Decline at once and
+    // let the caller classify the original; no answer is affected.
+    if selected_route == crate::routing::Route::CertifiedElProduction
+        && std::env::var_os("KM_ABOX_QUOTIENT_ACTIVE").is_some()
+    {
+        return Err(OrchestrateError::OutOfFragment(
+            "ABox quotient routed to the certified-EL attempt".into(),
+        ));
+    }
     if quotient_active && !meta.profile.positive_el_abox_materializable {
         return Err(OrchestrateError::OutOfFragment(
             "positive ABox quotient lost its frontend certificate".into(),
         ));
+    }
+
+    // Nominal leaves that do not start the native completion bridge alone
+    // (see `bounded_bridge_first_candidate`) get a wall-clock-bounded bridge
+    // attempt first. The bridge is complete-answer-or-defer, so an answer is
+    // publishable as is; any decline or budget expiry restores this call's
+    // environment and continues with the unchanged schedule below.
+    if automatic_requested
+        && crate::routing::bounded_bridge_first_candidate(selected_route, &meta.profile)
+    {
+        // The historical attempt runs first and unchanged. Only when it
+        // declines on a source with data-property assertions does a second,
+        // separately bounded attempt carry those assertions to the bridge as
+        // `DataHasValue` class assertions (OWL 2: `p(a, v)` iff
+        // `a : DataHasValue(p v)`). The guard restores the variable, so the
+        // fallback below parses the ontology exactly as before.
+        let data_assertions = meta
+            .profile
+            .source
+            .axiom_types
+            .get("DataPropertyAssertion")
+            .is_some_and(|&count| count > 0);
+        let attempts = [
+            (false, speculative_bridge_budget("KM_BRIDGE_FIRST_BUDGET_S", BRIDGE_FIRST_BUDGET_S)),
+            (
+                true,
+                data_assertions
+                    .then(|| {
+                        speculative_bridge_budget(
+                            "KM_DATA_ASSERTION_BRIDGE_BUDGET_S",
+                            DATA_ASSERTION_BRIDGE_BUDGET_S,
+                        )
+                    })
+                    .flatten(),
+            ),
+        ];
+        for (convert_data_assertions, budget) in attempts {
+            let Some(budget) = budget else { continue };
+            let bridge_attempt = {
+                let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                let _deadline = BridgeAttemptDeadline::install(budget);
+                crate::routing::Route::HtBridge.apply_environment();
+                std::env::set_var("KM_ROUTE", crate::routing::Route::HtBridge.as_str());
+                if convert_data_assertions {
+                    std::env::set_var("KM_DATA_ASSERTION_AS_CLASS", "1");
+                }
+                let bridge_cfg = Config::from_env();
+                classify_with_evidence_mode(&bridge_cfg, ont, retain_grouped_output)
+            };
+            let label = if convert_data_assertions { " (data assertions as class)" } else { "" };
+            match bridge_attempt {
+                Ok(evidence) => {
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING bounded bridge-first{label} accepted @ {:.2}s",
+                            t_start.elapsed().as_secs_f64()
+                        );
+                    }
+                    return Ok(evidence);
+                }
+                Err(error) => {
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING bounded bridge-first{label} declined @ {:.2}s: {error}",
+                            t_start.elapsed().as_secs_f64()
+                        );
+                    }
+                }
+            }
+        }
     }
 
     // Compact expressive object-ABoxes benefit from the exact typed bridge,
@@ -1334,7 +1958,11 @@ fn classify_with_evidence_mode(
             crate::routing::four_worker_compact_expressive_ht_candidate(&meta.profile),
         );
     }
+    // The nominal general-HT probe publishes an `ht_general` answer, which has
+    // no certificate beyond lossless clause coverage (see routing::select).
+    // It is a measurement arm only and must be requested explicitly.
     if automatic_requested
+        && std::env::var_os("KM_NOMINAL_GENERAL_HT_PROBE_UNCERTIFIED").is_some()
         && matches!(
             selected_route,
             crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
@@ -1690,6 +2318,9 @@ fn classify_with_evidence_mode(
         if let Some(bits) = composite_layout(&meta.profile) {
             std::env::set_var("KM_COMP_IND_BITS", bits.to_string());
         }
+        // The profile-specific thread overrides above obey the same CPU cap
+        // as the route bundle itself.
+        crate::routing::cap_worker_threads_to_available_cpus();
         std::env::set_var("KM_ROUTE", "manual");
         Some(Config::from_env())
     };
@@ -1756,10 +2387,15 @@ fn classify_with_evidence_mode(
     {
         let (input, reloadable): (crate::json_io::JInput, bool) = match cached_input.take() {
             Some(input) => (input, false),
-            None => (
-                serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?,
-                true,
-            ),
+            // The value the frontend wrote to `clauses_path`; the file stays
+            // available for the exact retry below.
+            None => match positive_el_input.take() {
+                Some(input) => (input, true),
+                None => (
+                    serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?,
+                    true,
+                ),
+            },
         };
         let result = if reloadable {
             match crate::elcomplete::positive_abox_classify_compact_merged(
@@ -2097,9 +2733,15 @@ fn classify_with_evidence_mode(
                     .ok()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(4.0);
+                // The race below runs an HT-first phase only with cfg.ht_race.
+                let spawn_probe = || {
+                    race::HtFirstProbe::spawn(cfg, clauses_path.path(), &named_set, ht_mode)
+                };
                 out = try_inproc_engine(
                     clauses_path.path(),
                     std::time::Duration::from_secs_f64(budget_s),
+                    cfg.ht_race
+                        .then_some(&spawn_probe as &dyn Fn() -> Option<race::HtFirstProbe>),
                 )?;
                 if timing && out.is_some() {
                     eprintln!(
@@ -2185,8 +2827,9 @@ fn classify_with_evidence_mode(
     // These borrowed lookup tables are consumed only by public-output mapping.
     // Constructing them before classification made their bucket allocations
     // overlap the frontend and reasoner high-water marks on every route.
-    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
-    let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
+    let named: crate::fxhash::FxHashSet<&str> = meta.named.iter().map(String::as_str).collect();
+    let asserted: crate::fxhash::FxHashSet<&str> =
+        meta.asserted_classes.iter().map(String::as_str).collect();
     // In the Rust-frontend path the per-ontology short registry is empty, so
     // `short(n) == n`; is_internal keys directly on the internal name.
     let is_internal = |n: &str| -> bool {
@@ -2375,6 +3018,7 @@ fn classify_with_evidence_mode(
         (flatten_grouped_subsumptions(grouped_subs), None)
     };
     let unsat = unsat_set.into_iter().collect();
+    timing_mark("output mapping done");
     Ok(ClassificationEvidence {
         classification: Classification {
             consistent: !out.inconsistent,
@@ -2720,6 +3364,27 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_registered_rewrites_skip_revalidation_and_only_while_registered() {
+        let user = super::tmpfile::TempPath::new("-user.ofn");
+        let rewrite = super::tmpfile::TempPath::new("-rewrite.ofn");
+        assert!(!super::is_trusted_rewrite(user.path()));
+        {
+            let _trusted = super::TrustedRewrite::register(rewrite.path());
+            assert!(super::is_trusted_rewrite(rewrite.path()));
+            assert!(!super::is_trusted_rewrite(user.path()));
+        }
+        assert!(!super::is_trusted_rewrite(rewrite.path()));
+    }
+
+    #[test]
+    fn invalid_user_input_is_still_rejected() {
+        let file = super::tmpfile::TempPath::new("-invalid-user.ofn");
+        std::fs::write(file.path(), "Ontology(SubClassOf(<urn:A> ObjectMinCardinality(-1 <urn:r>)))").unwrap();
+        let cfg = super::Config::from_env();
+        assert!(super::classify_with_evidence(&cfg, file.path()).is_err());
+    }
+
     #[test]
     fn sequential_classification_does_not_inherit_a_completed_race_cancellation() {
         let file = super::tmpfile::TempPath::new("-sequential-cancellation.ofn");

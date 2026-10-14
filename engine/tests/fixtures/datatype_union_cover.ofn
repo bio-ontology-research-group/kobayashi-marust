@@ -1,0 +1,10 @@
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x>
+Declaration(DataProperty(<http://x#p>))
+Declaration(Class(<http://x#X>)) Declaration(Class(<http://x#Y>))
+Declaration(Class(<http://x#W>)) Declaration(Class(<http://x#Z>))
+EquivalentClasses(<http://x#X> DataSomeValuesFrom(<http://x#p> xsd:integer))
+EquivalentClasses(<http://x#Y> DataSomeValuesFrom(<http://x#p> xsd:string))
+EquivalentClasses(<http://x#W> ObjectUnionOf(<http://x#X> <http://x#Y>))
+SubClassOf(<http://x#Z> DataSomeValuesFrom(<http://x#p> DataUnionOf(xsd:integer xsd:string)))
+)
