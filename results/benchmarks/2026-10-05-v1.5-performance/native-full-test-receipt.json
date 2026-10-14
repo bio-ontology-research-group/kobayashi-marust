@@ -1,0 +1,6 @@
+{
+  "result": "test result: ok. 1467 passed; 0 failed; 7 ignored; 0 measured; 1227 filtered out; finished in 0.16s",
+  "log_sha256": "0a924cacd10cf6689508dee5f807afb2e0755ee1f72b4d1e17d58ab8f671c213",
+  "source_manifest_sha256": "fbf8ca8496e2cebb6c139f3b9e3de452a4d8a21ece79383c48bd0b5b1d6fe674",
+  "scope": "konclude_ht tests; diagnostic release build"
+}

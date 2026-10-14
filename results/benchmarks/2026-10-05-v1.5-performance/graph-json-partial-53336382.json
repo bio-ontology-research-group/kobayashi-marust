@@ -1,0 +1,185 @@
+{
+  "complete": false,
+  "recorded_attempts": 3,
+  "classification_limit_s": 240,
+  "audit_limit_s": 600,
+  "memory_gib": 20,
+  "cpus": 1,
+  "summary": {
+    "ore_ont_10689": {
+      "expanded": {
+        "attempts": 0,
+        "verified": 0,
+        "mean_wall_s": null,
+        "median_wall_s": null,
+        "output_bytes": [],
+        "peak_bytes": []
+      },
+      "graph": {
+        "attempts": 1,
+        "verified": 1,
+        "mean_wall_s": 30.390152579173446,
+        "median_wall_s": 30.390152579173446,
+        "output_bytes": [
+          101411794
+        ],
+        "peak_bytes": [
+          617730048
+        ]
+      }
+    },
+    "ore_ont_8737": {
+      "expanded": {
+        "attempts": 1,
+        "verified": 1,
+        "mean_wall_s": 56.7692797165364,
+        "median_wall_s": 56.7692797165364,
+        "output_bytes": [
+          76
+        ],
+        "peak_bytes": [
+          1175097344
+        ]
+      },
+      "graph": {
+        "attempts": 1,
+        "verified": 1,
+        "mean_wall_s": 56.0180361289531,
+        "median_wall_s": 56.0180361289531,
+        "output_bytes": [
+          114
+        ],
+        "peak_bytes": [
+          1175953408
+        ]
+      }
+    },
+    "ore_ont_10174": {
+      "expanded": {
+        "attempts": 0,
+        "verified": 0,
+        "mean_wall_s": null,
+        "median_wall_s": null,
+        "output_bytes": [],
+        "peak_bytes": []
+      },
+      "graph": {
+        "attempts": 0,
+        "verified": 0,
+        "mean_wall_s": null,
+        "median_wall_s": null,
+        "output_bytes": [],
+        "peak_bytes": []
+      }
+    }
+  },
+  "rows": [
+    {
+      "arm": "graph",
+      "repetition": 1,
+      "graph_edges": true,
+      "ontology": "ore_ont_10689",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 30.390152579173446,
+      "peak_bytes": 617730048,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "7f8292bea124fb29e961b40226d491453c453d95ff1bd7058a776f1d8b709e8d",
+          "left_raw_sha256": "bc42c9d570b26a8f2b8b712e376132d7580c594b707136d479f27c74d54e6f48",
+          "right_raw_sha256": "87e361fe4f61646d874c8cc1b64d8728b55037c067a33a1f1f97fab88fe04711",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "332e1c748733f33656df73d750ad0be8d5dd29fe9c845170d1bc2ac582314924",
+      "taxonomy_bytes": 101411794,
+      "audit_execution": {
+        "status": "ok",
+        "exit_code": 0,
+        "wall_s": 134.6008628718555,
+        "peak_bytes": 4624506880,
+        "timeout_s": 600,
+        "memory_mib": 20480
+      },
+      "canonical_sha256": "cb0281c98aa241d7d810a46b3cb74fd9b3b5d073682b1338517ceae65e675cbf",
+      "audit_status": "compared"
+    },
+    {
+      "arm": "expanded",
+      "repetition": 0,
+      "graph_edges": false,
+      "ontology": "ore_ont_8737",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 56.7692797165364,
+      "peak_bytes": 1175097344,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "2f5e2478a6a21f304d5c49fa65aa6fc447cf5fe907b3a68ec375da05320f1cc6",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "5c1747b8eaafdc423c055818c0c138f458a6efffa5d4aa05142fc838ae3b59a5",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "1d9fd033910b3135301ad5ce619fb8978b1c112958f1f5553ee458f5ec2783ba",
+      "taxonomy_bytes": 76,
+      "audit_execution": {
+        "status": "ok",
+        "exit_code": 0,
+        "wall_s": 0.838389815762639,
+        "peak_bytes": 68472832,
+        "timeout_s": 600,
+        "memory_mib": 20480
+      },
+      "canonical_sha256": "b8a3d1b8a343bcc073790b1b5976f7cd52b799653f7e83ad5736e8b44b42a6e3",
+      "audit_status": "compared"
+    },
+    {
+      "arm": "graph",
+      "repetition": 0,
+      "graph_edges": true,
+      "ontology": "ore_ont_8737",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 56.0180361289531,
+      "peak_bytes": 1175953408,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "2f5e2478a6a21f304d5c49fa65aa6fc447cf5fe907b3a68ec375da05320f1cc6",
+          "left_raw_sha256": "1f67219d7333dcd7ad47de1827f1c86c3b525eae65e5bcae5cc2ac98d247240d",
+          "right_raw_sha256": "5c1747b8eaafdc423c055818c0c138f458a6efffa5d4aa05142fc838ae3b59a5",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "c1a6f6246722816b1ec21a467dc030de42606ab331fe3b9d3df0b8e4147ab5a5",
+      "taxonomy_bytes": 114,
+      "audit_execution": {
+        "status": "ok",
+        "exit_code": 0,
+        "wall_s": 0.6484268642961979,
+        "peak_bytes": 68300800,
+        "timeout_s": 600,
+        "memory_mib": 20480
+      },
+      "canonical_sha256": "7016384660acb22762cb4a6d5122c4bd258f632f23527a9955c98e17f3b737da",
+      "audit_status": "compared"
+    }
+  ],
+  "diagnostic_only": true,
+  "release_approved": false
+}

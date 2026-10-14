@@ -1,0 +1,151 @@
+{
+  "diagnostic_only": true,
+  "binary": {
+    "path": "/tmp/agent/km-v150-diagnostics/km-incremental-publication-5cdda610a7c7",
+    "sha256": "5cdda610a7c732a8073a41fef8eebb64101d112c9bbcee6504d0bbf356c2c9c8"
+  },
+  "tests": {
+    "tests": {
+      "passed": 26,
+      "sha256": "f2dd103e28e489388c2e5cc0ef8cbfdfb87570b26b70e7b1881e4bcc815674c7"
+    },
+    "module-tests": {
+      "passed": 26,
+      "sha256": "b66065bf6ceeb86f9c3e4d45de30deb7cc35ecf88cfcd1a35ea58aa60d598db5"
+    },
+    "typed-tests": {
+      "passed": 14,
+      "sha256": "6e5bd1fc7d2b921d805c429c9f1b3e7cf5ed1217dba964ee92e1384e0fd0ddb2"
+    }
+  },
+  "modes": {
+    "module": {
+      "cases": [
+        {
+          "repetition": 0,
+          "revision": 1,
+          "retained_s": 1.5746428458951414,
+          "fresh_s": 1.7718035200377926,
+          "faster": true
+        },
+        {
+          "repetition": 0,
+          "revision": 2,
+          "retained_s": 1.7460804340662435,
+          "fresh_s": 2.024286656989716,
+          "faster": true
+        },
+        {
+          "repetition": 0,
+          "revision": 3,
+          "retained_s": 2.2151226960122585,
+          "fresh_s": 1.9464594660094008,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 4,
+          "retained_s": 2.3998329580063,
+          "fresh_s": 1.9037234149873257,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 1,
+          "retained_s": 1.7417828340549022,
+          "fresh_s": 1.8312269049929455,
+          "faster": true
+        },
+        {
+          "repetition": 1,
+          "revision": 2,
+          "retained_s": 1.8966466289712116,
+          "fresh_s": 1.9056649460690096,
+          "faster": true
+        },
+        {
+          "repetition": 1,
+          "revision": 3,
+          "retained_s": 2.500095325987786,
+          "fresh_s": 1.8965341240400448,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 4,
+          "retained_s": 2.6400675690965727,
+          "fresh_s": 1.7079156580148265,
+          "faster": false
+        }
+      ],
+      "faster": 4,
+      "total": 8,
+      "all_answers_match": true
+    },
+    "full-input": {
+      "cases": [
+        {
+          "repetition": 0,
+          "revision": 1,
+          "retained_s": 2.3244291479932144,
+          "fresh_s": 1.8906715030316263,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 2,
+          "retained_s": 2.2309366470435634,
+          "fresh_s": 1.7304005649639294,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 3,
+          "retained_s": 2.386892210924998,
+          "fresh_s": 1.7558356049703434,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 4,
+          "retained_s": 2.348851380054839,
+          "fresh_s": 1.8887184389168397,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 1,
+          "retained_s": 2.3335173740051687,
+          "fresh_s": 1.7796122080180794,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 2,
+          "retained_s": 2.2405990089755505,
+          "fresh_s": 1.8947593700140715,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 3,
+          "retained_s": 2.4538380129961297,
+          "fresh_s": 1.8731049610069022,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 4,
+          "retained_s": 2.4256776260444894,
+          "fresh_s": 1.821634982014075,
+          "faster": false
+        }
+      ],
+      "faster": 0,
+      "total": 8,
+      "all_answers_match": true
+    }
+  },
+  "release_approved": false,
+  "scope": "Five revisions of ORE9944, two repetitions per mode. Not proof of all-case incremental improvement."
+}

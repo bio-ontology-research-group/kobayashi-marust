@@ -465,6 +465,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 functional_concepts_extension_data.functionality_added_role_process_linker;
             functional_concepts_extension_data.functionality_added_role_process_linker =
                 super::satellites::RoleSaturationProcessLinkerId::NONE;
+            functional_concepts_extension_data.functionality_added_roles.clear();
             role_sat_proc_linker
         };
         while functionality_role_sat_proc_linker.is_some() {
@@ -732,17 +733,49 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        self.process_next_successor_extensions_with_deadline(calc_alg_context, None)
+    }
+
+    /// Preserve pending work when the saturation driver's deadline expires.
+    /// Dependent nodes can re-enqueue each other without either callback reporting
+    /// an update, so the queue loop must not defer the deadline to its caller.
+    pub(super) fn process_next_successor_extensions_with_deadline(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+        deadline: Option<std::time::Instant>,
+    ) -> bool {
+        self.process_next_successor_extensions_with_limits(calc_alg_context, deadline, None)
+            .unwrap_or(false)
+    }
+
+    /// Bound queue visits that produce no reported extension update. `None`
+    /// means the work budget expired with pending work, never a fixpoint.
+    /// The caller must discard the approximation pass and use exact completion.
+    /// A productive callback returns immediately, so a later call starts a fresh
+    /// allowance. This does not impose a shorter deadline on productive work.
+    pub(super) fn process_next_successor_extensions_with_limits(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+        deadline: Option<std::time::Instant>,
+        no_update_limit: Option<usize>,
+    ) -> Option<bool> {
         let mut extension_processed = false;
+        let mut visits = 0usize;
         let ext_pro_indi_queue =
             calc_alg_context.saturation_sucessor_extension_individual_node_processing_queue(false);
 
         while !extension_processed
+            && !deadline.is_some_and(|limit| std::time::Instant::now() >= limit)
             && ext_pro_indi_queue.is_some()
             && !calc_alg_context
                 .process_context()
                 .sat_succ_ext_ind_node_proc_queue(ext_pro_indi_queue)
                 .is_empty()
         {
+            if no_update_limit.is_some_and(|limit| visits >= limit) {
+                return None;
+            }
+            visits = visits.saturating_add(1);
             let mut indi_proc_sat_node = calc_alg_context
                 .process_context_mut()
                 .sat_succ_ext_ind_node_proc_queue_mut(ext_pro_indi_queue)
@@ -796,7 +829,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .clear_current_process_individual();
             }
         }
-        extension_processed
+        Some(extension_processed)
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::processSuccessorALLConceptsExtensions`.
@@ -1209,19 +1242,29 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .process_context_mut()
                 .sat_successor_extension_functional_concepts_extension_data(succ_ext_data, true);
             self.add_successor_extension_to_processing_queue(&mut dep_indi, calc_alg_context);
-            let old_head = calc_alg_context
-                .process_context()
-                .sat_indi_node_functional_concept_ext_data(succ_indi_functional_con_ext_data)
-                .functionality_added_role_process_linker;
-            if !Self::s07_role_process_linker_chain_has_role(old_head, role, calc_alg_context) {
+            let (old_head, present) = {
+                let data = calc_alg_context
+                    .process_context()
+                    .sat_indi_node_functional_concept_ext_data(succ_indi_functional_con_ext_data);
+                (
+                    data.functionality_added_role_process_linker,
+                    data.functionality_added_roles.contains(&role),
+                )
+            };
+            debug_assert_eq!(
+                present,
+                Self::s07_role_process_linker_chain_has_role(old_head, role, calc_alg_context)
+            );
+            if !present {
                 let role_proc_linker =
                     Self::s07_create_role_process_linker(role, old_head, calc_alg_context);
-                calc_alg_context
+                let data = calc_alg_context
                     .process_context_mut()
                     .sat_indi_node_functional_concept_ext_data_mut(
                         succ_indi_functional_con_ext_data,
-                    )
-                    .functionality_added_role_process_linker = role_proc_linker;
+                    );
+                data.functionality_added_role_process_linker = role_proc_linker;
+                data.functionality_added_roles.insert(role);
             }
         }
     }
@@ -1654,17 +1697,27 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .sat_successor_extension_functional_concepts_extension_data(succ_ext_data, true);
         self.add_successor_extension_to_processing_queue(indi_proc_sat_node, calc_alg_context);
 
-        let old_head = calc_alg_context
-            .process_context()
-            .sat_indi_node_functional_concept_ext_data(succ_indi_functional_con_ext_data)
-            .functionality_added_role_process_linker;
-        if !Self::s07_role_process_linker_chain_has_role(old_head, role, calc_alg_context) {
+        let (old_head, present) = {
+            let data = calc_alg_context
+                .process_context()
+                .sat_indi_node_functional_concept_ext_data(succ_indi_functional_con_ext_data);
+            (
+                data.functionality_added_role_process_linker,
+                data.functionality_added_roles.contains(&role),
+            )
+        };
+        debug_assert_eq!(
+            present,
+            Self::s07_role_process_linker_chain_has_role(old_head, role, calc_alg_context)
+        );
+        if !present {
             let role_process_linker =
                 Self::s07_create_role_process_linker(role, old_head, calc_alg_context);
-            calc_alg_context
+            let data = calc_alg_context
                 .process_context_mut()
-                .sat_indi_node_functional_concept_ext_data_mut(succ_indi_functional_con_ext_data)
-                .functionality_added_role_process_linker = role_process_linker;
+                .sat_indi_node_functional_concept_ext_data_mut(succ_indi_functional_con_ext_data);
+            data.functionality_added_role_process_linker = role_process_linker;
+            data.functionality_added_roles.insert(role);
         }
     }
 
@@ -2113,6 +2166,87 @@ mod tests {
         assert!(ctx
             .saturation_sucessor_extension_individual_node_processing_queue(false)
             .is_none());
+    }
+
+    #[test]
+    fn s07_successor_deadline_interrupts_cyclic_qualified_notifications() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_functional_concepts_extension_processing = true;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let role = make_role(&mut ctx, 8019);
+        let concept = make_concept(&mut ctx, CCATLEAST, role, 1);
+        let descriptor = make_descriptor(&mut ctx, concept, false);
+        let mut first = make_sat_node_with_individual(&mut ctx, 8021);
+        let second = make_sat_node_with_individual(&mut ctx, 8023);
+        for (source, target) in [(first, second), (second, first)] {
+            ctx.process_context_mut()
+                .sat_node_mut(source)
+                .add_copy_depending_individual_node_linker(NegLink {
+                    target,
+                    negated: false,
+                });
+        }
+        algo.add_qualified_functional_atmost_concept_extension_processing(
+            descriptor, &mut first, &mut ctx,
+        );
+        assert_eq!(algo.process_next_successor_extensions_with_limits(
+            &mut ctx, None, Some(16),
+        ), None, "a no-update cycle must defer, never claim a drained queue");
+        assert!(algo.has_remaining_extension_processing_nodes(&mut ctx));
+        assert!(!algo.process_next_successor_extensions_with_deadline(
+            &mut ctx,
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(10)),
+        ));
+        // Neither callback creates a structural update, but each forwards the
+        // notification to its dependent. The deadline must leave this cycle
+        // queued, so the saturation caller reports an unfinished pass.
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(false);
+        assert!(!ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).is_empty());
+        assert!(algo.has_remaining_extension_processing_nodes(&mut ctx));
+    }
+
+    #[test]
+    fn s07_successor_work_budget_preserves_pending_work_and_allows_a_finite_drain() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = make_sat_node_with_individual(&mut ctx, 71);
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(true);
+        ctx.process_context_mut()
+            .sat_succ_ext_ind_node_proc_queue_mut(queue)
+            .insert_process_individual(node, 71);
+        let before = ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).clone();
+        assert_eq!(algo.process_next_successor_extensions_with_limits(
+            &mut ctx, None, Some(0),
+        ), None);
+        assert_eq!(&before, ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue));
+        // Spending the allowance on the last queue item is a normal drain, not
+        // an interruption. Empty queues remain drained even with zero allowance.
+        assert_eq!(algo.process_next_successor_extensions_with_limits(
+            &mut ctx, None, Some(1),
+        ), Some(false));
+        assert!(ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).is_empty());
+        assert_eq!(algo.process_next_successor_extensions_with_limits(
+            &mut ctx, None, Some(0),
+        ), Some(false));
+    }
+
+    #[test]
+    fn s07_expired_successor_deadline_preserves_pending_work() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = make_sat_node_with_individual(&mut ctx, 71);
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(true);
+        ctx.process_context_mut()
+            .sat_succ_ext_ind_node_proc_queue_mut(queue)
+            .insert_process_individual(node, 71);
+        let before = ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).clone();
+        assert!(!algo.process_next_successor_extensions_with_deadline(
+            &mut ctx, Some(std::time::Instant::now()),
+        ));
+        assert_eq!(&before, ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue));
+        // The ordinary driver can still consume the retained work afterwards.
+        assert!(!algo.process_next_successor_extensions(&mut ctx));
+        assert!(ctx.process_context().sat_succ_ext_ind_node_proc_queue(queue).is_empty());
     }
 
     #[test]

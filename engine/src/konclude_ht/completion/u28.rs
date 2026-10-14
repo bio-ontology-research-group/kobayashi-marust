@@ -64,7 +64,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::substrate::{Cint64, Id};
 use super::super::model::{IndividualId, RoleId};
@@ -674,7 +675,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return true;
         }
 
-        let mut dep_set: HashSet<(Cint64, TrackPointId)> = HashSet::new();
+        let mut dep_set: HashSet<(Cint64, TrackPointId)> = HashSet::default();
         let mut dep_list: VecDeque<(Cint64, TrackPointId)> = VecDeque::new();
         dep_set.insert((base_depth, dep_track_point));
         dep_list.push_back((base_depth, dep_track_point));

@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "graph-json-production-52397699d8b1",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-graph-json-production-52397699d8b1",
+      "sha256": "52397699d8b1f64c7471d197eb175f5184d56a89fe51285c0cf7aec5e9819159"
+    }
+  ],
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+    "KM_FAST_IRI_GRAMMAR": "1",
+    "KM_JSON_GRAPH_EDGES": "1"
+  },
+  "source_manifest_sha256": "119c0cd38325328355e365d61883bf115d436d29551369a0c7edd34ff9bd1a55",
+  "build_receipt_sha256": "9984a7be82710120237f77d8df5ee0a4f7ddfc6e05d3a9204cf63117f716f6e7",
+  "production_profile": true,
+  "release_approved": false,
+  "scope": "Full frozen corpus with explicit graph-edge output and existing closure audit. Same production binary as verified paired diagnostic 53336382. No release acceptance claim.",
+  "certification_pending": false,
+  "certification_receipt_sha256": "22958988a6635dacfde8b4c835bc3678ada3031cc0f13340f8864def804cb350"
+}

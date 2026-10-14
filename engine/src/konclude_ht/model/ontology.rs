@@ -30,7 +30,7 @@ use super::{
     ReplacementDataId, RoleChainId, RoleId, SaturationConceptReferenceLinkingId,
     UnsatisfiableCachingTagsId, VariableId,
 };
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 /// Generate the `get / get_mut / alloc` accessor trio for one terminology arena.
 macro_rules! onto_accessors {
@@ -137,9 +137,9 @@ impl NominalSchemaTemplate {
             terminology: INVALID,
             template_concept: ConceptId::NONE,
             reference_concept: ConceptId::NONE,
-            nominal_schema_concept_set: HashSet::new(),
-            template_concept_nominal_schema_concept_hash: HashMap::new(),
-            template_absorbable_concept_nominal_schema_concept_hash: HashMap::new(),
+            nominal_schema_concept_set: HashSet::default(),
+            template_concept_nominal_schema_concept_hash: HashMap::default(),
+            template_absorbable_concept_nominal_schema_concept_hash: HashMap::default(),
         }
     }
 
@@ -434,7 +434,7 @@ impl OntologyArenas {
         create: bool,
     ) -> Option<&mut HashSet<IndividualId>> {
         if self.active_individual_set.is_none() && create {
-            self.active_individual_set = Some(HashSet::new());
+            self.active_individual_set = Some(HashSet::default());
         }
         self.active_individual_set.as_mut()
     }
@@ -480,7 +480,7 @@ impl OntologyArenas {
         create: bool,
     ) -> Option<&mut HashSet<ConceptId>> {
         if self.equivalent_concept_non_candidate_set.is_none() && create {
-            self.equivalent_concept_non_candidate_set = Some(HashSet::new());
+            self.equivalent_concept_non_candidate_set = Some(HashSet::default());
         }
         self.equivalent_concept_non_candidate_set.as_mut()
     }
@@ -577,11 +577,11 @@ mod tests {
         let mapped_nominal_schema_concept = arenas.alloc_concept(Concept::new());
         let absorbable_concept = arenas.alloc_concept(Concept::new());
 
-        let mut set = HashSet::new();
+        let mut set = HashSet::default();
         set.insert(nominal_schema_concept);
-        let mut hash = HashMap::new();
+        let mut hash = HashMap::default();
         hash.insert(mapped_template_concept, vec![mapped_nominal_schema_concept]);
-        let mut absorbable_hash = HashMap::new();
+        let mut absorbable_hash = HashMap::default();
         absorbable_hash.insert(absorbable_concept, nominal_schema_concept);
 
         let mut templ = NominalSchemaTemplate::new();
@@ -622,7 +622,7 @@ mod tests {
         let nominal_schema_concept_a = arenas.alloc_concept(Concept::new());
         let nominal_schema_concept_b = arenas.alloc_concept(Concept::new());
 
-        let mut hash = HashMap::new();
+        let mut hash = HashMap::default();
         hash.insert(
             template_concept,
             vec![nominal_schema_concept_a, nominal_schema_concept_b],

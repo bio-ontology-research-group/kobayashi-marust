@@ -1,0 +1,26 @@
+{
+  "diagnostic_only": true,
+  "changed_raw_fields": [
+    "concepts",
+    "clauses",
+    "queries",
+    "role_domains",
+    "role_ranges",
+    "definers",
+    "source_axioms"
+  ],
+  "changed_name_resolved_side_fields": [],
+  "resolved_fields": [
+    "role_domains",
+    "role_ranges",
+    "public_queries"
+  ],
+  "ignored_derived_fields": [
+    "concepts",
+    "clauses",
+    "queries",
+    "definers",
+    "source_axioms"
+  ],
+  "scope": "Observed ORE 9944 typed side fields only; not a production fingerprint replacement. Metadata completeness and all TInput field handling require audit."
+}

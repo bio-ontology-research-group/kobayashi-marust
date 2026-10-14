@@ -1,0 +1,28 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "--manifest-path",
+    "engine/Cargo.toml",
+    "--bin",
+    "km",
+    "-v"
+  ],
+  "source_manifest_sha256": "a1bc44f2ae298b1bf9d5c8d661960e1369d4ecc55cff1e584133bcec5c86ea5b",
+  "runner_sha256": "ff8cba60d87b4c1dc8d33f72b9c9efda7a013c7424e8178df1462380186b4128",
+  "exit_code": 0,
+  "source_files_rechecked": 635,
+  "build_log_sha256": "e0eb4fab33ac43d14a9f11c53b72c432758ca92eb3b2048ded0ef160cfdbae8f",
+  "production_profile": true,
+  "profile": {
+    "lto": true,
+    "codegen_units": 1,
+    "incremental": false
+  },
+  "release_approved": false,
+  "binary_sha256": "78312a61ce892a723c4d05e4aa4cc6d3e6a7fbc687cafc72b3612d1de79d2df6",
+  "local_binary": "/tmp/agent/km-v150-diagnostics/km-unique-state-production-78312a61ce89",
+  "rustc_version": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n"
+}

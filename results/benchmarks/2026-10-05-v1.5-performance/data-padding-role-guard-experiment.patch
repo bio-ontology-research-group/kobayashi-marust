@@ -1,0 +1,225 @@
+diff --git a/engine/src/frontend/datatypes.rs b/engine/src/frontend/datatypes.rs
+index e8307380..ca085cc1 100644
+--- a/engine/src/frontend/datatypes.rs
++++ b/engine/src/frontend/datatypes.rs
+@@ -1603,7 +1603,10 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
+         let builtin = datatype.as_deref().and_then(builtin_datatype_key);
+         return match (value, builtin) {
+             (Val::Bool(_), Some("boolean")) => Some("boolean"),
+-            (Val::Num(value), Some("integer" | "int" | "nonNegativeInteger" | "positiveInteger"))
++            // Integral decimal spellings denote the same values as integer
++            // literals. Keep the exact lexical/value check; fractional decimal
++            // values remain outside this atomic bridge admission boundary.
++            (Val::Num(value), Some("decimal" | "integer" | "int" | "nonNegativeInteger" | "positiveInteger"))
+                 if value.is_integer() && exact_swrl_integer(literal).is_some() => Some("integer"),
+             (Val::Str(_, None), Some("string")) => Some("string"),
+             (Val::Str(_, None), None) if datatype.is_none() => Some("string"),
+@@ -2533,6 +2536,34 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn bridge_integral_decimal_literals_preserve_integer_value_identity() {
++        for value in -16..=16 {
++            let decimal = format!("__dt__val__\"{value}.000\"^^xsd:decimal");
++            let integer = format!("__dt__val__\"{value}\"^^xsd:integer");
++            assert!(bridge_exact_atomic_name(&decimal));
++            assert_eq!(bridge_exact_value_equal(&decimal, &integer), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&decimal, &integer), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&integer, &decimal), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__integer"), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__decimal"), Some(true));
++            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__positiveInteger"), Some(value > 0));
++            assert_eq!(bridge_exact_atomic_disjoint(&decimal, "__dt__string"), Some(true));
++        }
++        for spelling in ["+001.000", "1.", " 1.0 "] {
++            let decimal = format!("__dt__val__\"{spelling}\"^^<http://www.w3.org/2001/XMLSchema#decimal>");
++            assert_eq!(bridge_exact_value_equal(&decimal, "__dt__val__\"1\"^^xsd:integer"), Some(true));
++        }
++        assert_eq!(bridge_exact_value_equal("__dt__val__\"-.0\"^^xsd:decimal",
++            "__dt__val__\"0\"^^xsd:integer"), Some(true));
++        for spelling in ["1.5", "-0.25", "1E0", "NaN", "INF", ".", "--1", "1.0.0",
++            "170141183460469231731687303715884105728"] {
++            let decimal = format!("__dt__val__\"{spelling}\"^^xsd:decimal");
++            assert!(!bridge_exact_atomic_name(&decimal), "unsupported or invalid decimal admitted: {spelling}");
++        }
++        assert!(!bridge_exact_atomic_name("__dt__val__\"1.0\"^^<http://example.org/decimal>"));
++    }
++
+     #[test]
+     fn bridge_plain_string_literal_is_the_xsd_string_abbreviation() {
+         let plain = "__dt__val__\"makesStmtsAbout\"";
+diff --git a/engine/src/konclude_ht/bridge.rs b/engine/src/konclude_ht/bridge.rs
+index 837a2be4..ab9b9afa 100644
+--- a/engine/src/konclude_ht/bridge.rs
++++ b/engine/src/konclude_ht/bridge.rs
+@@ -869,18 +869,20 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
+ 
+ /// Evaluate an object-language concept on one fresh data-domain element in
+ /// the separated OWL interpretation used by the exact atomic-datatype route.
+-/// Ordinary classes and nominals have no data-domain instances, and ordinary
+-/// object/data roles have no outgoing edge from this element. The built-in
++/// The proposed type supplies ordinary class labels; nominals remain false.
++/// Object/data roles have no outgoing edge from this element. The built-in
+ /// universal role cannot be represented by that witness and therefore makes
+ /// the certificate fail closed.
+-fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
++fn padding_data_node_holds(concept: &SourceConcept, positive: &std::collections::HashSet<String>) -> Option<bool> {
+     Some(match concept {
+-        SourceConcept::Name(_) | SourceConcept::Bottom | SourceConcept::Nominal(_) => false,
++        SourceConcept::Name(name) if name.starts_with("__dt__") => return None,
++        SourceConcept::Name(name) => positive.contains(name),
++        SourceConcept::Bottom | SourceConcept::Nominal(_) => false,
+         SourceConcept::Top => true,
+-        SourceConcept::Not(operand) => !blank_data_node_holds(operand)?,
++        SourceConcept::Not(operand) => !padding_data_node_holds(operand, positive)?,
+         SourceConcept::And(operands) => {
+             for operand in operands {
+-                if !blank_data_node_holds(operand)? {
++                if !padding_data_node_holds(operand, positive)? {
+                     return Some(false);
+                 }
+             }
+@@ -888,7 +890,7 @@ fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
+         }
+         SourceConcept::Or(operands) => {
+             for operand in operands {
+-                if blank_data_node_holds(operand)? {
++                if padding_data_node_holds(operand, positive)? {
+                     return Some(true);
+                 }
+             }
+@@ -917,6 +919,59 @@ fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
+     })
+ }
+ 
++// Experimental source-GCI witness only. No production admission change until
++// concrete datatype transport, RBox/ABox coverage and source binding are proved.
++fn find_data_padding_type(tin: &TInput) -> Option<std::collections::HashSet<String>> {
++    use crate::json_io::SourceAxiomKind;
++    // The source GCI list does not cover every edge-generating RBox clause.
++    // In particular, reflexivity would put a self edge on each added node.
++    // Every variable in a role-headed clause must be guarded by a role premise;
++    // even an unguarded body-class variable could become true only on padding.
++    // Separate datatype-role guards retain endpoint sorts for data roles.
++    for clause in &tin.clauses {
++        if !clause.head.iter().any(|atom| matches!(atom, HAtom::Role { .. })) { continue; }
++        let guarded: std::collections::HashSet<_> = clause.body.iter().flat_map(|atom| {
++            match atom { HAtom::Role { s, t, .. } => vec![*s, *t], _ => Vec::new() }
++        }).collect();
++        if clause.body.iter().chain(&clause.head).any(|atom| match atom {
++            HAtom::Role { s, t, .. } | HAtom::Eq { s, t } => !guarded.contains(s) || !guarded.contains(t),
++            HAtom::Concept { t, .. } | HAtom::Exist { t, .. } => !guarded.contains(t),
++        }) { return None; }
++    }
++    let satisfies = |positive: &std::collections::HashSet<String>| {
++        tin.source_axioms.iter().all(|axiom| {
++            let (Some(left), Some(right)) = (padding_data_node_holds(&axiom.left, positive),
++                padding_data_node_holds(&axiom.right, positive)) else { return false };
++            match axiom.kind {
++                SourceAxiomKind::SubClass => !left || right,
++                SourceAxiomKind::Equivalent => left == right,
++                SourceAxiomKind::Disjoint => !(left && right),
++            }
++        })
++    };
++    let empty = std::collections::HashSet::new();
++    if satisfies(&empty) { return Some(empty); }
++    for seed in tin.concepts.iter().filter(|name| !name.starts_with("__")).take(256) {
++        let mut positive = std::collections::HashSet::from([seed.clone()]);
++        loop {
++            let before = positive.len();
++            for axiom in &tin.source_axioms {
++                if axiom.kind != SourceAxiomKind::SubClass { continue; }
++                let SourceConcept::Name(name) = &axiom.right else { continue };
++                if name.starts_with("__dt__") { continue; }
++                if padding_data_node_holds(&axiom.left, &positive) == Some(true) {
++                    positive.insert(name.clone());
++                }
++            }
++            if positive.len() == before { break; }
++        }
++        // Check every source axiom, including data-bearing ones. A positive
++        // padding class must not activate a missing existential data edge.
++        if satisfies(&positive) { return Some(positive); }
++    }
++    None
++}
++
+ /// Complete datatype fragment used by the 10621 route.  The accepted syntax
+ /// is intentionally atomic and role-local:
+ ///
+@@ -1213,6 +1268,12 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
+     // Separately, the only non-dt source use allowed on a data role is its
+     // ordinary property-domain axiom `exists(role, Top) <= NamedClass`,
+     // evaluated at the object predecessor.
++    let padding_type = if std::env::var_os("KM_EXPERIMENTAL_DATA_PADDING").is_some() {
++        let Some(padding) = find_data_padding_type(tin) else {
++            defer!("no checked experimental data padding type was found");
++        };
++        padding
++    } else { std::collections::HashSet::new() };
+     for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
+         if source_concept_contains_internal_datatype(&axiom.left)
+             || source_concept_contains_internal_datatype(&axiom.right)
+@@ -1225,8 +1286,8 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
+             continue;
+         }
+         let (Some(left), Some(right)) = (
+-            blank_data_node_holds(&axiom.left),
+-            blank_data_node_holds(&axiom.right),
++            padding_data_node_holds(&axiom.left, &padding_type),
++            padding_data_node_holds(&axiom.right, &padding_type),
+         ) else {
+             defer!("a non-datatype axiom cannot be evaluated on a blank data node");
+         };
+@@ -23165,3 +23226,49 @@ mod tests {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod experimental_padding_tests {
++    use super::*;
++
++    #[test]
++    fn datatype_padding_witness_checks_every_source_axiom() {
++        let mut input: TInput = serde_json::from_value(serde_json::json!({
++            "concepts": ["A", "B", "Parent"], "roles": ["data"], "clauses": [],
++            "source_axioms": [
++                {"kind":"equivalent", "left":{"Name":"A"}, "right":{"Not":{"Name":"B"}}},
++                {"kind":"sub-class", "left":{"Name":"A"}, "right":{"Name":"Parent"}},
++                {"kind":"sub-class", "left":{"Name":"B"}, "right":{"Name":"Parent"}}
++            ]
++        })).unwrap();
++        let witness = find_data_padding_type(&input).unwrap();
++        assert!(witness.contains("Parent"));
++        assert_ne!(witness.contains("A"), witness.contains("B"));
++        input.clauses.push(HtClause { body: vec![], head: vec![HAtom::Role { r: 0, s: 0, t: 0 }] });
++        assert!(find_data_padding_type(&input).is_none(), "reflexivity needs a padding edge");
++        input.clauses[0] = HtClause { body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
++            head: vec![HAtom::Role { r: 0, s: 2, t: 2 }] };
++        assert!(find_data_padding_type(&input).is_none(), "a role guard must bind each head endpoint");
++        input.clauses[0].head = vec![HAtom::Role { r: 0, s: 1, t: 0 }];
++        assert!(find_data_padding_type(&input).is_some(), "guarded inverse inclusion is preserved");
++        input.clauses[0].body.push(HAtom::Concept { neg: false, c: 0, t: 2 });
++        assert!(find_data_padding_type(&input).is_none(), "unguarded body labels can hold only on padding");
++        input.clauses[0].body.pop();
++        input.clauses[0].head.push(HAtom::Concept { neg: false, c: 0, t: 2 });
++        assert!(find_data_padding_type(&input).is_none(), "unguarded head labels need separate verification");
++        input.clauses.clear();
++        // Either choice now activates a datatype-bearing existential. Skipping
++        // those axioms would incorrectly accept a padding node with no edge.
++        for name in ["A", "B"] {
++            input.source_axioms.push(serde_json::from_value(serde_json::json!({
++                "kind":"sub-class", "left":{"Name":name},
++                "right":{"Exists":[{"Name":"data"},{"Name":"__dt__integer"}]}
++            })).unwrap());
++        }
++        assert!(find_data_padding_type(&input).is_none());
++        assert_eq!(padding_data_node_holds(&SourceConcept::Nominal("a".into()), &witness), Some(false));
++        assert_eq!(padding_data_node_holds(&SourceConcept::Name("__dt__integer".into()), &witness), None);
++        assert_eq!(padding_data_node_holds(&SourceConcept::Forall(SourceRole::Universal,
++            Box::new(SourceConcept::Top)), &witness), None);
++    }
++}

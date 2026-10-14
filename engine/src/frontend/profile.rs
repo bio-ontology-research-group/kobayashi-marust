@@ -8,7 +8,10 @@
 //! nodes, not source text, so comments, IRIs containing constructor names, and
 //! formatting cannot affect the result.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
+// Membership/count tables only; iteration order never reaches a result.
+type HashSet<T> = crate::fxhash::FxHashSet<T>;
+type HashMap<K, V> = crate::fxhash::FxHashMap<K, V>;
 
 use smallvec::SmallVec;
 
@@ -237,7 +240,7 @@ impl RulePropertyKinds {
             || !object.is_disjoint(&data) {
             return Err("ambiguous source property kinds".into());
         }
-        let mut seen = HashSet::new();
+        let mut seen = HashSet::default();
         roles.iter().map(|role| {
             let iri = iri_map.get(role).ok_or_else(|| format!("missing full IRI for worker role {role}"))?;
             if !seen.insert(iri) { return Err(format!("duplicate worker property IRI {iri}")); }
@@ -421,8 +424,11 @@ pub struct SourceProfileBuilder<'a> {
     different_individual_groups: Vec<Vec<&'a str>>,
     conditional_nominal_roles: HashSet<&'a str>,
     conditional_nominal_role: Option<&'a str>,
+    /// `ClassAssertion(owl:Thing a)` axioms, for the top-identity ABox
+    /// separation certificate.
+    top_class_assertions: u64,
     union_equivalence: bool,
-    axiom_types: std::collections::HashMap<&'a str, u64>,
+    axiom_types: HashMap<&'a str, u64>,
 }
 
 impl<'a> Default for SourceProfileBuilder<'a> {
@@ -430,27 +436,27 @@ impl<'a> Default for SourceProfileBuilder<'a> {
         SourceProfileBuilder {
             stats: SourceStatistics::default(),
             expr: ExpressivityProfile::default(),
-            classes: HashSet::new(),
-            object_properties: HashSet::new(),
-            data_properties: HashSet::new(),
-            individuals: HashSet::new(),
-            declared_classes: HashSet::new(),
-            declared_object_properties: HashSet::new(),
-            declared_data_properties: HashSet::new(),
-            declared_individuals: HashSet::new(),
-            transitive_roles: HashSet::new(),
-            restriction_roles: HashSet::new(),
-            subclass_lhs: HashSet::new(),
-            existential_definition_lhs: HashSet::new(),
-            inverse_partners: HashMap::new(),
-            number_roles: HashSet::new(),
-            positive_assertion_roles: HashSet::new(),
-            negative_assertion_roles: HashSet::new(),
-            inverse_roles: HashSet::new(),
-            non_simple_roles: HashSet::new(),
-            chain_roles: HashSet::new(),
-            role_dependencies: HashMap::new(),
-            clause_retained_constraint_roles: HashSet::new(),
+            classes: HashSet::default(),
+            object_properties: HashSet::default(),
+            data_properties: HashSet::default(),
+            individuals: HashSet::default(),
+            declared_classes: HashSet::default(),
+            declared_object_properties: HashSet::default(),
+            declared_data_properties: HashSet::default(),
+            declared_individuals: HashSet::default(),
+            transitive_roles: HashSet::default(),
+            restriction_roles: HashSet::default(),
+            subclass_lhs: HashSet::default(),
+            existential_definition_lhs: HashSet::default(),
+            inverse_partners: HashMap::default(),
+            number_roles: HashSet::default(),
+            positive_assertion_roles: HashSet::default(),
+            negative_assertion_roles: HashSet::default(),
+            inverse_roles: HashSet::default(),
+            non_simple_roles: HashSet::default(),
+            chain_roles: HashSet::default(),
+            role_dependencies: HashMap::default(),
+            clause_retained_constraint_roles: HashSet::default(),
             universal_role_beyond_subrole_super: false,
             number_role_seen: false,
             object_cardinality_seen: false,
@@ -463,10 +469,11 @@ impl<'a> Default for SourceProfileBuilder<'a> {
             nominal_from_concept: false,
             same_individual_groups: Vec::new(),
             different_individual_groups: Vec::new(),
-            conditional_nominal_roles: HashSet::new(),
+            conditional_nominal_roles: HashSet::default(),
             conditional_nominal_role: None,
+            top_class_assertions: 0,
             union_equivalence: false,
-            axiom_types: std::collections::HashMap::new(),
+            axiom_types: HashMap::default(),
         }
     }
 }
@@ -890,6 +897,9 @@ impl<'a> SourceProfileBuilder<'a> {
             "ClassAssertion" => {
                 self.logical_abox(head);
                 self.stats.class_assertions += 1;
+                if args.first().and_then(|c| c.as_atom()).is_some_and(is_top) {
+                    self.top_class_assertions += 1;
+                }
                 if let Some(c) = args.first() {
                     self.concept(c, 1);
                 }
@@ -1139,6 +1149,11 @@ impl<'a> SourceProfileBuilder<'a> {
             &self.expr,
             self.nominal_from_concept,
             identity_consistent,
+        ) || top_identity_abox_tbox_separable(
+            &self.stats,
+            &self.expr,
+            self.top_class_assertions,
+            self.nominal_from_concept || !self.conditional_nominal_roles.is_empty(),
         );
         let positive_el_abox_materializable = positive_el_abox_materializable(
             &self.stats,
@@ -1192,7 +1207,7 @@ impl<'a> SourceProfileBuilder<'a> {
     /// Equality groups are unioned first. Every pair in each n-ary
     /// DifferentIndividuals axiom must then have distinct representatives.
     fn identity_constraints_consistent(&self) -> bool {
-        let mut ids: HashMap<&str, usize> = HashMap::new();
+        let mut ids: HashMap<&str, usize> = HashMap::default();
         for group in self
             .same_individual_groups
             .iter()
@@ -1237,7 +1252,7 @@ impl<'a> SourceProfileBuilder<'a> {
             // DifferentIndividuals is pairwise inequality. Its representatives
             // are pairwise distinct exactly when this set has no duplicate;
             // avoid an O(n²) scan on ORE's 100k-individual identity groups.
-            let mut representatives = HashSet::with_capacity(group.len());
+            let mut representatives = HashSet::with_capacity_and_hasher(group.len(), Default::default());
             for name in group {
                 let Some(&node) = ids.get(name) else {
                     continue;
@@ -1681,7 +1696,7 @@ impl<'a> SourceProfileBuilder<'a> {
             return false;
         }
 
-        let mut seen: HashSet<&'a str> = HashSet::new();
+        let mut seen: HashSet<&'a str> = HashSet::default();
         let mut pending: Vec<&'a str> = self.number_roles.iter().copied().collect();
         while let Some(role) = pending.pop() {
             if !seen.insert(role) {
@@ -1715,7 +1730,7 @@ impl<'a> SourceProfileBuilder<'a> {
         // mechanism, require every negative-assertion component to be disjoint
         // from every non-simple role. This retains 9540: its has_point/is_front/
         // is_back negative roles are disconnected from its two transitive roles.
-        let mut seen_negative: HashSet<&'a str> = HashSet::new();
+        let mut seen_negative: HashSet<&'a str> = HashSet::default();
         let mut pending_negative: Vec<&'a str> =
             self.negative_assertion_roles.iter().copied().collect();
         while let Some(role) = pending_negative.pop() {
@@ -1738,7 +1753,7 @@ impl<'a> SourceProfileBuilder<'a> {
         // a non-transitive role-chain component. Explicit TransitiveObjectProperty
         // alone is safe here; its direct edges already trigger domain/range and
         // transitive universal propagation is implemented separately.
-        let mut seen_positive: HashSet<&'a str> = HashSet::new();
+        let mut seen_positive: HashSet<&'a str> = HashSet::default();
         let mut pending_positive: Vec<&'a str> =
             self.positive_assertion_roles.iter().copied().collect();
         while let Some(role) = pending_positive.pop() {
@@ -1998,6 +2013,37 @@ fn positive_abox_tbox_separable(
             .all(|kind| SAFE_AXIOMS.contains(&kind.as_str()))
 }
 
+/// Prove that an ABox of `ClassAssertion(owl:Thing a)` and `SameIndividual`
+/// axioms only may be omitted, for any TBox/RBox in which no individual name
+/// occurs (no concept-level nominal), without rules, keys, or imports.
+///
+/// Such an ABox constrains only the interpretation of its own individual
+/// names: every model I of the TBox/RBox T (whose domain is nonempty by
+/// definition) expands to a model of T plus the ABox by interpreting every
+/// one of those names as one element of I's domain, and every model of the
+/// whole ontology is a model of T. So both have exactly the same models
+/// restricted to the class and property signature: the ontology is
+/// consistent iff T is, and it entails a named-class subsumption iff T does.
+/// `DifferentIndividuals` is excluded (it would need a second element and a
+/// union-find check), as is every typed or role assertion.
+fn top_identity_abox_tbox_separable(
+    source: &SourceStatistics,
+    expr: &ExpressivityProfile,
+    top_class_assertions: u64,
+    concept_nominal: bool,
+) -> bool {
+    let count = |kind: &str| source.axiom_types.get(kind).copied().unwrap_or(0);
+    source.abox_axioms > 0
+        && source.abox_axioms == top_class_assertions + count("SameIndividual")
+        && count("ClassAssertion") == top_class_assertions
+        && !concept_nominal
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.imports == 0
+        && count("HasKey") == 0
+        && !expr.grounding
+}
+
 /// Admit the positive EL++ ABox fragment whose consistency can be decided by
 /// [`crate::elcomplete::positive_abox_consistent`].
 ///
@@ -2142,12 +2188,12 @@ fn observe_term<'a>(
 pub fn clause_statistics(clauses: &[crate::json_io::JClause]) -> ClauseStatistics {
     use crate::json_io::JAtom;
     let mut out = ClauseStatistics::default();
-    let mut concepts: HashSet<&str> = HashSet::new();
-    let mut roles: HashSet<&str> = HashSet::new();
-    let mut functions: HashSet<&str> = HashSet::new();
-    let mut individuals: HashSet<&str> = HashSet::new();
-    let mut top_pairs: HashSet<(&str, &str)> = HashSet::new();
-    let mut bottom_pairs: HashSet<(&str, &str)> = HashSet::new();
+    let mut concepts: HashSet<&str> = HashSet::default();
+    let mut roles: HashSet<&str> = HashSet::default();
+    let mut functions: HashSet<&str> = HashSet::default();
+    let mut individuals: HashSet<&str> = HashSet::default();
+    let mut top_pairs: HashSet<(&str, &str)> = HashSet::default();
+    let mut bottom_pairs: HashSet<(&str, &str)> = HashSet::default();
     let mut body_concepts: SmallVec<[&str; 4]> = SmallVec::new();
     let mut head_concepts: SmallVec<[&str; 4]> = SmallVec::new();
     let mut body_roles: SmallVec<[&str; 4]> = SmallVec::new();
@@ -2305,6 +2351,39 @@ mod tests {
         assert!(!p.expressivity.negation_disjunction);
         assert_eq!(p.source.existentials, 1);
         assert_eq!(p.source.logical_axioms, 3);
+    }
+
+    #[test]
+    fn top_identity_abox_separation_certificate_fails_closed() {
+        // Thing-typed, possibly identified individuals: the TBox may use
+        // negation, cardinality, datatypes and functional roles.
+        let top_only = source(
+            r#"Ontology(
+              SubClassOf(<A> ObjectComplementOf(<B>))
+              SubClassOf(<A> ObjectMaxCardinality(1 <r> <B>))
+              FunctionalObjectProperty(<r>)
+              AsymmetricObjectProperty(<r>)
+              SubClassOf(<A> DataSomeValuesFrom(<p> xsd:integer))
+              ClassAssertion(owl:Thing <a>)
+              ClassAssertion(<http://www.w3.org/2002/07/owl#Thing> <b>)
+              SameIndividual(<a> <b>)
+            )"#,
+        );
+        assert!(top_only.positive_abox_tbox_separable);
+        for unsafe_text in [
+            // a typed assertion requires its class to be satisfiable
+            "Ontology(SubClassOf(<A> ObjectComplementOf(<B>)) ClassAssertion(owl:Thing <a>) ClassAssertion(<A> <b>))",
+            // an inequality needs a second element (and a union-find check)
+            "Ontology(SubClassOf(<A> ObjectComplementOf(<B>)) ClassAssertion(owl:Thing <a>) DifferentIndividuals(<a> <b>))",
+            // a concept-level nominal mentions the individual
+            "Ontology(SubClassOf(<A> ObjectOneOf(<a>)) SubClassOf(<A> ObjectComplementOf(<B>)) ClassAssertion(owl:Thing <a>))",
+            "Ontology(SubClassOf(<A> ObjectHasValue(<r> <a>)) SubClassOf(<A> ObjectComplementOf(<B>)) ClassAssertion(owl:Thing <a>))",
+            // role assertions and keys are outside the certificate
+            "Ontology(SubClassOf(<A> ObjectComplementOf(<B>)) ClassAssertion(owl:Thing <a>) ObjectPropertyAssertion(<r> <a> <a>))",
+            "Ontology(SubClassOf(<A> ObjectComplementOf(<B>)) HasKey(<A> (<r>) ()) ClassAssertion(owl:Thing <a>))",
+        ] {
+            assert!(!source(unsafe_text).positive_abox_tbox_separable, "{unsafe_text}");
+        }
     }
 
     #[test]

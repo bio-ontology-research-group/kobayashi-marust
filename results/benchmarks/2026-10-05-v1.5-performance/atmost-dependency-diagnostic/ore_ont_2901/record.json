@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "baseline": "km",
+  "source": "/tmp/agent/km-v150-diagnostics/ore_ont_2901.owl",
+  "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+  "runtime_source": "/tmp/agent/km-v150-diagnostics/ore_ont_2901.owl",
+  "artifact": "/workspace/.work/worktrees/v1.4/.work/target-diagnostic/release/km",
+  "artifact_sha256": "3e8a22c5d3da2f26f1db2fc1ebc98387618c5020b39c5ae378924e2aa2f0ae19",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+  "timeout_s": 60,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "6bdb6dec1762",
+  "slurm_job_id": null,
+  "status": "adapter_error",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+  "command": [
+    "/workspace/.work/worktrees/v1.4/.work/target-diagnostic/release/km",
+    "classify",
+    "/tmp/agent/km-v150-diagnostics/ore_ont_2901.owl"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "km-json",
+  "cpu_affinity": [
+    0
+  ],
+  "error": "[Errno 2] No such file or directory: '/usr/bin/time'"
+}

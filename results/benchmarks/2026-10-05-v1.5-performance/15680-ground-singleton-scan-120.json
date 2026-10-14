@@ -1,0 +1,93 @@
+{
+  "diagnostic_only": true,
+  "source_sha256": "d2596f52dbc00edc31cc26a503b879321a5079a8c537b0e978e9765e06372579",
+  "binary_sha256": "76ec1110c77191271c6194cb34849d7f7959cf38ebbea6275d5e79323624c575",
+  "runner_sha256": "7003879f93428b789064506f143a6e07c28dc4919aecdb1036895cbed93f7353",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_PROGRESS": "1",
+    "KM_TIMING": "1",
+    "KM_HT_STATS": "1",
+    "KM_ROUTE": "auto",
+    "KM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_GROUND_RULE_SOURCE": "1",
+    "KM_HT_SINGLETON_SCAN_AFTER_MERGE": "1"
+  },
+  "cpu_affinity": [
+    0
+  ],
+  "timeout_s": 120,
+  "timed_out": false,
+  "returncode": 0,
+  "wall_s": 44.11920033302158,
+  "raw_sha256": "e83cbea82a1734fb5378037a1776318a4f88862b678c43ab44125c8503b8e311",
+  "stderr_sha256": "86275d375ff2465308fd04d0d40f595743900b6c34d877f943f15d0cb63038c3",
+  "partial_pass_discarded": false,
+  "comparisons": {
+    "elk.validated": {
+      "source_sha256": "d2596f52dbc00edc31cc26a503b879321a5079a8c537b0e978e9765e06372579",
+      "left_raw_sha256": "e83cbea82a1734fb5378037a1776318a4f88862b678c43ab44125c8503b8e311",
+      "right_raw_sha256": "a0a743ef4cf2ba2e9f19eeb19e4b284dc60eb57c19a5a183b35b40fa5ad91942",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "hermit.validated": {
+      "source_sha256": "d2596f52dbc00edc31cc26a503b879321a5079a8c537b0e978e9765e06372579",
+      "left_raw_sha256": "e83cbea82a1734fb5378037a1776318a4f88862b678c43ab44125c8503b8e311",
+      "right_raw_sha256": "d8657ce2e572893522fdbf85471d82379b153fa997c23c754c6dec8308f06ed8",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "konclude.validated": {
+      "source_sha256": "d2596f52dbc00edc31cc26a503b879321a5079a8c537b0e978e9765e06372579",
+      "left_raw_sha256": "e83cbea82a1734fb5378037a1776318a4f88862b678c43ab44125c8503b8e311",
+      "right_raw_sha256": "98972a4fee60c8e7b83f56c631b1bc4d21efd63948c8ed326c4a40f6717f0191",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "more.validated": {
+      "source_sha256": "d2596f52dbc00edc31cc26a503b879321a5079a8c537b0e978e9765e06372579",
+      "left_raw_sha256": "e83cbea82a1734fb5378037a1776318a4f88862b678c43ab44125c8503b8e311",
+      "right_raw_sha256": "856b9f6eb04a5f4fd11a3cd2676bea36213183fb4bc60b8d5798c19ffeaf391f",
+      "left_consistency": true,
+      "right_consistency": null,
+      "status": "conditional_taxonomy_agreement",
+      "agreement": null,
+      "taxonomy_agreement": true,
+      "scope": "taxonomy conditional on consistency"
+    },
+    "openllet.validated": {
+      "source_sha256": "d2596f52dbc00edc31cc26a503b879321a5079a8c537b0e978e9765e06372579",
+      "left_raw_sha256": "e83cbea82a1734fb5378037a1776318a4f88862b678c43ab44125c8503b8e311",
+      "right_raw_sha256": "f310001985212947af372511cbe74784d12720b90f54f5c2053558aa72f8f10b",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "rustdl.validated": {
+      "source_sha256": "d2596f52dbc00edc31cc26a503b879321a5079a8c537b0e978e9765e06372579",
+      "left_raw_sha256": "e83cbea82a1734fb5378037a1776318a4f88862b678c43ab44125c8503b8e311",
+      "right_raw_sha256": "519cfd8c1062c103d74cfd7306fc1d59d372a41fb32bf952b38509c6c7f7cc45",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    }
+  }
+}

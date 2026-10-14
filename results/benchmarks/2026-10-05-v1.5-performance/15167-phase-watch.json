@@ -1,0 +1,26 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "b716c8a94ef13c180ae793b92079f2c3050697606cab8c687ea06797b57a1b92",
+  "stderr_sha256": "0969f5a1f7a4c94c41dd2fadfcd997e3d20469bb58591f6fd2d1b14d25bf7b64",
+  "watch_lines": [
+    "BRIDGE-SAT-RULE-WATCH elapsed=5.0s phase=5 applications=1998 node=37 concept=79 op=7 negated=true",
+    "BRIDGE-SAT-RULE-WATCH elapsed=10.0s phase=5 applications=1998 node=37 concept=79 op=7 negated=true"
+  ],
+  "phase_legend": {
+    "1": "initialization",
+    "2": "rule",
+    "3": "conclusion",
+    "4": "disjunct extraction",
+    "5": "successor extension",
+    "6": "critical concept",
+    "7": "critical individuals",
+    "8": "at-most merge",
+    "9": "orphan queue recovery"
+  },
+  "scope": "12-second local diagnostic with a one-second saturation cap, no completed answer.",
+  "source_sha256": {
+    "engine/src/konclude_ht/saturation/s01.rs": "eea0c2c87644fce4c7305d383478ccea26d95d74bc0d06a170e5b7ba86875274"
+  },
+  "build_exit_code": 0,
+  "normal_path_check": "Same public answer with saturation disabled as the four-reference-verified prior binary."
+}

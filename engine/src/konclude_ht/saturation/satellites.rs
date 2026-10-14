@@ -1065,7 +1065,7 @@ impl SaturationSuccessorExtensionData {
 #[derive(Clone)]
 pub struct LinkedRoleSaturationSuccessorHash {
     /// `mRoleSuccDataHash` (`CPROCESSHASH<CRole*,CLinkedRoleSaturationSuccessorData*>`).
-    pub role_succ_data_hash: HashMap<RoleId, LinkedRoleSaturationSuccessorDataId>,
+    pub role_succ_data_hash: SaturationRoleIdMap<LinkedRoleSaturationSuccessorDataId>,
     /// `mLastExaminedConDes`.
     pub last_examined_con_des: ConceptSaturationDescriptorId,
     /// `mLastExaminedRoleAssLinker` (`CSaturationSuccessorRoleAssertionLinker*`, opaque).
@@ -1075,7 +1075,7 @@ pub struct LinkedRoleSaturationSuccessorHash {
 impl Default for LinkedRoleSaturationSuccessorHash {
     fn default() -> Self {
         LinkedRoleSaturationSuccessorHash {
-            role_succ_data_hash: HashMap::default(),
+            role_succ_data_hash: SaturationRoleIdMap::default(),
             last_examined_con_des: ConceptSaturationDescriptorId::NONE,
             last_examined_role_ass_linker: INVALID,
         }
@@ -1107,7 +1107,7 @@ impl LinkedRoleSaturationSuccessorHash {
     /// Port of `getLinkedRoleSuccessorHash` (`return &mRoleSuccDataHash`).
     pub fn get_linked_role_successor_hash(
         &self,
-    ) -> &HashMap<RoleId, LinkedRoleSaturationSuccessorDataId> {
+    ) -> &SaturationRoleIdMap<LinkedRoleSaturationSuccessorDataId> {
         &self.role_succ_data_hash
     }
     /// Port of `hasLinkedRoleSuccessorData` (`return mRoleSuccDataHash.contains(role)`).
@@ -1381,14 +1381,14 @@ pub struct CriticalPredecessorRoleCardinalityHash {
     pub process_context: Cint64,
     /// `mCriticalPredecessorRoleDataHash`.
     pub critical_predecessor_role_data_hash:
-        HashMap<RoleId, CriticalPredecessorRoleCardinalityDataId>,
+        SaturationRoleIdMap<CriticalPredecessorRoleCardinalityDataId>,
 }
 
 impl Default for CriticalPredecessorRoleCardinalityHash {
     fn default() -> Self {
         CriticalPredecessorRoleCardinalityHash {
             process_context: INVALID,
-            critical_predecessor_role_data_hash: HashMap::default(),
+            critical_predecessor_role_data_hash: SaturationRoleIdMap::default(),
         }
     }
 }
@@ -2506,7 +2506,7 @@ pub struct SaturationLinkedSuccessorIndividualAllConceptsExtensionData {
     /// `mIndiProcSatNode`.
     pub indi_proc_sat_node: SatNodeId,
     /// `mRoleConceptExtensionHash`.
-    pub role_concept_extension_hash: HashMap<RoleId, SaturationSuccessorAllConceptExtensionDataId>,
+    pub role_concept_extension_hash: SaturationRoleIdMap<SaturationSuccessorAllConceptExtensionDataId>,
     /// `mOnlyRole`.
     pub only_role: RoleId,
     /// `mOnlyAllConceptExtData`.
@@ -2517,7 +2517,7 @@ impl Default for SaturationLinkedSuccessorIndividualAllConceptsExtensionData {
     fn default() -> Self {
         Self {
             indi_proc_sat_node: SatNodeId::NONE,
-            role_concept_extension_hash: HashMap::default(),
+            role_concept_extension_hash: SaturationRoleIdMap::default(),
             only_role: RoleId::NONE,
             only_all_concept_ext_data: SaturationSuccessorAllConceptExtensionDataId::NONE,
         }
@@ -2609,7 +2609,7 @@ pub struct SaturationIndividualNodeExtensionResolveHash {
     pub individual_resolve_hash:
         HashMap<SatNodeId, SaturationIndividualNodeExtensionResolveHashData>,
     /// Role-key slice.
-    pub role_resolve_hash: HashMap<RoleId, SaturationIndividualNodeExtensionResolveHashData>,
+    pub role_resolve_hash: SaturationRoleIdMap<SaturationIndividualNodeExtensionResolveHashData>,
     /// Neighbour-key slice (`nullptr,true`).
     pub neighbour_resolve_data: SaturationIndividualNodeExtensionResolveHashData,
 }
@@ -2619,7 +2619,7 @@ impl Default for SaturationIndividualNodeExtensionResolveHash {
         Self {
             concept_resolve_hash: HashMap::default(),
             individual_resolve_hash: HashMap::default(),
-            role_resolve_hash: HashMap::default(),
+            role_resolve_hash: SaturationRoleIdMap::default(),
             neighbour_resolve_data: SaturationIndividualNodeExtensionResolveHashData::new(),
         }
     }
@@ -3111,13 +3111,13 @@ impl SaturationSuccessorFunctionalConceptExtensionData {
 pub struct SaturationLinkedSuccessorRoleFunctionalConceptsExtensionHash {
     /// `mLinkedSuccRoleFUNCTIONALConceptExtHash`.
     pub linked_succ_role_functional_concept_ext_hash:
-        HashMap<RoleId, SaturationSuccessorFunctionalConceptExtensionDataId>,
+        SaturationRoleIdMap<SaturationSuccessorFunctionalConceptExtensionDataId>,
 }
 
 impl Default for SaturationLinkedSuccessorRoleFunctionalConceptsExtensionHash {
     fn default() -> Self {
         Self {
-            linked_succ_role_functional_concept_ext_hash: HashMap::default(),
+            linked_succ_role_functional_concept_ext_hash: SaturationRoleIdMap::default(),
         }
     }
 }
@@ -3137,7 +3137,7 @@ impl SaturationLinkedSuccessorRoleFunctionalConceptsExtensionHash {
     /// Port of `getLinkedSuccessorIndividualFUNCTIONALConceptsExtensionHash`.
     pub fn get_linked_successor_individual_functional_concepts_extension_hash(
         &self,
-    ) -> &HashMap<RoleId, SaturationSuccessorFunctionalConceptExtensionDataId> {
+    ) -> &SaturationRoleIdMap<SaturationSuccessorFunctionalConceptExtensionDataId> {
         &self.linked_succ_role_functional_concept_ext_hash
     }
 
@@ -3179,6 +3179,10 @@ pub struct SaturationIndividualNodeFunctionalConceptsExtensionData {
     pub linked_successor_added_role_process_linker: RoleSaturationProcessLinkerId,
     /// `mFunctionalityAddedRoleProcessLinker`.
     pub functionality_added_role_process_linker: RoleSaturationProcessLinkerId,
+    /// The roles on the `functionality_added_role_process_linker` chain, kept
+    /// in step with every write of that field, so the chain's membership test
+    /// is a set lookup instead of a walk of the (often long) pending chain.
+    pub functionality_added_roles: crate::fxhash::FxHashSet<RoleId>,
     /// `mCopyingInitializingRoleProcessLinker`.
     pub copying_initializing_role_process_linker: RoleSaturationProcessLinkerId,
     /// `mQualFuncAtmostConProcessLinker`.
@@ -3205,6 +3209,7 @@ impl Default for SaturationIndividualNodeFunctionalConceptsExtensionData {
                 SaturationSuccessorFunctionalConceptExtensionDataId::NONE,
             linked_successor_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             functionality_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
+            functionality_added_roles: Default::default(),
             copying_initializing_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             qual_func_atmost_con_process_linker: ConceptSaturationProcessLinkerId::NONE,
             linked_predecessor_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
@@ -3233,6 +3238,7 @@ impl SaturationIndividualNodeFunctionalConceptsExtensionData {
         self.linked_predecessor_added_role_process_linker = RoleSaturationProcessLinkerId::NONE;
         self.qual_func_atmost_con_process_linker = ConceptSaturationProcessLinkerId::NONE;
         self.functionality_added_role_process_linker = RoleSaturationProcessLinkerId::NONE;
+        self.functionality_added_roles.clear();
         self.copying_initializing_role_process_linker = RoleSaturationProcessLinkerId::NONE;
         self.successor_extension_initialized = false;
         self.extension_processing_queued = false;

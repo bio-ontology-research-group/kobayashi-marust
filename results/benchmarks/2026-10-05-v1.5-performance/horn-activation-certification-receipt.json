@@ -1,0 +1,18 @@
+{
+  "gate": "routing",
+  "passed": true,
+  "new_theorems": [
+    "derives_bounded",
+    "transfer_inactive_removed",
+    "inactive_delta_preserves_closure",
+    "entails_iff_derives",
+    "inactive_delta_preserves_entailment"
+  ],
+  "sorryAx": false,
+  "source_sha256": {
+    "lean/ContextCalculus/IncrementalHornActivation.lean": "75bc966dd52e82ea6048fb25b882210cf39391976b37ba726a108295ab6e6897",
+    "lean/run-routing-certification-gate.sh": "915f5758dca50d237c545ac45facd229fc85c9fa06ccf21e483b136678eb1314"
+  },
+  "gate_log_sha256": "7fb951246d51372c1ac96b7b60303de2f7579ea9a14e40f31b9db654ae67f9d6",
+  "scope": "Abstract Horn closure and entailment preservation only; OWL lowering, typed-state coverage, and Rust abstraction implementation correspondence remain unproved. This is not full release certification."
+}

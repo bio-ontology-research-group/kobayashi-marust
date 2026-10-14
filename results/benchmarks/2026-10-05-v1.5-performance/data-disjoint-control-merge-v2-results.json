@@ -1,0 +1,116 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "98d9b1b9ce3ece809e16f56c16cbdfc2938e1f9e556cdba8785cc6f489496570",
+  "flags": {
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_HT_DDB": "1",
+    "KM_HT_ONLY": "bridge",
+    "KM_NOMINALS": "1",
+    "KM_THREADS": "1",
+    "KM_EXPERIMENTAL_DATA_ROLE_DISJOINT": "1",
+    "KM_EXPERIMENTAL_DATA_PADDING": "1",
+    "KM_HT_STATS": "1",
+    "KM_BRIDGE_PROGRESS": "1"
+  },
+  "release_approved": false,
+  "cases": [
+    {
+      "name": "same_value",
+      "expected_A_unsatisfiable": null,
+      "expected_consistent": false,
+      "status": "ok",
+      "exit_code": 0,
+      "passed": true,
+      "answer": {
+        "consistent": false,
+        "subsumptions": [],
+        "unsatisfiable": [],
+        "dropped": 0
+      },
+      "source_sha256": "04a3e5cac50b8a64cf9344903357e4a0cd2a497ff423a57ab25928ca9f736a33",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=4 moved=0 tautologies=1\nbridge [source-tbox] axioms=4 eq=2/2 [\"km_src___ground_assertion_0\", \"km_src___ground_assertion_1\"] direct=0 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=0\nBRIDGE-ENV: 0.00s (named=12, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=6 extended=6 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=9)\nSAT-STATS: insufficient all=0 atmost=0 or=0 eqcand=0 value=0 nominal=0\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=13 ind=false det=true tag=0 lvl=1 tp=#4] [c=13 ind=false det=true tag=0 lvl=1 tp=#7]\nDDB-LINE branching_level=0\n"
+    },
+    {
+      "name": "different_values",
+      "expected_A_unsatisfiable": null,
+      "expected_consistent": true,
+      "status": "ok",
+      "exit_code": 0,
+      "passed": true,
+      "answer": {
+        "consistent": true,
+        "subsumptions": [],
+        "unsatisfiable": [],
+        "dropped": 0
+      },
+      "source_sha256": "5c62a42d711b2819464dca7ea2056d8b76f44153e08de97b93a1f636c148623b",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=4 moved=0 tautologies=1\nbridge [source-tbox] axioms=4 eq=2/2 [\"km_src___ground_assertion_0\", \"km_src___ground_assertion_1\"] direct=0 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=0\nBRIDGE-ENV: 0.00s (named=11, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=6 extended=6 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=9)\nSAT-STATS: insufficient all=0 atmost=0 or=0 eqcand=0 value=0 nominal=0\nBRIDGE-KPSET-MESSAGES subject 9: visits=0 messages=3\nBRIDGE-PREPARE round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE prepare-total: 0.00s (1 subjects)\nBRIDGE-SAT-PHASE kpset-barrier: 0.00s\nBRIDGE-KPSET-DERIVED subject 9: 0 candidates, no satisfiability job\nBRIDGE-VERIFY round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE verify-total: 0.00s\nBRIDGE-SOURCE-POST-CLOSURE seeded=0 combined=0\n"
+    },
+    {
+      "name": "distinct_objects",
+      "expected_A_unsatisfiable": null,
+      "expected_consistent": true,
+      "status": "ok",
+      "exit_code": 0,
+      "passed": true,
+      "answer": {
+        "consistent": true,
+        "subsumptions": [],
+        "unsatisfiable": [],
+        "dropped": 0
+      },
+      "source_sha256": "a11dd579910a0d4b2b78081aa22b1c9f6f4b5ebcff15e444dd4a81bdb8d4c30c",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=4 moved=0 tautologies=1\nbridge [source-tbox] axioms=4 eq=2/2 [\"km_src___ground_assertion_0\", \"km_src___ground_assertion_1\"] direct=0 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=0\nBRIDGE-ENV: 0.00s (named=12, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=6 extended=6 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=11)\nSAT-STATS: insufficient all=0 atmost=0 or=0 eqcand=0 value=0 nominal=0\nBRIDGE-KPSET-MESSAGES subject 9: visits=0 messages=3\nBRIDGE-PREPARE round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE prepare-total: 0.00s (1 subjects)\nBRIDGE-SAT-PHASE kpset-barrier: 0.00s\nBRIDGE-KPSET-DERIVED subject 9: 0 candidates, no satisfiability job\nBRIDGE-VERIFY round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE verify-total: 0.00s\nBRIDGE-SOURCE-POST-CLOSURE seeded=0 combined=0\n"
+    },
+    {
+      "name": "boolean_two_disjoint",
+      "expected_A_unsatisfiable": false,
+      "expected_consistent": true,
+      "status": "ok",
+      "exit_code": 0,
+      "passed": true,
+      "answer": {
+        "consistent": true,
+        "subsumptions": [],
+        "unsatisfiable": [],
+        "dropped": 0
+      },
+      "source_sha256": "1b4b41bacad51760883be255e15cd10e8f4cf8d7f6a57fc0793549d8eb964535",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=5 moved=0 tautologies=0\nbridge [source-tbox] axioms=3 eq=0/0 [] direct=1 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=2\nBRIDGE-ENV: 0.00s (named=9, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=4 extended=4 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=4)\nSAT-STATS: insufficient all=0 atmost=0 or=2 eqcand=0 value=0 nominal=0\nBRIDGE-SATURATION-UNKNOWN: no-node=8 insufficient=1 unprocessed=0 eq-candidate=0\nBRIDGE-SAT-PHASE extract: 0.00s\nBRIDGE-SATURATION: 0.00s, answered 0 unsat + 0 sat of 1 subjects (1 residue to probes, known-label-subjects=0, satcache=true)\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=17 ind=false det=false tag=1 lvl=1 tp=#8] [c=17 ind=false det=false tag=2 lvl=1 tp=#12]\nDDB-LINE branching_level=2\nBRIDGE-SAT-EXPANSION-CACHE-WRITE\nBRIDGE-KPSET-MESSAGES subject 6: visits=8 messages=3\nBRIDGE-PREPARE round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE prepare-total: 0.00s (1 subjects)\nBRIDGE-SAT-PHASE kpset-barrier: 0.00s\nBRIDGE-KPSET-DERIVED subject 6: 0 candidates, no satisfiability job\nBRIDGE-VERIFY round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE verify-total: 0.00s\nBRIDGE-SOURCE-POST-CLOSURE seeded=0 combined=0\n"
+    },
+    {
+      "name": "boolean_three_disjoint",
+      "expected_A_unsatisfiable": true,
+      "expected_consistent": true,
+      "status": "ok",
+      "exit_code": 0,
+      "passed": true,
+      "answer": {
+        "consistent": true,
+        "subsumptions": [],
+        "unsatisfiable": [
+          ":A"
+        ],
+        "dropped": 0
+      },
+      "source_sha256": "37cb66cbe5fc7ade7f6a32797ee20d33037b1a4f7f5fb7f2d00c7b4b33dd4a19",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=7 moved=0 tautologies=0\nbridge [source-tbox] axioms=4 eq=0/0 [] direct=1 role-links=3 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=3\nBRIDGE-ENV: 0.00s (named=11, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=5 extended=5 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=5)\nSAT-STATS: insufficient all=0 atmost=0 or=3 eqcand=0 value=0 nominal=0\nBRIDGE-SATURATION-UNKNOWN: no-node=10 insufficient=1 unprocessed=0 eq-candidate=0\nBRIDGE-SAT-PHASE extract: 0.00s\nBRIDGE-SATURATION: 0.00s, answered 0 unsat + 0 sat of 1 subjects (1 residue to probes, known-label-subjects=0, satcache=true)\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=19 ind=false det=false tag=1 lvl=1 tp=#10] [c=19 ind=false det=false tag=2 lvl=1 tp=#14]\nDDB-LINE branching_level=2\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=19 ind=false det=false tag=1 lvl=1 tp=#10] [c=19 ind=false det=false tag=3 lvl=1 tp=#23]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=20 ind=false det=false tag=2 lvl=1 tp=#15] [c=20 ind=false det=false tag=3 lvl=1 tp=#24]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=19 ind=false det=false tag=2 lvl=1 tp=#29] [c=19 ind=false det=false tag=3 lvl=1 tp=#33]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=20 ind=false det=false tag=1 lvl=1 tp=#11] [c=20 ind=false det=false tag=3 lvl=1 tp=#34]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=20 ind=false det=false tag=1 lvl=1 tp=#11] [c=20 ind=false det=false tag=2 lvl=1 tp=#30]\nDDB-LINE branching_level=2\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#6] [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=19 ind=false det=false tag=1 lvl=1 tp=#12] [c=19 ind=false det=false tag=2 lvl=1 tp=#16]\nDDB-LINE branching_level=2\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=19 ind=false det=false tag=1 lvl=1 tp=#12] [c=19 ind=false det=false tag=3 lvl=1 tp=#25]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#6] [c=20 ind=false det=false tag=2 lvl=1 tp=#17] [c=20 ind=false det=false tag=3 lvl=1 tp=#26]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#6] [c=19 ind=false det=false tag=2 lvl=1 tp=#31] [c=19 ind=false det=false tag=3 lvl=1 tp=#35]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=20 ind=false det=false tag=1 lvl=1 tp=#13] [c=20 ind=false det=false tag=3 lvl=1 tp=#36]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#6] [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=20 ind=false det=false tag=1 lvl=1 tp=#13] [c=20 ind=false det=false tag=2 lvl=1 tp=#32]\nDDB-LINE branching_level=2\nBRIDGE-PREPARE round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE prepare-total: 0.00s (1 subjects)\nBRIDGE-SAT-PHASE kpset-barrier: 0.00s\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=19 ind=false det=false tag=1 lvl=1 tp=#10] [c=19 ind=false det=false tag=2 lvl=1 tp=#14]\nDDB-LINE branching_level=2\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=19 ind=false det=false tag=1 lvl=1 tp=#10] [c=19 ind=false det=false tag=3 lvl=1 tp=#23]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=20 ind=false det=false tag=2 lvl=1 tp=#15] [c=20 ind=false det=false tag=3 lvl=1 tp=#24]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=19 ind=false det=false tag=2 lvl=1 tp=#29] [c=19 ind=false det=false tag=3 lvl=1 tp=#33]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=20 ind=false det=false tag=1 lvl=1 tp=#11] [c=20 ind=false det=false tag=3 lvl=1 tp=#34]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#4] [c=-1 ind=false det=true tag=0 lvl=0 tp=#3] [c=20 ind=false det=false tag=1 lvl=1 tp=#11] [c=20 ind=false det=false tag=2 lvl=1 tp=#30]\nDDB-LINE branching_level=2\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#6] [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=19 ind=false det=false tag=1 lvl=1 tp=#12] [c=19 ind=false det=false tag=2 lvl=1 tp=#16]\nDDB-LINE branching_level=2\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=19 ind=false det=false tag=1 lvl=1 tp=#12] [c=19 ind=false det=false tag=3 lvl=1 tp=#25]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#6] [c=20 ind=false det=false tag=2 lvl=1 tp=#17] [c=20 ind=false det=false tag=3 lvl=1 tp=#26]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#6] [c=19 ind=false det=false tag=2 lvl=1 tp=#31] [c=19 ind=false det=false tag=3 lvl=1 tp=#35]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=20 ind=false det=false tag=1 lvl=1 tp=#13] [c=20 ind=false det=false tag=3 lvl=1 tp=#36]\nDDB-LINE branching_level=3\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#6] [c=-1 ind=false det=true tag=0 lvl=0 tp=#5] [c=20 ind=false det=false tag=1 lvl=1 tp=#13] [c=20 ind=false det=false tag=2 lvl=1 tp=#32]\nDDB-LINE branching_level=2\nBRIDGE-VERIFY round 0 subject 1/1 deferred=0 permanent=0\nBRIDGE-SAT-PHASE verify-total: 0.00s\nBRIDGE-SOURCE-POST-CLOSURE seeded=0 combined=0\n"
+    },
+    {
+      "name": "shared_functional_super",
+      "expected_A_unsatisfiable": null,
+      "expected_consistent": false,
+      "status": "ok",
+      "exit_code": 0,
+      "passed": true,
+      "answer": {
+        "consistent": false,
+        "subsumptions": [],
+        "unsatisfiable": [],
+        "dropped": 0
+      },
+      "source_sha256": "d6657bbfabb70e90bdffd06cb09b191748c263be338bb4ad2c414351677836b1",
+      "stderr": "cb_to_ht [emelim] eliminated 0 complementary pairs\ncb_to_ht [trigger-absorb] definers=4 moved=0 tautologies=1\nbridge [source-tbox] axioms=4 eq=2/2 [\"km_src___ground_assertion_0\", \"km_src___ground_assertion_1\"] direct=0 role-links=2 absorbed-gci=0 top-gci=0 unsupported=0\nbridge [or-replacements] implications=0 common=1\nbridge [branch-triggers] role-markers=0\nBRIDGE-ENV: 0.00s (named=13, trigger_absorb=true, unsupported=0, independent_abox=false)\nBRIDGE-SOURCE-CLOSURE pairs=0 definition-containment=true\nBRIDGE-SAT-PHASE propagation-direction: 0.00s\nBRIDGE-SATURATION-SEEDS: base=6 extended=6 invalid-special=0 substitute=0 copy=0\nBRIDGE-SAT-PHASE seeds: 0.00s\nBRIDGE-SAT-PHASE loop: 0.00s (nodes=9)\nSAT-STATS: insufficient all=0 atmost=0 or=0 eqcand=0 value=0 nominal=0\nDDB-CLOSURE [c=-1 ind=false det=true tag=0 lvl=0 tp=#7] [c=-1 ind=false det=true tag=0 lvl=0 tp=#4]\nDDB-LINE branching_level=0\n"
+    }
+  ]
+}

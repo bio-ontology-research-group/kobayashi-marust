@@ -967,7 +967,13 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
         matches!(
             fence.reason.as_str(),
             "inverse+number(SHIQ)" | "inverse-functional" | "irreflexivity"
-        ) || (fence.reason == "reflexivity" && tin.roles.iter().position(|r| r == &fence.detail).is_some_and(|role| {
+        ) || (fence.reason == "role-constraint"
+            && fence.detail == "AsymmetricObjectProperty"
+            && tin.clauses.iter().any(|clause| matches!(
+                (clause.body.as_slice(), clause.head.as_slice()),
+                ([cb_to_ht::HAtom::Role { r, s, t }, cb_to_ht::HAtom::Role { r: r2, s: s2, t: t2 }], [])
+                    if r == r2 && s != t && s == t2 && t == s2
+            ))) || (fence.reason == "reflexivity" && tin.roles.iter().position(|r| r == &fence.detail).is_some_and(|role| {
             tin.clauses.iter().any(|clause| matches!(
                 (clause.body.as_slice(), clause.head.as_slice()),
                 ([], [cb_to_ht::HAtom::Role { r, s, t }]) if *r == role && s == t
@@ -1334,41 +1340,82 @@ fn no_blocking_shoiq_candidate_from(
 /// True only for a ground/singleton clause represented independently by the
 /// complete typed ABox. This is an exact pattern filter, not a generic
 /// individual-term projection: unknown shapes remain for conversion to reject.
-fn native_nominal_clause_represented(
-    clause: &JClause,
-    nominal_abox: &crate::json_io::NominalAboxMeta,
-    definers: &[crate::json_io::DefinerMeta],
-) -> bool {
+/// Exact lookup tables over one native ABox payload and its definers, built
+/// once per projection. Each lookup answers precisely what the original
+/// linear scan answered (`find` returns the first entry with a name, so the
+/// index keeps the first one), but in O(1) per clause instead of
+/// O(individuals + assertions + definers): on assertion-heavy inputs such as
+/// ORE 1886 the per-clause scans dominated the whole supervisor.
+struct NativeNominalIndex<'a> {
+    individuals: crate::fxhash::FxHashMap<&'a str, &'a crate::json_io::NominalIndividualMeta>,
+    /// marker -> (number of definers with that marker, first such definer)
+    definers: crate::fxhash::FxHashMap<&'a str, (usize, &'a crate::json_io::DefinerMeta)>,
+    roles: crate::fxhash::FxHashSet<(&'a str, &'a str, &'a str)>,
+    negative_roles: crate::fxhash::FxHashSet<(&'a str, &'a str, &'a str)>,
+    /// Both orientations of every pair.
+    same: crate::fxhash::FxHashSet<(&'a str, &'a str)>,
+    different: crate::fxhash::FxHashSet<(&'a str, &'a str)>,
+}
+
+impl<'a> NativeNominalIndex<'a> {
+    fn new(
+        nominal_abox: &'a crate::json_io::NominalAboxMeta,
+        definers: &'a [crate::json_io::DefinerMeta],
+    ) -> Self {
+        let mut individuals = crate::fxhash::FxHashMap::default();
+        for entry in &nominal_abox.individuals {
+            individuals.entry(entry.individual.as_str()).or_insert(entry);
+        }
+        let mut by_marker: crate::fxhash::FxHashMap<&str, (usize, &crate::json_io::DefinerMeta)> =
+            crate::fxhash::FxHashMap::default();
+        for definer in definers {
+            by_marker.entry(definer.marker.as_str()).or_insert((0, definer)).0 += 1;
+        }
+        let roles = |assertions: &'a [crate::json_io::NominalRoleAssertionMeta]| {
+            assertions
+                .iter()
+                .map(|a| (a.role.as_str(), a.source.as_str(), a.target.as_str()))
+                .collect()
+        };
+        let pairs = |pairs: &'a [(String, String)]| {
+            pairs
+                .iter()
+                .flat_map(|(a, b)| [(a.as_str(), b.as_str()), (b.as_str(), a.as_str())])
+                .collect()
+        };
+        Self {
+            individuals,
+            definers: by_marker,
+            roles: roles(&nominal_abox.role_assertions),
+            negative_roles: roles(&nominal_abox.negative_role_assertions),
+            same: pairs(&nominal_abox.same),
+            different: pairs(&nominal_abox.different),
+        }
+    }
+}
+
+fn native_nominal_clause_represented(clause: &JClause, index: &NativeNominalIndex<'_>) -> bool {
     use crate::frontend::syntax::Concept;
     use crate::json_io::DefinerKind;
     use crate::json_io::{JAtom, JTerm};
 
-    let entry = |individual: &str| {
-        nominal_abox
-            .individuals
-            .iter()
-            .find(|entry| entry.individual == individual)
-    };
+    let entry = |individual: &str| index.individuals.get(individual).copied();
     let proxy_maps_to = |proxy: &str, individual: &str| {
         entry(individual).is_some_and(|entry| entry.proxies.iter().any(|name| name == proxy))
     };
     let exact_top_definer = |marker: &str| {
-        let mut definitions = definers.iter().filter(|definer| definer.marker == marker);
-        definitions.next().is_some_and(|definer| {
-            definer.kind == DefinerKind::Top
+        index.definers.get(marker).is_some_and(|&(count, definer)| {
+            count == 1
+                && definer.kind == DefinerKind::Top
                 && definer.operands.is_empty()
                 && definer.role.is_none()
                 && definer.n.is_none()
-        }) && definitions.next().is_none()
-    };
-    let role_matches = |assertions: &[crate::json_io::NominalRoleAssertionMeta],
-                        role: &str,
-                        source: &str,
-                        target: &str| {
-        assertions.iter().any(|assertion| {
-            assertion.role == role && assertion.source == source && assertion.target == target
         })
     };
+    let role_matches = |assertions: &crate::fxhash::FxHashSet<(&str, &str, &str)>,
+                        role: &str,
+                        source: &str,
+                        target: &str| { assertions.contains(&(role, source, target)) };
     let assertion_marker_maps_to = |marker: &str, individual: &str| {
         entry(individual).is_some_and(|entry| {
             entry
@@ -1426,7 +1473,7 @@ fn native_nominal_clause_represented(
                 source: JTerm::Ind { name: source },
                 target: JTerm::Ind { name: target },
             }],
-        ) => role_matches(&nominal_abox.role_assertions, role, source, target),
+        ) => role_matches(&index.roles, role, source, target),
         // Source NegativeObjectPropertyAssertion.
         (
             [JAtom::Role {
@@ -1435,7 +1482,7 @@ fn native_nominal_clause_represented(
                 target: JTerm::Ind { name: target },
             }],
             [],
-        ) => role_matches(&nominal_abox.negative_role_assertions, role, source, target),
+        ) => role_matches(&index.negative_roles, role, source, target),
         // Source SameIndividual. The native installer collapses the complete
         // equality component before creating named roots.
         (
@@ -1444,10 +1491,7 @@ fn native_nominal_clause_represented(
                 left: JTerm::Ind { name: left },
                 right: JTerm::Ind { name: right },
             }],
-        ) => nominal_abox
-            .same
-            .iter()
-            .any(|(a, b)| (a == left && b == right) || (a == right && b == left)),
+        ) => index.same.contains(&(left.as_str(), right.as_str())),
         // Pairwise parser expansion of DifferentIndividuals.
         (
             [JAtom::Eq {
@@ -1455,10 +1499,7 @@ fn native_nominal_clause_represented(
                 right: JTerm::Ind { name: right },
             }],
             [],
-        ) => nominal_abox
-            .different
-            .iter()
-            .any(|(a, b)| (a == left && b == right) || (a == right && b == left)),
+        ) => index.different.contains(&(left.as_str(), right.as_str())),
         // DL8: proxy(x) -> x = individual. DL7 (top -> proxy(ind)) is
         // recognized by the first arm through the same exact proxy mapping.
         (
@@ -1532,6 +1573,7 @@ fn native_nominal_bridge_clauses<'a>(
             },
         )
         .collect();
+    let index = NativeNominalIndex::new(nominal_abox, definers);
     let mut projected: Vec<JClause> = clauses
             .iter()
             .filter(|clause| {
@@ -1546,7 +1588,7 @@ fn native_nominal_bridge_clauses<'a>(
                     ) if universal_facts.contains(concept.as_str())
                 );
                 !redundant_universal_ground
-                    && !native_nominal_clause_represented(clause, nominal_abox, definers)
+                    && !native_nominal_clause_represented(clause, &index)
             })
             .cloned()
             .collect();
@@ -2065,6 +2107,7 @@ fn spawn_ht(
     bool,
     bool,
     Option<ProxyAboxCertificate>,
+    Option<super::tmpfile::TempPath>,
 )> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules): (
@@ -2386,6 +2429,16 @@ fn spawn_ht(
             cmd.env("KM_HT_BRIDGE_OUTPUT_BINARY", "1");
         }
     }
+    // A bridge worker that also carries another arm (the certified portfolio's
+    // card fallback) records which arm produced its answer. Only an answer
+    // the bridge itself published carries the complete-answer-or-defer
+    // guarantee that justifies the instant harvest below; any other arm keeps
+    // its fallback budget.
+    let bridge_answer_marker = (bridge_candidate && !bridge_exclusive).then(|| {
+        let marker = super::tmpfile::TempPath::new(".bridge-answer");
+        cmd.env("KM_HT_BRIDGE_ANSWER_MARKER", marker.path());
+        marker
+    });
     if qo_candidate {
         // Route this Horn-inverse ont to the validated hybrid certify path, run as
         // a sound certify-OR-DEFER arm: KM_HT_QO_CERTIFY_ONLY makes it emit a
@@ -2620,7 +2673,178 @@ fn spawn_ht(
         // certified worker without ever making the bridge authoritative.
         typed_nominal_exclusive,
         proxy_abox_certificate,
+        bridge_answer_marker,
     ))
+}
+
+/// Read a finished HT worker's taxonomy, applying the proxy ABox certificate
+/// exactly as the race does. `None` when the output is missing, malformed, or
+/// rejected by the certificate.
+fn read_ht_answer(p: &Path, proxy_abox_certificate: Option<&ProxyAboxCertificate>) -> Option<EngineOut> {
+    let mut probe = BufReader::new(File::open(p).ok()?);
+    if crate::json_io::is_elc_output_binary(probe.fill_buf().ok()?) {
+        // The producer enables compact output only when no proxy
+        // certificate rewrite is required. Fail closed if a future
+        // caller violates that transport contract.
+        if proxy_abox_certificate.is_some() {
+            return None;
+        }
+        return super::parse_out_path(p).ok();
+    }
+    let f = File::open(p).ok()?;
+    let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
+    if proxy_abox_certificate
+        .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &output))
+    {
+        return None;
+    }
+    if let Some(certificate) = proxy_abox_certificate {
+        proxy_abox_filter_output(certificate, &mut output);
+    }
+    Some(tableau_to_out(output))
+}
+
+/// The HT-first worker of `race_cb_vs_ht`, started early: while the in-process
+/// CB engine runs its short budget, so a bridge answer that arrives in
+/// milliseconds is not held behind that budget.
+///
+/// Only a worker the race itself would run in its HT-first phase is started
+/// (same `ht_first_deadline`, typed-nominal exclusion and acceptance rule),
+/// and only an answer that phase would accept at once is returned. Every
+/// answer this can publish is therefore one the race publishes when the
+/// in-process engine overruns; a defer, a crash or a non-accepted answer
+/// leaves the in-process engine and the unchanged race to decide.
+pub struct HtFirstProbe {
+    child: Child,
+    out: super::tmpfile::TempPath,
+    proxy: Option<ProxyAboxCertificate>,
+    marker: Option<super::tmpfile::TempPath>,
+    budget: f64,
+    trigger_absorb: bool,
+    fast_certify: bool,
+    shoq_budget_s: f64,
+    ht_budget_s: f64,
+    cap_bytes: u64,
+    finished: bool,
+}
+
+pub enum HtFirstProbeState {
+    Running,
+    Accepted(EngineOut),
+    NoAnswer,
+}
+
+impl HtFirstProbe {
+    pub fn spawn(
+        cfg: &Config,
+        clauses_path: &Path,
+        named: &std::collections::HashSet<String>,
+        mode: &str,
+    ) -> Option<HtFirstProbe> {
+        if mode == "race" || ht_first_deadline().is_none() {
+            return None;
+        }
+        let (child, out, fast_certify, _, bridge_exclusive, typed_nominal_exclusive, proxy, marker) =
+            spawn_ht(cfg, clauses_path, named)?;
+        let trigger_absorb = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
+        let budget = ht_acceptance_budget(
+            trigger_absorb,
+            bridge_exclusive,
+            fast_certify,
+            cfg.shoq_budget_s,
+            cfg.ht_budget_s,
+        );
+        let cap_gb = std::env::var("KM_HT_MEM_GB")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(12.0);
+        let mut probe = HtFirstProbe {
+            child,
+            out,
+            proxy,
+            marker,
+            budget,
+            trigger_absorb,
+            fast_certify,
+            shoq_budget_s: cfg.shoq_budget_s,
+            ht_budget_s: cfg.ht_budget_s,
+            cap_bytes: (cap_gb * (1u64 << 30) as f64) as u64,
+            finished: false,
+        };
+        // The race's HT-first phase runs only these workers.
+        if typed_nominal_exclusive || !(budget == 0.0 || probe.marker.is_some()) {
+            probe.stop();
+            return None;
+        }
+        Some(probe)
+    }
+
+    pub fn poll(&mut self) -> HtFirstProbeState {
+        if self.finished {
+            return HtFirstProbeState::NoAnswer;
+        }
+        match self.child.try_wait() {
+            Ok(None) => {
+                if engine_run::read_rss(self.child.id()).is_some_and(|rss| rss > self.cap_bytes) {
+                    self.stop();
+                    return HtFirstProbeState::NoAnswer;
+                }
+                HtFirstProbeState::Running
+            }
+            Ok(Some(status)) => {
+                self.finished = true;
+                if !status.success() {
+                    return HtFirstProbeState::NoAnswer;
+                }
+                let Some(answer) = read_ht_answer(self.out.path(), self.proxy.as_ref()) else {
+                    return HtFirstProbeState::NoAnswer;
+                };
+                let mut budget = self.budget;
+                if self.marker.as_ref().is_some_and(|marker| {
+                    std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge")
+                }) {
+                    budget = ht_acceptance_budget(
+                        self.trigger_absorb,
+                        true,
+                        self.fast_certify,
+                        self.shoq_budget_s,
+                        self.ht_budget_s,
+                    );
+                }
+                if budget == 0.0 {
+                    HtFirstProbeState::Accepted(answer)
+                } else {
+                    HtFirstProbeState::NoAnswer
+                }
+            }
+            Err(_) => {
+                self.stop();
+                HtFirstProbeState::NoAnswer
+            }
+        }
+    }
+
+    /// Kill and reap the worker (no-op once it has exited).
+    pub fn stop(&mut self) {
+        if !self.finished {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+            self.finished = true;
+        }
+    }
+}
+
+impl Drop for HtFirstProbe {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Whether a worker was terminated by SIGABRT (Rust's response to an
+/// allocation failure) rather than exiting with a status of its own.
+fn worker_aborted(status: &std::process::ExitStatus) -> bool {
+    use std::os::unix::process::ExitStatusExt;
+    status.signal() == Some(6)
 }
 
 /// Run exactly the selected HT mechanism. Unlike `race_cb_vs_ht`, this starts
@@ -2631,7 +2855,7 @@ pub fn run_ht_only(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut child, out_path, _, _, _, _, proxy_abox_certificate)) =
+    let Some((mut child, mut out_path, _, _, _, _, mut proxy_abox_certificate, _)) =
         spawn_ht(cfg, clauses_path, named)
     else {
         return Err(OrchestrateError::OutOfFragment(
@@ -2639,7 +2863,30 @@ pub fn run_ht_only(
         ));
     };
     release_transient_heap();
-    let status = child.wait()?;
+    let mut status = child.wait()?;
+    // A worker that aborted (SIGABRT: a failed allocation under strict
+    // overcommit, observed about once in eight runs on ore_ont_7345 on a
+    // loaded host) produced no answer and says nothing about the ontology.
+    // The worker is deterministic, so rerun it once instead of deferring to
+    // a route that may not publish a complete answer.  A deterministic abort
+    // reproduces and still defers below.
+    if worker_aborted(&status) {
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!("KM_TIMING selected HT worker aborted (signal); retrying once");
+        }
+        drop(out_path);
+        let Some((retry_child, retry_out, _, _, _, _, retry_proxy, _)) =
+            spawn_ht(cfg, clauses_path, named)
+        else {
+            return Err(OrchestrateError::OutOfFragment(
+                "ontology is outside the selected HT mechanism's structural gate".into(),
+            ));
+        };
+        child = retry_child;
+        out_path = retry_out;
+        proxy_abox_certificate = retry_proxy;
+        status = child.wait()?;
+    }
     if !status.success() {
         return Err(OrchestrateError::OutOfFragment(format!(
             "selected HT mechanism deferred (worker exit {})",
@@ -2958,13 +3205,42 @@ pub fn run_ht_only_bounded(
     named: &std::collections::HashSet<String>,
     budget: Duration,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
-    let Some((mut child, out_path, _, _, _, _, proxy_abox_certificate)) =
+    run_ht_only_bounded_from(cfg, clauses_path, named, budget, None)
+}
+
+/// [`run_ht_only_bounded`] whose budget is charged from `charged_from`
+/// (the caller's attempt start) instead of from the worker spawn, so input
+/// conversion counts against the same wall-clock bound.
+pub fn run_ht_only_until(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    deadline: Instant,
+) -> Result<Option<EngineOut>, OrchestrateError> {
+    let now = Instant::now();
+    run_ht_only_bounded_from(
+        cfg,
+        clauses_path,
+        named,
+        deadline.saturating_duration_since(now),
+        Some(now),
+    )
+}
+
+fn run_ht_only_bounded_from(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    budget: Duration,
+    charged_from: Option<Instant>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
+    let Some((mut child, out_path, _, _, _, _, proxy_abox_certificate, _)) =
         spawn_ht(cfg, clauses_path, named)
     else {
         return Ok(None);
     };
     release_transient_heap();
-    let started = Instant::now();
+    let started = charged_from.unwrap_or_else(Instant::now);
     // Block on the worker's pidfd (Linux) so its exit is seen immediately;
     // the 10 ms cadence remains the budget check interval.
     let pidfd = engine_run::open_pidfd(child.id());
@@ -3096,6 +3372,30 @@ fn limit_synchronous_bridge_competitor(
 /// fast-certify / full HT budgets. CB is still preferred whenever it
 /// finishes: the CB slot is checked before the budget on every loop
 /// iteration.
+/// `KM_HT_FIRST_S`: run an immediately-accepted HT bridge worker alone for up
+/// to this many seconds before starting the speculative CB stack. On one CPU
+/// the racing arms otherwise time-share: the certified bridge worker, the CB
+/// engine, the plain re-parse and the certified-ELC racer each get a fraction
+/// of the core, so a bridge answer that needs 40 s of CPU arrives after
+/// 100 s. Schedule only: every answer this can publish is one the race
+/// publishes too (the bridge's complete taxonomy, accepted at 0 s), and a
+/// defer or the deadline falls back to the unchanged race with CB's full
+/// preference window. `0` disables it.
+///
+/// Default 180 s. On the frozen corpus every solved race whose worker
+/// qualifies finished its bridge answer alone within 116 s locally (about
+/// 160 s on the benchmark nodes), and HT-first never lost a case CB had won:
+/// in each of them the bridge alone was faster than the shared race.
+const HT_FIRST_DEFAULT_S: f64 = 180.0;
+
+fn ht_first_deadline() -> Option<Duration> {
+    let seconds = std::env::var("KM_HT_FIRST_S")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(HT_FIRST_DEFAULT_S);
+    (seconds > 0.0).then(|| Duration::from_secs_f64(seconds))
+}
+
 fn ht_acceptance_budget(
     trigger_absorb: bool,
     bridge_exclusive: bool,
@@ -3185,15 +3485,30 @@ where
     let event = engine_run::ArmEvent::new();
     let timing = std::env::var_os("KM_TIMING").is_some();
     let cb_started = Instant::now();
+    // HT-first schedule (see `ht_first_deadline`): the CB stack is held back
+    // while a worker whose answer is accepted at once runs alone.
+    let ht_first = (race_mode != "race").then(ht_first_deadline).flatten();
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
-        let slot = cb_slot.clone();
-        let cb_event = event.clone();
-        let cb_budget = budget_cell.clone();
-        s.spawn(move || {
-            let r = engine_run(cb_budget);
-            *slot.lock().unwrap() = Some(r);
-            cb_event.notify();
-        });
+        let mut pending_cb = Some(engine_run);
+        let mut cb_t0: Option<Instant> = None;
+        macro_rules! start_cb {
+            () => {
+                if let Some(engine_run) = pending_cb.take() {
+                    let slot = cb_slot.clone();
+                    let cb_event = event.clone();
+                    let cb_budget = budget_cell.clone();
+                    cb_t0 = Some(Instant::now());
+                    s.spawn(move || {
+                        let r = engine_run(cb_budget);
+                        *slot.lock().unwrap() = Some(r);
+                        cb_event.notify();
+                    });
+                }
+            };
+        }
+        if ht_first.is_none() {
+            start_cb!();
+        }
         // Whatever happens below, the CB thread must receive its count.
         let budget_guard = budget_cell.resolve_on_drop(cfg.threads);
         let spawned = spawn_ht(cfg, clauses_path, named);
@@ -3206,11 +3521,13 @@ where
             bridge_exclusive,
             typed_nominal_exclusive,
             proxy_abox_certificate,
+            bridge_answer_marker,
         )) = spawned
         else {
             // HT not routable: CB alone, no reservation.
             budget_cell.resolve(cfg.threads);
             drop(budget_guard);
+            start_cb!();
             if timing {
                 eprintln!(
                     "KM_TIMING race: HT not routable @ {:.2}s after the CB stack started",
@@ -3257,38 +3574,16 @@ where
         // monotone-safety on CB-solvable onts). The budget is only the "start accepting
         // HT" threshold: past it, the certified answer is harvested the moment it is
         // ready, so a QO arm that certifies later than the SHOQ default is still taken.
-        let budget = ht_acceptance_budget(
-            std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
+        let trigger_absorb = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
+        let mut budget = ht_acceptance_budget(
+            trigger_absorb,
             bridge_exclusive,
             fast_certify,
             cfg.shoq_budget_s,
             cfg.ht_budget_s,
         );
 
-        let read_tout = |p: &Path| -> Option<EngineOut> {
-            let mut probe = BufReader::new(File::open(p).ok()?);
-            if crate::json_io::is_elc_output_binary(probe.fill_buf().ok()?) {
-                // The producer enables compact output only when no proxy
-                // certificate rewrite is required. Fail closed if a future
-                // caller violates that transport contract.
-                if proxy_abox_certificate.is_some() {
-                    return None;
-                }
-                return super::parse_out_path(p).ok();
-            }
-            let f = File::open(p).ok()?;
-            let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
-            if proxy_abox_certificate
-                .as_ref()
-                .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &output))
-            {
-                return None;
-            }
-            if let Some(certificate) = &proxy_abox_certificate {
-                proxy_abox_filter_output(certificate, &mut output);
-            }
-            Some(tableau_to_out(output))
-        };
+        let read_tout = |p: &Path| read_ht_answer(p, proxy_abox_certificate.as_ref());
         engine_run::notify_on_exit(ht.id(), event.clone());
 
         let mut ht_res: Option<EngineOut> = None;
@@ -3308,6 +3603,69 @@ where
                 .unwrap_or(12.0);
             (gb * (1u64 << 30) as f64) as u64
         };
+
+        // HT-first: only for a worker whose answer, when it arrives, is
+        // accepted immediately in fallback mode (a bridge-exclusive worker
+        // under trigger absorption, budget 0) or may turn out to be (a mixed
+        // worker that marks bridge answers). Run it alone for at most the
+        // deadline; then start the unchanged CB stack and race as before.
+        let mut ht_first_won: Option<EngineOut> = None;
+        // Typed-nominal bridge workers (complete native ABox channel) are
+        // excluded: on the frozen corpus their nominal ABox completion is
+        // often far slower than the exact nominal-aware CB fallback (ORE 5544:
+        // CB 3 s vs bridge 169 s; ORE 11085: CB 35 s vs bridge > 180 s), so
+        // they keep the shared race.
+        if let Some(deadline) = ht_first.filter(|_| !typed_nominal_exclusive) {
+            if pending_cb.is_some() && (budget == 0.0 || bridge_answer_marker.is_some()) {
+                let mut interval = Duration::from_millis(1);
+                while t0.elapsed() < deadline {
+                    let seen = event.epoch();
+                    if engine_run::read_rss(ht.id()).is_some_and(|rss| rss > ht_cap_bytes) {
+                        let _ = ht.kill();
+                    }
+                    if let Ok(Some(st)) = ht.try_wait() {
+                        ht_polled = true;
+                        if st.success() {
+                            ht_res = read_tout(ht_out.path());
+                            if ht_res.is_some()
+                                && bridge_answer_marker.as_ref().is_some_and(|marker| {
+                                    std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge")
+                                })
+                            {
+                                budget = ht_acceptance_budget(
+                                    trigger_absorb,
+                                    true,
+                                    fast_certify,
+                                    cfg.shoq_budget_s,
+                                    cfg.ht_budget_s,
+                                );
+                            }
+                        }
+                        break;
+                    }
+                    event.wait_past(seen, interval);
+                    interval = (interval * 2).min(Duration::from_millis(50));
+                }
+                if timing {
+                    eprintln!(
+                        "KM_TIMING race: HT-first phase ended @ {:.2}s (exited={} answer={} budget={budget:.0}s)",
+                        t0.elapsed().as_secs_f64(),
+                        ht_polled,
+                        ht_res.is_some()
+                    );
+                }
+                if budget == 0.0 {
+                    ht_first_won = ht_res.take();
+                }
+            }
+        }
+        if let Some(w) = ht_first_won {
+            let _ = ht.wait();
+            return Ok(w);
+        }
+        start_cb!();
+        // The CB preference window is measured from the moment CB starts.
+        let t0 = cb_t0.unwrap_or(t0);
 
         let mut interval = Duration::from_millis(1);
         loop {
@@ -3340,6 +3698,26 @@ where
                     }
                     if st.success() {
                         ht_res = read_tout(ht_out.path());
+                        // A mixed worker whose answer came from the bridge arm
+                        // is, for this answer, exactly a bridge-exclusive one.
+                        if ht_res.is_some()
+                            && bridge_answer_marker.as_ref().is_some_and(|marker| {
+                                std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge")
+                            })
+                        {
+                            budget = ht_acceptance_budget(
+                                trigger_absorb,
+                                true,
+                                fast_certify,
+                                cfg.shoq_budget_s,
+                                cfg.ht_budget_s,
+                            );
+                            if timing {
+                                eprintln!(
+                                    "KM_TIMING race: answer published by the bridge arm (budget {budget:.0}s)"
+                                );
+                            }
+                        }
                         if timing {
                             eprintln!(
                                 "KM_TIMING race: read_tout done @ {:.2}s",

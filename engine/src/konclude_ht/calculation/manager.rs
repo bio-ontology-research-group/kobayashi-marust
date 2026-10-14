@@ -24,7 +24,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, INVALID};
 use super::env_factory::ConfigDependedCalculationEnvironmentFactory;
@@ -223,7 +223,7 @@ impl ConcurrentTaskCalculationManager {
     /// The C++ `dynamic_cast` always succeeds here (we own the concrete env), so the
     /// guard is the `calc_context` opaque-alias null check.
     pub fn get_calculation_statistics(&mut self) -> HashMap<String, Cint64> {
-        let mut stat_hash: HashMap<String, Cint64> = HashMap::new();
+        let mut stat_hash: HashMap<String, Cint64> = HashMap::default();
         if self.calc_context != INVALID {
             let con_task_env = &self.task_calc_en;
             stat_hash.insert(
@@ -286,7 +286,7 @@ impl ConcurrentTaskCalculationManager {
         &mut self,
         stat: &HashMap<String, Cint64>,
     ) -> HashMap<String, Cint64> {
-        let mut stat_hash: HashMap<String, Cint64> = HashMap::new();
+        let mut stat_hash: HashMap<String, Cint64> = HashMap::default();
         if self.calc_context != INVALID {
             let con_task_env = &self.task_calc_en;
             stat_hash.insert(

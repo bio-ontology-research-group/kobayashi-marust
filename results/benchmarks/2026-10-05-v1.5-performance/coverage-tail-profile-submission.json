@@ -1,0 +1,17 @@
+{
+  "job_id": 53326865,
+  "diagnostic_only": true,
+  "array": "0-7%4",
+  "limits": {
+    "seconds": 240,
+    "memory_mib": 20480,
+    "cpus": 1
+  },
+  "files": {
+    "coverage-tail-profile-inputs.json": "b3743a62170df5fc5b485250e8f74563e66bc55c1d875ad0203500157e20a6b1",
+    "profile_coverage_tail.py": "87e5fe2e2732c962dbab4c9130726ac89a67ef4cbc334573901208bf61d5cd85",
+    "coverage-tail-profile.sbatch": "e267ff2981d7ba6138b2b32fe0bb302fc8f393646d0ddbb4ec781328718a20e9",
+    "coverage-tail-profile-files.sha256": "e9bbe28301ed30c5828796a0a0a366129d186d70af218ac46518770f63a98305"
+  },
+  "release_approved": false
+}

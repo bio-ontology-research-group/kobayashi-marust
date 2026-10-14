@@ -1,0 +1,12 @@
+{
+  "job_id": 53327291,
+  "diagnostic_only": true,
+  "array": "0-7%4",
+  "files": {
+    "local-universal-candidate-artifact.json": "f5e6af69c89576eb613b460d7a5c67d72b2db5d1f5b6e85e348f4d823f7e1243",
+    "local-universal-candidate.sbatch": "ca37f07f6b407e5b53ad475a5fe94440a039dfdc9c40f87138096edf5e7e2e29",
+    "local-universal-candidate-files.sha256": "3d625190142cc8d1c26ea5441804eaaff4e45b9f42873549e7654baf23ef7cfa",
+    "run_local_universal_candidate.py": "fa398ec643d3ad3f1f167a8dec70bb33eff67ebc9f7c05e54462d248830f290b"
+  },
+  "release_approved": false
+}

@@ -1,0 +1,17 @@
+{
+  "job_id": "53332943",
+  "ontology": "ore_ont_10689",
+  "measurement_status": "executed_unvalidated",
+  "wall_s": 41.34474244713783,
+  "verified_solved": false,
+  "audit_status": "audit_error",
+  "error": "canonicalization failed",
+  "raw_size_observation": "1.5 GiB",
+  "audit_limit_s": 600,
+  "audit_limit_gib": 20,
+  "audit_stderr_empty": true,
+  "audit_stdout_empty": true,
+  "canonical_validated_file_present": true,
+  "interpretation": "The runner does not record audit exit code or watchdog status, so timeout versus another terminal failure is not proven. Late validated artifacts do not override the failed audit. Production runner now records audit execution status, exit code, wall time and peak memory.",
+  "release_approved": false
+}

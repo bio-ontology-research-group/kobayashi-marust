@@ -1,0 +1,16 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "nominal-guard-candidate-717befb66396",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-nominal-guard-717befb66396",
+      "sha256": "717befb663968adb73010bf5148745712418df2c88efb1aca24ff5e5ab51e0b1"
+    }
+  ],
+  "source_manifest_sha256": "611a19c37676192d117510e275c9a28c1042538aeb0d1ed72e01b8d97b62431f",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1"
+  }
+}

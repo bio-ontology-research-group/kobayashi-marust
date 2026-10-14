@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "baseline": "km",
+  "source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16481.owl",
+  "source_sha256": "71bd21e769e3b2e8c78db17e226e175c1bbd10aad01f1b5f2329edd15e8d790e",
+  "runtime_source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16481.owl",
+  "artifact": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+  "artifact_sha256": "941ca25bb4d58c29d78b57eb44598891da6b06b461b9f5ef99f6ff8a8b987a72",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-26-r",
+  "slurm_job_id": "53294913",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "71bd21e769e3b2e8c78db17e226e175c1bbd10aad01f1b5f2329edd15e8d790e",
+  "command": [
+    "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+    "classify",
+    "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16481.owl"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "km-json",
+  "cpu_affinity": [
+    13
+  ],
+  "exit_code": 0,
+  "wall_s": 20.14462016709149,
+  "peak_bytes": 49057792,
+  "sampled_peak_bytes": 49057792,
+  "files": {
+    "taxonomy.raw": {
+      "sha256": "c29efaef64e5cad4f587843501fd02366c5597516d2df1f8178386c9e7f29e0f",
+      "bytes": 77
+    },
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "max-rss-kib.txt": {
+      "sha256": "6868725e4482611b543100dfdf16a252f9cecfdac97835d0d7c1c4db607277e9",
+      "bytes": 6
+    }
+  }
+}

@@ -18,7 +18,7 @@
 //! extension implements Join, r-Succ, r-Pred, and Nom; its soundness lemmas and
 //! finite covering bound live in `lean/ContextCalculus/Nominals.lean`.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
 use std::sync::Arc;
 
@@ -245,7 +245,34 @@ enum RedundancyKey {
 #[derive(Default)]
 struct RedundancyTrieNode {
     value: Option<u32>,
-    children: BTreeMap<RedundancyKey, RedundancyTrieNode>,
+    /// Children sorted by key: the iteration order of the former
+    /// `BTreeMap`, kept in one contiguous vector. Pred result batches build
+    /// and drop a trie per delivery, and almost every node has few children,
+    /// so a sorted vector avoids the B-tree's node allocations and pointer
+    /// chasing while every lookup, ordered scan and removal stays the same.
+    children: Vec<(RedundancyKey, RedundancyTrieNode)>,
+}
+
+impl RedundancyTrieNode {
+    #[inline]
+    fn child(&self, key: &RedundancyKey) -> Option<&RedundancyTrieNode> {
+        self.children
+            .binary_search_by(|(k, _)| k.cmp(key))
+            .ok()
+            .map(|i| &self.children[i].1)
+    }
+
+    #[inline]
+    fn child_or_default(&mut self, key: RedundancyKey) -> &mut RedundancyTrieNode {
+        let i = match self.children.binary_search_by(|(k, _)| k.cmp(&key)) {
+            Ok(i) => i,
+            Err(i) => {
+                self.children.insert(i, (key, RedundancyTrieNode::default()));
+                i
+            }
+        };
+        &mut self.children[i].1
+    }
 }
 
 /// Faithful Rust port of Sequoia's `TrieContextClauseRedundancyIndex` and the
@@ -258,18 +285,21 @@ struct RedundancyTrie {
 }
 
 impl RedundancyTrie {
-    fn key(clause: &ContextClause) -> Vec<RedundancyKey> {
-        let mut key = Vec::with_capacity(clause.head.len() + clause.body.len());
+    fn key(clause: &ContextClause) -> smallvec::SmallVec<[RedundancyKey; 12]> {
+        let mut key = smallvec::SmallVec::with_capacity(clause.head.len() + clause.body.len());
         key.extend(clause.head.iter().copied().map(RedundancyKey::Head));
         key.extend(clause.body.iter().copied().map(RedundancyKey::Body));
         key
     }
 
     fn insert(&mut self, clause: &ContextClause, cid: u32) {
-        let key = Self::key(clause);
+        self.insert_key(&Self::key(clause), cid);
+    }
+
+    fn insert_key(&mut self, key: &[RedundancyKey], cid: u32) {
         let mut node = &mut self.root;
-        for component in key {
-            node = node.children.entry(component).or_default();
+        for &component in key {
+            node = node.child_or_default(component);
         }
         debug_assert!(node.value.is_none() || node.value == Some(cid));
         node.value = Some(cid);
@@ -280,8 +310,46 @@ impl RedundancyTrie {
     /// is already in Sequoia's active redundancy index and must not subsume
     /// itself, while any different value on a shorter path is a true subsumer.
     fn contains_subset(&self, clause: &ContextClause, exclude: Option<u32>) -> bool {
-        let key = Self::key(clause);
-        Self::contains_subset_from(&self.root, &key, 0, exclude)
+        self.contains_subset_key(&Self::key(clause), exclude)
+    }
+
+    fn contains_subset_key(&self, key: &[RedundancyKey], exclude: Option<u32>) -> bool {
+        // Context-clause keys are strictly increasing (sorted, duplicate-free
+        // head and body regions); then a merge of the sorted children with
+        // the pattern suffix visits exactly the matches the per-component
+        // lookups find, in the same order. Any other key keeps the lookups.
+        if key.windows(2).all(|w| w[0] < w[1]) {
+            Self::contains_subset_from_sorted(&self.root, key, 0, exclude)
+        } else {
+            Self::contains_subset_from(&self.root, key, 0, exclude)
+        }
+    }
+
+    fn contains_subset_from_sorted(
+        node: &RedundancyTrieNode,
+        pattern: &[RedundancyKey],
+        start: usize,
+        exclude: Option<u32>,
+    ) -> bool {
+        if node.value.is_some() && node.value != exclude {
+            return true;
+        }
+        let children = &node.children;
+        let (mut a, mut b) = (0usize, start);
+        while a < children.len() && b < pattern.len() {
+            match children[a].0.cmp(&pattern[b]) {
+                std::cmp::Ordering::Less => a += 1,
+                std::cmp::Ordering::Greater => b += 1,
+                std::cmp::Ordering::Equal => {
+                    if Self::contains_subset_from_sorted(&children[a].1, pattern, b + 1, exclude) {
+                        return true;
+                    }
+                    a += 1;
+                    b += 1;
+                }
+            }
+        }
+        false
     }
 
     fn contains_subset_from(
@@ -297,7 +365,7 @@ impl RedundancyTrie {
         // order. Iterating the (usually short) pattern and doing exact child
         // lookups is the same search as Sequoia's ordered-child traversal.
         for i in start..pattern.len() {
-            if let Some(child) = node.children.get(&pattern[i]) {
+            if let Some(child) = node.child(&pattern[i]) {
                 if Self::contains_subset_from(child, pattern, i + 1, exclude) {
                     return true;
                 }
@@ -312,9 +380,12 @@ impl RedundancyTrie {
     /// longer contain that requirement.  This is Sequoia's
     /// `removeKeySuperset` traversal.
     fn remove_supersets(&mut self, clause: &ContextClause) -> Vec<u32> {
-        let key = Self::key(clause);
+        self.remove_supersets_key(&Self::key(clause))
+    }
+
+    fn remove_supersets_key(&mut self, key: &[RedundancyKey]) -> Vec<u32> {
         let mut removed = Vec::new();
-        Self::remove_supersets_from(&mut self.root, &key, 0, &mut removed);
+        Self::remove_supersets_from(&mut self.root, key, 0, &mut removed);
         removed
     }
 
@@ -329,16 +400,16 @@ impl RedundancyTrie {
             return true;
         }
         let required = pattern[pattern_index];
-        let candidates: Vec<RedundancyKey> =
-            node.children.range(..=required).map(|(&k, _)| k).collect();
-        for component in candidates {
+        // Children with key <= required, in ascending key order (the former
+        // `range(..=required)` scan); emptied children are removed in place.
+        let mut i = 0;
+        while i < node.children.len() && node.children[i].0 <= required {
+            let component = node.children[i].0;
             let next_pattern = pattern_index + usize::from(component == required);
-            let empty = {
-                let child = node.children.get_mut(&component).unwrap();
-                Self::remove_supersets_from(child, pattern, next_pattern, removed)
-            };
-            if empty {
-                node.children.remove(&component);
+            if Self::remove_supersets_from(&mut node.children[i].1, pattern, next_pattern, removed) {
+                node.children.remove(i);
+            } else {
+                i += 1;
             }
         }
         node.value.is_none() && node.children.is_empty()
@@ -353,6 +424,39 @@ impl RedundancyTrie {
             Self::take_all(&mut child, removed);
         }
     }
+}
+
+/// Cooperative cancellation of an abandoned in-process saturation.
+///
+/// The in-process CB fast path (`orchestrate::try_inproc_engine`) runs the
+/// engine on a helper thread with a time budget. When the budget expires the
+/// supervisor falls through to the forked path, and the helper's answer is
+/// discarded; without a stop signal the helper kept saturating to its own
+/// fixpoint, taking CPU from the fallback for the rest of the run. A helper
+/// thread installs a flag; the saturation and message loops drop their
+/// remaining work as soon as it is raised. `ANY_CANCEL_ARMED` keeps the check
+/// a single relaxed load for every other engine run.
+static ANY_CANCEL_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+thread_local! {
+    static THREAD_CANCEL: std::cell::RefCell<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Install `flag` as the cancellation signal for engines run on this thread.
+pub fn set_thread_cancel_flag(flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    ANY_CANCEL_ARMED.store(true, std::sync::atomic::Ordering::Relaxed);
+    THREAD_CANCEL.with(|slot| *slot.borrow_mut() = Some(flag));
+}
+
+/// The cancellation flag installed on the current thread, if any.  Read once
+/// when an ontology is prepared, then shared by every engine (including
+/// Rayon worker engines) built from that preparation.
+fn thread_cancel_flag() -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+    if !ANY_CANCEL_ARMED.load(std::sync::atomic::Ordering::Relaxed) {
+        return None;
+    }
+    THREAD_CANCEL.with(|slot| slot.borrow().clone())
 }
 
 thread_local! {
@@ -1325,6 +1429,14 @@ struct Ontology {
     /// context and on demand into a context that first derives an atom about
     /// that individual (docs/NOMINALS-CB.md); empty without nominal mode.
     ground_facts: HashMap<Term, Vec<usize>>,
+    /// Every input individual occurring in some ontology clause (body or
+    /// head), in first occurrence order. Grounded Hyper (σ(x) ∈ Σo) with an
+    /// EMPTY body instantiates each x-form fact at every one of them in the
+    /// ground context; empty without nominal mode. Additional nominals of the
+    /// Nom rule are not included: the composite layout (`KM_COMP_IND_BITS`)
+    /// is sized for input individuals, so `f(o')` is not representable.
+    individuals: Vec<Term>,
+    individual_set: HashSet<Term>,
     concept_clauses: HashMap<Iri, Vec<usize>>, // body Concept(iri,x)
     forward_role_clauses: HashMap<Iri, Vec<usize>>, // body Role(iri,x,_)
     backward_role_clauses: HashMap<Iri, Vec<usize>>, // body Role(iri,_,x)
@@ -1351,6 +1463,20 @@ impl Ontology {
     /// clause derives the same contradiction without changing the ordering.
     fn push_clause(&mut self, sig: &mut Sig, c: OntologyClause, mark_nothing: bool) -> usize {
         let idx = self.clauses.len();
+        {
+            let mut inds: Vec<Term> = Vec::new();
+            for p in &c.body {
+                pred_inds(p, &mut inds);
+            }
+            for l in &c.head {
+                lit_inds(l, &mut inds);
+            }
+            for o in inds {
+                if self.individual_set.insert(o) {
+                    self.individuals.push(o);
+                }
+            }
+        }
         if c.body.is_empty() {
             // Ground facts (heads mentioning an individual) seed the ground
             // context fully and other contexts on demand.
@@ -1459,6 +1585,21 @@ impl Ontology {
     /// Candidate ontology clauses that may resolve with a context-clause head
     /// predicate `max` (i.e. have a body atom that can unify with `max`).
     /// Over-approximates by predicate iri; `can_unify` filters precisely.
+    /// `q` derives `p` through one ontology clause `B → H` with a single body
+    /// and a single head atom: `B` unifies with `q` and the instance of `H`
+    /// is `p` (told subclass, role inclusion, inverse role).
+    fn single_premise_entails(&self, q: &Pred, p: &Pred) -> bool {
+        self.clauses_cand(q).iter().any(|&ci| {
+            let c = &self.clauses[ci];
+            if c.body.len() != 1 || c.head.len() != 1 {
+                return false;
+            }
+            let Lit::P(h) = c.head[0] else { return false };
+            let mut sigma = CentralSubst::new(false);
+            unify(&mut sigma, &c.body[0], q) && h.apply(&|v| sigma.apply(v)) == *p
+        })
+    }
+
     fn clauses_cand(&self, max: &Pred) -> &[usize] {
         match *max {
             Pred::Concept { iri, .. } => self
@@ -2039,6 +2180,16 @@ struct Context {
     /// clauses `p → p` at the target, so their consequences come back
     /// conditioned on `p` alone.
     fact_trigger_sets: HashMap<Term, Vec<Pred>>,
+    /// Triggers that are the sole trigger over their function term in their
+    /// head (the former core criterion) but derived conditionally (not a unit
+    /// clause `→ p`). They stay hypotheses, not core facts; together with the
+    /// fact core they key the central successor, so successor granularity is
+    /// that of the former core.
+    cond_trigger_sets: HashMap<Term, Vec<Pred>>,
+    /// Source condition (body, other head literals) of the first clause that
+    /// pushed each conditional trigger: triggers with equal conditions form a
+    /// condition class (see `redundant_class_hypotheses`).
+    cond_trigger_condition: HashMap<Pred, (Vec<Pred>, Vec<Lit>)>,
     /// predecessor edges: (predecessor ctx id, function term) -> pushed predicates
     predecessors: HashMap<(usize, Term), HashSet<Pred>>,
     pushed_succ: HashSet<Pred>,
@@ -2048,6 +2199,10 @@ struct Context {
     /// gets a fresh index and is resent, which the receiver's
     /// `neighbor_pred_seen` dedups.
     pushed_pred: HashMap<(usize, Term), HashSet<u32>>,
+    /// Individuals `o` this context subscribed to at the ground context
+    /// because it holds a merge clause `Γ → Δ ∨ x ≈ o` (see
+    /// `subscribe_merge_individuals`).
+    merge_subscriptions: HashSet<Term>,
     /// number of `pred_pool` entries already cross-checked against every edge at
     /// that edge's `edge_seen` pushed-length in a prior `propagate`.
     pred_hwm: usize,
@@ -2135,9 +2290,12 @@ impl Context {
             successors: HashMap::default(),
             trigger_sets: HashMap::default(),
             fact_trigger_sets: HashMap::default(),
+            cond_trigger_sets: HashMap::default(),
+            cond_trigger_condition: HashMap::default(),
             predecessors: HashMap::default(),
             pushed_succ: HashSet::default(),
             pushed_pred: HashMap::default(),
+            merge_subscriptions: HashSet::default(),
             pred_hwm: 0,
             edge_seen: HashMap::default(),
             succ_hwm: 0,
@@ -2911,15 +3069,17 @@ struct PredResultBuffer {
 
 impl PredResultBuffer {
     fn push_nonredundant(&mut self, clause: ContextClause) {
-        if self.redundancy_trie.contains_subset(&clause, None) {
+        // One trie key per clause for all three trie operations.
+        let key = RedundancyTrie::key(&clause);
+        if self.redundancy_trie.contains_subset_key(&key, None) {
             return;
         }
-        let removed = self.redundancy_trie.remove_supersets(&clause);
+        let removed = self.redundancy_trie.remove_supersets_key(&key);
         // Most result batches never remove a clause. Retain their original
         // flat representation without allocating ordering metadata.
         if removed.is_empty() && self.links.is_none() {
             let id = u32::try_from(self.clauses.len()).expect("Pred result buffer exhausted u32 ids");
-            self.redundancy_trie.insert(&clause, id);
+            self.redundancy_trie.insert_key(&key, id);
             self.clauses.push(Some(clause));
             return;
         }
@@ -2954,7 +3114,7 @@ impl PredResultBuffer {
             links.push((None, None));
             id
         };
-        self.redundancy_trie.insert(&clause, id);
+        self.redundancy_trie.insert_key(&key, id);
         self.clauses[id as usize] = Some(clause);
         links[id as usize] = (self.last, None);
         if let Some(last) = self.last {
@@ -3118,6 +3278,9 @@ pub struct PreparedOntology {
     /// first fresh additional-nominal id (above every input individual)
     nom_first: i32,
     dropped_unsupported: usize,
+    /// Cooperative stop signal of an abandoned in-process run (see
+    /// `set_thread_cancel_flag`); `None` for every ordinary run.
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl PreparedOntology {
@@ -3142,6 +3305,8 @@ impl PreparedOntology {
 
 #[derive(Clone)]
 pub struct Engine {
+    /// Cooperative stop signal shared from `PreparedOntology::cancel`.
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     pub sig: Arc<Sig>,
     ont: Arc<Ontology>,
     contexts: Vec<Context>,
@@ -3196,6 +3361,11 @@ pub struct Engine {
     /// Hash-interned like `core_index` (hash of the core -> candidate ids,
     /// exact-compared) so the successor core lives only in `Context.core`.
     central_index: HashMap<u64, Vec<usize>>,
+    /// Conditional-trigger part of a central successor's key (see
+    /// `central_successor_for_key`); absent = empty.
+    central_key_extra: HashMap<usize, Vec<Pred>>,
+    /// Number of hypotheses `redundant_class_hypotheses` withheld (statistic).
+    class_dropped_hypotheses: std::cell::Cell<u64>,
     /// cached strategy flag: central (default) vs per-`f` pay-as-you-go (KM_NO_CENTRAL)
     central: bool,
     /// Portfolio candidate flags (default OFF/inert), cached from env at `new`:
@@ -3835,6 +4005,7 @@ impl Engine {
             nom_k: (max_z - 1).max(0) as usize,
             nom_first: max_ind + 1,
             dropped_unsupported: dropped,
+            cancel: thread_cancel_flag(),
         }
     }
 
@@ -3842,12 +4013,21 @@ impl Engine {
     /// mutable saturation state (contexts, arenas, message queue, Nom interner)
     /// is allocated; the clause arena, signature and nominal certificates are
     /// shared with every other engine built from the same `PreparedOntology`.
+    /// True once the supervisor abandoned this run (never for ordinary runs).
+    #[inline]
+    fn cancel_requested(&self) -> bool {
+        self.cancel
+            .as_ref()
+            .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
     pub fn from_prepared(prepared: &PreparedOntology) -> Engine {
         let nom_budget = std::env::var("KM_NOM_BUDGET")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(4096);
         Engine {
+            cancel: prepared.cancel.clone(),
             sig: Arc::clone(&prepared.sig),
             ont: Arc::clone(&prepared.ont),
             contexts: Vec::new(),
@@ -3858,6 +4038,8 @@ impl Engine {
             msgs: VecDeque::new(),
             successor_ctxs: HashMap::default(),
             central_index: HashMap::default(),
+            central_key_extra: HashMap::default(),
+            class_dropped_hypotheses: Default::default(),
             central: std::env::var_os("KM_NO_CENTRAL").is_none(),
             // Portfolio candidate flags (cached once; default OFF/inert).
             core_cap: std::env::var("KM_CORE_CAP")
@@ -4315,6 +4497,26 @@ impl Engine {
         }
     }
 
+    /// Grounded Hyper with an empty body: the x-form fact `fi` (`→ L(x)`,
+    /// e.g. from `⊤ ⊑ C`) instantiated at individual `o` (`→ L(o)`, `f(x)`
+    /// becoming `f(o)`). Only the ground context grounds the central variable;
+    /// without these instances a ⊤-fact never reaches an individual that is
+    /// not otherwise typed by a body atom the fact's consequences need.
+    fn seed_fact_grounded(&mut self, id: usize, fi: usize, o: Term) {
+        let root = self.contexts[id].root;
+        let mut sigma = CentralSubst::new(true);
+        if !sigma.add(X, o) {
+            return;
+        }
+        let head: Vec<Lit> = self.ont.clauses[fi].head.iter()
+            .map(|l| l.apply(&|v| sigma.apply(v)))
+            .collect();
+        if let Some(head) = self.filter_head(head) {
+            let c = ContextClause::new(vec![], head, root, &self.sig);
+            self.add_clause(id, c);
+        }
+    }
+
     /// The ground (nominal root) context `v_r`, created on first use: empty
     /// core, fully pre-seeded with every ground ontology fact, and the only
     /// context where Hyper grounds the central variable.
@@ -4328,12 +4530,20 @@ impl Engine {
         self.ground_ctx = Some(id);
         let inds: Vec<Term> = self.ont.ground_facts.keys().copied().collect();
         self.contexts[id].seeded_inds.extend(inds);
+        let all_inds = self.ont.individuals.clone();
+        self.contexts[id].seeded_inds.extend(all_inds.iter().copied());
         self.init_context(id);
         let mut fis: Vec<usize> = self.ont.ground_facts.values().flatten().copied().collect();
         fis.sort_unstable();
         fis.dedup();
         for fi in fis {
             self.seed_fact(id, fi);
+        }
+        let facts = self.ont.facts.clone();
+        for &o in &all_inds {
+            for &fi in &facts {
+                self.seed_fact_grounded(id, fi, o);
+            }
         }
         self.saturate(id);
         id
@@ -4667,6 +4877,11 @@ impl Engine {
         let d = self.contexts[id].root as usize;
         loop {
             self.probe_retained_storage();
+            if self.cancel_requested() {
+                // Abandoned run: its answer is never read.
+                self.contexts[id].todo.clear();
+                break;
+            }
             let cid = match self.contexts[id].todo.pop_front() {
                 Some(c) => c,
                 None => break,
@@ -5147,6 +5362,22 @@ impl Engine {
                             }
                             sigma.rollback(mark);
                         }
+                    } else {
+                        // Outside the ground context the side clause is
+                        // still a premise for a second body position when the
+                        // SAME maximal predicate `max` matches it: Sequoia's
+                        // given-clause loop pairs the side clause with itself.
+                        // Distinct maxima of the side clause only rebuild the
+                        // side clause, but one head used twice drops it once
+                        // from the resolvent, which the side clause does not
+                        // subsume: `→ r(x,x)` with `r(x,z) ∧ r(z,x) → ⊥`
+                        // (asymmetry) must yield `→ ⊥`. Without this the
+                        // self-loop instance of a two-atom body was lost.
+                        let mark = sigma.mark();
+                        if unify(&mut sigma, &oc.body[i], &max) {
+                            v.push((usize::MAX, max));
+                        }
+                        sigma.rollback(mark);
                     }
                     if v.is_empty() {
                         ok = false;
@@ -6412,10 +6643,61 @@ impl Engine {
     /// with the shared non-root closure (facts+TBox consequences) plus the
     /// Core rule for its core atoms.
     fn central_successor_for_core(&mut self, core: Vec<Pred>, seed_from: Option<usize>) -> usize {
-        let h = content_hash(&core);
+        self.central_successor_for_key(core, Vec::new(), seed_from)
+    }
+
+    /// Central successor keyed by the FACT core plus the sorted set of
+    /// conditionally derived single triggers (`extra`, see
+    /// `cond_trigger_sets`). Only the fact core is
+    /// asserted (`-> p`, appended to every back-pushed clause); the
+    /// conditional triggers arrive as `p -> p` hypotheses and condition a
+    /// back-pushed clause only when its derivation used them. Keying by
+    /// `extra` as well keeps one successor per full trigger set, the
+    /// granularity of the original central strategy, so contexts with
+    /// different conditional triggers do not pool their hypotheses.
+    /// Conditional triggers of edge `f` of context `id` (in successor
+    /// coordinates) that need no hypothesis at the successor: within a
+    /// condition class (triggers pushed by clauses with the same body and the
+    /// same other head literals), a member `p` is dropped when a kept member
+    /// `q` derives it through a single-premise ontology clause `q → p`
+    /// (inverse role, role inclusion, told subclass). The successor derives
+    /// `p` from the hypothesis `q`, so every consequence of `p` returns
+    /// conditioned on `q`; `q` and `p` share the source condition, so Pred
+    /// resolves both to the same predecessor clause. A member is dropped only
+    /// on account of a member not dropped before it, and of two members that
+    /// derive each other the smaller is kept, so the kept set derives every
+    /// dropped member.
+    fn redundant_class_hypotheses(&self, id: usize, f: Term, core: &[Pred]) -> Vec<Pred> {
+        if std::env::var_os("KM_NO_CLASS_SUBSUMPTION").is_some() {
+            return Vec::new();
+        }
+        let ctx = &self.contexts[id];
+        let members: Vec<(Pred, &(Vec<Pred>, Vec<Lit>))> = ctx.cond_trigger_sets.get(&f).into_iter().flatten()
+            .filter_map(|p| ctx.cond_trigger_condition.get(p).map(|c| (p.apply(&|v| forwards(f, v)), c)))
+            .filter(|(q, _)| !core.contains(q))
+            .collect();
+        let mut out: Vec<Pred> = Vec::new();
+        for (i, (p, cp)) in members.iter().enumerate() {
+            let dropped = members.iter().enumerate().any(|(j, (q, cq))| {
+                j != i && cq == cp && !out.contains(q)
+                    && self.ont.single_premise_entails(q, p)
+                    && !(self.ont.single_premise_entails(p, q) && p < q)
+            });
+            if dropped {
+                out.push(*p);
+            }
+        }
+        self.class_dropped_hypotheses.set(self.class_dropped_hypotheses.get() + out.len() as u64);
+        out
+    }
+
+    fn central_successor_for_key(&mut self, core: Vec<Pred>, extra: Vec<Pred>, seed_from: Option<usize>) -> usize {
+        let h = content_hash(&(core.clone(), extra.clone()));
         if let Some(ids) = self.central_index.get(&h) {
             for &cand in ids {
-                if self.contexts[cand].core == core {
+                if self.contexts[cand].core == core
+                    && self.central_key_extra.get(&cand).map(Vec::as_slice).unwrap_or(&[]) == extra.as_slice()
+                {
                     return cand;
                 }
             }
@@ -6423,6 +6705,9 @@ impl Engine {
         let id = self.contexts.len();
         let ctx = Context::new(id, core, false, None);
         self.contexts.push(ctx);
+        if !extra.is_empty() {
+            self.central_key_extra.insert(id, extra);
+        }
         self.central_index.entry(h).or_default().push(id);
         if std::env::var_os("KM_NO_SHARE").is_some() || self.certificate_history.is_some() {
             self.init_context(id);
@@ -6612,7 +6897,8 @@ impl Engine {
         // ---- Succ ---- (semi-naive: scan only pool entries added since the last
         // propagate; succ triggers only arise from new worked-off clauses, and
         // `pushed_succ` still dedups within and across scans).
-        let mut new_succ: Vec<(Pred, bool)> = Vec::new();
+        let mut new_succ: Vec<(Pred, bool, bool)> = Vec::new();
+        let mut cond_conditions: Vec<(Pred, (Vec<Pred>, Vec<Lit>))> = Vec::new();
         // r-Succ (nominal calculus): ground max-head atoms about an
         // individual push their y-form to the ground context, edge labelled
         // by the individual.
@@ -6658,7 +6944,18 @@ impl Engine {
                         && p.is_succ_trigger(&self.sig)
                         && !ctx.pushed_succ.contains(&p)
                     {
-                        new_succ.push((p, !multi.contains(&p.max_term())));
+                        // Only an UNCONDITIONAL trigger (a unit clause `→ p`)
+                        // may enter the successor core: back-pushed clauses
+                        // carry the whole sender core, so a conditional core
+                        // atom conditions every refutation of the shared
+                        // successor, including those that never used it.
+                        let unconditional = c.body.is_empty() && c.head.len() == 1;
+                        let single = !multi.contains(&p.max_term());
+                        if !unconditional && single {
+                            let rest: Vec<Lit> = c.head.iter().copied().filter(|l| *l != Lit::P(p)).collect();
+                            cond_conditions.push((p, (c.body.to_vec(), rest)));
+                        }
+                        new_succ.push((p, unconditional && single, !unconditional && single));
                     } else if Some(id) != self.ground_ctx {
                         if let Some((yform, o)) = root_succ_form(&p) {
                             if !ctx.pushed_succ.contains(&yform)
@@ -6687,7 +6984,7 @@ impl Engine {
         self.contexts[id].succ_hwm = self.contexts[id].succ_pool_len();
         if !self.central {
             // Legacy pay-as-you-go strategy: one empty-core successor per `f`.
-            for (p, _) in new_succ {
+            for (p, _, _) in new_succ {
                 let f = p.max_term();
                 let target = self.successor_for(f);
                 // forward map: f -> x, x -> y
@@ -6731,7 +7028,7 @@ impl Engine {
                 let trigskip = self.trigskip;
                 let mut redundant: Vec<Pred> = Vec::new();
                 if trigskip {
-                    for (p, _) in &new_succ {
+                    for (p, _, _) in &new_succ {
                         if let Pred::Concept { iri, t } = *p {
                             let f = t;
                             if let Some(&sid) = self.contexts[id].successors.get(&f) {
@@ -6743,7 +7040,10 @@ impl Engine {
                     }
                 }
                 let ctx = &mut self.contexts[id];
-                for (p, is_fact) in new_succ {
+                for (p, condition) in cond_conditions.drain(..) {
+                    ctx.cond_trigger_condition.entry(p).or_insert(condition);
+                }
+                for (p, is_fact, is_cond) in new_succ {
                     // Always mark pushed so we never re-process this trigger.
                     ctx.pushed_succ.insert(p);
                     if redundant.contains(&p) {
@@ -6753,6 +7053,9 @@ impl Engine {
                     sorted_pred_insert(ctx.trigger_sets.entry(f).or_default(), p);
                     if is_fact {
                         sorted_pred_insert(ctx.fact_trigger_sets.entry(f).or_default(), p);
+                    }
+                    if is_cond {
+                        sorted_pred_insert(ctx.cond_trigger_sets.entry(f).or_default(), p);
                     }
                     new_by_f.entry(f).or_default().push(p);
                     if !grew.contains(&f) {
@@ -6797,7 +7100,16 @@ impl Engine {
                 } else {
                     None
                 };
-                let target = self.central_successor_for_core(core, seed_src);
+                let mut extra: Vec<Pred> = self.contexts[id]
+                    .cond_trigger_sets
+                    .get(&f)
+                    .map(|s| s.iter().map(|p| p.apply(&|v| forwards(f, v))).collect())
+                    .unwrap_or_default();
+                extra.retain(|p| !core.contains(p));
+                extra.sort();
+                extra.dedup();
+                let redundant_hyps = self.redundant_class_hypotheses(id, f, &core);
+                let target = self.central_successor_for_key(core, extra, seed_src);
                 let prev = self.contexts[id].successors.insert(f, target);
                 if prev != Some(target) {
                     // New / re-targeted edge: the r-Succ cross-step must offer it
@@ -6807,10 +7119,14 @@ impl Engine {
                     // set so the new context's edge records every pushed
                     // predicate.
                     for p in &raw {
+                        let q = p.apply(&|v| forwards(f, v));
+                        if redundant_hyps.contains(&q) {
+                            continue;
+                        }
                         self.msgs.push_back(Msg::Succ {
                             from: pack_msg_context(id),
                             f,
-                            p: p.apply(&|v| forwards(f, v)),
+                            p: q,
                             target: pack_msg_context(target),
                         });
                     }
@@ -6819,10 +7135,14 @@ impl Engine {
                     // triggers so the target gains their edge bookkeeping and
                     // hypothesis clauses.
                     for p in &new_by_f[&f] {
+                        let q = p.apply(&|v| forwards(f, v));
+                        if redundant_hyps.contains(&q) {
+                            continue;
+                        }
                         self.msgs.push_back(Msg::Succ {
                             from: pack_msg_context(id),
                             f,
-                            p: p.apply(&|v| forwards(f, v)),
+                            p: q,
                             target: pack_msg_context(target),
                         });
                     }
@@ -6964,7 +7284,40 @@ impl Engine {
                     }
                 }
             }
+            // Positions (in `edges` order) of the edges whose pushed set grew.
+            // An old clause is only re-checked against these, so iterating
+            // them alone skips exactly the pairs the loop below `continue`s.
+            let dirty_edges: Vec<usize> = edges
+                .iter()
+                .enumerate()
+                .filter_map(|(k, (_, _, dirty))| dirty.then_some(k))
+                .collect();
+            // New clauses are checked against every edge. When there are many
+            // of both, index the edges by pushed predicate: an edge can pass
+            // only if its pushed set holds the clause's first body atom, so
+            // the edges listed under that atom (ascending, i.e. in `edges`
+            // order) are exactly the ones whose full check can succeed, and
+            // the sends keep their order.
+            let new_clauses = ctx.pred_pool_len().saturating_sub(hwm);
+            let total_pushed: usize = edges.iter().map(|(_, pushed, _)| pushed.len()).sum();
+            let edges_by_pred: Option<HashMap<&Pred, Vec<usize>>> = (new_clauses
+                .saturating_mul(edges.len())
+                > total_pushed.saturating_mul(4).saturating_add(4096))
+            .then(|| {
+                let mut index: HashMap<&Pred, Vec<usize>> = HashMap::default();
+                for (k, (_, pushed, _)) in edges.iter().enumerate() {
+                    for p in pushed.iter() {
+                        index.entry(p).or_default().push(k);
+                    }
+                }
+                index
+            });
             for (i, ci) in ctx.pred_pool_iter().enumerate() {
+                // An old clause on a non-ground sender with no grown edge
+                // has no pair left to check.
+                if !ground_sender && i < hwm && dirty_edges.is_empty() {
+                    continue;
+                }
                 // Back-subsumption removes the arena id from `clause_keys`.
                 // Skipping it here is not an inference change: the retained
                 // strengthening entails the dead clause and is itself eligible
@@ -7043,12 +7396,21 @@ impl Engine {
                     }
                     continue;
                 }
-                for (edge, pushed, dirty_edge) in &edges {
-                    // (old clause, unchanged edge): already checked at this
-                    // edge's pushed-length — skip.
-                    if !new_clause && !*dirty_edge {
-                        continue;
+                // (old clause, unchanged edge): already checked at this
+                // edge's pushed-length — only grown edges are visited.
+                let candidates: Option<&[usize]> = if new_clause {
+                    match (&edges_by_pred, c.body.first()) {
+                        (Some(index), Some(first)) => {
+                            Some(index.get(first).map_or(&[][..], Vec::as_slice))
+                        }
+                        _ => None,
                     }
+                } else {
+                    Some(dirty_edges.as_slice())
+                };
+                let checked = candidates.map_or(edges.len(), <[usize]>::len);
+                for k in 0..checked {
+                    let (edge, pushed, _) = &edges[candidates.map_or(k, |list| list[k])];
                     pred_checks += 1;
                     // Every body atom must be backed by this edge's pushed set
                     // (for the ground context these are the r-Succ hypotheses
@@ -7080,9 +7442,12 @@ impl Engine {
                     }
                 }
             }
+            // Record the pushed length of every edge whose length moved; an
+            // unchanged edge already stores it (a missing entry reads as 0).
             new_edge_seen = ctx
                 .predecessors
                 .iter()
+                .filter(|(e, pushed)| *ctx.edge_seen.get(e).unwrap_or(&0) != pushed.len())
                 .map(|(e, pushed)| (*e, pushed.len()))
                 .collect();
         }
@@ -7097,6 +7462,7 @@ impl Engine {
             }
             self.stat_pred_out_by_ctx[id] += to_send.len() as u64;
         }
+        self.subscribe_merge_individuals(id);
         for (edge, pool_idx) in to_send {
             self.contexts[id]
                 .pushed_pred
@@ -7106,6 +7472,99 @@ impl Engine {
             self.msgs.push_back(Msg::Pred {
                 to: pack_msg_context(edge.0),
                 from: pack_msg_context(id),
+                edge_label: edge.1,
+                pool_idx,
+            });
+        }
+    }
+
+    /// r-Pred with no `A_i` (arXiv:1805.01396 Table 3, n = 0) for contexts
+    /// that are tied to an individual by a merge clause `Γ → Δ ∨ x ≈ o`.
+    /// Such a context never opens an r-Succ edge for `o` (side condition (*)
+    /// blocks every push while the merge clause holds), so it never announced
+    /// `o` and the ground context's body-free conclusions about `o` (e.g. a
+    /// fact derived after `o` merged with another individual) could not reach
+    /// it; Eq then rewrites them onto `x`. The context subscribes once per
+    /// individual with an edge that carries no hypotheses: the ground context
+    /// sends it exactly the clauses its announced-individual guard admits
+    /// (body atoms must still be discharged by pushed hypotheses, so only
+    /// body-free ground clauses pass), the existing ones immediately and later
+    /// ones from its ordinary r-Pred scan.
+    fn subscribe_merge_individuals(&mut self, id: usize) {
+        if self.ont.ground_facts.is_empty()
+            || Some(id) == self.ground_ctx
+            || std::env::var_os("KM_NO_MERGE_SUBSCRIPTION").is_some()
+        {
+            return;
+        }
+        let new: Vec<Term> = {
+            let ctx = &self.contexts[id];
+            let arena = &self.cc_arena[ctx.root as usize];
+            let mut out: Vec<Term> = Vec::new();
+            for mi in ctx.merge_clauses().iter() {
+                if !ctx.has_clause(mi) {
+                    continue;
+                }
+                for l in &arena[mi as usize].head {
+                    if let Lit::Eq { s, t } = *l {
+                        let o = if is_central(s) && is_individual(t) {
+                            t
+                        } else if is_central(t) && is_individual(s) {
+                            s
+                        } else {
+                            continue;
+                        };
+                        if !ctx.merge_subscriptions.contains(&o) && !out.contains(&o) {
+                            out.push(o);
+                        }
+                    }
+                }
+            }
+            out
+        };
+        if new.is_empty() {
+            return;
+        }
+        let g = self.ground_context();
+        for &o in &new {
+            self.contexts[id].merge_subscriptions.insert(o);
+            self.contexts[g].predecessors.entry((id, o)).or_default();
+        }
+        // Deliver the ground context's current body-free x-free clauses whose
+        // individuals this context has all announced (the guard of the
+        // ground-sender r-Pred path).
+        let mut sends: Vec<((usize, Term), u32)> = Vec::new();
+        {
+            let gctx = &self.contexts[g];
+            let arena = &self.cc_arena[gctx.root as usize];
+            for (i, ci) in gctx.pred_pool_iter().enumerate() {
+                if !gctx.has_clause(ci) {
+                    continue;
+                }
+                let c = &arena[ci as usize];
+                if !c.body.is_empty() || cc_mentions_x(c) {
+                    continue;
+                }
+                let mut inds: Vec<Term> = Vec::new();
+                for l in &c.head {
+                    lit_inds(l, &mut inds);
+                }
+                let Some(&label) = inds.iter().find(|o| new.contains(o)) else { continue };
+                if !inds.iter().all(|o| *o >= self.nom_base || gctx.predecessors.contains_key(&(id, *o))) {
+                    continue;
+                }
+                let edge = (id, label);
+                if gctx.pushed_pred.get(&edge).is_some_and(|s| s.contains(&(i as u32))) {
+                    continue;
+                }
+                sends.push((edge, i as u32));
+            }
+        }
+        for (edge, pool_idx) in sends {
+            self.contexts[g].pushed_pred.entry(edge).or_default().insert(pool_idx);
+            self.msgs.push_back(Msg::Pred {
+                to: pack_msg_context(edge.0),
+                from: pack_msg_context(g),
                 edge_label: edge.1,
                 pool_idx,
             });
@@ -7696,6 +8155,11 @@ impl Engine {
         let mut touched_epoch: Vec<u32> = vec![0; self.contexts.len()];
         let mut round_epoch = 0u32;
         while !self.msgs.is_empty() {
+            if self.cancel_requested() {
+                // Abandoned run: its answer is never read.
+                self.msgs.clear();
+                break;
+            }
             // Apply this round directly from the pending deque. The previous
             // `drain(..).collect::<Vec<_>>()` retained the deque allocation and
             // allocated a second full message buffer, then copied every message
@@ -8753,6 +9217,11 @@ impl Engine {
         let mut touched_epoch: Vec<u32> = vec![0; self.contexts.len()];
         let mut round_epoch = 0u32;
         while !self.msgs.is_empty() {
+            if self.cancel_requested() {
+                // Abandoned run: its answer is never read.
+                self.msgs.clear();
+                break;
+            }
             let mut batch = std::mem::take(&mut self.msgs);
             touched.clear();
             round_epoch = round_epoch.wrapping_add(1);
@@ -10309,6 +10778,191 @@ mod tests {
             sups
         );
         assert!(!e.inconsistent());
+    }
+
+    /// Hyper must pair the side clause with itself when ONE maximal head
+    /// predicate fills two body positions: `A(x) → r(x,x)` and the asymmetry
+    /// clause `r(x,z) ∧ r(z,x) → ⊥` give `A(x) → ⊥` only through the premise
+    /// pair (side, side). Distinct roles (`s ⊑ r` keeps a second premise) and
+    /// a role without the self loop must stay unaffected.
+    #[test]
+    fn hyper_pairs_a_self_loop_head_with_itself() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let r = sig.role("r");
+        let f = fterm(1);
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, X))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(rl(r, X, f))]),
+            OntologyClause::new(vec![rl(r, X, zvar(1)), rl(r, zvar(1), X)], vec![]),
+        ];
+        let prepared = Engine::prepare(sig, clauses, 0);
+        let mut engine = Engine::from_prepared(&prepared);
+        engine.run_for(&[a, b]);
+        assert!(
+            supers_of(&engine, "A").contains(&"owl:Nothing".to_string()),
+            "asymmetry must exclude the self loop of A"
+        );
+        assert!(
+            !supers_of(&engine, "B").contains(&"owl:Nothing".to_string()),
+            "an ordinary r-successor is no asymmetry violation"
+        );
+    }
+
+    /// Central successor strategy: a trigger derived only conditionally
+    /// (`→ E(x) ∨ Q3(f(x))` via `E ∨ Q1`, `Q1 → Q2`, `Q2(x) ∧ r⁻(x,y) → Q3(y)`)
+    /// must not enter the shared successor's core. Otherwise the successor's
+    /// refutation, which here uses only the edge roles (`s ⊑ r ⊑ t ≡ s⁻` and
+    /// `Asymmetric(s)` empty every role), returns conditioned on Q3 and only
+    /// `A ⊑ E` is derived instead of `A ⊑ ⊥` (ORE fuzz case 1027).
+    /// Grounded Hyper with an empty body: a ⊤-fact `→ Q(x)` (from
+    /// `⊤ ⊑ ∃s.{c}`) holds at every individual. With `InverseFunctional(s)`
+    /// every element is the unique s-predecessor of c, so `a ≉ b` is
+    /// inconsistent; without grounding `→ Q(a)`, `→ Q(b)` the ground context
+    /// never derived `s(a,c)`, `s(b,c)` (fuzz case mm_21_138_4).
+    #[test]
+    fn ground_context_grounds_top_facts_at_individuals() {
+        fn run(top_fact: bool) -> bool {
+            let mut sig = Sig::default();
+            let q = sig.concept("Q0");
+            let nc = sig.concept("__nom__c");
+            let s = sig.role("s");
+            let (a, b, c) = (ind_term(1), ind_term(2), ind_term(3));
+            let f1 = fterm(1);
+            let cl = |body: Vec<Pred>, head: Vec<Lit>| OntologyClause::new(body, head);
+            let mut clauses = vec![
+                cl(vec![cx(q, X)], vec![Lit::P(rl(s, X, f1))]),
+                cl(vec![cx(q, X)], vec![Lit::P(cx(nc, f1))]),
+                cl(vec![cx(nc, X)], vec![Lit::eq(X, c)]),
+                cl(vec![], vec![Lit::P(cx(nc, c))]),
+                cl(vec![rl(s, zvar(1), X), rl(s, zvar(2), X)], vec![Lit::eq(zvar(1), zvar(2))]),
+                cl(vec![], vec![Lit::ineq(a, b)]),
+            ];
+            if top_fact {
+                clauses.push(cl(vec![], vec![Lit::P(cx(q, X))]));
+            }
+            let mut engine = Engine::new(sig, clauses, 0);
+            engine.run_for(&[]);
+            engine.inconsistent()
+        }
+        assert!(run(true), "⊤ ⊑ ∃s.{{c}} with inverse-functional s forces a ≈ b");
+        assert!(!run(false), "without the ⊤-fact a and b need no s-edge");
+    }
+
+    /// Class-level trigger subsumption: the conditional triggers `r(x,f)`,
+    /// `C(f)` and `rinv(f,x)` share the condition (residue `E(x)`); `r` and
+    /// `rinv` derive each other by the inverse clauses, so one of them gets no
+    /// hypothesis at the successor. The successor's refutation needs `rinv`
+    /// and `C`; it returns conditioned on the kept triggers, which Pred
+    /// resolves to `→ E(x)`.
+    #[test]
+    fn class_trigger_subsumption_drops_inverse_hypothesis_exactly() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let c = sig.concept("C");
+        let e = sig.concept("E");
+        let r = sig.role("r");
+        let rinv = sig.role("rinv");
+        let (f1, z) = (fterm(1), zvar(1));
+        let cl = |b: Vec<Pred>, h: Vec<Lit>| OntologyClause::new(b, h);
+        let clauses = vec![
+            cl(vec![cx(a, X)], vec![Lit::P(cx(e, X)), Lit::P(rl(r, X, f1))]),
+            cl(vec![cx(a, X)], vec![Lit::P(cx(e, X)), Lit::P(cx(c, f1))]),
+            cl(vec![cx(a, X)], vec![Lit::P(cx(e, X)), Lit::P(rl(rinv, f1, X))]),
+            cl(vec![rl(r, X, z)], vec![Lit::P(rl(rinv, z, X))]),
+            cl(vec![rl(rinv, X, z)], vec![Lit::P(rl(r, z, X))]),
+            cl(vec![cx(c, X), rl(rinv, X, z)], vec![]),
+        ];
+        let prepared = Engine::prepare(sig, clauses, 0);
+        let mut engine = Engine::from_prepared(&prepared);
+        engine.run_for(&[a]);
+        assert!(
+            supers_of(&engine, "A").contains(&"E".to_string()),
+            "the refutation through the dropped hypothesis must still return: {:?}",
+            supers_of(&engine, "A")
+        );
+        // `r` and `rinv` derive each other: one of them is withheld on the
+        // single edge, the filler `C` is kept.
+        assert_eq!(engine.class_dropped_hypotheses.get(), 1);
+    }
+
+    /// r-Pred with no A_i for merge-tied contexts (fuzz s1737): `{c} ⊑ A5`,
+    /// `A1 ⊑ {b}`, `{c} ⊑ A1`. The ground context derives `c ≈ b` and `A5(b)`;
+    /// the A1 context holds `→ x ≈ b`, which blocks r-Succ (side condition
+    /// (*)), so `A5(b)` reaches it only through its subscription to `b`, and
+    /// Eq turns it into `A1 ⊑ A5`.
+    #[test]
+    fn merge_tied_context_receives_ground_facts_of_its_individual() {
+        let mut sig = Sig::default();
+        let a1 = sig.concept("A1");
+        let a5 = sig.concept("A5");
+        let nb = sig.concept("__nom__b");
+        let nc = sig.concept("__nom__c");
+        let (b, c) = (ind_term(1), ind_term(2));
+        let cl = |body: Vec<Pred>, head: Vec<Lit>| OntologyClause::new(body, head);
+        let clauses = vec![
+            cl(vec![cx(nc, X)], vec![Lit::P(cx(a5, X))]),
+            cl(vec![cx(a1, X)], vec![Lit::P(cx(nb, X))]),
+            cl(vec![cx(nc, X)], vec![Lit::P(cx(a1, X))]),
+            cl(vec![], vec![Lit::P(cx(nb, b))]),
+            cl(vec![cx(nb, X)], vec![Lit::eq(X, b)]),
+            cl(vec![], vec![Lit::P(cx(nc, c))]),
+            cl(vec![cx(nc, X)], vec![Lit::eq(X, c)]),
+        ];
+        let mut engine = Engine::new(sig, clauses, 0);
+        engine.run_for(&[a1, a5]);
+        assert!(
+            supers_of(&engine, "A1").contains(&"A5".to_string()),
+            "A1 ⊑ {{b}} = {{c}} ⊑ A5: {:?}", supers_of(&engine, "A1")
+        );
+    }
+
+    #[test]
+    fn central_core_excludes_conditional_triggers() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let e = sig.concept("E");
+        let g = sig.concept("G");
+        let q0 = sig.concept("Q0");
+        let q1 = sig.concept("Q1");
+        let q2 = sig.concept("Q2");
+        let q3 = sig.concept("Q3");
+        let r = sig.role("r");
+        let ir = sig.role("__inv__r");
+        let s = sig.role("s");
+        let is = sig.role("__inv__s");
+        let t = sig.role("t");
+        let (f1, f2, z) = (fterm(1), fterm(2), zvar(1));
+        let cl = |b: Vec<Pred>, h: Vec<Pred>| OntologyClause::new(b, h.into_iter().map(Lit::P).collect());
+        let clauses = vec![
+            cl(vec![rl(r, X, z)], vec![rl(ir, z, X)]),
+            cl(vec![rl(ir, X, z)], vec![rl(r, z, X)]),
+            cl(vec![cx(q0, X)], vec![rl(ir, X, f1)]),
+            cl(vec![cx(q0, X)], vec![cx(g, f1)]),
+            cl(vec![cx(g, z), rl(ir, X, z)], vec![cx(q0, X)]),
+            cl(vec![cx(a, X)], vec![cx(q0, X)]),
+            cl(vec![cx(e, X), cx(q1, X)], vec![]),
+            cl(vec![], vec![cx(e, X), cx(q1, X)]),
+            cl(vec![rl(s, X, z)], vec![rl(is, z, X)]),
+            cl(vec![rl(is, X, z)], vec![rl(s, z, X)]),
+            cl(vec![cx(q3, X)], vec![rl(is, X, f2)]),
+            cl(vec![cx(q3, X)], vec![cx(g, f2)]),
+            cl(vec![cx(g, z), rl(is, X, z)], vec![cx(q3, X)]),
+            cl(vec![cx(q2, X), rl(ir, X, z)], vec![cx(q3, z)]),
+            cl(vec![cx(q1, X)], vec![cx(q2, X)]),
+            cl(vec![rl(s, X, z), rl(s, z, X)], vec![]),
+            cl(vec![rl(s, X, z)], vec![rl(r, X, z)]),
+            cl(vec![rl(r, X, z)], vec![rl(t, X, z)]),
+            cl(vec![rl(t, X, z)], vec![rl(s, z, X)]),
+        ];
+        let prepared = Engine::prepare(sig, clauses, 0);
+        let mut engine = Engine::from_prepared(&prepared);
+        engine.run_for(&[a]);
+        assert!(
+            supers_of(&engine, "A").contains(&"owl:Nothing".to_string()),
+            "A needs an r-predecessor but r is empty: {:?}", supers_of(&engine, "A")
+        );
     }
 
     #[test]

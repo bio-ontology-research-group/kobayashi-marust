@@ -1,0 +1,11 @@
+{
+  "job_id": "53333815",
+  "inputs": 1920,
+  "arms": 2,
+  "timeout_s_per_arm": 240,
+  "memory_gib": 20,
+  "cpus": 1,
+  "diagnostic_only": true,
+  "release_approved": false,
+  "scope": "Same pinned IRI-cache binary with flag off/on; default automatic frontend, compare raw clauses, metadata and refusal text."
+}

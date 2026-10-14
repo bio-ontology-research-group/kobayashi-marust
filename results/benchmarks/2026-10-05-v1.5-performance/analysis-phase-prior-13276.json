@@ -1,0 +1,24 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "job_id": 53320659,
+  "ontology": "ore_ont_13276",
+  "record_sha256": "6b87acfd83f7ce33ad0e09b094588f493dc4563cba1f86c1f1b4556ac3d60e8d",
+  "stderr_sha256": "ee42fd1de1af7d10c255567052a3b7ed51aeb9b90b72385f857a9b8982fa396d",
+  "timers": {
+    "event_counts": {
+      "read_off": 24115
+    },
+    "seconds": {
+      "read_off": {
+        "seed": 2.883993999999924,
+        "search": 44.788824999999136,
+        "cache": 6.002038000000257,
+        "labels": 0.18011700000004313
+      },
+      "analysis": {},
+      "analyser": {}
+    }
+  },
+  "interpretation": "Existing trace separates read-off cost. Analysis subphases were not instrumented in this binary. No new release performance result."
+}

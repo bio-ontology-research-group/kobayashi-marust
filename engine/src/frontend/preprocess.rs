@@ -4,7 +4,10 @@
 //! `domain_range_clauses`, `detect_role_chains`, `transitivity_clauses`,
 //! `chain_clauses`, `_is_chain_axiom`, and `augment`.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+// Membership/lookup tables; iteration order is per-process random as before.
+type HashMap<K, V> = crate::fxhash::FxHashMap<K, V>;
+type HashSet<T> = crate::fxhash::FxHashSet<T>;
 
 use super::clauses::{clause, var_x, var_y, Atom, DLClause, Term};
 use super::normalise::GroundHooks;
@@ -19,14 +22,14 @@ pub fn nominal_clauses(abox: &[DLClause], hooks: &GroundHooks) -> Vec<DLClause> 
     // ind -> nom (inverse of nominal_to_individual). Python builds a dict from
     // nom->ind; if several noms map to one ind the last wins. We mirror by
     // letting later inserts overwrite.
-    let mut ind_to_nom: HashMap<&str, &str> = HashMap::new();
+    let mut ind_to_nom: HashMap<&str, &str> = HashMap::default();
     for (nom, ind) in &hooks.nominal_to_individual {
         ind_to_nom.insert(ind.as_str(), nom.as_str());
     }
     let x = var_x();
     let mut extra = Vec::new();
     let mut seen_links: std::collections::HashSet<(String, String, String)> =
-        std::collections::HashSet::new();
+        std::collections::HashSet::default();
     for c in abox {
         if !c.body.is_empty() {
             continue; // only unconditional ABox facts
@@ -157,7 +160,7 @@ fn detect_role_chains(tbox: &[DLClause]) -> ChainInfo {
     }
     // Converse-equivalent roles share transitivity. A one-way inclusion of
     // the converse is insufficient: require both unguarded universal bridges.
-    let mut converse = HashSet::new();
+    let mut converse = HashSet::default();
     for c in tbox {
         if let ([Atom::Role(r, a, b)], [Atom::Role(s, c, d)]) =
             (c.body.as_slice(), c.head.as_slice())
@@ -213,7 +216,7 @@ fn transitivity_clauses_with(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClaus
     let x = var_x();
     let mut extra = Vec::new();
     // seen: (role, sorted concepts-on-y) -> P name
-    let mut seen: HashMap<(String, Vec<String>), String> = HashMap::new();
+    let mut seen: HashMap<(String, Vec<String>), String> = HashMap::default();
     for c in tbox {
         let Some(role) = single_body_role(c) else {
             continue;
@@ -307,7 +310,7 @@ fn transitive_chain_compose_impl(tbox: &[DLClause]) -> Vec<DLClause> {
     }
     let trans: HashSet<String> = info.trans.iter().cloned().collect();
     // sub-role hierarchy U ⊑ V from single role-body→role-head clauses U(x,y)→V(x,y).
-    let mut sub_super: HashMap<String, Vec<String>> = HashMap::new();
+    let mut sub_super: HashMap<String, Vec<String>> = HashMap::default();
     for c in tbox {
         if c.body.len() == 1 && c.head.len() == 1 {
             if let (Atom::Role(u, us, ut), Atom::Role(v, vs, vt)) = (&c.body[0], &c.head[0]) {
@@ -341,7 +344,7 @@ fn transitive_chain_compose_impl(tbox: &[DLClause]) -> Vec<DLClause> {
     let y = var_y();
     let z = Term::Var("z".to_string());
     // rebuild (T, sorted C_i) -> P name exactly as transitivity_clauses.
-    let mut seen_p: HashMap<(String, Vec<String>), String> = HashMap::new();
+    let mut seen_p: HashMap<(String, Vec<String>), String> = HashMap::default();
     for c in tbox {
         let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
         if roles.len() != 1 {
@@ -380,9 +383,9 @@ fn transitive_chain_compose_impl(tbox: &[DLClause]) -> Vec<DLClause> {
             .or_insert_with(|| format!("__trans__{}__{}", rrole, c_on_y.join("_")));
     }
     let mut extra = Vec::new();
-    let mut seen_mid: HashSet<String> = HashSet::new();
+    let mut seen_mid: HashSet<String> = HashSet::default();
     for (r, s, u) in &info.chains {
-        let mut seen2 = HashSet::new();
+        let mut seen2 = HashSet::default();
         let t = match super_trans(u, &sub_super, &trans, &mut seen2) {
             Some(t) => t,
             None => continue,
@@ -442,7 +445,7 @@ fn chain_clauses_with(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClause> {
         return Vec::new();
     }
     // by_t: T -> [(R,S)]
-    let mut by_t: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let mut by_t: HashMap<String, Vec<(String, String)>> = HashMap::default();
     for (r, s, t) in &info.chains {
         by_t.entry(t.clone())
             .or_default()
@@ -451,7 +454,7 @@ fn chain_clauses_with(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClause> {
     let x = var_x();
     let mut extra = Vec::new();
     // seen: (S, sorted concepts-on-y) -> Q name
-    let mut seen: HashMap<(String, Vec<String>), String> = HashMap::new();
+    let mut seen: HashMap<(String, Vec<String>), String> = HashMap::default();
     for c in tbox {
         let Some(role) = single_body_role(c) else {
             continue;
@@ -541,8 +544,8 @@ pub fn prune_dead_inverse_bridges(tbox: &mut Vec<DLClause>, pairs: &[(String, St
     if pairs.is_empty() {
         return;
     }
-    let mut bridge_edges: HashSet<(&str, &str)> = HashSet::new();
-    let mut partners: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut bridge_edges: HashSet<(&str, &str)> = HashSet::default();
+    let mut partners: HashMap<&str, Vec<&str>> = HashMap::default();
     for (r, s) in pairs {
         bridge_edges.insert((r.as_str(), s.as_str()));
         bridge_edges.insert((s.as_str(), r.as_str()));
@@ -562,7 +565,7 @@ pub fn prune_dead_inverse_bridges(tbox: &mut Vec<DLClause>, pairs: &[(String, St
             _ => false,
         }
     };
-    let mut consumed: HashSet<String> = HashSet::new();
+    let mut consumed: HashSet<String> = HashSet::default();
     for c in tbox.iter() {
         if is_bridge(c) {
             continue;
@@ -622,8 +625,8 @@ pub fn concept_relevant_roles(tbox: &[DLClause]) -> HashSet<String> {
     // on large normalized clause sets. Keep the established scan on ordinary
     // ontologies, which also leaves the corpus-median memory path untouched.
     if tbox.len() < 10_000 {
-        let mut needed_concepts: HashSet<&str> = HashSet::new();
-        let mut needed_roles: HashSet<String> = HashSet::new();
+        let mut needed_concepts: HashSet<&str> = HashSet::default();
+        let mut needed_roles: HashSet<String> = HashSet::default();
         let mut changed = true;
         while changed {
             changed = false;
@@ -655,8 +658,8 @@ pub fn concept_relevant_roles(tbox: &[DLClause]) -> HashSet<String> {
     // every clause after each growing wave of needed symbols. Index the heads
     // of clauses that are not goals initially, then activate each clause once
     // when one of its head symbols becomes needed.
-    let mut concept_heads: HashMap<&str, Vec<usize>> = HashMap::new();
-    let mut role_heads: HashMap<&str, Vec<usize>> = HashMap::new();
+    let mut concept_heads: HashMap<&str, Vec<usize>> = HashMap::default();
+    let mut role_heads: HashMap<&str, Vec<usize>> = HashMap::default();
     let mut pending = VecDeque::new();
     for (index, c) in tbox.iter().enumerate() {
         let initial = c.head.is_empty()
@@ -682,8 +685,8 @@ pub fn concept_relevant_roles(tbox: &[DLClause]) -> HashSet<String> {
     }
 
     let mut activated = vec![false; tbox.len()];
-    let mut needed_concepts: HashSet<&str> = HashSet::new();
-    let mut needed_roles: HashSet<&str> = HashSet::new();
+    let mut needed_concepts: HashSet<&str> = HashSet::default();
+    let mut needed_roles: HashSet<&str> = HashSet::default();
     while let Some(index) = pending.pop_front() {
         if std::mem::replace(&mut activated[index], true) {
             continue;
@@ -786,7 +789,7 @@ pub fn prune_inert_role_bridges(
 /// set of `(A, R, C)` triples (A and C are concept names, R a role name).
 fn collect_exists_introducers(tbox: &[DLClause]) -> HashSet<(String, String, String)> {
     let x = var_x();
-    let mut out = HashSet::new();
+    let mut out = HashSet::default();
     for c in tbox {
         // introducer shape: body = [Concept(A, x)], head = [Role(R, x, t), Concept(C, t)]
         if c.body.len() != 1 || c.head.len() != 2 {
@@ -830,7 +833,7 @@ fn collect_exists_introducers(tbox: &[DLClause]) -> HashSet<(String, String, Str
 fn collect_exists_consumers(tbox: &[DLClause]) -> HashMap<(String, String), Vec<String>> {
     let x = var_x();
     let y = var_y();
-    let mut out: HashMap<(String, String), Vec<String>> = HashMap::new();
+    let mut out: HashMap<(String, String), Vec<String>> = HashMap::default();
     for c in tbox {
         if c.head.is_empty() {
             continue;
@@ -880,7 +883,7 @@ fn collect_exists_consumers(tbox: &[DLClause]) -> HashMap<(String, String), Vec<
 
 /// Build the sub-role hierarchy `S ⊑ R` from single role-body→role-head clauses.
 fn collect_sub_roles(tbox: &[DLClause]) -> HashMap<String, Vec<String>> {
-    let mut sub_super: HashMap<String, Vec<String>> = HashMap::new();
+    let mut sub_super: HashMap<String, Vec<String>> = HashMap::default();
     for c in tbox {
         if c.body.len() == 1 && c.head.len() == 1 {
             if let (Atom::Role(u, us, ut), Atom::Role(v, vs, vt)) = (&c.body[0], &c.head[0]) {
@@ -914,7 +917,7 @@ pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     let sub_super = collect_sub_roles(tbox);
 
     let super_close = |r: &str| -> HashSet<String> {
-        let mut out = HashSet::new();
+        let mut out = HashSet::default();
         out.insert(r.to_string());
         let mut stack = vec![r.to_string()];
         while let Some(u) = stack.pop() {
@@ -930,7 +933,7 @@ pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     let mut intros = collect_exists_introducers(tbox);
     let consumers = collect_exists_consumers(tbox);
 
-    let mut two_step: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let mut two_step: HashMap<String, Vec<(String, String)>> = HashMap::default();
     for (r1, r2, u) in &info.chains {
         for sup in super_close(u) {
             two_step
@@ -946,7 +949,7 @@ pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
             .push((r.clone(), r.clone()));
     }
 
-    let mut by_rf: HashMap<(String, String), HashSet<String>> = HashMap::new();
+    let mut by_rf: HashMap<(String, String), HashSet<String>> = HashMap::default();
     for (a, r, c) in &intros {
         by_rf
             .entry((r.clone(), c.clone()))
@@ -1013,7 +1016,7 @@ pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
 
     let x = var_x();
     let mut out = Vec::new();
-    let mut emitted: HashSet<(String, String, String)> = HashSet::new();
+    let mut emitted: HashSet<(String, String, String)> = HashSet::default();
     for (a, r, c) in &intros {
         if !emitted.insert((a.clone(), r.clone(), c.clone())) {
             continue;
@@ -1096,8 +1099,8 @@ fn endpoint_only_transitive_roles(tbox: &[DLClause], abox: &[DLClause]) -> HashS
     }
     let mut candidates: HashSet<String> = tbox.iter().chain(abox)
         .filter_map(transitive_role).map(str::to_owned).collect();
-    let mut unsafe_roles = HashSet::new();
-    let mut inclusion_predecessors: HashMap<String, Vec<String>> = HashMap::new();
+    let mut unsafe_roles = HashSet::default();
+    let mut inclusion_predecessors: HashMap<String, Vec<String>> = HashMap::default();
     for c in tbox.iter().chain(abox) {
         if transitive_role(c).is_some() {
             continue;
@@ -1203,7 +1206,7 @@ pub(super) fn augment_with_chains_retaining_role_axioms(
         || (std::env::var_os("KM_NOMINALS").is_some() && !abox.is_empty());
     let endpoint_only = if keep_chains && !retain_role_axioms {
         endpoint_only_transitive_roles(&tbox, abox)
-    } else { HashSet::new() };
+    } else { HashSet::default() };
     // Build every addition while raw chain axioms remain borrowable, then move
     // the retained normalized clauses into `base`. Cloning the whole TBox here
     // served only to keep the original alive for these derived passes.
@@ -1283,14 +1286,14 @@ pub fn domain_consumer_chain_clauses(info: &ChainInfo, domain_range: &[DLClause]
     let x = var_x();
     let y = var_y();
     let trans: HashSet<&str> = info.trans.iter().map(|s| s.as_str()).collect();
-    let mut by_t: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
+    let mut by_t: HashMap<&str, Vec<(&str, &str)>> = HashMap::default();
     for (r, s, t) in &info.chains {
         by_t.entry(t.as_str())
             .or_default()
             .push((r.as_str(), s.as_str()));
     }
     let mut extra = Vec::new();
-    let mut seen_s: HashSet<String> = HashSet::new();
+    let mut seen_s: HashSet<String> = HashSet::default();
     for c in domain_range {
         // domain shape: body = [Role(T, x, y)], head = concept(s) on x only.
         if c.body.len() != 1 || c.head.is_empty() {
@@ -1744,7 +1747,7 @@ mod tests {
             )],
         );
         let mut tbox = vec![producer.clone(), bridge("R", "R")];
-        let relevant = HashSet::new();
+        let relevant = HashSet::default();
         prune_inert_role_bridges(&mut tbox, &["R".to_string()], &[], &relevant);
         assert_eq!(tbox, vec![producer]);
     }
@@ -1773,7 +1776,7 @@ mod tests {
             )],
         );
         let mut tbox = vec![producer.clone(), bridge("R", "S"), bridge("S", "R")];
-        let relevant = HashSet::new();
+        let relevant = HashSet::default();
         prune_inert_role_bridges(&mut tbox, &[], &[pair("R", "S")], &relevant);
         assert_eq!(tbox, vec![producer]);
     }

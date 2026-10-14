@@ -1,0 +1,35 @@
+{
+  "old_binary_sha256": "639f70f8321387966d0f3b9b23fdbadaefacbdbc9e2d51fab2325accb76e3589",
+  "new_binary_sha256": "09bf32a4e57b61293d6c113c1106848c59ca555005e2e5ccaa7b9574d6d4df7c",
+  "runner_sha256": "6ff533f4aa2bd3b2b511afc82dbb92bb2a05283f6bbc072317a19ceff6a3600d",
+  "flags": {
+    "KM_ROUTE": "manual",
+    "KM_NOMINALS": "1",
+    "KM_TRIGGER_ABSORB": "1",
+    "KM_ABSORB": "0"
+  },
+  "rows": [
+    {
+      "source": "/tmp/agent/km-v150-diagnostics/ore_ont_11636.owl",
+      "source_sha256": "b7273ead39288ff608e9de1aede807b1c7b37219a3c7722f040c37a31d02d07a",
+      "same_refusal": true,
+      "byte_identical": true,
+      "renaming": {},
+      "outputs": {
+        "old": {
+          "returncode": 3,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "6a2b9a674d4b1b7b0d32dc7db58e236d37efde0cc0eee6faae86c88daae64626",
+          "meta_sha256": null
+        },
+        "new": {
+          "returncode": 3,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "6a2b9a674d4b1b7b0d32dc7db58e236d37efde0cc0eee6faae86c88daae64626",
+          "meta_sha256": null
+        }
+      }
+    }
+  ],
+  "scope": "Identical refusal only; does not count as a solved ontology."
+}

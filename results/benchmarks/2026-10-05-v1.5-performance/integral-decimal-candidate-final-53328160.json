@@ -1,0 +1,87 @@
+{
+  "job_id": 53328160,
+  "diagnostic_only": true,
+  "complete": true,
+  "records": 2,
+  "verified_solved": 1,
+  "status_counts": {
+    "process_error": 1,
+    "executed_unvalidated": 1
+  },
+  "chunks": [
+    {
+      "task": 0,
+      "sha256": "cacaad5c9e086c0e87299649b774c79985be855a967c049c9a7e93d9daf31c7e"
+    },
+    {
+      "task": 1,
+      "sha256": "b492e6d9aa64a2a2e0f6b4f6db688b8ee79389625809c7230f3e15f78521f22a"
+    }
+  ],
+  "outcomes": [
+    {
+      "ontology": "ore_ont_12566",
+      "input_admission": "checks_passed",
+      "measurement_status": "process_error",
+      "wall_s": 235.1815003119409,
+      "peak_bytes": 52596736,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "9d70a7f3064882ad9ec160b197c04623868a2a4fd4cbd1f20f8fe70f723da7fc"
+    },
+    {
+      "ontology": "ore_ont_13799",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 0.16080777533352375,
+      "peak_bytes": 36372480,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+          "left_raw_sha256": "75072aef768a5b11ae1823bddcb3e3e24018b128fcf18d1264438c05c9a9be4c",
+          "right_raw_sha256": "8209630f83a700ee929291a08e67e1d530fa1f6b1d991ca8b08934fcb5c72e8f",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+          "left_raw_sha256": "75072aef768a5b11ae1823bddcb3e3e24018b128fcf18d1264438c05c9a9be4c",
+          "right_raw_sha256": "97d9b3757f8c56a349482407a8c759f3eca135948262f10089fe1822778d507a",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+          "left_raw_sha256": "75072aef768a5b11ae1823bddcb3e3e24018b128fcf18d1264438c05c9a9be4c",
+          "right_raw_sha256": "d8f151ee7dc72933ec8291953d1f7ba07b43579574f9601e3708d2f8839fe2c1",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+          "left_raw_sha256": "75072aef768a5b11ae1823bddcb3e3e24018b128fcf18d1264438c05c9a9be4c",
+          "right_raw_sha256": "524366f297d4c9f76ad48f4aecd4986ef2a03796d4f3f96ca0ba243b26c136ab",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "8de90ceaa0ecf32a22210a136968eec39a7519d5ae92102c8098b25fd56230f2",
+      "audit_status": "compared"
+    }
+  ],
+  "release_approved": false,
+  "scope": "Two-case diagnostic. Integral-decimal admission alone does not recover 12566; production source remains unchanged."
+}

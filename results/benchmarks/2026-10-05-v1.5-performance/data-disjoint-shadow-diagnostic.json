@@ -1,0 +1,132 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "input": {
+    "ontology": "ore_ont_14379",
+    "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14379.owl",
+    "sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+    "input_admission": "checks_passed",
+    "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/17/ore_ont_14379",
+    "reference_audit_sha256": "4f2257a1804d619c8c8174fe38ba2f1bb457198d747bf7bfec46813261727a1b"
+  },
+  "artifact": {
+    "artifacts": [
+      {
+        "id": "km",
+        "path": "/tmp/agent/km-v150-diagnostics/data-disjoint-14379/km-data-disjoint-shadow-a653b7a52e21",
+        "sha256": "a653b7a52e21c22ae32f64eddcf940d09aac5a50010d73b6dee281d4fa464aa3"
+      }
+    ]
+  },
+  "scope": "Unpromoted shadow with existing padding/decimal changes; 15-second local diagnostic only.",
+  "runner_sha256": "45123f161d5f1be1909ea6eeae8a5c59532357a0345acfcf6814f87a2e42eec0",
+  "attempts": [
+    {
+      "arm": "off",
+      "flags": {
+        "KM_HT_DDB": "1",
+        "KM_HT_NATIVE_FULL": "1",
+        "KM_CACHE_CONFORMANCE": "1",
+        "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+        "KM_TIMING": "1",
+        "KM_HT_STATS": "1",
+        "KM_BRIDGE_PROGRESS": "1",
+        "KM_EXPERIMENTAL_DATA_PADDING": "1"
+      },
+      "record": {
+        "schema": 1,
+        "baseline": "km",
+        "source": "/tmp/agent/km-v150-diagnostics/timeout-profile-sources/ore_ont_14379.owl",
+        "source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+        "runtime_source": "/tmp/agent/km-v150-diagnostics/timeout-profile-sources/ore_ont_14379.owl",
+        "artifact": "/tmp/agent/km-v150-diagnostics/data-disjoint-14379/km-data-disjoint-shadow-a653b7a52e21",
+        "artifact_sha256": "a653b7a52e21c22ae32f64eddcf940d09aac5a50010d73b6dee281d4fa464aa3",
+        "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+        "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+        "timeout_s": 15,
+        "memory_mib": 20480,
+        "cpu_threads": 1,
+        "host": "6bdb6dec1762",
+        "slurm_job_id": null,
+        "status": "adapter_error",
+        "semantic_validation": "pending",
+        "runtime_source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+        "command": [
+          "/tmp/agent/km-v150-diagnostics/data-disjoint-14379/km-data-disjoint-shadow-a653b7a52e21",
+          "classify",
+          "/tmp/agent/km-v150-diagnostics/timeout-profile-sources/ore_ont_14379.owl"
+        ],
+        "explicit_environment": {
+          "OMP_NUM_THREADS": "1",
+          "RAYON_NUM_THREADS": "1",
+          "KM_THREADS": "1",
+          "KM_ROUTE": "auto",
+          "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+        },
+        "output_format": "km-json",
+        "cpu_affinity": [
+          0
+        ],
+        "error": "[Errno 2] No such file or directory: '/usr/bin/time'"
+      },
+      "comparisons": {},
+      "verified": false,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "trace": []
+    },
+    {
+      "arm": "on",
+      "flags": {
+        "KM_HT_DDB": "1",
+        "KM_HT_NATIVE_FULL": "1",
+        "KM_CACHE_CONFORMANCE": "1",
+        "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+        "KM_TIMING": "1",
+        "KM_HT_STATS": "1",
+        "KM_BRIDGE_PROGRESS": "1",
+        "KM_EXPERIMENTAL_DATA_PADDING": "1",
+        "KM_EXPERIMENTAL_DATA_ROLE_DISJOINT": "1"
+      },
+      "record": {
+        "schema": 1,
+        "baseline": "km",
+        "source": "/tmp/agent/km-v150-diagnostics/timeout-profile-sources/ore_ont_14379.owl",
+        "source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+        "runtime_source": "/tmp/agent/km-v150-diagnostics/timeout-profile-sources/ore_ont_14379.owl",
+        "artifact": "/tmp/agent/km-v150-diagnostics/data-disjoint-14379/km-data-disjoint-shadow-a653b7a52e21",
+        "artifact_sha256": "a653b7a52e21c22ae32f64eddcf940d09aac5a50010d73b6dee281d4fa464aa3",
+        "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+        "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+        "timeout_s": 15,
+        "memory_mib": 20480,
+        "cpu_threads": 1,
+        "host": "6bdb6dec1762",
+        "slurm_job_id": null,
+        "status": "adapter_error",
+        "semantic_validation": "pending",
+        "runtime_source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+        "command": [
+          "/tmp/agent/km-v150-diagnostics/data-disjoint-14379/km-data-disjoint-shadow-a653b7a52e21",
+          "classify",
+          "/tmp/agent/km-v150-diagnostics/timeout-profile-sources/ore_ont_14379.owl"
+        ],
+        "explicit_environment": {
+          "OMP_NUM_THREADS": "1",
+          "RAYON_NUM_THREADS": "1",
+          "KM_THREADS": "1",
+          "KM_ROUTE": "auto",
+          "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+        },
+        "output_format": "km-json",
+        "cpu_affinity": [
+          0
+        ],
+        "error": "[Errno 2] No such file or directory: '/usr/bin/time'"
+      },
+      "comparisons": {},
+      "verified": false,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "trace": []
+    }
+  ]
+}

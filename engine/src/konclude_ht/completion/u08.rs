@@ -721,10 +721,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// resolving the node's successor-role hash through the context.
     ///
     /// KONCLUDE-PORT-NOTE[api]: stands in for `getRoleSuccessorLinkIterator(role)`.
-    /// The role test is `edge.role == role` (exact match); faithful super-role
-    /// propagation via `role->getIndirectSuperRoleList()` is deferred (the test roles
-    /// coincide). `node_successor_iterator` yields one link per distinct successor,
-    /// which is exactly one R-edge per successor in the no-merge regime here.
+    /// The role test is `edge.role == role` (exact match) against EVERY link to a
+    /// successor. Successor creation installs one link per signed indirect super
+    /// role, so super-role propagation is already materialized in the links; the
+    /// scan must not stop at the first link `node_successor_iterator` reports.
     pub fn ht_role_successor_links(
         &self,
         source: NodeId,
@@ -740,7 +740,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if link.is_none() {
                 continue;
             }
-            if pc.edge(link).get_link_role() == role {
+            // `node_successor_iterator` yields only the FIRST link installed
+            // towards each successor. A successor created through a sub-role
+            // carries one link per signed indirect super role (Konclude's
+            // `createNewIndividualsLinks`), so the first link may be the
+            // sub-role's while a `role`-link to the same node exists. Konclude's
+            // `getRoleSuccessorLinkIterator(role)` sees that link; scan every
+            // link to the successor so ≤n/∀ counting through the role
+            // hierarchy (e.g. `r ⊑ q`, `B ⊑ ≤1 q`) is not lost.
+            let link = if pc.edge(link).get_link_role() == role {
+                link
+            } else {
+                let mut role_links = pc.node_successor_role_iterator(source, succ_id);
+                let mut found = EdgeId::NONE;
+                while role_links.has_next() {
+                    let candidate = role_links.next(true);
+                    if candidate.is_some() && pc.edge(candidate).get_link_role() == role {
+                        found = candidate;
+                        break;
+                    }
+                }
+                found
+            };
+            if link.is_some() {
                 let succ = calc_alg_context
                     .processing_data_box()
                     .individual_process_node_vector()
@@ -1139,8 +1161,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     // negation is ignored there, as in the C++ AQAND arm). The
                     // visited set is defensive only (the preprocessor builds no
                     // AQAND-cycle; ε-loops go through AQALL).
-                    let mut visited: std::collections::HashSet<ConceptId> =
-                        std::collections::HashSet::new();
+                    let mut visited: crate::fxhash::FxHashSet<ConceptId> =
+                        crate::fxhash::FxHashSet::default();
                     let mut stack: Vec<ConceptId> = vec![con];
                     while let Some(state) = stack.pop() {
                         if !visited.insert(state) {
@@ -1174,8 +1196,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // the same ∀ share one dependency, matching the C++ `allDepNodeCreated`
         // flag. When dependency building is off (baseline), the operand is
         // added under the plain edge track point, exactly as before.
-        let mut all_dep_cache: std::collections::HashMap<ConDescId, TrackPointId> =
-            std::collections::HashMap::new();
+        let mut all_dep_cache: crate::fxhash::FxHashMap<ConDescId, TrackPointId> =
+            crate::fxhash::FxHashMap::default();
         for (op_concept, op_neg, cd) in ops {
             let add_tp = if self.conf_build_dependencies {
                 if let Some(&tp) = all_dep_cache.get(&cd) {
@@ -1758,20 +1780,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
 
-        // The native bridge does not admit disjoint-role connection metadata
-        // yet. Do not silently skip Konclude's final mergeability gate if such
-        // state reaches this path: defer the task instead of manufacturing a
-        // clash with incomplete dependencies.
-        if calc_alg_context
-            .process_context()
-            .node(indi1)
-            .has_disjoint_role_connections()
-            || calc_alg_context
-                .process_context()
-                .node(indi2)
-                .has_disjoint_role_connections()
-        {
-            calc_alg_context.raise_stop(false);
+        // areIndividualNodesDisjointRolesMergeable (cpp 20733): merging must
+        // not identify the endpoints of a negation edge with those of a
+        // positive link of the same role.
+        if !self.are_individual_nodes_disjoint_roles_mergeable(
+            indi1,
+            indi2,
+            clash_descriptors,
+            calc_alg_context,
+        ) {
             return false;
         }
 
@@ -1975,6 +1992,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
         false
+    }
+
+    /// Read-only preferred-key probe for the existing main-map clash test.
+    /// A hit proves the same boolean result as the full scan; a miss carries
+    /// no meaning and must fall through to the existing mergeability checks.
+    pub(super) fn ht_main_labels_clash_at_tag(
+        &self,
+        indi1: NodeId,
+        indi2: NodeId,
+        tag: Cint64,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let pc = calc_alg_context.process_context();
+        let ls1 = pc.node(indi1).use_reapply_con_label_set;
+        let ls2 = pc.node(indi2).use_reapply_con_label_set;
+        if ls1.is_none() || ls2.is_none() {
+            return false;
+        }
+        let Some(first) = pc.label_set(ls1).concept_des_dep_map.get(&tag) else {
+            return false;
+        };
+        let Some(second) = pc.label_set(ls2).concept_des_dep_map.get(&tag) else {
+            return false;
+        };
+        first.concept_descriptor.is_some()
+            && second.concept_descriptor.is_some()
+            && pc.con_desc(first.concept_descriptor).is_negated()
+                != pc.con_desc(second.concept_descriptor).is_negated()
     }
 
     /// The merge/clash spine of `applyATMOSTRule` / the PAIRWISE merge branching
@@ -2275,7 +2320,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let mut pair_verdicts: Vec<String> = Vec::new();
             for i in 0..succs.len() {
                 for j in (i + 1)..succs.len() {
-                    let ok = self.ht_individuals_mergeable(succs[i], succs[j], calc_alg_context);
+                    // Rejected pairs are premises of the bound clash too.
+                    // Retain their branch causes even when other pairs can
+                    // still merge, so exhausting those alternatives cannot
+                    // incorrectly turn a local conflict into a root clash.
+                    let ok = self.ht_individuals_mergeable_with_clashes(
+                        succs[i], succs[j], &mut merge_causing, calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
                     if pair_log {
                         // annotate WHY a pair is blocked (distinct edge vs
                         // label clash-set) — the cross-pair-exclusion hunt.
@@ -3110,7 +3164,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let mut pairs: Vec<(NodeId, NodeId)> = Vec::new();
             for i in 0..cands.len() {
                 for j in (i + 1)..cands.len() {
-                    if self.ht_individuals_mergeable(cands[i].0, cands[j].0, calc_alg_context) {
+                    let mergeable = self.ht_individuals_mergeable_with_clashes(
+                        cands[i].0, cands[j].0, &mut merge_causing, calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                    if mergeable {
                         pairs.push((cands[i].0, cands[j].0));
                     }
                 }
@@ -4133,7 +4193,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             raise_nominal_clash(self, &mut current, calc_alg_context);
             return;
         }
-        if !self.ht_individuals_mergeable(current, nominal_node, calc_alg_context) {
+        // The processed negative nominal gives a likely opposing tag. Probe
+        // both current main maps before the unchanged full mergeability scan.
+        // A direct hit changes lookup cost only: the old scan necessarily
+        // returned unmergeable and skipped this same distinct-edge insertion.
+        let nominal_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag();
+        if self.ht_main_labels_clash_at_tag(current, nominal_node, nominal_tag, calc_alg_context)
+            || !self.ht_individuals_mergeable(current, nominal_node, calc_alg_context)
+        {
             return;
         }
         let nominal_dep_track_point = calc_alg_context

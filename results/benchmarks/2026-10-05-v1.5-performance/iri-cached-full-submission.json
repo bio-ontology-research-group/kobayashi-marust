@@ -1,0 +1,9 @@
+{
+  "job_id": "53332943",
+  "frozen_inputs": 1920,
+  "timeout_s": 240,
+  "memory_gib": 20,
+  "cpus": 1,
+  "certification_pending_at_submission": true,
+  "release_approved": false
+}

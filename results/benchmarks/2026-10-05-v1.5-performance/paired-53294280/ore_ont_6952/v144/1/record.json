@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "baseline": "km",
+  "source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6952.owl",
+  "source_sha256": "28aff716cc9b7e0db882232010d00af837232c2e7850a299fb01fba85fcd45e6",
+  "runtime_source": "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6952.owl",
+  "artifact": "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+  "artifact_sha256": "941ca25bb4d58c29d78b57eb44598891da6b06b461b9f5ef99f6ff8a8b987a72",
+  "runner_sha256": "6a01fed3e955b2f4ec92d2b6adae0b92ebed8ffcb293c3713f4bdb34b3a17b2c",
+  "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "host": "cn512-27-l",
+  "slurm_job_id": "53295583",
+  "status": "executed_unvalidated",
+  "semantic_validation": "pending",
+  "runtime_source_sha256": "28aff716cc9b7e0db882232010d00af837232c2e7850a299fb01fba85fcd45e6",
+  "command": [
+    "/ibex/scratch/projects/c2014/hohndor/km/v144-support-recovery-20261003/km-final-admission",
+    "classify",
+    "/ibex/user/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6952.owl"
+  ],
+  "explicit_environment": {
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "KM_THREADS": "1",
+    "KM_ROUTE": "auto",
+    "JAVA_OPTS": "-Xms256m -Xmx16g -XX:ActiveProcessorCount=1"
+  },
+  "output_format": "km-json",
+  "cpu_affinity": [
+    36
+  ],
+  "exit_code": 0,
+  "wall_s": 59.18820137530565,
+  "peak_bytes": 2365669376,
+  "sampled_peak_bytes": 2365669376,
+  "files": {
+    "taxonomy.raw": {
+      "sha256": "0f50d749766f91296ef430334169c138b5780737123f9b0be2c0edc114e89c13",
+      "bytes": 35042396
+    },
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "max-rss-kib.txt": {
+      "sha256": "c7519f030ca010afd964f4cfb85d0c5ca69a507814511a6f01a0be20761399a2",
+      "bytes": 7
+    }
+  }
+}

@@ -11,11 +11,20 @@ pub(super) fn automatic_candidate(path: &Path) -> Result<Option<&'static str>, O
 fn plan(text: &str) -> Option<&'static str> {
     // This is a cost bound, not semantic admission. The reducers below and
     // native bridge independently check complete source coverage.
-    let mut builder = crate::frontend::profile::SourceProfileBuilder::new();
-    crate::frontend::parse::for_each_ontology_child(text, |node| {
-        builder.observe(node); Ok(())
-    }).ok()?;
-    let source = builder.finish(text.len() as u64).source;
+    // User-input validation already profiled exactly this text in its shared
+    // traversal; otherwise profile it here.
+    let source = match crate::frontend::conformance::cached_source_facts(text)
+        .and_then(|facts| facts.source_statistics)
+    {
+        Some(source) => source,
+        None => {
+            let mut builder = crate::frontend::profile::SourceProfileBuilder::new();
+            crate::frontend::parse::for_each_ontology_child(text, |node| {
+                builder.observe(node); Ok(())
+            }).ok()?;
+            builder.finish(text.len() as u64).source
+        }
+    };
     let count = |kind: &str| source.axiom_types.get(kind).copied().unwrap_or(0);
     let bounded = source.distinct_classes <= 512 && source.distinct_individuals <= 512
         && source.logical_axioms <= 4_000 && source.imports == 0;
@@ -52,15 +61,36 @@ fn plan(text: &str) -> Option<&'static str> {
         && crate::frontend::ground_rule_source::compile(text, 100_000).is_ok() {
         return Some("KM_GROUND_RULE_SOURCE");
     }
-    if !(1..=256).contains(&count("DataPropertyAssertion"))
-        || count("FunctionalDataProperty") == 0
-        || source.inverse_functional_role_axioms == 0
-        || source.distinct_classes > 512 || source.distinct_individuals > 512
-        || source.logical_axioms > 4_000 || source.imports != 0
-        || source.rule_axioms != 0 || source.unsupported_rule_axioms != 0 {
+    // Give ground-source compilation a separate class-count cost bound;
+    // keep the existing native/numeric scheduling bounds above unchanged.
+    let data_assertions = count("DataPropertyAssertion");
+    // A large terminology with a sparse data ABox can still have a cheap exact
+    // reduction. The file-size bound above and the compiler's instance limit
+    // remain in force; this only widens which complete-or-defer attempt runs.
+    let bounded_terminology = (source.distinct_classes <= 1024
+        && source.logical_axioms <= 4_000)
+        || (source.distinct_classes <= 4096 && source.logical_axioms <= 40_000
+            && data_assertions <= 16);
+    let small_data_abox = bounded_terminology && source.distinct_individuals <= 512
+        && (1..=512).contains(&data_assertions);
+    // Dense functional data ABoxes with a small terminology also fit the
+    // native retained-base schedule. Bound object names plus asserted values
+    // together, leaving room below its conditional-full individual limit.
+    let dense_data_abox = source.distinct_classes <= 512
+        && source.logical_axioms <= 20_000
+        && source.distinct_individuals.saturating_add(data_assertions) <= 8_000
+        && (513..=4_096).contains(&data_assertions)
+        && count("FunctionalDataProperty") > 0;
+    if !(small_data_abox || dense_data_abox) || source.imports != 0
+        || source.unsupported_rule_axioms != 0 {
         return None;
     }
-    if crate::frontend::data_abox_projection::project(text).is_ok() {
+    // The complete ground-source compiler also supports non-functional data
+    // assertions. Requiring an inverse-functional object role here stranded
+    // accepted string-valued ABoxes on the nominal CB fallback. Keep bounded
+    // scheduling and independently checked compiler/bridge admission.
+    if count("FunctionalDataProperty") > 0 && source.inverse_functional_role_axioms > 0
+        && crate::frontend::data_abox_projection::project(text).is_ok() {
         Some("KM_DATA_ABOX_PROJECT")
     } else if crate::frontend::ground_rule_source::compile(text, 100_000).is_ok() {
         Some("KM_GROUND_RULE_SOURCE")
@@ -74,6 +104,25 @@ mod tests {
         InverseFunctionalObjectProperty(<urn:r>) FunctionalDataProperty(<urn:p>)
         DataPropertyAssertion(<urn:p> <urn:a> "red"^^xsd:string))"#;
     #[test]
+    fn dense_functional_data_abox_requires_bounded_complete_compilation() {
+        let assertions = (0..513).map(|i|
+            format!("DataPropertyAssertion(:p :a{i} \"red\"^^xsd:string) "))
+            .collect::<String>();
+        let source = format!("Prefix(:=<urn:test:>) Ontology(Declaration(Class(:C)) \
+            FunctionalDataProperty(:p) {assertions})");
+        assert_eq!(plan(&source), Some("KM_GROUND_RULE_SOURCE"));
+        assert_eq!(plan(&source.replace("FunctionalDataProperty(:p)", "")), None);
+        assert_eq!(plan(&source.replace("xsd:string", "<urn:unknown>")), None);
+        assert_eq!(plan(&source.replace("Ontology(", "Ontology(Import(<urn:missing>)")), None);
+        let large_tbox = source.replace("Ontology(", &format!("Ontology({}",
+            (0..513).map(|i| format!("Declaration(Class(:C{i})) ")).collect::<String>()));
+        assert_eq!(plan(&large_tbox), None);
+        let oversized = source.replace("Ontology(", &format!("Ontology({}",
+            (0..8_000).map(|i| format!("Declaration(NamedIndividual(:extra{i})) "))
+                .collect::<String>()));
+        assert_eq!(plan(&oversized), None);
+    }
+    #[test]
     fn scheduling_requires_complete_reduction_and_preserves_rule_fences() {
         assert_eq!(plan(SOURCE), Some("KM_DATA_ABOX_PROJECT"));
         let coupled = SOURCE.replacen("Ontology(",
@@ -83,8 +132,31 @@ mod tests {
             assert_eq!(plan(&SOURCE.replacen("Ontology(", &format!("Ontology({extra} "), 1)), None);
         }
         assert_eq!(plan(&SOURCE.replace("xsd:string", "<urn:unknown>")), None);
-        assert_eq!(plan(&SOURCE.replace("InverseFunctionalObjectProperty(<urn:r>)", "")), None);
+        assert_eq!(plan(&SOURCE.replace("InverseFunctionalObjectProperty(<urn:r>)", "")),
+            Some("KM_GROUND_RULE_SOURCE"));
     }
+    #[test]
+    fn nonfunctional_string_abox_schedules_only_after_complete_compilation() {
+        let source = r#"Prefix(:=<urn:test:>) Ontology(
+            Declaration(Class(:Author)) Declaration(DataProperty(:name))
+            DataPropertyDomain(:name :Author) DataPropertyRange(:name xsd:string)
+            DataPropertyAssertion(:name :document "first")
+            DataPropertyAssertion(:name :document "second"))"#;
+        assert_eq!(plan(source), Some("KM_GROUND_RULE_SOURCE"));
+        assert_eq!(plan(&source.replace("\"first\"", "\"first\"^^<urn:unknown>")), None);
+        assert_eq!(plan(&source.replace("Ontology(", "Ontology(Import(<urn:missing>)")), None);
+        let sparse_large = source.replace("Ontology(", &format!("Ontology({}",
+            (0..1025).map(|i| format!("Declaration(Class(:C{i})) ")).collect::<String>()));
+        assert_eq!(plan(&sparse_large), Some("KM_GROUND_RULE_SOURCE"));
+        let dense_large = sparse_large.replace("Ontology(", &format!("Ontology({}",
+            (0..15).map(|i| format!("DataPropertyAssertion(:name :document \"extra{i}\") "))
+                .collect::<String>()));
+        assert_eq!(plan(&dense_large), None);
+        let oversized = source.replace("Ontology(", &format!("Ontology({}",
+            (0..4097).map(|i| format!("Declaration(Class(:C{i})) ")).collect::<String>()));
+        assert_eq!(plan(&oversized), None);
+    }
+
     #[test]
     fn automatic_rules_require_exact_complete_source_compilation() {
         let source = r#"Ontology(Declaration(NamedIndividual(<urn:a>))
@@ -110,4 +182,43 @@ mod tests {
             "Ontology(SubDataPropertyOf(:p :q) ")), None);
     }
 
+}
+
+#[cfg(test)]
+mod facts_tests {
+    /// With `KM_CORPUS_DIR`, check every corpus document: the statistics computed
+    /// in the shared conformance traversal equal the scheduling scan's own.
+    #[test]
+    fn cached_source_statistics_equal_the_scheduling_scan() {
+        let mut docs = vec![super::tests_source()];
+        if let Some(dir) = std::env::var_os("KM_CORPUS_DIR") {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if std::fs::metadata(&path).unwrap().len() <= 4 * 1024 * 1024 {
+                    docs.push(std::fs::read_to_string(path).unwrap());
+                }
+            }
+        }
+        std::env::set_var("KM_CACHE_CONFORMANCE", "1");
+        let mut compared = 0;
+        for text in docs {
+            if crate::frontend::conformance::check_user_source(&text).is_err() { continue; }
+            let cached = crate::frontend::conformance::cached_source_facts(&text)
+                .and_then(|facts| facts.source_statistics).expect("cached statistics");
+            let mut builder = crate::frontend::profile::SourceProfileBuilder::new();
+            crate::frontend::parse::for_each_ontology_child(&text, |node| {
+                builder.observe(node); Ok(())
+            }).unwrap();
+            assert_eq!(cached, builder.finish(text.len() as u64).source);
+            compared += 1;
+        }
+        assert!(compared >= 1);
+    }
+}
+
+#[cfg(test)]
+fn tests_source() -> String {
+    r#"Prefix(:=<urn:test:>) Ontology(Declaration(Class(:Author)) Declaration(DataProperty(:name))
+        DataPropertyDomain(:name :Author) DataPropertyRange(:name xsd:string)
+        DataPropertyAssertion(:name :document "first"))"#.to_owned()
 }

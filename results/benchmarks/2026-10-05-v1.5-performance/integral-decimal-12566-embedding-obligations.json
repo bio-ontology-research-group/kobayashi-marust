@@ -1,0 +1,24 @@
+{
+  "diagnostic_only": true,
+  "typed_input_sha256": "2959b72fb7b4f3f5806148ae8d7587493fda048ae27f31ee5c8d628891194fce",
+  "violations": [
+    {
+      "index": 247,
+      "axiom": {
+        "kind": "equivalent",
+        "left": {
+          "Name": "Tangible-Thing"
+        },
+        "right": {
+          "Not": {
+            "Name": "Intangible-Thing"
+          }
+        }
+      },
+      "left_on_blank_data_node": false,
+      "right_on_blank_data_node": true
+    }
+  ],
+  "scope": "Read-only replay of the existing blank-data-node guard on the exact dumped typed input. This witness failure must not be bypassed; no release count changes.",
+  "release_approved": false
+}

@@ -1,0 +1,33 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "unique-state-production-78312a61ce89",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-unique-state-production-78312a61ce89",
+      "sha256": "78312a61ce892a723c4d05e4aa4cc6d3e6a7fbc687cafc72b3612d1de79d2df6"
+    }
+  ],
+  "source_commit": "ee5fb215 plus pinned within-call classifier state reuse",
+  "source_manifest_sha256": "a1bc44f2ae298b1bf9d5c8d661960e1369d4ecc55cff1e584133bcec5c86ea5b",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+    "KM_FAST_IRI_GRAMMAR": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure",
+    "IRI-cache automatic frontend equivalence job 53333815"
+  ],
+  "release_approved": false,
+  "scope": "Full frozen corpus measured with production LTO/codegen settings. Source certification passed; performance acceptance remains unproven.",
+  "certification_pending": false,
+  "certification_receipt_sha256": "d51882895ebc8aa249857b1e71aa9506417772b697a4765f475c676a5f243c5a",
+  "production_profile": true,
+  "build_receipt_sha256": "7303db572bec8e9c6916368e0b6cfdaa58bbdf0ed37f765af7dd407c1c3dd685",
+  "build_configuration_sha256": {
+    "engine/Cargo.toml": "de3909fd87ecf5643d17e714a2360b8f6aae98a4be07b619f79e4e66fcdb3e27",
+    "engine/Cargo.lock": "c3ad3cb2dc201046a542daf12c5fb4861060cedf6851a951b2d46242e987dfb9"
+  }
+}

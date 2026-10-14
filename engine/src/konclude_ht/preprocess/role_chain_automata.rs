@@ -19,7 +19,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::model::ontology::OntologyArenas;
 use super::super::model::op;
@@ -159,9 +159,9 @@ impl RoleChainAutomataTransformationPreProcess {
         RoleChainAutomataTransformationPreProcess {
             conf_save_transitive_transitions: true,
             next_concept_tag: 0,
-            role_rec_trav_sub_role_chain_data_hash: HashMap::new(),
-            role_sub_role_chain_data_hash: HashMap::new(),
-            inverse_update_role_chain_set: HashSet::new(),
+            role_rec_trav_sub_role_chain_data_hash: HashMap::default(),
+            role_sub_role_chain_data_hash: HashMap::default(),
+            inverse_update_role_chain_set: HashSet::default(),
             last_concept_forall_id: 0,
             last_concept_value_id: 0,
             stat_automate_state_concept_count: 0,
@@ -743,7 +743,7 @@ impl RoleChainAutomataTransformationPreProcess {
             .map(|(k, v)| (*k, *v))
             .collect();
         entries.sort_by_key(|(r, _)| r.index());
-        let mut critical_general: HashMap<RoleId, bool> = HashMap::new();
+        let mut critical_general: HashMap<RoleId, bool> = HashMap::default();
         for (i, &(role, role_inversed)) in entries.iter().enumerate() {
             let mut has_critical_super_role = false;
             for &(role2, _) in entries.iter().skip(i + 1) {
@@ -801,7 +801,7 @@ impl RoleChainAutomataTransformationPreProcess {
             role,
             ..Default::default()
         };
-        let mut critical_role_negation_hash: HashMap<RoleId, bool> = HashMap::new();
+        let mut critical_role_negation_hash: HashMap<RoleId, bool> = HashMap::default();
         let mut critical = false;
         for chain_data in &relevant {
             critical |= self.collect_recursive_traversal_critical_roles(
@@ -1000,7 +1000,7 @@ impl RoleChainAutomataTransformationPreProcess {
                 .get(&role)
                 .cloned()
                 .unwrap_or_default();
-            let mut loc_unfold: HashSet<RoleId> = HashSet::new();
+            let mut loc_unfold: HashSet<RoleId> = HashSet::default();
             self.generate_role_chain_automat_concept_rec(
                 arenas,
                 role,
@@ -1247,8 +1247,8 @@ impl RoleChainAutomataTransformationPreProcess {
     pub fn create_missing_inverse_chained_roles(&mut self, arenas: &mut OntologyArenas) {
         // collect direct and indirect sub roles (super-tag → (sub-tag, neg)).
         let item_counts = arenas.role_count();
-        let mut indirect_sub: HashMap<Cint64, Vec<(Cint64, bool)>> = HashMap::new();
-        let mut direct_sub: HashMap<Cint64, Vec<(Cint64, bool)>> = HashMap::new();
+        let mut indirect_sub: HashMap<Cint64, Vec<(Cint64, bool)>> = HashMap::default();
+        let mut direct_sub: HashMap<Cint64, Vec<(Cint64, bool)>> = HashMap::default();
         for i in 0..item_counts {
             let role_id = RoleId::new(i);
             let role = arenas.role(role_id);
@@ -1268,7 +1268,7 @@ impl RoleChainAutomataTransformationPreProcess {
         }
 
         // roles that need an inverse.
-        let mut needs_inverse: HashSet<RoleId> = HashSet::new();
+        let mut needs_inverse: HashSet<RoleId> = HashSet::default();
         for i in 0..item_counts {
             let role_id = RoleId::new(i);
             if !arenas.role(role_id).is_complex_role() {
@@ -1283,7 +1283,7 @@ impl RoleChainAutomataTransformationPreProcess {
                 // BFS over the chain graph: every chain super role and every
                 // chained sub role will be traversed inverted.
                 let mut search_list: Vec<RoleId> = vec![role_id];
-                let mut search_set: HashSet<RoleId> = HashSet::new();
+                let mut search_set: HashSet<RoleId> = HashSet::default();
                 search_set.insert(role_id);
                 while let Some(search_role) = search_list.pop() {
                     let datas: Vec<RoleSubRoleChainData> = self
@@ -1500,7 +1500,7 @@ impl RoleChainAutomataTransformationPreProcess {
     /// domain `∀R.range` propagation), transitively through re-enqueued
     /// chains.
     pub fn create_domain_range_propagations(&mut self, arenas: &mut OntologyArenas) {
-        let mut dom_range_prop_concept_set: HashSet<ConceptId> = HashSet::new();
+        let mut dom_range_prop_concept_set: HashSet<ConceptId> = HashSet::default();
         let item_counts = arenas.role_count();
         for i in 0..item_counts {
             let role_id = RoleId::new(i);

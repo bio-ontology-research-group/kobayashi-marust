@@ -367,6 +367,11 @@ pub struct ProcessingDataBox {
     pub indi_process_node_linker: IndividualProcessNodeLinkerId,
 
     // --- saturation linkers / vectors / sets (.h 770–797) ---
+    // The disjunct-common, completion, completed, analysing and
+    // nominal-delayed chains below store their HEAD at the END of the `Vec`
+    // (push/pop), like the `rem_*` chains: Konclude prepends to and takes from
+    // the head of an intrusive list, and `insert(0)`/`remove(0)` made every
+    // such operation O(chain length). Their db5 getters return head order.
     pub disjunct_common_concept_extract_processing_linker:
         Vec<IndividualSaturationProcessNodeLinkerId>,
     pub indi_saturation_process_node_linker: Vec<IndividualSaturationProcessNodeLinkerId>,

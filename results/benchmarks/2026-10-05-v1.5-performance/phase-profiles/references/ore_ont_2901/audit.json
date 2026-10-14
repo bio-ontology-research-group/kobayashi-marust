@@ -1,0 +1,186 @@
+{
+  "ontology": "ore_ont_2901",
+  "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+  "input_admission": "checks_passed",
+  "outcomes": {
+    "hermit": {
+      "measurement_status": "executed_unvalidated",
+      "measurement_receipt_sha256": "adee56f78ee1f3aeaac004e22152934adbc2a137df5e4f5629a19f743a45f072",
+      "status": "canonicalized_requires_comparison",
+      "canonical_sha256": "9c8a310769ec5568a5687fe4330d6c0e0de91782d4a1909952bca20b55d9a74c"
+    },
+    "jfact": {
+      "measurement_status": "executed_unvalidated",
+      "measurement_receipt_sha256": "9ccf20fffca5589169d998cbe1109bb74b3c3525a81433b67aa8f47e1a401183",
+      "status": "canonicalized_requires_comparison",
+      "canonical_sha256": "35a97c59a9c6b239c2da9c6bd0fe3101c96a331f2ddce5b85edd849a4fedab54"
+    },
+    "openllet": {
+      "measurement_status": "timeout",
+      "measurement_receipt_sha256": "d2a8279b5816b008dfc934d628f12ca164629ff06861ff2c2dd18bb6b93ba597",
+      "status": "no_completed_taxonomy"
+    },
+    "elk": {
+      "measurement_status": "executed_unvalidated",
+      "measurement_receipt_sha256": "ed483d7c8bcfb2d7e9518542a49694182be475f44380e77b8a19fada091a7875",
+      "status": "canonicalized_requires_comparison",
+      "canonical_sha256": "162e691a1aa63676ba4a63168f591efbb984cb60cbfc5b81f2894d464c045319"
+    },
+    "whelk": {
+      "measurement_status": "executed_unvalidated",
+      "measurement_receipt_sha256": "1c5bf3b17dbeed9ab21371b231ba3576b3a720a66ef38551e397b969323d41a7",
+      "status": "canonicalized_requires_comparison",
+      "canonical_sha256": "69ee30338c6fa3a6a8fbf35adf846a8fdcb303408559a7c619086e431f10da22"
+    },
+    "more": {
+      "measurement_status": "timeout",
+      "measurement_receipt_sha256": "203cc34aaa8f6a1c292de127705032def29d5a9ecab891302e40e3a9e77698db",
+      "status": "no_completed_taxonomy"
+    },
+    "km": {
+      "measurement_status": "timeout",
+      "measurement_receipt_sha256": "4e98fad129daa32964524e1f487dde0a6e3c51f609f8d74b5be491e911eb5157",
+      "status": "no_completed_taxonomy"
+    },
+    "rustdl": {
+      "measurement_status": "executed_unvalidated",
+      "measurement_receipt_sha256": "2c4f565d5eb2535ecc8fac7754406d9bd424e00134ccb76493dfcf41e4a8caab",
+      "status": "validation_error",
+      "error": "audit worker failed: {'status': 'ok', 'exit_code': 1, 'wall_s': 0.11236192099750042, 'peak_bytes': 14745600, 'command': ['/usr/bin/python3.9', '/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/comparative-audit-v4/canonicalize.py', '--input', '/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-53200614/rustdl/ore_ont_2901/taxonomy.raw', '--format', 'rustdl-json', '--signature', '/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/32/ore_ont_2901/signature.tsv', '--output-prefix', '/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/32/ore_ont_2901/rustdl', '--fingerprint-script', '/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/comparative-audit-v4/full_iri_fingerprint.py']}"
+    },
+    "konclude": {
+      "measurement_status": "executed_unvalidated",
+      "measurement_receipt_sha256": "af02fadd9fe2c8002cdf7011fa6dfaa144555f3930c8b08c40b6944ac2ef3984",
+      "status": "canonicalized_requires_comparison",
+      "canonical_sha256": "927019ebd496813f9842d0e0e8b482b6ca15dc7559d32726c03f43800941c556"
+    },
+    "sequoia": {
+      "measurement_status": "process_error",
+      "measurement_receipt_sha256": "fe3ac0c5abbb44125e87527a025dd093d26b0bc40224e8b2d964a2c609babec6",
+      "status": "no_completed_taxonomy"
+    }
+  },
+  "comparisons": [
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "fae510f700df6678872381a39bf98d1a6436ca046adfb1cba271b2c88b55b881",
+      "right_raw_sha256": "f9b73aec148df02e89d92b7f7bce0b3a87fc9d43d3c883d828989a7249e99733",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "elk",
+      "right": "hermit"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "fae510f700df6678872381a39bf98d1a6436ca046adfb1cba271b2c88b55b881",
+      "right_raw_sha256": "4109b2358f54147f776ae8ecf063ce062fc6f7ec0d2914e41be3bc471c51d83f",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "elk",
+      "right": "jfact"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "fae510f700df6678872381a39bf98d1a6436ca046adfb1cba271b2c88b55b881",
+      "right_raw_sha256": "6966b89780205725e7699cf53b97e77beffa8f48f3ae91e4a38e6912d2248f05",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "elk",
+      "right": "konclude"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "fae510f700df6678872381a39bf98d1a6436ca046adfb1cba271b2c88b55b881",
+      "right_raw_sha256": "1944dbbe3c1c61aaabf30247ba346b13ebfa5202fe3c8f17918f1800b2556bad",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "elk",
+      "right": "whelk"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "f9b73aec148df02e89d92b7f7bce0b3a87fc9d43d3c883d828989a7249e99733",
+      "right_raw_sha256": "4109b2358f54147f776ae8ecf063ce062fc6f7ec0d2914e41be3bc471c51d83f",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "hermit",
+      "right": "jfact"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "f9b73aec148df02e89d92b7f7bce0b3a87fc9d43d3c883d828989a7249e99733",
+      "right_raw_sha256": "6966b89780205725e7699cf53b97e77beffa8f48f3ae91e4a38e6912d2248f05",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "hermit",
+      "right": "konclude"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "f9b73aec148df02e89d92b7f7bce0b3a87fc9d43d3c883d828989a7249e99733",
+      "right_raw_sha256": "1944dbbe3c1c61aaabf30247ba346b13ebfa5202fe3c8f17918f1800b2556bad",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "hermit",
+      "right": "whelk"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "4109b2358f54147f776ae8ecf063ce062fc6f7ec0d2914e41be3bc471c51d83f",
+      "right_raw_sha256": "6966b89780205725e7699cf53b97e77beffa8f48f3ae91e4a38e6912d2248f05",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "jfact",
+      "right": "konclude"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "4109b2358f54147f776ae8ecf063ce062fc6f7ec0d2914e41be3bc471c51d83f",
+      "right_raw_sha256": "1944dbbe3c1c61aaabf30247ba346b13ebfa5202fe3c8f17918f1800b2556bad",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "jfact",
+      "right": "whelk"
+    },
+    {
+      "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+      "left_raw_sha256": "6966b89780205725e7699cf53b97e77beffa8f48f3ae91e4a38e6912d2248f05",
+      "right_raw_sha256": "1944dbbe3c1c61aaabf30247ba346b13ebfa5202fe3c8f17918f1800b2556bad",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy",
+      "left": "konclude",
+      "right": "whelk"
+    }
+  ],
+  "status": "audited_available_outputs"
+}

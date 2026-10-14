@@ -2118,19 +2118,19 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // `CIndividualSaturationSuccessorLinkDataLinker* mergingSuccDataLinker`
         merging_succ_data_linker: IndividualSaturationSuccessorLinkDataLinkerId,
         // `CPROCESSHASH<CSaturationSuccessorData*,cint64>* remainMergeableCardHash`
-        remain_mergeable_card_hash: &mut std::collections::HashMap<
+        remain_mergeable_card_hash: &mut crate::fxhash::FxHashMap<
             SaturationSuccessorDataId,
             Cint64,
         >,
         role: RoleId,
         max_required_merging_cardinality: Cint64,
         // `CPROCESSHASH<CSaturationSuccessorData*,CSaturationSuccessorData*>* mergeDistintHash`
-        merge_distint_hash: &mut std::collections::HashMap<
+        merge_distint_hash: &mut crate::fxhash::FxHashMap<
             SaturationSuccessorDataId,
             Vec<SaturationSuccessorDataId>,
         >,
         // `CPROCESSSET< QPair<...> >* mergeDistintSet`
-        merge_distint_set: &mut std::collections::HashSet<(
+        merge_distint_set: &mut crate::fxhash::FxHashSet<(
             SaturationSuccessorDataId,
             SaturationSuccessorDataId,
         )>,
@@ -2745,19 +2745,19 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // `CIndividualSaturationSuccessorLinkDataLinker* mergingSuccDataLinker`
         merging_succ_data_linker: IndividualSaturationSuccessorLinkDataLinkerId,
         // `CPROCESSHASH<CSaturationSuccessorData*,cint64>* remainMergeableCardHash`
-        remain_mergeable_card_hash: &mut std::collections::HashMap<
+        remain_mergeable_card_hash: &mut crate::fxhash::FxHashMap<
             SaturationSuccessorDataId,
             Cint64,
         >,
         role: RoleId,
         max_required_merging_cardinality: Cint64,
         // `CPROCESSHASH<CSaturationSuccessorData*,CSaturationSuccessorData*>* mergeDistintHash`
-        merge_distint_hash: &mut std::collections::HashMap<
+        merge_distint_hash: &mut crate::fxhash::FxHashMap<
             SaturationSuccessorDataId,
             Vec<SaturationSuccessorDataId>,
         >,
         // `CPROCESSSET< QPair<...> >* mergeDistintSet`
-        merge_distint_set: &mut std::collections::HashSet<(
+        merge_distint_set: &mut crate::fxhash::FxHashSet<(
             SaturationSuccessorDataId,
             SaturationSuccessorDataId,
         )>,

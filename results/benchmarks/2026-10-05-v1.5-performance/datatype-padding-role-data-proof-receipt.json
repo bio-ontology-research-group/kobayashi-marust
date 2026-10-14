@@ -1,0 +1,29 @@
+{
+  "proofs": [
+    {
+      "source": "lean/ContextCalculus/DatatypePaddingRoles.lean",
+      "source_sha256": "42893ebcd884b6e4e55aaf668808b18bd337bc4386f8ad417047dd7b5292ff56",
+      "log_sha256": "8d94aed939ddb17529823c30e8396fd42b99f512ce0b6d4f48d4699ea55106f9",
+      "theorems": 14,
+      "axioms": [
+        "propext"
+      ],
+      "sorryAx": false,
+      "exit_code": 0
+    },
+    {
+      "source": "lean/ContextCalculus/DatatypePaddingData.lean",
+      "source_sha256": "eeb70f9529e8d73d4d06445480f9136736ed735aacc8088246c433ef566b0977",
+      "log_sha256": "23b4b616f3c6d572babc4fbaff1b76c9acae9cccc234870043293024fede2575",
+      "theorems": 7,
+      "axioms": [
+        "propext"
+      ],
+      "sorryAx": false,
+      "exit_code": 0
+    }
+  ],
+  "import_source_sha256": "7a01fb3ce05b5ab88e471b47f6c5087d262117e55b8e0cb7313496b48ef7dbf2",
+  "scope": "Forward role, nominal and concrete data-restriction transport, with guarded-variable theorem and counterexample. Executable source binding and reverse-model obligations remain.",
+  "release_approved": false
+}

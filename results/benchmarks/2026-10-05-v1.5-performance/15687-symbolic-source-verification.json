@@ -1,0 +1,29 @@
+{
+  "old": {
+    "commit": "54c91c659008569c06b6be5ab1fd8befc85a64d6",
+    "engine_tree": "1f11376cda0e06c1a0eccc6a6a0c3725b4344af2",
+    "verified_source_files": 376
+  },
+  "new": {
+    "commit": "190d54019981a2135121eeb8e3cabb98c5fb8694",
+    "engine_tree": "79e63dcce2c02b3d2a93d5b1b7479b644123cff1",
+    "verified_source_files": 376
+  },
+  "helper_sha256": "2033ef9c6ba39c1a89a9b604cbe076b4209f90c15131850bfe72cca22c98431c",
+  "build_profile": {
+    "release": true,
+    "lto": false,
+    "codegen_units": 16,
+    "locked": true,
+    "new_package_cleaned_before_build": true
+  },
+  "build_logs": {
+    "old": "4b7f60c669e85dd43155dcea07761be83c703d1822681ede5fbf51afed0f5a19",
+    "new": "9ef7ca23501d82b2066e80ba765c541274137deb396bfbdba0f6464bc573fdf9"
+  },
+  "checker_self_test": {
+    "identical": "accepted",
+    "changed": "rejected"
+  },
+  "checker_sha256": "c119601e2920964b1162ea3fe18f61307e4737de3626af7e2373aab61953e602"
+}

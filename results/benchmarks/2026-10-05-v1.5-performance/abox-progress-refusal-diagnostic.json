@@ -1,0 +1,39 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "4e8f19bc600eca3f6368c72e397dfa3d1a9d263574de86af1388fc19e15dd015",
+  "source_commit": "ef84dcf1 plus optional ABox refusal diagnostic",
+  "source_change_sha256": "28af78c65eaf3204fbe46e843afc53ccd03aed8107be42bc199444f2a8292885",
+  "attempts": [
+    {
+      "ontology": "ore_ont_14379",
+      "source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+      "status": "timeout",
+      "exit_code": -9,
+      "wall_s": 5.017861459986307,
+      "stderr_sha256": "5e49f1e1967f477de18bca9dd3c437c08ce7aadff92ce66500d2f97b7d66161a",
+      "trace": [
+        "KM_TIMING ground-rule source: rules=0 instances=0",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.02s cached=false sidecar=false",
+        "KM_TIMING frontend done @ 0.02s route=manual",
+        "cb_to_ht [emelim] eliminated 2 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=260 moved=4 tautologies=0",
+        "KM_TIMING spawn_ht: read+convert 3204 clauses (ht_view=3064) in 0.01s",
+        "BRIDGE-PUBLIC-SUBJECTS selected=79 active=113",
+        "BRIDGE-DATATYPE-DEFER: a data role occurs in an unsupported non-datatype clause; clause=1239 touched=[17, 26] value={\"body\":[{\"k\":\"r\",\"r\":17,\"s\":0,\"t\":1},{\"k\":\"r\",\"r\":26,\"s\":0,\"t\":1}],\"head\":[]}",
+        "tableau error: konclude_ht bridge defer",
+        "KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)",
+        "KM_TIMING mirror-route: declined: not a pure TBox: declared DataProperty",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.01s route=ht_bridge",
+        "cb_to_ht [emelim] eliminated 2 complementary pairs",
+        "cb_to_ht [trigger-absorb] definers=226 moved=4 tautologies=0",
+        "native ABox conversion declined: 34 data-property assertion axiom(s) are unsupported",
+        "KM_TIMING compact typed bridge probe declined @ 0.02s: out of fragment: native HT bridge ABox conversion was incomplete",
+        "KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false",
+        "KM_TIMING frontend done @ 0.02s route=nominals"
+      ]
+    }
+  ],
+  "release_approved": false
+}

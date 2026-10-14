@@ -1,0 +1,256 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "default_enabled": false,
+  "final_binary": {
+    "path": "/tmp/agent/km-v150-diagnostics/km-source-module-phases-595050db0e9f",
+    "sha256": "595050db0e9f6621ebb2a60a41bbdcb1c1bf691ff829e43bd0b7cc169856ec6c"
+  },
+  "first_binary": {
+    "path": "/tmp/agent/km-v150-diagnostics/km-source-module-ef7e1258e408",
+    "sha256": "ef7e1258e408fefb841dbebce7f5a0bbaa607d878c5877328907183f94e09064"
+  },
+  "source_manifest_sha256": "65abd1e175f2815110ba57b8b2327138257672c86ec42746b2add04560cebf87",
+  "comparisons": [
+    {
+      "run": "source-module-updates-first",
+      "repetition": 0,
+      "revision": 1,
+      "retained_s": 1.996920066070743,
+      "fresh_s": 1.9099411169299856,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-first",
+      "repetition": 0,
+      "revision": 2,
+      "retained_s": 2.0809944120701402,
+      "fresh_s": 1.8462308519519866,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-first",
+      "repetition": 0,
+      "revision": 3,
+      "retained_s": 2.6724721329519525,
+      "fresh_s": 1.856657927040942,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-first",
+      "repetition": 0,
+      "revision": 4,
+      "retained_s": 2.7525299850385636,
+      "fresh_s": 1.824934026109986,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-first",
+      "repetition": 1,
+      "revision": 1,
+      "retained_s": 1.990473878919147,
+      "fresh_s": 1.7788150140549988,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-first",
+      "repetition": 1,
+      "revision": 2,
+      "retained_s": 2.0614871659781784,
+      "fresh_s": 1.9079341050237417,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-first",
+      "repetition": 1,
+      "revision": 3,
+      "retained_s": 2.5345167700434104,
+      "fresh_s": 1.7986496810335666,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-first",
+      "repetition": 1,
+      "revision": 4,
+      "retained_s": 2.703333375044167,
+      "fresh_s": 1.7763140180613846,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-phases",
+      "repetition": 0,
+      "revision": 1,
+      "retained_s": 2.3792189449304715,
+      "fresh_s": 1.8602081489516422,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-phases",
+      "repetition": 0,
+      "revision": 2,
+      "retained_s": 2.165530233993195,
+      "fresh_s": 1.8278432380175218,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-phases",
+      "repetition": 0,
+      "revision": 3,
+      "retained_s": 2.7179420070024207,
+      "fresh_s": 1.848183112917468,
+      "faster": false
+    },
+    {
+      "run": "source-module-updates-phases",
+      "repetition": 0,
+      "revision": 4,
+      "retained_s": 2.7108964199433103,
+      "fresh_s": 1.8094708190765232,
+      "faster": false
+    }
+  ],
+  "phase_measurements": [
+    {
+      "phase": "validate",
+      "elapsed_s": 0.48377858
+    },
+    {
+      "phase": "normalize",
+      "elapsed_s": 0.353190013
+    },
+    {
+      "phase": "bridge-entry",
+      "elapsed_s": 9.09e-07
+    },
+    {
+      "phase": "clause-delta",
+      "elapsed_s": 0.071274277
+    },
+    {
+      "phase": "bridge-prepare",
+      "elapsed_s": 0.122234987
+    },
+    {
+      "phase": "source-coverage",
+      "elapsed_s": 0.059146218
+    },
+    {
+      "phase": "bridge-update",
+      "elapsed_s": 0.804243451
+    },
+    {
+      "phase": "publish",
+      "elapsed_s": 0.397861084
+    },
+    {
+      "phase": "validate",
+      "elapsed_s": 0.313841762
+    },
+    {
+      "phase": "normalize",
+      "elapsed_s": 0.318656606
+    },
+    {
+      "phase": "bridge-entry",
+      "elapsed_s": 1.184e-06
+    },
+    {
+      "phase": "clause-delta",
+      "elapsed_s": 0.119425611
+    },
+    {
+      "phase": "bridge-prepare",
+      "elapsed_s": 0.155060628
+    },
+    {
+      "phase": "source-coverage",
+      "elapsed_s": 0.071442696
+    },
+    {
+      "phase": "bridge-update",
+      "elapsed_s": 0.834646636
+    },
+    {
+      "phase": "publish",
+      "elapsed_s": 0.281499641
+    },
+    {
+      "phase": "validate",
+      "elapsed_s": 0.276903985
+    },
+    {
+      "phase": "normalize",
+      "elapsed_s": 0.33649044
+    },
+    {
+      "phase": "bridge-entry",
+      "elapsed_s": 7.9e-07
+    },
+    {
+      "phase": "clause-delta",
+      "elapsed_s": 0.150539125
+    },
+    {
+      "phase": "bridge-prepare",
+      "elapsed_s": 0.19161165
+    },
+    {
+      "phase": "source-coverage",
+      "elapsed_s": 0.066196665
+    },
+    {
+      "phase": "bridge-update",
+      "elapsed_s": 1.302269119
+    },
+    {
+      "phase": "publish",
+      "elapsed_s": 0.281201628
+    },
+    {
+      "phase": "validate",
+      "elapsed_s": 0.29952773
+    },
+    {
+      "phase": "normalize",
+      "elapsed_s": 0.352063232
+    },
+    {
+      "phase": "bridge-entry",
+      "elapsed_s": 8.51e-07
+    },
+    {
+      "phase": "clause-delta",
+      "elapsed_s": 0.147944486
+    },
+    {
+      "phase": "bridge-prepare",
+      "elapsed_s": 0.185133078
+    },
+    {
+      "phase": "source-coverage",
+      "elapsed_s": 0.060643911
+    },
+    {
+      "phase": "bridge-update",
+      "elapsed_s": 1.256028807
+    },
+    {
+      "phase": "publish",
+      "elapsed_s": 0.273601592
+    }
+  ],
+  "validation": {
+    "source_incremental_tests": 24,
+    "source_incremental_tests_with_flags": 24,
+    "all_update_answers_equal_fresh": true
+  },
+  "conclusion": "Exact modules are integrated behind both source-locality and source-module opt-ins; every measured complete update is still slower than fresh. Retain all measurements. Instrumentation identifies validation/normalization, bridge bookkeeping and full-taxonomy publication as remaining overhead.",
+  "logs": {
+    "source-module-integration-check.log": "2fa8d983f06294665be62c4bde80bef3fd768dea935559924bc6bece1486161b",
+    "source-module-integration-tests.log": "01e6b611c86fceab94bea8bdef901d0e377c4f8820999f17e0ac0f94d61dac80",
+    "source-module-integration-enabled-tests.log": "f85ffe22119663b13ac66a312f61cc65740a4948cc1bb1be246dcc198deff14d",
+    "source-module-integration-build.log": "f499826ee43bba3135759ad063422cccf4429f1238d7170d39cec116546f654f",
+    "source-module-phases-build.log": "b4b2dbbde6bd9ea3e85968195476d87639157262039377ea1959d84f6149953f",
+    "source-module-final-enabled-tests.log": "8c5883e8e8510349044b9f73e9d6cd3747327c6a80474486a004d477f155796b"
+  }
+}

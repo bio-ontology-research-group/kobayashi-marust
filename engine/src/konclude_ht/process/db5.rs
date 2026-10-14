@@ -157,8 +157,8 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getIndividualDisjunctCommonConceptExtractProcessLinker`.
     pub fn individual_disjunct_common_concept_extract_process_linker(
         &self,
-    ) -> &[IndividualSaturationProcessNodeLinkerId] {
-        &self.disjunct_common_concept_extract_processing_linker
+    ) -> Vec<IndividualSaturationProcessNodeLinkerId> {
+        self.disjunct_common_concept_extract_processing_linker.iter().rev().copied().collect()
     }
     /// Port of `CProcessingDataBox::takeIndividualDisjunctCommonConceptExtractProcessLinker`.
     pub fn take_individual_disjunct_common_concept_extract_process_linker(
@@ -171,7 +171,7 @@ impl ProcessingDataBox {
             IndividualSaturationProcessNodeLinkerId::NONE
         } else {
             self.disjunct_common_concept_extract_processing_linker
-                .remove(0)
+                .pop().expect("non-empty linker chain")
         }
     }
     /// Port of `CProcessingDataBox::setIndividualDisjunctCommonConceptExtractProcessLinker`.
@@ -193,7 +193,7 @@ impl ProcessingDataBox {
         v: IndividualSaturationProcessNodeLinkerId,
     ) -> &mut Self {
         self.disjunct_common_concept_extract_processing_linker
-            .insert(0, v);
+            .push(v);
         self
     }
 
@@ -441,8 +441,8 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getIndividualSaturationCompletionNodeLinker`.
     pub fn individual_saturation_completion_node_linker(
         &self,
-    ) -> &[IndividualSaturationProcessNodeLinkerId] {
-        &self.indi_saturation_completion_node_linker
+    ) -> Vec<IndividualSaturationProcessNodeLinkerId> {
+        self.indi_saturation_completion_node_linker.iter().rev().copied().collect()
     }
     /// Port of `CProcessingDataBox::takeIndividualSaturationCompletionNodeLinker`.
     pub fn take_individual_saturation_completion_node_linker(
@@ -451,7 +451,7 @@ impl ProcessingDataBox {
         if self.indi_saturation_completion_node_linker.is_empty() {
             IndividualSaturationProcessNodeLinkerId::NONE
         } else {
-            self.indi_saturation_completion_node_linker.remove(0)
+            self.indi_saturation_completion_node_linker.pop().expect("non-empty linker chain")
         }
     }
     /// Port of `CProcessingDataBox::setIndividualSaturationCompletionNodeLinker`.
@@ -470,7 +470,7 @@ impl ProcessingDataBox {
         &mut self,
         v: IndividualSaturationProcessNodeLinkerId,
     ) -> &mut Self {
-        self.indi_saturation_completion_node_linker.insert(0, v);
+        self.indi_saturation_completion_node_linker.push(v);
         self
     }
 
@@ -485,8 +485,8 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getIndividualSaturationCompletedNodeLinker`.
     pub fn individual_saturation_completed_node_linker(
         &self,
-    ) -> &[IndividualSaturationProcessNodeLinkerId] {
-        &self.indi_saturation_completed_node_linker
+    ) -> Vec<IndividualSaturationProcessNodeLinkerId> {
+        self.indi_saturation_completed_node_linker.iter().rev().copied().collect()
     }
     /// Port of `CProcessingDataBox::takeIndividualSaturationCompletedNodeLinker`.
     pub fn take_individual_saturation_completed_node_linker(
@@ -495,7 +495,7 @@ impl ProcessingDataBox {
         if self.indi_saturation_completed_node_linker.is_empty() {
             IndividualSaturationProcessNodeLinkerId::NONE
         } else {
-            self.indi_saturation_completed_node_linker.remove(0)
+            self.indi_saturation_completed_node_linker.pop().expect("non-empty linker chain")
         }
     }
     /// Port of `CProcessingDataBox::setIndividualSaturationCompletedNodeLinker`.
@@ -514,7 +514,7 @@ impl ProcessingDataBox {
         &mut self,
         v: IndividualSaturationProcessNodeLinkerId,
     ) -> &mut Self {
-        self.indi_saturation_completed_node_linker.insert(0, v);
+        self.indi_saturation_completed_node_linker.push(v);
         self
     }
 
@@ -527,15 +527,15 @@ impl ProcessingDataBox {
         !self.indi_saturation_analysing_node_linker.is_empty()
     }
     /// Port of `CProcessingDataBox::getIndividualSaturationAnalysationNodeLinker`.
-    pub fn individual_saturation_analysation_node_linker(&self) -> &[SatNodeId] {
-        &self.indi_saturation_analysing_node_linker
+    pub fn individual_saturation_analysation_node_linker(&self) -> Vec<SatNodeId> {
+        self.indi_saturation_analysing_node_linker.iter().rev().copied().collect()
     }
     /// Port of `CProcessingDataBox::takeIndividualSaturationAnalysationNodeLinker`.
     pub fn take_individual_saturation_analysation_node_linker(&mut self) -> SatNodeId {
         if self.indi_saturation_analysing_node_linker.is_empty() {
             SatNodeId::NONE
         } else {
-            self.indi_saturation_analysing_node_linker.remove(0)
+            self.indi_saturation_analysing_node_linker.pop().expect("non-empty linker chain")
         }
     }
     /// Port of `CProcessingDataBox::setIndividualSaturationAnalysationNodeLinker`.
@@ -548,7 +548,7 @@ impl ProcessingDataBox {
     }
     /// Port of `CProcessingDataBox::addIndividualSaturationAnalysationNodeLinker`.
     pub fn add_individual_saturation_analysation_node_linker(&mut self, v: SatNodeId) -> &mut Self {
-        self.indi_saturation_analysing_node_linker.insert(0, v);
+        self.indi_saturation_analysing_node_linker.push(v);
         self
     }
 
@@ -565,8 +565,8 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getNominalDelayedIndividualSaturationProcessNodeLinker`.
     pub fn nominal_delayed_individual_saturation_process_node_linker(
         &self,
-    ) -> &[IndividualSaturationProcessNodeLinkerId] {
-        &self.nominal_delayed_indi_saturation_process_node_linker
+    ) -> Vec<IndividualSaturationProcessNodeLinkerId> {
+        self.nominal_delayed_indi_saturation_process_node_linker.iter().rev().copied().collect()
     }
     /// Port of `CProcessingDataBox::takeNominalDelayedIndividualSaturationProcessNodeLinker`.
     pub fn take_nominal_delayed_individual_saturation_process_node_linker(
@@ -579,7 +579,7 @@ impl ProcessingDataBox {
             IndividualSaturationProcessNodeLinkerId::NONE
         } else {
             self.nominal_delayed_indi_saturation_process_node_linker
-                .remove(0)
+                .pop().expect("non-empty linker chain")
         }
     }
     /// Port of `CProcessingDataBox::setNominalDelayedIndividualSaturationProcessNodeLinker`.
@@ -601,7 +601,7 @@ impl ProcessingDataBox {
         v: IndividualSaturationProcessNodeLinkerId,
     ) -> &mut Self {
         self.nominal_delayed_indi_saturation_process_node_linker
-            .insert(0, v);
+            .push(v);
         self
     }
 

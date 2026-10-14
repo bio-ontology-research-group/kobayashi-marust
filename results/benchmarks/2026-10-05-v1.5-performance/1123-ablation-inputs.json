@@ -1,0 +1,13 @@
+{
+  "inputs": [
+    {
+      "ontology": "ore_ont_1123",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1123.owl",
+      "sha256": "46295df3b393891fa0680879171770016f4f298adacaf3abf0bab10b2e600c79",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/5/ore_ont_1123",
+      "reference_audit_sha256": "22001c46ebbca601b53a4f38954d89f4260b49d57a54afe777c8c48ebc2d9990"
+    }
+  ],
+  "scope": "Isolate a candidate timeout versus a 209.9-second v145 verified success; diagnostic only"
+}

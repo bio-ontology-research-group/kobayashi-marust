@@ -1,0 +1,22 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "dense-data-ba955555af71",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-dense-data-ba955555af71",
+      "sha256": "ba955555af717f0dd880ba21c2a011172767b73056057f1c5b24aa748408e180"
+    }
+  ],
+  "source_commit": "2d2074f0cb24887656daed05d58d6338a32d68c4",
+  "source_manifest_sha256": "c4ac70b0d661eadd913485c80fdc05836e3d93a935db27611cac0292efaffef2",
+  "certification_receipt_sha256": "7a8ca4006d1294ce7e31ec4a77c4b73574015c7c60ee32c8e32c99d271c25d72",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure"
+  ],
+  "release_approved": false
+}

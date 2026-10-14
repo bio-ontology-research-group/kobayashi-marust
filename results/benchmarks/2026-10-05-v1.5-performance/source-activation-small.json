@@ -1,0 +1,20 @@
+{
+  "public_queries": 8008,
+  "source_axioms_removed": 1,
+  "source_axioms_added": 0,
+  "abstract_rules": 31128,
+  "affected_queries": 4,
+  "potentially_reusable_queries": 8004,
+  "affected_names": [
+    "FBbt_00007444",
+    "FBbt_00007445",
+    "FBbt_00067371",
+    "FBbt_00067372"
+  ],
+  "diagnostic_only": true,
+  "inputs": {
+    "/tmp/agent/km-v150-diagnostics/9944-source-0.json": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+    "/tmp/agent/km-v150-diagnostics/9944-source-1.json": "e66a22f09c4d472d5e498d3cd8048db4b4aa96cb389d910abf72fc521d42108f"
+  },
+  "limitations": "Source abstraction only. Typed side-state equivalence, source metadata completeness, fresh-answer comparison and Lean certification are not established. No production reuse authorized."
+}

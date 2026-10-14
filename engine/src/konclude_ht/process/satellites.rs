@@ -23,7 +23,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
@@ -97,6 +97,65 @@ impl CoreConceptDescriptor {
 // call site (this file's `ConceptDescriptorDependencyReapplyData`,
 // `reapply_sat::LabelSetMapEntry`, `ls1`) keeps resolving onto the real type.
 pub use super::condensed_reapply::CondensedReapplyQueue;
+
+/// The main reapply map of a label set, with a lazily built key-sorted
+/// snapshot. Konclude's `CPROCESSMAP` is ordered, so its label-set iterators
+/// walk it in key order; the port stores a hash map and used to collect and
+/// sort it on every sorted iteration (subset blocking, classification
+/// analysis). The snapshot is built once per map state: every mutable access
+/// (`DerefMut`) drops it, so it always equals a fresh sort of the map.
+#[derive(Clone, Default)]
+pub struct DesDepMap {
+    map: HashMap<Cint64, ConceptDescriptorDependencyReapplyData>,
+    sorted: std::sync::OnceLock<std::sync::Arc<Vec<super::reapply_sat::LabelSetMapEntry>>>,
+}
+
+impl DesDepMap {
+    /// Key-sorted entries of the current map state (shared, not copied).
+    pub fn sorted_entries(&self) -> std::sync::Arc<Vec<super::reapply_sat::LabelSetMapEntry>> {
+        self.sorted
+            .get_or_init(|| std::sync::Arc::new(sorted_map_entries(&self.map)))
+            .clone()
+    }
+}
+
+/// Key-sorted snapshot of a reapply map.
+pub fn sorted_map_entries(
+    m: &HashMap<Cint64, ConceptDescriptorDependencyReapplyData>,
+) -> Vec<super::reapply_sat::LabelSetMapEntry> {
+    let mut entries: Vec<super::reapply_sat::LabelSetMapEntry> = m
+        .iter()
+        .map(|(k, v)| super::reapply_sat::LabelSetMapEntry {
+            key: *k,
+            concept_descriptor: v.concept_descriptor,
+            pos_neg_reapply_queue: v.pos_neg_reapply_queue,
+        })
+        .collect();
+    // HashMap keys are unique, so an unstable sort yields the same order
+    // without the stable sort's scratch allocation.
+    entries.sort_unstable_by_key(|e| e.key);
+    entries
+}
+
+impl std::ops::Deref for DesDepMap {
+    type Target = HashMap<Cint64, ConceptDescriptorDependencyReapplyData>;
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
+impl std::ops::DerefMut for DesDepMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.sorted.take();
+        &mut self.map
+    }
+}
+
+impl From<HashMap<Cint64, ConceptDescriptorDependencyReapplyData>> for DesDepMap {
+    fn from(map: HashMap<Cint64, ConceptDescriptorDependencyReapplyData>) -> Self {
+        DesDepMap { map, sorted: std::sync::OnceLock::new() }
+    }
+}
 
 /// Port of `CReapplyQueue`.
 ///
@@ -383,7 +442,7 @@ pub struct ReapplyConceptLabelSet {
     /// the parent label set (cheap share in C++) only while it stays small. The
     /// size threshold that decides share-vs-rebuild (**`size <= 50`**, or
     /// **`size*10 < additional.size`**) is reproduced in LS-1.
-    pub concept_des_dep_map: HashMap<Cint64, ConceptDescriptorDependencyReapplyData>,
+    pub concept_des_dep_map: DesDepMap,
     /// `CPROCESSMAP<cint64,…>* mAdditionalConceptDesDepMap` — the COW partner.
     /// KONCLUDE-PORT-NOTE[ownership][unclear]: in C++ this raw pointer is null, or
     /// owns a freshly-allocated overflow map, or **aliases another label set's**
@@ -441,7 +500,7 @@ impl Default for ReapplyConceptLabelSet {
     fn default() -> Self {
         ReapplyConceptLabelSet {
             modification_tag: ConceptLabelSetModificationTag::default(),
-            concept_des_dep_map: HashMap::new(),
+            concept_des_dep_map: DesDepMap::default(),
             additional_concept_des_dep_map: AdditionalDesDepMapRef::Null,
             core_con_des_linker: CoreConceptDescriptorId::NONE,
             concept_des_linker: Id::NONE,
@@ -568,7 +627,7 @@ impl Default for ReapplyRoleSuccessorHash {
     fn default() -> Self {
         ReapplyRoleSuccessorHash {
             context: INVALID,
-            role_successor_data_hash: HashMap::new(),
+            role_successor_data_hash: HashMap::default(),
             link_count: 0,
         }
     }

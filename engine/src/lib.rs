@@ -15,6 +15,8 @@ pub mod engine;
 pub mod frontend;
 pub mod fxhash;
 pub mod incremental;
+mod incremental_activation;
+mod incremental_deletion;
 mod incremental_ht;
 mod incremental_positive_abox;
 mod incremental_rules;
@@ -25,5 +27,9 @@ pub mod orchestrate;
 pub mod reasoner;
 pub mod role_automaton;
 pub mod routing;
+#[cfg(feature = "sample-profiler")]
+pub mod sample_prof;
 pub mod source_incremental;
+pub mod source_locality;
+pub mod incr_session;
 pub mod tableau;

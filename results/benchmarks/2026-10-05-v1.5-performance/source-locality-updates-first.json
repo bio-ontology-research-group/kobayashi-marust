@@ -1,0 +1,191 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "0a093677ecd73f3bd691d81261c151a1619a122ee12920c045ec5138ffa3ebc2",
+  "sources": {
+    "000.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+    "001.ofn": "8a00ea8beefa1c01b80adf9884167959a8c54dd41a411520ad77ee526a8beb33",
+    "002.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+    "003.ofn": "fe1fdd9ddbcfe8e8eaf75f4fae7765a40b90712397e133f60cce32319d1c49fc",
+    "004.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87"
+  },
+  "records": [
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 0,
+      "wall_s": 2.567483654944226,
+      "receipt": null
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 1,
+      "wall_s": 1.9952770329546183,
+      "receipt": {
+        "added_normalized_clauses": 0,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 1,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 1,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 2,
+      "wall_s": 1.994632773916237,
+      "receipt": {
+        "added_normalized_clauses": 1,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 0,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 2,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 3,
+      "wall_s": 2.060451435041614,
+      "receipt": {
+        "added_normalized_clauses": 27103,
+        "added_rules": 0,
+        "invalidated_states": 2180,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 27130,
+        "removed_rules": 0,
+        "retained_states": 5828,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83113,
+        "revision": 3,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 4,
+      "wall_s": 2.087225653929636,
+      "receipt": {
+        "added_normalized_clauses": 27130,
+        "added_rules": 0,
+        "invalidated_states": 2180,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 27103,
+        "removed_rules": 0,
+        "retained_states": 5828,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83113,
+        "revision": 4,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 0,
+      "wall_s": 1.6800662580644712,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 1,
+      "wall_s": 1.6004588800715283,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 2,
+      "wall_s": 1.651849766029045,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 3,
+      "wall_s": 1.6071361099602655,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 4,
+      "wall_s": 1.601372170029208,
+      "same_answer": true
+    }
+  ],
+  "cpus": 1,
+  "memory_gib": 20,
+  "session_timeout_s": 180,
+  "scope": "Five revisions of one ontology; local timings do not establish the full release target.",
+  "comparisons": [
+    {
+      "revision": 1,
+      "retained_s": 1.9952770329546183,
+      "fresh_s": 1.6004588800715283,
+      "retained_over_fresh": 1.2466905946783493,
+      "retained_queries": 8004,
+      "rebuilt_queries": 4,
+      "same_answer": true
+    },
+    {
+      "revision": 2,
+      "retained_s": 1.994632773916237,
+      "fresh_s": 1.651849766029045,
+      "retained_over_fresh": 1.2075146390045042,
+      "retained_queries": 8004,
+      "rebuilt_queries": 4,
+      "same_answer": true
+    },
+    {
+      "revision": 3,
+      "retained_s": 2.060451435041614,
+      "fresh_s": 1.6071361099602655,
+      "retained_over_fresh": 1.2820640531140552,
+      "retained_queries": 5828,
+      "rebuilt_queries": 2180,
+      "same_answer": true
+    },
+    {
+      "revision": 4,
+      "retained_s": 2.087225653929636,
+      "fresh_s": 1.601372170029208,
+      "retained_over_fresh": 1.3033982312129018,
+      "retained_queries": 5828,
+      "rebuilt_queries": 2180,
+      "same_answer": true
+    }
+  ],
+  "performance_requirement_met": false,
+  "release_approved": false
+}

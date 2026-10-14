@@ -1,0 +1,18 @@
+{
+  "artifacts": [
+    {
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-empty-iri-09bf32a4e57b",
+      "sha256": "09bf32a4e57b61293d6c113c1106848c59ca555005e2e5ccaa7b9574d6d4df7c",
+      "id": "km",
+      "version": "empty-iri-09bf32a4e57b"
+    }
+  ],
+  "source_commit": "190d5401",
+  "source_manifest_sha256": "a05d2c9cbf2bdac5acd13f240c009e6e355a2d1820c767318c16cfa1b65b6a9f",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_GROUND_RULE_SOURCE": "1"
+  }
+}

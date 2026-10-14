@@ -1,6 +1,6 @@
 [package]
 name = "kobayashi-marust"
-version = "1.4.5"
+version = "1.5.0"
 edition = "2021"
 license = "BSD-3-Clause"
 description = "An experimental hybrid SROIQ / OWL 2 DL reasoner written in Rust."
@@ -41,12 +41,17 @@ oxrdfio = "0.2"
 oxilangtag = "0.1.6"
 oxixml-regex = "=0.1.2"
 quick-xml = "0.37.5"
+mimalloc = { version = "0.1", default-features = false, optional = true }
 dhat = { version = "=0.3.3", optional = true }
 
 [features]
 # Heap profiling: builds the binaries with dhat's instrumented global
 # allocator. Off by default, so the normal release build is unaffected.
 dhat-heap = ["dhat"]
+# Diagnostic SIGPROF frame-pointer sampler (KM_SAMPLE_PROFILE=<dir>).
+sample-profiler = []
+# Use mimalloc as the km binary's global allocator.
+mimalloc = ["dep:mimalloc"]
 
 [profile.release]
 opt-level = 3

@@ -1,0 +1,11 @@
+{
+  "job": 53320659,
+  "submitted_at": "2026-10-06T01:40:12.676318+00:00",
+  "inputs": 8,
+  "timeout_s": 240,
+  "memory_mib": 20480,
+  "cpu_threads": 1,
+  "manifest_sha256": "0f13254970f28d631d3f6f57c88e4d1cd04145f2c648e9905b45a2fa1bcdc590",
+  "release_approved": false,
+  "scope": "Instrumented diagnostics of the eight largest verified shared runtime gaps; the complete 1920-input release workload remains unchanged."
+}

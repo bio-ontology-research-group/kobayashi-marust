@@ -1,0 +1,17 @@
+{
+  "root_cause": "Saturation apply_nominal_rule was a no-op. Nominal labels lacked INSUFFICIENT and NOMINALCONNECTION flags, bypassing the existing completion cache-replay decline.",
+  "repair": "Mark incomplete nominal saturation as insufficient and nominal-connected using the existing status propagation; exact completion processes its nominal assertions.",
+  "tests": "test result: ok. 1468 passed; 0 failed; 7 ignored; 0 measured; 1233 filtered out; finished in 0.15s",
+  "test_log_sha256": "ecef1527571f6b8221b16c7099525e298bd6a08994b6260bcf9956fade92bc14",
+  "source_sha256": {
+    "engine/src/konclude_ht/saturation/s04.rs": "e5851f831edfef650f488fa617fc66fda0209e05a8b7807d22e062b32fbaa68a",
+    "engine/src/konclude_ht/bridge.rs": "3ff36d38803720cd4919dce4bc00494cb9707329c902376445ba9cdffb200b43"
+  },
+  "local_public_answer_checks": [
+    "repaired-minimal.json",
+    "repaired-394.json",
+    "repaired-8844.json"
+  ],
+  "gate_status": "HT gate running at capture; inspect nominal-guard-work-state.json and live process.",
+  "release_approved": false
+}

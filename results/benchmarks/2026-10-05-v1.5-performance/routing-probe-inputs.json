@@ -1,0 +1,295 @@
+{
+  "selection": "32 equally spaced ranks across all v145 verified KM runtimes, including extremes; diagnostic only",
+  "inputs": [
+    {
+      "ontology": "ore_ont_9928",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9928.owl",
+      "sha256": "2f267c7bf92ad0685b40f9da5763a34a535eed05870e3f400a71091649970859",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/59/ore_ont_9928",
+      "reference_audit_sha256": "3f7912c4404fd33890807a93b046b41b64d1586d33d64eaa037e1c1799362e82"
+    },
+    {
+      "ontology": "ore_ont_8665",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8665.owl",
+      "sha256": "5eb712a0edc1347b251796953620b0f8e96956de5e7d8d318466146c69f272a7",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/54/ore_ont_8665",
+      "reference_audit_sha256": "ed6d3aa5feca746c3745a28576b639d04b66708c6cafb8f1134da8c5c63ffb8c"
+    },
+    {
+      "ontology": "ore_ont_7482",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_7482.owl",
+      "sha256": "e9518cae2fa39904f57b00e281e687e03c826a5dddb58401fbf7c5165be0dbf7",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/49/ore_ont_7482",
+      "reference_audit_sha256": "02a470a47dde1742573bc08f32ce8efafe61fa4dff44139039c268c24c06a588"
+    },
+    {
+      "ontology": "ore_ont_12721",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12721.owl",
+      "sha256": "4dfbcdf334e0d93bf0d304bdd9fa210c3f00b4a94965b3d629e31d8127cb2a54",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/10/ore_ont_12721",
+      "reference_audit_sha256": "8be5bcab580a33a7030c99eb953fbbbf19483da57537728090b57a4fd1553c80"
+    },
+    {
+      "ontology": "ore_ont_10431",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10431.owl",
+      "sha256": "90ca73870e1fc03b65de7ffa926a0c699ef522606fa4a0e1f715cc8fced44b38",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/2/ore_ont_10431",
+      "reference_audit_sha256": "d4d94c82260dd3fc1939de8bd5a52174106783a1f4c9292db59d8be9a5e72ad3"
+    },
+    {
+      "ontology": "ore_ont_8189",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8189.owl",
+      "sha256": "4347fbfa5d440913b724d7b54a5b92b9ddc49338ea25abf4b0e845683abe8fb8",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/53/ore_ont_8189",
+      "reference_audit_sha256": "83f9b5e60874b06f94bae75296211d90ff6574cb6ab49e3c5abd06a53f2b46be"
+    },
+    {
+      "ontology": "ore_ont_1618",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1618.owl",
+      "sha256": "45dce15fb2c24eeafcae93973f30e7a04cb71b93b0c397f633e205cb3dca9e99",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/24/ore_ont_1618",
+      "reference_audit_sha256": "60e2d89a05c0883f6c7361f08f743db8be8ffa28eeba7fe24598d0c87a794700"
+    },
+    {
+      "ontology": "ore_ont_13306",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_13306.owl",
+      "sha256": "5819a8df29e1209c1e8ec421e8fb8d47b387d030981791cf497eadc47f4fe10b",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/12/ore_ont_13306",
+      "reference_audit_sha256": "2d41edffdacd0283520b7c3fe05bc285c9fe5086eaa2c755ad9423e82e48cbdf"
+    },
+    {
+      "ontology": "ore_ont_6696",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6696.owl",
+      "sha256": "194402ed252faf7a922d8ba8f5a5f1017bd0f974dd35a6fad6fb41f6895b8d76",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/46/ore_ont_6696",
+      "reference_audit_sha256": "4800a52ab2126f4f0b45e95c1f67f1db7a00a4051b7f7af78eba8c0c449e61ed"
+    },
+    {
+      "ontology": "ore_ont_2678",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2678.owl",
+      "sha256": "b877e12f0f33e47412fe7e021ff9f462acda6d995e2b72d7831de1a642179668",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/31/ore_ont_2678",
+      "reference_audit_sha256": "304befd36abfd63d26939c16c859a53d1bb994650b91e6e8b0f74154eaddee5d"
+    },
+    {
+      "ontology": "ore_ont_8781",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8781.owl",
+      "sha256": "aaa4172eacb95b37cf86cdeeedce2a4d0a7bf44c1fbda266dab8925c9cc0947a",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/55/ore_ont_8781",
+      "reference_audit_sha256": "742bb218d73720080765524991e34b43aa02a56261f3120328b18162acec5ecf"
+    },
+    {
+      "ontology": "ore_ont_7216",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_7216.owl",
+      "sha256": "f7ab310cbf3aa1a41aca7e663ef942ae0018d72e262608e32a62d1a2688351ab",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/48/ore_ont_7216",
+      "reference_audit_sha256": "a1cb199a59ac8815e43231d68de37865f102b97232ec82f1e8104b1cecc8a3e7"
+    },
+    {
+      "ontology": "ore_ont_2749",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2749.owl",
+      "sha256": "582542041aaeb63e868f25eed5e39e61fde88cde63fac08fd7e99cb3c538af00",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/31/ore_ont_2749",
+      "reference_audit_sha256": "50432a37784f0d447aca9f25f1dc7c9b3caac9ab4f471f098c0630b88c3ea0c9"
+    },
+    {
+      "ontology": "ore_ont_10742",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10742.owl",
+      "sha256": "e42772c5c72329dac1c8332e3df9e033e6414c5bf898443c678db747204bb4c4",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/3/ore_ont_10742",
+      "reference_audit_sha256": "f612d61207d003a3fbf17278bc3968f2677c7fc255c8c4d3ca941494c5bc1cbb"
+    },
+    {
+      "ontology": "ore_ont_7180",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_7180.owl",
+      "sha256": "838207ba299badc8b54c9c59c1ef5a79d92b0d162ab6e01fad8ac1979e60d423",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/48/ore_ont_7180",
+      "reference_audit_sha256": "def89622d9b4340f0b3137de5d05868270a9f3a1b9345b54dfee8932f25944bc"
+    },
+    {
+      "ontology": "ore_ont_8329",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8329.owl",
+      "sha256": "52761173d243a6715c11dad42b46a22adb104e1506bafc3d8135b7bb9a5615ae",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/53/ore_ont_8329",
+      "reference_audit_sha256": "99e383aa2f17231803327175799ad8712f43def31fe51f4579a00ef065194d25"
+    },
+    {
+      "ontology": "ore_ont_9303",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_9303.owl",
+      "sha256": "c715db5039d9c2f70a93af27be49d1135a473ee9c7f9047557cdb8ad3d76efe5",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/57/ore_ont_9303",
+      "reference_audit_sha256": "93b6eaaba6c942ae693e4c368fcd43b09ee1753b9c78d47ab1cfea721dbaf3aa"
+    },
+    {
+      "ontology": "ore_ont_7356",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_7356.owl",
+      "sha256": "ba7ba511a7c41f73820012e50aa2b17363c79914199b9b96fdbd0374bcaa4767",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/49/ore_ont_7356",
+      "reference_audit_sha256": "2bc094698449e2fd296b361472e0a4e4a0e3e6257e23e4777b6f6f38ad73d130"
+    },
+    {
+      "ontology": "ore_ont_15291",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15291.owl",
+      "sha256": "f0ec681f474ae26b9ed702bfd8f2557bea5f60d900999f6a616a730b235ae187",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/20/ore_ont_15291",
+      "reference_audit_sha256": "01697ebafb367801c729c6f271c7c413fcf924d5322c035d896ad50b348028d2"
+    },
+    {
+      "ontology": "ore_ont_8579",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8579.owl",
+      "sha256": "c8f00e01f2f02d1d552b3b544771fce4cfe5039bb481789a710d3208bfa6e65b",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/54/ore_ont_8579",
+      "reference_audit_sha256": "b39be78b0a9199d3a9f5c5ae236d2a7af0888d6b91228c9123f645a479db1c70"
+    },
+    {
+      "ontology": "ore_ont_13665",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_13665.owl",
+      "sha256": "51a0c836b420cdcadcbfdab49c7489a6444edd04def46ca8f1e7c985020ba937",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/14/ore_ont_13665",
+      "reference_audit_sha256": "5f4be4b11df94a339d83b11b3e49ff3aad8c83eb112c2f1bbcefbd1b1b5f857a"
+    },
+    {
+      "ontology": "ore_ont_12330",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12330.owl",
+      "sha256": "34c2e15d34e0997acc80972735e5451f63fa24381f20fc62dc58fcec93bdb94e",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/9/ore_ont_12330",
+      "reference_audit_sha256": "eed1fd6bf998264b7528d0490457c32008b79f7149bb0d6a09b48ce3771a276a"
+    },
+    {
+      "ontology": "ore_ont_10608",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10608.owl",
+      "sha256": "e68dfe1e344838a9e857565abb7c27313405f1f03d5514faa79c532eb79930a1",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/2/ore_ont_10608",
+      "reference_audit_sha256": "9c086aacb4df0e6ea5474e0be573a7e0e184e3a2bf2b7b519b2daf88b85ab669"
+    },
+    {
+      "ontology": "ore_ont_10930",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_10930.owl",
+      "sha256": "a2f31bd5e374a361d131543a1bbb8dd14bf1e7c933a750ef483df8cbc1f6406c",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/3/ore_ont_10930",
+      "reference_audit_sha256": "443e6651751b63995c1b6d25d709047dffc8b5d6cf7e7969a060c04a07037f68"
+    },
+    {
+      "ontology": "ore_ont_4242",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4242.owl",
+      "sha256": "875657e38bcdcf12dbca19cb4335d3201d9a8d559570c7c00641d4771280a90e",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/37/ore_ont_4242",
+      "reference_audit_sha256": "71bffb20a3035ba53e5c0d09d31050a3b535f0aafa4d7e658f3f2e6952201493"
+    },
+    {
+      "ontology": "ore_ont_6223",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6223.owl",
+      "sha256": "d58a93652d892b6059217611cc424951e29d3bd201b293cd807788b06852b023",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/44/ore_ont_6223",
+      "reference_audit_sha256": "8fa275f5a0c08f45999b88b2fbfa234ffa31f8242ee509ed8467377c46036771"
+    },
+    {
+      "ontology": "ore_ont_6835",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6835.owl",
+      "sha256": "116ec83eeb4501f58223f0bae64625bc1b447941ced872c7aaafd311ce9583a9",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/47/ore_ont_6835",
+      "reference_audit_sha256": "f1091d572debda8ca1e58e12d4465c42130b1de1cdadd3034b4fed82cb265a91"
+    },
+    {
+      "ontology": "ore_ont_4166",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4166.owl",
+      "sha256": "1f639f2742405fd1609a682e184311aa24b17144720489f66d7fa365a9e18c5c",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/36/ore_ont_4166",
+      "reference_audit_sha256": "ecb133afe8e03f1f5940f84b8fe730c977c1e242e35e8776fe0654bdf0fbdb5f"
+    },
+    {
+      "ontology": "ore_ont_14861",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14861.owl",
+      "sha256": "b04505faa53d027450efcf82b25fee98b0ae381b3b1bf264996c4b7c9bea618f",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/18/ore_ont_14861",
+      "reference_audit_sha256": "964f100336ed365297154c95a369e3655f571f400244447c74e55fd59f72c7f1"
+    },
+    {
+      "ontology": "ore_ont_3237",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3237.owl",
+      "sha256": "c7ead340b8f8ea35069337352b2629a582667e8783d076e942a335ac7e52f4c1",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/32/ore_ont_3237",
+      "reference_audit_sha256": "b3b815bbac58a1b1ba7368f77ba7a7f9e9a2d81d01470aad67732619e8263ff2"
+    },
+    {
+      "ontology": "ore_ont_3733",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3733.owl",
+      "sha256": "71dbb97c9ca17207431b48a635c14fcdd5dad9ddca694cb935d35b4565914efe",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/35/ore_ont_3733",
+      "reference_audit_sha256": "6a991dbc04a5ece5d4cc57087b2a96f878df94d475f7640119f4595e707541df"
+    },
+    {
+      "ontology": "ore_ont_8844",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8844.owl",
+      "sha256": "50da71b36b535bd43c28678055a53f3d4af5efd9850883a6f908c43ac7e6c3ab",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/55/ore_ont_8844",
+      "reference_audit_sha256": "dfb373a32eca17f332f1451dd4dd55a50bc8da208431799939436c780b0c28b9"
+    }
+  ],
+  "ranks": [
+    0,
+    51,
+    103,
+    154,
+    205,
+    256,
+    308,
+    359,
+    410,
+    462,
+    513,
+    564,
+    615,
+    667,
+    718,
+    769,
+    821,
+    872,
+    923,
+    975,
+    1026,
+    1077,
+    1128,
+    1180,
+    1231,
+    1282,
+    1334,
+    1385,
+    1436,
+    1487,
+    1539,
+    1590
+  ]
+}

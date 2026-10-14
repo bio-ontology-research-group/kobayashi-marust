@@ -1,0 +1,24 @@
+{
+  "job_id": "53300563",
+  "full_measurement_complete": true,
+  "requirements": {
+    "konclude": {
+      "verified_solved_strictly_better": false,
+      "mean_strictly_better": false,
+      "median_strictly_better": false
+    },
+    "rustdl": {
+      "verified_solved_strictly_better": true,
+      "mean_strictly_better": false,
+      "median_strictly_better": false
+    },
+    "elk": {
+      "verified_solved_strictly_better": true,
+      "mean_strictly_better": true,
+      "median_strictly_better": true
+    }
+  },
+  "known_correctness_defect": "ore_ont_394 missing entailments in this frozen artifact; the later nominal guard is absent.",
+  "release_approved": false,
+  "decision": "Reject as release candidate; retain as evidence of exact-input conformance-cache performance and failure priorities."
+}

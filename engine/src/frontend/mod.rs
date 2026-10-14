@@ -107,45 +107,59 @@ fn collect_nominal_abox(
         return NominalAboxMeta::default();
     }
 
-    let mut by_individual: BTreeMap<String, NominalIndividualMeta> = BTreeMap::new();
+    // Individuals in ascending name order (the order the former BTreeMap
+    // emitted), with a hash index for the per-axiom lookups below.
+    let mut index_of: crate::fxhash::FxHashMap<&str, usize> = Default::default();
+    let mut individuals: Vec<NominalIndividualMeta> = Vec::new();
     for (proxy, individual) in hooks
         .nominal_to_individual
         .iter()
         .chain(hooks.abox_nominal_to_individual.iter())
     {
-        by_individual
-            .entry(individual.clone())
-            .or_insert_with(|| NominalIndividualMeta {
+        let slot = *index_of.entry(individual.as_str()).or_insert_with(|| {
+            individuals.push(NominalIndividualMeta {
                 individual: individual.clone(),
                 ..NominalIndividualMeta::default()
-            })
-            .proxies
-            .push(proxy.clone());
+            });
+            individuals.len() - 1
+        });
+        individuals[slot].proxies.push(proxy.clone());
     }
-    for entry in by_individual.values_mut() {
+    for entry in &mut individuals {
         entry.proxies.sort();
         entry.proxies.dedup();
     }
+    individuals.sort_unstable_by(|left, right| left.individual.cmp(&right.individual));
+    let by_individual: crate::fxhash::FxHashMap<String, usize> = individuals
+        .iter()
+        .enumerate()
+        .map(|(slot, entry)| (entry.individual.clone(), slot))
+        .collect();
+    drop(index_of);
 
     // Normalization emits exactly one ground concept fact per source
     // ClassAssertion.  Keep its generated marker in per-individual source order.
-    let mut marker_queue: BTreeMap<String, VecDeque<String>> = BTreeMap::new();
+    // Only per-individual order matters; the leftover report below feeds an
+    // ordered set, so the map itself need not be ordered.
+    let mut marker_queue: crate::fxhash::FxHashMap<&str, VecDeque<&str>> = Default::default();
     for clause in abox {
         if !clause.body.is_empty() || clause.head.len() != 1 {
             continue;
         }
         if let Atom::Concept(marker, Term::Ind(individual)) = &clause.head[0] {
             marker_queue
-                .entry(individual.clone())
+                .entry(individual.as_str())
                 .or_default()
-                .push_back(marker.clone());
+                .push_back(marker.as_str());
         }
     }
 
-    let mut different = BTreeSet::new();
-    let mut same = BTreeSet::new();
-    let mut role_assertions = BTreeSet::new();
-    let mut negative_role_assertions = BTreeSet::new();
+    // Collected unordered, then sorted and deduplicated once: the same
+    // contents and order as the former ordered sets.
+    let mut different: Vec<(String, String)> = Vec::new();
+    let mut same: Vec<(String, String)> = Vec::new();
+    let mut role_assertions: Vec<NominalRoleAssertionMeta> = Vec::new();
+    let mut negative_role_assertions: Vec<NominalRoleAssertionMeta> = Vec::new();
     let mut unsupported = BTreeSet::new();
     let mut parsed_class = 0u64;
     let mut parsed_role = 0u64;
@@ -154,7 +168,7 @@ fn collect_nominal_abox(
     let mut parsed_same_pairs = 0u64;
 
     fn require_individual(
-        by_individual: &BTreeMap<String, NominalIndividualMeta>,
+        by_individual: &crate::fxhash::FxHashMap<String, usize>,
         unsupported: &mut BTreeSet<String>,
         individual: &str,
         context: &str,
@@ -182,13 +196,13 @@ fn collect_nominal_abox(
                     continue;
                 }
                 let marker = marker_queue
-                    .get_mut(individual)
+                    .get_mut(individual.as_str())
                     .and_then(VecDeque::pop_front);
                 match marker {
                     Some(marker) => {
-                        let entry = by_individual.get_mut(individual).unwrap();
+                        let entry = &mut individuals[by_individual[individual.as_str()]];
                         entry.assertions.push(normalise::nnf(concept));
-                        entry.assertion_markers.push(marker);
+                        entry.assertion_markers.push(marker.to_string());
                     }
                     None => {
                         unsupported.insert(format!(
@@ -221,7 +235,7 @@ fn collect_nominal_abox(
                     "ObjectPropertyAssertion",
                 );
                 if covered {
-                    role_assertions.insert(NominalRoleAssertionMeta {
+                    role_assertions.push(NominalRoleAssertionMeta {
                         role: role.clone(),
                         source: source.clone(),
                         target: target.clone(),
@@ -254,7 +268,7 @@ fn collect_nominal_abox(
                     "NegativeObjectPropertyAssertion",
                 );
                 if covered {
-                    negative_role_assertions.insert(NominalRoleAssertionMeta {
+                    negative_role_assertions.push(NominalRoleAssertionMeta {
                         role: role.clone(),
                         source: source.clone(),
                         target: target.clone(),
@@ -280,7 +294,7 @@ fn collect_nominal_abox(
                     } else {
                         (right.clone(), left.clone())
                     };
-                    different.insert(pair);
+                    different.push(pair);
                 }
             }
             Axiom::SameIndividual(left, right) => {
@@ -299,7 +313,7 @@ fn collect_nominal_abox(
                     } else {
                         (right.clone(), left.clone())
                     };
-                    same.insert(pair);
+                    same.push(pair);
                 }
             }
             _ => {
@@ -330,9 +344,12 @@ fn collect_nominal_abox(
         + source_same
         + source_different;
 
-    if parsed_class != source.class_assertions {
+    // Converted data assertions arrive as parsed class assertions; match each
+    // side against its own source count.
+    let converted_data = ontology.data_assertions_as_class();
+    if parsed_class != source.class_assertions + converted_data {
         unsupported.insert(format!(
-            "source/parsed ClassAssertion mismatch ({}/{parsed_class})",
+            "source/parsed ClassAssertion mismatch ({}+{converted_data}/{parsed_class})",
             source.class_assertions
         ));
     }
@@ -346,7 +363,9 @@ fn collect_nominal_abox(
             "source/parsed NegativeObjectPropertyAssertion mismatch ({source_negative_object_role}/{parsed_negative_role})"
         ));
     }
-    if source_data_role != 0 {
+    // Every positive data assertion converted to its class assertion is
+    // covered; anything else (negative or unconverted ones) is not.
+    if source_data_role != converted_data {
         unsupported.insert(format!(
             "{source_data_role} data-property assertion axiom(s) are unsupported"
         ));
@@ -377,7 +396,7 @@ fn collect_nominal_abox(
             source.rule_axioms
         ));
     }
-    for entry in by_individual.values() {
+    for entry in &individuals {
         if entry.proxies.is_empty() || entry.assertions.len() != entry.assertion_markers.len() {
             unsupported.insert(format!(
                 "individual {} has incomplete proxy/assertion-marker coverage",
@@ -389,13 +408,21 @@ fn collect_nominal_abox(
     let unsupported: Vec<String> = unsupported.into_iter().collect();
     NominalAboxMeta {
         complete: unsupported.is_empty(),
-        individuals: by_individual.into_values().collect(),
-        same: same.into_iter().collect(),
-        different: different.into_iter().collect(),
-        role_assertions: role_assertions.into_iter().collect(),
-        negative_role_assertions: negative_role_assertions.into_iter().collect(),
+        individuals,
+        same: sorted_unique(same),
+        different: sorted_unique(different),
+        role_assertions: sorted_unique(role_assertions),
+        negative_role_assertions: sorted_unique(negative_role_assertions),
         unsupported,
     }
+}
+
+/// Ascending, duplicate-free: exactly the iteration order of a `BTreeSet`
+/// built from the same items.
+fn sorted_unique<T: Ord>(mut items: Vec<T>) -> Vec<T> {
+    items.sort_unstable();
+    items.dedup();
+    items
 }
 
 /// Borrowed concept names appearing in a list of JSON clauses. Declaration
@@ -978,12 +1005,33 @@ fn ofn_to_clauses_requested(
     ofn_to_clauses_representation(text, requested, false)
 }
 
+thread_local! {
+    static TRUSTED_REWRITE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run `f` with source re-validation disabled for the frontend calls it makes
+/// on this thread. Only the orchestrator calls this, and only for a document
+/// it registered as its own rewrite of an already-validated source
+/// (`orchestrate::TrustedRewrite`): the explicit proof, never content.
+pub fn with_trusted_rewrite<R>(f: impl FnOnce() -> R) -> R {
+    struct Reset(bool);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            TRUSTED_REWRITE.with(|flag| flag.set(self.0));
+        }
+    }
+    let _reset = Reset(TRUSTED_REWRITE.with(|flag| flag.replace(true)));
+    f()
+}
+
 fn ofn_to_clauses_representation(
     text: &str,
     requested: crate::routing::Route,
     symbolic: bool,
 ) -> Result<FrontendResult, parse::OutOfFragment> {
-    conformance::check_source(text).map_err(parse::OutOfFragment)?;
+    if !TRUSTED_REWRITE.with(|flag| flag.get()) {
+        conformance::check_source(text).map_err(parse::OutOfFragment)?;
+    }
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
@@ -1185,6 +1233,11 @@ fn ofn_to_clauses_representation(
             parse::is_abox_axiom_node(node)
         })?;
     }
+    // OWL 2 datatype definitions `DatatypeDefinition(D R)` fix the value space
+    // of the user datatype D to that of R (acyclic, D not a builtin). Inline
+    // them so D is decided by the datatype map like R. Inputs without a
+    // definition are unchanged.
+    ontology.inline_datatype_definitions();
     // A certified rule/ABox clash makes the full ontology inconsistent before
     // worker selection. In that case unsupported source rules cannot restore
     // consistency, so it is safe to admit every independently certified
@@ -1541,7 +1594,7 @@ fn ofn_to_clauses_representation(
     let relevant = if has_reverse_role_bridges {
         preprocess::concept_relevant_roles(&tbox)
     } else {
-        HashSet::new()
+        Default::default()
     };
     if !no_prune {
         preprocess::prune_inert_role_bridges(
@@ -1625,7 +1678,25 @@ fn ofn_to_clauses_representation(
             }
         }
         if !dt_names.is_empty() {
-            tbox.extend(datatypes::datatype_relation_clauses(&dt_names, 8));
+            // Role inclusions, inverses and chains ride the RBox records, not
+            // the clause stream: connect their roles as well.
+            let mut linked_roles: Vec<Vec<String>> = Vec::new();
+            for record in &rbox {
+                match record {
+                    rbox::RboxRecord::Subrole(a, b) | rbox::RboxRecord::Inverse(a, b) =>
+                        linked_roles.push(vec![a.clone(), b.clone()]),
+                    rbox::RboxRecord::Chain(a, b, c) =>
+                        linked_roles.push(vec![a.clone(), b.clone(), c.clone()]),
+                    rbox::RboxRecord::ChainN(chain, head) => {
+                        let mut roles = chain.clone();
+                        roles.push(head.clone());
+                        linked_roles.push(roles);
+                    }
+                    _ => {}
+                }
+            }
+            let groups = datatypes::datatype_role_groups_linked(&tbox, &linked_roles);
+            tbox.extend(datatypes::datatype_relation_clauses_grouped(&dt_names, 8, Some(&groups)));
         }
     }
     t.lap("rbox+domain+declared");

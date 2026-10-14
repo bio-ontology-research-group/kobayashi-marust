@@ -28,7 +28,8 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::ConceptId;
@@ -258,7 +259,7 @@ impl Default for BlockingIndividualNodeLinkedCandidateHash {
         Self {
             context: INVALID,
             mem_man: INVALID,
-            block_candidate_hash: HashMap::new(),
+            block_candidate_hash: HashMap::default(),
         }
     }
 }
@@ -1144,7 +1145,7 @@ impl Default for BlockingIndividualNodeCandidateHash {
         BlockingIndividualNodeCandidateHash {
             context: INVALID,
             mem_man: INVALID,
-            block_candidate_hash: HashMap::new(),
+            block_candidate_hash: HashMap::default(),
         }
     }
 }
@@ -1155,7 +1156,7 @@ impl BlockingIndividualNodeCandidateHash {
         BlockingIndividualNodeCandidateHash {
             context,
             mem_man: INVALID,
-            block_candidate_hash: HashMap::new(),
+            block_candidate_hash: HashMap::default(),
         }
     }
 

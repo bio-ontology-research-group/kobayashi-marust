@@ -1,0 +1,152 @@
+{
+  "diagnostic_only": true,
+  "source_module": true,
+  "binary_sha256": "595050db0e9f6621ebb2a60a41bbdcb1c1bf691ff829e43bd0b7cc169856ec6c",
+  "sources": {
+    "000.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+    "001.ofn": "8a00ea8beefa1c01b80adf9884167959a8c54dd41a411520ad77ee526a8beb33",
+    "002.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87",
+    "003.ofn": "fe1fdd9ddbcfe8e8eaf75f4fae7765a40b90712397e133f60cce32319d1c49fc",
+    "004.ofn": "90dc20e172405f3fee85f31975c31440c342bb85f17e242da92246f894500b87"
+  },
+  "records": [
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 0,
+      "wall_s": 3.3851072260877118,
+      "receipt": null
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 1,
+      "wall_s": 2.3792189449304715,
+      "receipt": {
+        "added_normalized_clauses": 0,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 1,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 1,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 2,
+      "wall_s": 2.165530233993195,
+      "receipt": {
+        "added_normalized_clauses": 1,
+        "added_rules": 0,
+        "invalidated_states": 4,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 0,
+        "removed_rules": 0,
+        "retained_states": 8004,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83281,
+        "revision": 2,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 3,
+      "wall_s": 2.7179420070024207,
+      "receipt": {
+        "added_normalized_clauses": 27103,
+        "added_rules": 0,
+        "invalidated_states": 2180,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 27130,
+        "removed_rules": 0,
+        "retained_states": 5828,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83113,
+        "revision": 3,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "retained",
+      "repetition": 0,
+      "revision": 4,
+      "wall_s": 2.7108964199433103,
+      "receipt": {
+        "added_normalized_clauses": 27130,
+        "added_rules": 0,
+        "invalidated_states": 2180,
+        "meaningful_incremental_update": true,
+        "removed_normalized_clauses": 27103,
+        "removed_rules": 0,
+        "retained_states": 5828,
+        "reused_edges": 0,
+        "reused_fixpoint": true,
+        "reused_subsumptions": 83113,
+        "revision": 4,
+        "route_after": "ht_bridge",
+        "route_before": "ht_bridge",
+        "route_migrated": false,
+        "strategy": "ht_delta"
+      }
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 0,
+      "wall_s": 1.84262975002639,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 1,
+      "wall_s": 1.8602081489516422,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 2,
+      "wall_s": 1.8278432380175218,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 3,
+      "wall_s": 1.848183112917468,
+      "same_answer": true
+    },
+    {
+      "mode": "fresh",
+      "repetition": 0,
+      "revision": 4,
+      "wall_s": 1.8094708190765232,
+      "same_answer": true
+    }
+  ],
+  "cpus": 1,
+  "memory_gib": 20,
+  "session_timeout_s": 180,
+  "scope": "Five revisions of one ontology; local timings do not establish the full release target."
+}

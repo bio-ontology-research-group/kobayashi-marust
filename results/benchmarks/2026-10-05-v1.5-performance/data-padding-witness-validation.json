@@ -1,0 +1,36 @@
+{
+  "scope": "diagnostic complete-source-GCI padding witness check; not production admission",
+  "proof_statements": 3,
+  "axioms": [
+    "propext",
+    "Quot.sound"
+  ],
+  "sorryAx": false,
+  "mutation_and_control_cases": 25,
+  "tests_passed": true,
+  "real_controls": [
+    "ore_ont_12566",
+    "ore_ont_13799"
+  ],
+  "release_approved": false,
+  "source_decoder_correspondence_proved": false,
+  "remaining": [
+    "source decoder correspondence",
+    "concrete datatype/value binding",
+    "complete RBox/ABox obligations",
+    "reverse model transport",
+    "production source/certification integration"
+  ],
+  "files_sha256": {
+    "lean/ContextCalculus/DatatypePaddingCheck.lean": "333e9e8d40d02e0e00861c7a6adfdef053a43760f8c150257e03999f48642c9b",
+    "lean/DatatypePaddingWitnessCheck.lean": "ac003c7dcbc75eda18e35427cb84ce40943da7302820f645cbfdae66d9c3c61e",
+    "results/benchmarks/2026-10-05-v1.5-performance/check_data_padding_witness.py": "7beceb71d88311c08299e15452a85ffd93821a22c3d3afa21d33dc6dbceb725c",
+    "results/benchmarks/2026-10-05-v1.5-performance/test_data_padding_witness.py": "c4a22d9cfea90c5244ed79b23e68ecf0069c691057dcd1ac639b347932b6bfce",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-check-proof.log": "203c81bc98f66c749fcab277aa809e31586cca23dfab976c165942670748acad",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-witness-tests.log": "7892a681d6c313a304aa0155bb15459ad63e1c86e2007550bed075769e91ca9f",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-witness-12566-receipt.json": "11a4e4323e8ecbe098a5f6c0f83580aedcd26566037b838d0d47c48700efbb51",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-witness-13799-receipt.json": "96911cdbcd6356c2f6b8c536b6c64937a94373dae50319e901a06506ae41297e",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-witness-12566.json": "eca66a7a2acbcfea7dfb138233aef887af8547e1dccdc343e02ad63f5678fd16",
+    "results/benchmarks/2026-10-05-v1.5-performance/data-padding-witness-13799.json": "c581bbc15c36c9ce42d5077f3adbcc844798aef4846062c3e4f06360a8d6d3bc"
+  }
+}

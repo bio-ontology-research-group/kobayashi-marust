@@ -1,0 +1,10 @@
+{
+  "tests": 74,
+  "failed": 0,
+  "test_log_sha256": "8805cbd96f3b3f9141a52db087029e9e9c9513952d12fcff980c968bb6adf88b",
+  "patch_sha256": "733530e6d4b2cde43e434d7255ae478b1f05e63ac7eee6c36810f7c7a0c1056b",
+  "source_manifest_sha256": "8ce0e268bfa391a54cc4d413a2ce02dd3016517aa3d6cda85354db419834f707",
+  "experimental_flag": "KM_EXPERIMENTAL_DATA_PADDING",
+  "production_admission_changed": false,
+  "release_approved": false
+}

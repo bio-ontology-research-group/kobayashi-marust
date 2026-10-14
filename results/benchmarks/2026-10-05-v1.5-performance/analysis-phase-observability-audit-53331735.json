@@ -1,0 +1,109 @@
+{
+  "diagnostic_only": true,
+  "complete": true,
+  "usable_for_phase_diagnosis": false,
+  "missing_timer_groups_on": [
+    "ore_ont_13276",
+    "ore_ont_13242",
+    "ore_ont_16680"
+  ],
+  "runner": "profile_analysis_phases.py",
+  "complete_chunks": 3,
+  "rows": [
+    {
+      "ontology": "ore_ont_13276",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 204.71689376421273,
+      "peak_bytes": 2219012096,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "d1175415f066c458273bb9db8abdcdbbe495c19684638e6c5657d251836b4565",
+          "left_raw_sha256": "b2ff1cd753de5a276a8e0d0186d86acc4bca71eb4768e10b407a964b76ad79a5",
+          "right_raw_sha256": "bc8cb7c4b707b273ab4b8cd66bccd50044b4c44d2d26fcf3dca431ddac6c61a1",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "14d39a1e84d83807b830dd429726f62c2f25f097bd1b0711a1a2873d9ded8bf7",
+      "audit_status": "compared",
+      "timers": {
+        "event_counts": {},
+        "seconds": {
+          "read_off": {},
+          "analysis": {},
+          "analyser": {}
+        }
+      },
+      "stderr_sha256": "928c205442cc13d19b2483ce8db34db1338153eddca87f1dae28bcbf807988f9"
+    },
+    {
+      "ontology": "ore_ont_13242",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 148.27080480754375,
+      "peak_bytes": 6072004608,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "5ed0b7609fdc0a11b3c5f4bdd75f368d749a78130f0933a8483060a3c7396c5a",
+          "left_raw_sha256": "1e4bd7e8da7ed66273b049903917d53fcf6d6fd2c9ce8bf1c46f3369e62cb21b",
+          "right_raw_sha256": "87e84d576ed9f0942bac13ea2c67a2114d10eb28dbbc2a22300c739c1073c603",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "b9eaafcdcc34f85783f1940c4b62ef213a8a8547e7d195fd516ca9817c1a86e9",
+      "audit_status": "compared",
+      "timers": {
+        "event_counts": {},
+        "seconds": {
+          "read_off": {},
+          "analysis": {},
+          "analyser": {}
+        }
+      },
+      "stderr_sha256": "f096b243ad0115a513adc7a832dc155c23218f47162861c29b12ae88bf51cc68"
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "input_admission": "checks_passed",
+      "measurement_status": "executed_unvalidated",
+      "wall_s": 204.36758928745985,
+      "peak_bytes": 2678882304,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "952e7f30bfad73442e10d71171432aebeb345a85b504b8e5c9d1eb7f9c34a2a1",
+          "left_raw_sha256": "f9739a1be27bbf27f16e554307d1e3ee261d91c1ff15c8ee76520043cfc4b887",
+          "right_raw_sha256": "9d888bb86409c59cfb092f02c748b6513c75063c4801e855230a186d4ef82940",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "measurement_sha256": "59b0544b8f949bf37af51b42ffd9bbdebcf4b968286aeb9ae957fa52efe7bbc2",
+      "audit_status": "compared",
+      "timers": {
+        "event_counts": {},
+        "seconds": {
+          "read_off": {},
+          "analysis": {},
+          "analyser": {}
+        }
+      },
+      "stderr_sha256": "a396d32b853936c373e06e534b6146eb83dab673146a37bf7d16c36d4bec67b2"
+    }
+  ],
+  "release_approved": false,
+  "interpretation": "Timer groups are nested and must not be added together. Instrumentation adds I/O. These times cannot establish a release speedup."
+}

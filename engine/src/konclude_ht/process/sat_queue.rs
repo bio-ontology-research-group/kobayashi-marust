@@ -9,7 +9,8 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::substrate::{Id, INVALID};
 use super::super::model::{Cint64, ConceptId};
@@ -230,7 +231,7 @@ impl CriticalIndividualNodeConceptTestSet {
     /// Port of the constructor.
     pub fn new(process_context: Cint64) -> Self {
         Self {
-            indi_concept_tested_set: HashSet::new(),
+            indi_concept_tested_set: HashSet::default(),
             process_context,
         }
     }

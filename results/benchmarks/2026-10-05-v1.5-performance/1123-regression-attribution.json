@@ -1,0 +1,134 @@
+{
+  "partial": true,
+  "historical_v145_verified_s": 209.88434983044863,
+  "current_pinned_v144_v145_outcomes": [
+    {
+      "version": "v145",
+      "repetition": 0,
+      "status": "timeout",
+      "wall_s": 240.06247763894498,
+      "peak_bytes": 398434304
+    },
+    {
+      "version": "v144",
+      "repetition": 0,
+      "status": "timeout",
+      "wall_s": 240.07351575233042,
+      "peak_bytes": 309157888
+    },
+    {
+      "version": "v144",
+      "repetition": 1,
+      "status": "timeout",
+      "wall_s": 240.0729362666607,
+      "peak_bytes": 398966784
+    }
+  ],
+  "candidate_ablation_outcomes": [
+    {
+      "mode": "native_only",
+      "repetition": 0,
+      "skip_inproc": false,
+      "ontology": "ore_ont_1123",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.0515894088894,
+      "peak_bytes": 398000128,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "bc5a65eb1e73949e5b9e9db5b328979b8c1bf9f8595c9d4f3b6fe56b7b13e9fa"
+    },
+    {
+      "mode": "native_only",
+      "repetition": 1,
+      "skip_inproc": false,
+      "ontology": "ore_ont_1123",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.05387443862855,
+      "peak_bytes": 313225216,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "ddf30d5959e64906889dd6fdd89149e23e4b07c52421ebdace6a2357d78c77a4"
+    },
+    {
+      "mode": "combined",
+      "repetition": 0,
+      "skip_inproc": false,
+      "ontology": "ore_ont_1123",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.05019385553896,
+      "peak_bytes": 398303232,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "5718e8903cf49202493544bfbc8f0d1e2210ddb578cb90cadf0aa4be1d6979a6"
+    },
+    {
+      "mode": "combined",
+      "repetition": 1,
+      "skip_inproc": false,
+      "ontology": "ore_ont_1123",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.05976194143295,
+      "peak_bytes": 400801792,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "3cc3f093e554de97a7c13258ce4f9e396598de832c2733e26a1a6904860084f7"
+    },
+    {
+      "mode": "baseline",
+      "repetition": 0,
+      "skip_inproc": false,
+      "ontology": "ore_ont_1123",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.04445854760706,
+      "peak_bytes": 398295040,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "e2d25785626065187fe4c3016e3d78d58db8e97d28089b16a535427c28d325c2"
+    },
+    {
+      "mode": "baseline",
+      "repetition": 1,
+      "skip_inproc": false,
+      "ontology": "ore_ont_1123",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.04544086568058,
+      "peak_bytes": 400072704,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "c450653ec1daedb12f2fce04c4fb4eb05a52b3d69b4b5f5ceeff949da37cdfa1"
+    },
+    {
+      "mode": "ddb_only",
+      "repetition": 0,
+      "skip_inproc": false,
+      "ontology": "ore_ont_1123",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.03333372995257,
+      "peak_bytes": 398630912,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "e5c37bda0884af1808c19489f6c0430ed80a280cb9501cb4c394ba619543ed2e"
+    },
+    {
+      "mode": "ddb_only",
+      "repetition": 1,
+      "skip_inproc": false,
+      "ontology": "ore_ont_1123",
+      "input_admission": "checks_passed",
+      "measurement_status": "timeout",
+      "wall_s": 240.06128778122365,
+      "peak_bytes": 315973632,
+      "verified_solved": false,
+      "comparisons": {},
+      "measurement_sha256": "44e795d9453e8f2629fd15fac78faad093a5dcd22a74b367de4b02345d418bb5"
+    }
+  ],
+  "finding": "Current reruns of pinned prior releases also time out, as does candidate with both experimental flags off. Historical coverage loss cannot presently be attributed to either optimization. No threshold relaxation or case exclusion."
+}

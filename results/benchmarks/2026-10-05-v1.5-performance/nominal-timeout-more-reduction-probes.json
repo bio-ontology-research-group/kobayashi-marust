@@ -1,0 +1,50 @@
+{
+  "diagnostic_only": true,
+  "rows": [
+    {
+      "ontology": "ore_ont_14379",
+      "flag": "KM_GROUND_RULE_SOURCE",
+      "returncode": 3,
+      "timed_out": false,
+      "wall_s": 0.11490752501413226,
+      "stderr": "KM_TIMING ground-rule source: rules=0 instances=0\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false\nKM_TIMING frontend done @ 0.01s route=manual\nKM_TIMING spawn_ht: read+convert 3204 clauses (ht_view=3064) in 0.01s\nunsupported: selected HT mechanism deferred (worker exit 1)\n",
+      "source_sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53"
+    },
+    {
+      "ontology": "ore_ont_4719",
+      "flag": "KM_GROUND_RULE_SOURCE",
+      "returncode": 0,
+      "timed_out": false,
+      "wall_s": 0.1148930520284921,
+      "stderr": "KM_TIMING ground-rule source: rules=0 instances=0\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false\nKM_TIMING frontend done @ 0.01s route=manual\nKM_TIMING spawn_ht: read+convert 1095 clauses (ht_view=890) in 0.00s\nKM_TIMING engine block done @ 0.06s (subs_keys=78)\n",
+      "source_sha256": "a286a2afe9b1a071bc1a6fb667efe49b5e27efda1f34d32d2807996edeea3e08"
+    },
+    {
+      "ontology": "ore_ont_586",
+      "flag": "KM_GROUND_RULE_SOURCE",
+      "returncode": 0,
+      "timed_out": false,
+      "wall_s": 3.926316188997589,
+      "stderr": "KM_TIMING ground-rule source: rules=0 instances=0\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.14s cached=false sidecar=false\nKM_TIMING frontend done @ 0.14s route=manual\nKM_TIMING spawn_ht: read+convert 42214 clauses (ht_view=41714) in 0.12s\nKM_TIMING engine block done @ 3.85s (subs_keys=17)\n",
+      "source_sha256": "a17241906f32fae0571fe5a102b9a544ba31eac0a656cccac500126fe841e775"
+    },
+    {
+      "ontology": "ore_ont_7342",
+      "flag": "KM_GROUND_RULE_SOURCE",
+      "returncode": 0,
+      "timed_out": false,
+      "wall_s": 0.1150228149490431,
+      "stderr": "KM_TIMING ground-rule source: rules=0 instances=0\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false\nKM_TIMING frontend done @ 0.01s route=manual\nKM_TIMING spawn_ht: read+convert 2342 clauses (ht_view=1685) in 0.01s\nKM_TIMING engine block done @ 0.08s (subs_keys=83)\n",
+      "source_sha256": "ab42136e53daeccae51d7f92c4fcb0da0c7d09c8fd6fd6c0a0ac18b8dc67376d"
+    },
+    {
+      "ontology": "ore_ont_7828",
+      "flag": "KM_GROUND_RULE_SOURCE",
+      "returncode": 0,
+      "timed_out": false,
+      "wall_s": 1.569904054980725,
+      "stderr": "KM_TIMING ground-rule source: rules=0 instances=0\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.02s cached=false sidecar=false\nKM_TIMING frontend done @ 0.02s route=manual\nKM_TIMING spawn_ht: read+convert 5731 clauses (ht_view=5536) in 0.02s\nKM_TIMING engine block done @ 1.48s (subs_keys=829)\n",
+      "source_sha256": "ea1f6eacd59e39c0ba1d397d25266f0e514db80820978f159fca52e59482e23a"
+    }
+  ]
+}

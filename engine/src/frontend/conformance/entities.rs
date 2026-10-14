@@ -6,13 +6,54 @@ use super::{expand, Node};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Kind { Class, Datatype, ObjectProperty, DataProperty, AnnotationProperty, Individual }
 
+const KINDS: [Kind; 6] = [Kind::Class, Kind::Datatype, Kind::ObjectProperty, Kind::DataProperty,
+    Kind::AnnotationProperty, Kind::Individual];
+
+fn bit(kind: Kind) -> u8 { 1 << kind as u8 }
+
+/// Kinds in `mask`, in `Kind` order (the iteration order of the former
+/// `BTreeSet<Kind>`).
+fn kinds_in(mask: u8) -> impl Iterator<Item = Kind> {
+    KINDS.into_iter().filter(move |kind| mask & bit(*kind) != 0)
+}
+
+/// Entity-kind table keyed by expanded IRI. Each distinct source spelling is
+/// expanded once; kinds are bitmasks. `finish` and `declarations` visit names
+/// in byte order, exactly the order of the former `BTreeMap<String, _>`, so
+/// the first reported error is unchanged.
 #[derive(Default)]
-struct Types(BTreeMap<String, BTreeSet<Kind>>, BTreeMap<String, BTreeSet<Kind>>);
+struct Types {
+    spelling: crate::fxhash::FxHashMap<Box<str>, u32>,
+    by_name: crate::fxhash::FxHashMap<String, u32>,
+    names: Vec<String>,
+    used: Vec<u8>,
+    declared: Vec<u8>,
+}
 impl Types {
+    fn id(&mut self, name: &str, prefixes: &BTreeMap<String, String>) -> usize {
+        if let Some(&id) = self.spelling.get(name) {
+            return id as usize;
+        }
+        let full = expand(name, prefixes);
+        let id = match self.by_name.get(&full) {
+            Some(&id) => id,
+            None => {
+                let id = self.names.len() as u32;
+                self.names.push(full.clone());
+                self.by_name.insert(full, id);
+                self.used.push(0);
+                self.declared.push(0);
+                id
+            }
+        };
+        self.spelling.insert(name.into(), id);
+        id as usize
+    }
     fn mark(&mut self, node: &Node<'_>, kind: Kind, prefixes: &BTreeMap<String, String>) {
         match node {
             Node::Atom(name) if !name.starts_with('"') && !name.starts_with("_:") => {
-                self.0.entry(expand(name, prefixes)).or_default().insert(kind);
+                let id = self.id(name, prefixes);
+                self.used[id] |= bit(kind);
             }
             Node::List("", args) if matches!(kind, Kind::ObjectProperty | Kind::DataProperty) => {
                 for arg in args { self.mark(arg, kind, prefixes); }
@@ -26,7 +67,7 @@ impl Types {
     fn observe(&mut self, node: &Node<'_>, prefixes: &BTreeMap<String, String>) {
         use Kind::*;
         let Node::List(head, children) = node else { return };
-        let args: Vec<_> = children.iter().filter(|n| n.head() != Some("Annotation")).collect();
+        let args: smallvec::SmallVec<[&Node<'_>; 6]> = children.iter().filter(|n| n.head() != Some("Annotation")).collect();
         if *head == "Declaration" {
             for entity in &args {
                 if let Node::List(kind, value) = entity {
@@ -36,7 +77,8 @@ impl Types {
                         "NamedIndividual"=>Some(Individual), _=>None,
                     };
                     if let (Some(kind), [Node::Atom(name)]) = (kind, value.as_slice()) {
-                        self.1.entry(expand(name,prefixes)).or_default().insert(kind);
+                        let id = self.id(name, prefixes);
+                        self.declared[id] |= bit(kind);
                     }
                 }
             }
@@ -95,50 +137,78 @@ impl Types {
         }
         for child in children { self.observe(child, prefixes); }
     }
-    fn finish(self) -> Result<(), String> {
-        use Kind::*;
-        for (name, kinds) in self.0 {
-            let reserved = ["http://www.w3.org/2002/07/owl#", "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-                "http://www.w3.org/2000/01/rdf-schema#", "http://www.w3.org/2001/XMLSchema#"]
-                .iter().any(|ns| name.starts_with(ns));
-            if reserved {
-                for kind in &kinds {
-                    let allowed = match kind {
-                        Class => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#Thing" | "http://www.w3.org/2002/07/owl#Nothing"),
-                        ObjectProperty => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#topObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty"),
-                        DataProperty => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#topDataProperty" | "http://www.w3.org/2002/07/owl#bottomDataProperty"),
-                        Datatype => super::datatypes::builtin(&name),
-                        AnnotationProperty => matches!(name.as_str(), "http://www.w3.org/2000/01/rdf-schema#label"
-                            | "http://www.w3.org/2000/01/rdf-schema#comment" | "http://www.w3.org/2000/01/rdf-schema#seeAlso"
-                            | "http://www.w3.org/2000/01/rdf-schema#isDefinedBy" | "http://www.w3.org/2002/07/owl#deprecated"
-                            | "http://www.w3.org/2002/07/owl#versionInfo" | "http://www.w3.org/2002/07/owl#priorVersion"
-                            | "http://www.w3.org/2002/07/owl#backwardCompatibleWith" | "http://www.w3.org/2002/07/owl#incompatibleWith"),
-                        Individual => false,
-                    };
-                    if !allowed { return Err(format!("invalid OWL 2 DL input: reserved IRI <{name}> cannot be used as {kind:?}")); }
-                }
+    /// The error that the first used entity, in name order, reports through
+    /// `error`. Each entity's verdict depends only on that entity, so the
+    /// first failure in sorted order is the failing entity with the least
+    /// name; finding it needs no sort of all used entities.
+    fn first_error(&self, error: impl Fn(&Self, usize) -> Option<String>) -> Result<(), String> {
+        let mut first: Option<(usize, String)> = None;
+        for id in 0..self.names.len() {
+            if self.used[id] == 0 {
+                continue;
             }
-            if (kinds.contains(&Class) && kinds.contains(&Datatype))
-                || [ObjectProperty, DataProperty, AnnotationProperty].iter().filter(|k| kinds.contains(k)).count() > 1 {
-                return Err(format!("invalid OWL 2 DL input: IRI <{name}> is used with incompatible entity types {kinds:?}"));
+            if first.as_ref().is_some_and(|(best, _)| self.names[*best] <= self.names[id]) {
+                continue;
+            }
+            if let Some(message) = error(self, id) {
+                first = Some((id, message));
             }
         }
-        Ok(())
+        first.map_or(Ok(()), |(_, message)| Err(message))
+    }
+    fn finish(&self) -> Result<(), String> {
+        self.first_error(Self::finish_error)
+    }
+    fn finish_error(&self, id: usize) -> Option<String> {
+        use Kind::*;
+        let name = &self.names[id];
+        let mask = self.used[id];
+        let reserved = ["http://www.w3.org/2002/07/owl#", "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "http://www.w3.org/2000/01/rdf-schema#", "http://www.w3.org/2001/XMLSchema#"]
+            .iter().any(|ns| name.starts_with(ns));
+        if reserved {
+            for kind in kinds_in(mask) {
+                let allowed = match kind {
+                    Class => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#Thing" | "http://www.w3.org/2002/07/owl#Nothing"),
+                    ObjectProperty => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#topObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty"),
+                    DataProperty => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#topDataProperty" | "http://www.w3.org/2002/07/owl#bottomDataProperty"),
+                    Datatype => super::datatypes::builtin(&name),
+                    AnnotationProperty => matches!(name.as_str(), "http://www.w3.org/2000/01/rdf-schema#label"
+                        | "http://www.w3.org/2000/01/rdf-schema#comment" | "http://www.w3.org/2000/01/rdf-schema#seeAlso"
+                        | "http://www.w3.org/2000/01/rdf-schema#isDefinedBy" | "http://www.w3.org/2002/07/owl#deprecated"
+                        | "http://www.w3.org/2002/07/owl#versionInfo" | "http://www.w3.org/2002/07/owl#priorVersion"
+                        | "http://www.w3.org/2002/07/owl#backwardCompatibleWith" | "http://www.w3.org/2002/07/owl#incompatibleWith"),
+                    Individual => false,
+                };
+                if !allowed { return Some(format!("invalid OWL 2 DL input: reserved IRI <{name}> cannot be used as {kind:?}")); }
+            }
+        }
+        let has = |kind| mask & bit(kind) != 0;
+        if (has(Class) && has(Datatype))
+            || [ObjectProperty, DataProperty, AnnotationProperty].into_iter().filter(|k| has(*k)).count() > 1 {
+            // The former `BTreeSet<Kind>`, built only for the message.
+            let kinds: BTreeSet<Kind> = kinds_in(mask).collect();
+            return Some(format!("invalid OWL 2 DL input: IRI <{name}> is used with incompatible entity types {kinds:?}"));
+        }
+        None
     }
     fn declarations(&self) -> Result<(), String> {
-        for (name,kinds) in &self.0 {
-            // Built-in declarations are implicit. Their allowed entity kinds
-            // are checked separately by finish().
-            let builtin = ["http://www.w3.org/2002/07/owl#", "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-                "http://www.w3.org/2000/01/rdf-schema#", "http://www.w3.org/2001/XMLSchema#"]
-                .iter().any(|ns|name.starts_with(ns));
-            for kind in kinds {
-                if *kind != Kind::Individual && !builtin && !self.1.get(name).is_some_and(|types|types.contains(kind)) {
-                    return Err(format!("invalid OWL 2 DL input: <{name}> is used as {kind:?} but has no matching declaration"));
-                }
+        self.first_error(Self::declarations_error)
+    }
+    fn declarations_error(&self, id: usize) -> Option<String> {
+        let name = &self.names[id];
+        let kinds = kinds_in(self.used[id]);
+        // Built-in declarations are implicit. Their allowed entity kinds
+        // are checked separately by finish().
+        let builtin = ["http://www.w3.org/2002/07/owl#", "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "http://www.w3.org/2000/01/rdf-schema#", "http://www.w3.org/2001/XMLSchema#"]
+            .iter().any(|ns|name.starts_with(ns));
+        for kind in kinds {
+            if kind != Kind::Individual && !builtin && self.declared[id] & bit(kind) == 0 {
+                return Some(format!("invalid OWL 2 DL input: <{name}> is used as {kind:?} but has no matching declaration"));
             }
         }
-        Ok(())
+        None
     }
 }
 
@@ -150,12 +220,34 @@ pub(super) fn check_declarations(text: &str, prefixes: &BTreeMap<String,String>)
 }
 
 pub(super) fn check(text: &str, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
-    let mut types = Types::default();
+    let mut checker = Checker::default();
     crate::frontend::parse::for_each_ontology_child(text, |node| {
-        check_key(node).map_err(crate::frontend::parse::OutOfFragment)?;
-        types.observe(node, prefixes); Ok(())
+        checker.observe(node, prefixes).map_err(crate::frontend::parse::OutOfFragment)
     }).map_err(|e| e.0)?;
-    types.finish()
+    checker.finish()
+}
+
+/// Streaming form of [`check`]. The same observed entity table also answers
+/// [`check_declarations`], whose `finish` step [`check`] has already passed.
+#[derive(Default)]
+pub(super) struct Checker(Types);
+
+impl Checker {
+    pub(super) fn observe(&mut self, node: &Node<'_>, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
+        check_key(node)?;
+        self.0.observe(node, prefixes);
+        Ok(())
+    }
+    /// Equivalent to [`check`]'s final step; on success the table is kept for
+    /// [`Checker::declarations`].
+    pub(super) fn finish(&self) -> Result<(), String> {
+        self.0.finish()
+    }
+    /// [`check_declarations`] after a successful [`Checker::finish`]: its own
+    /// `finish` would repeat the check that already passed.
+    pub(super) fn declarations(&self) -> Result<(), String> {
+        self.0.declarations()
+    }
 }
 
 // OWL 2 Structural Specification 9.5 requires at least one key property.
@@ -174,6 +266,20 @@ fn check_key(node: &Node<'_>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::super::check_source;
+    /// Several entities fail: the reported one is the least name, whatever
+    /// the order of first use (the order the former sorted scan produced).
+    #[test]
+    fn first_failing_entity_in_name_order_is_reported() {
+        let incompatible = "Ontology(Declaration(Class(<urn:z>)) Declaration(Datatype(<urn:z>)) \
+            Declaration(Class(<urn:m>)) Declaration(Datatype(<urn:m>)) \
+            Declaration(ObjectProperty(<urn:b>)) Declaration(DataProperty(<urn:b>)))";
+        assert!(check_source(incompatible).unwrap_err().contains("<urn:b>"));
+        let undeclared = "Ontology(Declaration(Class(<urn:a>)) SubClassOf(<urn:y> <urn:a>) \
+            SubClassOf(<urn:x> <urn:a>) SubClassOf(<urn:c> <urn:a>))";
+        let error = super::super::check_user_source(undeclared).unwrap_err();
+        let super::super::UserSourceError::Invalid(message) = error else { panic!() };
+        assert!(message.contains("<urn:c>"), "{message}");
+    }
     #[test]
     fn keys_require_properties_and_preserve_entity_types() {
         for key in ["HasKey(:A () ())", "HasKey(Annotation(rdfs:comment \"empty\") :A () ())"] {

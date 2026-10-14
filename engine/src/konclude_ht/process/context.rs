@@ -47,7 +47,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::sync::OnceLock;
 
 fn saturation_label_copy_threshold() -> usize {
@@ -734,7 +734,7 @@ impl ProcessContext {
             singleton_descriptor_limit: None,
             singleton_descriptor_epoch: 0,
             singleton_changed_descriptors: Vec::new(),
-            singleton_descriptor_changes: HashMap::new(),            branch_epoch_depth: 0,
+            singleton_descriptor_changes: HashMap::default(),            branch_epoch_depth: 0,
             nodes: Arena::new(),
             sat_nodes: Arena::new_tight(),
             edges: Arena::new(),
@@ -862,7 +862,7 @@ impl ProcessContext {
             sat_indi_node_ext_resolve_hashes: Arena::new_tight(),
             sat_concept_extension_maps: Arena::new(),
             sat_successor_concept_extension_maps: Arena::new_tight(),
-            sat_successor_concept_map_interner: HashMap::new(),
+            sat_successor_concept_map_interner: HashMap::default(),
             sat_indi_node_functional_concept_ext_datas: Arena::new(),
             sat_successor_functional_concept_ext_datas: Arena::new(),
             sat_disjunct_common_concept_extraction_datas: Arena::new(),
@@ -961,7 +961,7 @@ impl ProcessContext {
         self.sat_concept_extension_maps.clear_releasing_capacity();
         self.linked_role_sat_succ_datas.clear_releasing_capacity();
         self.linked_role_sat_succ_hashes.clear_releasing_capacity();
-        self.sat_successor_concept_map_interner = HashMap::new();
+        self.sat_successor_concept_map_interner = HashMap::default();
     }
 
     /// Invalidate and release an interrupted saturation task after its labels
@@ -1790,6 +1790,52 @@ impl ProcessContext {
     );
     /// Port-facing individual process-node arena size.
     #[inline]
+    /// End of a retained-base class job: release the job's dependency spine.
+    ///
+    /// The spine arenas (track points, dependency nodes and links, clash and
+    /// concept descriptors, branch-tree nodes) are epoch-exempt so DDB marks
+    /// survive alternative pops WITHIN a job. Konclude allocates a class
+    /// task's spine from that task's memory pool and frees it with the task;
+    /// keeping it across every class job of the bridge made these arenas grow
+    /// without bound (ore_ont_2792: 29.7M track points after 4,800 jobs, then a
+    /// 3.5 GB reallocation failure). The caller has already rolled every
+    /// journaled arena back to the retained base, whose state references only
+    /// spine ids below `watermark`, and resets every per-job algorithm field.
+    pub fn truncate_dependency_spine(&mut self, watermark: [usize; 6]) {
+        self.track_points.truncate_to(watermark[0]);
+        self.dep_nodes.truncate_to(watermark[1]);
+        self.dep_links.truncate_to(watermark[2]);
+        self.clash_descs.truncate_to(watermark[3]);
+        self.con_descs.truncate_to(watermark[4]);
+        self.branch_nodes.truncate_to(watermark[5]);
+    }
+
+    /// Debug check for `truncate_dependency_spine`: no surviving track point
+    /// may reference a clash list allocated by a released job.
+    pub fn retained_spine_dangling_clashes(&self, watermark: [usize; 6]) -> usize {
+        (0..watermark[0].min(self.track_points.len()))
+            .filter(|&index| {
+                let clashes = self
+                    .track_points
+                    .get(TrackPointId::new(index as Cint64))
+                    .clashes;
+                clashes.is_some() && clashes.index() >= watermark[3]
+            })
+            .count()
+    }
+
+    /// Diagnostic: lengths of the append-only dependency-spine arenas.
+    pub fn spine_lens(&self) -> [usize; 6] {
+        [
+            self.track_points.len(),
+            self.dep_nodes.len(),
+            self.dep_links.len(),
+            self.clash_descs.len(),
+            self.con_descs.len(),
+            self.branch_nodes.len(),
+        ]
+    }
+
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
@@ -1891,6 +1937,37 @@ impl ProcessContext {
 
     /// Retain every COW label object that owns a map visible through this label.
     /// Shared aliases are resolved afresh, including aliases of additional maps.
+    /// Whether `snapshot` equals `singleton_label_snapshot(id)` (pointer
+    /// identity of every label object in the alias chain), without building
+    /// the vector or touching reference counts.
+    pub(crate) fn singleton_label_snapshot_matches(
+        &self,
+        id: LabelSetId,
+        snapshot: &[std::sync::Arc<ReapplyConceptLabelSet>],
+    ) -> bool {
+        let mut parts = snapshot.iter();
+        let Some(first) = parts.next() else { return false };
+        if !std::sync::Arc::ptr_eq(first, self.label_sets.get(Id::new(id.raw))) {
+            return false;
+        }
+        let mut next = match &self.label_set(id).additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Shared(alias) => Some(*alias), _ => None,
+        };
+        while let Some(alias) = next {
+            let Some(part) = parts.next() else { return false };
+            if !std::sync::Arc::ptr_eq(part, self.label_sets.get(Id::new(alias.label_set.raw))) {
+                return false;
+            }
+            next = match alias.which {
+                AdditionalMapSlot::Main => None,
+                AdditionalMapSlot::Additional => match &self.label_set(alias.label_set).additional_concept_des_dep_map {
+                    AdditionalDesDepMapRef::Shared(alias) => Some(*alias), _ => None,
+                },
+            };
+        }
+        parts.next().is_none()
+    }
+
     pub(crate) fn singleton_label_snapshot(&self, id: LabelSetId)
         -> Vec<std::sync::Arc<ReapplyConceptLabelSet>> {
         let mut result = vec![self.label_sets.get(Id::new(id.raw)).clone()];
@@ -4176,9 +4253,9 @@ impl ProcessContext {
         let mut main_entries = 0usize;
         let mut main_capacity = 0usize;
         let mut layer_references = 0usize;
-        let mut vector_ids = HashSet::new();
+        let mut vector_ids = HashSet::default();
         let mut vector_slots = 0usize;
-        let mut chunk_ids = HashSet::new();
+        let mut chunk_ids = HashSet::default();
         let mut chunk_entries = 0usize;
         let mut chunk_capacity = 0usize;
 
@@ -4355,7 +4432,7 @@ impl ProcessContext {
             ));
         };
 
-        let mut creation_role_vectors = HashSet::new();
+        let mut creation_role_vectors = HashSet::default();
         let (len, capacity) = self
             .sat_succ_datas
             .iter()
@@ -4376,7 +4453,7 @@ impl ProcessContext {
         // Interned maps share their allocation through Arc. Count each backing
         // once so this diagnostic tracks physical storage rather than logical
         // references to it.
-        let mut successor_concept_maps = HashSet::new();
+        let mut successor_concept_maps = HashSet::default();
         let (len, capacity) = self
             .sat_successor_concept_extension_maps
             .iter()
@@ -4526,7 +4603,7 @@ impl ProcessContext {
             return (0, 0, 0, 0);
         }
         let stride = map_count.div_ceil(max_maps).max(1);
-        let mut signatures = HashSet::with_capacity(map_count.div_ceil(stride));
+        let mut signatures = HashSet::with_capacity_and_hasher(map_count.div_ceil(stride), Default::default());
         let mut sampled_maps = 0usize;
         let mut sampled_entries = 0usize;
         let mut unique_entries = 0usize;
@@ -7706,6 +7783,33 @@ impl ProcessContext {
         }
     }
 
+    /// Every individual id adjacent to `node` in the completion graph: the
+    /// connection successors (nodes holding links towards `node`), the
+    /// destinations of `node`'s own role links, and the destinations of its
+    /// stored negation edges. Sorted and deduplicated. The disjoint-role
+    /// merge test needs this union: Konclude's connection set alone does not
+    /// list the destinations of negation edges stored at `node`.
+    pub(crate) fn node_role_neighbor_ids(&self, node: NodeId) -> Vec<Cint64> {
+        let mut ids = Vec::new();
+        if self.node(node).use_conn_succ_set.is_some() {
+            let mut incoming = self.node_connection_successor_iterator(node);
+            while incoming.has_next() {
+                ids.push(incoming.next_successor_connection_id(true));
+            }
+        }
+        let mut outgoing = self.node_successor_iterator(node);
+        while outgoing.has_next() {
+            ids.push(outgoing.next_individual_id(true));
+        }
+        let negative = self.node(node).use_disjoint_succ_role_hash;
+        if negative.is_some() {
+            ids.extend(self.disjoint_succ_role_hash(negative).successor_ids());
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
     /// Context-threaded port of `CIndividualProcessNode::removeDisjointLinks`.
     pub fn node_remove_disjoint_links(&mut self, source: NodeId, succ_indi_id: Cint64) {
         if self.node(source).use_disjoint_succ_role_hash.is_some() {
@@ -8262,7 +8366,7 @@ impl ProcessContext {
         mut visit: impl FnMut(Cint64, ConDescId, bool),
     ) {
         let label = self.label_set(label_set);
-        for (&tag, data) in &label.concept_des_dep_map {
+        for (&tag, data) in label.concept_des_dep_map.iter() {
             visit(tag, data.concept_descriptor, false);
         }
         let additional = match &label.additional_concept_des_dep_map {
@@ -8286,7 +8390,9 @@ impl ProcessContext {
                 pos_neg_reapply_queue: v.pos_neg_reapply_queue,
             })
             .collect();
-        entries.sort_by_key(|e| e.key);
+        // HashMap keys are unique, so an unstable sort yields the same order
+        // without the stable sort's scratch allocation.
+        entries.sort_unstable_by_key(|e| e.key);
         entries
     }
 
@@ -8301,7 +8407,7 @@ impl ProcessContext {
     ) -> super::reapply_sat::ReapplyConceptLabelSetIterator {
         let label_set_ref = self.label_set(label_set);
         if get_sorted || get_dependencies || get_all_structure {
-            let main = Self::label_set_snapshot_sorted_entries(&label_set_ref.concept_des_dep_map);
+            let main = label_set_ref.concept_des_dep_map.sorted_entries();
             let additional = match &label_set_ref.additional_concept_des_dep_map {
                 AdditionalDesDepMapRef::Null => Vec::new(),
                 AdditionalDesDepMapRef::Owned(m) => Self::label_set_snapshot_sorted_entries(m),

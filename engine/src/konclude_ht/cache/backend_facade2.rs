@@ -57,7 +57,7 @@
 
 #![allow(dead_code, unused_variables, unused_mut)]
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::model::substrate::{Cint64, Id};
 use super::backend::BackendRepresentativeMemoryCache;
@@ -996,7 +996,7 @@ impl BackendRepresentativeMemoryCache {
                     combined_neighbour_role_set_label: Id::NONE,
                     array_size: 0,
                     index_neighbour_role_set_label_array: Vec::new(),
-                    neighbour_role_set_label_index_hash: HashMap::new(),
+                    neighbour_role_set_label_index_hash: HashMap::default(),
                 },
             );
             cache_context
@@ -1042,7 +1042,7 @@ impl BackendRepresentativeMemoryCache {
             extension_data = cache_context.alloc_label_cache_item_ext_data(
                 LabelCacheItemExtensionData::TagLabelResolving {
                     context: context.raw,
-                    tag_label_resolving_data_linker_hash: HashMap::new(),
+                    tag_label_resolving_data_linker_hash: HashMap::default(),
                 },
             );
             cache_context

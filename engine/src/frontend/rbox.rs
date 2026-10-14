@@ -5,7 +5,8 @@
 //! `preprocess.domain_range_clauses`); the other record kinds are produced for
 //! parity with the Python list but are not consumed by `ofn_to_clauses`.
 
-use std::collections::HashSet;
+// Membership/lookup tables; iteration order is per-process random as before.
+type HashSet<T> = crate::fxhash::FxHashSet<T>;
 
 use super::iri::IriRegistry;
 use super::sexpr::Node;

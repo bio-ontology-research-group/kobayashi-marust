@@ -4,7 +4,7 @@
 //! The marker hash indexes marker concepts to the individual nodes carrying them,
 //! with the nondeterministic flag kept as part of the occurrence identity.
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::ConceptId;
@@ -30,8 +30,8 @@ impl Default for MarkerIndividualNodeData {
         MarkerIndividualNodeData {
             context: INVALID,
             marker_individual_node_linker: Vec::new(),
-            use_marker_individual_node_set: HashSet::new(),
-            loc_marker_individual_node_set: HashSet::new(),
+            use_marker_individual_node_set: HashSet::default(),
+            loc_marker_individual_node_set: HashSet::default(),
         }
     }
 }
@@ -112,7 +112,7 @@ impl Default for MarkerIndividualNodeHash {
     fn default() -> Self {
         MarkerIndividualNodeHash {
             context: INVALID,
-            marker_individual_node_hash: HashMap::new(),
+            marker_individual_node_hash: HashMap::default(),
         }
     }
 }
@@ -122,7 +122,7 @@ impl MarkerIndividualNodeHash {
     pub fn new(context: Cint64) -> Self {
         MarkerIndividualNodeHash {
             context,
-            marker_individual_node_hash: HashMap::new(),
+            marker_individual_node_hash: HashMap::default(),
         }
     }
 

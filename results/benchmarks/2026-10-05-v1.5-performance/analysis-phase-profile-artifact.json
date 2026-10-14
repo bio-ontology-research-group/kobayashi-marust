@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "analysis-phase-7279623fc535",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-analysis-phase-7279623fc535",
+      "sha256": "7279623fc5357a2279a208566deb2aacb58332434bffca05140fbdd67d15e6ec"
+    }
+  ],
+  "source_commit": "845bb6459c98fa47a3c802aa87619066979697f3 plus pinned opt-in phase observers",
+  "source_manifest_sha256": "7d64d3f1504edecb0e1497c07a931d0a1f6925df6f4dd7ebfff0772fd00de197",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure"
+  ],
+  "release_approved": false,
+  "scope": "Instrumented diagnostic only; no changed reasoning decisions; not release acceptance measurements.",
+  "certification_pending": true,
+  "diagnostic_only": true
+}

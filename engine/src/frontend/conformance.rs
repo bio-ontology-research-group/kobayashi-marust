@@ -3,6 +3,7 @@
 //! DL profile checker: remaining global restrictions still require audit.
 //! User-entry APIs enforce declarations separately from generated documents.
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
 use super::sexpr::{tokens, Node, Parser};
 
 mod roles;
@@ -18,6 +19,10 @@ mod xml_literal;
 /// standalone loader expects a self-contained document; refusal is a loading
 /// limitation, not evidence that the imported ontology is outside OWL 2 DL.
 pub fn has_imports(text: &str) -> Result<bool, String> {
+    if USER_SOURCE.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(source, _)| &**source == text) {
+        // check_user_source traversed exactly this document and found none.
+        return Ok(false);
+    }
     let mut found = false;
     super::parse::for_each_ontology_child(text, |node| {
         found |= node.head() == Some("Import");
@@ -105,6 +110,18 @@ fn prefixes(text: &str) -> Result<BTreeMap<String, String>, String> {
     Ok(prefixes)
 }
 
+/// `expand(datatype, prefixes) == target`, without building the expansion.
+fn expands_to(datatype: &str, prefixes: &BTreeMap<String, String>, target: &str) -> bool {
+    if let Some(iri) = datatype.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
+        iri == target
+    } else if let Some((prefix, local)) = datatype.split_once(':') {
+        match prefixes.get(prefix) {
+            Some(base) => target.strip_prefix(base.as_str()) == Some(local),
+            None => datatype == target,
+        }
+    } else { datatype == target }
+}
+
 fn expand(datatype: &str, prefixes: &BTreeMap<String, String>) -> String {
     if let Some(iri) = datatype.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
         iri.to_owned()
@@ -115,7 +132,227 @@ fn expand(datatype: &str, prefixes: &BTreeMap<String, String>) -> String {
 
 /// Check the implemented source constraints, retaining DL-safe rule axioms.
 /// Passing this function is not yet a complete OWL 2 DL profile certificate.
+///
+/// The exact-document caches below retain one shared copy of the last
+/// accepted source. The bound covers every frozen ORE input; large sources are
+/// otherwise re-validated by the supervisor, route probes and the in-process
+/// frontend. The retained copy costs one source size of supervisor memory.
+const VALIDATED_SOURCE_CACHE_LIMIT: usize = 1024 * 1024 * 1024;
+
+// One exact successful document per process. No hash collision or
+// caller-supplied admission flag can authorize a different source: a hit
+// requires byte equality with the retained copy. Process-wide because the
+// in-process frontend validates on its own thread.
+static VALIDATED_SOURCE: Mutex<Option<Arc<str>>> = Mutex::new(None);
+
+// One exact document that passed `check_user_source`, which includes the
+// import scan, plus source facts computed in the same traversal. Populated
+// only with `KM_CACHE_CONFORMANCE`, like the cache above.
+static USER_SOURCE: Mutex<Option<(Arc<str>, SourceFacts)>> = Mutex::new(None);
+
+/// Pure functions of a validated source document, computed during the shared
+/// conformance traversal so the orchestrator's scheduling scans need not parse
+/// the same text again. Each field equals the value its consumer would compute.
+#[derive(Clone, Debug)]
+pub struct SourceFacts {
+    /// `SourceProfileBuilder` over every ontology child, finished with the
+    /// document length; `None` above the data-source scan's 4 MiB bound.
+    pub source_statistics: Option<super::profile::SourceStatistics>,
+    /// The symbolic-source scheduling scan: some object cardinality restriction
+    /// has a bound of at least 128 and the document has no DL-safe rule.
+    pub high_object_cardinality_without_rules: bool,
+}
+
+/// Facts for exactly `text`, when `check_user_source` accepted it in this thread.
+pub fn cached_source_facts(text: &str) -> Option<SourceFacts> {
+    USER_SOURCE.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
+        .filter(|(source, _)| &**source == text).map(|(_, facts)| facts.clone())
+}
+
+const SOURCE_STATISTICS_BOUND: usize = 4 * 1024 * 1024;
+
+/// Node form of the symbolic scheduler's token scan: a `DLSafeRule(` or an
+/// object cardinality `(` followed by a numeric bound are exactly the list
+/// nodes with those heads, because the parser makes a list from an
+/// alphabetic token followed by `(` and keeps literals and IRIs atomic.
+#[derive(Default)]
+struct CardinalityScan { rule: bool, high: bool }
+
+impl CardinalityScan {
+    fn observe(&mut self, node: &Node<'_>) {
+        if let Node::List(head, args) = node {
+            match *head {
+                "DLSafeRule" => self.rule = true,
+                "ObjectMinCardinality" | "ObjectMaxCardinality" | "ObjectExactCardinality" => {
+                    if let Some(Node::Atom(bound)) = args.first() {
+                        self.high |= bound.parse::<u64>().is_ok_and(|n| n >= 128);
+                    }
+                }
+                _ => {}
+            }
+            for arg in args { self.observe(arg); }
+        }
+    }
+}
+
+/// Why [`check_user_source`] rejected a document.
+#[derive(Debug, PartialEq, Eq)]
+pub enum UserSourceError {
+    /// The document has an `Import`; the caller reports its loading limitation.
+    Imports,
+    /// The first conformance error, exactly as the separate checks report it.
+    Invalid(String),
+}
+
+enum Slot<C> { Live(C), Failed(String) }
+
+impl<C> Slot<C> {
+    fn feed(&mut self, step: impl FnOnce(&mut C) -> Result<(), String>) {
+        if let Slot::Live(checker) = self {
+            if let Err(error) = step(checker) {
+                *self = Slot::Failed(error);
+            }
+        }
+    }
+}
+
+/// The user-entry sequence `has_imports` (an import is rejected),
+/// `check_source`, `check_iri_prefixes` and `check_declarations`, with one
+/// shared parse for the import scan and the four node checkers.
+///
+/// Each checker receives the same ontology children, in the same order, as
+/// its own traversal would, and stops at its own first error; results are
+/// reported in the original order. The traversal reports a parse error first,
+/// as `has_imports` does. Every accept/reject decision and message is
+/// unchanged; only the repeated parses are gone.
+pub fn check_user_source(text: &str) -> Result<(), UserSourceError> {
+    use UserSourceError::*;
+    let timing = std::env::var_os("KM_CONFORMANCE_TIMING").is_some();
+    let start = timing.then(std::time::Instant::now);
+    let prefix_map = prefixes(text);
+    let mut imports = false;
+    let mut roles = Slot::Live(roles::Checker::default());
+    let mut anonymous = Slot::Live(anonymous::Checker::default());
+    let mut entities = Slot::Live(entities::Checker::default());
+    let mut datatypes = Slot::Live(datatypes::Checker::default());
+    let cache_enabled = std::env::var_os("KM_CACHE_CONFORMANCE").is_some()
+        && text.len() <= VALIDATED_SOURCE_CACHE_LIMIT;
+    let mut profile = (cache_enabled && text.len() <= SOURCE_STATISTICS_BOUND)
+        .then(super::profile::SourceProfileBuilder::new);
+    let mut cardinality = CardinalityScan::default();
+    let mut lap = [0f64; 4];
+    let mut clock = |slot: usize, step: &mut dyn FnMut()| {
+        if timing {
+            let t = std::time::Instant::now();
+            step();
+            lap[slot] += t.elapsed().as_secs_f64();
+        } else {
+            step();
+        }
+    };
+    super::parse::for_each_ontology_child(text, |node| {
+        imports |= node.head() == Some("Import");
+        if let Ok(map) = &prefix_map {
+            clock(0, &mut || roles.feed(|c| c.observe(node, map)));
+            clock(1, &mut || anonymous.feed(|c| c.observe(node, map)));
+            clock(2, &mut || entities.feed(|c| c.observe(node, map)));
+            clock(3, &mut || datatypes.feed(|c| c.observe(node, map)));
+        }
+        if cache_enabled {
+            if let Some(profile) = profile.as_mut() { profile.observe(node); }
+            cardinality.observe(node);
+        }
+        Ok(())
+    }).map_err(|error| Invalid(error.0))?;
+    if timing {
+        eprintln!("CONFORMANCE traversal seconds={:.6} roles={:.6} anonymous={:.6} entities={:.6} datatypes={:.6}",
+            start.map_or(0.0, |s| s.elapsed().as_secs_f64()), lap[0], lap[1], lap[2], lap[3]);
+    }
+    if imports {
+        return Err(Imports);
+    }
+    let reused = cache_enabled
+        && VALIDATED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()).as_deref() == Some(text);
+    if !reused {
+        let t = timing.then(std::time::Instant::now);
+        check_literal_datatypes(text).map_err(Invalid)?;
+        let t2 = timing.then(std::time::Instant::now);
+        km_owl_functional_syntax::validate(text).map_err(Invalid)?;
+        if let (Some(t), Some(t2)) = (t, t2) {
+            eprintln!("CONFORMANCE literal_datatypes={:.6} grammar={:.6}",
+                (t2 - t).as_secs_f64(), t2.elapsed().as_secs_f64());
+        }
+        prefix_map.as_ref().map_err(|error| Invalid(error.clone()))?;
+        match roles { Slot::Failed(error) => return Err(Invalid(error)), Slot::Live(c) => c.finish().map_err(Invalid)? }
+        match anonymous { Slot::Failed(error) => return Err(Invalid(error)), Slot::Live(c) => c.finish().map_err(Invalid)? }
+        match &entities { Slot::Failed(error) => return Err(Invalid(error.clone())), Slot::Live(c) => c.finish().map_err(Invalid)? }
+        match datatypes { Slot::Failed(error) => return Err(Invalid(error)), Slot::Live(c) => c.finish().map_err(Invalid)? }
+        if cache_enabled {
+            *VALIDATED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::from(text));
+        }
+    }
+    check_iri_prefixes(text).map_err(Invalid)?;
+    // check_declarations: its prefix map, declaration check, then finish().
+    prefix_map.as_ref().map_err(|error| Invalid(error.clone()))?;
+    match &entities {
+        // Without a cache hit `finish` already passed above; it is a pure
+        // function of the checker, so only a reused document needs it here.
+        Slot::Live(c) => { c.declarations().map_err(Invalid)?; if reused { c.finish().map_err(Invalid)?; } }
+        // A cached document passed every checker earlier, so this is unreachable
+        // there; without the cache the error was already returned above.
+        Slot::Failed(error) => return Err(Invalid(error.clone())),
+    }
+    if cache_enabled {
+        let facts = SourceFacts {
+            source_statistics: profile.map(|profile| profile.finish(text.len() as u64).source),
+            high_object_cardinality_without_rules: cardinality.high && !cardinality.rule,
+        };
+        // Share one retained copy between both exact-document caches.
+        let retained = VALIDATED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            .filter(|cached| &**cached == text).unwrap_or_else(|| Arc::from(text));
+        *USER_SOURCE.lock().unwrap_or_else(|e| e.into_inner()) = Some((retained, facts));
+    }
+    if let Some(start) = start {
+        eprintln!("CONFORMANCE user-source seconds={:.6} bytes={} reused={}",
+            start.elapsed().as_secs_f64(), text.len(), reused);
+    }
+    Ok(())
+}
+
 pub fn check_source(text: &str) -> Result<(), String> {
+    let timing = std::env::var_os("KM_CONFORMANCE_TIMING").is_some();
+    let start = timing.then(std::time::Instant::now);
+    let mut reused = false;
+    let result = if std::env::var_os("KM_CACHE_CONFORMANCE").is_some() {
+        // Take the retained copy out while validating so the lock is never
+        // held across a long check; put it, or the new document, back after.
+        let mut cache = VALIDATED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()).take();
+        reused = cache.as_deref() == Some(text);
+        let result = check_source_cached(text, &mut cache, VALIDATED_SOURCE_CACHE_LIMIT);
+        *VALIDATED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()) = cache;
+        result
+    } else {
+        check_source_uncached(text)
+    };
+    if let Some(start) = start {
+        eprintln!("CONFORMANCE seconds={:.6} bytes={} reused={} ok={}",
+            start.elapsed().as_secs_f64(), text.len(), reused, result.is_ok());
+    }
+    result
+}
+
+fn check_source_cached(text: &str, cache: &mut Option<Arc<str>>, limit: usize) -> Result<(), String> {
+    if cache.as_deref() == Some(text) {
+        return Ok(());
+    }
+    check_source_uncached(text)?;
+    if text.len() <= limit {
+        *cache = Some(Arc::from(text));
+    }
+    Ok(())
+}
+
+fn check_source_uncached(text: &str) -> Result<(), String> {
     check_literal_datatypes(text)?;
     km_owl_functional_syntax::validate(text)?;
     let prefixes = prefixes(text)?;
@@ -164,6 +401,41 @@ pub fn check_literal_datatypes(text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn exact_validation_cache_preserves_rejections_after_valid_input() {
+        let valid = "Ontology(Declaration(Class(<urn:A>)))";
+        let mut cache = None;
+        check_source_cached(valid, &mut cache, VALIDATED_SOURCE_CACHE_LIMIT).unwrap();
+        check_source_cached(valid, &mut cache, VALIDATED_SOURCE_CACHE_LIMIT).unwrap();
+        for invalid in [
+            "Ontology(Declaration(Class(<urn:A>))) trailing",
+            "Ontology(Annotation(<urn:p> \"x\"^^rdfs:Literal))",
+            "Ontology(TransitiveObjectProperty(<urn:r>) SubClassOf(<urn:A> ObjectMaxCardinality(1 <urn:r>)))",
+        ] {
+            let expected = check_source_uncached(invalid);
+            assert!(expected.is_err());
+            assert_eq!(check_source_cached(invalid, &mut cache, VALIDATED_SOURCE_CACHE_LIMIT), expected);
+            assert_eq!(cache.as_deref(), Some(valid));
+        }
+        let replacement = "Ontology(Declaration(Class(<urn:B>)))";
+        check_source_cached(replacement, &mut cache, VALIDATED_SOURCE_CACHE_LIMIT).unwrap();
+        assert_eq!(cache.as_deref(), Some(replacement));
+        check_source_cached(valid, &mut cache, VALIDATED_SOURCE_CACHE_LIMIT).unwrap();
+    }
+
+    #[test]
+    fn exact_validation_cache_does_not_retain_oversized_sources() {
+        // The production bound is 1 GiB; the same rule is exercised at 1 KiB.
+        let limit = 1024;
+        let source = format!("Ontology(){}", " ".repeat(limit));
+        let mut cache = None;
+        check_source_cached(&source, &mut cache, limit).unwrap();
+        assert!(cache.is_none());
+        let small = "Ontology()";
+        check_source_cached(small, &mut cache, limit).unwrap();
+        assert_eq!(cache.as_deref(), Some(small));
+    }
+
     #[test]
     fn public_prefix_declarations_are_unique_and_cannot_rebind_standard_names() {
         for source in [

@@ -1,0 +1,141 @@
+{
+  "job_id": 53321214,
+  "diagnostic_only": true,
+  "complete": false,
+  "records": [
+    {
+      "ontology": "ore_ont_14572",
+      "repetition": 0,
+      "workers": 1,
+      "status": "executed_unvalidated",
+      "wall_s": 63.848612086847425,
+      "verified": true,
+      "record_sha256": "5638cf5efb9785383d3156e5e0a735eb4721b35b06fbbcde2d097bbef8fcc248",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "587d935d55b621c5a221d34e9d9989213e831bfcb17b1559378c3a66e07e26bf",
+          "left_raw_sha256": "b3c327cfac62bb9bf12374f8bca693491138324dd892ec862ce565efe5b3d7f1",
+          "right_raw_sha256": "fbb3832ad13ee1459c0c8f109571d1f8829d84028fd8f9cd60ea200c6675800d",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "051e6835f2644de85f7980cf8105ff44c51533705161894b87dc4deca2e0e79d"
+    },
+    {
+      "ontology": "ore_ont_14572",
+      "repetition": 0,
+      "workers": 2,
+      "status": "executed_unvalidated",
+      "wall_s": 118.15206320211291,
+      "verified": true,
+      "record_sha256": "df934859a4609d53171fee05229f62944d32fbd3eacb9083f2efee993d96a25f",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "587d935d55b621c5a221d34e9d9989213e831bfcb17b1559378c3a66e07e26bf",
+          "left_raw_sha256": "b3c327cfac62bb9bf12374f8bca693491138324dd892ec862ce565efe5b3d7f1",
+          "right_raw_sha256": "fbb3832ad13ee1459c0c8f109571d1f8829d84028fd8f9cd60ea200c6675800d",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "e872c755cabce80e1a0dbd2b8c13704f30d199e26f3fe1a0423fe4be3ae11a83"
+    },
+    {
+      "ontology": "ore_ont_14572",
+      "repetition": 1,
+      "workers": 2,
+      "status": "executed_unvalidated",
+      "wall_s": 119.36777808144689,
+      "verified": true,
+      "record_sha256": "69e4b0472b6f6cacb386f409603493959fb4ffd69a8017b27b590a105530318c",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "587d935d55b621c5a221d34e9d9989213e831bfcb17b1559378c3a66e07e26bf",
+          "left_raw_sha256": "b3c327cfac62bb9bf12374f8bca693491138324dd892ec862ce565efe5b3d7f1",
+          "right_raw_sha256": "fbb3832ad13ee1459c0c8f109571d1f8829d84028fd8f9cd60ea200c6675800d",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "c04ba53e7e8f00496028277d2c3a307f9d35c7220aa5899538dd2690ec25b089"
+    },
+    {
+      "ontology": "ore_ont_14572",
+      "repetition": 1,
+      "workers": 1,
+      "status": "executed_unvalidated",
+      "wall_s": 63.06945665925741,
+      "verified": true,
+      "record_sha256": "971dde9ffa283ee648618fc49830471fcd059919f43b4d6807c3ead9bb402525",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "587d935d55b621c5a221d34e9d9989213e831bfcb17b1559378c3a66e07e26bf",
+          "left_raw_sha256": "b3c327cfac62bb9bf12374f8bca693491138324dd892ec862ce565efe5b3d7f1",
+          "right_raw_sha256": "fbb3832ad13ee1459c0c8f109571d1f8829d84028fd8f9cd60ea200c6675800d",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "a5380ae5eaa3881e6acddc00dd4ee3645a2f5fe1d4a9a045fec084b3ebd453f0"
+    },
+    {
+      "ontology": "ore_ont_7361",
+      "repetition": 0,
+      "workers": 1,
+      "status": "executed_unvalidated",
+      "wall_s": 64.04814777895808,
+      "verified": true,
+      "record_sha256": "68826170f5defa55ffc2fa72764261a69993e5386b00f0ef3f4c199bc3aecec1",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "d7d0fc68251771dd29776792040d515d36f1b0ec12b09992b38667c82c3f6537",
+          "left_raw_sha256": "b3c327cfac62bb9bf12374f8bca693491138324dd892ec862ce565efe5b3d7f1",
+          "right_raw_sha256": "79fe6cd52e6ab261b7a0d53248282ae32cd149027ab0dfbed1f88d6531cc1993",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "e576b3115979f92c3e34246bd1353702877c0bfee70a5b0b38bf39b5e501b15e"
+    },
+    {
+      "ontology": "ore_ont_7361",
+      "repetition": 0,
+      "workers": 2,
+      "status": "executed_unvalidated",
+      "wall_s": 118.75278456881642,
+      "verified": true,
+      "record_sha256": "47c843d9bb296934c09a62da8babf995d32085b62ef780d7694f42a5ce084200",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "d7d0fc68251771dd29776792040d515d36f1b0ec12b09992b38667c82c3f6537",
+          "left_raw_sha256": "b3c327cfac62bb9bf12374f8bca693491138324dd892ec862ce565efe5b3d7f1",
+          "right_raw_sha256": "79fe6cd52e6ab261b7a0d53248282ae32cd149027ab0dfbed1f88d6531cc1993",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "canonical_sha256": "4c0ba1081e4d92f293856ac8254682e52b293dbe30599eb6ef4405b7e2342d81"
+    }
+  ],
+  "release_approved": false,
+  "audit_script_sha256": "f68c8c1935847536532a3796cd93a4ef74ca1416f9bba3c991a9a03cf1e485f2"
+}

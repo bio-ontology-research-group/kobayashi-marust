@@ -15,7 +15,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id};
 use super::condensed_reapply::CondensedReapplyQueue;
@@ -128,7 +128,7 @@ pub struct IndividualMergingHash {
 impl Default for IndividualMergingHash {
     fn default() -> Self {
         IndividualMergingHash {
-            indi_merging_hash: HashMap::new(),
+            indi_merging_hash: HashMap::default(),
             merged_individual_linker: Vec::new(),
             merged_individual_count: 0,
         }

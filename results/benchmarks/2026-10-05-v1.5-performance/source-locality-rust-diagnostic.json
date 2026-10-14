@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "edit": "large",
+      "revision": 3,
+      "public_queries": 8008,
+      "affected_queries": 2180,
+      "potentially_reusable": 5828,
+      "python_affected_set_identical": true,
+      "input_sha256": {
+        "9944-source-0.json": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+        "9944-source-3.json": "7d33f9ef2dcee90ce9e162e2e570055c8aaf720a724f145a23738ee42923d3f6"
+      },
+      "rust_log_sha256": "39380ebbcd2ef57ec3d7b50fc0bd8557672aa03bfdee5aeef1b0de1c90a79b4f"
+    },
+    {
+      "edit": "small",
+      "revision": 1,
+      "public_queries": 8008,
+      "affected_queries": 4,
+      "potentially_reusable": 8004,
+      "python_affected_set_identical": true,
+      "input_sha256": {
+        "9944-source-0.json": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+        "9944-source-1.json": "e66a22f09c4d472d5e498d3cd8048db4b4aa96cb389d910abf72fc521d42108f"
+      },
+      "rust_log_sha256": "b2d9471d9d1a517c26fa5b0f7254ba98c8a38c3c93dd30b3efcf73720fb0b051"
+    }
+  ],
+  "diagnostic_only": true,
+  "production_reuse_enabled": false,
+  "scope": "Source-level affected-set calculation only. Typed side-state coverage, executable Lean certificate binding, and performance against fresh reasoning remain unproven.",
+  "source_sha256": "6b8824baa46656356fc038fe88a9f54ac20980753e3a27640f6590dd6e0e112a"
+}

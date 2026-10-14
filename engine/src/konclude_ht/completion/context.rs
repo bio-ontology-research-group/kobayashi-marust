@@ -908,6 +908,10 @@ pub struct CalculationAlgorithmContextBase {
     /// untracked clash descriptor is a tracking ERROR that aborts the whole
     /// `clashedBacktracking` analysis.
     pub base_independent_track_point: TrackPointId,
+    /// Retained-base class jobs: lengths of the append-only dependency-spine
+    /// arenas when the deterministic consistency base was retained (see
+    /// `ProcessContext::truncate_dependency_spine`). `None` everywhere else.
+    pub retained_spine_watermark: Option<[usize; 6]>,
     /// `CIndividualNodeManager* mIndiNodeManager`.
     pub indi_node_manager: Id<IndividualNodeManager>,
     /// `CUnsatisfiableCacheHandler* mUnsatCacheHandler`.
@@ -962,6 +966,7 @@ impl CalculationAlgorithmContextBase {
             base_dep_node: Id::NONE,
             databox_epoch_stack: Vec::new(),
             base_independent_track_point: Id::NONE,
+            retained_spine_watermark: None,
             indi_node_manager: Id::NONE,
             unsat_cache_handler: Id::NONE,
             clash_descriptor_factory: Id::NONE,
@@ -1633,6 +1638,19 @@ impl CalculationAlgorithmContextBase {
     /// Mutable terminology access.
     pub fn ontology_arenas_mut(&mut self) -> &mut OntologyArenas {
         &mut self.base.ontology_arenas
+    }
+
+    /// Detach terminology references before releasing an interrupted saturation
+    /// graph. Completion's branch ordering reads these links even when the
+    /// saturation cache is disabled.
+    pub fn release_partial_saturation_state(&mut self) {
+        let count = self.ontology_arenas().saturation_concept_reference_linkings().len();
+        for index in 0..count {
+            self.ontology_arenas_mut()
+                .saturation_concept_reference_linking_mut(Id::new(index as Cint64))
+                .set_individual_process_node_for_concept(super::super::process::SatNodeId::NONE);
+        }
+        self.process_context_mut().release_partial_saturation_state();
     }
 
     /// Borrow the mutable per-probe graph and immutable ontology together.

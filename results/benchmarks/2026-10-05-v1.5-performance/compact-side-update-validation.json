@@ -1,0 +1,152 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "binary": {
+    "path": "/tmp/agent/km-v150-diagnostics/km-compact-side-9d7ea448184c",
+    "sha256": "9d7ea448184c6249c8fc051b7e6e0d1cc3ab1f44f8929d42620881d3e2afb5a1"
+  },
+  "comparisons": [
+    {
+      "mode": "module",
+      "revision": 1,
+      "repetition": 0,
+      "retained_s": 1.540010601049289,
+      "fresh_s": 1.6030138389905915,
+      "faster": true
+    },
+    {
+      "mode": "module",
+      "revision": 2,
+      "repetition": 0,
+      "retained_s": 1.5446593189844862,
+      "fresh_s": 1.6270473169861361,
+      "faster": true
+    },
+    {
+      "mode": "module",
+      "revision": 3,
+      "repetition": 0,
+      "retained_s": 2.310122712980956,
+      "fresh_s": 1.6703161470359191,
+      "faster": false
+    },
+    {
+      "mode": "module",
+      "revision": 4,
+      "repetition": 0,
+      "retained_s": 2.2662729040021077,
+      "fresh_s": 1.583385047968477,
+      "faster": false
+    },
+    {
+      "mode": "module",
+      "revision": 1,
+      "repetition": 1,
+      "retained_s": 1.478425347013399,
+      "fresh_s": 1.673584721982479,
+      "faster": true
+    },
+    {
+      "mode": "module",
+      "revision": 2,
+      "repetition": 1,
+      "retained_s": 1.5607211530441418,
+      "fresh_s": 1.6696793719893321,
+      "faster": true
+    },
+    {
+      "mode": "module",
+      "revision": 3,
+      "repetition": 1,
+      "retained_s": 2.160001064068638,
+      "fresh_s": 1.7264444569591433,
+      "faster": false
+    },
+    {
+      "mode": "module",
+      "revision": 4,
+      "repetition": 1,
+      "retained_s": 2.2015197329455987,
+      "fresh_s": 1.7333663559984416,
+      "faster": false
+    },
+    {
+      "mode": "full-input",
+      "revision": 1,
+      "repetition": 0,
+      "retained_s": 1.7832119640661404,
+      "fresh_s": 1.5974757430376485,
+      "faster": false
+    },
+    {
+      "mode": "full-input",
+      "revision": 2,
+      "repetition": 0,
+      "retained_s": 1.8066045560408384,
+      "fresh_s": 1.6010916259838268,
+      "faster": false
+    },
+    {
+      "mode": "full-input",
+      "revision": 3,
+      "repetition": 0,
+      "retained_s": 1.96168334397953,
+      "fresh_s": 1.6488120699068531,
+      "faster": false
+    },
+    {
+      "mode": "full-input",
+      "revision": 4,
+      "repetition": 0,
+      "retained_s": 2.0345130789792165,
+      "fresh_s": 1.6464928010245785,
+      "faster": false
+    },
+    {
+      "mode": "full-input",
+      "revision": 1,
+      "repetition": 1,
+      "retained_s": 1.8825553481001407,
+      "fresh_s": 1.7861274430761114,
+      "faster": false
+    },
+    {
+      "mode": "full-input",
+      "revision": 2,
+      "repetition": 1,
+      "retained_s": 1.9092417740030214,
+      "fresh_s": 1.8306922019692138,
+      "faster": false
+    },
+    {
+      "mode": "full-input",
+      "revision": 3,
+      "repetition": 1,
+      "retained_s": 2.1198728709714487,
+      "fresh_s": 1.824280182016082,
+      "faster": false
+    },
+    {
+      "mode": "full-input",
+      "revision": 4,
+      "repetition": 1,
+      "retained_s": 2.0151095490437,
+      "fresh_s": 1.8809110260335729,
+      "faster": false
+    }
+  ],
+  "source_manifest_sha256": "c39bdead70aa72043711c5ab73fd7cb1aa36112a691bab51871d028424829002",
+  "validation": {
+    "incremental_ht_tests": 14,
+    "source_incremental_tests": 24,
+    "source_incremental_tests_with_flags": 24,
+    "all_update_answers_equal_fresh": true
+  },
+  "logs": {
+    "compact-side-tests.log": "f7f565f6914f554c9fb910bdd09a1a9d25d89173c440f6ae776ec565dcff70a6",
+    "compact-side-source-tests.log": "e775a17a1bb6adbc8db1222dd1a0fbe4c9a92d80b33b0e1c1f6d6af08eaf0121",
+    "compact-side-source-enabled-tests.log": "e775a17a1bb6adbc8db1222dd1a0fbe4c9a92d80b33b0e1c1f6d6af08eaf0121",
+    "compact-side-build.log": "b8b191ba12bfd5cba54d2c1cdb515e7f2372cae9b7cc84107fd56996d877b52a"
+  },
+  "conclusion": "Compact fingerprint preserves the former bytes while avoiding discarded payload allocation. Module mode beats fresh in four small-edit measurements, but none of the large-edit measurements. Full typed-input reclassification beats module mode on the large edits yet remains slower than fresh. No per-update release claim; module defaults stay off."
+}

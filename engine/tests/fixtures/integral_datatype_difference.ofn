@@ -1,0 +1,7 @@
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x>
+Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) Declaration(DataProperty(<http://x#p>))
+SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> xsd:nonNegativeInteger))
+SubClassOf(<http://x#A> DataMaxCardinality(0 <http://x#p> xsd:positiveInteger))
+SubClassOf(<http://x#B> <http://x#A>)
+)

@@ -1,0 +1,49 @@
+{
+  "status": "Local correctness/certification gates passed; full classification running. 1919 original frontend outcomes preserved; remaining 15687 symbolic production frontend is byte-identical in source-matched diagnostics. Ordinary frontend memory failures remain.",
+  "source_manifest_sha256": "c4ac70b0d661eadd913485c80fdc05836e3d93a935db27611cac0292efaffef2",
+  "diagnostic_tests": {
+    "data_source": {
+      "passed": 5,
+      "failed": 0,
+      "log_sha256": "ef90aee34cb6c8d987f45e49cf900fa35fd8a20f5203fb69f3f30ce5b4ec7e84"
+    },
+    "singleton_scan_option": {
+      "passed": 1474,
+      "failed": 0,
+      "ignored": 7,
+      "log_sha256": "a3363a4e96a7662f8b73c306bf5a0643709813fc1edcbc315cf01d738fc5715d"
+    }
+  },
+  "source_snapshot_locked_for_builds": true,
+  "local_sessions": {},
+  "cluster_jobs": {
+    "dense_data_explicit_probe": 53313783,
+    "frontend_all": 53312770,
+    "frontend_clause_order": 53313782,
+    "frontend_refusals": 53314782,
+    "frontend_large_validation": 53314986,
+    "dense_data_full": 53315705,
+    "frontend_automatic_validation": 53316202
+  },
+  "release_approved": false,
+  "next": [
+    "Finish full classification sweeps and compare complete audited scores, losses, and matched runtimes with all required competitors.",
+    "Keep singleton scan option disabled by default until repeated paired evidence justifies promotion.",
+    "Incremental reuse goal remains outstanding.",
+    "Investigate whether compact exact functional-data owner inequalities can avoid thousands of literal singleton merges; require model-equivalence proof before implementing a new source reduction."
+  ],
+  "standard_binary": "/tmp/agent/km-v150-diagnostics/km-dense-data-ba955555af71",
+  "frontend_large_result": "Old forced-nominal frontend also exceeds 64 GiB on 15687; preservation remains unresolved there. Do not treat matching resource failures as equivalence.",
+  "frontend_reconciliation": {
+    "inputs": 1920,
+    "preserved": 1919,
+    "unresolved": [
+      "ore_ont_15687 ordinary frontend representation"
+    ],
+    "full_frontend_preservation_passed": false,
+    "symbolic_supplement": "15687-symbolic-preservation.json",
+    "symbolic_supplement_preserved": [
+      "ore_ont_15687"
+    ]
+  }
+}

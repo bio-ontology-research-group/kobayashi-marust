@@ -1,0 +1,22 @@
+{
+  "scope": "source-GCI padding obligation only",
+  "release_approved": false,
+  "source_sha256": "2959b72fb7b4f3f5806148ae8d7587493fda048ae27f31ee5c8d628891194fce",
+  "witness_sha256": "eca66a7a2acbcfea7dfb138233aef887af8547e1dccdc343e02ad63f5678fd16",
+  "accepted": true,
+  "decoder_semantic_equivalence_proved": false,
+  "checker_sources": {
+    "lean/DatatypePaddingWitnessCheck.lean": "ac003c7dcbc75eda18e35427cb84ce40943da7302820f645cbfdae66d9c3c61e",
+    "lean/ContextCalculus/DatatypePaddingCheck.lean": "333e9e8d40d02e0e00861c7a6adfdef053a43760f8c150257e03999f48642c9b",
+    "lean/ContextCalculus/DatatypePadding.lean": "7a01fb3ce05b5ab88e471b47f6c5087d262117e55b8e0cb7313496b48ef7dbf2",
+    "lean/ContextCalculus/DatatypeClassTransport.lean": "ca545d879b6387b7f609b91a86fb3e4630de4ce5e95552d54033f3fc766bae81",
+    "lean/ContextCalculus/FunctionalDatatypeQuotient.lean": "17237d48978a48161eeb6c653f01c6c3cdb983d8e89dcb5a33d67eeec3ee7e32",
+    "lean/lean-toolchain": "ce4c4e3d87434b9663f46de25ce34b48a0cf0d392e0a320a0787b4674a2d7b61"
+  },
+  "driver_sha256": "7beceb71d88311c08299e15452a85ffd93821a22c3d3afa21d33dc6dbceb725c",
+  "proof_build_exit_code": 0,
+  "proof_build_log_sha256": "234c3b3ed138f2d44f8b201abcba29fcdba694f687f5c9fc6cdda23e56f35526",
+  "exit_code": 0,
+  "stdout": "Padding GCI obligation accepted: 311 source axioms, 324 implications\n",
+  "stderr": ""
+}

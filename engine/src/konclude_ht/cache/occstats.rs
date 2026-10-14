@@ -31,7 +31,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::context::CacheContext;
@@ -579,7 +579,7 @@ impl Default for OccurrenceStatisticsCacheData {
         OccurrenceStatisticsCacheData {
             read_write_lock: 0,
             update_id: 0,
-            ontology_data_hash: HashMap::new(),
+            ontology_data_hash: HashMap::default(),
         }
     }
 }

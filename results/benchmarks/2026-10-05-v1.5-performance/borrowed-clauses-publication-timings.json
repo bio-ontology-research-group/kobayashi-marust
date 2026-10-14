@@ -1,0 +1,53 @@
+{
+  "diagnostic_only": true,
+  "phases": [
+    {
+      "repetition": 0,
+      "revision": 1,
+      "old_s": 0.107351759,
+      "new_s": 0.078797152
+    },
+    {
+      "repetition": 0,
+      "revision": 2,
+      "old_s": 0.125035301,
+      "new_s": 0.062845064
+    },
+    {
+      "repetition": 0,
+      "revision": 3,
+      "old_s": 0.233208165,
+      "new_s": 0.09729359
+    },
+    {
+      "repetition": 0,
+      "revision": 4,
+      "old_s": 0.161100313,
+      "new_s": 0.093017672
+    },
+    {
+      "repetition": 1,
+      "revision": 1,
+      "old_s": 0.105425974,
+      "new_s": 0.067692496
+    },
+    {
+      "repetition": 1,
+      "revision": 2,
+      "old_s": 0.1175483,
+      "new_s": 0.061535169
+    },
+    {
+      "repetition": 1,
+      "revision": 3,
+      "old_s": 0.176578061,
+      "new_s": 0.092996024
+    },
+    {
+      "repetition": 1,
+      "revision": 4,
+      "old_s": 0.1484998,
+      "new_s": 0.101417963
+    }
+  ]
+}

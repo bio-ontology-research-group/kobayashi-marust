@@ -1,0 +1,83 @@
+[
+  {
+    "ontology": "ore_ont_1997",
+    "version": "v144",
+    "diagnostic_job": "53294360",
+    "comparisons": {
+      "konclude": {
+        "source_sha256": "e7218987539298744837daaaee3f5c2bfbbb4cf5e8bf00cfd2ad18930a35e8e1",
+        "left_raw_sha256": "5d27fecc0ec1dc580c2137e81fdd46440ae7487f5adba1fe9298b23929165ae2",
+        "right_raw_sha256": "d951dd56e47fc8ecc8b36690ddaa83c01c9475bc8f43f468292ac6e4a5cc9bf1",
+        "left_consistency": true,
+        "right_consistency": true,
+        "status": "agreement",
+        "agreement": true,
+        "scope": "consistency_and_taxonomy"
+      },
+      "hermit": {
+        "source_sha256": "e7218987539298744837daaaee3f5c2bfbbb4cf5e8bf00cfd2ad18930a35e8e1",
+        "left_raw_sha256": "5d27fecc0ec1dc580c2137e81fdd46440ae7487f5adba1fe9298b23929165ae2",
+        "right_raw_sha256": "1e4a89454286304a7dac760a8c65fbea4e8727e361d24de8a3e4727e4701ff3f",
+        "left_consistency": true,
+        "right_consistency": true,
+        "status": "agreement",
+        "agreement": true,
+        "scope": "consistency_and_taxonomy"
+      }
+    }
+  },
+  {
+    "ontology": "ore_ont_5303",
+    "version": "v144",
+    "diagnostic_job": "53294360",
+    "comparisons": {
+      "konclude": {
+        "source_sha256": "0282426b919cc1993b3994d00167232d7882e28938d9d49b48e2248848ef8f50",
+        "left_raw_sha256": "e6b0ef5c1820fae0be428315d550563f1827f09ddbeec3238812fd796bd232ca",
+        "right_raw_sha256": "2ad8b9ab06c606ca24659cb3d3752d3319aeb4115eaf033dfe16a9de7c4592bc",
+        "left_consistency": true,
+        "right_consistency": true,
+        "status": "agreement",
+        "agreement": true,
+        "scope": "consistency_and_taxonomy"
+      },
+      "hermit": {
+        "source_sha256": "0282426b919cc1993b3994d00167232d7882e28938d9d49b48e2248848ef8f50",
+        "left_raw_sha256": "e6b0ef5c1820fae0be428315d550563f1827f09ddbeec3238812fd796bd232ca",
+        "right_raw_sha256": "574ccec844022b42b184cd120026e00123d2adbbff7ff670bf87e1b822979868",
+        "left_consistency": true,
+        "right_consistency": true,
+        "status": "agreement",
+        "agreement": true,
+        "scope": "consistency_and_taxonomy"
+      }
+    }
+  },
+  {
+    "ontology": "ore_ont_2901",
+    "version": "v144",
+    "diagnostic_job": "53294360",
+    "comparisons": {
+      "konclude": {
+        "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+        "left_raw_sha256": "1c1838c32f38e440b253dd89cb180ef0abc0883f8102c801ea9fdfacca960051",
+        "right_raw_sha256": "6966b89780205725e7699cf53b97e77beffa8f48f3ae91e4a38e6912d2248f05",
+        "left_consistency": true,
+        "right_consistency": true,
+        "status": "agreement",
+        "agreement": true,
+        "scope": "consistency_and_taxonomy"
+      },
+      "hermit": {
+        "source_sha256": "1cc6eb0053c5edac87f112a5580003f3ad692d2e96af36b66e70fa919b58e4c9",
+        "left_raw_sha256": "1c1838c32f38e440b253dd89cb180ef0abc0883f8102c801ea9fdfacca960051",
+        "right_raw_sha256": "f9b73aec148df02e89d92b7f7bce0b3a87fc9d43d3c883d828989a7249e99733",
+        "left_consistency": true,
+        "right_consistency": true,
+        "status": "agreement",
+        "agreement": true,
+        "scope": "consistency_and_taxonomy"
+      }
+    }
+  }
+]

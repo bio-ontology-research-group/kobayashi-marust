@@ -1,0 +1,23 @@
+{
+  "job_id": 53321214,
+  "diagnostic_only": true,
+  "array": "0-5%3",
+  "binary_sha256": "ba955555af717f0dd880ba21c2a011172767b73056057f1c5b24aa748408e180",
+  "hypothesis": "Two full saturation passes duplicate work for disjoint query shards on one CPU.",
+  "limits": {
+    "cpus": 1,
+    "timeout_s": 240,
+    "memory_gib": 20
+  },
+  "cases": [
+    "ore_ont_14572",
+    "ore_ont_7361",
+    "ore_ont_9724"
+  ],
+  "repetitions": 2,
+  "workers": [
+    1,
+    2
+  ],
+  "release_approved": false
+}

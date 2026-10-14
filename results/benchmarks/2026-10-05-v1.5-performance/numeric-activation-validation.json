@@ -1,0 +1,155 @@
+{
+  "diagnostic_only": true,
+  "binary": {
+    "path": "/tmp/agent/km-v150-diagnostics/km-numeric-activation-c30a32ac1d65",
+    "sha256": "c30a32ac1d65b71fa6308c03e2081939d1e0535fc745593209a780f816a0c56e"
+  },
+  "tests": {
+    "tests": {
+      "passed": 10,
+      "sha256": "abb900bc88ee36a595c21ede755d2a36d22e6426583e80e66226e5649dc3905d"
+    },
+    "source-tests": {
+      "passed": 26,
+      "sha256": "73d336b0ae3e976483613588efa6775dde3da04727c33605e875c968167c7f3c"
+    },
+    "module-tests": {
+      "passed": 26,
+      "sha256": "6e245c6a79b705d5ad0212ac12ae202ca69fa0267733bf5ef481512ac91fef5d"
+    },
+    "typed-tests": {
+      "passed": 14,
+      "sha256": "400217bbd90c574483203c64fcd448ecae473ca76ca69aae2e4510c7bed7a7a6"
+    }
+  },
+  "modes": {
+    "module": {
+      "cases": [
+        {
+          "repetition": 0,
+          "revision": 1,
+          "retained_s": 1.6431033071130514,
+          "fresh_s": 1.673639437998645,
+          "faster": true
+        },
+        {
+          "repetition": 0,
+          "revision": 2,
+          "retained_s": 1.6241169000277296,
+          "fresh_s": 1.6738150999881327,
+          "faster": true
+        },
+        {
+          "repetition": 0,
+          "revision": 3,
+          "retained_s": 2.102954959962517,
+          "fresh_s": 1.651594235911034,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 4,
+          "retained_s": 2.06842503498774,
+          "fresh_s": 1.668854616000317,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 1,
+          "retained_s": 1.4559131530113518,
+          "fresh_s": 1.66395834996365,
+          "faster": true
+        },
+        {
+          "repetition": 1,
+          "revision": 2,
+          "retained_s": 1.5955093580996618,
+          "fresh_s": 1.7950509890215471,
+          "faster": true
+        },
+        {
+          "repetition": 1,
+          "revision": 3,
+          "retained_s": 2.1403372270287946,
+          "fresh_s": 1.6245813280111179,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 4,
+          "retained_s": 2.1236605249578133,
+          "fresh_s": 1.6312601519748569,
+          "faster": false
+        }
+      ],
+      "faster": 4,
+      "total": 8,
+      "all_answers_match": true
+    },
+    "full-input": {
+      "cases": [
+        {
+          "repetition": 0,
+          "revision": 1,
+          "retained_s": 1.8039965810021386,
+          "fresh_s": 1.7421585640404373,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 2,
+          "retained_s": 1.7072260749991983,
+          "fresh_s": 1.6343343049520627,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 3,
+          "retained_s": 1.9809539209818467,
+          "fresh_s": 1.6518872419837862,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 4,
+          "retained_s": 1.9750883630476892,
+          "fresh_s": 1.649182146997191,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 1,
+          "retained_s": 1.8553400270175189,
+          "fresh_s": 1.6284541160566732,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 2,
+          "retained_s": 1.9308241499820724,
+          "fresh_s": 1.6739198559662327,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 3,
+          "retained_s": 1.8886022079968825,
+          "fresh_s": 1.6722995929885656,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 4,
+          "retained_s": 1.9672417640686035,
+          "fresh_s": 1.650506985024549,
+          "faster": false
+        }
+      ],
+      "faster": 0,
+      "total": 8,
+      "all_answers_match": true
+    }
+  },
+  "release_approved": false,
+  "scope": "Five revisions of ORE9944, two repetitions per mode. Full all-case target remains unproven."
+}

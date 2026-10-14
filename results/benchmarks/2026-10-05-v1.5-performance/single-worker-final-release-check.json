@@ -1,0 +1,28 @@
+{
+  "job_id": 53322070,
+  "full_corpus_complete": true,
+  "candidate": {
+    "verified_solved": 1620,
+    "mean_s": 7.609515778526066,
+    "median_s": 0.38930124044418335
+  },
+  "comparisons": {
+    "konclude": {
+      "more_verified": false,
+      "lower_mean": false,
+      "lower_median": false
+    },
+    "rustdl": {
+      "more_verified": true,
+      "lower_mean": false,
+      "lower_median": false
+    },
+    "elk": {
+      "more_verified": true,
+      "lower_mean": true,
+      "lower_median": true
+    }
+  },
+  "release_approved": false,
+  "summary_sha256": "bfd21681df1d1d0b76794d9f1ce6c137e9b80a2454cb8987002b57fb0a091ab0"
+}

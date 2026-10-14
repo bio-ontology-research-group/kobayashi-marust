@@ -19,7 +19,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 use std::sync::OnceLock;
 
 use super::super::completion::stubs::{

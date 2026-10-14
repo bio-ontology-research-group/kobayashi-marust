@@ -1,0 +1,214 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "timeout_s": 30,
+  "memory_gib": 20,
+  "cpu": 0,
+  "cpu_count": 1,
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+    "KM_TIMING": "1",
+    "KM_BRIDGE_PHASE_TIMING": "1",
+    "KM_CONFORMANCE_TIMING": "1",
+    "KM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1"
+  },
+  "binary_sha256": "7279623fc5357a2279a208566deb2aacb58332434bffca05140fbdd67d15e6ec",
+  "inventory_sha256": "80775b6fc673eb059cb7947d1ca6f96fa6ff76d9a801ac3090e60837bf489850",
+  "inputs_sha256": "8ebcba97f6de12f6b7fea473f307d7e029df517e011b99fa024a8ded4b1edd35",
+  "runner_sha256": "247abe4b14806498ea7f719f07fc4776e48779098fb724762ab638a8ad35dac2",
+  "watchdog_sha256": "4db93ad90772cac898af5c024d57640ad70ca5c974c999fa18c044f7ed53d155",
+  "rows": [
+    {
+      "ontology": "ore_ont_236",
+      "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+      "exit_code": 0,
+      "status": "ok",
+      "wall_s": 0.4311035939026624,
+      "peak_bytes": 27344896,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "e0e50c54a727f2b6dc8079a072c1e42d743f3ca92f4bd3528ce5e7bad3670030",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "b35abea39a212679e3a85c163ec0571a62b75431b8ffec47537df55ee591b887",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "aad7279cea42e3953f724c39fd218842f65545b051c439ca8813f302eb01a331",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "4ddbc2e1b0836c316a5efae50568bb81695d656ecee8b647e15d35659e52cb0e",
+          "left_raw_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+          "right_raw_sha256": "1761343d7b26ccc69903e7f8f1622ffe6c485f9645bffad86e62c4a9bd080744",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "stderr_sha256": "430d65a645cbaec88702d5d53c8d4523f0342dc88624ba06af5303c35469f328",
+      "taxonomy_sha256": "9e05b7cbed6376485316fe4dffc5286623a1500847ebc2bb6d46dab61dbc60c9",
+      "phase_lines": [
+        "CONFORMANCE seconds=0.240422 bytes=1832115 reused=false ok=true",
+        "CONFORMANCE seconds=0.000373 bytes=1832115 reused=true ok=true",
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=1832115 complements_below=0",
+        "CONFORMANCE seconds=0.000366 bytes=1832115 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.08s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.09s route=elc",
+        "KM_TIMING engine block done @ 0.11s (subs_keys=3783)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_11896",
+      "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+      "exit_code": 0,
+      "status": "ok",
+      "wall_s": 0.24026129802223295,
+      "peak_bytes": 25804800,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "d7abe8d12604ebeea4239747ea5516bf0a044d9c2eb9a2bfd74a0177d2d92608",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "cc1e410d8448137217c4212c0cd6e3342635c15a79701c3d165925467c16b93b",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "acbda3cd243c74a1e199bd70354d9f83d444714b8acf0124eba10a28bc61fee3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "23392d21d8e120cc0acfbf9b1997102ee45ec45c24c0927e8e6bb9244adcf35e",
+          "left_raw_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+          "right_raw_sha256": "a758b02464f017f8b459958e23a0d409dd1638068f23ab9ca35f8a5f97fdcf48",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "stderr_sha256": "184268df5d7fb68f4de30c41f54775e6d70530f095eea489c070f65116aa34fc",
+      "taxonomy_sha256": "f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4",
+      "phase_lines": [
+        "CONFORMANCE seconds=0.137423 bytes=2170570 reused=false ok=true",
+        "CONFORMANCE seconds=0.000399 bytes=2170570 reused=true ok=true",
+        "KM_TIMING mirror-route: declined by lexical prefilter: bytes=2170570 complements_below=0",
+        "CONFORMANCE seconds=0.000377 bytes=2170570 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.04s cached=true sidecar=false",
+        "KM_TIMING frontend done @ 0.04s route=elc",
+        "KM_TIMING engine block done @ 0.05s (subs_keys=3044)"
+      ]
+    },
+    {
+      "ontology": "ore_ont_3250",
+      "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+      "exit_code": 0,
+      "status": "ok",
+      "wall_s": 0.2437330059474334,
+      "peak_bytes": 42553344,
+      "verified_solved": true,
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "9b943a31439e0c6972cac5edbe1a09541ca981bc9cd77869e0766e8ef83d51a3",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "6167df4b9a7faf3370cd9c06ece81de547c417468ec987ad77eaaaf2a43bea98",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "79d4061aeead1b9ba499aad25ef60329c9890ee98086dcb9ab713d15c0ad8885",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "fd2a2742d09c83dfedaca9fc028376ee76cad9e7693c3ccb6305f3cc10937362",
+          "left_raw_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+          "right_raw_sha256": "897249470fe9ca5e11d4cbccaa9dc10f096c1150af908b852caa3b6762020dbd",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "stderr_sha256": "b9aa675d5ca38ab4d9662a3809cdcbd2c4a588556af296576e947bf8b1160954",
+      "taxonomy_sha256": "4502116b840bae505de2c990f3a5e72698498c8066f3cc22a39c4ad99f9aeb7f",
+      "phase_lines": [
+        "CONFORMANCE seconds=0.002331 bytes=38102 reused=false ok=true",
+        "CONFORMANCE seconds=0.000003 bytes=38102 reused=true ok=true",
+        "CONFORMANCE seconds=0.000003 bytes=38102 reused=true ok=true",
+        "KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false",
+        "KM_TIMING frontend done @ 0.00s route=certified_card_nominals",
+        "KM_TIMING spawn_ht: read+convert 589 clauses (ht_view=583) in 0.00s",
+        "KM_TIMING engine block done @ 0.23s (subs_keys=74)"
+      ]
+    }
+  ],
+  "scope": "Local instrumented phase diagnosis on three cases near the partial sweep median. Not a release speed comparison or a new full-corpus solved count."
+}

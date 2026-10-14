@@ -1,0 +1,32 @@
+{
+  "logs": {
+    "graph-json-tests.log": {
+      "sha256": "957b7f63cf23203c6513aa3402080b4356553823de3e04fba5bf869722187949",
+      "result_lines": [
+        "test result: FAILED. 26 passed; 1 failed; 0 ignored; 0 measured; 2717 filtered out; finished in 0.07s"
+      ]
+    },
+    "graph-json-configured-tests.log": {
+      "sha256": "319158426935c2a7746f9a8e4d69495386c0f896a4c4f0de09c1dd7786de5237",
+      "result_lines": [
+        "test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 2717 filtered out; finished in 0.04s"
+      ]
+    },
+    "graph-json-cli-tests.log": {
+      "sha256": "db7647b8471ef439cfd56db98a1f2ec283a13d0a0b3125538048b9faed373e60",
+      "result_lines": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    "graph-json-lean.log": {
+      "sha256": "be4408dac5f8fb7fd1a502f2a55667be70e0df847d8e9bd37b9c26d516859e3f",
+      "result_lines": [
+        "'ContextCalculus.TaxonomyGraphSerialization.omit_self_edges' depends on axioms: [propext, Classical.choice, Quot.sound]",
+        "'ContextCalculus.TaxonomyGraphSerialization.graph_encoding_same_closure' depends on axioms: [propext,"
+      ]
+    }
+  },
+  "initial_failure": "One orchestration test re-executed the test harness as a worker. The configured-worker rerun passed all 27 tests.",
+  "source_manifest_sha256": "119c0cd38325328355e365d61883bf115d436d29551369a0c7edd34ff9bd1a55",
+  "release_approved": false
+}

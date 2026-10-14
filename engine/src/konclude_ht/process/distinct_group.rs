@@ -4,7 +4,7 @@
 //! clash. Successor producers can opt into this representation; production
 //! defaults still retain explicit pair edges during validation.
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 use std::sync::Arc;
 use super::super::model::substrate::Cint64;
 use super::TrackPointId;
@@ -39,7 +39,7 @@ pub struct DistinctGroupView {
 impl DistinctGroupView {
     pub fn owner(&self) -> Cint64 { self.owner }
     pub fn new(owner: Cint64) -> Self {
-        Self { owner, groups: Vec::new(), overrides: HashMap::new() }
+        Self { owner, groups: Vec::new(), overrides: HashMap::default() }
     }
     /// Equivalent to inserting every owner/partner pair with this dependency.
     /// Installing a later group reinstates removed partners and supersedes
@@ -71,7 +71,7 @@ impl DistinctGroupView {
     pub fn is_empty(&self) -> bool { self.len() == 0 }
     /// Enumerate once per partner with the newest active pair provenance.
     pub fn partners(&self) -> Vec<(Cint64, TrackPointId)> {
-        let mut partners = HashMap::new();
+        let mut partners = HashMap::default();
         for group in &self.groups {
             for &partner in group.members() {
                 if partner != self.owner { partners.insert(partner, group.dependency); }
@@ -100,7 +100,7 @@ mod tests {
         let third = Id::new(3);
         for owner in -4..=4 {
             let mut compact = DistinctGroupView::new(owner);
-            let mut explicit = HashMap::new();
+            let mut explicit = HashMap::default();
             for (members, dependency) in [
                 (vec![-4, -2, 0, 2, 4], first),
                 ((-4..=4).collect(), second),

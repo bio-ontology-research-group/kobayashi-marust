@@ -1,8 +1,8 @@
 {
-  "observed_at": "2026-10-05T11:21:34.081277+00:00",
-  "status": "all benchmark panels reviewed; final commit verification and publication pending",
+  "observed_at": "2026-10-05T11:26:07.941097+00:00",
+  "status": "v1.4.5 published and verified; post-publication attestations included",
   "candidate_sha256": "a08be6436df9366eb50d823105b3582252f675bd4fa7dde097f5b62d48eedad0",
-  "development_commit": "74f83a3234bbec2a6061dbf0082d0e68f35f01b9",
+  "development_commit": "fb42d5228bfaa3248a4de9cb70819daff1aa5265",
   "raw_measurement_root": "ibex:/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004",
   "artifacts": {
     "workload": [
@@ -605,9 +605,30 @@
         "sha256": "ee04ac1ff016603ede68db66262be7f53f8043b71e6d740c8c3233886e4a397e",
         "bytes": 501
       }
+    ],
+    "post_publication_attestations": [
+      {
+        "path": "v1.4.5-publication.json",
+        "sha256": "ad95122bacb2645fd4f00b88cde4872b5cb7ee4f9262ab8886f74cacbdd02ae3",
+        "bytes": 703
+      },
+      {
+        "path": "release-requirement-audit-final.json",
+        "sha256": "1d0e13699699e4e9913de84c8561f3d9e36b775d0a755e0582e17a245df2948f",
+        "bytes": 6038
+      },
+      {
+        "path": "global-dependency-validation/final-release-commit-verification.json",
+        "sha256": "60db807365266d8f130ffd135de8bd6f8050a32cf2ab6c4bfb069b7b0610fef4",
+        "bytes": 567
+      },
+      {
+        "path": "v144-prerequisite-requirement-audit.json",
+        "sha256": "f487e6ad86e5d08d413559ee6d134ea5049f9677dafaf7c4b846b1870f333569",
+        "bytes": 3592
+      }
     ]
   },
-  "pending": [
-    "Final evidence commit, exact tagged-source verification, tag/push and publication verification"
-  ]
+  "pending": [],
+  "tagged_evidence_artifact_count": 111
 }

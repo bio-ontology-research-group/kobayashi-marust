@@ -1,0 +1,50 @@
+[
+  {
+    "flag": "KM_HT_NO_SATURATION",
+    "source": "nominal-filler.ofn",
+    "matches_expected": true,
+    "pairs": 1
+  },
+  {
+    "flag": "KM_HT_NO_SATURATION",
+    "source": "source.ofn",
+    "matches_expected": true,
+    "pairs": 1433
+  },
+  {
+    "flag": "KM_HT_NO_SATCACHE",
+    "source": "nominal-filler.ofn",
+    "matches_expected": true,
+    "pairs": 1
+  },
+  {
+    "flag": "KM_HT_NO_SATCACHE",
+    "source": "source.ofn",
+    "matches_expected": true,
+    "pairs": 1433
+  },
+  {
+    "flag": "KM_BRIDGE_NO_RETAINED_BASE",
+    "source": "nominal-filler.ofn",
+    "matches_expected": false,
+    "pairs": 0
+  },
+  {
+    "flag": "KM_BRIDGE_NO_RETAINED_BASE",
+    "source": "source.ofn",
+    "matches_expected": false,
+    "pairs": 1429
+  },
+  {
+    "flag": "KM_HT_NO_SAT_EXP_CACHE",
+    "source": "nominal-filler.ofn",
+    "matches_expected": false,
+    "pairs": 0
+  },
+  {
+    "flag": "KM_HT_NO_SAT_EXP_CACHE",
+    "source": "source.ofn",
+    "matches_expected": false,
+    "pairs": 1429
+  }
+]

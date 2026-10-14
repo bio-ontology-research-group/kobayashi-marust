@@ -1,6 +1,6 @@
 //! Datatype-definition constraints from OWL 2 Structural Specification 11.2.
 use std::collections::{BTreeMap, BTreeSet};
-use super::{expand, Node};
+use super::{expand, expands_to, Node};
 
 pub(super) fn builtin(name: &str) -> bool {
     if let Some(local) = name.strip_prefix("http://www.w3.org/2001/XMLSchema#") {
@@ -55,6 +55,13 @@ impl Definitions {
     fn observe(&mut self, node: &Node<'_>, prefixes: &BTreeMap<String, String>) {
         let Node::List(head, args) = node else { return };
         if matches!(*head, "Annotation" | "AnnotationAssertion" | "Declaration") { return; }
+        // Only these heads read `logical`; skip collecting it for the rest.
+        if !matches!(*head, "DatatypeRestriction" | "DatatypeDefinition" | "DataPropertyRange"
+            | "DataRangeAtom" | "DataSomeValuesFrom" | "DataAllValuesFrom"
+            | "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality") {
+            for arg in args { self.observe(arg, prefixes); }
+            return;
+        }
         let logical: Vec<_> = args.iter().filter(|n| n.head() != Some("Annotation")).collect();
         match (*head, logical.as_slice()) {
             ("DatatypeRestriction", [Node::Atom(name), ..]) => {
@@ -108,15 +115,28 @@ impl Definitions {
 }
 
 pub(super) fn check(text: &str, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
-    let mut definitions = Definitions::default();
+    let mut checker = Checker::default();
     crate::frontend::parse::for_each_ontology_child(text, |node| {
-        check_top_property(node, prefixes).map_err(crate::frontend::parse::OutOfFragment)?;
-        check_arity(node).map_err(crate::frontend::parse::OutOfFragment)?;
-        super::facets::check(node, prefixes).map_err(crate::frontend::parse::OutOfFragment)?;
-        definitions.observe(node, prefixes);
-        Ok(())
+        checker.observe(node, prefixes).map_err(crate::frontend::parse::OutOfFragment)
     }).map_err(|e| e.0)?;
-    definitions.finish()
+    checker.finish()
+}
+
+/// Streaming form of [`check`]: observe each ontology child in order, then finish.
+#[derive(Default)]
+pub(super) struct Checker(Definitions);
+
+impl Checker {
+    pub(super) fn observe(&mut self, node: &Node<'_>, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
+        check_top_property(node, prefixes)?;
+        check_arity(node)?;
+        super::facets::check(node, prefixes)?;
+        self.0.observe(node, prefixes);
+        Ok(())
+    }
+    pub(super) fn finish(self) -> Result<(), String> {
+        self.0.finish()
+    }
 }
 
 /// Every datatype and data-range constructor in the OWL 2 map is unary.
@@ -138,7 +158,7 @@ fn check_arity(node: &Node<'_>) -> Result<(), String> {
 /// OWLAPI 4.5's profile checker does not report every violating use.
 fn check_top_property(node: &Node<'_>, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
     match node {
-        Node::Atom(name) if expand(name, prefixes) == "http://www.w3.org/2002/07/owl#topDataProperty" =>
+        Node::Atom(name) if expands_to(name, prefixes, "http://www.w3.org/2002/07/owl#topDataProperty") =>
             Err("invalid OWL 2 DL input: owl:topDataProperty may occur in logical axioms only as the superproperty of SubDataPropertyOf".into()),
         Node::List("Declaration" | "Annotation" | "AnnotationAssertion" | "AnnotationPropertyDomain" | "AnnotationPropertyRange" | "SubAnnotationPropertyOf", _) => Ok(()),
         Node::List("SubDataPropertyOf", args) => {

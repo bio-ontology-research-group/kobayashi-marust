@@ -57,7 +57,9 @@ enum SourceBackend {
     PositiveAbox(IncrementalPositiveAboxClassifier),
     Bridge {
         classifier: IncrementalBridgeClassifier,
-        clauses: Vec<JClause>,
+        source_covered: bool,
+        /// The retained public result is exactly the mapping of internal rows.
+        publication_exact: bool,
     },
     TypedHt {
         classifier: IncrementalHtClassifier,
@@ -195,6 +197,7 @@ impl SourceIncrementalClassifier {
         validate_incremental_source(source)?;
         let frontend = normalize_automatic(source)?;
         let route = frontend.route.clone();
+        let source_covered = source_locality_requested() && positive_source_coverage(source, &frontend);
         if let Some((classifier, classification)) = IncrementalMirrorClassifier::new(source)? {
             return Ok(Self {
                 revision: 0,
@@ -323,7 +326,8 @@ impl SourceIncrementalClassifier {
                         classification,
                         backend: SourceBackend::Bridge {
                             classifier,
-                            clauses: Vec::new(),
+                            source_covered,
+                            publication_exact: true,
                         },
                     }
                     .with_live_clauses());
@@ -402,8 +406,9 @@ impl SourceIncrementalClassifier {
         };
         let backend = if let Some(classifier) = seeded_bridge {
             SourceBackend::Bridge {
+                publication_exact: map_incremental_result(&frontend, classifier.result()) == classification,
                 classifier,
-                clauses: frontend.clauses.clone(),
+                source_covered,
             }
         } else if route == "ht_rules" {
             SourceBackend::Rules(IncrementalRulesClassifier::new(
@@ -432,9 +437,6 @@ impl SourceIncrementalClassifier {
         if let SourceBackend::ProxyCard { clauses, .. } = &mut self.backend {
             *clauses = self.frontend.clauses.clone();
         }
-        if let SourceBackend::Bridge { clauses, .. } = &mut self.backend {
-            *clauses = self.frontend.clauses.clone();
-        }
         if let SourceBackend::QuasiOrder { clauses, .. } = &mut self.backend {
             *clauses = self.frontend.clauses.clone();
         }
@@ -443,8 +445,18 @@ impl SourceIncrementalClassifier {
 
     /// Atomically replace the complete flattened source ontology.
     pub fn replace_source(&mut self, source: &str) -> Result<SourceIncrementalReceipt, String> {
+        let timing = std::env::var_os("KM_TIMING").is_some();
+        let mut phase_started = std::time::Instant::now();
+        let mut lap = |phase: &str| {
+            if timing {
+                eprintln!("source incremental phase={phase} elapsed_s={}", phase_started.elapsed().as_secs_f64());
+                phase_started = std::time::Instant::now();
+            }
+        };
         validate_incremental_source(source)?;
+        lap("validate");
         let mut candidate = normalize_automatic(source)?;
+        lap("normalize");
         let route_before = self.route.clone();
         let mut route_after = candidate.route.clone();
 
@@ -554,11 +566,17 @@ impl SourceIncrementalClassifier {
 
         if let SourceBackend::Bridge {
             classifier,
-            clauses,
+            source_covered,
+            publication_exact,
         } = &mut self.backend
         {
+            lap("bridge-entry");
+            // The frontend owns the exact normalized clauses for this revision.
+            // Borrow until publication; failed updates leave this snapshot intact.
+            let clauses = &self.frontend.clauses;
             let old_ids: Vec<ClauseId> = (0..clauses.len() as ClauseId).collect();
             let (removed_ids, additions) = clause_delta(clauses, &old_ids, &candidate.clauses);
+            lap("clause-delta");
             let mut changed: Vec<JClause> = removed_ids
                 .iter()
                 .filter_map(|id| clauses.get(*id as usize).cloned())
@@ -572,9 +590,28 @@ impl SourceIncrementalClassifier {
             if let Some(input) = with_route_environment(&route_after, || {
                 crate::orchestrate::race::prepare_incremental_bridge(&candidate)
             })? {
+                lap("bridge-prepare");
+                let candidate_covered = source_locality_requested()
+                    && positive_source_coverage(source, &candidate);
+                let source_activation = candidate_covered && *source_covered
+                    && self.frontend.iri_map == candidate.iri_map
+                    && self.frontend.rbox == candidate.rbox
+                    && classifier.source_axioms_match(&self.frontend.source_axioms)
+                    && input.source_axioms == candidate.source_axioms;
+                lap("source-coverage");
                 let update = with_route_environment(&route_after, || {
-                    classifier.updated_typed(&candidate.clauses, &changed, kind, input)
+                    let activation = std::env::var_os("KM_INCREMENTAL_CONJUNCTIVE").is_some()
+                        && self.frontend.iri_map == candidate.iri_map
+                        && positive_bridge_activation_profile(&self.frontend)
+                        && positive_bridge_activation_profile(&candidate);
+                    classifier.updated_typed_with_source_module(
+                        &candidate.clauses, &changed, kind, input, activation, source_activation,
+                        |input, subjects| {
+                            if std::env::var_os("KM_INCREMENTAL_SOURCE_MODULE").is_none() { return None; }
+                            classify_positive_source_module(source, &candidate, input, subjects)
+                        })
                 })?;
+                lap("bridge-update");
                 if let Err(error) = &update {
                     if std::env::var_os("KM_TIMING").is_some() {
                         eprintln!("bridge incremental delta declined: {error}");
@@ -582,13 +619,19 @@ impl SourceIncrementalClassifier {
                 }
                 if let Ok((next, stats)) = update {
                     let meaningful = stats.reused_queries > 0;
-                    let classification = map_incremental_result(&candidate, next.result());
+                    if !*publication_exact || !update_mapped_incremental_result(
+                        &self.frontend, &candidate, classifier.result_ref(), next.result_ref(),
+                        &mut self.classification,
+                    ) {
+                        self.classification = map_incremental_result(&candidate, next.result());
+                    }
+                    *publication_exact = true;
                     *classifier = next;
-                    *clauses = candidate.clauses.clone();
+                    *source_covered = candidate_covered;
                     self.revision += 1;
                     self.route = route_after.clone();
                     self.frontend = candidate;
-                    self.classification = classification;
+                    lap("publish");
                     return Ok(SourceIncrementalReceipt {
                         revision: self.revision,
                         route_migrated: route_before != route_after,
@@ -1143,8 +1186,10 @@ impl SourceIncrementalClassifier {
                     self.frontend = candidate;
                     self.classification = classification;
                     self.backend = SourceBackend::Bridge {
+                        publication_exact: true,
                         classifier,
-                        clauses: self.frontend.clauses.clone(),
+                        source_covered: source_locality_requested()
+                            && positive_source_coverage(source, &self.frontend),
                     };
                     return Ok(SourceIncrementalReceipt {
                         revision: self.revision,
@@ -1246,8 +1291,10 @@ impl SourceIncrementalClassifier {
         self.classification = classification;
         self.backend = if let Some(classifier) = seeded_bridge {
             SourceBackend::Bridge {
+                publication_exact: map_incremental_result(&self.frontend, classifier.result()) == self.classification,
                 classifier,
-                clauses: self.frontend.clauses.clone(),
+                source_covered: source_locality_requested()
+                    && positive_source_coverage(source, &self.frontend),
             }
         } else if route_after == "elc" && !self.frontend.abox_inconsistent {
             IncrementalPositiveAboxClassifier::new(&self.frontend)
@@ -1371,6 +1418,192 @@ fn clause_state_is_complete(frontend: &FrontendResult) -> bool {
 
 fn generic_ht_adapter_allowed(route: &str) -> bool {
     route != "ht_bridge"
+}
+
+fn positive_bridge_activation_profile(frontend: &FrontendResult) -> bool {
+    let s = &frontend.profile.source;
+    s.abox_axioms == 0 && s.rule_axioms == 0 && s.distinct_individuals == 0
+        && s.declared_named_individuals == 0 && s.distinct_data_properties == 0
+        && s.declared_data_properties == 0 && s.datatype_constructors == 0
+        && s.min_cardinalities == 0 && s.max_cardinalities == 0 && s.exact_cardinalities == 0
+        && s.functional_role_axioms == 0 && s.inverse_functional_role_axioms == 0
+        && s.unions == 0 && s.complements == 0 && s.universals == 0 && s.has_self == 0
+}
+
+fn source_locality_requested() -> bool {
+    std::env::var_os("KM_INCREMENTAL_SOURCE_LOCALITY").is_some()
+        && !crate::tableau::ht_lean_certification_requested()
+}
+
+/// Independently reparse the admitted source and require exact TBox metadata.
+/// The strict axiom inventory excludes constraints that the source locality
+/// theorem does not cover. Named role domains/ranges are checked separately
+/// through the typed side key; the complete RBox must remain unchanged.
+fn positive_source_coverage(source: &str, frontend: &FrontendResult) -> bool {
+    use crate::frontend::{iri::IriRegistry, normalise::nnf, parse, sexpr::Node, syntax::Axiom};
+    use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
+    if source.len() > 8 * 1024 * 1024 || !positive_bridge_activation_profile(frontend) {
+        return false;
+    }
+    fn expanded(node: &Node<'_>) -> bool {
+        match node {
+            Node::Atom(name) => name.starts_with('<') && name.ends_with('>'),
+            Node::List("Annotation", _) => true,
+            Node::List(_, children) => children.iter().all(expanded),
+        }
+    }
+    let mut admitted = true;
+    let mut registry = IriRegistry::new();
+    let ontology = parse::parse_axioms_observed(&mut registry, source, |node| {
+        let allowed = match node {
+            Node::Atom(name) => name.starts_with('<') && name.ends_with('>'), // ontology/version IRI
+            Node::List("Annotation" | "AnnotationAssertion", _) => true,
+            Node::List("Declaration", args) => matches!(parse::strip_annotations(args).as_slice(),
+                [Node::List("Class" | "ObjectProperty", _)]) && expanded(node),
+            Node::List("SubClassOf" | "EquivalentClasses" | "DisjointClasses"
+                | "SubObjectPropertyOf" | "EquivalentObjectProperties" | "InverseObjectProperties"
+                | "TransitiveObjectProperty" | "SymmetricObjectProperty" | "AsymmetricObjectProperty"
+                | "ReflexiveObjectProperty" | "IrreflexiveObjectProperty" | "DisjointObjectProperties"
+                | "ObjectPropertyDomain" | "ObjectPropertyRange", _) => expanded(node),
+            _ => false,
+        };
+        admitted &= allowed;
+    });
+    let Ok(ontology) = ontology else { return false; };
+    if !admitted { return false; }
+    let expected: Vec<_> = ontology.tbox().filter_map(|axiom| {
+        let (kind,left,right) = match axiom {
+            Axiom::SubClassOf(a,b) => (SourceAxiomKind::SubClass,a,b),
+            Axiom::EquivalentClasses(a,b) => (SourceAxiomKind::Equivalent,a,b),
+            Axiom::DisjointClasses(a,b) => (SourceAxiomKind::Disjoint,a,b),
+            _ => return None,
+        };
+        Some(SourceAxiomMeta { kind,left:nnf(left),right:nnf(right) })
+    }).collect();
+    expected == frontend.source_axioms
+}
+
+/// Rebuild only the active source module. Called after source coverage, fixed
+/// RBox, IRI ownership, prior consistency and typed-side equality are checked.
+/// The complete current TInput remains the retained state for the next update.
+fn classify_positive_source_module(
+    source: &str, frontend: &FrontendResult,
+    input: &crate::orchestrate::cb_to_ht::TInput, subjects: &[usize],
+) -> Option<crate::konclude_ht::bridge::BridgedClassification> {
+    use crate::frontend::{parse, sexpr::Node, syntax::{Concept, Role}};
+    use crate::json_io::SourceAxiomKind;
+    use crate::konclude_ht::bridge::{bridged_classify_queries, BridgedClassification};
+    if subjects.is_empty() || crate::tableau::ht_lean_certification_requested() { return None; }
+    let started = std::time::Instant::now();
+    let queries = subjects.iter().map(|id| input.concepts.get(*id).cloned())
+        .collect::<Option<Vec<_>>>()?;
+    let globals = input.role_domains.iter().chain(&input.role_ranges)
+        .map(|(_,id)| input.concepts.get(*id).cloned()).collect::<Option<Vec<_>>>()?;
+    let selected = crate::incremental_activation::source_module_indices(&input.source_axioms, &queries, &globals)?;
+    if selected.len() >= input.source_axioms.len() { return None; }
+    fn iri(out: &mut String, name: &str, map: &BTreeMap<String,String>) -> Option<()> {
+        out.push('<'); out.push_str(map.get(name)?); out.push('>'); Some(())
+    }
+    fn role(out: &mut String, value: &Role, map: &BTreeMap<String,String>) -> Option<()> {
+        match value {
+            Role::Name(name) => iri(out,name,map)?,
+            Role::Inverse(name) => {
+                out.push_str("ObjectInverseOf("); iri(out,name,map)?; out.push(')');
+            },
+            Role::Universal => out.push_str("<http://www.w3.org/2002/07/owl#topObjectProperty>"),
+        }
+        Some(())
+    }
+    fn concept(out: &mut String, value: &Concept, map: &BTreeMap<String,String>) -> Option<()> {
+        match value {
+            Concept::Name(name) => iri(out,name,map)?,
+            Concept::Top => out.push_str("<http://www.w3.org/2002/07/owl#Thing>"),
+            Concept::Bottom => out.push_str("<http://www.w3.org/2002/07/owl#Nothing>"),
+            Concept::And(children) => {
+                if children.is_empty() { out.push_str("<http://www.w3.org/2002/07/owl#Thing>"); }
+                else if children.len() == 1 { concept(out,children.first()?,map)?; }
+                else {
+                    out.push_str("ObjectIntersectionOf(");
+                    for child in children { concept(out,child,map)?; out.push(' '); }
+                    out.push(')');
+                }
+            },
+            Concept::Exists(r,filler) => {
+                out.push_str("ObjectSomeValuesFrom("); role(out,r,map)?; out.push(' ');
+                concept(out,filler,map)?; out.push(')');
+            },
+            _ => return None,
+        }
+        Some(())
+    }
+    fn node(out: &mut String, value: &Node<'_>) {
+        match value {
+            Node::Atom(atom) => out.push_str(atom),
+            Node::List(head,children) => {
+                out.push_str(head); out.push('(');
+                for child in children { node(out,child); out.push(' '); }
+                out.push(')');
+            },
+        }
+    }
+    let mut text = String::from("Ontology(\n");
+    parse::for_each_ontology_child(source, |value| {
+        // Annotations have no logical effect. Removing them also avoids
+        // carrying abbreviated annotation IRIs without their prefix prologue.
+        if !matches!(value, Node::List("SubClassOf" | "EquivalentClasses" | "DisjointClasses"
+            | "Annotation" | "AnnotationAssertion", _)) {
+            node(&mut text,value); text.push('\n');
+        }
+        Ok(())
+    }).ok()?;
+    // Retain the complete public target universe, including implicit classes.
+    for &id in &input.queries {
+        text.push_str("Declaration(Class(");
+        iri(&mut text,input.concepts.get(id)?,&frontend.iri_map)?;
+        text.push_str("))\n");
+    }
+    for &index in &selected {
+        let ax = &input.source_axioms[index];
+        text.push_str(match ax.kind { SourceAxiomKind::SubClass => "SubClassOf(",
+            SourceAxiomKind::Equivalent => "EquivalentClasses(", SourceAxiomKind::Disjoint => "DisjointClasses(" });
+        concept(&mut text,&ax.left,&frontend.iri_map)?; text.push(' ');
+        concept(&mut text,&ax.right,&frontend.iri_map)?; text.push_str(")\n");
+    }
+    text.push(')');
+    let module_frontend = normalize_selected(&text,"ht_bridge").ok()?;
+    let module = crate::orchestrate::race::prepare_incremental_bridge(&module_frontend)?;
+    let public_ids = |tin: &crate::orchestrate::cb_to_ht::TInput, f: &FrontendResult| {
+        tin.queries.iter().map(|&id| Some((f.iri_map.get(tin.concepts.get(id)?)?.clone(), id)))
+            .collect::<Option<BTreeMap<_,_>>>()
+    };
+    let original_ids = public_ids(input,frontend)?;
+    let module_ids = public_ids(&module,&module_frontend)?;
+    if original_ids.len() != input.queries.len() || module_ids.len() != module.queries.len()
+        || !original_ids.keys().eq(module_ids.keys()) { return None; }
+    // Definer numbering and collision-shortened names may change. Cross the
+    // module boundary exclusively through full public IRIs.
+    let selected_ids = subjects.iter().map(|id| {
+        let iri = frontend.iri_map.get(input.concepts.get(*id)?)?;
+        module_ids.get(iri).copied()
+    }).collect::<Option<Vec<_>>>()?;
+    let id_map: HashMap<usize,usize> = module_ids.iter()
+        .map(|(iri,id)| (*id,original_ids[iri])).collect();
+    let answer = bridged_classify_queries(&module,&selected_ids)?;
+    let wanted: BTreeSet<_> = subjects.iter().copied().collect();
+    let result = BridgedClassification {
+        consistent: answer.consistent,
+        unsatisfiable: answer.unsatisfiable.into_iter().filter_map(|id| id_map.get(&id).copied())
+            .filter(|id| wanted.contains(id)).collect(),
+        subsumptions: answer.subsumptions.into_iter().filter_map(|(a,b)| {
+            let a = *id_map.get(&a)?; let b = *id_map.get(&b)?;
+            wanted.contains(&a).then_some((a,b))
+        }).collect(),
+    };
+    if std::env::var_os("KM_TIMING").is_some() {
+        eprintln!("bridge incremental module queries={} axioms={}/{} total_s={}",
+            subjects.len(), selected.len(), input.source_axioms.len(), started.elapsed().as_secs_f64());
+    }
+    Some(result)
 }
 
 fn validate_incremental_source(source: &str) -> Result<(), String> {
@@ -1592,6 +1825,56 @@ fn map_incremental_result(
     }
 }
 
+/// Update a public taxonomy whose exact correspondence with `old` was checked
+/// at seeding (or established by a previous full mapping). All mapping inputs
+/// must remain identical. Declining leaves the public result untouched.
+fn update_mapped_incremental_result(
+    before: &FrontendResult, after: &FrontendResult,
+    old: &crate::incremental::IncrementalResult, new: &crate::incremental::IncrementalResult,
+    public: &mut Classification,
+) -> bool {
+    if !public.consistent || old.inconsistent || new.inconsistent
+        || public.dropped != 0 || old.dropped != 0 || new.dropped != 0
+        || !old.unresolved.is_empty() || !new.unresolved.is_empty()
+        || before.iri_map != after.iri_map || before.named != after.named
+        || before.asserted_classes != after.asserted_classes
+        || before.abox_inconsistent != after.abox_inconsistent {
+        return false;
+    }
+    let mapped = |name: &str| after.iri_map.get(name).cloned().unwrap_or_else(|| name.to_owned());
+    let mut changed = std::collections::HashSet::new();
+    for (subject, supers) in &old.subsumptions {
+        if new.subsumptions.get(subject) != Some(supers) { changed.insert(mapped(subject)); }
+    }
+    for subject in new.subsumptions.keys() {
+        if !old.subsumptions.contains_key(subject) { changed.insert(mapped(subject)); }
+    }
+    if changed.is_empty() { return true; }
+    // Recompute every row with a changed public identity, including aliases.
+    // This avoids assuming the internal-to-public map is injective.
+    let rows = new.subsumptions.iter().filter(|(subject, _)| {
+        let name = after.iri_map.get(subject.as_str()).map(String::as_str).unwrap_or(subject);
+        changed.contains(name)
+    }).map(|(subject, supers)| (subject.clone(), supers.clone())).collect();
+    let delta = map_incremental_result(after, crate::incremental::IncrementalResult {
+        subsumptions: rows, inconsistent: false, dropped: 0, unresolved: Vec::new(),
+    });
+    // A newly unsatisfiable asserted individual class makes the entire result
+    // inconsistent, so retain the established full-publication path for it.
+    if !delta.consistent { return false; }
+    public.subsumptions.retain(|pair| !changed.contains(&pair[0]));
+    public.unsatisfiable.retain(|name| !changed.contains(name));
+    public.subsumptions.extend(delta.subsumptions);
+    public.subsumptions.sort_unstable(); public.subsumptions.dedup();
+    public.unsatisfiable.extend(delta.unsatisfiable);
+    public.unsatisfiable.sort_unstable(); public.unsatisfiable.dedup();
+    if std::env::var_os("KM_TIMING").is_some() {
+        eprintln!("source incremental publication changed_public_rows={} total_rows={}",
+            changed.len(), new.subsumptions.len());
+    }
+    true
+}
+
 fn map_el_result(frontend: &FrontendResult, result: crate::elcomplete::ElResult) -> Classification {
     map_incremental_result(
         frontend,
@@ -1752,6 +2035,231 @@ mod tests {
     use crate::orchestrate::Classification;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn publication_delta_matches_full_mapping_across_row_edits_and_aliases() {
+        let _lock = lock_environment();
+        let mut frontend = super::normalize_selected(
+            "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)))",
+            "ht_bridge",
+        ).unwrap();
+        frontend.named = vec!["A".into(), "Alias".into(), "B".into()];
+        frontend.iri_map = [("A".into(), "urn:A".into()),
+            ("Alias".into(), "urn:A".into()), ("B".into(), "urn:B".into())]
+            .into_iter().collect();
+        let result = |mask: usize| {
+            let mut rows = std::collections::BTreeMap::new();
+            for (bit, subject, target) in [(0, "A", "B"), (1, "Alias", "B"),
+                (2, "A", "owl:Nothing"), (3, "B", "A"), (4, "__hidden", "B")] {
+                if mask & (1 << bit) != 0 {
+                    rows.entry(subject.to_owned()).or_insert_with(Vec::new).push(target.to_owned());
+                }
+            }
+            crate::incremental::IncrementalResult {
+                subsumptions: rows, inconsistent: false, dropped: 0, unresolved: vec![],
+            }
+        };
+        for old_mask in 0..32 {
+            for new_mask in 0..32 {
+                let old = result(old_mask);
+                let new = result(new_mask);
+                let mut public = map_incremental_result(&frontend, old.clone());
+                assert!(super::update_mapped_incremental_result(
+                    &frontend, &frontend, &old, &new, &mut public));
+                assert_eq!(public, map_incremental_result(&frontend, new),
+                    "old={old_mask} new={new_mask}");
+            }
+        }
+    }
+
+    #[test]
+    fn publication_delta_declines_changed_mapping_and_inexact_results_without_mutation() {
+        let _lock = lock_environment();
+        let mut frontend = super::normalize_selected(
+            "Ontology(Declaration(Class(<urn:A>)))", "ht_bridge").unwrap();
+        frontend.named = vec!["A".into()];
+        frontend.iri_map = [("A".into(), "urn:A".into())].into_iter().collect();
+        let old = crate::incremental::IncrementalResult {
+            subsumptions: [("A".into(), vec![])].into_iter().collect(),
+            inconsistent: false, dropped: 0, unresolved: vec![],
+        };
+        for variant in 0..8 {
+            let mut after = super::normalize_selected(
+                "Ontology(Declaration(Class(<urn:A>)))", "ht_bridge").unwrap();
+            after.named = frontend.named.clone();
+            after.iri_map = frontend.iri_map.clone();
+            let mut new = old.clone();
+            match variant {
+                0 => { after.iri_map.insert("A".into(), "urn:changed".into()); },
+                1 => after.named.push("B".into()),
+                2 => after.asserted_classes.push("A".into()),
+                3 => after.abox_inconsistent = true,
+                4 => new.inconsistent = true,
+                5 => new.dropped = 1,
+                6 => new.unresolved.push("A".into()),
+                7 => { frontend.asserted_classes.push("A".into());
+                    after.asserted_classes = frontend.asserted_classes.clone();
+                    new.subsumptions.insert("A".into(), vec!["owl:Nothing".into()]); },
+                _ => unreachable!(),
+            }
+            let initial = map_incremental_result(&frontend, old.clone());
+            let mut public = initial.clone();
+            assert!(!super::update_mapped_incremental_result(
+                &frontend, &after, &old, &new, &mut public), "variant={variant}");
+            assert_eq!(public, initial);
+            if variant == 7 { assert!(!map_incremental_result(&after, new).consistent); }
+        }
+    }
+
+    #[test]
+    fn source_locality_coverage_rejects_missing_metadata_and_hidden_constraints() {
+        let _lock=lock_environment();
+        let source="Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>))
+            Declaration(ObjectProperty(<urn:r>)) SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> <urn:B>)))";
+        let mut frontend=super::normalize_selected(source,"ht_bridge").unwrap();
+        assert!(super::positive_source_coverage(source,&frontend));
+        let extra=source.replacen("Ontology(","Ontology(HasKey(<urn:A> (<urn:r>) ()) ",1);
+        assert!(!super::positive_source_coverage(&extra,&frontend));
+        let prefixed=source.replace("<urn:A>",":A");
+        assert!(!super::positive_source_coverage(&prefixed,&frontend));
+        frontend.source_axioms.pop();
+        assert!(!super::positive_source_coverage(source,&frontend));
+    }
+
+    #[test]
+    fn source_locality_reuses_rows_across_definer_churn_with_exact_fresh_answers() {
+        let _lock=lock_environment();
+        let declarations="Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>))
+            Declaration(Class(<urn:C>)) Declaration(Class(<urn:X>)) Declaration(Class(<urn:Y>))
+            Declaration(ObjectProperty(<urn:r>)) Declaration(ObjectProperty(<urn:s>))
+            InverseObjectProperties(<urn:r> <urn:s>)";
+        let axioms="SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> <urn:B>))
+            SubClassOf(ObjectSomeValuesFrom(<urn:r> <urn:B>) <urn:C>) SubClassOf(<urn:X> <urn:Y>)";
+        let old=format!("Ontology({declarations} {axioms})");
+        let new=format!("Ontology({declarations} SubClassOf(<urn:X> ObjectSomeValuesFrom(<urn:s> <urn:Y>)) {axioms})");
+        super::with_route_environment("ht_bridge",|| {
+            let before=super::normalize_selected(&old,"ht_bridge").unwrap();
+            let after=super::normalize_selected(&new,"ht_bridge").unwrap();
+            assert!(super::positive_source_coverage(&old,&before));
+            assert!(super::positive_source_coverage(&new,&after));
+            assert_eq!(before.rbox,after.rbox);
+            assert_eq!(before.iri_map,after.iri_map);
+            assert_ne!(before.definers,after.definers);
+            let prepare=|f:&crate::frontend::FrontendResult|
+                crate::orchestrate::race::prepare_incremental_bridge(f).unwrap();
+            let classifier=crate::incremental_ht::IncrementalBridgeClassifier::new_typed(
+                &before.clauses,prepare(&before)).unwrap();
+            let ids=(0..before.clauses.len() as u64).collect::<Vec<_>>();
+            let (removed,added)=clause_delta(&before.clauses,&ids,&after.clauses);
+            let mut changed:Vec<_>=removed.iter().map(|id|before.clauses[*id as usize].clone()).collect();
+            changed.extend(added);
+            let (updated,stats)=classifier.updated_typed_with_source_activation(
+                &after.clauses,&changed,crate::incremental_ht::HtChangeKind::Replacement,
+                prepare(&after),false,true).unwrap();
+            let fresh=crate::incremental_ht::IncrementalBridgeClassifier::new_typed(
+                &after.clauses,prepare(&after)).unwrap();
+            assert!(stats.reused_queries>0);
+            assert!(stats.rebuilt_queries>0);
+            let actual=map_incremental_result(&after,updated.result());
+            let expected=map_incremental_result(&after,fresh.result());
+            assert_eq!(actual.subsumptions,expected.subsumptions);
+            assert_eq!(actual.unsatisfiable,expected.unsatisfiable);
+            assert_eq!(actual.consistent,expected.consistent);
+            let mut module_used = false;
+            let (with_module, _) = classifier.updated_typed_with_source_module(
+                &after.clauses,&changed,crate::incremental_ht::HtChangeKind::Replacement,
+                prepare(&after),false,true, |input, subjects| {
+                    let result = super::classify_positive_source_module(&new,&after,input,subjects);
+                    assert!(result.is_some(), "small exact module should classify");
+                    module_used = true;
+                    result
+                }).unwrap();
+            assert!(module_used);
+            let actual = map_incremental_result(&after,with_module.result());
+            assert_eq!(actual.subsumptions,expected.subsumptions);
+            assert_eq!(actual.unsatisfiable,expected.unsatisfiable);
+            assert_eq!(actual.consistent,expected.consistent);
+            classifier.updated_typed_with_source_module(
+                &after.clauses,&changed,crate::incremental_ht::HtChangeKind::Replacement,
+                prepare(&after),false,false, |_, _| panic!("module called without source coverage")).unwrap();
+        }).unwrap();
+    }
+
+    #[test]
+    fn source_module_preserves_role_background_and_full_iri_collisions() {
+        let _lock=lock_environment();
+        let declarations = ["urn:A","other:A","urn:B","urn:C","urn:D","urn:E","urn:U","urn:V"]
+            .iter().map(|iri| format!("Declaration(Class(<{iri}>))")).collect::<Vec<_>>().join(" ");
+        let source=format!("Ontology({declarations}
+            Declaration(ObjectProperty(<urn:r>)) Declaration(ObjectProperty(<urn:s>))
+            Declaration(ObjectProperty(<urn:t>)) Declaration(ObjectProperty(<urn:ri>))
+            InverseObjectProperties(<urn:r> <urn:ri>)
+            SubObjectPropertyOf(ObjectPropertyChain(<urn:r> <urn:s>) <urn:t>)
+            ObjectPropertyDomain(<urn:r> <urn:D>) ObjectPropertyRange(<urn:r> <urn:B>)
+            SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> <urn:B>))
+            SubClassOf(<urn:B> ObjectSomeValuesFrom(<urn:s> <urn:C>))
+            SubClassOf(ObjectSomeValuesFrom(<urn:t> <urn:C>) <urn:E>)
+            SubClassOf(<other:A> <urn:U>) SubClassOf(<urn:U> <urn:V>))");
+        super::with_route_environment("ht_bridge",|| {
+            let frontend=super::normalize_selected(&source,"ht_bridge").unwrap();
+            assert!(super::positive_source_coverage(&source,&frontend));
+            let input=crate::orchestrate::race::prepare_incremental_bridge(&frontend).unwrap();
+            let subject=*input.queries.iter().find(|id| frontend.iri_map.get(&input.concepts[**id])
+                .is_some_and(|iri| iri=="urn:A")).unwrap();
+            let partial=super::classify_positive_source_module(&source,&frontend,&input,&[subject]).unwrap();
+            let fresh=crate::konclude_ht::bridge::bridged_classify_queries(&input,&[subject]).unwrap();
+            let public:std::collections::HashSet<_>=input.queries.iter().copied().collect();
+            let signature=|answer:crate::konclude_ht::bridge::BridgedClassification| {
+                (answer.consistent,
+                 answer.unsatisfiable.into_iter().filter(|id| *id==subject).collect::<std::collections::BTreeSet<_>>(),
+                 answer.subsumptions.into_iter().filter(|(a,b)| *a==subject && public.contains(b))
+                    .collect::<std::collections::BTreeSet<_>>())
+            };
+            assert_eq!(signature(partial),signature(fresh));
+        }).unwrap();
+    }
+
+    #[test]
+    fn partial_bridge_update_keeps_unaffected_role_chain_entailments() {
+        let _lock = lock_environment();
+        let axioms = "Declaration(Class(<urn:test:A>)) Declaration(Class(<urn:test:B>)) Declaration(Class(<urn:test:C>))
+            Declaration(Class(<urn:test:X>)) Declaration(Class(<urn:test:Y>))
+            Declaration(ObjectProperty(<urn:test:r>)) Declaration(ObjectProperty(<urn:test:s>)) Declaration(ObjectProperty(<urn:test:t>))
+            InverseObjectProperties(<urn:test:s> <urn:test:t>)
+            SubObjectPropertyOf(ObjectPropertyChain(<urn:test:r> <urn:test:r>) <urn:test:s>)
+            SubClassOf(<urn:test:A> ObjectSomeValuesFrom(<urn:test:r> ObjectSomeValuesFrom(<urn:test:r> <urn:test:B>)))
+            SubClassOf(ObjectSomeValuesFrom(<urn:test:s> <urn:test:B>) <urn:test:C>)
+            SubClassOf(<urn:test:X> <urn:test:Y>)";
+        let old = format!("Ontology({axioms})");
+        let new = format!("Ontology({axioms} SubClassOf(<urn:test:X> <urn:test:C>))");
+        super::with_route_environment("ht_bridge", || {
+            let before = super::normalize_selected(&old, "ht_bridge").unwrap();
+            let after = super::normalize_selected(&new, "ht_bridge").unwrap();
+            assert!(super::positive_bridge_activation_profile(&before));
+            assert!(super::positive_bridge_activation_profile(&after));
+            let prepare = |f: &crate::frontend::FrontendResult|
+                crate::orchestrate::race::prepare_incremental_bridge(f).unwrap();
+            let classifier = crate::incremental_ht::IncrementalBridgeClassifier::new_typed(
+                &before.clauses, prepare(&before)).unwrap();
+            let ids = (0..before.clauses.len() as u64).collect::<Vec<_>>();
+            let (removed, added) = clause_delta(&before.clauses, &ids, &after.clauses);
+            let mut changed: Vec<_> = removed.iter()
+                .map(|id| before.clauses[*id as usize].clone()).collect();
+            changed.extend(added);
+            let (updated, stats) = classifier.updated_typed_with_activation(
+                &after.clauses, &changed, crate::incremental_ht::HtChangeKind::Replacement,
+                prepare(&after), true).unwrap();
+            let fresh = crate::incremental_ht::IncrementalBridgeClassifier::new_typed(
+                &after.clauses, prepare(&after)).unwrap();
+            let actual = map_incremental_result(&after, updated.result());
+            let expected = map_incremental_result(&after, fresh.result());
+            assert!(stats.reused_queries > 0);
+            assert!(expected.subsumptions.contains(&["urn:test:A".into(), "urn:test:C".into()]));
+            assert_eq!(actual.subsumptions, expected.subsumptions);
+            assert_eq!(actual.unsatisfiable, expected.unsatisfiable);
+            assert_eq!(actual.consistent, expected.consistent);
+        }).unwrap();
+    }
 
     fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK
@@ -2225,25 +2733,19 @@ Ontology(
     }
 
     #[test]
-    fn automatic_general_ht_route_retains_clause_only_nominal_probes() {
+    fn automatic_route_never_selects_uncertified_general_ht() {
+        // `ht_general` is a measurement arm without a certificate; automatic
+        // incremental sessions keep a certified nominal route and still agree
+        // with fresh classification after source edits.
         let _environment = lock_environment();
         let before = compact_general_ht_source(false);
         let after = compact_general_ht_source(true);
         let mut session = SourceIncrementalClassifier::new(&before).unwrap();
-        assert_eq!(session.route(), "ht_general");
-        assert!(session.retained_backend());
-
-        let addition = session.replace_source(&after).unwrap();
-        assert_eq!(addition.strategy, ChangeStrategy::HtDelta);
-        assert!(addition.meaningful_incremental_update);
-        assert!(addition.retained_states > 0);
+        assert_ne!(session.route(), "ht_general");
+        session.replace_source(&after).unwrap();
         let fresh = SourceIncrementalClassifier::new(&after).unwrap();
         assert_eq!(session.classification(), fresh.classification());
-
-        let removal = session.replace_source(&before).unwrap();
-        assert_eq!(removal.strategy, ChangeStrategy::HtDelta);
-        assert!(removal.meaningful_incremental_update);
-        assert!(removal.retained_states > 0);
+        session.replace_source(&before).unwrap();
         let restored = SourceIncrementalClassifier::new(&before).unwrap();
         assert_eq!(session.classification(), restored.classification());
     }

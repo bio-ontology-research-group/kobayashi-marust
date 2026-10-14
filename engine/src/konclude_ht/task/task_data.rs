@@ -15,7 +15,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::satisfiable_task::SatTaskId;
@@ -92,9 +92,9 @@ impl TaskData {
         TaskData::IncrementalConsistence {
             det_sat_task,
             graph_cached_sat_task,
-            indirectly_changed_node_set: HashSet::new(),
-            deterministically_changed_node_set: HashSet::new(),
-            changed_compatible_node_set: HashSet::new(),
+            indirectly_changed_node_set: HashSet::default(),
+            deterministically_changed_node_set: HashSet::default(),
+            changed_compatible_node_set: HashSet::default(),
             prev_ontology,
             prev_cons_data,
             added_node_count: 0,

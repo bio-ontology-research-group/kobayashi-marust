@@ -92,16 +92,36 @@ pub struct FxBuild {
     seed: u64,
 }
 
-impl Default for FxBuild {
-    fn default() -> Self {
-        // RandomState obtains per-instance secret keys from the standard
-        // library. Hashing one fixed word once transfers that entropy into the
-        // cheaper per-key mixer used by this table.
+thread_local! {
+    // Per-thread stream of table seeds, keyed once from the standard
+    // library's per-process random keys. Hot code creates many short-lived
+    // tables (the HT worker builds one per rule application in places);
+    // seeding each one through RandomState plus a SipHash round cost several
+    // percent of the worker. A Weyl sequence finalised with SplitMix64 still
+    // gives every table an unpredictable, distinct seed.
+    static SEED_STREAM: std::cell::Cell<u64> = std::cell::Cell::new({
         let mut random = RandomState::new().build_hasher();
         random.write_u64(SEED);
-        Self {
-            seed: random.finish(),
-        }
+        random.finish()
+    });
+}
+
+#[inline]
+fn splitmix64(mut z: u64) -> u64 {
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+impl Default for FxBuild {
+    #[inline]
+    fn default() -> Self {
+        let seed = SEED_STREAM.with(|stream| {
+            let next = stream.get().wrapping_add(0x9E37_79B9_7F4A_7C15);
+            stream.set(next);
+            splitmix64(next)
+        });
+        Self { seed }
     }
 }
 

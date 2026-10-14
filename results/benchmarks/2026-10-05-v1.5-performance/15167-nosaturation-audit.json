@@ -1,0 +1,48 @@
+{
+  "diagnostic_only": true,
+  "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+  "candidate_sha256": "2e3bc7ca6578842d0fbf642a2fee0a9432eaaa2166552c4a1c9d0ccaed015824",
+  "comparisons": {
+    "konclude": {
+      "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+      "left_raw_sha256": "d12b719a72d4ff3d270bbf6448a67bb3261c0574fc0e6eb74c194b96f130bc53",
+      "right_raw_sha256": "6aacdc36b28e2b6777466f1dd6d1828219c7544c25cc3ab6f1f9119831cc512d",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "hermit": {
+      "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+      "left_raw_sha256": "d12b719a72d4ff3d270bbf6448a67bb3261c0574fc0e6eb74c194b96f130bc53",
+      "right_raw_sha256": "3b000c338097b67dc006a3d6cc90fde83015cb2eae11453a6461b42a00d52e54",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "openllet": {
+      "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+      "left_raw_sha256": "d12b719a72d4ff3d270bbf6448a67bb3261c0574fc0e6eb74c194b96f130bc53",
+      "right_raw_sha256": "6acbb8c2021d456bb86c07e6400e47b562b9e9f897957f38f5c3385abd64acc6",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    },
+    "jfact": {
+      "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+      "left_raw_sha256": "d12b719a72d4ff3d270bbf6448a67bb3261c0574fc0e6eb74c194b96f130bc53",
+      "right_raw_sha256": "f860ad234e4ba71697412a5243cfabe7bb058c71f2430d57328c4d8758400ccf",
+      "left_consistency": true,
+      "right_consistency": true,
+      "status": "agreement",
+      "agreement": true,
+      "scope": "consistency_and_taxonomy"
+    }
+  },
+  "scope": "Guarded manual bridge route with optional saturation disabled. Not an automatic-route or full-corpus result."
+}

@@ -1,0 +1,301 @@
+{
+  "ontology": "ore_ont_10174",
+  "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+  "reference_audit_sha256": "46e61d66b46d624557e4e917b12ac2b5b15463072806f9ce527488d7fa488ead",
+  "outcomes": [
+    {
+      "version": "v144",
+      "repetition": 0,
+      "measurement_status": "executed_unvalidated",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "d86797a8687be380e3e06980a1d6c0bcfbb69fe1f7edc5b04c0a9c1d82d42b6e",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f19334def54502ef6cbe198a843c1f9f57669285357b9cd2e27e64cd7de942f6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "ece00701ba090d99cc104d308978273b24c15fcc227c9ed3739a2740408bead8",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f2ef96dae89b3a6d199e4778397482237837df5f572cd9ea084a4996d7eda56c",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "verified_solved": true,
+      "audit_status": "compared"
+    },
+    {
+      "version": "v144",
+      "repetition": 1,
+      "measurement_status": "executed_unvalidated",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "d86797a8687be380e3e06980a1d6c0bcfbb69fe1f7edc5b04c0a9c1d82d42b6e",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f19334def54502ef6cbe198a843c1f9f57669285357b9cd2e27e64cd7de942f6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "ece00701ba090d99cc104d308978273b24c15fcc227c9ed3739a2740408bead8",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f2ef96dae89b3a6d199e4778397482237837df5f572cd9ea084a4996d7eda56c",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "verified_solved": true,
+      "audit_status": "compared"
+    },
+    {
+      "version": "v144",
+      "repetition": 2,
+      "measurement_status": "executed_unvalidated",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "d86797a8687be380e3e06980a1d6c0bcfbb69fe1f7edc5b04c0a9c1d82d42b6e",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f19334def54502ef6cbe198a843c1f9f57669285357b9cd2e27e64cd7de942f6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "ece00701ba090d99cc104d308978273b24c15fcc227c9ed3739a2740408bead8",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f2ef96dae89b3a6d199e4778397482237837df5f572cd9ea084a4996d7eda56c",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "verified_solved": true,
+      "audit_status": "compared"
+    },
+    {
+      "version": "v145",
+      "repetition": 0,
+      "measurement_status": "executed_unvalidated",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "d86797a8687be380e3e06980a1d6c0bcfbb69fe1f7edc5b04c0a9c1d82d42b6e",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f19334def54502ef6cbe198a843c1f9f57669285357b9cd2e27e64cd7de942f6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "ece00701ba090d99cc104d308978273b24c15fcc227c9ed3739a2740408bead8",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f2ef96dae89b3a6d199e4778397482237837df5f572cd9ea084a4996d7eda56c",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "verified_solved": true,
+      "audit_status": "compared"
+    },
+    {
+      "version": "v145",
+      "repetition": 1,
+      "measurement_status": "executed_unvalidated",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "d86797a8687be380e3e06980a1d6c0bcfbb69fe1f7edc5b04c0a9c1d82d42b6e",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f19334def54502ef6cbe198a843c1f9f57669285357b9cd2e27e64cd7de942f6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "ece00701ba090d99cc104d308978273b24c15fcc227c9ed3739a2740408bead8",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f2ef96dae89b3a6d199e4778397482237837df5f572cd9ea084a4996d7eda56c",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "verified_solved": true,
+      "audit_status": "compared"
+    },
+    {
+      "version": "v145",
+      "repetition": 2,
+      "measurement_status": "executed_unvalidated",
+      "comparisons": {
+        "konclude": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "d86797a8687be380e3e06980a1d6c0bcfbb69fe1f7edc5b04c0a9c1d82d42b6e",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "hermit": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f19334def54502ef6cbe198a843c1f9f57669285357b9cd2e27e64cd7de942f6",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "openllet": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "ece00701ba090d99cc104d308978273b24c15fcc227c9ed3739a2740408bead8",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        },
+        "jfact": {
+          "source_sha256": "3091d5e5a0514b0db7d00884255cd4c79d4beaa484150ddf0a9923be204da020",
+          "left_raw_sha256": "0efbed0e32c8f438a70743bd24fe6ebb1e0b3e823c76c5fe31d2435ce3941c59",
+          "right_raw_sha256": "f2ef96dae89b3a6d199e4778397482237837df5f572cd9ea084a4996d7eda56c",
+          "left_consistency": true,
+          "right_consistency": true,
+          "status": "agreement",
+          "agreement": true,
+          "scope": "consistency_and_taxonomy"
+        }
+      },
+      "verified_solved": true,
+      "audit_status": "compared"
+    }
+  ]
+}

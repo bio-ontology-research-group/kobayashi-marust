@@ -28,7 +28,8 @@
 //!     hierarchy, `Eq`, body `Exist`, nominals, card_defs, chains) counts as
 //!     unsupported in v1.
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::classifier::{
     OptimizedKPSetClassSubsumptionClassifierThread, RecordingClassificationMessageDataObserver,
@@ -508,7 +509,7 @@ fn datatype_effects_covered_by_unit_bottom(tin: &TInput, source_mode: bool) -> b
         }
     }
 
-    let certified: std::collections::HashSet<usize> = tin
+    let certified: crate::fxhash::FxHashSet<usize> = tin
         .clauses
         .iter()
         .filter_map(
@@ -518,7 +519,7 @@ fn datatype_effects_covered_by_unit_bottom(tin: &TInput, source_mode: bool) -> b
             },
         )
         .collect();
-    let datatype_roots: std::collections::HashSet<usize> = datatype_concepts
+    let datatype_roots: crate::fxhash::FxHashSet<usize> = datatype_concepts
         .into_iter()
         .map(|concept| components.find(concept))
         .collect();
@@ -526,7 +527,7 @@ fn datatype_effects_covered_by_unit_bottom(tin: &TInput, source_mode: bool) -> b
         return false;
     }
 
-    let query_set: std::collections::HashSet<usize> =
+    let query_set: crate::fxhash::FxHashSet<usize> =
         tin.queries.iter().map(|&query| query as usize).collect();
     for (concept, name) in tin.concepts.iter().enumerate() {
         if datatype_roots.contains(&components.find(concept))
@@ -561,7 +562,7 @@ fn source_concept_contains_internal_datatype(concept: &SourceConcept) -> bool {
 
 fn source_concept_mentions_roles(
     concept: &SourceConcept,
-    roles: &std::collections::HashSet<&str>,
+    roles: &crate::fxhash::FxHashSet<&str>,
 ) -> bool {
     match concept {
         SourceConcept::Not(operand) => source_concept_mentions_roles(operand, roles),
@@ -678,9 +679,9 @@ fn datatype_singleton_clause(clause: &HtClause, concept: usize) -> bool {
 
 #[derive(Default)]
 struct DatatypeRelationIndex {
-    singletons: std::collections::HashSet<usize>,
-    inclusions: std::collections::HashSet<(usize, usize)>,
-    disjoint: std::collections::HashSet<(usize, usize)>,
+    singletons: crate::fxhash::FxHashSet<usize>,
+    inclusions: crate::fxhash::FxHashSet<(usize, usize)>,
+    disjoint: crate::fxhash::FxHashSet<(usize, usize)>,
 }
 
 impl DatatypeRelationIndex {
@@ -772,9 +773,12 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
             (false, false) => {
                 crate::frontend::datatypes::bridge_exact_atomic_subsumed(sub_name, sup_name)
                     == Some(true)
+                    || crate::frontend::datatypes::bridge_exact_integral_cover(sub_name, &[sup_name])
             }
+            // A one-value range (e.g. `[0,0]`) is covered by its value cell.
             (false, true) => crate::frontend::datatypes::bridge_exact_atomic_subsumed(sub_name, sup_name)
-                == Some(true),
+                == Some(true)
+                || crate::frontend::datatypes::bridge_exact_integral_cover(sub_name, &[sup_name]),
         };
     }
     if clause.head.is_empty() && clause.body.len() == 2 {
@@ -822,16 +826,26 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
         let Some(range_name) = tin.concepts.get(*c) else {
             return false;
         };
-        if crate::frontend::datatypes::bridge_exact_finite_values(range_name).is_some() {
+        let concept_heads: Option<Vec<&str>> = head.iter().map(|atom| match atom {
+            HAtom::Concept { neg: false, c, t: ht } if ht == t =>
+                tin.concepts.get(*c).map(String::as_str),
+            _ => None,
+        }).collect();
+        if concept_heads.as_ref().is_some_and(|heads|
+            crate::frontend::datatypes::bridge_exact_integral_cover(range_name, heads)
+                || crate::frontend::datatypes::bridge_exact_union_cover(range_name, heads)) {
+            return true;
+        }
+        if crate::frontend::datatypes::bridge_tbox_finite_values(range_name).is_some() {
             let values: Option<Vec<&str>> = head.iter().map(|atom| match atom {
                 HAtom::Concept { neg: false, c, t: ht } if ht == t =>
                     tin.concepts.get(*c).map(String::as_str),
                 _ => None,
             }).collect();
             return values.is_some_and(|values|
-                crate::frontend::datatypes::bridge_exact_finite_cover(range_name, &values));
+                crate::frontend::datatypes::bridge_tbox_finite_cover(range_name, &values));
         }
-        if crate::frontend::datatypes::bridge_exact_atomic_family(range_name) != Some("boolean")
+        if crate::frontend::datatypes::bridge_tbox_atomic_family(range_name) != Some("boolean")
             || range_name.starts_with("__dt__val__")
             || head.len() != 2
         {
@@ -854,7 +868,7 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
                 return false;
             };
             if !value_name.starts_with("__dt__val__")
-                || crate::frontend::datatypes::bridge_exact_atomic_family(value_name)
+                || crate::frontend::datatypes::bridge_tbox_atomic_family(value_name)
                     != Some("boolean")
             {
                 return false;
@@ -936,12 +950,252 @@ fn blank_data_node_holds(concept: &SourceConcept) -> Option<bool> {
 /// certificate, not an ontology-name special case.
 /// A datatype inclusion preserves the same object/value endpoints. Reversed
 /// edges, diagonal edges, conjunctions, and alternative heads are not inclusions.
+/// `R(x,y) ∧ R(y,x) → ⊥` with two distinct variables: AsymmetricObjectProperty(R).
+fn asymmetric_role_clause(clause: &HtClause) -> Option<usize> {
+    match (clause.body.as_slice(), clause.head.as_slice()) {
+        ([HAtom::Role { r: left, s: x, t: y }, HAtom::Role { r: right, s: yy, t: xx }], [])
+            if x != y && x == xx && y == yy && left == right => Some(*left),
+        _ => None,
+    }
+}
+
+/// `R(x,y) ∧ S(x,y) → ⊥` with distinct roles and distinct variables:
+/// DisjointObjectProperties / DisjointDataProperties(R S).
+fn disjoint_role_pair_clause(clause: &HtClause) -> Option<(usize, usize)> {
+    match (clause.body.as_slice(), clause.head.as_slice()) {
+        ([HAtom::Role { r: left, s: x, t: y }, HAtom::Role { r: right, s: xx, t: yy }], [])
+            if x != y && x == xx && y == yy && left != right => Some((*left, *right)),
+        _ => None,
+    }
+}
+
 fn exact_datatype_subrole_clause(clause: &HtClause) -> Option<(usize, usize)> {
     match (clause.body.as_slice(), clause.head.as_slice()) {
         ([HAtom::Role { r: sub, s: x, t: y }],
          [HAtom::Role { r: sup, s: hx, t: hy }]) if x != y && x == hx && y == hy =>
             Some((*sub, *sup)),
         _ => None,
+    }
+}
+
+/// Three-valued truth of `concept` at an ISOLATED element (no role edges, in
+/// no nominal) whose named-class label is given by `label`; `None` in `label`
+/// means "not yet decided". The outer `None` marks an unsupported construct
+/// (the universal role), which keeps the caller fail-closed.
+fn isolated_labelled_node_holds(
+    concept: &SourceConcept,
+    label: &HashMap<&str, bool>,
+) -> Option<Option<bool>> {
+    Some(match concept {
+        SourceConcept::Name(name) => label.get(name.as_str()).copied(),
+        SourceConcept::Bottom | SourceConcept::Nominal(_) => Some(false),
+        SourceConcept::Top => Some(true),
+        SourceConcept::Not(operand) => isolated_labelled_node_holds(operand, label)?.map(|v| !v),
+        SourceConcept::And(operands) => {
+            let mut unknown = false;
+            for operand in operands {
+                match isolated_labelled_node_holds(operand, label)? {
+                    Some(false) => return Some(Some(false)),
+                    None => unknown = true,
+                    Some(true) => {}
+                }
+            }
+            if unknown { None } else { Some(true) }
+        }
+        SourceConcept::Or(operands) => {
+            let mut unknown = false;
+            for operand in operands {
+                match isolated_labelled_node_holds(operand, label)? {
+                    Some(true) => return Some(Some(true)),
+                    None => unknown = true,
+                    Some(false) => {}
+                }
+            }
+            if unknown { None } else { Some(false) }
+        }
+        other => Some(blank_data_node_holds(other)?),
+    })
+}
+
+/// Three-valued truth of one source axiom at the isolated node labelled by
+/// `label` (outer `None`: unsupported construct).
+fn blank_witness_axiom_value(
+    axiom: &crate::json_io::SourceAxiomMeta,
+    label: &HashMap<&str, bool>,
+) -> Option<Option<bool>> {
+    let left = isolated_labelled_node_holds(&axiom.left, label)?;
+    let right = isolated_labelled_node_holds(&axiom.right, label)?;
+    Some(match axiom.kind {
+        crate::json_io::SourceAxiomKind::SubClass => match (left, right) {
+            (Some(false), _) | (_, Some(true)) => Some(true),
+            (Some(true), Some(false)) => Some(false),
+            _ => None,
+        },
+        crate::json_io::SourceAxiomKind::Equivalent => match (left, right) {
+            (Some(l), Some(r)) => Some(l == r),
+            _ => None,
+        },
+        crate::json_io::SourceAxiomKind::Disjoint => match (left, right) {
+            (Some(false), _) | (_, Some(false)) => Some(true),
+            (Some(true), Some(true)) => Some(false),
+            _ => None,
+        },
+    })
+}
+
+/// Search a named-class label `L` such that an isolated element labelled
+/// exactly `L` (no role edges, outside every nominal) satisfies every source
+/// axiom, datatype-bearing ones included (their role restrictions are
+/// evaluated on the empty edge set). Such a witness makes the untyped data
+/// successors of the completion graph harmless: extending any model of the
+/// ontology by a fresh object copy of each data value labelled `L` satisfies
+/// every object axiom, and conversely forgetting the object part of a data
+/// node (or splitting it into a fresh object copy) preserves every model
+/// (`IsolatedObjectModelExtension.labelled_*` in Lean). The empty label is the
+/// special case checked by the original guard. Fail-closed: `None` when no
+/// witness is found within the search budget or a construct is unsupported.
+fn blank_data_node_witness_label(tin: &TInput) -> Option<Vec<String>> {
+    let axioms: Vec<&crate::json_io::SourceAxiomMeta> = tin.source_axioms.iter().collect();
+    blank_witness_search(axioms)
+}
+
+/// The label search of [`blank_data_node_witness_label`] over `axioms`.
+fn blank_witness_search(
+    axioms: Vec<&crate::json_io::SourceAxiomMeta>,
+) -> Option<Vec<String>> {
+    fn collect_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
+        match concept {
+            SourceConcept::Name(name) if !name.starts_with("__dt__") => out.push(name.as_str()),
+            SourceConcept::Not(operand) => collect_names(operand, out),
+            SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                for operand in operands {
+                    collect_names(operand, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn axiom_value(
+        axiom: &crate::json_io::SourceAxiomMeta,
+        label: &HashMap<&str, bool>,
+    ) -> Option<Option<bool>> {
+        blank_witness_axiom_value(axiom, label)
+    }
+    // The value of an axiom at the isolated node depends only on the label
+    // entries of the names `collect_names` finds in it (fillers are evaluated
+    // without the label). So each axiom is re-evaluated only when one of its
+    // own names changes, and the search reads the first falsified,
+    // unsupported, or undecided axiom (in source order) from ordered index
+    // sets. This visits exactly the search tree of a full re-evaluation per
+    // node (same pending axiom, variable, and value order, same budget), so it
+    // returns the same witness; it only avoids re-reading every axiom.
+    struct Search<'a> {
+        axioms: Vec<&'a crate::json_io::SourceAxiomMeta>,
+        watchers: HashMap<&'a str, Vec<usize>>,
+        label: HashMap<&'a str, bool>,
+        status: Vec<Option<Option<bool>>>,
+        falsified: std::collections::BTreeSet<usize>,
+        unsupported: std::collections::BTreeSet<usize>,
+        undecided: std::collections::BTreeSet<usize>,
+        budget: usize,
+    }
+    impl<'a> Search<'a> {
+        fn set_status(&mut self, index: usize, value: Option<Option<bool>>) {
+            match self.status[index] {
+                None => { self.unsupported.remove(&index); }
+                Some(Some(false)) => { self.falsified.remove(&index); }
+                Some(None) => { self.undecided.remove(&index); }
+                Some(Some(true)) => {}
+            }
+            match value {
+                None => { self.unsupported.insert(index); }
+                Some(Some(false)) => { self.falsified.insert(index); }
+                Some(None) => { self.undecided.insert(index); }
+                Some(Some(true)) => {}
+            }
+            self.status[index] = value;
+        }
+        fn reevaluate(&mut self, variable: &'a str) {
+            let Some(watching) = self.watchers.get(variable) else { return };
+            for index in watching.clone() {
+                let value = axiom_value(self.axioms[index], &self.label);
+                self.set_status(index, value);
+            }
+        }
+        fn search(&mut self) -> Option<bool> {
+            if self.budget == 0 {
+                return None;
+            }
+            self.budget -= 1;
+            // First axiom in source order that is falsified or unsupported:
+            // an unsupported construct fails closed, a falsified axiom
+            // refutes this partial label.
+            match (self.falsified.first(), self.unsupported.first()) {
+                (Some(&f), Some(&u)) => return if u < f { None } else { Some(false) },
+                (Some(_), None) => return Some(false),
+                (None, Some(_)) => return None,
+                (None, None) => {}
+            }
+            let Some(&pending) = self.undecided.first() else {
+                return Some(true);
+            };
+            let axiom = self.axioms[pending];
+            let mut names = Vec::new();
+            collect_names(&axiom.left, &mut names);
+            collect_names(&axiom.right, &mut names);
+            let Some(&variable) = names.iter().find(|name| !self.label.contains_key(*name)) else {
+                return None;
+            };
+            // The empty label is preferred: try `false` first.
+            for value in [false, true] {
+                self.label.insert(variable, value);
+                self.reevaluate(variable);
+                match self.search()? {
+                    true => return Some(true),
+                    false => {}
+                }
+                self.label.remove(variable);
+                self.reevaluate(variable);
+            }
+            Some(false)
+        }
+    }
+    let mut watchers: HashMap<&str, Vec<usize>> = HashMap::default();
+    for (index, axiom) in axioms.iter().enumerate() {
+        let mut names = Vec::new();
+        collect_names(&axiom.left, &mut names);
+        collect_names(&axiom.right, &mut names);
+        names.sort_unstable();
+        names.dedup();
+        for name in names {
+            watchers.entry(name).or_default().push(index);
+        }
+    }
+    let label: HashMap<&str, bool> = HashMap::default();
+    let mut state = Search {
+        status: vec![Some(Some(true)); axioms.len()],
+        axioms,
+        watchers,
+        label,
+        falsified: Default::default(),
+        unsupported: Default::default(),
+        undecided: Default::default(),
+        budget: 200_000,
+    };
+    for index in 0..state.axioms.len() {
+        let value = axiom_value(state.axioms[index], &state.label);
+        state.set_status(index, value);
+    }
+    if state.search()? {
+        let mut witness: Vec<String> = state
+            .label
+            .into_iter()
+            .filter_map(|(name, value)| value.then(|| name.to_string()))
+            .collect();
+        witness.sort();
+        Some(witness)
+    } else {
+        None
     }
 }
 
@@ -966,7 +1220,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     }
     if !source_mode
         || datatype_ids.iter().any(|&concept| {
-            !crate::frontend::datatypes::bridge_exact_atomic_name(&tin.concepts[concept])
+            !crate::frontend::datatypes::bridge_tbox_atomic_name(&tin.concepts[concept])
         })
     {
         defer!("source mode is disabled or a datatype symbol is not in the exact atomic map");
@@ -978,11 +1232,28 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .enumerate()
         .map(|(index, name)| (name.as_str(), index))
         .collect();
-    let mut role_ranges: HashMap<usize, &str> = HashMap::new();
+    let mut role_ranges: HashMap<usize, &str> = HashMap::default();
     let mut role_existentials: Vec<(usize, &str)> = Vec::new();
+    // Collect before walking local restrictions: source order is irrelevant.
+    // A matching global range entails each local universal restriction. Keep
+    // the full source expression in the encoder; this only admits its vocabulary.
+    let global_atomic_ranges: crate::fxhash::FxHashSet<(&str, &str)> = tin.source_axioms.iter()
+        .filter_map(|axiom| match (axiom.kind, &axiom.left, &axiom.right) {
+            (crate::json_io::SourceAxiomKind::SubClass, SourceConcept::Top,
+             SourceConcept::Forall(SourceRole::Name(role), filler)) => match filler.as_ref() {
+                SourceConcept::Name(datatype)
+                    if crate::frontend::datatypes::bridge_tbox_atomic_name(datatype) =>
+                        Some((role.as_str(), datatype.as_str())),
+                _ => None,
+            },
+            _ => None,
+        }).collect();
+    let mut local_foralls: Vec<(&str, &str)> = Vec::new();
     fn atomic_datatype_occurrences<'a>(
         concept: &'a SourceConcept,
+        global_atomic_ranges: &crate::fxhash::FxHashSet<(&str, &str)>,
         out: &mut Vec<(&'a str, &'a str, bool)>,
+        local: &mut Vec<(&'a str, &'a str)>,
     ) -> bool {
         match concept {
             // This pass collects vocabulary and checks each leaf; it does
@@ -990,17 +1261,65 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             // Boolean source expression is retained by the native encoder.
             SourceConcept::And(conjuncts) | SourceConcept::Or(conjuncts) => conjuncts
                 .iter()
-                .all(|conjunct| atomic_datatype_occurrences(conjunct, out)),
+                .all(|conjunct| atomic_datatype_occurrences(conjunct, global_atomic_ranges, out, local)),
+            // `forall(r, not D)` (= `not exists(r, D)`): a negative, role-local
+            // use of an atomic datatype. `D` becomes body-sensitive and is
+            // covered by the exact cell certificates.
+            SourceConcept::Forall(SourceRole::Name(role), filler)
+                if matches!(filler.as_ref(), SourceConcept::Not(inner)
+                    if matches!(inner.as_ref(), SourceConcept::Name(name) if name.starts_with("__dt__"))) =>
+            {
+                let SourceConcept::Not(inner) = filler.as_ref() else { unreachable!() };
+                let SourceConcept::Name(datatype) = inner.as_ref() else { unreachable!() };
+                if !crate::frontend::datatypes::bridge_tbox_atomic_name(datatype) {
+                    return false;
+                }
+                out.push((role.as_str(), datatype.as_str(), false));
+                true
+            }
+            SourceConcept::Forall(SourceRole::Name(role), filler)
+                if matches!(filler.as_ref(), SourceConcept::Name(name) if name.starts_with("__dt__")) =>
+            {
+                let SourceConcept::Name(datatype) = filler.as_ref() else { unreachable!() };
+                // `forall(r, rdfs:Literal)` holds at every object for a data
+                // role: rdfs:Literal contains every data value. It adds a
+                // head-only label and needs no matching global range. Body
+                // occurrences of rdfs:Literal are rejected separately.
+                if crate::frontend::datatypes::bridge_tbox_atomic_family(datatype) == Some("literal") {
+                    out.push((role.as_str(), datatype.as_str(), false));
+                    return true;
+                }
+                if !global_atomic_ranges.contains(&(role.as_str(), datatype.as_str())) {
+                    // A local universal restriction without a matching global
+                    // range adds `datatype` to the labels of the role's data
+                    // successors. Admitted only for a range symbol whose
+                    // relation to every other datatype symbol is decided
+                    // exactly (checked after this pass), so it creates no new
+                    // partially overlapping label set.
+                    if datatype.starts_with("__dt__val__")
+                        || !crate::frontend::datatypes::bridge_tbox_atomic_name(datatype)
+                    {
+                        return false;
+                    }
+                    local.push((role.as_str(), datatype.as_str()));
+                    out.push((role.as_str(), datatype.as_str(), false));
+                    return true;
+                }
+                // Not a new global range and not an existential assertion:
+                // the occurrence list below checks role-local vocabulary only.
+                out.push((role.as_str(), datatype.as_str(), false));
+                true
+            }
             SourceConcept::Exists(SourceRole::Name(role), filler)
             | SourceConcept::AtLeast(0..=2, SourceRole::Name(role), filler)
             | SourceConcept::AtMost(0..=2, SourceRole::Name(role), filler) => {
                 let SourceConcept::Name(datatype) = filler.as_ref() else {
-                    return atomic_datatype_occurrences(filler, out);
+                    return atomic_datatype_occurrences(filler, global_atomic_ranges, out, local);
                 };
                 if !datatype.starts_with("__dt__") {
                     return true;
                 }
-                if !crate::frontend::datatypes::bridge_exact_atomic_name(datatype) {
+                if !crate::frontend::datatypes::bridge_tbox_atomic_name(datatype) {
                     return false;
                 }
                 out.push((role.as_str(), datatype.as_str(), false));
@@ -1013,7 +1332,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             | SourceConcept::AtLeast(_, SourceRole::Name(_), filler)
             | SourceConcept::AtMost(_, SourceRole::Name(_), filler)
                 if !matches!(filler.as_ref(), SourceConcept::Name(_)) =>
-                    atomic_datatype_occurrences(filler, out),
+                    atomic_datatype_occurrences(filler, global_atomic_ranges, out, local),
             _ => !source_concept_contains_internal_datatype(concept),
         }
     }
@@ -1028,7 +1347,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             (crate::json_io::SourceAxiomKind::SubClass, SourceConcept::Name(left), right)
                 if !left.starts_with("__dt__") =>
             {
-                if !atomic_datatype_occurrences(right, &mut occurrences) {
+                if !atomic_datatype_occurrences(right, &global_atomic_ranges, &mut occurrences, &mut local_foralls) {
                     defer!("a datatype restriction has a non-atomic filler");
                 }
             }
@@ -1038,11 +1357,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 SourceConcept::Forall(SourceRole::Name(role), filler),
             ) => {
                 if let SourceConcept::Name(datatype) = filler.as_ref() {
-                    if !crate::frontend::datatypes::bridge_exact_atomic_name(datatype) {
+                    if !crate::frontend::datatypes::bridge_tbox_atomic_name(datatype) {
                         defer!("a datatype range filler has no exact family");
                     }
                     occurrences.push((role.as_str(), datatype.as_str(), true));
-                } else if !atomic_datatype_occurrences(filler, &mut occurrences) {
+                } else if !atomic_datatype_occurrences(filler, &global_atomic_ranges, &mut occurrences, &mut local_foralls) {
                     // Object-property ranges may contain exact data restrictions.
                     // The role-use check below separately excludes a data role
                     // with an object-language filler.
@@ -1065,8 +1384,30 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 definition,
                 SourceConcept::Name(left),
             ) if !left.starts_with("__dt__") => {
-                if !atomic_datatype_occurrences(definition, &mut occurrences) {
+                if !atomic_datatype_occurrences(definition, &global_atomic_ranges, &mut occurrences, &mut local_foralls) {
                     defer!("a datatype equivalence is not an exact atomic restriction");
+                }
+            }
+            // A complex left-hand side (e.g. `Wine and exists(hasSugar, D)`)
+            // uses its datatype restrictions negatively, exactly like the
+            // definition side of an equivalence above: the same role-local
+            // vocabulary check applies, the polarity walk makes `D`
+            // body-sensitive, and the cell certificates cover it.
+            (crate::json_io::SourceAxiomKind::SubClass, left, right)
+                if !matches!(left, SourceConcept::Top)
+                    && !matches!(left, SourceConcept::Name(name) if name.starts_with("__dt__"))
+                    && !matches!(right, SourceConcept::Name(name) if name.starts_with("__dt__")) =>
+            {
+                if !atomic_datatype_occurrences(left, &global_atomic_ranges, &mut occurrences, &mut local_foralls)
+                    || !atomic_datatype_occurrences(right, &global_atomic_ranges, &mut occurrences, &mut local_foralls)
+                {
+                    defer!("a complex datatype subclass axiom is not an exact atomic restriction");
+                }
+                // Data nodes share the completion graph: the left-hand side
+                // must be false on a label-free data node (any witness label
+                // is checked against every source axiom separately).
+                if blank_data_node_holds(left) != Some(false) {
+                    defer!("a complex datatype subclass axiom can fire on a data node");
                 }
             }
             _ => defer!("a datatype source axiom is outside the role-local fragment"),
@@ -1090,6 +1431,56 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             }
         }
     }
+    // Positive data restrictions asserted on named individuals, including
+    // data-property assertions carried as `exists(p, {v})` (OWL 2: an
+    // assertion `p(a, v)` holds iff `a : DataHasValue(p v)`). An assertion is
+    // a positive (head) use, so it contributes the same role-local
+    // existential vocabulary as a TBox right-hand side and is checked by
+    // every guard below. Only conjunctions of `exists(p, D)` with an atomic
+    // datatype filler are admitted here: a negative or universal use would be
+    // body-sensitive, which the cell certificates only track for TBox axioms.
+    fn positive_data_assertion(concept: &SourceConcept) -> bool {
+        match concept {
+            SourceConcept::And(conjuncts) => conjuncts.iter().all(positive_data_assertion),
+            SourceConcept::Exists(SourceRole::Name(_), filler) => match filler.as_ref() {
+                SourceConcept::Name(name) if name.starts_with("__dt__") => true,
+                other => !source_concept_contains_internal_datatype(other),
+            },
+            other => !source_concept_contains_internal_datatype(other),
+        }
+    }
+    // Outside a requested data-assertion conversion every datatype assertion
+    // keeps the historical decline.
+    let data_assertions_admitted = std::env::var_os("KM_DATA_ASSERTION_AS_CLASS")
+        .is_some_and(|value| value != "0");
+    for individual in &tin.nominal_abox.individuals {
+        for assertion in &individual.assertions {
+            if !source_concept_contains_internal_datatype(assertion) {
+                continue;
+            }
+            if !data_assertions_admitted {
+                defer!("a nominal assertion contains a datatype expression");
+            }
+            if !positive_data_assertion(assertion) {
+                defer!("a nominal assertion uses a datatype outside a positive existential");
+            }
+            let mut occurrences: Vec<(&str, &str, bool)> = Vec::new();
+            if !atomic_datatype_occurrences(assertion, &global_atomic_ranges, &mut occurrences, &mut local_foralls)
+                || occurrences.is_empty()
+            {
+                defer!("a nominal assertion contains a non-atomic datatype expression");
+            }
+            for (role, datatype, is_range) in occurrences {
+                if is_range {
+                    defer!("a nominal datatype assertion is not a positive existential");
+                }
+                let Some(&role) = role_index.get(role) else {
+                    defer!("a datatype assertion role is absent from TInput roles");
+                };
+                role_existentials.push((role, datatype));
+            }
+        }
+    }
     for &(role, datatype) in &role_existentials {
         let Some(&range) = role_ranges.get(&role) else {
             continue;
@@ -1108,7 +1499,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
     }
 
-    let mut datatype_roles: std::collections::HashSet<usize> = role_ranges
+    let mut datatype_roles: crate::fxhash::FxHashSet<usize> = role_ranges
         .keys()
         .copied()
         .chain(role_existentials.iter().map(|&(role, _)| role))
@@ -1131,13 +1522,13 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
         if datatype_roles.len() == before { break; }
     }
-    let datatype_role_names: std::collections::HashSet<&str> = datatype_roles
+    let datatype_role_names: crate::fxhash::FxHashSet<&str> = datatype_roles
         .iter()
         .map(|&role| tin.roles[role].as_str())
         .collect();
     fn data_role_uses_are_safe_cardinality_only(
         concept: &SourceConcept,
-        datatype_roles: &std::collections::HashSet<&str>,
+        datatype_roles: &crate::fxhash::FxHashSet<&str>,
     ) -> bool {
         if !source_concept_mentions_roles(concept, datatype_roles) {
             return true;
@@ -1146,17 +1537,22 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             SourceConcept::And(conjuncts) | SourceConcept::Or(conjuncts) => conjuncts
                 .iter()
                 .all(|conjunct| data_role_uses_are_safe_cardinality_only(conjunct, datatype_roles)),
+            SourceConcept::Forall(SourceRole::Name(role), filler)
+                if datatype_roles.contains(role.as_str())
+                    && matches!(filler.as_ref(), SourceConcept::Not(inner)
+                        if matches!(inner.as_ref(), SourceConcept::Name(name)
+                            if crate::frontend::datatypes::bridge_tbox_atomic_name(name))) => true,
             SourceConcept::Exists(SourceRole::Name(role), filler)
             | SourceConcept::Forall(SourceRole::Name(role), filler)
                 if datatype_roles.contains(role.as_str()) =>
                     matches!(filler.as_ref(), SourceConcept::Name(name)
-                        if crate::frontend::datatypes::bridge_exact_atomic_name(name)),
+                        if crate::frontend::datatypes::bridge_tbox_atomic_name(name)),
             SourceConcept::AtLeast(0..=2, SourceRole::Name(role), filler)
             | SourceConcept::AtMost(0..=2, SourceRole::Name(role), filler)
                 if datatype_roles.contains(role.as_str())
                     && (matches!(filler.as_ref(), SourceConcept::Top)
                         || matches!(filler.as_ref(), SourceConcept::Name(name)
-                            if crate::frontend::datatypes::bridge_exact_atomic_name(name))) =>
+                            if crate::frontend::datatypes::bridge_tbox_atomic_name(name))) =>
             {
                 true
             }
@@ -1186,6 +1582,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     // Separately, the only non-dt source use allowed on a data role is its
     // ordinary property-domain axiom `exists(role, Top) <= NamedClass`,
     // evaluated at the object predecessor.
+    let mut blank_witness: Option<Option<Vec<String>>> = None;
     for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
         if source_concept_contains_internal_datatype(&axiom.left)
             || source_concept_contains_internal_datatype(&axiom.right)
@@ -1209,7 +1606,18 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             crate::json_io::SourceAxiomKind::Disjoint => !(left && right),
         };
         if !satisfied {
-            defer!("a non-datatype axiom rejects a blank data node");
+            // The empty label fails this axiom. Admit the ontology only when
+            // a non-empty isolated witness label satisfies EVERY source axiom
+            // (see `blank_data_node_witness_label`); computed once.
+            if blank_witness.is_none() {
+                blank_witness = Some(blank_data_node_witness_label(tin));
+                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                    eprintln!("BRIDGE-DATATYPE-BLANK-WITNESS {:?}", blank_witness);
+                }
+            }
+            if !matches!(blank_witness, Some(Some(_))) {
+                defer!("a non-datatype axiom rejects a blank data node");
+            }
         }
         if source_concept_mentions_roles(&axiom.left, &datatype_role_names)
             || source_concept_mentions_roles(&axiom.right, &datatype_role_names)
@@ -1264,7 +1672,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let Some(name) = tin.concepts.get(concept) else {
             defer!("a data-role range concept index is invalid");
         };
-        if !crate::frontend::datatypes::bridge_exact_atomic_name(name) {
+        if !crate::frontend::datatypes::bridge_tbox_atomic_name(name) {
             defer!("a data-role range has no exact atomic family");
         }
         if role_ranges.get(&role).is_none_or(|source_range| {
@@ -1324,7 +1732,12 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         );
         let inclusion = exact_datatype_subrole_clause(clause).is_some_and(|(sub, sup)|
             datatype_roles.contains(&sub) && datatype_roles.contains(&sup));
-        if !functional && !domain && !inclusion {
+        // DisjointDataProperties: encoded as role disjointness; distinct data
+        // successors under the two roles get distinct values (see
+        // `cell_literals_and_requirement`).
+        let disjoint_data = disjoint_role_pair_clause(clause).is_some_and(|(left, right)|
+            datatype_roles.contains(&left) && datatype_roles.contains(&right));
+        if !functional && !domain && !inclusion && !disjoint_data {
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 let encoded = serde_json::to_string(clause)
                     .unwrap_or_else(|_| "<serialization failed>".to_string());
@@ -1338,14 +1751,6 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
     }
 
-    if tin.nominal_abox.individuals.iter().any(|individual| {
-        individual
-            .assertions
-            .iter()
-            .any(source_concept_contains_internal_datatype)
-    }) {
-        defer!("a nominal assertion contains a datatype expression");
-    }
     if tin.card_defs.iter().any(|card| {
         [card.marker, card.filler].into_iter().any(|concept| {
             tin.concepts
@@ -1392,13 +1797,13 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .copied()
         .filter(|&concept| tin.concepts[concept].starts_with("__dt__val__"))
         .collect();
-    let mut ranges: HashMap<&'static str, Vec<usize>> = HashMap::new();
+    let mut ranges: HashMap<&'static str, Vec<usize>> = HashMap::default();
     for &concept in datatype_ids
         .iter()
         .filter(|&&concept| !tin.concepts[concept].starts_with("__dt__val__"))
     {
         let Some(family) =
-            crate::frontend::datatypes::bridge_exact_atomic_family(&tin.concepts[concept])
+            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[concept])
         else {
             defer!("a datatype range has no exact atomic family");
         };
@@ -1406,12 +1811,59 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     }
 
     let relations = DatatypeRelationIndex::new(&tin.clauses);
+    // A local `forall(r, D)` without a matching global range intersects D
+    // with whatever else labels an r-successor. Admit it only when D's
+    // relation to every other datatype symbol (except rdfs:Literal) is decided
+    // by a present relation clause, or both are intervals of one numeric
+    // family, which the IEEE/decimal cell certificates decide.
+    for &(_, local) in &local_foralls {
+        use crate::frontend::datatypes as dt;
+        let Some(member) = datatype_ids.iter().copied().find(|&c| tin.concepts[c] == local) else {
+            defer!("a local datatype restriction symbol is absent from TInput concepts");
+        };
+        for &other in &datatype_ids {
+            if other == member || dt::bridge_tbox_atomic_family(&tin.concepts[other]) == Some("literal") {
+                continue;
+            }
+            let (left, right) = (local, tin.concepts[other].as_str());
+            let mut decided = false;
+            if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
+                decided = true;
+                if !relations.inclusions.contains(&(member, other)) {
+                    defer!("a local datatype restriction lacks an inclusion clause");
+                }
+            }
+            if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
+                decided = true;
+                if !relations.inclusions.contains(&(other, member)) {
+                    defer!("a local datatype restriction lacks a reverse inclusion clause");
+                }
+            }
+            if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
+                decided = true;
+                if !relations.disjoint.contains(&(member.min(other), member.max(other))) {
+                    defer!("a local datatype restriction lacks a disjointness clause");
+                }
+            }
+            let ieee = dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right)
+                && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right)
+                && datatype_ids.iter().any(|&c| dt::bridge_ieee_facet_range(&tin.concepts[c])
+                    && dt::bridge_tbox_atomic_family(&tin.concepts[c]) == dt::bridge_tbox_atomic_family(left));
+            let decimal = dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right);
+            if !decided && !ieee && !decimal {
+                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                    eprintln!("BRIDGE-DATATYPE-DEFER: local={left} other={right}");
+                }
+                defer!("a local datatype restriction has an undecided relation");
+            }
+        }
+    }
     for &value in &values {
         if !relations.singletons.contains(&value) {
             defer!("a datatype value lacks its singleton equality clause");
         }
         let Some(family) =
-            crate::frontend::datatypes::bridge_exact_atomic_family(&tin.concepts[value])
+            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[value])
         else {
             defer!("a datatype value has no exact atomic family");
         };
@@ -1420,14 +1872,31 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         // including values from other families.
         if let Some(family_ranges) = ranges.get(family) {
             for &range in family_ranges {
-                if crate::frontend::datatypes::bridge_exact_finite_values(&tin.concepts[range]).is_none()
+                // IEEE facet intervals need not contain every value of their
+                // width; their exact pairwise evidence is checked below.
+                if crate::frontend::datatypes::bridge_facet_range(&tin.concepts[range]) {
+                    continue;
+                }
+                // A value outside a named range of its family (e.g. `0` and
+                // `positiveInteger`) needs its exact disjointness clause.
+                if crate::frontend::datatypes::bridge_exact_atomic_disjoint(
+                    &tin.concepts[value], &tin.concepts[range]) == Some(true)
+                    && crate::frontend::datatypes::bridge_exact_atomic_subsumed(
+                        &tin.concepts[value], &tin.concepts[range]) == Some(false)
+                {
+                    if !relations.disjoint.contains(&(value.min(range), value.max(range))) {
+                        defer!("a datatype value lacks its exclusion from a present family range");
+                    }
+                    continue;
+                }
+                if crate::frontend::datatypes::bridge_tbox_finite_values(&tin.concepts[range]).is_none()
                     && !relations.inclusions.contains(&(value, range)) {
                     defer!("a datatype value lacks membership in its present family range");
                 }
             }
         }
         for &range in ranges.values().flatten().filter(|&&range|
-            crate::frontend::datatypes::bridge_exact_atomic_family(&tin.concepts[range]) == Some("finite")) {
+            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[range]) == Some("finite")) {
             if crate::frontend::datatypes::bridge_exact_atomic_subsumed(
                 &tin.concepts[value], &tin.concepts[range]) == Some(true) {
                 if !relations.inclusions.contains(&(value, range)) {
@@ -1455,7 +1924,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     }
 
     for &range in ranges.values().flatten() {
-        if crate::frontend::datatypes::bridge_exact_finite_values(&tin.concepts[range]).is_none() {
+        if crate::frontend::datatypes::bridge_tbox_finite_values(&tin.concepts[range]).is_none() {
             continue;
         }
         let covered = tin.clauses.iter().any(|clause| {
@@ -1467,10 +1936,17 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                     tin.concepts.get(*c).map(String::as_str),
                 _ => None,
             }).collect();
-            values.is_some_and(|values| crate::frontend::datatypes::bridge_exact_finite_cover(
+            values.is_some_and(|values| crate::frontend::datatypes::bridge_tbox_finite_cover(
                 &tin.concepts[range], &values))
         });
         if !covered { defer!("a finite datatype range lacks its exact value cover"); }
+    }
+
+    if !tbox_extension_evidence_exact(tin, &datatype_ids, &relations) {
+        return false;
+    }
+    if !decimal_cells_exact(tin, &datatype_ids, &relations) {
+        return false;
     }
 
     if let Some(boolean_ranges) = ranges.get("boolean") {
@@ -1488,10 +1964,555 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                         tin.concepts.get(*c).map(String::as_str),
                     _ => None,
                 }).collect();
-                names.is_some_and(|names| crate::frontend::datatypes::bridge_exact_finite_cover(
+                names.is_some_and(|names| crate::frontend::datatypes::bridge_tbox_finite_cover(
                     BOOLEAN_COVER, &names))
             });
             if !covered { defer!("the boolean family lacks an exact two-value cover"); }
+        }
+    }
+    true
+}
+
+/// Collect datatype concepts with a negative-polarity source occurrence. In
+/// HT terms these are the datatype atoms that can occur in a clause body
+/// other than a pure datatype relation clause: at-most fillers, left-hand
+/// sides, equivalence definitions, and complemented fillers.
+fn collect_negative_datatype_names<'a>(
+    concept: &'a SourceConcept,
+    positive: bool,
+    out: &mut std::collections::HashSet<&'a str>,
+) {
+    match concept {
+        SourceConcept::Name(name) => {
+            if !positive && name.starts_with("__dt__") {
+                out.insert(name.as_str());
+            }
+        }
+        SourceConcept::Not(operand) => collect_negative_datatype_names(operand, !positive, out),
+        SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+            for operand in operands {
+                collect_negative_datatype_names(operand, positive, out);
+            }
+        }
+        SourceConcept::Exists(_, filler)
+        | SourceConcept::Forall(_, filler)
+        | SourceConcept::AtLeast(_, _, filler) => collect_negative_datatype_names(filler, positive, out),
+        SourceConcept::AtMost(_, _, filler) => collect_negative_datatype_names(filler, !positive, out),
+        SourceConcept::Top | SourceConcept::Bottom | SourceConcept::Nominal(_) | SourceConcept::HasSelf(_) => {}
+    }
+}
+
+fn body_sensitive_datatype_names(tin: &TInput) -> std::collections::HashSet<&str> {
+    let mut out = std::collections::HashSet::new();
+    for axiom in &tin.source_axioms {
+        match axiom.kind {
+            crate::json_io::SourceAxiomKind::SubClass => {
+                collect_negative_datatype_names(&axiom.left, false, &mut out);
+                collect_negative_datatype_names(&axiom.right, true, &mut out);
+            }
+            crate::json_io::SourceAxiomKind::Equivalent => {
+                for side in [&axiom.left, &axiom.right] {
+                    collect_negative_datatype_names(side, false, &mut out);
+                    collect_negative_datatype_names(side, true, &mut out);
+                }
+            }
+            crate::json_io::SourceAxiomKind::Disjoint => {
+                collect_negative_datatype_names(&axiom.left, false, &mut out);
+                collect_negative_datatype_names(&axiom.right, false, &mut out);
+            }
+        }
+    }
+    // Source mode (required for any datatype symbol) encodes concept clauses
+    // from the source axioms above; only unsuppressed clauses reach the graph.
+    for clause in &tin.clauses {
+        if is_pure_internal_datatype_relation_clause(tin, clause)
+            || source_mode_suppresses_ordinary_concept_clause(tin, clause)
+        {
+            continue;
+        }
+        for atom in &clause.body {
+            if let HAtom::Concept { c, .. } = atom {
+                if let Some(name) = tin.concepts.get(*c).filter(|name| name.starts_with("__dt__")) {
+                    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() && !out.contains(name.as_str()) {
+                        eprintln!("BRIDGE-DATATYPE-SENSITIVE: {name} via clause {}",
+                            serde_json::to_string(clause).unwrap_or_default());
+                    }
+                    out.insert(name.as_str());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Can the input force two distinct sibling data successors? Only a
+/// number restriction of at least two (a positive `AtLeast(n >= 2)` or a
+/// negative `AtMost(n >= 1)`) over a data role can; existentials alone never
+/// require distinct successors, so their nodes may share a realizing value.
+/// A role counts as a data role when it carries any datatype filler or
+/// range; other `Top`-filled restrictions concern unlabeled successors only.
+fn source_forces_distinct_data_successors(
+    concept: &SourceConcept,
+    positive: bool,
+    data_roles: &std::collections::HashSet<&str>,
+) -> bool {
+    let data_filler = |role: &SourceRole, filler: &SourceConcept| {
+        source_concept_contains_internal_datatype(filler)
+            || (matches!(filler, SourceConcept::Top)
+                && matches!(role, SourceRole::Name(name) if data_roles.contains(name.as_str())))
+    };
+    match concept {
+        SourceConcept::Not(operand) => source_forces_distinct_data_successors(operand, !positive, data_roles),
+        SourceConcept::And(operands) | SourceConcept::Or(operands) => operands
+            .iter()
+            .any(|operand| source_forces_distinct_data_successors(operand, positive, data_roles)),
+        SourceConcept::AtLeast(n, role, filler) => {
+            (positive && *n >= 2 && data_filler(role, filler))
+                || source_forces_distinct_data_successors(filler, positive, data_roles)
+        }
+        SourceConcept::AtMost(n, role, filler) => {
+            (!positive && *n >= 1 && data_filler(role, filler))
+                || source_forces_distinct_data_successors(filler, !positive, data_roles)
+        }
+        SourceConcept::Exists(_, filler) | SourceConcept::Forall(_, filler) => {
+            source_forces_distinct_data_successors(filler, positive, data_roles)
+        }
+        _ => false,
+    }
+}
+
+fn collect_datatype_roles<'a>(concept: &'a SourceConcept, out: &mut std::collections::HashSet<&'a str>) {
+    match concept {
+        SourceConcept::Not(operand) => collect_datatype_roles(operand, out),
+        SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+            for operand in operands {
+                collect_datatype_roles(operand, out);
+            }
+        }
+        SourceConcept::Exists(role, filler)
+        | SourceConcept::Forall(role, filler)
+        | SourceConcept::AtLeast(_, role, filler)
+        | SourceConcept::AtMost(_, role, filler) => {
+            if let (SourceRole::Name(name), SourceConcept::Name(datatype)) = (role, filler.as_ref()) {
+                if datatype.starts_with("__dt__") {
+                    out.insert(name.as_str());
+                }
+            }
+            collect_datatype_roles(filler, out);
+        }
+        _ => {}
+    }
+}
+
+/// Literals a realizing value must avoid and the number of realizing values
+/// a cell needs. With possible forced-distinct data siblings, two values that
+/// avoid every present literal; otherwise one value that avoids every
+/// body-sensitive literal (a non-sensitive value concept only occurs in heads
+/// and singleton clauses, which an unforced shared value cannot violate).
+fn cell_literals_and_requirement<'a>(
+    tin: &'a TInput,
+    datatype_ids: &[usize],
+    sensitive: &std::collections::HashSet<&str>,
+) -> (Vec<&'a str>, u128) {
+    let mut data_roles: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for axiom in &tin.source_axioms {
+        collect_datatype_roles(&axiom.left, &mut data_roles);
+        collect_datatype_roles(&axiom.right, &mut data_roles);
+    }
+    for individual in &tin.nominal_abox.individuals {
+        for assertion in &individual.assertions {
+            collect_datatype_roles(assertion, &mut data_roles);
+        }
+    }
+    for &(role, concept) in &tin.role_ranges {
+        if tin.concepts.get(concept).is_some_and(|name| name.starts_with("__dt__")) {
+            if let Some(name) = tin.roles.get(role) {
+                data_roles.insert(name.as_str());
+            }
+        }
+    }
+    // Data-role inclusions share successors: close under exact inclusions.
+    loop {
+        let before = data_roles.len();
+        for clause in &tin.clauses {
+            if let Some((sub, sup)) = exact_datatype_subrole_clause(clause) {
+                let (Some(sub), Some(sup)) = (tin.roles.get(sub), tin.roles.get(sup)) else { continue };
+                if data_roles.contains(sub.as_str()) || data_roles.contains(sup.as_str()) {
+                    data_roles.insert(sub.as_str());
+                    data_roles.insert(sup.as_str());
+                }
+            }
+        }
+        if data_roles.len() == before { break; }
+    }
+    let forces = |concept: &SourceConcept, positive: bool| {
+        source_forces_distinct_data_successors(concept, positive, &data_roles)
+    };
+    let distinct = tin.source_axioms.iter().any(|axiom| {
+        let (left, right) = (&axiom.left, &axiom.right);
+        match axiom.kind {
+            crate::json_io::SourceAxiomKind::SubClass => forces(left, false) || forces(right, true),
+            _ => [left, right].into_iter().any(|side| forces(side, false) || forces(side, true)),
+        }
+    }) || tin.nominal_abox.individuals.iter().any(|individual| {
+        individual.assertions.iter().any(|assertion| forces(assertion, true))
+    });
+    // Disjoint data roles: an R-successor and an S-successor of one object
+    // must denote different values unless the completion graph merged them
+    // (where the engine's disjointness check applies). Every data successor
+    // of a node is then realized by a value distinct from all its siblings
+    // and from every literal, so a cell needs more values than a node can
+    // have data successors: at most one per existential/at-least restriction
+    // occurrence (counted with its bound) plus the literals.
+    let disjoint_data = tin.clauses.iter().any(|clause| {
+        disjoint_role_pair_clause(clause).is_some_and(|(left, right)| {
+            [left, right].into_iter().all(|role| tin.roles.get(role)
+                .is_some_and(|name| data_roles.contains(name.as_str())))
+        })
+    });
+    let distinct = distinct || disjoint_data;
+    let literals: Vec<&str> = datatype_ids.iter()
+        .map(|&concept| tin.concepts[concept].as_str())
+        .filter(|name| name.starts_with("__dt__val__") && (distinct || sensitive.contains(name)))
+        .collect();
+    if disjoint_data {
+        fn successors(concept: &SourceConcept) -> u128 {
+            match concept {
+                SourceConcept::Not(operand) => successors(operand),
+                SourceConcept::And(items) | SourceConcept::Or(items) => items.iter().map(successors).sum(),
+                SourceConcept::Exists(_, filler) => 1 + successors(filler),
+                SourceConcept::AtLeast(n, _, filler) | SourceConcept::AtMost(n, _, filler) =>
+                    (*n).max(1) as u128 + successors(filler),
+                SourceConcept::Forall(_, filler) => successors(filler),
+                _ => 0,
+            }
+        }
+        let bound: u128 = tin.source_axioms.iter()
+            .map(|axiom| successors(&axiom.left) + successors(&axiom.right))
+            .chain(tin.nominal_abox.individuals.iter()
+                .flat_map(|individual| individual.assertions.iter().map(successors)))
+            .sum();
+        return (literals, bound.saturating_add(2));
+    }
+    (literals, if distinct { 2 } else { 1 })
+}
+
+/// Exact realizability of the decimal-tower vocabulary (`decimal`, the
+/// admitted integer datatypes, and their facet intervals). Pairwise relation
+/// clauses alone let a completion graph build data nodes whose label has too
+/// few concrete values, e.g. two distinct `nonNegativeInteger` successors
+/// that avoid a body-sensitive `positiveInteger` (only `0` qualifies). See
+/// `datatypes::bridge_decimal_cells_realizable`.
+fn decimal_cells_exact(
+    tin: &TInput,
+    datatype_ids: &[usize],
+    relations: &DatatypeRelationIndex,
+) -> bool {
+    use crate::frontend::datatypes as dt;
+    let members: Vec<usize> = datatype_ids.iter().copied()
+        .filter(|&concept| !tin.concepts[concept].starts_with("__dt__val__")
+            && dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("decimal"))
+        .collect();
+    if members.is_empty() {
+        return true;
+    }
+    let sensitive = body_sensitive_datatype_names(tin);
+    let names: Vec<&str> = members.iter().map(|&concept| tin.concepts[concept].as_str()).collect();
+    let flags: Vec<bool> = names.iter().map(|name| sensitive.contains(name)).collect();
+    let (literals, required) = cell_literals_and_requirement(tin, datatype_ids, &sensitive);
+    let inclusion = |i: usize, j: usize| relations.inclusions.contains(&(members[i], members[j]));
+    let disjoint = |i: usize, j: usize| {
+        let (a, b) = (members[i], members[j]);
+        relations.disjoint.contains(&(a.min(b), a.max(b)))
+    };
+    // Present finite-difference covers restrict the admissible labels.
+    let member_index: HashMap<usize, usize> =
+        members.iter().enumerate().map(|(index, &concept)| (concept, index)).collect();
+    let mut covers: Vec<(usize, Vec<usize>)> = Vec::new();
+    for clause in &tin.clauses {
+        let ([HAtom::Concept { neg: false, c, t }], head) = (clause.body.as_slice(), clause.head.as_slice())
+        else { continue };
+        let Some(&body) = member_index.get(c) else { continue };
+        let heads: Option<Vec<usize>> = head.iter().map(|atom| match atom {
+            HAtom::Concept { neg: false, c, t: ht } if ht == t => Some(*c),
+            _ => None,
+        }).collect();
+        let Some(heads) = heads else { continue };
+        let names_of: Vec<&str> = heads.iter().map(|&h| tin.concepts[h].as_str()).collect();
+        if !dt::bridge_exact_integral_cover(&tin.concepts[*c], &names_of) {
+            continue;
+        }
+        covers.push((body, heads.iter().filter_map(|h| member_index.get(h).copied()).collect()));
+    }
+    // Per data-role group (see `datatype_role_groups_of`): a data node is only
+    // tested by clauses guarded by roles of its group, so only the ranges the
+    // group mentions ("relevant") need an exact realization on it.
+    for group in datatype_role_groups_of(tin) {
+        let relevant: Vec<usize> = (0..members.len())
+            .filter(|&index| group.contains(names[index]))
+            .collect();
+        if relevant.is_empty() {
+            continue;
+        }
+        // Cell path. `C` is atomic for the group when the present clauses
+        // relate it to every relevant range by inclusion or disjointness.
+        // When every non-atomic relevant range has a present cover whose
+        // range heads are all atomic, every admissible label of a group node
+        // that meets the relevant ranges is a value or contains an atomic
+        // `C`, and its relevant part is then exactly the ranges including
+        // `C`; any value of `C` realizes it. The cells then need `required`
+        // free values each.
+        let atomic = |member: usize| relevant.iter()
+            .all(|&other| other == member || inclusion(member, other) || disjoint(member, other));
+        let mut cells: Vec<usize> = relevant.iter().copied().filter(|&member| atomic(member)).collect();
+        let mut cell_path = true;
+        for &member in &relevant {
+            if atomic(member) {
+                continue;
+            }
+            match covers.iter().find(|(body, heads)| *body == member && heads.iter().all(|&head| atomic(head))) {
+                Some((_, heads)) => cells.extend(heads.iter().copied()),
+                None => { cell_path = false; break; }
+            }
+        }
+        if cell_path {
+            cells.sort_unstable();
+            cells.dedup();
+            for &cell in &cells {
+                // A cell exactly covered by values only (e.g. `[0,0] -> {0}`)
+                // labels value nodes, which the singleton clauses decide.
+                if covers.iter().any(|(body, heads)| *body == cell && heads.is_empty()) {
+                    continue;
+                }
+                if dt::bridge_decimal_free_capacity(names[cell], &literals).is_none_or(|free| free < required) {
+                    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                        eprintln!("BRIDGE-DATATYPE-DEFER: a decimal-tower cell lacks realizing values; cell={}", names[cell]);
+                    }
+                    return false;
+                }
+            }
+            continue;
+        }
+        let local = &relevant;
+        let local_names: Vec<&str> = local.iter().map(|&index| names[index]).collect();
+        let local_flags: Vec<bool> = local.iter().map(|&index| flags[index]).collect();
+        let position: HashMap<usize, usize> =
+            local.iter().enumerate().map(|(at, &index)| (index, at)).collect();
+        // A cover constrains this group only when all its range heads are in
+        // the group; a node may satisfy it with a head of another group,
+        // which no clause of this group reads.
+        let local_covers: Vec<(usize, Vec<usize>)> = covers.iter()
+            .filter_map(|(body, heads)| {
+                let body = *position.get(body)?;
+                let heads: Option<Vec<usize>> = heads.iter().map(|head| position.get(head).copied()).collect();
+                Some((body, heads?))
+            })
+            .collect();
+        let local_inclusion = |i: usize, j: usize| inclusion(local[i], local[j]);
+        let local_disjoint = |i: usize, j: usize| disjoint(local[i], local[j]);
+        if dt::bridge_decimal_cells_realizable(&local_names, &local_flags, &local_inclusion,
+            &local_disjoint, &literals, required, &local_covers) != Some(true)
+        {
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                eprintln!("BRIDGE-DATATYPE-DEFER: a decimal-tower vocabulary has a label set without \
+                    two realizing values; group={local_names:?}");
+            }
+            return false;
+        }
+    }
+    true
+}
+
+/// The `__dt__` names of each data-role group: roles connected by an exact
+/// data-subproperty clause form one group; a name belongs to the groups of
+/// the roles whose restrictions, ranges or assertions mention it. Names that
+/// no role mentions join every group (conservative).
+fn datatype_role_groups_of(tin: &TInput) -> Vec<std::collections::HashSet<String>> {
+    use std::collections::{HashMap as Map, HashSet as Set};
+    fn mentions(concept: &SourceConcept, out: &mut Vec<(String, String)>) {
+        match concept {
+            SourceConcept::Not(operand) => mentions(operand, out),
+            SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                for operand in operands { mentions(operand, out); }
+            }
+            SourceConcept::Exists(role, filler) | SourceConcept::Forall(role, filler)
+            | SourceConcept::AtLeast(_, role, filler) | SourceConcept::AtMost(_, role, filler) => {
+                let leaf = match filler.as_ref() {
+                    SourceConcept::Name(name) => Some(name),
+                    SourceConcept::Not(inner) => match inner.as_ref() {
+                        SourceConcept::Name(name) => Some(name),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let (SourceRole::Name(role), Some(name)) = (role, leaf) {
+                    if name.starts_with("__dt__") {
+                        out.push((role.clone(), name.clone()));
+                    }
+                }
+                mentions(filler, out);
+            }
+            _ => {}
+        }
+    }
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for axiom in &tin.source_axioms {
+        mentions(&axiom.left, &mut pairs);
+        mentions(&axiom.right, &mut pairs);
+    }
+    for individual in &tin.nominal_abox.individuals {
+        for assertion in &individual.assertions { mentions(assertion, &mut pairs); }
+    }
+    for &(role, concept) in &tin.role_ranges {
+        if let (Some(role), Some(name)) = (tin.roles.get(role), tin.concepts.get(concept)) {
+            if name.starts_with("__dt__") { pairs.push((role.clone(), name.clone())); }
+        }
+    }
+    let mut parent: Map<String, String> = Map::new();
+    fn find(parent: &mut Map<String, String>, role: &str) -> String {
+        let mut current = role.to_string();
+        while let Some(next) = parent.get(&current).filter(|next| **next != current).cloned() {
+            current = next;
+        }
+        current
+    }
+    for clause in &tin.clauses {
+        if let Some((sub, sup)) = exact_datatype_subrole_clause(clause) {
+            let (Some(sub), Some(sup)) = (tin.roles.get(sub), tin.roles.get(sup)) else { continue };
+            let (a, b) = (find(&mut parent, sub), find(&mut parent, sup));
+            if a != b { parent.insert(a, b); }
+        }
+    }
+    let mut groups: Map<String, Set<String>> = Map::new();
+    let mut placed: Set<String> = Set::new();
+    for (role, name) in &pairs {
+        let root = find(&mut parent, role);
+        groups.entry(root).or_default().insert(name.clone());
+        placed.insert(name.clone());
+    }
+    // Names that no restriction, range or assertion mentions (frontend cells,
+    // relation-only values) never label a node except through relation and
+    // cover clauses of mentioned names; they are reached through the covers.
+    let unplaced: Vec<String> = Vec::new();
+    let _ = &placed;
+    let mut out: Vec<Set<String>> = groups.into_values().collect();
+    if out.is_empty() {
+        out.push(Set::new());
+    }
+    for group in &mut out {
+        group.extend(unplaced.iter().cloned());
+    }
+    out
+}
+
+/// Additional evidence for the bridge-TBox datatype members (`anyURI`,
+/// `double` ranges and values, IEEE facet intervals, `rdfs:Literal`); see
+/// `datatypes::bridge_tbox_atomic_family`. Inputs without these members are
+/// unaffected.
+///
+/// * `rdfs:Literal` contains every data value, including data nodes that
+///   carry no datatype label. It may therefore occur only positively.
+/// * Every pair of an extension member with another datatype concept (other
+///   than `rdfs:Literal`) must carry its exact relation clause: inclusion in
+///   each decided direction, or disjointness. The only undecided pairs left
+///   are overlapping IEEE intervals of one width.
+/// * For each IEEE width with a facet interval, every closed clash-free
+///   label set must be realizable by two fresh values
+///   (`datatypes::bridge_ieee_cells_realizable`).
+fn tbox_extension_evidence_exact(
+    tin: &TInput,
+    datatype_ids: &[usize],
+    relations: &DatatypeRelationIndex,
+) -> bool {
+    use crate::frontend::datatypes as dt;
+    macro_rules! defer {
+        ($reason:literal) => {{
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                eprintln!("BRIDGE-DATATYPE-DEFER: {}", $reason);
+            }
+            return false;
+        }};
+    }
+    let is_extension = |concept: usize| {
+        let name = &tin.concepts[concept];
+        !dt::bridge_exact_atomic_name(name) && dt::bridge_tbox_atomic_name(name)
+    };
+    if !datatype_ids.iter().any(|&concept| is_extension(concept)) {
+        return true;
+    }
+    let literal = |concept: usize| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("literal");
+    let sensitive = body_sensitive_datatype_names(tin);
+    if datatype_ids.iter().any(|&concept| literal(concept) && sensitive.contains(tin.concepts[concept].as_str())) {
+        defer!("rdfs:Literal occurs in a body-sensitive position");
+    }
+    let included = |left: usize, right: usize| relations.inclusions.contains(&(left, right));
+    let separated = |left: usize, right: usize| relations.disjoint.contains(&(left.min(right), left.max(right)));
+    for &member in datatype_ids.iter().filter(|&&concept| is_extension(concept) && !literal(concept)) {
+        for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other)) {
+            let (left, right) = (&tin.concepts[member], &tin.concepts[other]);
+            let mut decided = false;
+            if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
+                decided = true;
+                if !included(member, other) {
+                    defer!("an extension datatype pair lacks its inclusion clause");
+                }
+            }
+            if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
+                decided = true;
+                if !included(other, member) {
+                    defer!("an extension datatype pair lacks its reverse inclusion clause");
+                }
+            }
+            if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
+                decided = true;
+                if !separated(member, other) {
+                    defer!("an extension datatype pair lacks its disjointness clause");
+                }
+            }
+            // Overlapping intervals of one numeric family are decided by the
+            // IEEE/decimal cell certificates, against the present clauses.
+            let overlapping_intervals = ((dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right))
+                || (dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right)))
+                && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right);
+            if !decided && !overlapping_intervals {
+                defer!("an extension datatype pair has no exact decided relation");
+            }
+        }
+    }
+    // A union range is only exact together with its cover clause
+    // `U -> M1 ∨ … ∨ Mk`: without it a node could carry `U` and no member.
+    for &member in datatype_ids.iter().filter(|&&concept|
+        dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("union"))
+    {
+        let covered = tin.clauses.iter().any(|clause| {
+            let ([HAtom::Concept { neg: false, c, t }], head) =
+                (clause.body.as_slice(), clause.head.as_slice()) else { return false };
+            if *c != member { return false; }
+            let heads: Option<Vec<&str>> = head.iter().map(|atom| match atom {
+                HAtom::Concept { neg: false, c, t: ht } if ht == t => tin.concepts.get(*c).map(String::as_str),
+                _ => None,
+            }).collect();
+            heads.is_some_and(|heads| dt::bridge_exact_union_cover(&tin.concepts[member], &heads))
+        });
+        if !covered {
+            defer!("a data union range lacks its member cover");
+        }
+    }
+    let (literals, required) = cell_literals_and_requirement(tin, datatype_ids, &sensitive);
+    for family in ["float", "double"] {
+        let members: Vec<usize> = datatype_ids.iter().copied()
+            .filter(|&concept| dt::bridge_ieee_range(&tin.concepts[concept])
+                && dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some(family))
+            .collect();
+        if !members.iter().any(|&concept| dt::bridge_ieee_facet_range(&tin.concepts[concept])) {
+            continue;
+        }
+        let names: Vec<&str> = members.iter().map(|&concept| tin.concepts[concept].as_str()).collect();
+        let flags: Vec<bool> = names.iter().map(|name| sensitive.contains(name)).collect();
+        let inclusion = |i: usize, j: usize| included(members[i], members[j]);
+        let disjoint = |i: usize, j: usize| separated(members[i], members[j]);
+        if dt::bridge_ieee_cells_realizable(&names, &flags, &inclusion, &disjoint, &literals, required) != Some(true) {
+            defer!("an IEEE facet vocabulary has a label set without two realizing values");
         }
     }
     true
@@ -1554,12 +2575,31 @@ pub struct Bridged {
     /// graph. `RefCell` mirrors the precomputation lifecycle: saturation owns
     /// the one write, while probe resets only read the immutable association.
     native_representative_cache: RefCell<Option<NativeAboxRepresentativeCache>>,
+    /// Set when the ABox consistency completion made a nondeterministic
+    /// choice: its representative associations then carry branch-dependent
+    /// content that the class jobs neither replay nor re-derive while the
+    /// association blocks expansion, so the precomputation replay (and the
+    /// retained deterministic base) are not used. Class jobs then run on the
+    /// ordinary per-job reset, which derives every consequence itself.
+    precomputation_replay_disabled: std::cell::Cell<bool>,
+    /// Set when the retained base is the rolled-back FIRST FORK of a
+    /// nondeterministic consistency completion, with the fork-time databox
+    /// installed. Class jobs then resume that databox's pending queues instead
+    /// of starting with Konclude's cleared queues: the fork state still has
+    /// deterministic work that the rolled-back branch had done.
+    retained_base_resumes_fork: std::cell::Cell<bool>,
+    /// Epoch depth of the retained base: 1 when a drain epoch is part of it.
+    retained_base_depth: std::cell::Cell<usize>,
     /// Immutable-by-value copy of the completed ontology-consistency graph's
     /// non-deterministic nominal-label prefixes. Konclude exposes these only
     /// after individual saturation, representative-cache recomputation, and
     /// the authoritative full consistency task have finished.
     native_consistency_nominal_nondeterministic_prefix:
         RefCell<Option<HashMap<Cint64, Vec<(ConceptId, bool)>>>>,
+    /// Named index of a still-`CCEQ` host -> tag of its partial-equivalence
+    /// candidate marker (implied by the triggerable conjuncts of its
+    /// definition). A complete model lacking the marker refutes the host.
+    eq_candidate_markers: HashMap<usize, Cint64>,
 }
 
 #[derive(Clone)]
@@ -3154,9 +4194,9 @@ fn absorb_role_tree_clause(
     role_inverses: &HashMap<RoleId, RoleId>,
     caches: &mut TriggerCaches,
 ) -> bool {
-    let mut children: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
-    let mut incoming: HashMap<usize, usize> = HashMap::new();
-    let mut local: HashMap<usize, Vec<(ConceptId, bool)>> = HashMap::new();
+    let mut children: HashMap<usize, Vec<(usize, usize)>> = HashMap::default();
+    let mut incoming: HashMap<usize, usize> = HashMap::default();
+    let mut local: HashMap<usize, Vec<(ConceptId, bool)>> = HashMap::default();
     for atom in &cl.body {
         match atom {
             HAtom::Role { r, s, t } if s != t => {
@@ -3449,7 +4489,7 @@ fn collect_common_disjunct_concepts(
 /// completion hot loop.
 fn extract_common_disjunct_replacements(ctx: &mut CalculationAlgorithmContextBase) -> usize {
     let concept_count = ctx.ontology_arenas().concept_count() as usize;
-    let mut cache = HashMap::new();
+    let mut cache = HashMap::default();
     let mut considered = DenseSignedConceptSet::new(concept_count);
     let mut common = DenseSignedConceptSet::new(concept_count);
     let mut scratch = CommonDisjunctScratch::default();
@@ -3566,8 +4606,23 @@ fn has_any_nominal_input(tin: &TInput) -> bool {
 const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: usize = 10_000;
 
 fn native_cardinality_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
+    native_conditional_full_abox_profile(
+        tin,
+        native_nominals,
+        std::env::var_os("KM_HT_NATIVE_FULL").is_some(),
+    )
+}
+
+/// The non-number schedule remains opt-in pending the full corpus audit.
+/// It reuses the same deterministic consistency base and publication checks;
+/// no source feature flag or axiom is rewritten to select it.
+fn native_conditional_full_abox_profile(
+    tin: &TInput,
+    native_nominals: bool,
+    allow_non_number: bool,
+) -> bool {
     native_nominals
-        && tin.number
+        && (tin.number || allow_non_number)
         && tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
 }
 
@@ -3647,7 +4702,7 @@ fn independent_abox_component_tags(
             continue;
         }
         let mut pending = vec![start];
-        let mut component = HashSet::new();
+        let mut component = HashSet::default();
         seen[start] = true;
         while let Some(index) = pending.pop() {
             component.insert(bridged.nominal_seeds[index].individual_tag);
@@ -3670,7 +4725,7 @@ fn independent_abox_component_tags(
 /// model of the remaining ontology, so an irreflexivity axiom on such a role is
 /// redundant rather than unsupported.
 fn forced_nonempty_roles(tin: &TInput) -> HashSet<usize> {
-    let mut active = HashSet::new();
+    let mut active = HashSet::default();
     active.extend(
         tin.native_abox
             .role_assertions
@@ -3688,7 +4743,9 @@ fn forced_nonempty_roles(tin: &TInput) -> HashSet<usize> {
             .body
             .iter()
             .any(|atom| matches!(atom, HAtom::Concept { .. }));
-        if concept_guard {
+        // An unconditional role fact (reflexivity `→ R(x,x)`) forces R
+        // nonempty in every model as well.
+        if concept_guard || clause.body.is_empty() {
             active.extend(clause.head.iter().filter_map(|atom| match atom {
                 HAtom::Role { r, .. } => Some(*r),
                 _ => None,
@@ -3730,8 +4787,8 @@ fn forced_nonempty_roles(tin: &TInput) -> HashSet<usize> {
 /// distinguish two otherwise independent roots. Canonicalising the signature
 /// avoids repeating the same completion task for differently ordered input.
 fn independent_abox_representative_tags(bridged: &Bridged) -> HashSet<Cint64> {
-    let mut signatures = HashSet::new();
-    let mut selected_tags = HashSet::new();
+    let mut signatures = HashSet::default();
+    let mut selected_tags = HashSet::default();
     for seed in &bridged.nominal_seeds {
         let signature: BTreeSet<(Cint64, bool)> = seed
             .assertions
@@ -3816,6 +4873,8 @@ fn bridge_tinput_with_trigger_absorption(
     let source_mode = trigger_absorb
         && !tin.source_axioms.is_empty()
         && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
+    let mut eq_candidate_markers: HashMap<usize, Cint64> = HashMap::default();
+    let build_eq_candidates = std::env::var_os("KM_BRIDGE_NO_EQ_CANDIDATES").is_none();
     // Konclude distinguishes every concept in the terminology vector from
     // the active OWL classes it classifies. Frontend Q_/definer concepts are
     // anonymous structural concepts in Konclude; assigning class-name linkers
@@ -3956,9 +5015,9 @@ fn bridge_tinput_with_trigger_absorption(
         .enumerate()
         .map(|(index, name)| (name.as_str(), index))
         .collect();
-    let mut nominal_by_name: HashMap<String, ConceptId> = HashMap::new();
-    let mut nominal_tag_by_name: HashMap<String, Cint64> = HashMap::new();
-    let mut nominal_seed_index_by_name: HashMap<String, usize> = HashMap::new();
+    let mut nominal_by_name: HashMap<String, ConceptId> = HashMap::default();
+    let mut nominal_tag_by_name: HashMap<String, Cint64> = HashMap::default();
+    let mut nominal_seed_index_by_name: HashMap<String, usize> = HashMap::default();
     let mut nominal_seeds = Vec::new();
     let mut nominal_different = Vec::new();
     if native_nominal_covered {
@@ -4574,7 +5633,7 @@ fn bridge_tinput_with_trigger_absorption(
             .enumerate()
             .map(|(i, name)| (name.as_str(), i))
             .collect();
-        let mut concept_cache = HashMap::new();
+        let mut concept_cache = HashMap::default();
         let mut direct = 0usize;
         let mut role_links = 0usize;
         let mut absorbed = 0usize;
@@ -4583,9 +5642,9 @@ fn bridge_tinput_with_trigger_absorption(
         let mut equivalent_definitions = 0usize;
         let mut equivalent_definition_names = Vec::new();
         let mut absorbed_equivalent_definitions = 0usize;
-        let mut seen_inclusions = std::collections::HashSet::new();
-        let mut forced_subclass_names = std::collections::HashSet::new();
-        let mut equivalence_name_counts: HashMap<&str, usize> = HashMap::new();
+        let mut seen_inclusions = crate::fxhash::FxHashSet::default();
+        let mut forced_subclass_names = crate::fxhash::FxHashSet::default();
+        let mut equivalence_name_counts: HashMap<&str, usize> = HashMap::default();
         for axiom in &tin.source_axioms {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
@@ -4607,6 +5666,79 @@ fn bridge_tinput_with_trigger_absorption(
                         }
                     }
                 }
+            }
+        }
+        // Lazy unfolding of a CCEQ definition (`A -> D`, `not A -> not D`, no
+        // reverse TOP GCI) is complete only for definitions that do not reach
+        // their own name: for `A == not A` a node carrying neither A nor
+        // not A is never forced to choose, so the inconsistency is missed
+        // (fuzz s1798). A name whose definition reaches itself through other
+        // single-equivalence definitions keeps both inclusions instead.
+        {
+            fn collect_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
+                match concept {
+                    SourceConcept::Name(name) => out.push(name.as_str()),
+                    SourceConcept::Not(operand) => collect_names(operand, out),
+                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                        for operand in operands {
+                            collect_names(operand, out);
+                        }
+                    }
+                    SourceConcept::Exists(_, filler)
+                    | SourceConcept::Forall(_, filler)
+                    | SourceConcept::AtLeast(_, _, filler)
+                    | SourceConcept::AtMost(_, _, filler) => collect_names(filler, out),
+                    _ => {}
+                }
+            }
+            // Edges only from the side the equivalence pass below would make
+            // the CCEQ host (the first named side that is not forced and has
+            // a single equivalence); the other names of the axiom are atoms of
+            // its definition. Forcing a cyclic host can hand the definition to
+            // the other side, so iterate to a fixpoint.
+            loop {
+                let mut definition_edges: HashMap<&str, Vec<&str>> = HashMap::default();
+                for axiom in &tin.source_axioms {
+                    if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                        continue;
+                    }
+                    let host = [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                        .into_iter()
+                        .find_map(|(named_side, definition)| match named_side {
+                            SourceConcept::Name(name)
+                                if !forced_subclass_names.contains(name.as_str())
+                                    && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
+                            {
+                                Some((name.as_str(), definition))
+                            }
+                            _ => None,
+                        });
+                    if let Some((name, definition)) = host {
+                        let mut names = Vec::new();
+                        collect_names(definition, &mut names);
+                        definition_edges.entry(name).or_default().extend(names);
+                    }
+                }
+                let mut cyclic: Vec<&str> = Vec::new();
+                for (&start, targets) in &definition_edges {
+                    let mut seen: crate::fxhash::FxHashSet<&str> = Default::default();
+                    let mut stack: Vec<&str> = targets.clone();
+                    while let Some(name) = stack.pop() {
+                        if name == start {
+                            cyclic.push(start);
+                            break;
+                        }
+                        if seen.insert(name) {
+                            if let Some(next) = definition_edges.get(name) {
+                                stack.extend(next.iter().copied());
+                            }
+                        }
+                    }
+                }
+                if cyclic.is_empty() {
+                    break;
+                }
+                forced_subclass_names.extend(cyclic);
             }
         }
         bridge_phase!("source-prescan");
@@ -4710,6 +5842,73 @@ fn bridge_tinput_with_trigger_absorption(
                             }
                         } else {
                             let defined = b.add_equivalent_definition(host, built.0, built.1);
+                            if defined && build_eq_candidates {
+                                // Port of the partial-equivalence candidate
+                                // (`PartialEquivalentDefinitionToCandidates-
+                                // Absorption`, default on in Konclude,
+                                // cpp 207-212): the fully triggerable
+                                // conjuncts T of the definition imply a fresh
+                                // marker. `A == D` and `D <= T` give
+                                // `A <= T`, so a complete model whose node
+                                // lacks the marker is not in T, hence not in
+                                // A. The marker has no rule and no class name
+                                // (Konclude's CCEQCAND is likewise rule-free
+                                // in completion); it only adds labels, so all
+                                // verdicts are unchanged. The host stays in
+                                // the non-candidate set below: the marker is
+                                // consumed only by the bridge's own
+                                // countermodel test for pair candidates.
+                                let parts: Vec<&SourceConcept> = match definition {
+                                    SourceConcept::And(parts) => parts.iter().collect(),
+                                    other => vec![other],
+                                };
+                                let mut triggerable = Vec::new();
+                                for part in parts {
+                                    let Some(part_built) = build_source_concept(
+                                        &mut b,
+                                        part,
+                                        &concept_index,
+                                        &role_index,
+                                        &named,
+                                        &roles,
+                                        &inv_roles,
+                                        &nominal_by_name,
+                                        &mut concept_cache,
+                                    ) else {
+                                        continue;
+                                    };
+                                    let part_triggerable = full_absorption_trigger(
+                                        &mut b,
+                                        part_built,
+                                        &role_inverses,
+                                        &mut trigger_caches,
+                                    )
+                                    .is_some();
+                                    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                                        eprintln!(
+                                            "BRIDGE-EQ-CANDIDATE-PART {name}: triggerable={part_triggerable} {part:?}"
+                                        );
+                                    }
+                                    if part_triggerable {
+                                        triggerable.push(part_built);
+                                    }
+                                }
+                                if !triggerable.is_empty() {
+                                    let marker_tag = b.fresh_tag();
+                                    let marker = b.atom(marker_tag);
+                                    if absorb_concept_disjunction(
+                                        &mut b,
+                                        &triggerable,
+                                        &[(marker, false)],
+                                        &role_inverses,
+                                        &mut trigger_caches,
+                                    ) {
+                                        if let Some(&index) = concept_index.get(name) {
+                                            eq_candidate_markers.insert(index, marker_tag);
+                                        }
+                                    }
+                                }
+                            }
                             if defined {
                                 // Exact non-candidate branch of
                                 // `CTriggeredImplicationBinaryAbsorberPreProcess`
@@ -4964,6 +6163,67 @@ fn bridge_tinput_with_trigger_absorption(
     }
 
     'clause: for cl in &tin.clauses {
+        // Asymmetry `R(x,y) ∧ R(y,x) → ⊥`. Konclude's
+        // CConcreteOntologyUpdateBuilder (BETASYMMETRICPROPERTY) makes the
+        // role disjoint from its inverse: R.disjoint += R⁻ and
+        // R⁻.disjoint += R. Link creation installs the matching negation
+        // edges in both orientations and every positive link install checks
+        // them (createIndividualNodeDisjointRolesLinks /
+        // installIndividualNodeRoleLink); merges are guarded by
+        // areIndividualNodesDisjointRolesMergeable.
+        if let Some(role) = asymmetric_role_clause(cl) {
+            if role < roles.len() {
+                let (plain, inverse) = (roles[role], inv_roles[role]);
+                for (owner, disjoint) in [(plain, inverse), (inverse, plain)] {
+                    let arenas = b.ctx.ontology_arenas_mut();
+                    if !arenas.role(owner).get_disjoint_role_list().iter()
+                        .any(|link| link.target == disjoint)
+                    {
+                        arenas.role_mut(owner).add_disjoint_role_linker(
+                            super::model::substrate::NegLink { target: disjoint, negated: false },
+                        );
+                    }
+                }
+                continue;
+            }
+        }
+        // Role disjointness `R(x,y) ∧ S(x,y) → ⊥` (Konclude
+        // BETDISJOINTPROPERTIES): R.disjoint += S, S.disjoint += R, and the
+        // same for the inverses, so links and merges are checked exactly as
+        // for asymmetry above.
+        if let Some((left, right)) = disjoint_role_pair_clause(cl) {
+            if left < roles.len() && right < roles.len() {
+                for (owner, disjoint) in [
+                    (roles[left], roles[right]), (roles[right], roles[left]),
+                    (inv_roles[left], inv_roles[right]), (inv_roles[right], inv_roles[left]),
+                ] {
+                    let arenas = b.ctx.ontology_arenas_mut();
+                    if !arenas.role(owner).get_disjoint_role_list().iter()
+                        .any(|link| link.target == disjoint)
+                    {
+                        arenas.role_mut(owner).add_disjoint_role_linker(
+                            super::model::substrate::NegLink { target: disjoint, negated: false },
+                        );
+                    }
+                }
+                continue;
+            }
+        }
+        // Irreflexivity `R(x,x) → ⊥` on a role that may be nonempty.
+        // Konclude (BETIRREFLEXIVEPROPERTY) builds the GCI ⊤ ⊑ ¬∃R.Self;
+        // the negated SELF rule clashes with any R self link and re-fires
+        // through the role reapply queue for later links.
+        if let ([HAtom::Role { r, s, t }], []) = (cl.body.as_slice(), cl.head.as_slice()) {
+            if s == t && forced_nonempty_roles.contains(r) {
+                if let Some(&role) = roles.get(*r) {
+                    let self_concept = b.self_restriction(role);
+                    let not_self = b.positive_attachment_concept((self_concept, true));
+                    tbox.push(not_self);
+                    top_gcis.push(not_self);
+                    continue;
+                }
+            }
+        }
         // Reflexivity is the universal fact R(x,x), equivalently
         // owl:Thing <= ObjectHasSelf(R). Install it on every completion node
         // through the existing global self-restriction machinery.
@@ -5071,7 +6331,7 @@ fn bridge_tinput_with_trigger_absorption(
                     return None;
                 }
                 let mut guards: Vec<(usize, bool)> = Vec::new();
-                let mut per_target: HashMap<usize, Vec<usize>> = HashMap::new();
+                let mut per_target: HashMap<usize, Vec<usize>> = HashMap::default();
                 for a in &cl.body {
                     if let HAtom::Concept { neg, c, t } = a {
                         if *t == hub {
@@ -5851,7 +7111,11 @@ fn bridge_tinput_with_trigger_absorption(
         direct_native_role_assertions,
         nominal_different,
         native_representative_cache: RefCell::new(None),
+        precomputation_replay_disabled: std::cell::Cell::new(false),
+        retained_base_resumes_fork: std::cell::Cell::new(false),
+        retained_base_depth: std::cell::Cell::new(0),
         native_consistency_nominal_nondeterministic_prefix: RefCell::new(None),
+        eq_candidate_markers,
     }
 }
 
@@ -6029,6 +7293,21 @@ pub fn bridged_unsat(
     next_indi_id: &mut i64,
     seeds: &[(ConceptId, bool)],
 ) -> Option<bool> {
+    let mut model_root = None;
+    bridged_unsat_rooted(algo, ctx, bridged, next_indi_id, seeds, &mut model_root)
+}
+
+/// `bridged_unsat` that also hands back the root of the clash-free model on
+/// a satisfiable (`Some(false)`) verdict, so the caller can read its label.
+fn bridged_unsat_rooted(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    next_indi_id: &mut i64,
+    seeds: &[(ConceptId, bool)],
+    model_root: &mut Option<NodeId>,
+) -> Option<bool> {
+    *model_root = None;
     ctx.clear_pending_signal();
     algo.or_branch_stack.clear();
     algo.singleton_base_prepared = false;
@@ -6112,8 +7391,15 @@ pub fn bridged_unsat(
         }
         // Plain-mode completeness repair: reprocess every label concept each
         // pass, so the insertion-stable break below certifies genuine closure
-        // under ALL rules (see `requeue_all_node_labels`).
-        algo.requeue_all_node_labels(ctx);
+        // under ALL rules (see `requeue_all_node_labels`). Source-terminology
+        // probes run with complete COW restores (no plain-mode leftovers to
+        // repair), exactly as the read-off below already relies on; there
+        // the repair only re-derives the whole retained base per probe.
+        if !(bridged.source_tbox && algo.conf_inprocess_cow)
+            || std::env::var_os("KM_BRIDGE_PROBE_REQUEUE").is_some()
+        {
+            algo.requeue_all_node_labels(ctx);
+        }
         let iq = ctx.get_individual_immediately_processing_queue(true);
         ctx.process_context_mut()
             .indi_unsorted_proc_queue_mut(iq)
@@ -6492,6 +7778,7 @@ pub fn bridged_unsat(
             eprintln!("BRIDGE-SAT-EXPANSION-CACHE-WRITE");
         }
     }
+    *model_root = Some(root);
     Some(false)
 }
 
@@ -6731,33 +8018,174 @@ fn bridged_classify_subject_with_root(
                 n.individual_node_id(), n.has_merged_into_individual_node_id(), n.merged_into_individual_node_id(), n.processing_restriction_flags, n.processing_queued, n.immediately_processing_queued, n.backend_synchron_retest_processing_queued, n.det_exp_processing_queued, n.depth_processing_queued, n.delayed_nominal_processing_queued);
         }
     }
-    // Read off positive named tags from the root label.
+    // Read off positive named tags from the root ELEMENT's label: a nominal
+    // or at-most merge can merge the root into another node, whose label
+    // then carries the element's concepts while the merged-away root keeps a
+    // stale one. Without a branch every merge is deterministic, so the
+    // representative's label is entailed for the subject; with one, the
+    // read-off only proposes candidates that are probed.
+    let Some(label_root) = native_completion_merge_target(ctx, root, false) else {
+        return None;
+    };
     let ls = ctx
         .process_context_mut()
-        .node_reapply_concept_label_set(root);
-    let mut subsumers: Vec<usize> = Vec::new();
-    let entries: Vec<(Cint64, super::process::ConDescId)> = ctx
-        .process_context()
-        .label_set(ls)
-        .concept_des_dep_map
-        .iter()
-        .map(|(tag, data)| (*tag, data.concept_descriptor))
-        .collect();
-    for (tag, cd) in entries {
-        if tag < TAG_BASE || tag >= TAG_BASE + n_named as Cint64 {
-            continue;
-        }
-        if cd.is_none() {
-            continue;
-        }
-        if ctx.process_context().con_desc(cd).is_negated() {
-            continue;
-        }
-        subsumers.push((tag - TAG_BASE) as usize);
+        .node_reapply_concept_label_set(label_root);
+    let subsumers = bridge_named_positive_subsumers(ctx, ls, n_named);
+    Some((subsumers, authoritative, root))
+}
+
+/// Satisfiability of owl:Thing: a root labelled only with ⊤ (and therefore
+/// every ⊤-attached GCI), completed exactly like a subject root. `Some(true)`
+/// iff the completion finds a clash-free graph, `Some(false)` on a root clash,
+/// `None` on a STOP or a poisoned (incomplete) search.
+fn bridged_top_satisfiable(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    next_indi_id: &mut i64,
+) -> Option<bool> {
+    ctx.clear_pending_signal();
+    algo.or_branch_stack.clear();
+    algo.singleton_base_prepared = false;
+    algo.completeness_poisoned = false;
+    algo.drive_deadline = algo
+        .probe_budget
+        .or_else(|| {
+            std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .map(std::time::Duration::from_secs)
+        })
+        .map(|b| std::time::Instant::now() + b);
+    let id = reserve_bridge_query_node_id(ctx, next_indi_id)?;
+    let mut root = ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    ctx.process_context_mut().node_mut(root).set_individual_node_id(id);
+    ctx.processing_data_box_mut()
+        .individual_process_node_vector_mut()
+        .set_local_data(id, root);
+    let seed_tp = ctx.get_or_create_base_dependency_track_point();
+    let top = ctx.processing_data_box().ontology_top_concept;
+    if top.is_none() {
+        return None;
     }
+    algo.add_concept_to_individual(top, false, &mut root, seed_tp, false, true, ctx);
+    if ctx.has_pending_signal() {
+        return match ctx.pending_signal() {
+            super::completion::clash::CalcSignal::Clash(_) => Some(false),
+            _ => None,
+        };
+    }
+    let mut prev_inserts: i64 = -1;
+    for _ in 0..256 {
+        for &g in &bridged.tbox {
+            seed_concept_on_queue(ctx, root, g);
+        }
+        if !bridged.source_tbox {
+            algo.requeue_all_node_labels(ctx);
+        }
+        let iq = ctx.get_individual_immediately_processing_queue(true);
+        ctx.process_context_mut()
+            .indi_unsorted_proc_queue_mut(iq)
+            .insert_indiviudal_process_node(root);
+        if !algo.run_completion_on(ctx) {
+            return match ctx.pending_signal() {
+                super::completion::clash::CalcSignal::Clash(_) => Some(false),
+                _ => None,
+            };
+        }
+        if bridged.source_tbox {
+            break;
+        }
+        let inserts = algo.stat_con_des_insertion_count;
+        if inserts == prev_inserts {
+            break;
+        }
+        prev_inserts = inserts;
+    }
+    (!algo.completeness_poisoned).then_some(true)
+}
+
+/// Positive tags (named concept `i` has tag `TAG_BASE + i`, as in the
+/// read-off) of the root ELEMENT of a completed probe model, for model
+/// refutation. A nominal or at-most merge can merge the probe root into
+/// another node; the root element is then the merge representative, whose
+/// label carries the consequences of the merged identity (e.g. a class that
+/// a nominal implies), while the merged-away node keeps a stale label. Reading
+/// the stale label made `A5 <= A0` look refuted when `A5 <= {b, c}` and the
+/// nominals force `A0` on b and c. `None` (no refutation evidence) when the
+/// representative cannot be resolved.
+fn bridge_model_root_positive_tags(
+    ctx: &mut CalculationAlgorithmContextBase,
+    root: NodeId,
+) -> Option<HashSet<Cint64>> {
+    let representative = native_completion_merge_target(ctx, root, false)?;
+    let ls = ctx.process_context_mut().node_reapply_concept_label_set(representative);
+    if ls.is_none() {
+        return None;
+    }
+    Some(bridge_label_positive_tags(ctx, ls))
+}
+
+fn bridge_label_positive_tags(
+    ctx: &CalculationAlgorithmContextBase,
+    ls: super::process::LabelSetId,
+) -> HashSet<Cint64> {
+    let pc = ctx.process_context();
+    // Full structure is required here: an empty local main entry still shadows
+    // the same tag in the inherited additional map.
+    let mut iterator = pc.label_set_concept_label_set_iterator(ls, true, false, true);
+    let mut tags = HashSet::default();
+    while iterator.has_value() {
+        let tag = iterator.get_data_tag(pc, ctx.ontology_arenas());
+        let descriptor = iterator.get_concept_descriptor();
+        if descriptor.is_some() && !pc.con_desc(descriptor).is_negated() {
+            tags.insert(tag);
+        }
+        iterator.next_pp(pc);
+    }
+    tags
+}
+
+fn bridge_named_positive_subsumers(
+    ctx: &CalculationAlgorithmContextBase,
+    ls: super::process::LabelSetId,
+    n_named: usize,
+) -> Vec<usize> {
+    let mut subsumers: Vec<usize> = bridge_label_positive_tags(ctx, ls)
+        .into_iter()
+        .filter_map(|tag| {
+            if tag < TAG_BASE || tag >= TAG_BASE + n_named as Cint64 {
+                return None;
+            }
+            Some((tag - TAG_BASE) as usize)
+        })
+        .collect();
     subsumers.sort_unstable();
     subsumers.dedup();
-    Some((subsumers, authoritative, root))
+    subsumers
+}
+
+/// Does a complete clash-free model whose root carries `root_tags` refute
+/// `subject <= candidate`? A plain named concept is decided by its label. A
+/// still-`CCEQ` host has no reverse rule (Konclude's update analysis never
+/// prunes it by absence); it is refuted only through its partial-equivalence
+/// candidate marker, which every instance of its definition carries.
+fn bridge_model_refutes_candidate(
+    bridged: &Bridged,
+    ctx: &CalculationAlgorithmContextBase,
+    candidate: usize,
+    root_tags: &HashSet<Cint64>,
+) -> bool {
+    if ctx.ontology_arenas().concept(bridged.named[candidate]).get_operator_code() == op::CCEQ {
+        bridged
+            .eq_candidate_markers
+            .get(&candidate)
+            .is_some_and(|marker| !root_tags.contains(marker))
+    } else {
+        !root_tags.contains(&(TAG_BASE + candidate as Cint64))
+    }
 }
 
 pub fn bridged_classify_subject(
@@ -6782,6 +8210,8 @@ fn analyse_kpset_completion_model(
     root: NodeId,
     ctx: &mut CalculationAlgorithmContextBase,
 ) {
+    let timing_start = std::env::var_os("KM_BRIDGE_PHASE_TIMING")
+        .is_some().then(std::time::Instant::now);
     let analyser = SatisfiableTaskClassificationMessageAnalyser::default();
     let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_shared_handles(
         state
@@ -6798,6 +8228,7 @@ fn analyse_kpset_completion_model(
         .individual_process_node_vector()
         .clone();
     let max_branch_tag = ctx.processing_data_box().maximum_deterministic_branch_tag();
+    let snapshot_finished = timing_start.map(|_| std::time::Instant::now());
     let mut observer = RecordingClassificationMessageDataObserver::new();
     let testing_items = state
         .ontology_item
@@ -6826,6 +8257,7 @@ fn analyse_kpset_completion_model(
         Some(&mut observer),
     );
     let Some(analysed) = analysed else { return };
+    let analysis_finished = timing_start.map(|_| std::time::Instant::now());
     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
         let message_count: usize = observer
             .get_told_messages()
@@ -6847,6 +8279,14 @@ fn analyse_kpset_completion_model(
             messages,
             ontology.concepts(),
         );
+    }
+    if let (Some(start), Some(snapshot), Some(analysis)) =
+        (timing_start, snapshot_finished, analysis_finished)
+    {
+        eprintln!("BRIDGE-ANALYSIS-TIMING subject={subject} snapshot={:.6} analyse={:.6} delivery={:.6}",
+            snapshot.duration_since(start).as_secs_f64(),
+            analysis.duration_since(snapshot).as_secs_f64(),
+            analysis.elapsed().as_secs_f64());
     }
 }
 
@@ -7088,7 +8528,7 @@ fn install_native_nominal_backend_replay(
 ) {
     use super::completion::algorithm::NativeNominalBackendReplay;
 
-    let mut replay_map = HashMap::new();
+    let mut replay_map = HashMap::default();
     // A new association set is a new set of reuse decisions: the per-job
     // one-shot record (`u25::activate_backend_individual_expansion_reuse`) must
     // not carry a decision taken against the previous associations. Every
@@ -7098,7 +8538,7 @@ fn install_native_nominal_backend_replay(
     let cache = bridged.native_representative_cache.borrow();
     let saturation_labels_replayable = cache.as_ref()
         .is_some_and(NativeAboxRepresentativeCache::saturation_labels_replayable)
-        && std::env::var_os("KM_BRIDGE_NO_PRECOMPUTATION_REPLAY").is_none();
+        && !precomputation_replay_disabled(bridged);
     for seed in &bridged.nominal_seeds {
         let association_entry = cache
             .as_ref()
@@ -7416,6 +8856,14 @@ fn reset_classification_algorithm_on_retained_base(
 ///
 /// Returns `None` — defer, never a verdict — if the epoch accounting cannot be
 /// justified; a state that is not provably the retained base is never reused.
+/// The precomputation replay is off by diagnostic request or because the
+/// consistency completion was nondeterministic (see
+/// `Bridged::precomputation_replay_disabled`).
+fn precomputation_replay_disabled(bridged: &Bridged) -> bool {
+    bridged.precomputation_replay_disabled.get()
+        || std::env::var_os("KM_BRIDGE_NO_PRECOMPUTATION_REPLAY").is_some()
+}
+
 fn restore_retained_classification_base(
     algo: &mut CompletionTaskHandleAlgorithm,
     ctx: &mut CalculationAlgorithmContextBase,
@@ -7433,7 +8881,8 @@ fn restore_retained_classification_base(
     // One base epoch (the class-job epoch opened at the bottom of this
     // function, or at the retained-base snapshot for the first job) plus
     // exactly one per surviving owned alternative.
-    if ctx.process_context().branch_epoch_depth() != owned_epoch_count + 1 {
+    let base_depth = bridged.retained_base_depth.get();
+    if ctx.process_context().branch_epoch_depth() != base_depth + owned_epoch_count + 1 {
         return None;
     }
     while let Some(branch) = algo.or_branch_stack.pop() {
@@ -7442,7 +8891,7 @@ fn restore_retained_classification_base(
         }
     }
     ctx.pop_branch_epoch();
-    if ctx.process_context().branch_epoch_depth() != 0 || !algo.or_branch_stack.is_empty() {
+    if ctx.process_context().branch_epoch_depth() != base_depth || !algo.or_branch_stack.is_empty() {
         return None;
     }
     // The dependency/branch-tree cursor is watermark-only memory and is NOT
@@ -7450,14 +8899,39 @@ fn restore_retained_classification_base(
     ctx.base.used_branch_tree_node = base_branch_node;
     ctx.branch_tree_node = base_branch_node;
     ctx.clear_pending_signal();
+    if let Some(watermark) = ctx.retained_spine_watermark {
+        if std::env::var_os("KM_BRIDGE_SPINE_CHECK").is_some() {
+            let dangling = ctx.process_context().retained_spine_dangling_clashes(watermark);
+            assert_eq!(dangling, 0, "a retained-base track point references a released clash list");
+        }
+        ctx.process_context_mut().truncate_dependency_spine(watermark);
+    }
     ctx.push_branch_epoch();
-    initialize_retained_classification_databox(ctx, base_databox, base_next_id);
+    let resume_fork = bridged.retained_base_resumes_fork.get();
+    if resume_fork {
+        // Resume the fork's pending queues exactly (see
+        // `Bridged::retained_base_resumes_fork`): the base databox, unchanged.
+        let mut databox = base_databox.clone();
+        databox.set_first_possible_individual_node_id(base_next_id);
+        ctx.base.used_processing_data_box = databox;
+    } else {
+        initialize_retained_classification_databox(ctx, base_databox, base_next_id);
+    }
     reset_classification_algorithm_on_retained_base(algo, bridged, replay_snapshot);
     // Stage-8 read-off watermark. Every node already in the arena belongs to
     // the retained deterministic consistency base; Konclude hands that base to
     // a class task with all individual processing queues cleared, so a branch
     // point opened below this watermark is work its class task never scheduled.
-    algo.retained_base_node_count = ctx.process_context().node_count();
+    // A resumed fork is a continuation of the consistency completion, not
+    // Konclude's cleared-queue class task: no retained-node special casing.
+    // A resumed fork is a continuation of the consistency completion, not
+    // Konclude's cleared-queue class task: no retained-node special casing
+    // (with it, 7 of the 28 conditional-full fixtures answer wrongly).
+    algo.retained_base_node_count = if resume_fork {
+        0
+    } else {
+        ctx.process_context().node_count()
+    };
     Some(())
 }
 
@@ -7546,7 +9020,7 @@ fn reset_probe_env_impl(
     let branch_learning = if card_nominal_profile {
         std::mem::take(&mut algo.or_branch_learning_stats)
     } else {
-        HashMap::new()
+        HashMap::default()
     };
     let mut a = CompletionTaskHandleAlgorithm::new();
     configure_default_blocking(&mut a);
@@ -8443,7 +9917,7 @@ fn commit_native_representative_association_batch(
     {
         return None;
     }
-    let mut seen = HashSet::with_capacity(prepared.len());
+    let mut seen = HashSet::with_capacity_and_hasher(prepared.len(), Default::default());
     for (tag, entry) in &prepared {
         if !seen.insert(*tag)
             || entry.individual_tag != *tag
@@ -8458,7 +9932,7 @@ fn commit_native_representative_association_batch(
         }
     }
 
-    let mut updated = HashSet::with_capacity(prepared.len());
+    let mut updated = HashSet::with_capacity_and_hasher(prepared.len(), Default::default());
     for (tag, mut entry) in prepared {
         cache.next_association_update_id = cache.next_association_update_id.saturating_add(1);
         entry.association_update_id = cache.next_association_update_id;
@@ -8912,6 +10386,13 @@ fn native_nominal_consistency(
         .probe_budget
         .map(|budget| std::time::Instant::now() + budget);
     let consistent = algo.run_completion_on(ctx);
+    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+        eprintln!(
+            "BRIDGE-NOMINAL-CONSISTENCY: consistent={consistent} signal={:?} poisoned={}",
+            ctx.pending_signal(),
+            algo.completeness_poisoned
+        );
+    }
     if !consistent {
         return match ctx.pending_signal() {
             super::completion::clash::CalcSignal::Clash(_) => Some(false),
@@ -8931,7 +10412,7 @@ fn snapshot_native_consistency_nominal_nondeterministic_prefix(
     ctx: &mut CalculationAlgorithmContextBase,
     bridged: &Bridged,
 ) -> Option<HashMap<Cint64, Vec<(ConceptId, bool)>>> {
-    let mut snapshot = HashMap::with_capacity(bridged.nominal_seeds.len());
+    let mut snapshot = HashMap::with_capacity_and_hasher(bridged.nominal_seeds.len(), Default::default());
     for seed in &bridged.nominal_seeds {
         let node = algo.get_up_to_date_individual_by_id(-seed.individual_tag, ctx);
         if node.is_none() {
@@ -9264,7 +10745,7 @@ fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmCon
     use super::model::concept_process::ConceptProcessData;
     use super::model::op::{CCFS_ALL_AQALL_TYPE, CCFS_POSSIBLE_ROLE_CREATION_TYPE};
     let n = ctx.ontology_arenas().concept_count();
-    let mut creation_roles: std::collections::HashSet<RoleId> = std::collections::HashSet::new();
+    let mut creation_roles: crate::fxhash::FxHashSet<RoleId> = crate::fxhash::FxHashSet::default();
     for i in 0..n {
         let cid = ConceptId::new(i);
         let (is_creation, role) = {
@@ -9369,8 +10850,8 @@ fn build_saturation_seeds_with_deadline(
     // Construction items, C++ 2022-2127. Only existential/cardinality fillers
     // are potentially-exist items; marking every seed disabled substitution.
     let mut seeds: Vec<Seed> = Vec::new();
-    let mut seed_index: HashMap<(ConceptId, bool), usize> = HashMap::new();
-    let mut role_seed_index: HashMap<(RoleId, ConceptId, bool), usize> = HashMap::new();
+    let mut seed_index: HashMap<(ConceptId, bool), usize> = HashMap::default();
+    let mut role_seed_index: HashMap<(RoleId, ConceptId, bool), usize> = HashMap::default();
     let push = |seeds: &mut Vec<Seed>,
                 seed_index: &mut HashMap<(ConceptId, bool), usize>,
                 concept: ConceptId,
@@ -9424,7 +10905,7 @@ fn build_saturation_seeds_with_deadline(
     // Exact `hasRoleRanges`: inspect the range side of every signed indirect
     // super role. The local helper restores Konclude's reflexive role entry
     // for saturation without changing the completion arena's role lists.
-    let mut roles_with_ranges = std::collections::HashSet::new();
+    let mut roles_with_ranges = crate::fxhash::FxHashSet::default();
     for role_index in 0..ctx.ontology_arenas().role_count() {
         if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
             return false;
@@ -9526,7 +11007,7 @@ fn build_saturation_seeds_with_deadline(
     // their effective alternatives. Auxiliary items are invalid special-item
     // references: substituting through one would conflate an alternative with
     // the class whose pseudo-model caused it to be saturated.
-    let mut invalid_special = std::collections::HashSet::new();
+    let mut invalid_special = crate::fxhash::FxHashSet::default();
     let mut extension_item = 0usize;
     while extension_item < seeds.len() {
         if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
@@ -9554,7 +11035,7 @@ fn build_saturation_seeds_with_deadline(
         // items; the compact Rust traversal must do the same explicitly.
         // Re-examining a signed concept cannot add information here: seed and
         // invalid-special insertion are both idempotent set operations.
-        let mut examined = std::collections::HashSet::new();
+        let mut examined = crate::fxhash::FxHashSet::default();
         let mut cursor = 0usize;
         while cursor < examine.len() {
             let (concept, negated) = examine[cursor];
@@ -9641,7 +11122,7 @@ fn build_saturation_seeds_with_deadline(
     }
 
     // analyseConceptSaturationSubsumerExistItems, C++ 1018-1102.
-    let named: std::collections::HashSet<ConceptId> = bridged.named.iter().copied().collect();
+    let named: crate::fxhash::FxHashSet<ConceptId> = bridged.named.iter().copied().collect();
     let mut special_reference: Vec<Option<usize>> = vec![None; seeds.len()];
     let mut multiple_predecessors = vec![false; seeds.len()];
     let mut indirect_successors = vec![false; seeds.len()];
@@ -9651,7 +11132,7 @@ fn build_saturation_seeds_with_deadline(
             return false;
         }
         let mut stack = vec![(seeds[item].concept, seeds[item].negated)];
-        let mut visited = std::collections::HashSet::new();
+        let mut visited = crate::fxhash::FxHashSet::default();
         while let Some((concept, negated)) = stack.pop() {
             if !visited.insert((concept, negated)) {
                 continue;
@@ -10174,7 +11655,7 @@ fn build_native_abox_saturation_seeds(
     use super::process::sat_node::IndividualSaturationProcessNode;
 
     let mut nodes = Vec::with_capacity(bridged.nominal_seeds.len());
-    let mut by_tag = HashMap::with_capacity(bridged.nominal_seeds.len());
+    let mut by_tag = HashMap::with_capacity_and_hasher(bridged.nominal_seeds.len(), Default::default());
     let mut linkers = Vec::with_capacity(bridged.nominal_seeds.len());
     for seed in &bridged.nominal_seeds {
         if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
@@ -10949,7 +12430,7 @@ fn try_establish_native_backend_expansion_blocking(
     seed: &NominalSeed,
     node: NodeId,
 ) -> bool {
-    if std::env::var_os("KM_BRIDGE_NO_PRECOMPUTATION_REPLAY").is_some()
+    if precomputation_replay_disabled(bridged)
         || node.is_none()
         || node.index() >= ctx.process_context().node_count()
         || !ctx
@@ -11207,7 +12688,7 @@ fn resolve_saturation_substitute_chain(
     ctx: &CalculationAlgorithmContextBase,
     base_node: super::process::SatNodeId,
     queried_concept: ConceptId,
-    named_index: &std::collections::HashMap<ConceptId, usize>,
+    named_index: &crate::fxhash::FxHashMap<ConceptId, usize>,
     subsumers: &mut Vec<usize>,
 ) -> super::process::SatNodeId {
     let mut resolved = base_node;
@@ -11256,7 +12737,7 @@ fn extract_saturation_outcome(
 ) -> SaturationOutcome {
     use super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
     let n_named = bridged.named.len();
-    let named_index: std::collections::HashMap<ConceptId, usize> = bridged
+    let named_index: crate::fxhash::FxHashMap<ConceptId, usize> = bridged
         .named
         .iter()
         .enumerate()
@@ -11386,6 +12867,21 @@ fn extract_saturation_outcome(
     }
 }
 
+/// Only a finished saturation task can publish verdicts or complete labels.
+/// Queue exhaustion is a global obligation: per-node status flags alone do not
+/// establish it, and may look sufficient while a dependent queue is unfinished.
+fn extract_finished_saturation_outcome(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    finished: bool,
+) -> Option<SaturationOutcome> {
+    if !finished {
+        ctx.release_partial_saturation_state();
+        return None;
+    }
+    Some(extract_saturation_outcome(ctx, bridged))
+}
+
 /// Saturate the bridged ontology once (dedicated env — the probe env and its
 /// resets are untouched) and extract the verdicts. `None` when the input is
 /// outside the bridge fragment.
@@ -11435,6 +12931,17 @@ fn bridged_saturate_with_trigger_absorption(
 /// saturation-node coupling). The saturation NODES remain in the env's arenas
 /// either way (the concept→saturation reference linkings installed by the
 /// seeds point at them; see `reset_probe_env`'s saturation carry).
+/// Whether the approximation saturation pass refuses this terminology before
+/// touching any state. Completion implements SELF (`∃r.Self`, also the
+/// bridge's encoding of global reflexivity); saturation does not yet
+/// implement its backward-propagation rule, so every SELF-bearing terminology
+/// is completion-only.
+fn saturation_refuses_terminology(ctx: &CalculationAlgorithmContextBase) -> bool {
+    (0..ctx.ontology_arenas().concept_count()).any(|index| {
+        ctx.ontology_arenas().concept(ConceptId::new(index as Cint64)).get_operator_code() == op::CCSELF
+    })
+}
+
 fn run_bridged_saturation(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
     run_bridged_saturation_with_native_consistency_prefix(
         ctx,
@@ -11464,9 +12971,7 @@ fn run_bridged_saturation_with_native_consistency_prefix(
     // implement its backward-propagation rule. Skip the optional pass before
     // it mutates any state; the caller then uses exact completion without
     // extracting saturation verdicts or installing saturation cache links.
-    if (0..ctx.ontology_arenas().concept_count()).any(|index| {
-        ctx.ontology_arenas().concept(ConceptId::new(index as Cint64)).get_operator_code() == op::CCSELF
-    }) {
+    if saturation_refuses_terminology(ctx) {
         return false;
     }
     let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
@@ -11621,7 +13126,7 @@ fn debug_dump_saturation_nodes(ctx: &CalculationAlgorithmContextBase) {
 /// is valuable for that profile, but its global structural fixpoint is
 /// unnecessary on large nominal-free TBoxes: any omitted shortcut pair is
 /// still decided by the ordinary completion probes.
-fn source_told_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usize, usize)> {
+fn source_told_named_subsumer_closure(tin: &TInput) -> crate::fxhash::FxHashSet<(usize, usize)> {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -11667,7 +13172,7 @@ fn source_told_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet
             crate::json_io::SourceAxiomKind::Disjoint => {}
         }
     }
-    let mut closure = std::collections::HashSet::new();
+    let mut closure = crate::fxhash::FxHashSet::default();
     for sub in 0..direct.len() {
         let mut stack = direct[sub].clone();
         while let Some(sup) = stack.pop() {
@@ -11715,7 +13220,7 @@ fn source_told_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet
 fn source_named_subsumer_closure_seeded(
     tin: &TInput,
     seed_pairs: &[(usize, usize)],
-) -> std::collections::HashSet<(usize, usize)> {
+) -> crate::fxhash::FxHashSet<(usize, usize)> {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -11794,7 +13299,7 @@ fn source_named_subsumer_closure_seeded(
         providers.push((sup, named, structural));
     }
 
-    let mut keys: HashMap<&SourceConcept, usize> = HashMap::new();
+    let mut keys: HashMap<&SourceConcept, usize> = HashMap::default();
     let mut providers: Vec<Provider> = Vec::new();
     for axiom in &tin.source_axioms {
         match axiom.kind {
@@ -11813,7 +13318,7 @@ fn source_named_subsumer_closure_seeded(
     }
 
     // Seed the per-class state from the asserted superclass sides.
-    let mut upper: Vec<std::collections::HashSet<usize>> = vec![Default::default(); n_named];
+    let mut upper: Vec<crate::fxhash::FxHashSet<usize>> = vec![Default::default(); n_named];
     let mut key_subjects: Vec<Vec<usize>> = vec![Vec::new(); keys.len()];
     let mut pair_stack: Vec<(usize, usize)> = Vec::new();
     let mut key_stack: Vec<(usize, usize)> = Vec::new();
@@ -11865,7 +13370,7 @@ fn source_named_subsumer_closure_seeded(
         pair_stack.extend(seed_pairs.iter().copied());
     }
 
-    let mut closure: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut closure: crate::fxhash::FxHashSet<(usize, usize)> = crate::fxhash::FxHashSet::default();
     let mut supers: Vec<Vec<usize>> = vec![Vec::new(); n_named];
     let mut subs: Vec<Vec<usize>> = vec![Vec::new(); n_named];
     loop {
@@ -11951,13 +13456,13 @@ fn source_named_subsumer_closure_seeded(
     closure
 }
 
-fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usize, usize)> {
+fn source_named_subsumer_closure(tin: &TInput) -> crate::fxhash::FxHashSet<(usize, usize)> {
     source_named_subsumer_closure_seeded(tin, &[])
 }
 
 fn hierarchy_countermodel_subject_order(
     subjects: &mut [usize],
-    known_subsumptions: &std::collections::HashSet<(usize, usize)>,
+    known_subsumptions: &crate::fxhash::FxHashSet<(usize, usize)>,
 ) {
     let original_rank: HashMap<usize, usize> = subjects
         .iter()
@@ -11965,7 +13470,7 @@ fn hierarchy_countermodel_subject_order(
         .enumerate()
         .map(|(rank, subject)| (subject, rank))
         .collect();
-    let mut known_super_count: HashMap<usize, usize> = HashMap::new();
+    let mut known_super_count: HashMap<usize, usize> = HashMap::default();
     for &(sub, _) in known_subsumptions {
         *known_super_count.entry(sub).or_default() += 1;
     }
@@ -11980,17 +13485,13 @@ fn hierarchy_countermodel_subject_order(
 fn propagate_refuted_candidate_to_known_supers(
     sub: usize,
     candidate: usize,
-    known_subsumptions: &std::collections::HashSet<(usize, usize)>,
-    refuted_candidates: &mut std::collections::HashSet<(usize, usize)>,
+    known_supers_by_sub: &crate::fxhash::FxHashMap<usize, Vec<usize>>,
+    refuted_candidates: &mut crate::fxhash::FxHashSet<(usize, usize)>,
 ) {
     refuted_candidates.insert((sub, candidate));
-    refuted_candidates.extend(
-        known_subsumptions
-            .iter()
-            .filter_map(|&(known_sub, known_super)| {
-                (known_sub == sub).then_some((known_super, candidate))
-            }),
-    );
+    if let Some(supers) = known_supers_by_sub.get(&sub) {
+        refuted_candidates.extend(supers.iter().map(|&known_super| (known_super, candidate)));
+    }
 }
 
 /// Does the source terminology contain the inverse-sensitive mirror pattern
@@ -12360,6 +13861,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // The bridge has no typed data-domain object. Decline before constructing
     // an arena instead of treating a fixed datatype as an ordinary class.
     if has_fixed_datatype_object_position(tin) {
+        if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            eprintln!("BRIDGE-INPUT-DEFER: a fixed datatype occurs in an object position");
+        }
         return None;
     }
     let source_mode = trigger_absorb
@@ -12379,9 +13883,15 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // target of the tautology R <= top is semantically inert for the certified
     // component-ABox path, so it need not make that path defer.
     if has_builtin_top_role(tin) && !independent_abox_elided {
+        if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            eprintln!("BRIDGE-INPUT-DEFER: universal role requires an exact supported source path");
+        }
         return None;
     }
     if has_any_nominal_input(tin) && !native_nominals {
+        if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            eprintln!("BRIDGE-INPUT-DEFER: nominal metadata is not covered by the native source path");
+        }
         return None;
     }
     // Native ABox saturation is scheduled separately, immediately before the
@@ -12422,9 +13932,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // `queries` is authoritative for declared classes. A legal source class
     // can have a local name such as `Q_real` or `aux_part`; apply the internal
     // name heuristic only to non-query helper concepts.
-    let declared_queries: std::collections::HashSet<usize> =
+    let declared_queries: crate::fxhash::FxHashSet<usize> =
         tin.queries.iter().map(|&query| query as usize).collect();
-    let universe: std::collections::HashSet<usize> = tin
+    let universe: crate::fxhash::FxHashSet<usize> = tin
         .concepts
         .iter()
         .enumerate()
@@ -12449,7 +13959,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         unsatisfiable: Vec::new(),
         subsumptions: Vec::new(),
     };
-    let subject_set: std::collections::HashSet<usize> = subjects.iter().copied().collect();
+    let subject_set: crate::fxhash::FxHashSet<usize> = subjects.iter().copied().collect();
     // ONE bridged environment for the whole classification (#13): built once,
     // reset to pristine between probes (`reset_probe_env`), instead of an
     // O(TBox) rebuild per subject AND per pairwise probe.
@@ -12557,8 +14067,21 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             if progress && model_certified {
                 eprintln!("BRIDGE-NOMINAL-CONSISTENCY: exact empty-role source model");
             }
+            // The conditional-full schedule below starts with the saturation
+            // pass and has no completion-only variant. When saturation refuses
+            // the terminology outright (SELF), use the exact nominal-only
+            // schedule of the `else` branch instead of deferring: it decides
+            // the same all-root consistency task by completion alone, keeps
+            // this profile's completion configuration, and publishes only a
+            // finished, unpoisoned completion (`native_nominal_consistency`).
+            // A refusal here is known before any state is mutated.
+            let conditional_full_schedule =
+                card_nominal_profile && !saturation_refuses_terminology(&ctx);
+            if progress && card_nominal_profile && !conditional_full_schedule {
+                eprintln!("BRIDGE-NOMINAL-CONSISTENCY: saturation refuses SELF; completion-only schedule");
+            }
             if !model_certified {
-                if card_nominal_profile {
+                if conditional_full_schedule {
                     // `CTotallyPrecomputationThread` schedules these phases in this
                     // exact default conditional-full order: saturation first, then
                     // one all-root consistency completion. At 198 individuals the
@@ -12640,6 +14163,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     }
                     let used_association_update_ids =
                         freeze_native_representative_association_versions(&algo);
+                    let branch_points_before = algo.or_branch_open_count;
                     // The successful full-consistency completion is the association
                     // writer on this profile, exactly as upstream: with
                     // `fullCompletionGraphConstruction=1` the batched representative
@@ -12665,7 +14189,13 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             (!entry.complete_for_precomputation()).then_some(tag)
                         })
                         .collect();
-                    match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
+                    let fork_resume_allowed =
+                        std::env::var_os("KM_BRIDGE_NO_FORK_RESUME").is_none();
+                    algo.capture_first_fork_databox = fork_resume_allowed;
+                    algo.first_fork_databox = None;
+                    let consistency = native_nominal_consistency(&mut algo, &mut ctx, &bridged);
+                    algo.capture_first_fork_databox = false;
+                    match consistency {
                         Some(false) => {
                             return Some(BridgedClassification {
                                 consistent: false,
@@ -12674,6 +14204,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             });
                         }
                         Some(true) => {
+                            if algo.or_branch_open_count != branch_points_before
+                                || !algo.or_branch_stack.is_empty()
+                                || std::env::var_os("KM_BRIDGE_REPLAY_ALWAYS_OFF").is_some()
+                            {
+                                bridged.precomputation_replay_disabled.set(true);
+                            }
                             if !incomplete_associations.is_empty() {
                                 write_completed_native_representative_associations(
                                     &ctx,
@@ -12722,6 +14258,29 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     let retained_disjunction = algo.or_branch_stack.first()
                         .filter(|branch| branch.branching_concept.is_some())
                         .map(|branch| (branch.node, branch.branching_concept, branch.negate));
+                    // No open branch point at the leaf: every branch opened
+                    // during the completion was closed by refuting its other
+                    // alternatives, and with no surviving branch those
+                    // refutations depend on nothing, so the leaf graph is the
+                    // deterministic consequence closure itself, with every
+                    // queue drained. It can be retained as is.
+                    let leaf_is_deterministic = algo.or_branch_stack.is_empty();
+                    // What a resumed first fork must put back: the node the
+                    // branch was opened on (requeued) and, for an at-most
+                    // branch, its consumed at-most descriptor on the counted
+                    // parent. A disjunction's descriptor is re-added below.
+                    let first_fork_resume: Option<(NodeId, Option<(NodeId, super::process::ConDescId)>)> =
+                        algo.or_branch_stack.first().and_then(|branch| match &branch.kind {
+                            super::completion::algorithm::BranchKind::Disjunction => branch
+                                .branching_concept
+                                .is_some()
+                                .then_some((branch.node, None)),
+                            super::completion::algorithm::BranchKind::AtMostMerge(atmost)
+                            | super::completion::algorithm::BranchKind::AtMostQualify { atmost, .. } => {
+                                Some((branch.node, Some((atmost.parent, atmost.con_des))))
+                            }
+                            super::completion::algorithm::BranchKind::BackendExpansionReuse(_) => None,
+                        });
                     if owned_epoch_count != ctx.process_context().branch_epoch_depth() {
                         return None;
                     }
@@ -12747,6 +14306,28 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     // cursor. Manual all-branch rollback must do the same.
                     ctx.base.used_branch_tree_node = deterministic_branch_node;
                     ctx.branch_tree_node = deterministic_branch_node;
+                    // Nondeterministic consistency completion: the rolled-back
+                    // graph is the state at the first fork, but deterministic
+                    // work queued at that moment (on other nodes, and the rest
+                    // of the fork node's own queue) was done inside the branch
+                    // and rolled back with it. Re-install the fork-time databox,
+                    // whose queue references index exactly the journaled queue
+                    // contents just restored, and requeue the fork node, so
+                    // every class job resumes that pending work. Only an OR fork
+                    // captured at depth 0 on the same node qualifies; anything
+                    // else keeps the per-job reset path.
+                    let resume_fork = bridged.precomputation_replay_disabled.get()
+                        && fork_resume_allowed
+                        && !leaf_is_deterministic
+                        && first_fork_resume.is_some_and(|(node, _)| node == algo.first_fork_node)
+                        && algo.first_fork_databox.is_some();
+                    let retain_deterministic_leaf = bridged.precomputation_replay_disabled.get()
+                        && fork_resume_allowed
+                        && leaf_is_deterministic;
+                    if resume_fork {
+                        let fork_databox = algo.first_fork_databox.take()?;
+                        ctx.base.used_processing_data_box = *fork_databox;
+                    }
                     // The OR descriptor is consumed BEFORE its alternative
                     // epoch is opened. Rolling back the chosen disjunct does
                     // not put that descriptor back. A later query can constrain
@@ -12768,6 +14349,95 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         algo.add_concept_preprocessed_to_processing_queue(
                             descriptor, dependency, queue, node, 0, &mut ctx);
                     }
+                    if resume_fork {
+                        let (fork_node, atmost) = first_fork_resume?;
+                        if let Some((parent, descriptor)) = atmost {
+                            if descriptor.is_none() {
+                                return None;
+                            }
+                            let dependency = ctx.process_context().con_desc(descriptor)
+                                .get_dependency_track_point();
+                            let queue = ctx.process_context_mut().node_concept_processing_queue(parent, true);
+                            algo.add_concept_preprocessed_to_processing_queue(
+                                descriptor, dependency, queue, parent, 0, &mut ctx);
+                            algo.add_individual_to_processing_queue(parent, &mut ctx);
+                        }
+                        algo.add_individual_to_processing_queue(fork_node, &mut ctx);
+                    }
+                    // Drain (KM_BRIDGE_FORK_DRAIN=resume (default)|konclude|off):
+                    // complete every deterministic rule of the fork state once,
+                    // here, with each disjunction that would branch deferred
+                    // instead of opened. The deferred disjunctions are then put
+                    // back as pending work on their nodes, so the base holds
+                    // only nondeterministic work. `resume` schedules those nodes
+                    // in every class job; `konclude` leaves them unscheduled
+                    // (Konclude's cleared-queue class task). Any other branch
+                    // kind, a clash or a stop declines the retained base.
+                    // Default `resume`; `off` keeps the plain fork resume.
+                    let drain_mode = Some(
+                        std::env::var("KM_BRIDGE_FORK_DRAIN").unwrap_or_else(|_| "resume".into()),
+                    );
+                    let mut resume_fork = resume_fork;
+                    let mut drained_konclude = false;
+                    let mut drain_failed = false;
+                    // The drain runs inside one epoch on top of the fork state.
+                    // On success that epoch stays open and is part of the
+                    // retained base (`Bridged::retained_base_depth`); on failure
+                    // it is popped, restoring the fork state (graph and queues by
+                    // the journal, databox and branch cursor by copy), and the
+                    // plain fork resume is kept.
+                    let drain_wanted = resume_fork
+                        && matches!(drain_mode.as_deref(), Some("resume") | Some("konclude"));
+                    if drain_wanted {
+                        let databox = ctx.processing_data_box().clone();
+                        let used_branch = ctx.base.used_branch_tree_node;
+                        let branch = ctx.branch_tree_node;
+                        ctx.push_branch_epoch();
+                        algo.defer_or_branching = true;
+                        algo.deferred_or_branchings.clear();
+                        algo.drain_aborted = false;
+                        let consistent = algo.run_completion_on(&mut ctx);
+                        algo.defer_or_branching = false;
+                        let deferred = std::mem::take(&mut algo.deferred_or_branchings);
+                        let ok = consistent
+                            && !algo.drain_aborted
+                            && !ctx.has_pending_signal()
+                            && algo.or_branch_stack.is_empty()
+                            && ctx.process_context().branch_epoch_depth() == 1;
+                        if ok {
+                            let konclude = drain_mode.as_deref() == Some("konclude");
+                            for (node, descriptor, dependency) in deferred {
+                                let queue = ctx.process_context_mut().node_concept_processing_queue(node, true);
+                                algo.add_concept_preprocessed_to_processing_queue(
+                                    descriptor, dependency, queue, node, 0, &mut ctx);
+                                if !konclude {
+                                    algo.add_individual_to_processing_queue(node, &mut ctx);
+                                }
+                            }
+                            if konclude {
+                                resume_fork = false;
+                                drained_konclude = true;
+                            }
+                            bridged.retained_base_depth.set(1);
+                        } else {
+                            drain_failed = true;
+                            while let Some(open) = algo.or_branch_stack.pop() {
+                                if open.own_epoch && ctx.process_context().branch_epoch_depth() > 1 {
+                                    ctx.pop_branch_epoch();
+                                }
+                            }
+                            while ctx.process_context().branch_epoch_depth() > 0 {
+                                ctx.pop_branch_epoch();
+                            }
+                            ctx.clear_pending_signal();
+                            ctx.base.used_processing_data_box = databox;
+                            ctx.base.used_branch_tree_node = used_branch;
+                            ctx.branch_tree_node = branch;
+                        }
+                        if progress {
+                            eprintln!("BRIDGE-RETAINED-BASE drain mode={:?} failed={drain_failed}", drain_mode);
+                        }
+                    }
                     install_native_nominal_backend_replay(&mut algo, &bridged);
                     // PRISTINE BASE SNAPSHOT. Konclude bases EVERY class job on the
                     // deterministic consistency task
@@ -12779,9 +14449,34 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     // later `renew`. Reading them back off the live context (the
                     // pre-fix behaviour) chains class job N onto class job N-1.
                     retained_consistency_branch_node = deterministic_branch_node;
+                    // Materialize the base dependency before recording the
+                    // spine watermark: a lazily created base track point would
+                    // otherwise be released with the first class job.
+                    let _ = ctx.get_or_create_base_dependency_track_point();
                     retained_consistency_databox = Some(ctx.processing_data_box().clone());
-                    ctx.push_branch_epoch();
-                    retained_consistency_base = true;
+                    if (!bridged.precomputation_replay_disabled.get()
+                            || resume_fork
+                            || retain_deterministic_leaf
+                            || drained_konclude)
+                    {
+                        if std::env::var_os("KM_BRIDGE_KEEP_JOB_SPINE").is_none() {
+                            ctx.retained_spine_watermark =
+                                Some(ctx.process_context().spine_lens());
+                        }
+                        bridged.retained_base_resumes_fork.set(resume_fork);
+                        if resume_fork && progress {
+                            eprintln!("BRIDGE-RETAINED-BASE resumes the first fork's pending queues");
+                        }
+                        if retain_deterministic_leaf && progress {
+                            eprintln!("BRIDGE-RETAINED-BASE retains the deterministic leaf (no open branch)");
+                        }
+                        ctx.push_branch_epoch();
+                        retained_consistency_base = true;
+                    } else if progress {
+                        eprintln!("BRIDGE-RETAINED-BASE declined: nondeterministic consistency completion (fork-kind-resumable={} fork-captured={} fork-node-match={})",
+                            first_fork_resume.is_some(), algo.first_fork_databox.is_some(),
+                            first_fork_resume.is_some_and(|(node, _)| node == algo.first_fork_node));
+                    }
                 } else {
                     // Preserve the exact nominal-only schedule from efbcbbc. Its
                     // 10621 classification is a validated full-IRI reference.
@@ -12823,7 +14518,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             );
         }
     }
-    let certified_unsatisfiable: std::collections::HashSet<usize> = bridged
+    let certified_unsatisfiable: crate::fxhash::FxHashSet<usize> = bridged
         .certified_unsatisfiable
         .iter()
         .copied()
@@ -12875,13 +14570,20 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 run_bridged_saturation(&mut ctx, &bridged)
             };
             report_bridge_memory("saturation-complete");
-            // An interrupted approximation pass still contains only monotonic
-            // consequences. Extracted positive labels and clash flags are
-            // sound KPSet seeds; the completed-node guard prevents unfinished
-            // nodes from becoming SAT-certain. Do not couple this partial graph
-            // into completion below.
+            // No partial status flag or label can stand in for global queue
+            // completion. An interrupted pass must leave every subject for the
+            // exact completion path and detach all process-side references.
             let t_extract = std::time::Instant::now();
-            let extracted = extract_saturation_outcome(&mut ctx, &bridged);
+            let extracted = extract_finished_saturation_outcome(
+                &mut ctx, &bridged, saturation_complete,
+            );
+            if !saturation_complete {
+                saturation_ran = false;
+                report_bridge_memory("partial-saturation-released");
+                if progress {
+                    eprintln!("BRIDGE-SATURATION-DISCARDED: unfinished pass, no verdicts reused");
+                }
+            }
             report_bridge_memory("saturation-extracted");
             if progress {
                 eprintln!(
@@ -12889,7 +14591,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     t_extract.elapsed().as_secs_f64()
                 );
             }
-            Some(extracted)
+            extracted
         } else {
             bridged_saturate_with_trigger_absorption(tin, trigger_absorb)
         };
@@ -13008,16 +14710,6 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             kpset_state = Some(state);
             saturation_ran = use_satcache && saturation_complete;
             satcache_active = use_satcache && saturation_complete;
-            if use_satcache && !saturation_complete {
-                // `state` owns every verdict, label and scheduling edge copied
-                // from the interrupted pass. Partial saturation is never
-                // coupled into completion, so retaining its multi-gigabyte
-                // arenas beyond this point only raises the phase high-water
-                // mark. Invalidate those ids before installing independent
-                // completion caches.
-                ctx.process_context_mut().release_partial_saturation_state();
-                report_bridge_memory("partial-saturation-released");
-            }
             if progress {
                 eprintln!(
                     "BRIDGE-SATURATION{}: {:.2}s, answered {} unsat + {} sat of {} subjects ({} residue to probes, known-label-subjects={}, satcache={})",
@@ -13177,7 +14869,47 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         1_000
     };
     let mut synchronous_satisfiable_phase_finished = false;
-    let mut hierarchy_refuted_candidates: HashSet<(usize, usize)> = HashSet::new();
+    let mut hierarchy_refuted_candidates: HashSet<(usize, usize)> = HashSet::default();
+    // Candidate-model refutation (probe-model countermodels, partial-
+    // equivalence markers, known-super refutation) needs every harvested
+    // probe model to be a model. The completion does not yet perform every
+    // merge that an at-most restriction on an inverse role forces onto a
+    // nominal (Horrocks-Sattler NI case): fuzz case 1002 (Thing <= some r.{a},
+    // r inverse-functional) leaves r-predecessors of `a` unmerged, so a
+    // "satisfiable" pair probe is not a model there. Refutation would spread
+    // that defect from the one probed pair to every candidate. It is also
+    // withheld on subject-restricted runs (public-subject or private-class
+    // selections), where it is only a speed-up. Refuted pairs are then probed.
+    // Inverse roles used inside class expressions are clausified as
+    // `__inv__R` roles and do not set `tin.inverse` (RBox inverse axioms only).
+    let has_inverse_role = tin.inverse
+        || tin.roles.iter().any(|role| {
+            role.starts_with("__inv__") || role.rsplit(['#', '/', ':']).next().is_some_and(|tail| tail.starts_with("__inv__"))
+        });
+    let has_nominals = !tin.nominals.is_empty() || !tin.nominal_abox.individuals.is_empty();
+    let refutation_gated =
+        subject_queries.is_some() || (has_nominals && has_inverse_role && tin.number);
+    if progress {
+        eprintln!(
+            "BRIDGE-REFUTATION gated={refutation_gated} restricted={} nominals={has_nominals} inverse={has_inverse_role} number={}",
+            subject_queries.is_some(),
+            tin.number
+        );
+    }
+    let harvest_probe_models = !refutation_gated
+        && std::env::var_os("KM_BRIDGE_NO_PROBE_MODEL_REFUTATION").is_none();
+    let known_super_refutation = !refutation_gated
+        && std::env::var_os("KM_BRIDGE_NO_KNOWN_SUPER_REFUTATION").is_none();
+    // `saturation_known_pairs` is final from here on. Index it by subject once
+    // so propagating a refuted candidate visits only that subject's known
+    // supers instead of scanning every known pair.
+    let known_supers_by_sub: HashMap<usize, Vec<usize>> = {
+        let mut index: HashMap<usize, Vec<usize>> = HashMap::default();
+        for &(sub, sup) in &saturation_known_pairs {
+            index.entry(sub).or_default().push(sup);
+        }
+        index
+    };
     // Diagnostic only: distinguish shared-state restoration, completion, and
     // classification-message analysis without changing scheduling or verdicts.
     let phase_timing = std::env::var_os("KM_BRIDGE_PHASE_TIMING").is_some();
@@ -13189,6 +14921,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             phase_times.set(totals);
         }
     };
+    // Satisfiability (read-off) model of each subject: the definition
+    // candidate markers its root carries. Recorded in the prepare phase, read
+    // when the subject's possible subsumers are verified.
+    let mut readoff_eq_markers: HashMap<usize, HashSet<Cint64>> = HashMap::default();
     let mut classify_one = |s: usize,
                             algo: &mut CompletionTaskHandleAlgorithm,
                             ctx: &mut CalculationAlgorithmContextBase,
@@ -13368,6 +15104,21 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 );
             }
             let (subs, authoritative, root) = readoff?;
+            if harvest_probe_models && !authoritative && !bridged.eq_candidate_markers.is_empty() {
+                // Keep only what a later pair needs: which definition
+                // candidate markers this subject's satisfiability model has.
+                if let Some(tags) = bridge_model_root_positive_tags(ctx, root) {
+                    readoff_eq_markers.insert(
+                        s,
+                        bridged
+                            .eq_candidate_markers
+                            .values()
+                            .copied()
+                            .filter(|marker| tags.contains(marker))
+                            .collect(),
+                    );
+                }
+            }
             (subs, authoritative, Some(root))
         };
         let phase_start = phase_timing.then(std::time::Instant::now);
@@ -13429,7 +15180,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     ctx,
                 );
                 if subs_rev.len() < n_named {
-                    let keep: std::collections::HashSet<usize> = subs_rev.into_iter().collect();
+                    let keep: crate::fxhash::FxHashSet<usize> = subs_rev.into_iter().collect();
                     let before = subs.len();
                     subs.retain(|c| keep.contains(c));
                     if progress && subs.len() != before {
@@ -13500,11 +15251,106 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         // locally and commit only when EVERY probe answered, so a deferred
         // subject leaves no partial pairs behind for the retry round.
         let mut pairs: Vec<(usize, usize)> = Vec::new();
+        // Known named subsumptions answer candidates of the same subject
+        // without a probe: `s !<= d` and `c <= d` give `s !<= c`. Test the
+        // general candidates first (fewest known supers) so one countermodel
+        // covers its known subclasses. Konclude schedules possible
+        // subsumptions top-down and interprets each result before the next.
+        let known_supers = &known_supers_by_sub;
+        let mut subs = subs;
+        subs.sort_by_key(|&c| (known_supers.get(&c).map_or(0, Vec::len), c));
+        let mut refuted_here: Vec<usize> = Vec::new();
+        // Positive named labels of the root of every clash-free model of
+        // `s and not c'` found by this subject's earlier pair probes. A later
+        // candidate absent from one of them is refuted by that model, exactly
+        // as an absence in the read-off model refutes it (Konclude's
+        // possible-subsumer update from every satisfiable test model).
+        let mut probe_models: Vec<HashSet<Cint64>> = Vec::new();
+        let readoff_markers = readoff_eq_markers.get(&s);
         for c in subs {
             if c == s {
                 continue;
             }
             if saturation_known_pairs.contains(&(s, c)) {
+                continue;
+            }
+            if !refuted_here.is_empty()
+                && known_super_refutation
+                && known_supers.get(&c).is_some_and(|supers| {
+                    supers.iter().any(|d| refuted_here.contains(d))
+                })
+            {
+                if progress {
+                    eprintln!(
+                        "BRIDGE-KPSET-SKIP {} v {}: refuted-known-super",
+                        tin.concepts[s], tin.concepts[c]
+                    );
+                }
+                kpset_state
+                    .ontology_item
+                    .inc_running_possible_subsumption_tests_count(1);
+                classifier.interprete_subsumption_result(
+                    &mut kpset_state.ontology_item,
+                    bridged.named[s],
+                    bridged.named[c],
+                    false,
+                    ctx.ontology_arenas().concepts(),
+                );
+                if hierarchy_countermodels {
+                    propagate_refuted_candidate_to_known_supers(
+                        s,
+                        c,
+                        &known_supers_by_sub,
+                        &mut hierarchy_refuted_candidates,
+                    );
+                }
+                refuted_here.push(c);
+                continue;
+            }
+            // A still-`CCEQ` host (non-triggerable definition, Konclude's
+            // `mEquivConNonCandidateSet`) carries no reverse rule: the
+            // completion never adds it from its definition, so its absence
+            // is not a countermodel. Konclude's update analysis skips exactly
+            // these (`operator_code != CCEQ`, CSatisfiableTaskClassification-
+            // MessageAnalyser); everything else is decided by the label.
+            let readoff_refutes = readoff_markers.is_some_and(|present| {
+                bridged
+                    .eq_candidate_markers
+                    .get(&c)
+                    .is_some_and(|marker| !present.contains(marker))
+                    && ctx.ontology_arenas().concept(bridged.named[c]).get_operator_code()
+                        == op::CCEQ
+            });
+            if readoff_refutes
+                || probe_models
+                    .iter()
+                    .any(|tags| bridge_model_refutes_candidate(&bridged, ctx, c, tags))
+            {
+                if progress {
+                    eprintln!(
+                        "BRIDGE-KPSET-SKIP {} v {}: probe-model-countermodel",
+                        tin.concepts[s], tin.concepts[c]
+                    );
+                }
+                kpset_state
+                    .ontology_item
+                    .inc_running_possible_subsumption_tests_count(1);
+                classifier.interprete_subsumption_result(
+                    &mut kpset_state.ontology_item,
+                    bridged.named[s],
+                    bridged.named[c],
+                    false,
+                    ctx.ontology_arenas().concepts(),
+                );
+                if hierarchy_countermodels {
+                    propagate_refuted_candidate_to_known_supers(
+                        s,
+                        c,
+                        &known_supers_by_sub,
+                        &mut hierarchy_refuted_candidates,
+                    );
+                }
+                refuted_here.push(c);
                 continue;
             }
             if hierarchy_countermodels && hierarchy_refuted_candidates.contains(&(s, c)) {
@@ -13569,30 +15415,55 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             }
             if progress {
                 eprintln!(
-                    "BRIDGE-PAIR-START {} v {}",
-                    tin.concepts[s], tin.concepts[c]
+                    "BRIDGE-PAIR-START {} v {}{}",
+                    tin.concepts[s],
+                    tin.concepts[c],
+                    if ctx.ontology_arenas().concept(bridged.named[c]).get_operator_code() == op::CCEQ {
+                        " [eq]"
+                    } else {
+                        ""
+                    }
                 );
             }
             renew(algo, ctx, false)?;
             let mut id2: i64 = probe_start_id;
-            let mut v = bridged_unsat(
+            // Model harvesting needs a materialized model, as in the read-off:
+            // SAT caching may park disjunctions without expanding them, which
+            // suffices for the verdict but not for absences. The read-off
+            // turns the parking off; forcing that here made probes up to 4x
+            // dearer (ore_ont_5260), so keep the configured parking and use
+            // the model only when the probe parked no disjunction at all.
+            let mut parked_before = algo.saturation_cached_absorbed_disjunction_count;
+            let mut model_root = None;
+            let mut v = bridged_unsat_rooted(
                 algo,
                 ctx,
                 &bridged,
                 &mut id2,
                 &[(bridged.named[s], false), (bridged.named[c], true)],
+                &mut model_root,
             );
             if v.is_none() && algo.completeness_poisoned && cow_confirm {
                 // plain verdict untrusted — confirm under COW epochs
                 renew(algo, ctx, true)?;
                 let mut id_cow: i64 = probe_start_id;
-                v = bridged_unsat(
+                parked_before = algo.saturation_cached_absorbed_disjunction_count;
+                v = bridged_unsat_rooted(
                     algo,
                     ctx,
                     &bridged,
                     &mut id_cow,
                     &[(bridged.named[s], false), (bridged.named[c], true)],
+                    &mut model_root,
                 );
+            }
+            if harvest_probe_models
+                && v == Some(false)
+                && algo.saturation_cached_absorbed_disjunction_count == parked_before
+            {
+                if let Some(tags) = model_root.and_then(|root| bridge_model_root_positive_tags(ctx, root)) {
+                    probe_models.push(tags);
+                }
             }
             match v {
                 Some(true) => {
@@ -13635,10 +15506,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         propagate_refuted_candidate_to_known_supers(
                             s,
                             c,
-                            &saturation_known_pairs,
+                            &known_supers_by_sub,
                             &mut hierarchy_refuted_candidates,
                         );
                     }
+                    refuted_here.push(c);
                 }
                 None => {
                     if progress {
@@ -13817,13 +15689,50 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     out.unsatisfiable.sort_unstable();
     out.unsatisfiable.dedup();
     if !out.unsatisfiable.is_empty() {
-        let unsatisfiable: std::collections::HashSet<usize> =
+        let unsatisfiable: crate::fxhash::FxHashSet<usize> =
             out.unsatisfiable.iter().copied().collect();
         out.subsumptions
             .retain(|(subject, _)| !unsatisfiable.contains(subject));
     }
     out.subsumptions.sort_unstable();
     out.subsumptions.dedup();
+    // `consistent` is published only with evidence. Without native nominals
+    // the ontology is consistent iff owl:Thing is satisfiable, which a
+    // satisfiable subject witnesses. The classification never tests
+    // owl:Thing itself, so when no subject is satisfiable (an inconsistent
+    // TBox makes every class unsatisfiable) owl:Thing is tested in a fresh
+    // environment; an undecided test defers.
+    if out.consistent && !bridged.has_native_nominals() {
+        let unsatisfiable: crate::fxhash::FxHashSet<usize> =
+            out.unsatisfiable.iter().copied().collect();
+        if !subjects.iter().any(|subject| !unsatisfiable.contains(subject)) {
+            drop((algo, ctx, bridged));
+            let (mut top_algo, mut top_ctx, top_bridged) =
+                fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+            top_algo.probe_budget = Some(std::time::Duration::from_secs(base_budget));
+            configure_production_search(&mut top_algo);
+            let mut next_id = 1_000i64;
+            match bridged_top_satisfiable(&mut top_algo, &mut top_ctx, &top_bridged, &mut next_id) {
+                Some(true) => {}
+                Some(false) => {
+                    if progress {
+                        eprintln!("BRIDGE-CLASSIFY: owl:Thing is unsatisfiable, the ontology is inconsistent");
+                    }
+                    return Some(BridgedClassification {
+                        consistent: false,
+                        unsatisfiable: Vec::new(),
+                        subsumptions: Vec::new(),
+                    });
+                }
+                None => {
+                    if progress {
+                        eprintln!("BRIDGE-CLASSIFY defer: owl:Thing satisfiability undecided");
+                    }
+                    return None;
+                }
+            }
+        }
+    }
     Some(out)
 }
 
@@ -13836,6 +15745,97 @@ mod tests {
     use super::super::process::sat_node::IndividualSaturationProcessNode;
     use super::super::process::sat_ref::ExtendedConceptReferenceLinkingData;
     use super::*;
+
+    #[test]
+    fn bridge_model_positive_tags_reads_cow_additional_alias_with_local_shadowing() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut previous = super::super::process::satellites::ReapplyConceptLabelSet::new(INVALID);
+        for tag in 2000..2050 {
+            let mut concept = Concept::new();
+            concept.set_concept_tag(tag);
+            let concept = ctx.ontology_arenas_mut().alloc_concept(concept);
+            let descriptor = ctx.process_context_mut().alloc_con_desc(ConceptDescriptor {
+                concept,
+                negated: false,
+                next: Id::NONE,
+                dep_track_point: Id::NONE,
+            });
+            assert!(previous.insert_concept_ignore_clash_in_context(
+                ctx.process_context(),
+                ctx.ontology_arenas(),
+                descriptor,
+                Id::NONE,
+                None,
+            ));
+        }
+        for (tag, negated) in [
+            (1005, false),
+            (1006, false),
+            (1007, true),
+            (1008, false),
+            (1009, false),
+            (TAG_BASE + 1, false),
+            (TAG_BASE + 2, true),
+            (TAG_BASE + 3, false),
+        ] {
+            let mut concept = Concept::new();
+            concept.set_concept_tag(tag);
+            let concept = ctx.ontology_arenas_mut().alloc_concept(concept);
+            let descriptor = ctx.process_context_mut().alloc_con_desc(ConceptDescriptor {
+                concept,
+                negated,
+                next: Id::NONE,
+                dep_track_point: Id::NONE,
+            });
+            assert!(previous.insert_concept_ignore_clash_in_context(
+                ctx.process_context(),
+                ctx.ontology_arenas(),
+                descriptor,
+                Id::NONE,
+                None,
+            ));
+        }
+        assert_eq!(previous.concept_des_dep_map.len(), 58);
+        let previous_id = ctx.process_context_mut().alloc_label_set(previous);
+        let node = ctx.process_context_mut().alloc_node(IndividualProcessNode::new(Id::NONE));
+        ctx.process_context_mut().node_mut(node).prev_reapply_con_label_set = previous_id;
+
+        let local_id = ctx.process_context_mut().node_reapply_concept_label_set(node);
+        // A local empty entry and a local negative descriptor both shadow an
+        // inherited positive descriptor with the same tag.
+        ctx.process_context_mut().label_set_mut(local_id).concept_des_dep_map.insert(
+            1005,
+            super::super::process::satellites::ConceptDescriptorDependencyReapplyData::default(),
+        );
+        let mut concept = Concept::new();
+        concept.set_concept_tag(1006);
+        let concept = ctx.ontology_arenas_mut().alloc_concept(concept);
+        let negative_shadow = ctx.process_context_mut().alloc_con_desc(ConceptDescriptor {
+            concept,
+            negated: true,
+            next: Id::NONE,
+            dep_track_point: Id::NONE,
+        });
+        ctx.process_context_mut().label_set_mut(local_id).concept_des_dep_map.insert(
+            1006,
+            super::super::process::satellites::ConceptDescriptorDependencyReapplyData {
+                concept_descriptor: negative_shadow,
+                pos_neg_reapply_queue: Default::default(),
+            },
+        );
+
+        let positive = bridge_label_positive_tags(&ctx, local_id);
+        assert!(positive.contains(&1008), "inherited ordinary positive tag");
+        assert!(positive.contains(&1009), "inherited CCEQ marker");
+        assert!(!positive.contains(&1007), "inherited negative descriptor");
+        assert!(!positive.contains(&1005), "local empty entry shadows inherited positive");
+        assert!(!positive.contains(&1006), "local negative descriptor shadows inherited positive");
+        assert_eq!(
+            bridge_named_positive_subsumers(&ctx, local_id, 4),
+            vec![1, 3],
+            "read-off must retain inherited named positives and ignore negative labels"
+        );
+    }
 
     #[test]
     fn query_root_reservation_preserves_retained_witnesses() {
@@ -14145,6 +16145,43 @@ mod tests {
             result.consistent,
             "without DifferentIndividuals, the two R-neighbours may merge"
         );
+    }
+
+    #[test]
+    fn non_number_conditional_full_profile_is_opt_in_and_bounded() {
+        let mut tin = cached_native_role_input();
+        tin.number = false;
+        assert!(!native_conditional_full_abox_profile(&tin, true, false));
+        assert!(native_conditional_full_abox_profile(&tin, true, true));
+        assert!(!native_conditional_full_abox_profile(&tin, false, true));
+        let individual = tin.nominal_abox.individuals[0].clone();
+        tin.nominal_abox.individuals.resize(CONDITIONAL_FULL_INDIVIDUAL_LIMIT, individual);
+        assert!(!native_conditional_full_abox_profile(&tin, true, true));
+    }
+
+    #[test]
+    fn conditional_full_nominal_filler_preserves_asserted_type_subsumption() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into(), "__nom__a".into()],
+            roles: vec!["r".into()],
+            queries: vec![0, 1, 2],
+            // Exercise the conditional-full schedule without global env mutation.
+            number: true,
+            source_axioms: vec![
+                source_subclass(C::Name("A".into()), C::Exists(
+                    R::Name("r".into()), Box::new(C::Nominal("a".into())))),
+                source_subclass(C::Exists(R::Name("r".into()),
+                    Box::new(C::Name("B".into()))), C::Name("C".into())),
+            ],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![C::Name("B".into())])], vec![]),
+            ..Default::default()
+        };
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .expect("nominal-filler classification must complete");
+        assert!(result.consistent);
+        assert!(result.subsumptions.contains(&(0, 2)), "A <= exists r.{{a}}, B(a), exists r.B <= C entails A <= C");
     }
 
     #[test]
@@ -14559,6 +16596,33 @@ mod tests {
     }
 
     #[test]
+    fn exact_atomic_datatype_local_universal_requires_the_identical_global_range() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        let mut tin = exact_atomic_datatype_input();
+        let baseline = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("baseline exact datatype fragment");
+        let restriction = C::Forall(R::Name("pressure_mmHg".into()),
+            Box::new(C::Name("__dt__float".into())));
+        // Put the local axiom before its global range to test source ordering.
+        tin.source_axioms.insert(0, source_subclass(C::Name("A".into()), restriction.clone()));
+        assert!(exact_atomic_datatype_bridge_fragment(&tin, true));
+        let source = tin.source_axioms.clone();
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("a redundant local universal preserves the exact fragment");
+        assert_eq!(result.consistent, baseline.consistent);
+        assert_eq!(result.unsatisfiable, baseline.unsatisfiable);
+        assert_eq!(result.subsumptions, baseline.subsumptions);
+        assert_eq!(tin.source_axioms, source, "source expressions must remain intact");
+        assert!(!exact_atomic_datatype_bridge_fragment(&tin, false));
+        tin.source_axioms[0].right = C::Forall(R::Name("pressure_mmHg".into()),
+            Box::new(C::Name("__dt__integer".into())));
+        assert!(!exact_atomic_datatype_bridge_fragment(&tin, true), "a narrower or unrelated range is not redundant");
+        tin.source_axioms[0].right = restriction.clone();
+        tin.source_axioms.retain(|a| !(a.left == C::Top && a.right == restriction));
+        assert!(!exact_atomic_datatype_bridge_fragment(&tin, true), "local universals must not create global ranges");
+    }
+
+    #[test]
     fn exact_atomic_datatype_disjunction_collects_every_branch_without_weakening_guards() {
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut tin = exact_atomic_datatype_input();
@@ -14817,8 +16881,8 @@ mod tests {
                Ontology(
                  Declaration(Class(:A))
                  Declaration(DataProperty(:p))
-                 DataPropertyRange(:p xsd:negativeInteger)
-                 SubClassOf(:A DataMinCardinality(1 :p xsd:negativeInteger)))"#,
+                 DataPropertyRange(:p xsd:hexBinary)
+                 SubClassOf(:A DataMinCardinality(1 :p xsd:hexBinary)))"#,
         );
         assert!(
             !exact_atomic_datatype_bridge_fragment(&unsupported_range.tin, true),
@@ -14828,23 +16892,35 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_checks_blank_data_node_axioms() {
-        use crate::frontend::syntax::Concept as C;
+        use crate::frontend::syntax::{Concept as C, Role as R};
 
-        for bad_axiom in [
-            source_subclass(C::Not(Box::new(C::Name("A".into()))), C::Bottom),
-            crate::json_io::SourceAxiomMeta {
-                kind: crate::json_io::SourceAxiomKind::Equivalent,
-                left: C::Top,
-                right: C::Name("A".into()),
-            },
-            crate::json_io::SourceAxiomMeta {
+        // A forced label that the isolated element cannot satisfy (it needs a
+        // successor), and an axiom no label satisfies: no witness exists.
+        let forcing = source_subclass(
+            C::Name("Q_guard".into()),
+            C::Exists(R::Name("object_role".into()), Box::new(C::Name("Q_guard".into()))),
+        );
+        for bad_axioms in [
+            vec![
+                source_subclass(C::Not(Box::new(C::Name("Q_guard".into()))), C::Bottom),
+                forcing.clone(),
+            ],
+            vec![
+                crate::json_io::SourceAxiomMeta {
+                    kind: crate::json_io::SourceAxiomKind::Equivalent,
+                    left: C::Top,
+                    right: C::Name("Q_guard".into()),
+                },
+                forcing.clone(),
+            ],
+            vec![crate::json_io::SourceAxiomMeta {
                 kind: crate::json_io::SourceAxiomKind::Disjoint,
                 left: C::Top,
                 right: C::Top,
-            },
+            }],
         ] {
             let mut tin = exact_atomic_datatype_input();
-            tin.source_axioms.push(bad_axiom);
+            tin.source_axioms.extend(bad_axioms);
             assert!(
                 !exact_atomic_datatype_bridge_fragment(&tin, true),
                 "an axiom false on a blank data node must reject the route"
@@ -14881,6 +16957,25 @@ mod tests {
             exact_atomic_datatype_bridge_fragment(&safe, true),
             "Boolean axioms true on a blank data node must remain routable"
         );
+
+        // Axioms false on the EMPTY label but satisfied by an isolated element
+        // labelled {Q_guard}: admitted through the witness label.
+        for witnessed in [
+            source_subclass(C::Not(Box::new(C::Name("Q_guard".into()))), C::Bottom),
+            crate::json_io::SourceAxiomMeta {
+                kind: crate::json_io::SourceAxiomKind::Equivalent,
+                left: C::Top,
+                right: C::Name("Q_guard".into()),
+            },
+        ] {
+            let mut tin = exact_atomic_datatype_input();
+            tin.source_axioms.push(witnessed);
+            assert_eq!(blank_data_node_witness_label(&tin), Some(vec!["Q_guard".to_string()]));
+            assert!(
+                exact_atomic_datatype_bridge_fragment(&tin, true),
+                "an isolated witness label {{Q_guard}} makes the data successors harmless"
+            );
+        }
     }
 
     #[test]
@@ -14994,6 +17089,272 @@ mod tests {
         assert!(!result.unsatisfiable.contains(&class_id("B")));
     }
 
+    type TboxIriMap = std::collections::BTreeMap<String, String>;
+
+    fn tbox_extension_classify(axioms: &str) -> Option<(TInput, TboxIriMap, BridgedClassification)> {
+        let source = format!(r#"Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+            Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+            Ontology(Declaration(DataProperty(<http://x#p>)) {axioms})"#);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(&source);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        assert!(!fr.source_axioms.is_empty(), "source-mode axioms must be retained");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let input = crate::orchestrate::cb_to_ht::convert(&fr.clauses, Some(&fr.rbox), &named,
+            &fr.cardinalities, &fr.definers, &fr.source_axioms, true, &fr.rules, false);
+        let evidence = fr.iri_map.clone();
+        if !datatype_bridge_route_exact(&input, true) {
+            return None;
+        }
+        let result = bridged_classify_opts_with_trigger_absorption(&input, false, false, true)
+            .expect("admitted bridge-TBox datatype input must classify");
+        Some((input, evidence, result))
+    }
+
+    fn tbox_extension_class(input: &TInput, evidence: &TboxIriMap, suffix: &str) -> usize {
+        input.concepts.iter().position(|name| evidence.get(name).is_some_and(|iri|
+            iri.trim_end_matches('>').ends_with(suffix))).unwrap()
+    }
+
+    fn tbox_extension_subsumed(input: &TInput, evidence: &TboxIriMap,
+        result: &BridgedClassification, sub: &str, sup: &str) -> bool {
+        let (sub, sup) = (tbox_extension_class(input, evidence, sub), tbox_extension_class(input, evidence, sup));
+        result.unsatisfiable.contains(&sub) || result.subsumptions.iter().any(|&(a, b)| a == sub && b == sup)
+    }
+
+    fn uncovered_name(input: &TInput, concept: usize) -> &str {
+        input.concepts[concept].as_str()
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_decimal_cells_decide_or_defer() {
+        // Only 0 is a non-negative integer that is not positive: two distinct
+        // successors are impossible. The bridge must not report A satisfiable.
+        let gap = r#"Declaration(Class(<http://x#A>))
+            SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> xsd:nonNegativeInteger))
+            SubClassOf(<http://x#A> DataMaxCardinality(0 <http://x#p> xsd:positiveInteger))"#;
+        // The frontend's finite-difference cover `nonNegativeInteger ->
+        // positiveInteger ∨ {0}` lets the bridge decide the case exactly.
+        let (input, evidence, result) = tbox_extension_classify(gap)
+            .expect("the finite-difference cover makes the label set exact");
+        assert!(result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")),
+            "two non-positive natural numbers do not exist");
+        // Without the cover clause the bridge must defer, not answer.
+        let fr_input = {
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+            let source = format!(r#"Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+                Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+                Ontology(Declaration(DataProperty(<http://x#p>)) {gap})"#);
+            let fr = crate::frontend::ofn_to_clauses(&source);
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+            let fr = fr.expect("in fragment");
+            let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+            crate::orchestrate::cb_to_ht::convert(&fr.clauses, Some(&fr.rbox), &named,
+                &fr.cardinalities, &fr.definers, &fr.source_axioms, true, &fr.rules, false)
+        };
+        let mut uncovered = fr_input.clone();
+        uncovered.clauses.retain(|clause| !matches!(
+            (clause.body.as_slice(), clause.head.as_slice()),
+            ([HAtom::Concept { c, .. }], head) if head.len() >= 2
+                && uncovered_name(&fr_input, *c) == "__dt__nonNegativeInteger"));
+        assert!(uncovered.clauses.len() < fr_input.clauses.len(), "the cover clause is emitted");
+        assert!(!datatype_bridge_route_exact(&uncovered, true));
+        // Positive control: integers that are not positive are unbounded.
+        let (input, evidence, result) = tbox_extension_classify(r#"Declaration(Class(<http://x#A>))
+            SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> xsd:integer))
+            SubClassOf(<http://x#A> DataMaxCardinality(0 <http://x#p> xsd:positiveInteger))"#)
+            .expect("an infinite decimal-tower cell is admitted");
+        assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_union_range_needs_its_member_cover() {
+        let ontology = r#"Declaration(Class(<http://x#X>)) Declaration(Class(<http://x#Y>))
+            Declaration(Class(<http://x#W>)) Declaration(Class(<http://x#Z>))
+            EquivalentClasses(<http://x#X> DataSomeValuesFrom(<http://x#p> xsd:integer))
+            EquivalentClasses(<http://x#Y> DataSomeValuesFrom(<http://x#p> xsd:string))
+            EquivalentClasses(<http://x#W> ObjectUnionOf(<http://x#X> <http://x#Y>))
+            SubClassOf(<http://x#Z> DataSomeValuesFrom(<http://x#p> DataUnionOf(xsd:integer xsd:string)))"#;
+        // The end-to-end answer (Z <= W on every route) is checked by the
+        // `integral_datatype_difference` integration test through `km classify`.
+        let (input, _evidence, _result) = tbox_extension_classify(ontology)
+            .expect("a union of exact named datatypes is admitted");
+        let mut uncovered = input.clone();
+        let union = uncovered.concepts.iter().position(|name| name.starts_with("__dt__c__DataUnionOf")).unwrap();
+        uncovered.clauses.retain(|clause| !matches!(clause.body.as_slice(),
+            [HAtom::Concept { c, .. }] if *c == union && clause.head.len() >= 2));
+        assert!(!datatype_bridge_route_exact(&uncovered, true), "the union cover is required");
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_local_forall_without_global_range() {
+        // A ⊑ ∀p.integer with p functional: an integer value excludes a double
+        // and a boolean value; a decimal-family existential stays possible.
+        let (input, evidence, result) = tbox_extension_classify(r#"
+            Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) Declaration(Class(<http://x#C>))
+            FunctionalDataProperty(<http://x#p>)
+            SubClassOf(<http://x#A> DataAllValuesFrom(<http://x#p> xsd:integer))
+            SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:double))
+            SubClassOf(<http://x#B> DataAllValuesFrom(<http://x#p> xsd:integer))
+            SubClassOf(<http://x#B> DataHasValue(<http://x#p> "true"^^xsd:boolean))
+            SubClassOf(<http://x#C> DataAllValuesFrom(<http://x#p> xsd:integer))
+            SubClassOf(<http://x#C> DataSomeValuesFrom(<http://x#p> xsd:decimal))"#)
+            .expect("a decided local universal restriction is admitted");
+        assert!(result.consistent);
+        assert!(result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
+        assert!(result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#B")));
+        assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#C")));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_datatype_definitions_are_inlined() {
+        let ontology = r#"Declaration(Datatype(<http://x#Small>))
+            Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) Declaration(Class(<http://x#C>))
+            Declaration(Class(<http://x#W>))
+            DatatypeDefinition(<http://x#Small> DataIntersectionOf(
+                DatatypeRestriction(xsd:double xsd:maxInclusive "10.0"^^xsd:double)
+                DatatypeRestriction(xsd:double xsd:minInclusive "0.0"^^xsd:double)))
+            SubClassOf(<http://x#A> DataHasValue(<http://x#p> "5.0"^^xsd:double))
+            SubClassOf(<http://x#C> DataHasValue(<http://x#p> "50.0"^^xsd:double))
+            EquivalentClasses(<http://x#B> DataSomeValuesFrom(<http://x#p> <http://x#Small>))
+            SubClassOf(ObjectIntersectionOf(<http://x#W> DataSomeValuesFrom(<http://x#p> <http://x#Small>)) owl:Nothing)"#;
+        let (input, evidence, result) = tbox_extension_classify(ontology)
+            .expect("an inlined datatype definition and a complex left-hand side are admitted");
+        assert!(tbox_extension_subsumed(&input, &evidence, &result, "#A", "#B"));
+        assert!(!tbox_extension_subsumed(&input, &evidence, &result, "#C", "#B"));
+        assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#W")));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_disjoint_data_roles() {
+        let ontology = r#"Declaration(DataProperty(<http://x#q>))
+            Declaration(Class(<http://x#Same>)) Declaration(Class(<http://x#Other>)) Declaration(Class(<http://x#Zero>))
+            Declaration(Class(<http://x#Free>))
+            DisjointDataProperties(<http://x#p> <http://x#q>)
+            SubClassOf(<http://x#Same> DataHasValue(<http://x#p> "1"^^xsd:integer))
+            SubClassOf(<http://x#Same> DataHasValue(<http://x#q> "1"^^xsd:integer))
+            SubClassOf(<http://x#Other> DataHasValue(<http://x#p> "1"^^xsd:integer))
+            SubClassOf(<http://x#Other> DataHasValue(<http://x#q> "2"^^xsd:integer))
+            SubClassOf(<http://x#Zero> DataSomeValuesFrom(<http://x#p> DatatypeRestriction(xsd:integer xsd:minInclusive "0"^^xsd:integer xsd:maxInclusive "0"^^xsd:integer)))
+            SubClassOf(<http://x#Zero> DataSomeValuesFrom(<http://x#q> DatatypeRestriction(xsd:integer xsd:minInclusive "0"^^xsd:integer xsd:maxInclusive "0"^^xsd:integer)))
+            SubClassOf(<http://x#Free> DataSomeValuesFrom(<http://x#p> xsd:integer))
+            SubClassOf(<http://x#Free> DataSomeValuesFrom(<http://x#q> xsd:integer))"#;
+        let (input, evidence, result) = tbox_extension_classify(ontology)
+            .expect("disjoint data roles over exact datatypes are admitted");
+        let unsat = |name: &str| result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, name));
+        assert!(unsat("#Same"), "the same value under two disjoint data roles");
+        assert!(!unsat("#Other"));
+        assert!(unsat("#Zero"), "the only value of [0,0] under both disjoint roles");
+        assert!(!unsat("#Free"), "distinct integers realize the two successors");
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_any_uri_is_disjoint_from_string() {
+        let (input, evidence, result) = tbox_extension_classify(r#"
+            Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#U>)) Declaration(Class(<http://x#S>))
+            SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:anyURI))
+            EquivalentClasses(<http://x#U> DataSomeValuesFrom(<http://x#p> xsd:anyURI))
+            EquivalentClasses(<http://x#S> DataSomeValuesFrom(<http://x#p> xsd:string))"#)
+            .expect("anyURI is in the bridge-TBox map");
+        assert!(result.consistent);
+        assert!(tbox_extension_subsumed(&input, &evidence, &result, "#A", "#U"));
+        assert!(!tbox_extension_subsumed(&input, &evidence, &result, "#A", "#S"));
+        // Functional p: an IRI value and a string value cannot coincide.
+        let (input, evidence, result) = tbox_extension_classify(r#"
+            Declaration(Class(<http://x#A>)) FunctionalDataProperty(<http://x#p>)
+            SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:anyURI))
+            SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:string))"#)
+            .expect("functional anyURI/string input is admitted");
+        assert!(result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_double_values_use_owl_identity() {
+        let axioms = |a: &str, b: &str| format!(r#"
+            Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) FunctionalDataProperty(<http://x#p>)
+            SubClassOf(<http://x#A> DataHasValue(<http://x#p> "{a}"^^xsd:double))
+            SubClassOf(<http://x#A> DataHasValue(<http://x#p> "{b}"^^xsd:double))
+            EquivalentClasses(<http://x#B> DataHasValue(<http://x#p> "{b}"^^xsd:double))"#);
+        for (a, b, unsat) in [("1.0", "1", false), ("1.0", "1.0E0", false), ("0.1", "0.10000000000000001", false),
+            ("1.0", "2.0", true), ("0.0", "-0.0", true), ("NaN", "NaN", false), ("INF", "1.0E400", false)] {
+            let (input, evidence, result) = tbox_extension_classify(&axioms(a, b))
+                .unwrap_or_else(|| panic!("double values {a} {b} must be admitted"));
+            let class = tbox_extension_class(&input, &evidence, "#A");
+            assert_eq!(result.unsatisfiable.contains(&class), unsat, "{a} vs {b}");
+            if !unsat {
+                assert!(tbox_extension_subsumed(&input, &evidence, &result, "#A", "#B"), "{a} = {b}");
+            }
+        }
+        // A double value is never a float or decimal value.
+        let mixed = r#"Declaration(Class(<http://x#A>)) FunctionalDataProperty(<http://x#p>)
+            SubClassOf(<http://x#A> DataHasValue(<http://x#p> "1.0"^^xsd:double))
+            SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:float))"#;
+        let (input, evidence, result) = tbox_extension_classify(mixed).expect("double/float input admitted");
+        assert!(result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_double_facets_and_signed_zero() {
+        let pos = r#"DatatypeRestriction(xsd:double xsd:minExclusive "0.0"^^xsd:double)"#;
+        let nonneg = r#"DatatypeRestriction(xsd:double xsd:minInclusive "0.0"^^xsd:double)"#;
+        let (input, evidence, result) = tbox_extension_classify(&format!(r#"
+            Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#Z>)) Declaration(Class(<http://x#Pos>))
+            SubClassOf(<http://x#A> DataHasValue(<http://x#p> "1.5"^^xsd:double))
+            SubClassOf(<http://x#Z> DataHasValue(<http://x#p> "-0.0"^^xsd:double))
+            EquivalentClasses(<http://x#Pos> DataSomeValuesFrom(<http://x#p> {pos}))"#))
+            .expect("double facet intervals are admitted");
+        assert!(tbox_extension_subsumed(&input, &evidence, &result, "#A", "#Pos"));
+        assert!(!tbox_extension_subsumed(&input, &evidence, &result, "#Z", "#Pos"), "-0 is not > 0");
+        let (input, evidence, result) = tbox_extension_classify(&format!(r#"
+            Declaration(Class(<http://x#Z>)) Declaration(Class(<http://x#NonNeg>))
+            SubClassOf(<http://x#Z> DataHasValue(<http://x#p> "-0.0"^^xsd:double))
+            EquivalentClasses(<http://x#NonNeg> DataSomeValuesFrom(<http://x#p> {nonneg}))"#))
+            .expect("a closed zero bound is admitted");
+        assert!(tbox_extension_subsumed(&input, &evidence, &result, "#Z", "#NonNeg"), "-0 satisfies >= +0");
+        // Both bounds body-sensitive: the label {>=0} without {>0} is realized
+        // by the zeros. No data restriction forces two distinct successors, so
+        // one value suffices and only body-sensitive literals are avoided.
+        let (input, evidence, result) = tbox_extension_classify(&format!(r#"
+            Declaration(Class(<http://x#Z>)) Declaration(Class(<http://x#Pos>)) Declaration(Class(<http://x#NonNeg>))
+            SubClassOf(<http://x#Z> DataHasValue(<http://x#p> "-0.0"^^xsd:double))
+            EquivalentClasses(<http://x#Pos> DataSomeValuesFrom(<http://x#p> {pos}))
+            EquivalentClasses(<http://x#NonNeg> DataSomeValuesFrom(<http://x#p> {nonneg}))"#))
+            .expect("one realizing value suffices without forced-distinct data successors");
+        assert!(tbox_extension_subsumed(&input, &evidence, &result, "#Z", "#NonNeg"));
+        assert!(!tbox_extension_subsumed(&input, &evidence, &result, "#Z", "#Pos"));
+        // [0,0] holds the two values +0 and -0, so two distinct successors exist.
+        let (input, evidence, result) = tbox_extension_classify(r#"
+            Declaration(Class(<http://x#A>))
+            SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> DatatypeRestriction(xsd:double xsd:minInclusive "0.0"^^xsd:double xsd:maxInclusive "0.0"^^xsd:double)))"#)
+            .expect("a two-value zero interval is admitted");
+        assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
+        // [1,1] holds one value: no two-value realization, so the bridge defers.
+        assert!(tbox_extension_classify(r#"
+            Declaration(Class(<http://x#A>))
+            SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> DatatypeRestriction(xsd:double xsd:minInclusive "1.0"^^xsd:double xsd:maxInclusive "1.0"^^xsd:double)))"#)
+            .is_none());
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_literal_is_head_only() {
+        let (input, evidence, result) = tbox_extension_classify(r#"
+            Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>))
+            SubClassOf(<http://x#A> DataAllValuesFrom(<http://x#p> rdfs:Literal))
+            SubClassOf(<http://x#B> DataSomeValuesFrom(<http://x#p> rdfs:Literal))
+            SubClassOf(<http://x#B> DataSomeValuesFrom(<http://x#p> xsd:integer))"#)
+            .expect("positive rdfs:Literal occurrences are admitted");
+        assert!(result.consistent);
+        assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
+        assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#B")));
+        // A body occurrence would also hold on unlabeled data nodes.
+        assert!(tbox_extension_classify(r#"
+            Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#C>))
+            SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:integer))
+            EquivalentClasses(<http://x#C> DataSomeValuesFrom(<http://x#p> rdfs:Literal))"#)
+            .is_none());
+    }
+
     #[test]
     fn finite_datatype_cover_controls_cardinality_and_missing_evidence_defers() {
         for (values, unsat) in [("\"red\"^^xsd:string", true),
@@ -15021,7 +17382,7 @@ mod tests {
             let mut missing = input.clone();
             missing.clauses.retain(|clause| !matches!(clause.body.as_slice(),
                 [HAtom::Concept { neg: false, c, .. }]
-                if crate::frontend::datatypes::bridge_exact_finite_values(&missing.concepts[*c]).is_some()));
+                if crate::frontend::datatypes::bridge_tbox_finite_values(&missing.concepts[*c]).is_some()));
             assert!(!datatype_bridge_route_exact(&missing, true), "missing finite cover admitted");
         }
     }
@@ -16653,7 +19014,7 @@ mod tests {
             target.completely_handled = false;
             target.insufficient = true;
         }
-        let selected = HashSet::from([target_seed.individual_tag]);
+        let selected = HashSet::from_iter([target_seed.individual_tag]);
         reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
         assert!(initialize_native_nominal_state_for_tags(
             &mut algo,
@@ -17142,7 +19503,7 @@ mod tests {
         assert!(nondeterministic_different.has_reusable_elements());
 
         let cache = NativeAboxRepresentativeCache {
-            entries: HashMap::from([
+            entries: HashMap::from_iter([
                 (1, base),
                 (2, nondeterministic_concept),
                 (3, nondeterministic_neighbour),
@@ -17860,6 +20221,130 @@ mod tests {
         }
     }
 
+    /// `Def == WW and all(r, Dry)` has no reverse rule (the universal is not
+    /// triggerable), so `Def` stays a `CCEQ` host; its triggerable conjunct
+    /// `WW` implies the partial-equivalence candidate marker.
+    fn bridge_candidate_marker_input() -> TInput {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        let def = C::And(
+            [
+                C::Name("WW".into()),
+                C::Forall(R::Name("r".into()), Box::new(C::Name("Dry".into()))),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let some_wine = C::Or([C::Name("WW".into()), C::Name("Red".into())].into_iter().collect());
+        let some_b = C::Exists(R::Name("r".into()), Box::new(C::Name("B".into())));
+        let def2 = C::And(
+            [
+                some_b.clone(),
+                C::Forall(R::Name("r".into()), Box::new(C::Name("Dry".into()))),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        TInput {
+            concepts: vec![
+                "WW".into(),
+                "Dry".into(),
+                "Def".into(),
+                "Sub".into(),
+                "RedSub".into(),
+                "Red".into(),
+                "Either".into(),
+                "Wine".into(),
+                "B".into(),
+                "Def2".into(),
+                "X".into(),
+                "Y".into(),
+                "Z".into(),
+            ],
+            roles: vec!["r".into()],
+            queries: (0..13).collect(),
+            source_axioms: vec![
+                source_equivalence(C::Name("Def".into()), def.clone()),
+                // Sub <= Def holds only through the definition's reverse direction.
+                source_subclass(C::Name("Sub".into()), def),
+                // RedSub and Either are refuted only through the marker.
+                source_subclass(C::Name("RedSub".into()), C::Name("Red".into())),
+                source_subclass(
+                    C::Name("Red".into()),
+                    C::Not(Box::new(C::Name("WW".into()))),
+                ),
+                source_subclass(C::Name("Either".into()), some_wine),
+                source_subclass(C::Name("WW".into()), C::Name("Wine".into())),
+                source_subclass(C::Name("Red".into()), C::Name("Wine".into())),
+                // Def2's marker is implied by the triggerable `some(r, B)`,
+                // which is no named class, so only the marker can refute it.
+                source_equivalence(C::Name("Def2".into()), def2.clone()),
+                source_subclass(C::Name("X".into()), C::Name("Wine".into())),
+                source_subclass(C::Name("Y".into()), def2),
+                source_subclass(C::Name("Z".into()), some_b),
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn bridge_candidate_marker_is_built_for_a_partially_triggerable_definition() {
+        let tin = bridge_candidate_marker_input();
+        let (_algo, ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let def = 2usize;
+        assert!(bridged.source_tbox);
+        assert_eq!(
+            ctx.ontology_arenas().concept(bridged.named[def]).get_operator_code(),
+            op::CCEQ,
+            "the non-triggerable definition must stay a CCEQ host"
+        );
+        let marker = *bridged
+            .eq_candidate_markers
+            .get(&def)
+            .expect("the triggerable conjunct WW must imply a candidate marker");
+        // A model root without the marker refutes the host; one with it does not.
+        let without: HashSet<Cint64> = [TAG_BASE].into_iter().collect();
+        let with: HashSet<Cint64> = [TAG_BASE, marker].into_iter().collect();
+        assert!(bridge_model_refutes_candidate(&bridged, &ctx, def, &without));
+        assert!(!bridge_model_refutes_candidate(&bridged, &ctx, def, &with));
+        // A CCEQ host is never refuted by its own absence: only the marker counts.
+        let host_absent_marker_present: HashSet<Cint64> = [marker].into_iter().collect();
+        assert!(!bridge_model_refutes_candidate(&bridged, &ctx, def, &host_absent_marker_present));
+        // A plain named concept is decided by its label.
+        let wine = 7usize;
+        assert!(bridge_model_refutes_candidate(&bridged, &ctx, wine, &without));
+        assert!(!bridge_model_refutes_candidate(
+            &bridged,
+            &ctx,
+            wine,
+            &[TAG_BASE + wine as Cint64].into_iter().collect()
+        ));
+    }
+
+    #[test]
+    fn bridge_candidate_marker_refutation_preserves_the_taxonomy() {
+        let tin = bridge_candidate_marker_input();
+        let (ww, def, sub, red_sub, red, either, wine) = (0, 2, 3, 4, 5, 6, 7);
+        let (def2, x, y, z) = (9, 10, 11, 12);
+        let entailed = [(def, ww), (sub, def), (sub, ww), (red_sub, red), (red_sub, wine), (either, wine), (ww, wine), (red, wine), (def, wine), (sub, wine), (x, wine), (y, def2)];
+        let unentailed = [(red_sub, def), (either, def), (either, ww), (red, def), (ww, def), (wine, def), (x, def2), (z, def2), (wine, def2), (def2, y)];
+        for (saturate, sat_cache) in [(false, false), (true, true)] {
+            let Some(result) =
+                bridged_classify_opts_with_trigger_absorption(&tin, saturate, sat_cache, true)
+            else {
+                assert!(saturate, "the source route must decide the marker TBox");
+                continue;
+            };
+            assert!(result.consistent);
+            assert!(result.unsatisfiable.is_empty());
+            for pair in entailed {
+                assert!(result.subsumptions.contains(&pair), "entailed pair {pair:?} missing");
+            }
+            for pair in unentailed {
+                assert!(!result.subsumptions.contains(&pair), "unentailed pair {pair:?} emitted");
+            }
+        }
+    }
+
     #[test]
     fn source_closure_derives_definition_containment_transitively_without_the_converse() {
         let tin = definition_containment_input();
@@ -17891,14 +20376,18 @@ mod tests {
 
     #[test]
     fn hierarchy_countermodels_order_specific_classes_first_and_propagate_upward() {
-        let known = HashSet::from([(0usize, 1usize), (0, 2), (1, 2), (3, 2)]);
+        let known = HashSet::from_iter([(0usize, 1usize), (0, 2), (1, 2), (3, 2)]);
         let mut subjects = vec![2, 1, 3, 0, 4];
         hierarchy_countermodel_subject_order(&mut subjects, &known);
         assert_eq!(subjects, vec![0, 1, 3, 2, 4]);
 
-        let mut refuted = HashSet::new();
-        propagate_refuted_candidate_to_known_supers(0, 9, &known, &mut refuted);
-        assert_eq!(refuted, HashSet::from([(0, 9), (1, 9), (2, 9)]));
+        let mut refuted = HashSet::default();
+        let mut by_sub: HashMap<usize, Vec<usize>> = HashMap::default();
+        for &(sub, sup) in &known {
+            by_sub.entry(sub).or_default().push(sup);
+        }
+        propagate_refuted_candidate_to_known_supers(0, 9, &by_sub, &mut refuted);
+        assert_eq!(refuted, HashSet::from_iter([(0, 9), (1, 9), (2, 9)]));
         assert!(
             !refuted.contains(&(3, 9)),
             "siblings do not share a witness"
@@ -18161,7 +20650,7 @@ mod tests {
             entry.insufficient = true;
             entry.synchronization_metadata_complete = false;
         }
-        let selected = HashSet::from([seed.individual_tag]);
+        let selected = HashSet::from_iter([seed.individual_tag]);
         reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
         let frozen_used_association_update_ids =
             freeze_native_representative_association_versions(&algo);
@@ -18317,7 +20806,7 @@ mod tests {
             )
         };
 
-        let selected = HashSet::from([source.individual_tag]);
+        let selected = HashSet::from_iter([source.individual_tag]);
         reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
         let frozen = freeze_native_representative_association_versions(&algo);
         assert!(initialize_native_nominal_state_for_tags(
@@ -18396,7 +20885,7 @@ mod tests {
         let selected_seed = bridged.nominal_seeds[1].clone();
         assert_eq!(untouched.individual_tag, 0);
         force_native_association_incomplete(&bridged, selected_seed.individual_tag, true);
-        let selected = HashSet::from([selected_seed.individual_tag]);
+        let selected = HashSet::from_iter([selected_seed.individual_tag]);
 
         reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
         let frozen = freeze_native_representative_association_versions(&algo);
@@ -19351,7 +21840,7 @@ mod tests {
             .ontology_arenas_mut()
             .role_mut(role)
             .set_inverse_role(inverse);
-        let map = HashMap::from([(role, inverse), (inverse, role)]);
+        let map = HashMap::from_iter([(role, inverse), (inverse, role)]);
         (role, inverse, map)
     }
 
@@ -19408,7 +21897,7 @@ mod tests {
                 .set_substitute_individual_node(to);
         }
 
-        let named_index = HashMap::from([
+        let named_index = HashMap::from_iter([
             (queried, 0usize),
             (reported, 1usize),
             (negated, 2usize),
@@ -19489,7 +21978,7 @@ mod tests {
 
         let mut caches = TriggerCaches::default();
         let trigger =
-            full_absorption_trigger(&mut b, (nominal, false), &HashMap::new(), &mut caches)
+            full_absorption_trigger(&mut b, (nominal, false), &HashMap::default(), &mut caches)
                 .expect("positive nominal trigger");
         assert_eq!(trigger.complexity, 1);
         assert_eq!(
@@ -19511,7 +22000,7 @@ mod tests {
         );
 
         let reused =
-            full_absorption_trigger(&mut b, (nominal, false), &HashMap::new(), &mut caches)
+            full_absorption_trigger(&mut b, (nominal, false), &HashMap::default(), &mut caches)
                 .expect("cached nominal trigger");
         assert_eq!(reused.concept, trigger.concept);
         assert_eq!(
@@ -19524,7 +22013,7 @@ mod tests {
             "the cached trigger must not duplicate the ABox assertion"
         );
         assert!(
-            full_absorption_trigger(&mut b, (nominal, true), &HashMap::new(), &mut caches)
+            full_absorption_trigger(&mut b, (nominal, true), &HashMap::default(), &mut caches)
                 .is_none(),
             "Konclude's absorber supports only the positive nominal polarity"
         );
@@ -19807,7 +22296,7 @@ mod tests {
 
     struct BridgeEnv {
         tin: crate::orchestrate::cb_to_ht::TInput,
-        con_id: std::collections::HashMap<String, usize>,
+        con_id: crate::fxhash::FxHashMap<String, usize>,
         // populated by the most recent probe (kept for diagnostics)
         ctx: Option<CalculationAlgorithmContextBase>,
         unsupported: usize,
@@ -19846,6 +22335,123 @@ mod tests {
             ctx: None,
             unsupported: 0,
         }
+    }
+
+    /// The original blank-witness search: a full re-evaluation of every axiom
+    /// at every search node. `blank_witness_search` must visit the same tree.
+    fn blank_witness_search_reference(
+        axioms: &[&crate::json_io::SourceAxiomMeta],
+    ) -> Option<Vec<String>> {
+        fn collect_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
+            match concept {
+                SourceConcept::Name(name) if !name.starts_with("__dt__") => out.push(name.as_str()),
+                SourceConcept::Not(operand) => collect_names(operand, out),
+                SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                    for operand in operands {
+                        collect_names(operand, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn search<'a>(
+            axioms: &[&'a crate::json_io::SourceAxiomMeta],
+            label: &mut HashMap<&'a str, bool>,
+            budget: &mut usize,
+        ) -> Option<bool> {
+            if *budget == 0 {
+                return None;
+            }
+            *budget -= 1;
+            let mut pending: Option<&'a crate::json_io::SourceAxiomMeta> = None;
+            for &axiom in axioms {
+                match blank_witness_axiom_value(axiom, label)? {
+                    Some(false) => return Some(false),
+                    None => {
+                        if pending.is_none() {
+                            pending = Some(axiom);
+                        }
+                    }
+                    Some(true) => {}
+                }
+            }
+            let Some(axiom) = pending else {
+                return Some(true);
+            };
+            let mut names = Vec::new();
+            collect_names(&axiom.left, &mut names);
+            collect_names(&axiom.right, &mut names);
+            let Some(&variable) = names.iter().find(|name| !label.contains_key(*name)) else {
+                return None;
+            };
+            for value in [false, true] {
+                label.insert(variable, value);
+                if search(axioms, label, budget)? {
+                    return Some(true);
+                }
+                label.remove(variable);
+            }
+            Some(false)
+        }
+        let mut label = HashMap::default();
+        let mut budget = 200_000usize;
+        if search(axioms, &mut label, &mut budget)? {
+            let mut witness: Vec<String> = label
+                .into_iter()
+                .filter_map(|(name, value)| value.then(|| name.to_string()))
+                .collect();
+            witness.sort();
+            Some(witness)
+        } else {
+            None
+        }
+    }
+
+    #[test]
+    fn incremental_blank_witness_search_matches_full_reevaluation() {
+        use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
+        let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut next = move |bound: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % bound
+        };
+        fn concept(next: &mut dyn FnMut(u64) -> u64, depth: u32) -> SourceConcept {
+            let pick = if depth == 0 { next(3) } else { next(8) };
+            match pick {
+                0 | 1 => SourceConcept::Name(format!("N{}", next(6))),
+                2 => [SourceConcept::Top, SourceConcept::Bottom][next(2) as usize].clone(),
+                3 => SourceConcept::Not(Box::new(concept(next, depth - 1))),
+                4 => SourceConcept::And([concept(next, depth - 1), concept(next, depth - 1)].into()),
+                5 => SourceConcept::Or([concept(next, depth - 1), concept(next, depth - 1)].into()),
+                6 => SourceConcept::Exists(
+                    crate::frontend::syntax::Role::Name("r".into()),
+                    Box::new(concept(next, depth - 1)),
+                ),
+                _ => SourceConcept::Forall(
+                    crate::frontend::syntax::Role::Name("r".into()),
+                    Box::new(concept(next, depth - 1)),
+                ),
+            }
+        }
+        let mut witnesses = 0;
+        for _ in 0..3000 {
+            let count = 1 + next(12) as usize;
+            let axioms: Vec<SourceAxiomMeta> = (0..count)
+                .map(|_| SourceAxiomMeta {
+                    kind: [SourceAxiomKind::SubClass, SourceAxiomKind::Equivalent, SourceAxiomKind::Disjoint]
+                        [next(3) as usize],
+                    left: concept(&mut next, 2),
+                    right: concept(&mut next, 2),
+                })
+                .collect();
+            let refs: Vec<&SourceAxiomMeta> = axioms.iter().collect();
+            let expected = blank_witness_search_reference(&refs);
+            witnesses += usize::from(expected.is_some());
+            assert_eq!(blank_witness_search(refs), expected, "{axioms:?}");
+        }
+        assert!(witnesses > 100, "the generator must reach the witness branch");
     }
 
     #[test]
@@ -20101,6 +22707,32 @@ mod tests {
     const PREFIX: &str = "Prefix(:=<http://km.test/>)\nOntology(<http://km.test/o>\n";
 
     #[test]
+    fn ddb_preserves_satisfiable_disjoint_cardinality_partition() {
+        // Four r-successors can consist of three C nodes and one D node.
+        // B is the disjoint union of C, D and E; no E node is required.
+        let tin: TInput = serde_json::from_str(include_str!(
+            "../../tests/fixtures/ddb_cardinality_partition.json"
+        )).unwrap();
+        let subject = tin.concepts.iter().position(|name| name == "X").unwrap();
+        for (rest, backjump) in [(false, false), (false, true), (true, false), (true, true)] {
+            let (mut algo, mut ctx, bridged) =
+                fresh_bridge_env_with_trigger_absorption(&tin, true);
+            configure_production_search(&mut algo);
+            algo.conf_inprocess_cow = true;
+            algo.conf_atmost_rest = rest;
+            algo.conf_dependency_backjumping = backjump;
+            algo.conf_build_dependencies = true;
+            algo.probe_budget = Some(std::time::Duration::from_secs(10));
+            let mut next_id = 1000;
+            let verdict = bridged_unsat(
+                &mut algo, &mut ctx, &bridged, &mut next_id,
+                &[(bridged.named[subject], false)],
+            );
+            assert_eq!(verdict, Some(false), "rest={rest}, backjump={backjump}: the 3+1 partition is satisfiable");
+        }
+    }
+
+    #[test]
     fn equivalent_wine_definitions_preserve_nominal_universal_subsumption() {
         let mut env = bridge_ofn(include_str!("../../tests/fixtures/nominal_wine_absorption.ofn"));
         if let Some(path) = std::env::var_os("KM_WINE_PROBE_TIN") {
@@ -20204,6 +22836,38 @@ mod tests {
             "M's saturation label cannot rule out an unabsorbed H definition");
         assert!(outcome.certain_subsumers[h].is_some(),
             "the subject itself is not an unresolved equivalent subsumer");
+    }
+
+    #[test]
+    fn terminal_separator_individual_retains_native_abox_coverage() {
+        let ofn = format!("{PREFIX} Declaration(Class(:A)) Declaration(Class(:B)) \
+            Declaration(NamedIndividual(<http://example.org/individual/>)) \
+            ClassAssertion(:A <http://example.org/individual/>) SubClassOf(:A :B))");
+        let frontend = crate::frontend::ofn_to_clauses(&ofn).expect("valid source");
+        let mut env = bridge_ofn(&ofn);
+        assert!(crate::orchestrate::cb_to_ht::install_nominal_abox(
+            &mut env.tin, &frontend.nominal_abox,
+        ));
+        assert!(native_nominal_metadata_covered(&env.tin, true));
+        let individual = &env.tin.nominal_abox.individuals[0].individual;
+        assert_eq!(frontend.iri_map.get(individual).map(String::as_str),
+                   Some("http://example.org/individual/"));
+    }
+
+    #[test]
+    fn unfinished_saturation_seeds_cannot_publish_a_taxonomy() {
+        let ofn = format!("{PREFIX} Declaration(Class(:A)) Declaration(Class(:B)) \
+            Declaration(Class(:C)) SubClassOf(:A :B) SubClassOf(:B :C))");
+        let env = bridge_ofn(&ofn);
+        let (_, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&env.tin, false);
+        build_saturation_seeds(&mut ctx, &bridged);
+        assert!(ctx.process_context().sat_node_count() > 0);
+        // Seed nodes already have ordinary status flags, but the global task
+        // has not processed their consequences or reached its fixpoint.
+        assert!(extract_finished_saturation_outcome(&mut ctx, &bridged, false).is_none());
+        assert_eq!(ctx.process_context().sat_node_count(), 0);
+        let complete = bridged_classify(&env.tin).expect("exact fallback completes");
+        assert!(complete.subsumptions.contains(&(env.con_id["A"], env.con_id["C"])));
     }
 
     #[test]
@@ -21311,9 +23975,9 @@ mod tests {
         // are NOT named classes, so gold never lists them as supers — a subject
         // legitimately subsumed by an internal definer is correct, not unsound,
         // and must not be sampled as a negative.
-        let mut supers: std::collections::HashMap<String, std::collections::HashSet<String>> =
-            std::collections::HashMap::new();
-        let mut gold_universe: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut supers: crate::fxhash::FxHashMap<String, crate::fxhash::FxHashSet<String>> =
+            crate::fxhash::FxHashMap::default();
+        let mut gold_universe: crate::fxhash::FxHashSet<String> = crate::fxhash::FxHashSet::default();
         for pair in gold["subsumptions"].as_array().expect("subsumptions array") {
             let sub = local(pair[0].as_str().unwrap());
             let sup = local(pair[1].as_str().unwrap());
@@ -21325,7 +23989,7 @@ mod tests {
         let mut env = bridge_ofn_path(&path);
         // owned snapshot of the TInput concept names (avoids holding an
         // immutable borrow of env across the &mut env.subsumes() calls).
-        let present: std::collections::HashSet<String> = env.con_id.keys().cloned().collect();
+        let present: crate::fxhash::FxHashSet<String> = env.con_id.keys().cloned().collect();
         // subjects: gold subjects that ARE present in the TInput (in-fragment).
         let mut subjects: Vec<String> = supers
             .keys()
@@ -21689,15 +24353,15 @@ mod tests {
         let gold: serde_json::Value = serde_json::from_str(&gold_text).expect("gold json");
         let local =
             |iri: &str| -> String { iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string() };
-        let mut gold_pairs: std::collections::HashSet<(String, String)> =
-            std::collections::HashSet::new();
-        let mut gold_universe: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut gold_pairs: crate::fxhash::FxHashSet<(String, String)> =
+            crate::fxhash::FxHashSet::default();
+        let mut gold_universe: crate::fxhash::FxHashSet<String> = crate::fxhash::FxHashSet::default();
         // Names appearing as a SUB in gold: only these become subjects, so a
         // gold file restricted to a subject sample stays self-consistent —
         // every admitted subject carries its COMPLETE supers set, keeping
         // `spurious` meaningful (a supers-only name would otherwise be
         // classified against an empty gold row and misread as unsound).
-        let mut gold_subs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut gold_subs: crate::fxhash::FxHashSet<String> = crate::fxhash::FxHashSet::default();
         for pair in gold["subsumptions"].as_array().expect("subsumptions array") {
             let sub = local(pair[0].as_str().unwrap());
             let sup = local(pair[1].as_str().unwrap());
@@ -21758,8 +24422,8 @@ mod tests {
             .filter(|&i| gold_universe.contains(&tin.concepts[i]))
             .collect();
 
-        let mut derived: std::collections::HashSet<(String, String)> =
-            std::collections::HashSet::new();
+        let mut derived: crate::fxhash::FxHashSet<(String, String)> =
+            crate::fxhash::FxHashSet::default();
         let mut nondet = 0usize;
         let mut next = 0i64;
         let t0 = std::time::Instant::now();
@@ -21884,9 +24548,9 @@ mod tests {
         let _ = (&algo, &bridged, &mut next);
 
         // restrict gold to the same subject/target universe we classified.
-        let subj_names: std::collections::HashSet<String> =
+        let subj_names: crate::fxhash::FxHashSet<String> =
             subjects.iter().map(|&i| tin.concepts[i].clone()).collect();
-        let gold_restricted: std::collections::HashSet<(String, String)> = gold_pairs
+        let gold_restricted: crate::fxhash::FxHashSet<(String, String)> = gold_pairs
             .iter()
             .filter(|(sub, sup)| subj_names.contains(sub) && gold_universe.contains(sup))
             .cloned()
@@ -21929,10 +24593,10 @@ mod tests {
         let gold: serde_json::Value = serde_json::from_str(&gold_text).expect("gold json");
         let local =
             |iri: &str| -> String { iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string() };
-        let mut gold_pairs: std::collections::HashSet<(String, String)> =
-            std::collections::HashSet::new();
-        let mut gold_universe: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut gold_subs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut gold_pairs: crate::fxhash::FxHashSet<(String, String)> =
+            crate::fxhash::FxHashSet::default();
+        let mut gold_universe: crate::fxhash::FxHashSet<String> = crate::fxhash::FxHashSet::default();
+        let mut gold_subs: crate::fxhash::FxHashSet<String> = crate::fxhash::FxHashSet::default();
         for pair in gold["subsumptions"].as_array().expect("subsumptions array") {
             let sub = local(pair[0].as_str().unwrap());
             let sup = local(pair[1].as_str().unwrap());
@@ -21967,7 +24631,7 @@ mod tests {
         {
             subjects.truncate(cap);
         }
-        let subj_names: std::collections::HashSet<String> =
+        let subj_names: crate::fxhash::FxHashSet<String> =
             subjects.iter().map(|&i| tin.concepts[i].clone()).collect();
         tin.queries = subjects.clone();
 
@@ -21981,8 +24645,8 @@ mod tests {
             );
             return;
         };
-        let mut derived: std::collections::HashSet<(String, String)> =
-            std::collections::HashSet::new();
+        let mut derived: crate::fxhash::FxHashSet<(String, String)> =
+            crate::fxhash::FxHashSet::default();
         for &(a, b) in &r.subsumptions {
             let (sub, sup) = (tin.concepts[a].clone(), tin.concepts[b].clone());
             if gold_universe.contains(&sup) {
@@ -21999,7 +24663,7 @@ mod tests {
                 }
             }
         }
-        let gold_restricted: std::collections::HashSet<(String, String)> = gold_pairs
+        let gold_restricted: crate::fxhash::FxHashSet<(String, String)> = gold_pairs
             .iter()
             .filter(|(sub, sup)| subj_names.contains(sub) && gold_universe.contains(sup))
             .cloned()
@@ -22944,7 +25608,7 @@ mod tests {
             ..Default::default()
         };
         let oracle = bridged_classify(&tin).expect("classify");
-        let oracle_subs: std::collections::HashSet<(usize, usize)> =
+        let oracle_subs: crate::fxhash::FxHashSet<(usize, usize)> =
             oracle.subsumptions.iter().copied().collect();
         let out = bridged_saturate(&tin).expect("in fragment");
         for i in 0..tin.concepts.len() {
@@ -22961,9 +25625,9 @@ mod tests {
                         tin.concepts[i]
                     );
                     if let Some(subs) = &out.certain_subsumers[i] {
-                        let sat_set: std::collections::HashSet<(usize, usize)> =
+                        let sat_set: crate::fxhash::FxHashSet<(usize, usize)> =
                             subs.iter().map(|&cc| (i, cc)).collect();
-                        let oracle_row: std::collections::HashSet<(usize, usize)> = oracle_subs
+                        let oracle_row: crate::fxhash::FxHashSet<(usize, usize)> = oracle_subs
                             .iter()
                             .filter(|&&(s, _)| s == i)
                             .copied()
@@ -22976,6 +25640,220 @@ mod tests {
                     }
                 }
                 None => {}
+            }
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod bridge_role_disjointness_tests {
+    //! AsymmetricObjectProperty as Konclude's role disjointness Dis(R, R⁻),
+    //! IrreflexiveObjectProperty as the GCI ⊤ ⊑ ¬∃R.Self, and the merge
+    //! paths they depend on. Expected answers are derived by hand in each
+    //! test; several were cross-checked against the CB engine and the
+    //! general HT racer (both of which miss the self-loop cases).
+    use super::*;
+
+    fn classify(text: &str) -> (Option<BridgedClassification>, Vec<String>) {
+        // The production path: trigger-absorbed clauses plus the retained
+        // source axioms (native terminology, including SELF restrictions).
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses, Some(&fr.rbox), &named, &fr.cardinalities, &fr.definers,
+            &fr.source_axioms, true, &fr.rules, false,
+        );
+        let names = tin.concepts.clone();
+        let mut results = Vec::new();
+        for (saturation, satcache) in [(false, false), (true, false), (true, true)] {
+            results.push(bridged_classify_opts_with_trigger_absorption(&tin, saturation, satcache, true));
+        }
+        // Every configuration publishes the same verdicts.
+        for other in &results[1..] {
+            assert_eq!(
+                other.as_ref().map(|r| (r.consistent, sorted(&r.unsatisfiable), sorted_pairs(&r.subsumptions))),
+                results[0].as_ref().map(|r| (r.consistent, sorted(&r.unsatisfiable), sorted_pairs(&r.subsumptions))),
+            );
+        }
+        (results.into_iter().next().unwrap(), names)
+    }
+    fn sorted(values: &[usize]) -> Vec<usize> { let mut v = values.to_vec(); v.sort_unstable(); v }
+    fn sorted_pairs(values: &[(usize, usize)]) -> Vec<(usize, usize)> { let mut v = values.to_vec(); v.sort_unstable(); v }
+    fn id(names: &[String], local: &str) -> usize {
+        names.iter().position(|name| name == local || name.ends_with(&format!("#{local}"))
+            || name.ends_with(&format!(":{local}")) || name.ends_with(&format!("/{local}")))
+            .unwrap_or_else(|| panic!("concept {local} in {names:?}"))
+    }
+    fn ontology(axioms: &str) -> String {
+        format!("Prefix(:=<http://example.org/#>)\nPrefix(owl:=<http://www.w3.org/2002/07/owl#>)\n\
+                 Ontology(\nDeclaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) \
+                 Declaration(Class(:D)) Declaration(Class(:F)) Declaration(Class(:H))\n\
+                 Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) \
+                 Declaration(ObjectProperty(:t)) Declaration(ObjectProperty(:u)) \
+                 Declaration(ObjectProperty(:q))\n{axioms}\n)")
+    }
+
+    #[test]
+    fn bridge_role_disjointness_asymmetric_clause_shape() {
+        let role = |r, s, t| HAtom::Role { r, s, t };
+        let clause = |body: Vec<HAtom>| HtClause { body, head: vec![] };
+        assert_eq!(asymmetric_role_clause(&clause(vec![role(3, 0, 1), role(3, 1, 0)])), Some(3));
+        assert_eq!(asymmetric_role_clause(&clause(vec![role(3, 0, 1), role(4, 1, 0)])), None);
+        assert_eq!(asymmetric_role_clause(&clause(vec![role(3, 0, 1), role(3, 0, 1)])), None);
+        assert_eq!(asymmetric_role_clause(&clause(vec![role(3, 0, 0), role(3, 0, 0)])), None);
+        assert_eq!(asymmetric_role_clause(&HtClause {
+            body: vec![role(3, 0, 1), role(3, 1, 0)],
+            head: vec![HAtom::Concept { neg: false, c: 0, t: 0 }],
+        }), None);
+    }
+
+    #[test]
+    fn bridge_role_disjointness_asymmetry_excludes_self_loops() {
+        // Asymmetry implies irreflexivity: F ⊑ ∃t.Self with t ⊑ r forces r(x,x).
+        let (result, names) = classify(&ontology(
+            "AsymmetricObjectProperty(:r) SubObjectPropertyOf(:t :r) \
+             SubClassOf(:F ObjectHasSelf(:t)) SubClassOf(:A ObjectSomeValuesFrom(:r :B))"));
+        let result = result.expect("asymmetry is in the bridge fragment");
+        assert!(result.consistent);
+        assert!(result.unsatisfiable.contains(&id(&names, "F")));
+        assert!(!result.unsatisfiable.contains(&id(&names, "A")));
+    }
+
+    #[test]
+    fn bridge_role_disjointness_symmetric_and_asymmetric_role_is_empty() {
+        let (result, names) = classify(&ontology(
+            "AsymmetricObjectProperty(:r) SymmetricObjectProperty(:r) \
+             SubClassOf(:A ObjectSomeValuesFrom(:r :B)) SubClassOf(:C ObjectAllValuesFrom(:r :D))"));
+        let result = result.expect("in fragment");
+        assert!(result.unsatisfiable.contains(&id(&names, "A")));
+        assert!(!result.unsatisfiable.contains(&id(&names, "C")));
+        assert!(!result.unsatisfiable.contains(&id(&names, "B")));
+    }
+
+    #[test]
+    fn bridge_role_disjointness_inverse_hierarchy_forces_empty_role() {
+        // s ⊑ r, r ⊑ t, t ≡ s⁻: s(x,y) gives s(y,x), so Asymmetric(s) empties s and r.
+        let (result, names) = classify(&ontology(
+            "AsymmetricObjectProperty(:s) SubObjectPropertyOf(:s :r) SubObjectPropertyOf(:r :t) \
+             InverseObjectProperties(:t :s) SubClassOf(:A ObjectSomeValuesFrom(:r :B)) \
+             SubClassOf(:C ObjectSomeValuesFrom(:u :B))"));
+        let result = result.expect("in fragment");
+        assert!(result.unsatisfiable.contains(&id(&names, "A")));
+        assert!(!result.unsatisfiable.contains(&id(&names, "C")));
+    }
+
+    #[test]
+    fn bridge_role_disjointness_functional_merge_into_predecessor_clashes() {
+        // x r y, y r z, q ⊒ r, q ⊒ r⁻ functional: z merges into x, so r(y,x)
+        // and r(x,y) violate asymmetry. B alone (no predecessor) is fine.
+        let (result, names) = classify(&ontology(
+            "AsymmetricObjectProperty(:r) SubObjectPropertyOf(:r :q) InverseObjectProperties(:r :u) \
+             SubObjectPropertyOf(:u :q) FunctionalObjectProperty(:q) \
+             SubClassOf(:A ObjectSomeValuesFrom(:r :B)) SubClassOf(:B ObjectSomeValuesFrom(:r :C))"));
+        let result = result.expect("in fragment");
+        assert!(result.unsatisfiable.contains(&id(&names, "A")));
+        assert!(!result.unsatisfiable.contains(&id(&names, "B")));
+        assert!(!result.unsatisfiable.contains(&id(&names, "C")));
+    }
+
+    #[test]
+    fn bridge_role_disjointness_reflexive_and_irreflexive_role_is_inconsistent() {
+        // A reflexivity fact forces the role nonempty, so the irreflexivity
+        // axiom must not be dropped as redundant.
+        // The ontology is inconsistent: the bridge must not publish a
+        // consistent verdict (it defers; owl:Thing is never a subject).
+        let (result, _) = classify(&ontology(
+            "IrreflexiveObjectProperty(:t) ReflexiveObjectProperty(:t) SubClassOf(:A :B)"));
+        assert!(result.is_none_or(|result| !result.consistent), "Thing is unsatisfiable");
+        // Without the reflexivity fact the role may be empty: consistent.
+        let (result, names) = classify(&ontology(
+            "IrreflexiveObjectProperty(:t) SubClassOf(:A :B)"));
+        let result = result.expect("in fragment");
+        assert!(result.consistent);
+        assert!(result.subsumptions.contains(&(id(&names, "A"), id(&names, "B"))));
+    }
+
+    #[test]
+    fn bridge_role_disjointness_irreflexive_self_loop_from_merge_into_predecessor() {
+        // C ⊑ ∃s⁻.H, H ⊑ ∃u.Self, s,u ⊑ t functional: the s-predecessor y
+        // has t(y,y) and t(y,x), so x merges into y and s(y,y) violates
+        // Irreflexive(s). C is unsatisfiable.
+        let (result, names) = classify(&ontology(
+            "IrreflexiveObjectProperty(:s) SubObjectPropertyOf(:u :t) SubObjectPropertyOf(:s :t) \
+             FunctionalObjectProperty(:t) InverseFunctionalObjectProperty(:u) \
+             SubClassOf(:H ObjectHasSelf(:u)) \
+             SubClassOf(:C ObjectSomeValuesFrom(ObjectInverseOf(:s) :H)) \
+             SubClassOf(:A ObjectSomeValuesFrom(:s :B))"));
+        let result = result.expect("in fragment");
+        assert!(result.unsatisfiable.contains(&id(&names, "C")));
+        assert!(!result.unsatisfiable.contains(&id(&names, "A")));
+        assert!(!result.unsatisfiable.contains(&id(&names, "H")));
+    }
+
+    #[test]
+    fn bridge_role_disjointness_two_reflexive_roles_reach_universal_restriction() {
+        // The self link of `t` must not hide the self link of the transitive
+        // super-role `s` from the universal restriction (first-link scan).
+        let (result, names) = classify(&ontology(
+            "ReflexiveObjectProperty(:r) ReflexiveObjectProperty(:t) SubObjectPropertyOf(:r :s) \
+             TransitiveObjectProperty(:s) SubClassOf(:A ObjectAllValuesFrom(:s :B))"));
+        let result = result.expect("in fragment");
+        assert!(result.subsumptions.contains(&(id(&names, "A"), id(&names, "B"))));
+    }
+}
+
+#[cfg(test)]
+mod bridge_equivalent_non_candidate_tests {
+    use super::*;
+
+    fn classify(text: &str) -> Vec<(BridgedClassification, Vec<String>)> {
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses, Some(&fr.rbox), &named, &fr.cardinalities, &fr.definers,
+            &fr.source_axioms, true, &fr.rules, false,
+        );
+        [(false, false), (true, false), (true, true)].into_iter().map(|(saturation, satcache)| {
+            (bridged_classify_opts_with_trigger_absorption(&tin, saturation, satcache, true)
+                .expect("in fragment"), tin.concepts.clone())
+        }).collect()
+    }
+
+    fn id(names: &[String], local: &str) -> usize {
+        names.iter().position(|name| name.ends_with(&format!("#{local}")) || name == local
+            || name.ends_with(&format!(":{local}")))
+            .unwrap_or_else(|| panic!("{local} in {names:?}"))
+    }
+
+    /// A lazily unfolded CCEQ definition `B ≡ ∀s⁻.∃s.H` is decided in no
+    /// completion model of `H` (neither B nor ¬B is added), yet `H ⊑ B`.
+    /// Konclude keeps such a definition as an equivalent non-candidate
+    /// possible subsumer of every class; the synchronous KPSet
+    /// initialization must register it, or the empty ordinary possible
+    /// list invalidates the subsumption before it is tested.
+    #[test]
+    fn bridge_equivalent_non_candidate_definition_is_tested() {
+        for (axioms, sub, sup) in [
+            ("EquivalentClasses(:B ObjectAllValuesFrom(ObjectInverseOf(:s) ObjectSomeValuesFrom(:s :H)))", "H", "B"),
+            ("SubObjectPropertyOf(:s :u) EquivalentClasses(:B ObjectAllValuesFrom(ObjectInverseOf(:s) ObjectSomeValuesFrom(:u :H)))", "H", "B"),
+            ("EquivalentClasses(:B ObjectAllValuesFrom(:s ObjectSomeValuesFrom(ObjectInverseOf(:s) :H)))", "H", "B"),
+        ] {
+            let text = format!("Prefix(:=<http://example.org/#>)\nOntology(\nDeclaration(Class(:B)) \
+                Declaration(Class(:H)) Declaration(Class(:C)) Declaration(ObjectProperty(:s)) \
+                Declaration(ObjectProperty(:u))\n{axioms}\n)");
+            for (result, names) in classify(&text) {
+                assert!(result.consistent);
+                assert!(result.subsumptions.contains(&(id(&names, sub), id(&names, sup))),
+                    "{axioms}: {sub} ⊑ {sup} missing");
+                assert!(!result.subsumptions.contains(&(id(&names, "C"), id(&names, sup))),
+                    "{axioms}: C has no subsumer");
             }
         }
     }

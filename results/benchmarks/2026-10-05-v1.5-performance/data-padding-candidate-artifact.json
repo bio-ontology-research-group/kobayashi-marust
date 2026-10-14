@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "experimental-data-padding-bfde0e95ad0b",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-data-padding-bfde0e95ad0b",
+      "sha256": "bfde0e95ad0bba66f7d5c23645618e03227fd5e202852bb2fda10eb2e213a92b"
+    }
+  ],
+  "source_commit": "isolated 2032f765 plus integral-decimal and source-GCI padding experiment",
+  "source_manifest_sha256": "8ce0e268bfa391a54cc4d413a2ce02dd3016517aa3d6cda85354db419834f707",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1",
+    "KM_EXPERIMENTAL_DATA_PADDING": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure"
+  ],
+  "release_approved": false,
+  "scope": "Experimental coverage diagnostic. Conditional forward proof exists; executable source binding and reverse model transport are not certified.",
+  "certification_pending": true
+}

@@ -1,0 +1,18 @@
+{
+  "status": "complete",
+  "manifest_sha256": "0309377d05dfd0cd81eb46050416272fbd52b16e77f21d9a37d732b352817fb4",
+  "artifact_manifest_sha256": "2299e68958641fd3bb098454669b6e6fab4e94ffdbe58942b7a2af0974dfc720",
+  "runner_sha256": "399e6a0ed0b8a5020aea4a5baf7cc8e9fb4199314b8cce64420c8944b7a99552",
+  "checker_sha256": "dbb2dcad3196088ae3079c4d35aa3e8c0f187525ac31901c67d9cf0e88fd0049",
+  "scope": "Automatic-mode check of the source that exhausted memory in forced nominal mode. Does not establish forced-mode equivalence. Validation only: 20 GiB/600 s; classification benchmark retains 20 GiB/240 s.",
+  "outcomes": [
+    {
+      "ontology": "ore_ont_15687",
+      "source_sha256": "e8e00e63ab8bbef80de3059389b565613c3a79c0210c9ed710cc8703d4849791",
+      "passed": false,
+      "execution_status": "memout",
+      "returncode": -9,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

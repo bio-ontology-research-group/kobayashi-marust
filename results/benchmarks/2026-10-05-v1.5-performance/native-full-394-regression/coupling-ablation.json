@@ -1,0 +1,42 @@
+[
+  {
+    "flag": "KM_HT_NO_SAT_SUCCESSOR_EXPANSION",
+    "expected_pair_present": true
+  },
+  {
+    "flag": "KM_HT_NO_SAT_CACHING_BLOCKING",
+    "expected_pair_present": false
+  },
+  {
+    "flag": "KM_HT_NO_SAT_CACHED_ABSORPTION",
+    "expected_pair_present": false
+  },
+  {
+    "flag": "KM_HT_NO_SAT_CACHED_DISJ_ABSORPTION",
+    "expected_pair_present": false
+  },
+  {
+    "flag": "KM_HT_NO_SAT_CACHED_MERGE_ABSORPTION",
+    "expected_pair_present": false
+  },
+  {
+    "flag": "KM_HT_NO_SAT_CACHED_SUCCESSOR_ABSORPTION",
+    "expected_pair_present": false
+  },
+  {
+    "flag": "KM_HT_NO_SAT_CACHE_READING",
+    "expected_pair_present": true
+  },
+  {
+    "flag": "KM_HT_NO_SAT_SUCCESSOR_EXTENSION",
+    "expected_pair_present": false
+  },
+  {
+    "flag": "KM_HT_NO_SAT_ALL_EXTENSION",
+    "expected_pair_present": false
+  },
+  {
+    "flag": "KM_HT_NO_SAT_FUNCTIONAL_EXTENSION",
+    "expected_pair_present": false
+  }
+]

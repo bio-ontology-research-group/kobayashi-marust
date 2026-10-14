@@ -1,0 +1,41 @@
+{
+  "diagnostic_only": true,
+  "rows": [
+    {
+      "ontology": "ore_ont_3843",
+      "flag": "KM_DATA_ABOX_PROJECT",
+      "returncode": 3,
+      "timed_out": false,
+      "wall_s": 0.016547325998544693,
+      "stderr": "unsupported: expected named IRI\n",
+      "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e"
+    },
+    {
+      "ontology": "ore_ont_3843",
+      "flag": "KM_GROUND_RULE_SOURCE",
+      "returncode": 0,
+      "timed_out": false,
+      "wall_s": 0.1148597780847922,
+      "stderr": "KM_TIMING ground-rule source: rules=0 instances=0\nKM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false\nKM_TIMING frontend done @ 0.01s route=manual\nKM_TIMING spawn_ht: read+convert 941 clauses (ht_view=892) in 0.00s\nKM_TIMING engine block done @ 0.06s (subs_keys=80)\n",
+      "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e"
+    },
+    {
+      "ontology": "ore_ont_1342",
+      "flag": "KM_DATA_ABOX_PROJECT",
+      "returncode": 3,
+      "timed_out": false,
+      "wall_s": 0.01681646006181836,
+      "stderr": "unsupported: data ABox is coupled through SubClassOf\n",
+      "source_sha256": "1faf6c93fa1ee0c3570e0f6c1568852e63c52ec416b5901112312b1bb39765c6"
+    },
+    {
+      "ontology": "ore_ont_1342",
+      "flag": "KM_GROUND_RULE_SOURCE",
+      "returncode": 3,
+      "timed_out": false,
+      "wall_s": 0.01660518697462976,
+      "stderr": "unsupported: data assertion has no exact supported literal value\n",
+      "source_sha256": "1faf6c93fa1ee0c3570e0f6c1568852e63c52ec416b5901112312b1bb39765c6"
+    }
+  ]
+}

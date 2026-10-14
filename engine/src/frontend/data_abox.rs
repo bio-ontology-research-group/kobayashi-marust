@@ -25,7 +25,9 @@
 //! borrowed from the document text (zero copies); a cap on retained assertions
 //! bounds memory and degrades to "no clash found" (incomplete, never unsound).
 
-use std::collections::{HashMap, HashSet};
+// Membership/lookup tables; iteration order is per-process random as before.
+type HashMap<K, V> = crate::fxhash::FxHashMap<K, V>;
+type HashSet<T> = crate::fxhash::FxHashSet<T>;
 
 use super::parse::strip_annotations;
 use super::sexpr::Node;
@@ -471,7 +473,7 @@ impl<'a> DataAbox<'a> {
         // Independent class satisfiability supplies one witness per individual
         // only when that individual has a single asserted class. Otherwise the
         // conjunction can be unsatisfiable even when each class is satisfiable.
-        let mut individual_classes = HashMap::new();
+        let mut individual_classes = HashMap::default();
         for &(class, individual) in &self.cassert {
             if let Some(previous) = individual_classes.insert(individual, class) {
                 if previous != class {
@@ -746,7 +748,7 @@ impl<'a> DataAbox<'a> {
 
     /// Reflexive-transitive supers of `p` under `SubDataPropertyOf`.
     fn all_supers(&self, p: &'a str) -> Vec<&'a str> {
-        let mut seen: HashSet<&str> = HashSet::new();
+        let mut seen: HashSet<&str> = HashSet::default();
         let mut out = vec![p];
         seen.insert(p);
         let mut stack = vec![p];
@@ -786,7 +788,7 @@ impl<'a> DataAbox<'a> {
 
     /// Reflexive-transitive supers of role `p` under simple `SubObjectPropertyOf`.
     fn role_supers(&self, p: &'a str) -> Vec<&'a str> {
-        let mut seen: HashSet<&str> = HashSet::new();
+        let mut seen: HashSet<&str> = HashSet::default();
         let mut out = vec![p];
         seen.insert(p);
         let mut stack = vec![p];
@@ -817,7 +819,7 @@ impl<'a> DataAbox<'a> {
         if self.overflow {
             return None;
         }
-        let mut ids: HashMap<&str, u32> = HashMap::new();
+        let mut ids: HashMap<&str, u32> = HashMap::default();
         let mut intern = |s: &'a str, ids: &mut HashMap<&'a str, u32>| -> u32 {
             let next = ids.len() as u32;
             *ids.entry(s).or_insert(next)
@@ -855,13 +857,13 @@ impl<'a> DataAbox<'a> {
             uf.union(a, b);
         }
         // class ancestors memo (named hierarchy)
-        let mut anc_memo: HashMap<&str, Vec<&'a str>> = HashMap::new();
+        let mut anc_memo: HashMap<&str, Vec<&'a str>> = HashMap::default();
         let mut ancestors =
             |c: &'a str, memo: &mut HashMap<&'a str, Vec<&'a str>>| -> Vec<&'a str> {
                 if let Some(v) = memo.get(c) {
                     return v.clone();
                 }
-                let mut seen: HashSet<&str> = HashSet::new();
+                let mut seen: HashSet<&str> = HashSet::default();
                 let mut out = vec![c];
                 seen.insert(c);
                 let mut stack = vec![c];
@@ -878,10 +880,10 @@ impl<'a> DataAbox<'a> {
                 memo.insert(c, out.clone());
                 out
             };
-        let mut mem: HashMap<u32, HashSet<&'a str>> = HashMap::new();
+        let mut mem: HashMap<u32, HashSet<&'a str>> = HashMap::default();
         for _ in 0..MERGE_ITER_CAP {
             // closed role-assertion set over current roots
-            let mut closed: HashSet<(&str, u32, u32)> = HashSet::new();
+            let mut closed: HashSet<(&str, u32, u32)> = HashSet::default();
             let mut work: Vec<(&str, u32, u32)> = Vec::new();
             for &(p, a, b) in &raw_edges {
                 let e = (p, uf.find(a), uf.find(b));
@@ -944,7 +946,7 @@ impl<'a> DataAbox<'a> {
                 }
             }
             // ≤1-driven merging
-            let mut by_role: HashMap<&str, Vec<(u32, u32)>> = HashMap::new();
+            let mut by_role: HashMap<&str, Vec<(u32, u32)>> = HashMap::default();
             for &(p, a, b) in &closed {
                 by_role.entry(p).or_default().push((a, b));
             }
@@ -954,7 +956,7 @@ impl<'a> DataAbox<'a> {
                     Some(v) => v,
                     None => continue,
                 };
-                let mut first_succ: HashMap<u32, u32> = HashMap::new();
+                let mut first_succ: HashMap<u32, u32> = HashMap::default();
                 for &(a, b) in pairs {
                     if !c.is_empty() && !mem.get(&a).is_some_and(|s| s.contains(c)) {
                         continue;
@@ -1042,7 +1044,7 @@ impl<'a> DataAbox<'a> {
             Some(parts) => parts,
             None => return false,
         };
-        let mut values: HashMap<(&str, u32), HashSet<(&str, Option<&str>)>> = HashMap::new();
+        let mut values: HashMap<(&str, u32), HashSet<(&str, Option<&str>)>> = HashMap::default();
         for &(p, i, token, suffix) in &self.assertions {
             let root = uf.find(ids[i]);
             for q in self.all_supers(p) {
@@ -1085,7 +1087,7 @@ impl<'a> DataAbox<'a> {
         {
             return None;
         }
-        let mut values: HashMap<&str, Vec<(&str, String)>> = HashMap::new();
+        let mut values: HashMap<&str, Vec<(&str, String)>> = HashMap::default();
         for &(property, individual, token, suffix) in &self.assertions {
             let literal = parse_lit(token, suffix)?;
             if !is_plain_string(&literal)
@@ -1148,7 +1150,7 @@ impl<'a> DataAbox<'a> {
         let mut pending: Vec<&str> = self.cassert.iter()
             .filter_map(|(class, owner)| (*owner == individual).then_some(*class))
             .collect();
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::default();
         while let Some(class) = pending.pop() {
             if class == target {
                 return true;
@@ -1222,7 +1224,7 @@ impl<'a> DataAbox<'a> {
         };
         // rule 2: two provably-distinct values on one (merged) individual for a
         // functional data property or a class-conditional `≤1 P` constraint
-        let mut by_key: HashMap<(&str, u32), Vec<(&str, Option<&str>)>> = HashMap::new();
+        let mut by_key: HashMap<(&str, u32), Vec<(&str, Option<&str>)>> = HashMap::default();
         for &(p, i, ltok, suf) in &self.assertions {
             let r = uf.find(ids[i]);
             for q in self.all_supers(p) {
@@ -1256,7 +1258,7 @@ impl<'a> DataAbox<'a> {
         }
         // rule 3: a `DifferentIndividuals` pair forced into one equivalence class
         for g in &self.diffs {
-            let mut roots: HashMap<u32, &str> = HashMap::new();
+            let mut roots: HashMap<u32, &str> = HashMap::default();
             for &x in g {
                 let r = uf.find(ids[x]);
                 if let Some(prev) = roots.insert(r, x) {

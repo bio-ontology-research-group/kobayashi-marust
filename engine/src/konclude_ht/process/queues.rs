@@ -34,7 +34,8 @@
 #![allow(dead_code)]
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
+use crate::fxhash::FxHashMap as HashMap;
 use std::mem;
 
 use super::super::model::ontology::OntologyArenas;
@@ -472,7 +473,7 @@ impl IndividualProcessingQueue {
     pub fn new() -> Self {
         IndividualProcessingQueue {
             priority_indi_des_map: BTreeMap::new(),
-            indi_des_priority_hash: HashMap::new(),
+            indi_des_priority_hash: HashMap::default(),
             indi_pro_des_count: 0,
             has_max_indi_priority: false,
             max_indi_priority: IndividualProcessNodePriority::default(),
@@ -1090,7 +1091,7 @@ impl IndividualConceptBatchProcessingQueue {
             concept_indi_queue_map: BTreeMap::new(),
             bind_count_indi_queue_map: BTreeMap::new(),
             bindind_based_queued_count: 0,
-            bind_count_indi_queued_hash: HashMap::new(),
+            bind_count_indi_queued_hash: HashMap::default(),
         }
     }
 

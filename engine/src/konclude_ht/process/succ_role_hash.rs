@@ -20,7 +20,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::Cint64;
 use super::EdgeId;
@@ -48,7 +48,7 @@ pub struct SuccessorRoleHash {
 impl Default for SuccessorRoleHash {
     fn default() -> Self {
         SuccessorRoleHash {
-            successor_link_hash: HashMap::new(),
+            successor_link_hash: HashMap::default(),
             prev_successor_link_hash: None,
             prev_validating_required: false,
         }
@@ -135,29 +135,27 @@ impl SuccessorRoleHash {
     /// Port of `getSuccessorRoleIterator(cint64 indi)`.
     pub fn get_successor_role_iterator(&self, indi: Cint64) -> SuccessorRoleIterator {
         if self.prev_successor_link_hash.is_none() || self.successor_link_hash.contains_key(&indi) {
-            SuccessorRoleIterator::new(
+            SuccessorRoleIterator::from_slice(
                 indi,
                 self.successor_link_hash
                     .get(&indi)
-                    .cloned()
-                    .unwrap_or_default(),
+                    .map_or(&[][..], Vec::as_slice),
             )
         } else if self
             .prev_successor_link_hash
             .as_ref()
             .map_or(false, |p| p.contains_key(&indi))
         {
-            SuccessorRoleIterator::new(
+            SuccessorRoleIterator::from_slice(
                 indi,
                 self.prev_successor_link_hash
                     .as_ref()
                     .unwrap()
                     .get(&indi)
-                    .cloned()
-                    .unwrap_or_default(),
+                    .map_or(&[][..], Vec::as_slice),
             )
         } else {
-            SuccessorRoleIterator::new(indi, Vec::new())
+            SuccessorRoleIterator::from_slice(indi, &[])
         }
     }
 
@@ -267,7 +265,9 @@ pub struct SuccessorRoleIterator {
     /// `cint64 mIndi`.
     indi: Cint64,
     /// Snapshot of the successor's bucket (`find(indi)..end` while `key == indi`).
-    links: Vec<EdgeId>,
+    /// Inline for the usual handful of links: the snapshot is taken on every
+    /// ∀-rule edge lookup, and a heap copy per lookup dominated its cost.
+    links: smallvec::SmallVec<[EdgeId; 4]>,
     /// Cursor.
     pos: usize,
 }
@@ -278,7 +278,7 @@ impl SuccessorRoleIterator {
     pub fn empty() -> Self {
         SuccessorRoleIterator {
             indi: 0,
-            links: Vec::new(),
+            links: smallvec::SmallVec::new(),
             pos: 0,
         }
     }
@@ -287,7 +287,17 @@ impl SuccessorRoleIterator {
     pub fn new(indi: Cint64, links: Vec<EdgeId>) -> Self {
         SuccessorRoleIterator {
             indi,
-            links,
+            links: smallvec::SmallVec::from_vec(links),
+            pos: 0,
+        }
+    }
+
+    /// The same iterator over a copy of `links` (no heap allocation for up to
+    /// four links).
+    pub fn from_slice(indi: Cint64, links: &[EdgeId]) -> Self {
+        SuccessorRoleIterator {
+            indi,
+            links: smallvec::SmallVec::from_slice(links),
             pos: 0,
         }
     }

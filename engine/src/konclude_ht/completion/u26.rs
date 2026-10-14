@@ -71,7 +71,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, IndividualId};
@@ -474,7 +475,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
 
-                let mut searching_node_set: HashSet<Cint64> = HashSet::new();
+                let mut searching_node_set: HashSet<Cint64> = HashSet::default();
                 let mut searching_node_list: VecDeque<Cint64> = VecDeque::new();
                 searching_node_set.insert(current_individual_node_id);
                 searching_node_list.push_back(current_individual_node_id);

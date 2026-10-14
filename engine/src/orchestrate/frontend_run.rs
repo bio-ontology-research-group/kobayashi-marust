@@ -213,6 +213,18 @@ fn use_in_process_ofn(path: &Path, source_bytes: u64) -> bool {
 /// EL leaf consumes it in process, and otherwise the compact EL sidecar for
 /// an exact EL worker (the same `--elc-binary` handoff the subprocess
 /// frontend writes). Every other route reads the serialized JSON file.
+/// The in-process frontend's input for the positive-EL ABox certificate,
+/// keyed by the clause file it was also written to (see `run_ofn_in_process`).
+static POSITIVE_EL_INPUT: std::sync::Mutex<Option<(std::path::PathBuf, crate::json_io::JInput)>> =
+    std::sync::Mutex::new(None);
+
+/// Take the stored frontend input when it belongs to `clauses_path`. Any
+/// other stored value is released.
+pub(crate) fn take_positive_el_input(clauses_path: &Path) -> Option<crate::json_io::JInput> {
+    let stored = POSITIVE_EL_INPUT.lock().unwrap_or_else(|e| e.into_inner()).take()?;
+    (stored.0 == clauses_path).then_some(stored.1)
+}
+
 fn run_ofn_in_process(
     text: &str,
     clauses_path: &Path,
@@ -279,15 +291,27 @@ fn run_ofn_in_process(
     if binary_sidecar {
         let sidecar = TempPath::new(".elc.bin");
         let f = File::create(sidecar.path())?;
-        let mut w = std::io::BufWriter::new(f);
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
         crate::json_io::write_elc_binary(&mut w, &out.clauses)?;
         std::io::Write::flush(&mut w)?;
         elc_binary = Some(sidecar);
     } else if !cacheable {
         let f = File::create(clauses_path)?;
-        let mut w = std::io::BufWriter::new(f);
-        serde_json::to_writer(&mut w, &out)?;
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+        crate::json_io::write_jinput_json(&mut w, &out)?;
         std::io::Write::flush(&mut w)?;
+        // The positive-EL ABox certificate reads exactly this serialized
+        // input back right after the frontend (and reloads the file only if
+        // its merged attempt declines). Hand over the value just written
+        // instead of re-parsing it: parsing `write_jinput_json`'s output
+        // yields this same value (`positive_el_input_round_trips` below).
+        if meta.profile.positive_el_abox_materializable
+            || std::env::var_os("KM_EL_ABOX_CHECK").is_some()
+        {
+            *POSITIVE_EL_INPUT.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some((clauses_path.to_path_buf(), out));
+            return Ok((meta, None, elc_binary));
+        }
     }
     let cached = cacheable.then_some(out);
     Ok((meta, cached, elc_binary))
@@ -314,7 +338,10 @@ pub fn run_ofn_split_cached(
     ),
     OrchestrateError,
 > {
+    // Trust holds only for the registered file itself, read unconverted.
+    let trusted = super::is_trusted_rewrite(ont);
     let prepared = super::input::prepare(ont)?;
+    let trusted = trusted && prepared.path() == ont;
     let ont = prepared.path();
     let clauses = TempPath::new(".clauses.json");
 
@@ -341,7 +368,13 @@ pub fn run_ofn_split_cached(
             let screen_s = t_screen.elapsed().as_secs_f64();
             if admitted {
                 let t_parse = std::time::Instant::now();
-                match run_ofn_in_process(&text, clauses.path()) {
+                let frontend = || run_ofn_in_process(&text, clauses.path());
+                let parsed = if trusted {
+                    crate::frontend::with_trusted_rewrite(frontend)
+                } else {
+                    frontend()
+                };
+                match parsed {
                     Ok((meta, cached, elc_binary)) => {
                         if timing {
                             eprintln!(
@@ -377,7 +410,8 @@ pub fn run_ofn_split_cached(
     // the process-tree watchdog would otherwise count beside the child.
     crate::mem::release_transient_heap();
     let (ofn_prog, ofn_pre) = cfg.ofn_cmd();
-    let status = Command::new(&ofn_prog)
+    let mut command = Command::new(&ofn_prog);
+    command
         .args(&ofn_pre)
         .arg(ont)
         .arg("--meta")
@@ -386,7 +420,14 @@ pub fn run_ofn_split_cached(
         .arg(elc_binary.path())
         .stdin(Stdio::null())
         .stdout(File::create(clauses.path())?)
-        .stderr(File::create(stderr.path())?)
+        .stderr(File::create(stderr.path())?);
+    // The worker skips re-validation only for exactly this registered file.
+    if trusted {
+        command.env(super::TRUSTED_REWRITE_ENV, ont);
+    } else {
+        command.env_remove(super::TRUSTED_REWRITE_ENV);
+    }
+    let status = command
         .status()
         .map_err(|e| OrchestrateError::Spawn {
             bin: "ofn".into(),
@@ -434,15 +475,18 @@ pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath>
     let ont = prepared.path();
     let clauses = TempPath::new(".clauses.json");
     let (ofn_prog, ofn_pre) = cfg.ofn_cmd();
-    let status = Command::new(&ofn_prog)
-        .args(&ofn_pre)
-        .arg(ont)
-        .stdin(Stdio::null())
-        .stdout(File::create(clauses.path()).ok()?)
-        .stderr(Stdio::null())
-        .env("KM_ABSORB", if absorb { "1" } else { "0" })
-        .status()
-        .ok()?;
+    // The plain probe runs inside the CB arm of a race. When another arm
+    // wins, the discarded CB arm must not keep the (single) CPU busy re-parsing
+    // the source, nor hold up the race's scope join until the parse ends.
+    let status = crate::orchestrate::engine_run::status_cancellable(
+        Command::new(&ofn_prog)
+            .args(&ofn_pre)
+            .arg(ont)
+            .stdin(Stdio::null())
+            .stdout(File::create(clauses.path()).ok()?)
+            .stderr(Stdio::null())
+            .env("KM_ABSORB", if absorb { "1" } else { "0" }),
+    )?;
     if status.code() == Some(0) {
         Some(clauses)
     } else {
@@ -457,6 +501,42 @@ mod tests {
         run_ofn_in_process, source_looks_exact_el, use_in_process_ofn, TempPath,
         IN_PROCESS_GENERAL_HT_MAX, IN_PROCESS_OFN_MAX, MEASURED_IN_PROCESS_EL_OFN_MAX,
     };
+
+    /// The positive-EL handoff passes on the value `write_jinput_json` just
+    /// wrote. It must equal what parsing that output yields (compared through
+    /// serde's canonical encoding) for frontend inputs of that shape.
+    #[test]
+    fn positive_el_input_round_trips() {
+        let sources = [
+            "Prefix(:=<http://e/>)\nOntology(\nSubClassOf(:A ObjectSomeValuesFrom(:r :B))\n\
+             SubClassOf(ObjectIntersectionOf(:B :C) :D)\nSubObjectPropertyOf(:r :s)\n\
+             ClassAssertion(:A :a)\nClassAssertion(:C :b)\nObjectPropertyAssertion(:r :a :b)\n\
+             ObjectPropertyAssertion(:s :b :c)\n)\n",
+            "Prefix(:=<http://e/>)\nOntology(\nEquivalentClasses(:A ObjectIntersectionOf(:B ObjectSomeValuesFrom(:r :C)))\n\
+             TransitiveObjectProperty(:r)\nClassAssertion(:B :x)\nObjectPropertyAssertion(:r :x :y)\n\
+             ClassAssertion(:C :y)\nSameIndividual(:y :z)\nDifferentIndividuals(:x :w)\n)\n",
+            "Prefix(:=<http://e/>)\nPrefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)\nOntology(\n\
+             Declaration(Class(:A))\nAnnotationAssertion(rdfs:label :A \"a\")\nObjectPropertyDomain(:r :A)\n\
+             DisjointClasses(:A :B)\nClassAssertion(ObjectSomeValuesFrom(:r owl:Thing) :i)\n)\n",
+        ];
+        for source in sources {
+            let clauses = TempPath::new(".clauses.json");
+            let (_, cached, _) = run_ofn_in_process(source, clauses.path()).expect("frontend parses");
+            let input = cached
+                .or_else(|| super::take_positive_el_input(clauses.path()))
+                .unwrap_or_else(|| {
+                    serde_json::from_slice(&std::fs::read(clauses.path()).unwrap()).unwrap()
+                });
+            let mut written = Vec::new();
+            crate::json_io::write_jinput_json(&mut written, &input).unwrap();
+            let parsed: crate::json_io::JInput = serde_json::from_slice(&written).unwrap();
+            assert_eq!(
+                serde_json::to_vec(&input).unwrap(),
+                serde_json::to_vec(&parsed).unwrap(),
+                "{source}"
+            );
+        }
+    }
 
     #[test]
     fn general_ht_typed_handoff_is_bounded_but_shoq_is_not() {

@@ -30,7 +30,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::substrate::Cint64;
 use super::context::ProcessContext;
@@ -135,7 +135,7 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
                 .clone()
                 .unwrap_or_default();
             self.last_distinct_merged_nodes_set = Some(localized);
-            self.distinct_merged_nodes_set = Some(HashSet::new());
+            self.distinct_merged_nodes_set = Some(HashSet::default());
         }
         self.last_distinct_merged_nodes_set.as_ref()
     }

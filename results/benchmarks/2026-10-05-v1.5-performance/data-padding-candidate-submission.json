@@ -1,0 +1,9 @@
+{
+  "job_id": 53330046,
+  "submitted_at": "2026-10-06T04:20:01.051211+00:00",
+  "diagnostic_only": true,
+  "inputs": 8,
+  "files_sha256": "adc7dac8770dcdf418f237a65ecf85d15d73633bb0403434a1251d23a190a0f5",
+  "production_admission_changed": false,
+  "release_approved": false
+}

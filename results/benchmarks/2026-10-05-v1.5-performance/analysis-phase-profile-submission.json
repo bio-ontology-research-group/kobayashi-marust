@@ -1,0 +1,10 @@
+{
+  "job_id": 53331735,
+  "array": "0-2%3",
+  "runner": "profile_analysis_phases.py",
+  "inventory_sha256": "80775b6fc673eb059cb7947d1ca6f96fa6ff76d9a801ac3090e60837bf489850",
+  "files_sha256": "e4986ae9594d4cc2bc6d94dffe5d3a5df39f3beb1dbd41d7268273a7fc3ff6c2",
+  "diagnostic_only": true,
+  "release_approved": false,
+  "submission_result": "Submitted batch job 53331735"
+}

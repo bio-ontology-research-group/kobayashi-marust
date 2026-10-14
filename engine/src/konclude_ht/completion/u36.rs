@@ -88,7 +88,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::individual::{ReverseRoleAssertion, RoleAssertion};
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};

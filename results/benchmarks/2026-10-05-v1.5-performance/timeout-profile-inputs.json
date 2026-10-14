@@ -1,0 +1,87 @@
+{
+  "diagnostic_only": true,
+  "selection": "Eight observed candidate timeout failures with lowest Konclude verified time; deterministic ranking, not an acceptance subset.",
+  "baseline_sha256": "3c35154735b5d5bc2d8aaed9ee2ff1ac881d940f060fcd362b58f45184f0da48",
+  "inputs": [
+    {
+      "ontology": "ore_ont_15167",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_15167.owl",
+      "sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/20/ore_ont_15167",
+      "reference_audit_sha256": "ab31ae0bef78b9edd4e9966048763de56b167caa8c1959c94f459430b00ac58e",
+      "prior_failure": "timeout",
+      "konclude_verified_wall_s": 0.07037346996366978
+    },
+    {
+      "ontology": "ore_ont_3843",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_3843.owl",
+      "sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/35/ore_ont_3843",
+      "reference_audit_sha256": "c3f92af50ca8e2696dc83a6f4a58fd30f45b3e2ff24f3c5fd142ccdc57269d32",
+      "prior_failure": "internal_worker_timeout",
+      "konclude_verified_wall_s": 0.07276456616818905
+    },
+    {
+      "ontology": "ore_ont_1342",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1342.owl",
+      "sha256": "1faf6c93fa1ee0c3570e0f6c1568852e63c52ec416b5901112312b1bb39765c6",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/13/ore_ont_1342",
+      "reference_audit_sha256": "49b23a8942f2f96acbd8c3da4691df56b270404389311f1efefabdb35bcd9413",
+      "prior_failure": "internal_worker_timeout",
+      "konclude_verified_wall_s": 0.0732636097818613
+    },
+    {
+      "ontology": "ore_ont_7342",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_7342.owl",
+      "sha256": "ab42136e53daeccae51d7f92c4fcb0da0c7d09c8fd6fd6c0a0ac18b8dc67376d",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/49/ore_ont_7342",
+      "reference_audit_sha256": "f9dd499caef50daee8b7b99ba821f593f3c3c83439cbedf0ef501f575a005792",
+      "prior_failure": "internal_worker_timeout",
+      "konclude_verified_wall_s": 0.07514325715601444
+    },
+    {
+      "ontology": "ore_ont_586",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_586.owl",
+      "sha256": "a17241906f32fae0571fe5a102b9a544ba31eac0a656cccac500126fe841e775",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/43/ore_ont_586",
+      "reference_audit_sha256": "cde4aed8c2210c004ff72c05d69fb69d4f08c9e0e83b41db46401faccfebcd3e",
+      "prior_failure": "internal_worker_timeout",
+      "konclude_verified_wall_s": 0.10030074790120125
+    },
+    {
+      "ontology": "ore_ont_14379",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14379.owl",
+      "sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/17/ore_ont_14379",
+      "reference_audit_sha256": "4f2257a1804d619c8c8174fe38ba2f1bb457198d747bf7bfec46813261727a1b",
+      "prior_failure": "internal_worker_timeout",
+      "konclude_verified_wall_s": 0.10270322486758232
+    },
+    {
+      "ontology": "ore_ont_4719",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_4719.owl",
+      "sha256": "a286a2afe9b1a071bc1a6fb667efe49b5e27efda1f34d32d2807996edeea3e08",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/38/ore_ont_4719",
+      "reference_audit_sha256": "01f04695f7627a49fdd3eb85f45652896ed3535bf498f5960000cd574b9f4a69",
+      "prior_failure": "internal_worker_timeout",
+      "konclude_verified_wall_s": 0.10303000546991825
+    },
+    {
+      "ontology": "ore_ont_7828",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_7828.owl",
+      "sha256": "ea1f6eacd59e39c0ba1d397d25266f0e514db80820978f159fca52e59482e23a",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/51/ore_ont_7828",
+      "reference_audit_sha256": "3a63b0c2722d2d47cb13b1e4efdea5f3dac2838fc77be1c4705d5cf8db956c50",
+      "prior_failure": "internal_worker_timeout",
+      "konclude_verified_wall_s": 0.13398424163460732
+    }
+  ]
+}

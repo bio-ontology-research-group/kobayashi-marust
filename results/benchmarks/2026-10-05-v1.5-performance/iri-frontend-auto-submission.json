@@ -1,0 +1,11 @@
+{
+  "job_id": "53335909",
+  "submitted_at_cluster": "2026-10-06T09:28:12",
+  "inputs": 1920,
+  "arms": 2,
+  "timeout_s_per_arm": 240,
+  "memory_gib": 20,
+  "cpus": 1,
+  "scope": "Explicit KM_ROUTE=auto frontend comparison, original vs cached IRI grammar.",
+  "release_approved": false
+}

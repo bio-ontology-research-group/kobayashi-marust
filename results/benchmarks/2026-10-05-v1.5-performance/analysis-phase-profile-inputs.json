@@ -1,0 +1,29 @@
+{
+  "inputs": [
+    {
+      "ontology": "ore_ont_13276",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_13276.owl",
+      "sha256": "d1175415f066c458273bb9db8abdcdbbe495c19684638e6c5657d251836b4565",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/12/ore_ont_13276",
+      "reference_audit_sha256": "31896216b9e0c2f4677cd90d15aa4ef2265b03c6370590b5b952d29f85cf14be"
+    },
+    {
+      "ontology": "ore_ont_13242",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_13242.owl",
+      "sha256": "5ed0b7609fdc0a11b3c5f4bdd75f368d749a78130f0933a8483060a3c7396c5a",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/12/ore_ont_13242",
+      "reference_audit_sha256": "1b70478148dae54dce18b25b3575b50a48483ec1faa21982792adbfb4458317e"
+    },
+    {
+      "ontology": "ore_ont_16680",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_16680.owl",
+      "sha256": "952e7f30bfad73442e10d71171432aebeb345a85b504b8e5c9d1eb7f9c34a2a1",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/26/ore_ont_16680",
+      "reference_audit_sha256": "94f970a9ab217d5830fc067c1ad475b93fc98d99fb240d1a413ff60c6c0a51aa"
+    }
+  ],
+  "scope": "Diagnostic preparation and classification-message phases; unchanged source inputs and limits."
+}

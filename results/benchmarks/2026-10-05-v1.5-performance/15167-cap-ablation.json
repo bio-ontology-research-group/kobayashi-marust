@@ -1,0 +1,19 @@
+{
+  "diagnostic_only": true,
+  "records": [
+    {
+      "route": "auto",
+      "status": "diagnostic_timeout",
+      "exit_code": -9,
+      "wall_s": 15.003149401047267,
+      "matches_verified_nosaturation_answer": false
+    },
+    {
+      "route": "ht_bridge",
+      "status": "diagnostic_timeout",
+      "exit_code": -9,
+      "wall_s": 15.018772815004922,
+      "matches_verified_nosaturation_answer": false
+    }
+  ]
+}

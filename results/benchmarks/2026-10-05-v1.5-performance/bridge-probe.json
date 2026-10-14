@@ -1,0 +1,28 @@
+{
+  "diagnostic_only": true,
+  "binary_sha256": "717befb663968adb73010bf5148745712418df2c88efb1aca24ff5e5ab51e0b1",
+  "records": [
+    {
+      "ontology": "ore_ont_15167",
+      "status": "diagnostic_timeout",
+      "exit_code": -9,
+      "wall_s": 15.14071408903692,
+      "source_sha256": "643bf3b09cb460eb375adc193ce9ce437bb87bdadfde87c24510f38959144478"
+    },
+    {
+      "ontology": "ore_ont_3843",
+      "status": "finished",
+      "exit_code": 3,
+      "wall_s": 0.03305374609772116,
+      "source_sha256": "4a5c282766a4029b0dd82680106d97a6d37d4bf7af9271eadbf7eb6dfd3ed19e"
+    },
+    {
+      "ontology": "ore_ont_1342",
+      "status": "finished",
+      "exit_code": 3,
+      "wall_s": 0.01656675396952778,
+      "source_sha256": "1faf6c93fa1ee0c3570e0f6c1568852e63c52ec416b5901112312b1bb39765c6"
+    }
+  ],
+  "scope": "Forced existing guarded bridge route, 15-second local diagnostics. Not a release benchmark or routing change."
+}

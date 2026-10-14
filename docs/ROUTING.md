@@ -120,9 +120,10 @@ HT combinations, plus four external baselines:
 | `elc` | Strict normalized EL completion mechanism |
 | `elc_cert` | Forced certified EL completion mechanism |
 | `lean` | Single-threaded per-function CB without the central strategy |
-| `ht_general` | Unrestricted HT measurement arm; never eligible for automatic routing |
+| `ht_general` | Unrestricted HT measurement arm; never eligible for automatic routing (also not via the nominal general-HT probe, which is opt-in `KM_NOMINAL_GENERAL_HT_PROBE_UNCERTIFIED`); forced runs are wrong on 11647, 12566, 16372 |
 | `ht_qo` | Structurally fenced QO measurement route; excluded from automatic policy because its certificate has incomplete corpus counterexamples |
-| `ht_shoq` | Structurally fenced SHOQ measurement route; excluded because 10702 is incomplete |
+| `ht_shoq` | Structurally fenced SHOQ measurement route; excluded because 10702 is incomplete; never selected automatically |
+| `nominal_ni_tbox` | Wine-layout SHOIN specialist; measurement-only: its runtime checks accept 16372 and publish `consistent` for an inconsistent ontology, so it is never selected automatically |
 | `ht_card` | Structurally fenced first-class cardinality measurement route; excluded because 10702 is incomplete |
 | `ht_bridge` | Triggered absorption plus the ported Konclude completion/classification bridge |
 | `ht_features` | One HT worker with the compatible completion feature modules combined |

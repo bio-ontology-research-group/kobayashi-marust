@@ -1,0 +1,54 @@
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_236.owl	repetition=0	bytes=1832115
+complete-source	0.167432585	true
+grammar	0.172600124	true
+literal-datatypes	0.004027367	true
+declarations	0.020501396	true
+iri-prefixes	0.003921870	true
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_236.owl	repetition=1	bytes=1832115
+grammar	0.128320600	true
+complete-source	0.134475363	true
+literal-datatypes	0.002425335	true
+declarations	0.011641361	true
+iri-prefixes	0.003022846	true
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_236.owl	repetition=2	bytes=1832115
+complete-source	0.134183861	true
+grammar	0.109566494	true
+literal-datatypes	0.002428420	true
+declarations	0.011797362	true
+iri-prefixes	0.003000222	true
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_11896.owl	repetition=0	bytes=2170570
+complete-source	0.132543758	true
+grammar	0.110950094	true
+literal-datatypes	0.002660135	true
+declarations	0.012875564	true
+iri-prefixes	0.003316839	true
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_11896.owl	repetition=1	bytes=2170570
+grammar	0.110730540	true
+complete-source	0.131875341	true
+literal-datatypes	0.002720572	true
+declarations	0.013373585	true
+iri-prefixes	0.003320017	true
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_11896.owl	repetition=2	bytes=2170570
+complete-source	0.131729001	true
+grammar	0.110653978	true
+literal-datatypes	0.002667581	true
+declarations	0.012746462	true
+iri-prefixes	0.003312457	true
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_3250.owl	repetition=0	bytes=38102
+complete-source	0.002201246	true
+grammar	0.001733513	true
+literal-datatypes	0.000051509	true
+declarations	0.000216702	true
+iri-prefixes	0.000065084	true
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_3250.owl	repetition=1	bytes=38102
+grammar	0.001718589	true
+complete-source	0.002144376	true
+literal-datatypes	0.000050382	true
+declarations	0.000201146	true
+iri-prefixes	0.000064483	true
+input	/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_3250.owl	repetition=2	bytes=38102
+complete-source	0.002146956	true
+grammar	0.001718652	true
+literal-datatypes	0.000050783	true
+declarations	0.000214133	true
+iri-prefixes	0.000064511	true

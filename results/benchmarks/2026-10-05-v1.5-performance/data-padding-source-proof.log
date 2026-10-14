@@ -1,0 +1,5 @@
+'ContextCalculus.DatatypePadding.atLeast_edgeless' does not depend on any axioms
+'ContextCalculus.DatatypePadding.SourceExpr.lower_padding_iff' depends on axioms: [propext, Quot.sound]
+'ContextCalculus.DatatypePadding.SourceExpr.eval_padding_iff' depends on axioms: [propext, Quot.sound]
+'ContextCalculus.DatatypePadding.SourceAxiom.check_padding_iff' depends on axioms: [propext, Quot.sound]
+'ContextCalculus.DatatypePadding.checkSourcePadding_iff' depends on axioms: [propext, Quot.sound]

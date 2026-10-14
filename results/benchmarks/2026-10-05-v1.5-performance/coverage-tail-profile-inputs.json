@@ -1,0 +1,79 @@
+{
+  "selection": "Eight dense-data failures with the lowest verified Konclude baseline runtime. Diagnostic selection does not change corpus or release counts.",
+  "inputs": [
+    {
+      "ontology": "ore_ont_1342",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_1342.owl",
+      "sha256": "1faf6c93fa1ee0c3570e0f6c1568852e63c52ec416b5901112312b1bb39765c6",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/13/ore_ont_1342",
+      "reference_audit_sha256": "49b23a8942f2f96acbd8c3da4691df56b270404389311f1efefabdb35bcd9413"
+    },
+    {
+      "ontology": "ore_ont_8666",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8666.owl",
+      "sha256": "3a8f6f7685194f345ab5f65ecac4806bc1814bb4b348bfc93250cd5b176503d0",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/54/ore_ont_8666",
+      "reference_audit_sha256": "20edb8a410be5ae049a68dd803cb1209b6f8ca8fa478cf8978a815ff2791f740"
+    },
+    {
+      "ontology": "ore_ont_14379",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_14379.owl",
+      "sha256": "f311ae520f9c13fdc8b7e76f5313fac15d9ef8fef3705f284e797303f468ff53",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/17/ore_ont_14379",
+      "reference_audit_sha256": "4f2257a1804d619c8c8174fe38ba2f1bb457198d747bf7bfec46813261727a1b"
+    },
+    {
+      "ontology": "ore_ont_8250",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_8250.owl",
+      "sha256": "5b0f76e59b1e5b9aa8b11d8057c095ffab79330a068370cea051c75b557ee836",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/53/ore_ont_8250",
+      "reference_audit_sha256": "4a2e30a3b0204e4c723b448b0eeed02467345d7a637eb24ebd666a3a6bf5e329"
+    },
+    {
+      "ontology": "ore_ont_12566",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12566.owl",
+      "sha256": "277f0f58ae339105a8f8183c4283cbb432690895f1a6888e847693392e0fe4f1",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/10/ore_ont_12566",
+      "reference_audit_sha256": "37dea4095044d825df8d35a86f2f4e48ef77b798d0804352e6f2e216d463e390"
+    },
+    {
+      "ontology": "ore_ont_13799",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_13799.owl",
+      "sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/14/ore_ont_13799",
+      "reference_audit_sha256": "7cbbc738a8235c9b4027f3a2b38ab99d89c6f6d88a81349c1947e8470ab72df3"
+    },
+    {
+      "ontology": "ore_ont_6272",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_6272.owl",
+      "sha256": "d3fefcfc2299556e5deb1d12a042021b685ef995b9a1913d04fa0c3398e69cf9",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/44/ore_ont_6272",
+      "reference_audit_sha256": "dff9e2073c7523fbdec7906618ef6365108d47791d9594a19edf2e9764d2c7f4"
+    },
+    {
+      "ontology": "ore_ont_2182",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_2182.owl",
+      "sha256": "bd82ee6ea10b3d023c098a0570315a6ed6091a9e7f98cb89336c695260665e97",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/28/ore_ont_2182",
+      "reference_audit_sha256": "3c0ad3a168c615d593a3b8a2b749734481d631fd1ae60c73cf0a6e12d89ba841"
+    }
+  ],
+  "konclude_wall_s": {
+    "ore_ont_1342": 0.0732636097818613,
+    "ore_ont_8666": 0.10058001428842545,
+    "ore_ont_14379": 0.10270322486758232,
+    "ore_ont_8250": 0.10526019334793091,
+    "ore_ont_12566": 0.1351799424737692,
+    "ore_ont_13799": 0.13665221258997917,
+    "ore_ont_6272": 0.2296824585646391,
+    "ore_ont_2182": 0.24011080898344517
+  }
+}

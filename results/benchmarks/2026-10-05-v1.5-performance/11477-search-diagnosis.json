@@ -1,0 +1,31 @@
+{
+  "diagnostic_only": true,
+  "source_sha256": "a3f1f6d4437114ed05085a7f52df2b24e62d774c56fafa82f3db1df3cdf8b9bf",
+  "automatic_route": "nominal_ni_abox",
+  "original_profile": "30 second local timeout",
+  "bridge_probe": {
+    "exit_code": 3,
+    "explanation": "selected native HT bridge deferred; no guard bypass"
+  },
+  "search_evidence": {
+    "at_25_889_ms": {
+      "steps": 63612,
+      "backtracks": 15736,
+      "backjumps": 8597,
+      "nodes": 8065,
+      "depth": 17596,
+      "pending": 17731
+    }
+  },
+  "absorption_probe": {
+    "transformations": 0,
+    "result": "30 second local timeout"
+  },
+  "finding": "Existing bridge optimizations do not affect this route. Ordinary HT search branches deeply over nominal ABox; existing trigger absorption does not reduce these clauses.",
+  "logs": {
+    "11477-native-profile.stderr": "076c590aebb30f3180ae065f987816e896c02a7aa5ec5ae9e3fd50c70558e7e4",
+    "11477-bridge-profile.stderr": "458e1789be9cbb8d33e9713df519f9ad373972e0ccf3e218610ca59d9b5a8dbd",
+    "11477-ni-trace.stderr": "2aa7d05abbd2b4cd283f373409e1156fc390e8afda133b62af7022eae31a4576",
+    "11477-ni-absorb.stderr": "22607debaf5b81aaf149b799672bff951f92a5b446086ce7e6b3ab2f7fa3b2a8"
+  }
+}

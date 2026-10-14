@@ -1,0 +1,21 @@
+{
+  "scope": "Two-case admission diagnostic: ORE12566 exercises integral decimal values; ORE13799 checks the recovered universal path. Does not replace any full-corpus results.",
+  "inputs": [
+    {
+      "ontology": "ore_ont_12566",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_12566.owl",
+      "sha256": "277f0f58ae339105a8f8183c4283cbb432690895f1a6888e847693392e0fe4f1",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/10/ore_ont_12566",
+      "reference_audit_sha256": "37dea4095044d825df8d35a86f2f4e48ef77b798d0804352e6f2e216d463e390"
+    },
+    {
+      "ontology": "ore_ont_13799",
+      "path": "/ibex/scratch/hohndor/km/v143-harness-20260918/corpus/pool_sample/files/ore_ont_13799.owl",
+      "sha256": "52c37b6780ffb200b68f7dec25dd38e39092b9485f6f4206ce81263d15cd88ec",
+      "input_admission": "checks_passed",
+      "reference_directory": "/ibex/scratch/projects/c2014/hohndor/km/v145-comparative-20261004/classification-audit-53234885/14/ore_ont_13799",
+      "reference_audit_sha256": "7cbbc738a8235c9b4027f3a2b38ab99d89c6f6d88a81349c1947e8470ab72df3"
+    }
+  ]
+}

@@ -70,7 +70,7 @@
 #![allow(unused_assignments)]
 #![allow(unused_mut)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::op;
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
@@ -180,8 +180,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         source: NodeId,
         role: RoleId,
         calc_alg_context: &CalculationAlgorithmContextBase,
-    ) -> Vec<(EdgeId, NodeId)> {
-        let mut out: Vec<(EdgeId, NodeId)> = Vec::new();
+    ) -> smallvec::SmallVec<[(EdgeId, NodeId); 4]> {
+        let mut out: smallvec::SmallVec<[(EdgeId, NodeId); 4]> = smallvec::SmallVec::new();
         let pc = calc_alg_context.process_context();
 
         // (1) forward successors, hierarchy-resolved.
@@ -192,10 +192,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if link.is_none() {
                 continue;
             }
-            let edge_role: RoleId = pc.edge(link).get_link_role();
-            let role_matches =
-                self.ht_signed_role_matches(edge_role, role, false, calc_alg_context);
-            if role_matches {
+            // `node_successor_iterator` reports only the FIRST link installed
+            // towards each successor. Two links of unrelated roles can join
+            // the same pair (e.g. the self links of two reflexive roles, or a
+            // link relocated by a merge onto an existing successor); scan
+            // every link to the successor, as `ht_role_successor_links` does.
+            let link = if self.ht_signed_role_matches(
+                pc.edge(link).get_link_role(), role, false, calc_alg_context,
+            ) {
+                link
+            } else {
+                let mut role_links = pc.node_successor_role_iterator(source, succ_id);
+                let mut found = EdgeId::NONE;
+                while role_links.has_next() {
+                    let candidate = role_links.next(true);
+                    if candidate.is_some()
+                        && self.ht_signed_role_matches(
+                            pc.edge(candidate).get_link_role(), role, false, calc_alg_context,
+                        )
+                    {
+                        found = candidate;
+                        break;
+                    }
+                }
+                found
+            };
+            if link.is_some() {
                 let succ = calc_alg_context
                     .processing_data_box()
                     .individual_process_node_vector()
@@ -956,7 +978,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// CConceptNegationPair>*& conExtensionMap` is a pointer-reference allocated on
     /// first use (`if (!conExtensionMap) conExtensionMap = …`); ported as a
     /// `&mut Option<HashMap<…>>` so the lazy "allocate if null then insert"
-    /// semantics survive (`get_or_insert_with(HashMap::new)`).
+    /// semantics survive (`get_or_insert_with(HashMap::default)`).
     pub fn collect_reapply_automat_transactions_restrictions(
         &mut self,
         process_indi: NodeId,
@@ -1032,7 +1054,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 .ontology_arenas()
                                 .concept(rea_op_concept.target)
                                 .get_concept_tag();
-                            con_extension_map.get_or_insert_with(HashMap::new).insert(
+                            con_extension_map.get_or_insert_with(HashMap::default).insert(
                                 con_tag,
                                 ConceptNegationPair::new(
                                     rea_op_concept.target,

@@ -21,7 +21,8 @@
 
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 thread_local! {
     /// Search statistics, only printed when `KM_TAB_STATS` is set. (expand calls,
@@ -213,27 +214,27 @@ impl Graph {
         Graph {
             concepts: Vec::new(),
             exobl: Vec::new(),
-            edges: HashSet::new(),
+            edges: HashSet::default(),
             out_edges: Vec::new(),
             pred: Vec::new(),
             blockable: Vec::new(),
-            present_lits: HashSet::new(),
-            present_roles: HashSet::new(),
+            present_lits: HashSet::default(),
+            present_roles: HashSet::default(),
             repr: Vec::new(),
             trail: Vec::new(),
             cdep: Vec::new(),
-            edep: HashMap::new(),
+            edep: HashMap::default(),
             xdep: Vec::new(),
         }
     }
 
     fn new_node(&mut self, pred: Option<Node>, blockable: bool) -> Node {
         let id = self.concepts.len();
-        self.concepts.push(HashSet::new());
-        self.exobl.push(HashSet::new());
+        self.concepts.push(HashSet::default());
+        self.exobl.push(HashSet::default());
         self.out_edges.push(Vec::new());
-        self.cdep.push(HashMap::new());
-        self.xdep.push(HashMap::new());
+        self.cdep.push(HashMap::default());
+        self.xdep.push(HashMap::default());
         self.pred.push(pred);
         self.blockable.push(blockable);
         self.repr.push(id);
@@ -799,9 +800,9 @@ impl Tableau {
             })
             .collect::<Vec<_>>();
         // Build the semi-naive index over non-disjunctive clauses.
-        let mut lit_index: HashMap<CLit, Vec<(usize, Var)>> = HashMap::new();
-        let mut role_index: HashMap<R, Vec<(usize, Var, Var)>> = HashMap::new();
-        let mut body_lit_index_all: HashMap<CLit, Vec<(usize, Var)>> = HashMap::new();
+        let mut lit_index: HashMap<CLit, Vec<(usize, Var)>> = HashMap::default();
+        let mut role_index: HashMap<R, Vec<(usize, Var, Var)>> = HashMap::default();
+        let mut body_lit_index_all: HashMap<CLit, Vec<(usize, Var)>> = HashMap::default();
         let mut node_triggered: Vec<(usize, Var)> = Vec::new();
         let mut disjunctive_indices = Vec::new();
         for (ci, info) in infos.iter().enumerate() {
@@ -1690,8 +1691,8 @@ impl Tableau {
         }) {
             return None;
         }
-        let mut literal_counts = HashMap::new();
-        let mut role_counts = HashMap::new();
+        let mut literal_counts = HashMap::default();
+        let mut role_counts = HashMap::default();
         for atom in &cl.body {
             if let Atom::Concept { lit, .. } = atom {
                 literal_counts.entry(*lit).or_insert_with(|| g.concepts.iter().filter(|labels| labels.contains(lit)).count());
@@ -2419,10 +2420,10 @@ impl SearchState {
         SearchState {
             on,
             level_lit: Vec::new(),
-            lit_level: HashMap::new(),
-            path_set: HashSet::new(),
+            lit_level: HashMap::default(),
+            path_set: HashSet::default(),
             learned: Vec::new(),
-            by_lit: HashMap::new(),
+            by_lit: HashMap::default(),
             cap,
             minimize: std::env::var_os("KM_TAB_MIN").is_some(),
             n_learn: 0,
@@ -2552,7 +2553,7 @@ impl SearchState {
         // lists of `ng`'s literals.
         if self.minimize && !self.learned.is_empty() {
             let ngset: HashSet<(Node, CLit)> = ng.iter().copied().collect();
-            let mut seen: HashSet<usize> = HashSet::new();
+            let mut seen: HashSet<usize> = HashSet::default();
             for l in &ng {
                 if let Some(idxs) = self.by_lit.get(l) {
                     for &i in idxs {
@@ -2714,7 +2715,7 @@ impl Tableau {
         }
         let mut cache = SatCache {
             on: std::env::var_os("KM_HT_CACHE").is_some(),
-            exact: HashMap::new(),
+            exact: HashMap::default(),
             unsat: Vec::new(),
             sat: Vec::new(),
             hits: 0,
@@ -2737,7 +2738,7 @@ impl Tableau {
         // completeness, at an O(n²)-test cost. Use on the small disjunction-family
         // ontologies where soundness+completeness matters more than test count.
         let allcand = std::env::var_os("KM_HT_ALLCAND").is_some();
-        let mut lab: HashMap<C, HashSet<C>> = HashMap::new();
+        let mut lab: HashMap<C, HashSet<C>> = HashMap::default();
         let prog = std::env::var_os("KM_TAB_STATS").is_some();
         for (ai, &a) in named.iter().enumerate() {
             if prog && ai % 25 == 0 {
@@ -2761,8 +2762,8 @@ impl Tableau {
                 Some(g) => {
                     cache.insert(key, true);
                     let mut uncertain = Vec::new();
-                    let mut labset = HashSet::new();
-                    let mut def_set = HashSet::new();
+                    let mut labset = HashSet::default();
+                    let mut def_set = HashSet::default();
                     for l in g.concepts[0].iter() {
                         if l.neg || !named_set.contains(&l.c) {
                             continue;
@@ -2812,8 +2813,8 @@ impl Tableau {
         // `tcrev[A]` = definite subs of A. These seed the known-subsumer set and
         // are the sound channels for propagation: confirmed `A⊑B` flows DOWN to
         // definite subs of A; refuted `A⋢B` flows UP to known supers of A.
-        let mut tc: HashMap<C, HashSet<C>> = HashMap::new();
-        let mut tcrev: HashMap<C, HashSet<C>> = HashMap::new();
+        let mut tc: HashMap<C, HashSet<C>> = HashMap::default();
+        let mut tcrev: HashMap<C, HashSet<C>> = HashMap::default();
         if p2 {
             for &(a, b) in &subs {
                 tc.entry(a).or_default().insert(b);
@@ -2847,7 +2848,7 @@ impl Tableau {
         // `pos[A]` = known supers of A (definite TC, grows with confirmations);
         // `neg[A]` = known non-supers of A.
         let mut pos = tc.clone();
-        let mut neg: HashMap<C, HashSet<C>> = HashMap::new();
+        let mut neg: HashMap<C, HashSet<C>> = HashMap::default();
 
         let mut confirmed = 0; // real tableau tests issued
         let (mut skipped_known, mut pm_refuted, mut prop) = (0u64, 0u64, 0u64);
@@ -3063,7 +3064,7 @@ impl Tableau {
             }
         }
         let mut next_marker: C = maxc;
-        let mut markers: HashMap<(R, CLit), C> = HashMap::new();
+        let mut markers: HashMap<(R, CLit), C> = HashMap::default();
         let dbg = std::env::var_os("KM_TAB_STATS").is_some();
         // lazy-unfolding absorption (KM_TAB_LAZY): a node-local clause
         // `body → ⋁head` is logically `body ⊓ ⋀{¬l : l∈head, l negative} → ⋁{pos head}`.
@@ -3257,10 +3258,10 @@ impl Tableau {
         }
 
         // reflexive-free transitive super-role closure from the subrole pairs.
-        let mut supers: HashMap<R, HashSet<R>> = HashMap::new();
+        let mut supers: HashMap<R, HashSet<R>> = HashMap::default();
         let subs: HashSet<R> = subrole.iter().map(|&(a, _)| a).collect();
         for &r in &subs {
-            let mut seen: HashSet<R> = HashSet::new();
+            let mut seen: HashSet<R> = HashSet::default();
             let mut frontier = vec![r];
             while let Some(cur) = frontier.pop() {
                 for &(a, b) in &subrole {
@@ -3273,7 +3274,7 @@ impl Tableau {
             supers.insert(r, seen);
         }
         // semi-naive Horn-closure index.
-        let mut horn_by_lit: HashMap<CLit, Vec<usize>> = HashMap::new();
+        let mut horn_by_lit: HashMap<CLit, Vec<usize>> = HashMap::default();
         let mut horn_empty: Vec<CLit> = Vec::new();
         for (i, (b, h)) in node_horn.iter().enumerate() {
             if b.is_empty() {
@@ -3287,7 +3288,7 @@ impl Tableau {
                 }
             }
         }
-        let mut clash_by_lit: HashMap<CLit, Vec<usize>> = HashMap::new();
+        let mut clash_by_lit: HashMap<CLit, Vec<usize>> = HashMap::default();
         let mut clash_empty = false;
         for (i, b) in node_clash.iter().enumerate() {
             if b.is_empty() {
@@ -3306,7 +3307,7 @@ impl Tableau {
         // change a node's ∃-obligations (it completes a `node_exists` body) or its
         // successors (it fires a universal). The eager check can be skipped on any
         // DPLL step that added no trigger literal — successors are then unchanged.
-        let mut trigger_lits: HashSet<CLit> = HashSet::new();
+        let mut trigger_lits: HashSet<CLit> = HashSet::default();
         for (b, _, _) in &node_exists {
             for &l in b {
                 trigger_lits.insert(l);
@@ -3319,7 +3320,7 @@ impl Tableau {
         }
         // per-role uni index: for each role used by an ∃-obligation, the uni
         // indices applicable over it (role_le), so build_succ skips the rest.
-        let mut uni_for_role: HashMap<R, Vec<usize>> = HashMap::new();
+        let mut uni_for_role: HashMap<R, Vec<usize>> = HashMap::default();
         let obl_roles: HashSet<R> = node_exists.iter().map(|&(_, r, _)| r).collect();
         let role_le = |r0: R, target: R| -> bool {
             r0 == target || supers.get(&r0).is_some_and(|s| s.contains(&target))
@@ -3344,7 +3345,7 @@ impl Tableau {
         // Either source marks R transitive; the Uni self-propagation below then
         // makes ∀R.C chase all R-successors (Konclude's endState→beginState
         // epsilon self-loop, in clause form).
-        let mut transitive: HashSet<R> = HashSet::new();
+        let mut transitive: HashSet<R> = HashSet::default();
         for info in &self.clauses {
             let cl = &info.cl;
             // (a) raw R∘R⊑R
@@ -3498,7 +3499,7 @@ impl Tableau {
             // Collect the absorbed-marker Unis (xbody=[M], yhead=[neg_cy]) by role,
             // so each chain R1∘R2⊑R can find ∀R.C markers on R.
             // marker_by_role: R -> Vec<(M, neg_cy)>
-            let mut marker_by_role: HashMap<R, Vec<(C, CLit)>> = HashMap::new();
+            let mut marker_by_role: HashMap<R, Vec<(C, CLit)>> = HashMap::default();
             for u in &uni {
                 if u.xbody.len() == 1 && !u.xbody[0].neg && u.ybody.is_empty() && u.yhead.len() == 1
                 {
@@ -3511,7 +3512,7 @@ impl Tableau {
             // sub-role closure (R ⊑* R'): a chain R1∘R2⊑U with U⊑*R also unfolds
             // ∀R.C (super_close(U) contains R).
             let super_close = |r: R| -> HashSet<R> {
-                let mut out = HashSet::new();
+                let mut out = HashSet::default();
                 out.insert(r);
                 let mut st = vec![r];
                 while let Some(u) = st.pop() {
@@ -3524,7 +3525,7 @@ impl Tableau {
                 out
             };
             let mut new_uni: Vec<Uni> = Vec::new();
-            let mut chain_markers: HashMap<(R, R, CLit), C> = HashMap::new(); // (R2, M_parent, neg_cy) -> M2
+            let mut chain_markers: HashMap<(R, R, CLit), C> = HashMap::default(); // (R2, M_parent, neg_cy) -> M2
             for (r1, r2, u) in &chains {
                 let targets: Vec<(C, CLit)> = marker_by_role
                     .iter()
@@ -3621,7 +3622,7 @@ impl Tableau {
     /// unchanged — just fewer confirmation queries).
     fn told_closure(&self, prog: &CProg, named: &HashSet<C>) -> HashMap<C, HashSet<C>> {
         // direct told edges A -> B.
-        let mut succ: HashMap<C, Vec<C>> = HashMap::new();
+        let mut succ: HashMap<C, Vec<C>> = HashMap::default();
         for (body, head) in &prog.node_horn {
             if body.len() == 1 && !body[0].neg && !head.neg && body[0].c != head.c {
                 succ.entry(body[0].c).or_default().push(head.c);
@@ -3634,9 +3635,9 @@ impl Tableau {
             .filter(|l| !l.neg)
             .map(|l| l.c)
             .collect();
-        let mut out: HashMap<C, HashSet<C>> = HashMap::new();
+        let mut out: HashMap<C, HashSet<C>> = HashMap::default();
         for &a in named {
-            let mut seen: HashSet<C> = HashSet::new();
+            let mut seen: HashSet<C> = HashSet::default();
             let mut stack = vec![a];
             while let Some(x) = stack.pop() {
                 if let Some(ns) = succ.get(&x) {
@@ -3727,7 +3728,7 @@ impl Tableau {
             let told = if std::env::var_os("KM_TAB_TOLD").is_some() {
                 self.told_closure(prog, &named_set)
             } else {
-                HashMap::new()
+                HashMap::default()
             };
             let mut n_told = 0usize;
             let mut subs = Vec::new();
@@ -3977,12 +3978,12 @@ impl<'a> CacheRun<'a> {
         CacheRun {
             tab,
             prog,
-            cache: HashMap::new(),
-            cond: HashMap::new(),
+            cache: HashMap::default(),
+            cond: HashMap::default(),
             cond_at: Vec::new(),
             stack: Vec::new(),
             nogoods: Vec::new(),
-            ng_watch: HashMap::new(),
+            ng_watch: HashMap::default(),
             learn_cap: std::env::var("KM_TAB_LEARN_CAP")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -4071,7 +4072,7 @@ impl<'a> CacheRun<'a> {
             n_nghit: 0,
             subcache: env_on("KM_TAB_SUBCACHE", false),
             sat_keys: Vec::new(),
-            sat_watch: HashMap::new(),
+            sat_watch: HashMap::default(),
             subcache_scan: std::env::var("KM_TAB_SUBCACHE_SCAN")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -4079,7 +4080,7 @@ impl<'a> CacheRun<'a> {
                 .unwrap_or(512),
             sembr: env_on("KM_TAB_SEMBR", false),
             typecache: env_on("KM_TAB_TYPECACHE", false),
-            type_cache: HashMap::new(),
+            type_cache: HashMap::default(),
         }
     }
 
@@ -4757,13 +4758,13 @@ impl<'a> CacheRun<'a> {
             return (true, usize::MAX);
         }
         let mut set: HashSet<CLit> = key.base.iter().copied().collect();
-        let mut cdep: HashMap<CLit, Vec<CLit>> = HashMap::with_capacity(key.base.len() * 2);
+        let mut cdep: HashMap<CLit, Vec<CLit>> = HashMap::with_capacity_and_hasher(key.base.len() * 2, Default::default());
         for &l in &key.base {
             cdep.insert(l, vec![l]);
         }
         let mut tainted = false;
         let mut trail = Vec::new();
-        let mut tlits: HashSet<CLit> = HashSet::new();
+        let mut tlits: HashSet<CLit> = HashSet::default();
         if let Some(conf) = self.close_dep(
             &mut set,
             &mut cdep,
@@ -4833,11 +4834,11 @@ impl<'a> CacheRun<'a> {
                 self.cond.remove(&k);
             }
             set = key.base.iter().copied().collect();
-            cdep = HashMap::with_capacity(key.base.len() * 2);
+            cdep = HashMap::with_capacity_and_hasher(key.base.len() * 2, Default::default());
             for &l in &key.base {
                 cdep.insert(l, vec![l]);
             }
-            tlits = HashSet::new();
+            tlits = HashSet::default();
             let mut tr: Vec<CLit> = Vec::new();
             let mut tn = false;
             if let Some(conf) = self.close_dep(
@@ -5342,6 +5343,50 @@ fn atom_of(j: &JAtom) -> Atom {
     }
 }
 
+/// Immutable projections of precisely the live edges in the proposed model.
+/// These indexes change the cost of restricting a universal assignment, not
+/// the assignment set, its sorted enumeration order, or the checking budget.
+#[derive(Default)]
+struct FiniteRoleIndex {
+    sources: HashMap<R, HashSet<Node>>,
+    targets: HashMap<R, HashSet<Node>>,
+    diagonal: HashMap<R, HashSet<Node>>,
+    outgoing: HashMap<(R, Node), HashSet<Node>>,
+    incoming: HashMap<(R, Node), HashSet<Node>>,
+    empty: HashSet<Node>,
+}
+
+impl FiniteRoleIndex {
+    fn insert(&mut self, role: R, source: Node, target: Node) {
+        self.sources.entry(role).or_default().insert(source);
+        self.targets.entry(role).or_default().insert(target);
+        self.outgoing.entry((role, source)).or_default().insert(target);
+        self.incoming.entry((role, target)).or_default().insert(source);
+        if source == target {
+            self.diagonal.entry(role).or_default().insert(source);
+        }
+    }
+
+    fn candidates(&self, role: R, source: Var, target: Var, variable: Var,
+        binding: &HashMap<Var, Node>) -> &HashSet<Node> {
+        debug_assert!(source == variable || target == variable);
+        let candidates = if source == target {
+            self.diagonal.get(&role)
+        } else if source == variable {
+            match binding.get(&target) {
+                Some(&node) => self.incoming.get(&(role, node)),
+                None => self.sources.get(&role),
+            }
+        } else {
+            match binding.get(&source) {
+                Some(&node) => self.outgoing.get(&(role, node)),
+                None => self.targets.get(&role),
+            }
+        };
+        candidates.unwrap_or(&self.empty)
+    }
+}
+
 /// The KM_RULES_CONSISTENCY verdict for an already-parsed `TInput`: seed one
 /// root per nominal (the rule route's `__nom__` ABox seeds), apply the o-rule,
 /// and decide KB consistency on the default Tableau. Runs on a large stack
@@ -5369,11 +5414,11 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
     }
     // Exact relation projections used only to restrict universal assignments
     // that can satisfy the body. Keep retired nodes outside the interpretation.
-    let mut role_edges: HashMap<R, Vec<(Node, Node)>> = HashMap::new();
-    let mut successors: HashMap<(R, Node), Vec<Node>> = HashMap::new();
+    let mut role_edges = FiniteRoleIndex::default();
+    let mut successors: HashMap<(R, Node), Vec<Node>> = HashMap::default();
     for &(role, source, target) in &g.edges {
         if g.alive(source) && g.alive(target) {
-            role_edges.entry(role).or_default().push((source, target));
+            role_edges.insert(role, source, target);
             successors.entry((role, source)).or_default().push(target);
         }
     }
@@ -5395,7 +5440,7 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
             }
         })
     }
-    fn check(g: &Graph, domain: &[Node], role_edges: &HashMap<R, Vec<(Node, Node)>>,
+    fn check(g: &Graph, domain: &[Node], role_edges: &FiniteRoleIndex,
         successors: &HashMap<(R, Node), Vec<Node>>, unary_domains: &HashMap<Var, Vec<Node>>, clause: &Clause, vars: &[Var],
         binding: &mut HashMap<Var, Node>, budget: &mut usize) -> Result<(), String> {
         if *budget == 0 { return Err("finite model verification budget exhausted".into()); }
@@ -5413,19 +5458,12 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
             for atom in &clause.body {
                 let next = match atom {
                     Atom::Role { r, s, t } if *s == var || *t == var => {
-                        let mut allowed = HashSet::new();
-                        for &(source, target) in role_edges.get(r).into_iter().flatten() {
-                            if *s == *t && source != target { continue; }
-                            if *s != var && binding.get(s).is_some_and(|&node| node != source) { continue; }
-                            if *t != var && binding.get(t).is_some_and(|&node| node != target) { continue; }
-                            allowed.insert(if *s == var { source } else { target });
-                        }
-                        Some(allowed)
+                        Some(role_edges.candidates(*r, *s, *t, var, binding).clone())
                     }
                     Atom::Eq { s, t } if *s == var && *t != var =>
-                        binding.get(t).map(|&node| HashSet::from([node])),
+                        binding.get(t).map(|&node| std::iter::once(node).collect::<HashSet<_>>()),
                     Atom::Eq { s, t } if *t == var && *s != var =>
-                        binding.get(s).map(|&node| HashSet::from([node])),
+                        binding.get(s).map(|&node| std::iter::once(node).collect::<HashSet<_>>()),
                     _ => None,
                 };
                 if let Some(next) = next {
@@ -5451,7 +5489,7 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
             Ok(())
         } else { Err("finite interpretation violates a converted rule clause".into()) }
     }
-    let mut class_extensions: HashMap<CLit, HashSet<Node>> = HashMap::new();
+    let mut class_extensions: HashMap<CLit, HashSet<Node>> = HashMap::default();
     let stats = std::env::var_os("KM_TAB_STATS").is_some();
     for (index, clause) in clauses.iter().enumerate() {
         if stats && index % 1000 == 0 {
@@ -5483,7 +5521,7 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
         if unary_domains.values().any(Vec::is_empty) { continue; }
         let mut vars: Vec<_> = vars.into_iter().collect();
         vars.sort_by_key(|var| unary_domains[var].len());
-        check(g, &domain, &role_edges, &successors, &unary_domains, clause, &vars, &mut HashMap::new(), &mut budget)?;
+        check(g, &domain, &role_edges, &successors, &unary_domains, clause, &vars, &mut HashMap::default(), &mut budget)?;
     }
     Ok(())
 }
@@ -5495,7 +5533,7 @@ fn verify_finite_rule_model(g: &Graph, clauses: &[Clause], nominals: &[C],
 fn finite_datatype_values(g: &Graph, names: &[String]) -> Result<HashMap<Node, String>, String> {
     let vocabulary: Vec<_> = names.iter().enumerate().filter(|(_, name)| name.starts_with("__dt__")).collect();
     let datatype_names: Vec<_> = vocabulary.iter().map(|(_, name)| (*name).clone()).collect();
-    let mut concrete_profiles = HashMap::new();
+    let mut concrete_profiles = HashMap::default();
     for name in &datatype_names {
         if let Some(literal) = name.strip_prefix("__dt__val__") {
             let profile = crate::frontend::datatypes::finite_literal_datatype_truth(literal, &datatype_names)
@@ -5503,8 +5541,8 @@ fn finite_datatype_values(g: &Graph, names: &[String]) -> Result<HashMap<Node, S
             concrete_profiles.entry(profile).or_insert(literal);
         }
     }
-    let mut used = HashSet::new();
-    let mut data_nodes = HashMap::new();
+    let mut used = HashSet::default();
+    let mut data_nodes = HashMap::default();
     for node in (0..g.n()).filter(|&node| g.alive(node)) {
         let profile: Vec<_> = vocabulary.iter().map(|(id, _)| g.concepts[node].contains(&CLit::pos(*id as C))).collect();
         if !profile.iter().any(|&present| present) { continue; }
@@ -5557,7 +5595,7 @@ fn evaluate_source_boolean(expression: &crate::frontend::syntax::Concept, node: 
 fn verify_finite_source_classes(g: &Graph, data_nodes: &HashSet<Node>,
     source: &crate::frontend::profile::RuleSourceClasses) -> Result<(), String> {
     use crate::frontend::{iri::IriRegistry, parse, syntax::Axiom};
-    let mut ids = HashMap::new();
+    let mut ids = HashMap::default();
     for (id, iri) in source.concept_iris.iter().enumerate() {
         if let Some(iri) = iri {
             if ids.insert(iri.clone(), id as C).is_some() {
@@ -5599,7 +5637,7 @@ fn verify_finite_source_abox(g: &Graph, data_nodes: &HashSet<Node>,
     source: &crate::frontend::profile::RuleSourceAbox, values: Option<&HashMap<Node, String>>) -> Result<(), String> {
     use crate::frontend::{iri::IriRegistry, parse, syntax::Axiom};
     fn index(names: &[Option<String>]) -> Result<HashMap<String, u32>, String> {
-        let mut result = HashMap::new();
+        let mut result = HashMap::default();
         for (id, name) in names.iter().enumerate() {
             if let Some(name) = name {
                 if result.insert(name.clone(), id as u32).is_some() {
@@ -5612,7 +5650,7 @@ fn verify_finite_source_abox(g: &Graph, data_nodes: &HashSet<Node>,
     let classes = index(&source.concept_iris)?;
     let roles = index(&source.role_iris)?;
     let nominal_ids = index(&source.nominal_iris)?;
-    let mut individuals = HashMap::new();
+    let mut individuals = HashMap::default();
     for (iri, id) in nominal_ids {
         let nodes: Vec<_> = (0..g.n()).filter(|node| g.alive(*node)
             && g.concepts[*node].contains(&CLit::pos(id))).collect();
@@ -5841,7 +5879,7 @@ fn verify_finite_source_rules(g: &Graph, source: &str, classes: &HashMap<String,
             Ok(())
         }
     }
-    let mut edges: HashMap<R,Vec<(Node,Node)>> = HashMap::new();
+    let mut edges: HashMap<R,Vec<(Node,Node)>> = HashMap::default();
     for &(r,a,b) in &g.edges {
         if g.alive(a) && g.alive(b) { edges.entry(r).or_default().push((a,b)); }
     }
@@ -5875,7 +5913,7 @@ fn verify_finite_source_rules(g: &Graph, source: &str, classes: &HashMap<String,
                     let _ = evaluate_source_boolean(class,domain[0],g,&registry,classes)?;
                 }
             }
-            let mut var_domains: HashMap<String,Vec<Node>> = HashMap::new();
+            let mut var_domains: HashMap<String,Vec<Node>> = HashMap::default();
             for atom in &body {
                 if let A::Class(class,T::Var(variable)) = atom {
                     let mut allowed = Vec::new();
@@ -5957,7 +5995,7 @@ fn verify_finite_source_data(g: &Graph, source: &str, classes: &HashMap<String, 
                     valid
                 }
                 "FunctionalDataProperty" if args.len() == 1 => {
-                    let mut seen = HashMap::new();
+                    let mut seen = HashMap::default();
                     edges.iter().all(|&(a,b)| seen.insert(a,b).is_none_or(|old| old == b))
                 }
                 _ => return Err(format!("unrecognized source data axiom: {kind}")),
@@ -5986,7 +6024,7 @@ fn verify_finite_source_properties(g: &Graph, data_nodes: &HashSet<Node>, source
             SNode::Atom(name) => {
                 let iri = name.strip_prefix('<').and_then(|n| n.strip_suffix('>')).unwrap_or(name);
                 match iri {
-                    "owl:bottomObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty" => Ok(Relation::new()),
+                    "owl:bottomObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty" => Ok(Relation::default()),
                     "owl:topObjectProperty" | "http://www.w3.org/2002/07/owl#topObjectProperty" => {
                         if objects.len().saturating_mul(objects.len()) > 1_000_000 {
                             return Err("universal source relation exceeds verification budget".into());
@@ -6002,9 +6040,9 @@ fn verify_finite_source_properties(g: &Graph, data_nodes: &HashSet<Node>, source
         }
     }
     fn compose(left: &Relation, right: &Relation, budget: &mut usize) -> Result<Relation, String> {
-        let mut successors: HashMap<Node, Vec<Node>> = HashMap::new();
+        let mut successors: HashMap<Node, Vec<Node>> = HashMap::default();
         for &(a,b) in right { successors.entry(a).or_default().push(b); }
-        let mut result = Relation::new();
+        let mut result = Relation::default();
         for &(a,b) in left {
             for &c in successors.get(&b).into_iter().flatten() {
                 *budget = budget.checked_sub(1).ok_or("source role-chain verification budget exhausted")?;
@@ -6057,7 +6095,7 @@ fn verify_finite_source_properties(g: &Graph, data_nodes: &HashSet<Node>, source
                     valid
                 }
                 "FunctionalObjectProperty" | "InverseFunctionalObjectProperty" if args.len() == 1 => {
-                    let mut seen = HashMap::new();
+                    let mut seen = HashMap::default();
                     relation(args[0])?.into_iter().all(|(a,b)| {
                         let (key,value) = if *kind == "FunctionalObjectProperty" { (a,b) } else { (b,a) };
                         seen.insert(key,value).is_none_or(|old| old == value)
@@ -6240,7 +6278,7 @@ fn has_negative_edge_clash(inp: &TInput, role: R, source_proxy: C, target_proxy:
 /// assertions are reconstructed as guarded clash clauses if the redundant
 /// producer clause is missing, so this consumer never silently drops them.
 fn validate_native_abox(inp: &TInput) -> Result<ValidatedNativeAbox, String> {
-    use std::collections::HashSet;
+    use crate::fxhash::FxHashSet as HashSet;
 
     if inp.native_abox.is_empty() {
         return Ok(ValidatedNativeAbox::default());
@@ -6250,7 +6288,7 @@ fn validate_native_abox(inp: &TInput) -> Result<ValidatedNativeAbox, String> {
     }
 
     let nominal_set: HashSet<usize> = inp.nominals.iter().map(|&id| id as usize).collect();
-    let mut proxy_owners = HashSet::new();
+    let mut proxy_owners = HashSet::default();
     let mut individuals = Vec::with_capacity(inp.native_abox.individuals.len());
     for individual in &inp.native_abox.individuals {
         if individual.proxies.is_empty() {
@@ -8068,6 +8106,12 @@ fn run_tinput_inner(
                 unsatisfiable: r.unsatisfiable.iter().map(|&c| name(c as C)).collect(),
                 subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
             };
+            // Tell the orchestrator that this answer is the bridge's own
+            // complete taxonomy (not a fallback arm's). Scheduling metadata
+            // only; a failed write just keeps the conservative budget.
+            if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+                let _ = std::fs::write(marker, b"bridge");
+            }
             return Ok(out);
         }
         // The bridge declined. If it was the ONLY route this worker was
@@ -12158,13 +12202,38 @@ mod tests {
 #[cfg(test)]
 mod finite_rule_model_tests {
     use super::*;
+
+    #[test]
+    fn indexed_role_domains_match_scan_for_every_three_node_relation() {
+        for mask in 0..512usize {
+            let edges: Vec<_> = (0..3).flat_map(|a| (0..3).map(move |b| (a, b)))
+                .filter(|&(a, b)| mask & (1 << (a * 3 + b)) != 0).collect();
+            let mut index = FiniteRoleIndex::default();
+            for &(a, b) in &edges { index.insert(7, a, b); }
+            for role in [7, 8] {
+                for (source, target, variable) in [(0, 1, 0), (0, 1, 1), (0, 0, 0)] {
+                    for other in [None, Some(0), Some(1), Some(2), Some(3)] {
+                        let binding: HashMap<Var, Node> = other.map(|node|
+                            (if variable == 0 { 1 } else { 0 }, node)).into_iter().collect();
+                        let expected: HashSet<_> = edges.iter().copied().filter(|&(a, b)| {
+                            role == 7 && (source != target || a == b)
+                                && (source == variable || binding.get(&source).is_none_or(|&n| n == a))
+                                && (target == variable || binding.get(&target).is_none_or(|&n| n == b))
+                        }).map(|(a, b)| if source == variable { a } else { b }).collect();
+                        assert_eq!(index.candidates(role, source, target, variable, &binding), &expected,
+                            "mask={mask}, role={role}, source={source}, target={target}, variable={variable}, binding={binding:?}");
+                    }
+                }
+            }
+        }
+    }
     fn concept(c: C, t: Var, neg: bool) -> Atom { Atom::Concept { lit: CLit { c, neg }, t } }
     #[test]
     fn pruned_source_rule_join_matches_exhaustive_two_object_models() {
         let source = "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>)) ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<y>)))))";
-        let classes = HashMap::from([("A".into(),0), ("B".into(),1)]);
-        let roles = HashMap::from([("r".into(),0)]);
-        let individuals = HashMap::from([("a".into(),0), ("b".into(),1)]);
+        let classes = HashMap::from_iter([("A".into(),0), ("B".into(),1)]);
+        let roles = HashMap::from_iter([("r".into(),0)]);
+        let individuals = HashMap::from_iter([("a".into(),0), ("b".into(),1)]);
         for mask in 0..256u32 {
             let mut graph = Graph::new(); graph.new_node(None,false); graph.new_node(None,false);
             for n in 0..2 { for c in 0..2 {
@@ -12176,7 +12245,7 @@ mod finite_rule_model_tests {
             let expected = (0..2).all(|a| (0..2).all(|b|
                 !graph.concepts[a].contains(&CLit::pos(0)) || !graph.edges.contains(&(0,a,b))
                     || graph.concepts[b].contains(&CLit::pos(1))));
-            assert_eq!(verify_finite_source_rules(&graph,source,&classes,&roles,&individuals,&HashMap::new()).is_ok(), expected, "model {mask}");
+            assert_eq!(verify_finite_source_rules(&graph,source,&classes,&roles,&individuals,&HashMap::default()).is_ok(), expected, "model {mask}");
         }
     }
 
@@ -12184,9 +12253,9 @@ mod finite_rule_model_tests {
     fn original_rules_check_concrete_guards_and_named_head_obligations() {
         let mut graph = Graph::new(); let a = graph.new_node(None,false); let b = graph.new_node(None,false);
         let data = graph.new_node(None,false); graph.add_edge(0,a,data);
-        let classes = HashMap::from([("Bad".into(),0)]); let roles = HashMap::from([("p".into(),0)]);
-        let individuals = HashMap::from([("a".into(),a), ("b".into(),b)]);
-        let values = HashMap::from([(data,"\"1\"^^xsd:float".into())]);
+        let classes = HashMap::from_iter([("Bad".into(),0)]); let roles = HashMap::from_iter([("p".into(),0)]);
+        let individuals = HashMap::from_iter([("a".into(),a), ("b".into(),b)]);
+        let values = HashMap::from_iter([(data,"\"1\"^^xsd:float".into())]);
         let rule = "Ontology(DLSafeRule(Body(DataPropertyAtom(<p> Variable(<x>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<v>) \"0\"^^xsd:float)) Head(ClassAtom(<Bad> Variable(<x>)))))";
         assert!(verify_finite_source_rules(&graph,rule,&classes,&roles,&individuals,&values).is_err());
         graph.add_concept(a,CLit::pos(0));
@@ -12206,10 +12275,10 @@ mod finite_rule_model_tests {
         let mut graph = Graph::new(); let a = graph.new_node(None, false);
         let value = graph.new_node(None, false); let other = graph.new_node(None, false);
         graph.add_concept(a, CLit::pos(0)); graph.add_edge(0,a,value);
-        let classes = HashMap::from([("A".into(),0)]);
-        let roles = HashMap::from([("p".into(),0)]);
-        let individuals = HashMap::from([("a".into(),a)]);
-        let values = HashMap::from([(value, "\"16777216\"^^xsd:float".into()), (other,"\"text\"^^xsd:string".into())]);
+        let classes = HashMap::from_iter([("A".into(),0)]);
+        let roles = HashMap::from_iter([("p".into(),0)]);
+        let individuals = HashMap::from_iter([("a".into(),a)]);
+        let values = HashMap::from_iter([(value, "\"16777216\"^^xsd:float".into()), (other,"\"text\"^^xsd:string".into())]);
         let check = |axiom: &str| verify_finite_source_data(&graph, &format!("Ontology({axiom})"),
             &classes, &roles, &individuals, &values);
         for axiom in [
@@ -12236,10 +12305,10 @@ mod finite_rule_model_tests {
         for (r,x,y) in [(0,a,b),(1,b,c),(2,a,c),(3,b,a),(4,a,b),(4,a,c),(5,a,c),(5,b,c)] {
             graph.add_edge(r,x,y);
         }
-        let classes = HashMap::from([("A".into(),0), ("C".into(),1)]);
-        let roles = HashMap::from([("r".into(),0), ("s".into(),1), ("t".into(),2),
+        let classes = HashMap::from_iter([("A".into(),0), ("C".into(),1)]);
+        let roles = HashMap::from_iter([("r".into(),0), ("s".into(),1), ("t".into(),2),
             ("inv".into(),3), ("u".into(),4), ("v".into(),5)]);
-        let check = |axiom: &str| verify_finite_source_properties(&graph, &HashSet::new(),
+        let check = |axiom: &str| verify_finite_source_properties(&graph, &HashSet::default(),
             &format!("Ontology({axiom})"), &classes, &roles);
         for axiom in [
             "SubObjectPropertyOf(ObjectPropertyChain(ObjectInverseOf(<inv>) <s>) <t>)",
@@ -12263,7 +12332,7 @@ mod finite_rule_model_tests {
             "ClassAssertion(<A> <a>)",
         ] { assert!(check(axiom).is_err(), "{axiom}"); }
         graph.add_edge(0,b,c);
-        assert!(verify_finite_source_properties(&graph, &HashSet::new(),
+        assert!(verify_finite_source_properties(&graph, &HashSet::default(),
             "Ontology(TransitiveObjectProperty(<r>))", &classes, &roles).is_err());
     }
 
@@ -12278,7 +12347,7 @@ mod finite_rule_model_tests {
             role_iris: vec![Some("https://example/r".into())],
             nominal_iris: vec![Some("https://example/a".into()), Some("https://example/alias".into()), Some("https://example/b".into()), None] };
         let valid = make("Ontology(ClassAssertion(<https://example/C> <https://example/a>) SameIndividual(<https://example/a> <https://example/alias>) DifferentIndividuals(<https://example/a> <https://example/b>) ObjectPropertyAssertion(ObjectInverseOf(<https://example/r>) <https://example/b> <https://example/a>) NegativeObjectPropertyAssertion(<https://example/r> <https://example/b> <https://example/a>))");
-        let checked = verify_finite_source_abox(&graph, &HashSet::new(), &valid, None);
+        let checked = verify_finite_source_abox(&graph, &HashSet::default(), &valid, None);
         assert!(checked.is_ok(), "{checked:?}");
         for assertion in [
             "ObjectPropertyAssertion(owl:bottomObjectProperty <https://example/a> <https://example/b>)",
@@ -12288,8 +12357,8 @@ mod finite_rule_model_tests {
             "NegativeObjectPropertyAssertion(<https://example/r> <https://example/a> <https://example/b>)",
             "ClassAssertion(<https://example/C> <https://example/b>)",
             "ClassAssertion(<https://example/C> <https://example/missing>)",
-        ] { assert!(verify_finite_source_abox(&graph, &HashSet::new(), &make(&format!("Ontology({assertion})")), None).is_err(), "{assertion}"); }
-        assert!(verify_finite_source_abox(&graph, &HashSet::from([a]), &valid, None).is_err());
+        ] { assert!(verify_finite_source_abox(&graph, &HashSet::default(), &make(&format!("Ontology({assertion})")), None).is_err(), "{assertion}"); }
+        assert!(verify_finite_source_abox(&graph, &HashSet::from_iter([a]), &valid, None).is_err());
     }
 
     #[test]
@@ -12300,7 +12369,7 @@ mod finite_rule_model_tests {
         let make = |source: &str| RuleSourceClasses { source: source.into(),
             concept_iris: vec![Some("https://one/A".into()), Some("https://two/A".into())] };
         let valid = make("Ontology(SubClassOf(owl:Thing <https://one/A>) SubClassOf(<https://one/A> ObjectComplementOf(<https://two/A>)))");
-        assert!(verify_finite_source_classes(&graph, &HashSet::new(), &valid).is_ok());
+        assert!(verify_finite_source_classes(&graph, &HashSet::default(), &valid).is_ok());
         for source in [
             "Ontology(SubClassOf(owl:Thing owl:Nothing))",
             "Ontology(SubClassOf(owl:Thing <https://two/A>))",
@@ -12308,10 +12377,10 @@ mod finite_rule_model_tests {
             "Ontology(DisjointClasses(<https://one/A> owl:Thing))",
             "Ontology(SubClassOf(<https://one/A> ObjectSomeValuesFrom(<r> <https://one/A>)))",
             "Ontology(TransitiveObjectProperty(<r>))",
-        ] { assert!(verify_finite_source_classes(&graph, &HashSet::new(), &make(source)).is_err(), "{source}"); }
+        ] { assert!(verify_finite_source_classes(&graph, &HashSet::default(), &make(source)).is_err(), "{source}"); }
         let mut duplicate = valid.clone(); duplicate.concept_iris[1] = duplicate.concept_iris[0].clone();
-        assert!(verify_finite_source_classes(&graph, &HashSet::new(), &duplicate).is_err());
-        assert!(verify_finite_source_classes(&graph, &HashSet::from([object]), &valid).is_err());
+        assert!(verify_finite_source_classes(&graph, &HashSet::default(), &duplicate).is_err());
+        assert!(verify_finite_source_classes(&graph, &HashSet::from_iter([object]), &valid).is_err());
     }
 
     #[test]
@@ -12334,16 +12403,16 @@ mod finite_rule_model_tests {
         let value = g.new_node(None, false);
         g.add_concept(a, CLit::pos(7));
         g.add_edge(0, a, b); g.add_edge(1, a, value);
-        let data = HashSet::from([value]);
+        let data = HashSet::from_iter([value]);
         assert!(verify_finite_role_sorts(&g, &data, &[7], &[false, true]).is_ok());
         assert!(verify_finite_role_sorts(&g, &data, &[7], &[true, false]).is_err());
         assert!(verify_finite_role_sorts(&g, &data, &[7], &[false]).is_err());
-        assert!(verify_finite_role_sorts(&g, &HashSet::new(), &[7], &[false, true]).is_err());
+        assert!(verify_finite_role_sorts(&g, &HashSet::default(), &[7], &[false, true]).is_err());
         g.add_concept(value, CLit::pos(8));
         assert!(verify_finite_role_sorts(&g, &data, &[7, 8], &[false, true]).is_err());
         g.add_edge(1, value, value);
         assert!(verify_finite_role_sorts(&g, &data, &[7], &[false, true]).is_err());
-        assert!(verify_finite_role_sorts(&g, &HashSet::from([a, b, value]), &[], &[false, true]).is_err());
+        assert!(verify_finite_role_sorts(&g, &HashSet::from_iter([a, b, value]), &[], &[false, true]).is_err());
     }
     #[test]
     fn datatype_realization_checks_absence_and_preserves_distinct_nodes() {
@@ -12354,7 +12423,7 @@ mod finite_rule_model_tests {
         // finite interpretation, not permission to add an unchecked fact.
         assert!(verify_finite_datatype_realization(&g, &names).is_err());
         g.add_concept(a, CLit::pos(1));
-        assert_eq!(verify_finite_datatype_realization(&g, &names), Ok(HashSet::from([a])));
+        assert_eq!(verify_finite_datatype_realization(&g, &names), Ok(HashSet::from_iter([a])));
         let b = g.new_node(None, false);
         g.add_concept(b, CLit::pos(0)); g.add_concept(b, CLit::pos(1));
         assert!(verify_finite_datatype_realization(&g, &names).is_err());

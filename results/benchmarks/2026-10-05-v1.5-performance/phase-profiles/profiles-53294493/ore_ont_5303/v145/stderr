@@ -1,0 +1,1753 @@
+KM_TIMING mirror-route: declined: non-positive residual axiom: ObjectAllValuesFrom(<http://purl.org/chemtop/dev#hasComponentPart> <http://purl.org/chemtop/dev#AminoAcidMonomer>)
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false
+KM_TIMING frontend done @ 0.01s route=production_all1
+cb_to_ht [emelim] eliminated 3 complementary pairs
+cb_to_ht [trigger-absorb] definers=145 moved=6 tautologies=0
+KM_TIMING spawn_ht: read+convert 682 clauses (ht_view=682) in 0.00s
+KM_DUMP_TIN clauses=682 dropped=0 fenced=0 nominals=0 inverse=false number=false queries=94 -> "/ibex/project/c2014/hohndor/km/v150-performance-20261005/tin-53294493-ore_ont_5303-v145.json"
+KM_TIMING race: HT worker spawned @ 0.01s after the CB stack started
+bridge [source-tbox] axioms=224 eq=0/4 ["EntireRNAMolecule", "FattyAcid", "Hydrocarbon", "NucleicAcid"] direct=296 role-links=0 absorbed-gci=21 top-gci=0 unsupported=0
+bridge [or-replacements] implications=0 common=20
+role-automata begin concepts=465 next-tag=474
+bridge [branch-triggers] role-markers=1
+BRIDGE-ENV: 0.00s (named=259, trigger_absorb=true, unsupported=0, independent_abox=false)
+BRIDGE-SOURCE-CLOSURE pairs=190 definition-containment=true
+BRIDGE-SAT-PHASE propagation-direction: 0.00s
+BRIDGE-SATURATION-SEEDS: base=118 extended=131 invalid-special=16 substitute=9 copy=80
+BRIDGE-SAT-PHASE seeds: 0.00s
+BRIDGE-SAT-PHASE loop: 0.00s (nodes=159)
+SAT-STATS: insufficient all=0 atmost=0 or=31 eqcand=0 value=0 nominal=0
+BRIDGE-SATURATION-UNKNOWN: no-node=165 insufficient=79 unprocessed=0 eq-candidate=0
+BRIDGE-SAT-PHASE extract: 0.00s
+BRIDGE-SATURATION: 0.00s, answered 0 unsat + 0 sat of 94 subjects (94 residue to probes, known-label-subjects=89, satcache=true)
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=1 end_phase=3 seed=0.000058 search=0.000390 cache=0.000077 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 1: visits=55 messages=14
+BRIDGE-PREPARE round 0 subject 1/94 deferred=0 permanent=0
+BRIDGE-PREPARE-TIMING subjects=1 elapsed=0.000782 renew=0.000066 completion=0.000547 analysis=0.000154
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=135 end_phase=3 seed=0.000020 search=0.000160 cache=0.000029 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 135: visits=45 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=136 end_phase=3 seed=0.000019 search=0.000155 cache=0.000028 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 136: visits=45 messages=3
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#46] [c=29 ind=false det=true tag=3 lvl=2 tp=#62]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=33 end_phase=3 seed=0.000022 search=0.000976 cache=0.000109 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 33: visits=252 messages=14
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#92] [c=29 ind=false det=true tag=3 lvl=2 tp=#94]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=109 end_phase=3 seed=0.000029 search=0.000625 cache=0.000031 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 109: visits=108 messages=5
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#92] [c=29 ind=false det=true tag=3 lvl=2 tp=#94]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=185 end_phase=3 seed=0.000022 search=0.025907 cache=0.000045 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 185: visits=108 messages=9
+DDB-CLOSURE [c=¬207 ind=false det=true tag=5 lvl=1 tp=#78] [c=207 ind=false det=true tag=0 lvl=1 tp=#103]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#238] [c=¬131 ind=false det=true tag=7 lvl=2 tp=#245]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#212] [c=82 ind=false det=true tag=21 lvl=2 tp=#471]
+DDB-LINE branching_level=21
+DDB-CLOSURE [c=78 ind=false det=false tag=20 lvl=2 tp=#411] [c=¬78 ind=false det=true tag=22 lvl=2 tp=#477]
+DDB-LINE branching_level=22
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#584] [c=29 ind=false det=true tag=3 lvl=2 tp=#586]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=¬207 ind=false det=true tag=5 lvl=1 tp=#606] [c=207 ind=false det=true tag=0 lvl=1 tp=#631]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#758] [c=¬131 ind=false det=true tag=7 lvl=2 tp=#765]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#757] [c=82 ind=false det=true tag=13 lvl=2 tp=#961]
+DDB-LINE branching_level=13
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=150 end_phase=3 seed=0.000037 search=0.030257 cache=0.000178 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 150: visits=604 messages=22
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#78] [c=¬207 ind=false det=true tag=5 lvl=1 tp=#147]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#195] [c=¬131 ind=false det=true tag=7 lvl=2 tp=#202]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#192] [c=82 ind=false det=true tag=12 lvl=2 tp=#434]
+DDB-LINE branching_level=12
+DDB-CLOSURE [c=78 ind=false det=false tag=11 lvl=2 tp=#411] [c=¬78 ind=false det=true tag=13 lvl=2 tp=#440]
+DDB-LINE branching_level=13
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#448] [c=29 ind=false det=true tag=3 lvl=2 tp=#450]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#78] [c=¬207 ind=false det=true tag=5 lvl=1 tp=#470]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#518] [c=¬131 ind=false det=true tag=7 lvl=2 tp=#525]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#515] [c=82 ind=false det=true tag=10 lvl=2 tp=#746]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=156 end_phase=3 seed=0.000036 search=0.002309 cache=0.000050 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 156: visits=244 messages=10
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#187] [c=¬131 ind=false det=true tag=6 lvl=2 tp=#194]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=3 tp=#378] [c=29 ind=false det=true tag=14 lvl=3 tp=#386]
+DDB-LINE branching_level=14
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#184] [c=82 ind=false det=true tag=16 lvl=2 tp=#517]
+DDB-LINE branching_level=16
+DDB-CLOSURE [c=78 ind=false det=false tag=15 lvl=2 tp=#433] [c=¬78 ind=false det=true tag=17 lvl=2 tp=#523]
+DDB-LINE branching_level=17
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#617] [c=29 ind=false det=true tag=3 lvl=2 tp=#619]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#788] [c=¬131 ind=false det=true tag=6 lvl=2 tp=#795]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#785] [c=82 ind=false det=true tag=12 lvl=2 tp=#1065]
+DDB-LINE branching_level=12
+DDB-CLOSURE [c=78 ind=false det=false tag=11 lvl=2 tp=#976] [c=¬78 ind=false det=true tag=13 lvl=2 tp=#1071]
+DDB-LINE branching_level=13
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=236 end_phase=3 seed=0.000061 search=0.019077 cache=0.000148 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 236: visits=570 messages=15
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#129] [c=29 ind=false det=true tag=3 lvl=2 tp=#131]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#230] [c=¬131 ind=false det=true tag=6 lvl=2 tp=#231]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#241] [c=82 ind=false det=true tag=13 lvl=2 tp=#467]
+DDB-LINE branching_level=13
+DDB-CLOSURE [c=78 ind=false det=false tag=12 lvl=2 tp=#367] [c=¬78 ind=false det=true tag=14 lvl=2 tp=#472]
+DDB-LINE branching_level=14
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=237 end_phase=3 seed=0.000040 search=0.002405 cache=0.000071 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 237: visits=487 messages=10
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#142] [c=29 ind=false det=true tag=3 lvl=2 tp=#150]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#344] [c=¬131 ind=false det=true tag=6 lvl=2 tp=#345]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#353] [c=82 ind=false det=true tag=13 lvl=2 tp=#617]
+DDB-LINE branching_level=13
+DDB-CLOSURE [c=78 ind=false det=false tag=12 lvl=2 tp=#499] [c=¬78 ind=false det=true tag=14 lvl=2 tp=#623]
+DDB-LINE branching_level=14
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=238 end_phase=3 seed=0.000035 search=0.034579 cache=0.000062 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 238: visits=487 messages=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=3 end_phase=3 seed=0.000030 search=0.000238 cache=0.000047 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 3: visits=70 messages=4
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#18] [c=29 ind=false det=true tag=2 lvl=1 tp=#36]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=5 end_phase=3 seed=0.000024 search=0.000350 cache=0.000058 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 5: visits=94 messages=4
+BRIDGE-READOFF-TIMING subject=60 end_phase=3 seed=0.000021 search=0.000118 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 60: visits=0 messages=4
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#25] [c=29 ind=false det=true tag=2 lvl=1 tp=#27]
+DDB-LINE branching_level=2
+BRIDGE-READOFF-TIMING subject=7 end_phase=3 seed=0.000021 search=0.000141 cache=0.000008 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 7: visits=0 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=134 end_phase=3 seed=0.000016 search=0.000134 cache=0.000031 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 134: visits=45 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=145 end_phase=3 seed=0.000020 search=0.000282 cache=0.000045 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 145: visits=49 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=51 end_phase=3 seed=0.000021 search=0.000285 cache=0.000140 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 51: visits=139 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=218 end_phase=3 seed=0.000030 search=0.000209 cache=0.000052 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 218: visits=40 messages=6
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#10] [c=¬131 ind=false det=true tag=1 lvl=1 tp=#18]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#8] [c=82 ind=false det=true tag=7 lvl=1 tp=#98]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=78 ind=false det=false tag=5 lvl=1 tp=#72] [c=¬78 ind=false det=true tag=8 lvl=1 tp=#104]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=55 end_phase=3 seed=0.000024 search=0.001058 cache=0.000052 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 55: visits=212 messages=11
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#10] [c=¬131 ind=false det=true tag=1 lvl=1 tp=#17]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#8] [c=82 ind=false det=true tag=7 lvl=1 tp=#94]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=78 ind=false det=false tag=5 lvl=1 tp=#68] [c=¬78 ind=false det=true tag=8 lvl=1 tp=#101]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#142] [c=¬131 ind=false det=true tag=9 lvl=2 tp=#143]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#150] [c=82 ind=false det=true tag=15 lvl=2 tp=#222]
+DDB-LINE branching_level=15
+DDB-CLOSURE [c=78 ind=false det=false tag=13 lvl=2 tp=#196] [c=¬78 ind=false det=true tag=16 lvl=2 tp=#229]
+DDB-LINE branching_level=16
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=184 end_phase=3 seed=0.000034 search=0.001316 cache=0.000037 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 184: visits=146 messages=8
+DDB-CLOSURE [c=¬29 ind=false det=true tag=5 lvl=3 tp=#194] [c=29 ind=false det=true tag=14 lvl=3 tp=#214]
+DDB-LINE branching_level=14
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#296] [c=29 ind=false det=true tag=4 lvl=2 tp=#298]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=¬29 ind=false det=true tag=5 lvl=3 tp=#454] [c=29 ind=false det=true tag=12 lvl=3 tp=#474]
+DDB-LINE branching_level=12
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=175 end_phase=3 seed=0.000027 search=0.028237 cache=0.000153 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 175: visits=369 messages=13
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#171] [c=29 ind=false det=true tag=4 lvl=2 tp=#173]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=99 end_phase=3 seed=0.000031 search=0.007452 cache=0.000031 labels=0.000004
+BRIDGE-KPSET-MESSAGES subject 99: visits=169 messages=8
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#92] [c=29 ind=false det=true tag=3 lvl=2 tp=#94]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=161 end_phase=3 seed=0.000038 search=0.000781 cache=0.000038 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 161: visits=108 messages=8
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#92] [c=29 ind=false det=true tag=3 lvl=2 tp=#94]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=186 end_phase=3 seed=0.000026 search=0.008750 cache=0.000039 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 186: visits=108 messages=8
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#94] [c=29 ind=false det=true tag=3 lvl=2 tp=#96]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=228 end_phase=3 seed=0.009106 search=0.004799 cache=0.000063 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 228: visits=116 messages=9
+BRIDGE-READOFF-TIMING subject=31 end_phase=3 seed=0.000043 search=0.000240 cache=0.000008 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 31: visits=0 messages=7
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#15] [c=¬131 ind=false det=true tag=1 lvl=1 tp=#22]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#76] [c=¬207 ind=false det=true tag=5 lvl=1 tp=#151]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#12] [c=82 ind=false det=true tag=8 lvl=1 tp=#308]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=78 ind=false det=false tag=7 lvl=1 tp=#201] [c=¬78 ind=false det=true tag=9 lvl=1 tp=#314]
+DDB-LINE branching_level=9
+BRIDGE-READOFF-TIMING subject=41 end_phase=3 seed=0.000026 search=0.000948 cache=0.000008 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 41: visits=0 messages=4
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#21] [c=¬131 ind=false det=true tag=1 lvl=1 tp=#22]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#30] [c=82 ind=false det=true tag=7 lvl=1 tp=#328]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=78 ind=false det=false tag=6 lvl=1 tp=#210] [c=¬78 ind=false det=true tag=8 lvl=1 tp=#333]
+DDB-LINE branching_level=8
+BRIDGE-READOFF-TIMING subject=47 end_phase=3 seed=0.000033 search=0.006223 cache=0.000008 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 47: visits=0 messages=4
+BRIDGE-READOFF-TIMING subject=107 end_phase=3 seed=0.000037 search=0.000238 cache=0.000008 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 107: visits=0 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=221 end_phase=3 seed=0.000013 search=0.000088 cache=0.000043 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 221: visits=21 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=223 end_phase=3 seed=0.000009 search=0.000058 cache=0.000020 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 223: visits=7 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=224 end_phase=3 seed=0.000007 search=0.000046 cache=0.000018 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 224: visits=7 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=126 end_phase=3 seed=0.000012 search=0.000120 cache=0.000027 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 126: visits=28 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=144 end_phase=3 seed=0.000013 search=0.000117 cache=0.000026 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 144: visits=28 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=117 end_phase=3 seed=0.000015 search=0.000107 cache=0.000024 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 117: visits=25 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=119 end_phase=3 seed=0.000027 search=0.000175 cache=0.000031 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 119: visits=25 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=120 end_phase=3 seed=0.000015 search=0.000108 cache=0.000025 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 120: visits=25 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=139 end_phase=3 seed=0.000012 search=0.000067 cache=0.000022 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 139: visits=8 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=140 end_phase=3 seed=0.000010 search=0.000065 cache=0.000022 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 140: visits=8 messages=4
+BRIDGE-READOFF-TIMING subject=83 end_phase=3 seed=0.000014 search=0.000075 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 83: visits=0 messages=4
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#8] [c=¬131 ind=false det=true tag=1 lvl=1 tp=#15]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#7] [c=82 ind=false det=true tag=7 lvl=1 tp=#86]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=78 ind=false det=false tag=5 lvl=1 tp=#60] [c=¬78 ind=false det=true tag=8 lvl=1 tp=#92]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=173 end_phase=3 seed=0.000014 search=0.000592 cache=0.000038 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 173: visits=95 messages=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=235 end_phase=3 seed=0.000019 search=0.000308 cache=0.000045 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 235: visits=115 messages=4
+BRIDGE-READOFF-TIMING subject=9 end_phase=3 seed=0.000026 search=0.000121 cache=0.000015 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 9: visits=0 messages=4
+BRIDGE-READOFF-TIMING subject=27 end_phase=3 seed=0.000026 search=0.000043 cache=0.000008 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 27: visits=0 messages=4
+BRIDGE-READOFF-TIMING subject=103 end_phase=3 seed=0.000021 search=0.000035 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 103: visits=0 messages=4
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#96] [c=29 ind=false det=true tag=4 lvl=2 tp=#98]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=138 end_phase=3 seed=0.000016 search=0.000644 cache=0.000019 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 138: visits=108 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=206 end_phase=3 seed=0.000018 search=0.000370 cache=0.000049 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 206: visits=168 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=207 end_phase=3 seed=0.000015 search=0.000066 cache=0.000024 labels=0.000008
+BRIDGE-KPSET-MESSAGES subject 207: visits=8 messages=3
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#67] [c=29 ind=false det=true tag=3 lvl=2 tp=#69]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=112 end_phase=3 seed=0.000022 search=0.000846 cache=0.000031 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 112: visits=87 messages=5
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#67] [c=29 ind=false det=true tag=3 lvl=2 tp=#69]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=113 end_phase=3 seed=0.000035 search=0.000492 cache=0.000036 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 113: visits=87 messages=5
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#67] [c=29 ind=false det=true tag=3 lvl=2 tp=#69]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=114 end_phase=3 seed=0.000023 search=0.000375 cache=0.000031 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 114: visits=87 messages=5
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#67] [c=29 ind=false det=true tag=3 lvl=2 tp=#69]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=115 end_phase=3 seed=0.000021 search=0.000371 cache=0.000030 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 115: visits=87 messages=5
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#67] [c=29 ind=false det=true tag=3 lvl=2 tp=#69]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=116 end_phase=3 seed=0.000022 search=0.000354 cache=0.000034 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 116: visits=87 messages=5
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#94] [c=29 ind=false det=true tag=3 lvl=2 tp=#96]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=101 end_phase=3 seed=0.000020 search=0.000654 cache=0.000033 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 101: visits=116 messages=7
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#94] [c=29 ind=false det=true tag=3 lvl=2 tp=#96]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=176 end_phase=3 seed=0.000024 search=0.000640 cache=0.000031 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 176: visits=116 messages=7
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#212] [c=29 ind=false det=true tag=3 lvl=2 tp=#214]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=226 end_phase=3 seed=0.000024 search=0.022887 cache=0.000043 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 226: visits=222 messages=9
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#212] [c=29 ind=false det=true tag=3 lvl=2 tp=#214]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=227 end_phase=3 seed=0.000035 search=0.001864 cache=0.000036 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 227: visits=222 messages=9
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#66] [c=¬207 ind=false det=true tag=5 lvl=1 tp=#135]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#185] [c=29 ind=false det=true tag=3 lvl=2 tp=#187]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#66] [c=¬207 ind=false det=true tag=5 lvl=1 tp=#207]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=131 end_phase=3 seed=0.000036 search=0.018718 cache=0.000055 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 131: visits=170 messages=8
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#226] [c=29 ind=false det=true tag=3 lvl=2 tp=#228]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=132 end_phase=3 seed=0.000035 search=0.014952 cache=0.000057 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 132: visits=417 messages=8
+BRIDGE-READOFF-TIMING subject=162 end_phase=3 seed=0.000025 search=0.000005 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 162: visits=0 messages=3
+BRIDGE-READOFF-TIMING subject=163 end_phase=3 seed=0.000005 search=0.000002 cache=0.000015 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 163: visits=0 messages=3
+BRIDGE-READOFF-TIMING subject=164 end_phase=3 seed=0.000004 search=0.000002 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 164: visits=0 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=222 end_phase=3 seed=0.000005 search=0.000066 cache=0.000019 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 222: visits=7 messages=4
+BRIDGE-READOFF-TIMING subject=13 end_phase=3 seed=0.000010 search=0.000018 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 13: visits=0 messages=3
+BRIDGE-PREPARE round 0 subject 65/94 deferred=0 permanent=0
+BRIDGE-PREPARE-TIMING subjects=65 elapsed=0.344377 renew=0.004841 completion=0.293912 analysis=0.045347
+BRIDGE-READOFF-TIMING subject=15 end_phase=3 seed=0.000006 search=0.000013 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 15: visits=0 messages=3
+BRIDGE-READOFF-TIMING subject=19 end_phase=3 seed=0.000007 search=0.000014 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 19: visits=0 messages=3
+BRIDGE-READOFF-TIMING subject=23 end_phase=3 seed=0.000006 search=0.000013 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 23: visits=0 messages=3
+BRIDGE-READOFF-TIMING subject=91 end_phase=3 seed=0.000006 search=0.000012 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 91: visits=0 messages=3
+BRIDGE-READOFF-TIMING subject=141 end_phase=3 seed=0.000006 search=0.000012 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 141: visits=0 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=37 end_phase=3 seed=0.000010 search=0.000136 cache=0.000022 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 37: visits=24 messages=3
+BRIDGE-READOFF-TIMING subject=68 end_phase=3 seed=0.000011 search=0.000028 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 68: visits=0 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=74 end_phase=3 seed=0.000010 search=0.000119 cache=0.000028 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 74: visits=28 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=79 end_phase=3 seed=0.000010 search=0.000063 cache=0.000018 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 79: visits=8 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=85 end_phase=3 seed=0.000011 search=0.000215 cache=0.000038 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 85: visits=69 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=118 end_phase=3 seed=0.000017 search=0.000110 cache=0.000024 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 118: visits=25 messages=3
+DDB-CLOSURE [c=17 ind=false det=true tag=3 lvl=1 tp=#26] [c=¬17 ind=false det=true tag=3 lvl=1 tp=#27]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=125 end_phase=3 seed=0.000010 search=0.000229 cache=0.000045 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 125: visits=8 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=155 end_phase=3 seed=0.000011 search=0.000139 cache=0.000025 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 155: visits=40 messages=3
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#104] [c=29 ind=false det=true tag=6 lvl=2 tp=#122]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=183 end_phase=3 seed=0.000017 search=0.020079 cache=0.000124 labels=0.000003
+BRIDGE-KPSET-MESSAGES subject 183: visits=284 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=196 end_phase=3 seed=0.000035 search=0.000089 cache=0.000024 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 196: visits=8 messages=3
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#54] [c=29 ind=false det=true tag=3 lvl=2 tp=#56]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=197 end_phase=3 seed=0.000012 search=0.000340 cache=0.000033 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 197: visits=62 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=198 end_phase=3 seed=0.000010 search=0.000087 cache=0.000025 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 198: visits=8 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=204 end_phase=3 seed=0.000012 search=0.000318 cache=0.000051 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 204: visits=108 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=211 end_phase=3 seed=0.000013 search=0.000073 cache=0.000024 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 211: visits=8 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=219 end_phase=3 seed=0.000008 search=0.000018 cache=0.000021 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 219: visits=2 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=220 end_phase=3 seed=0.000004 search=0.000015 cache=0.000015 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 220: visits=2 messages=5
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#67] [c=29 ind=false det=true tag=3 lvl=2 tp=#69]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=35 end_phase=3 seed=0.000018 search=0.000397 cache=0.000026 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 35: visits=87 messages=4
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#94] [c=29 ind=false det=true tag=3 lvl=2 tp=#96]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=124 end_phase=3 seed=0.000019 search=0.000650 cache=0.000032 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 124: visits=116 messages=4
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#182] [c=29 ind=false det=true tag=5 lvl=2 tp=#184]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=133 end_phase=3 seed=0.000022 search=0.001205 cache=0.000025 labels=0.000002
+BRIDGE-KPSET-MESSAGES subject 133: visits=169 messages=4
+BRIDGE-READOFF-TIMING subject=17 end_phase=3 seed=0.000016 search=0.000004 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 17: visits=0 messages=3
+BRIDGE-READOFF-TIMING subject=25 end_phase=3 seed=0.000004 search=0.000002 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 25: visits=0 messages=3
+BRIDGE-READOFF-TIMING subject=72 end_phase=3 seed=0.000004 search=0.000017 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 72: visits=0 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-READOFF-TIMING subject=121 end_phase=3 seed=0.000005 search=0.000065 cache=0.000022 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 121: visits=8 messages=3
+BRIDGE-READOFF-TIMING subject=151 end_phase=3 seed=0.000007 search=0.000021 cache=0.000008 labels=0.000001
+BRIDGE-KPSET-MESSAGES subject 151: visits=0 messages=3
+BRIDGE-PREPARE round 0 subject 94/94 deferred=0 permanent=0
+BRIDGE-PREPARE-TIMING subjects=94 elapsed=0.373064 renew=0.005848 completion=0.320044 analysis=0.046801
+BRIDGE-SAT-PHASE prepare-total: 0.37s (94 subjects)
+BRIDGE-SAT-PHASE kpset-barrier: 0.00s
+BRIDGE-KPSET-DERIVED subject 1: 9 candidates, no satisfiability job
+BRIDGE-PAIR-START C10-24Chain v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C10-24Chain v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY C10-24Chain v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START C10-24Chain v Hydrocarbon
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=1 tp=#19] [c=¬29 ind=false det=true tag=1 lvl=1 tp=#26]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C10-24Chain v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY C10-24Chain v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START C10-24Chain v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C10-24Chain v NucleicAcid: false
+BRIDGE-KPSET-VERIFY C10-24Chain v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START C10-24Chain v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C10-24Chain v FattyAcid: false
+BRIDGE-PAIR-START C10-24Chain v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C10-24Chain v InorganicMolecularEntity: false
+BRIDGE-VERIFY round 0 subject 1/94 deferred=0 permanent=0
+BRIDGE-KPSET-DERIVED subject 135: 9 candidates, no satisfiability job
+BRIDGE-PAIR-START C5Chain v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C5Chain v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY C5Chain v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START C5Chain v Hydrocarbon
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=1 tp=#19] [c=¬29 ind=false det=true tag=1 lvl=1 tp=#26]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C5Chain v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY C5Chain v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START C5Chain v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C5Chain v NucleicAcid: false
+BRIDGE-KPSET-VERIFY C5Chain v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START C5Chain v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C5Chain v FattyAcid: false
+BRIDGE-PAIR-START C5Chain v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C5Chain v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 136: 9 candidates, no satisfiability job
+BRIDGE-PAIR-START C6Chain v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C6Chain v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY C6Chain v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START C6Chain v Hydrocarbon
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=1 tp=#19] [c=¬29 ind=false det=true tag=1 lvl=1 tp=#26]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C6Chain v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY C6Chain v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START C6Chain v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C6Chain v NucleicAcid: false
+BRIDGE-KPSET-VERIFY C6Chain v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START C6Chain v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C6Chain v FattyAcid: false
+BRIDGE-PAIR-START C6Chain v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END C6Chain v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 33: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START Deoxyribose v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Deoxyribose v EntireMolecularEntity: false
+BRIDGE-PAIR-START Deoxyribose v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Deoxyribose v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP Deoxyribose v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 109: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START Ribose v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Ribose v EntireMolecularEntity: false
+BRIDGE-PAIR-START Ribose v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Ribose v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP Ribose v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 185: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START Glucose v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Glucose v EntireMolecularEntity: false
+BRIDGE-PAIR-START Glucose v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Glucose v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP Glucose v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 150: 9 candidates, no satisfiability job
+BRIDGE-PAIR-START ChromosomalDNA v EntireMolecularEntity
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#38] [c=82 ind=false det=true tag=3 lvl=1 tp=#161]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=78 ind=false det=false tag=1 lvl=1 tp=#138] [c=¬78 ind=false det=true tag=4 lvl=1 tp=#166]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#93] [c=¬207 ind=false det=true tag=6 lvl=1 tp=#193]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#235] [c=¬131 ind=false det=true tag=7 lvl=2 tp=#242]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#234] [c=82 ind=false det=true tag=9 lvl=2 tp=#511]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=78 ind=false det=false tag=8 lvl=2 tp=#488] [c=¬78 ind=false det=true tag=10 lvl=2 tp=#516]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ChromosomalDNA v EntireMolecularEntity: false
+BRIDGE-PAIR-START ChromosomalDNA v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#82] [c=29 ind=false det=true tag=4 lvl=2 tp=#99]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#79] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#81]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#145] [c=29 ind=false det=true tag=4 lvl=2 tp=#162]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#145] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#147]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#215] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#288]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#330] [c=¬131 ind=false det=true tag=5 lvl=2 tp=#337]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=¬207 ind=false det=true tag=6 lvl=1 tp=#449] [c=207 ind=false det=true tag=1 lvl=1 tp=#479]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#329] [c=82 ind=false det=true tag=9 lvl=2 tp=#667]
+DDB-LINE branching_level=9
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ChromosomalDNA v Hydrocarbon: false
+BRIDGE-KPSET-SKIP ChromosomalDNA v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-VERIFY ChromosomalDNA v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START ChromosomalDNA v FattyAcid
+DDB-CLOSURE [c=¬207 ind=false det=true tag=4 lvl=1 tp=#89] [c=207 ind=false det=true tag=0 lvl=1 tp=#114]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#311] [c=¬131 ind=false det=true tag=6 lvl=2 tp=#318]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#231] [c=82 ind=false det=true tag=8 lvl=2 tp=#456]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=78 ind=false det=false tag=7 lvl=2 tp=#349] [c=¬78 ind=false det=true tag=9 lvl=2 tp=#461]
+DDB-LINE branching_level=9
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ChromosomalDNA v FattyAcid: false
+BRIDGE-KPSET-SKIP ChromosomalDNA v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 156: 9 candidates, no satisfiability job
+BRIDGE-PAIR-START DNAFragment v EntireMolecularEntity
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#40] [c=82 ind=false det=true tag=3 lvl=1 tp=#161]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=78 ind=false det=false tag=1 lvl=1 tp=#138] [c=¬78 ind=false det=true tag=4 lvl=1 tp=#166]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#93] [c=¬207 ind=false det=true tag=6 lvl=1 tp=#277]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#319] [c=¬131 ind=false det=true tag=7 lvl=2 tp=#326]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#316] [c=82 ind=false det=true tag=9 lvl=2 tp=#541]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=78 ind=false det=false tag=8 lvl=2 tp=#434] [c=¬78 ind=false det=true tag=10 lvl=2 tp=#546]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END DNAFragment v EntireMolecularEntity: false
+BRIDGE-PAIR-START DNAFragment v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#82] [c=29 ind=false det=true tag=4 lvl=2 tp=#99]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#79] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#81]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#145] [c=29 ind=false det=true tag=4 lvl=2 tp=#162]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#145] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#147]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#215] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#374]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#416] [c=¬131 ind=false det=true tag=5 lvl=2 tp=#423]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=207 ind=false det=true tag=1 lvl=1 tp=#321] [c=¬207 ind=false det=true tag=6 lvl=1 tp=#535]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#415] [c=82 ind=false det=true tag=9 lvl=2 tp=#698]
+DDB-LINE branching_level=9
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END DNAFragment v Hydrocarbon: false
+BRIDGE-KPSET-SKIP DNAFragment v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-VERIFY DNAFragment v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START DNAFragment v FattyAcid
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#98] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#156]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=2 tp=#204] [c=¬131 ind=false det=true tag=5 lvl=2 tp=#211]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=2 tp=#201] [c=82 ind=false det=true tag=7 lvl=2 tp=#426]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=78 ind=false det=false tag=6 lvl=2 tp=#319] [c=¬78 ind=false det=true tag=8 lvl=2 tp=#432]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END DNAFragment v FattyAcid: false
+BRIDGE-KPSET-SKIP DNAFragment v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 236: 9 candidates, no satisfiability job
+BRIDGE-PAIR-START mRNAMolecule v EntireMolecularEntity
+DDB-CLOSURE [c=142 ind=false det=true tag=1 lvl=1 tp=#143] [c=¬142 ind=false det=true tag=1 lvl=1 tp=#144]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#38] [c=82 ind=false det=true tag=4 lvl=1 tp=#185]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=78 ind=false det=false tag=2 lvl=1 tp=#162] [c=¬78 ind=false det=true tag=5 lvl=1 tp=#190]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END mRNAMolecule v EntireMolecularEntity: false
+BRIDGE-PAIR-START mRNAMolecule v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#75] [c=29 ind=false det=true tag=4 lvl=2 tp=#92]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#72] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#74]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#138] [c=29 ind=false det=true tag=4 lvl=2 tp=#155]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#138] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#140]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬207 ind=false det=true tag=4 lvl=1 tp=#333] [c=207 ind=false det=true tag=1 lvl=1 tp=#363]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END mRNAMolecule v Hydrocarbon: false
+BRIDGE-KPSET-SKIP mRNAMolecule v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-VERIFY mRNAMolecule v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START mRNAMolecule v FattyAcid
+DDB-CLOSURE [c=¬207 ind=false det=true tag=4 lvl=1 tp=#82] [c=207 ind=false det=true tag=0 lvl=1 tp=#107]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END mRNAMolecule v FattyAcid: false
+BRIDGE-KPSET-SKIP mRNAMolecule v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 237: 9 candidates, no satisfiability job
+BRIDGE-PAIR-START rRNAMolecule v EntireMolecularEntity
+DDB-CLOSURE [c=142 ind=false det=true tag=1 lvl=1 tp=#143] [c=¬142 ind=false det=true tag=1 lvl=1 tp=#144]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#36] [c=82 ind=false det=true tag=4 lvl=1 tp=#185]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=78 ind=false det=false tag=2 lvl=1 tp=#162] [c=¬78 ind=false det=true tag=5 lvl=1 tp=#190]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END rRNAMolecule v EntireMolecularEntity: false
+BRIDGE-PAIR-START rRNAMolecule v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#75] [c=29 ind=false det=true tag=4 lvl=2 tp=#92]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#72] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#74]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#138] [c=29 ind=false det=true tag=4 lvl=2 tp=#155]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#138] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#140]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=207 ind=false det=true tag=1 lvl=1 tp=#325] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#419]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END rRNAMolecule v Hydrocarbon: false
+BRIDGE-KPSET-SKIP rRNAMolecule v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-VERIFY rRNAMolecule v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START rRNAMolecule v FattyAcid
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#91] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#149]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END rRNAMolecule v FattyAcid: false
+BRIDGE-KPSET-SKIP rRNAMolecule v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 238: 9 candidates, no satisfiability job
+BRIDGE-PAIR-START tRNAMolecule v EntireMolecularEntity
+DDB-CLOSURE [c=142 ind=false det=true tag=1 lvl=1 tp=#143] [c=¬142 ind=false det=true tag=1 lvl=1 tp=#144]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#36] [c=82 ind=false det=true tag=4 lvl=1 tp=#185]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=78 ind=false det=false tag=2 lvl=1 tp=#162] [c=¬78 ind=false det=true tag=5 lvl=1 tp=#190]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END tRNAMolecule v EntireMolecularEntity: false
+BRIDGE-PAIR-START tRNAMolecule v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#75] [c=29 ind=false det=true tag=4 lvl=2 tp=#92]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#72] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#74]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#138] [c=29 ind=false det=true tag=4 lvl=2 tp=#155]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#138] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#140]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=207 ind=false det=true tag=1 lvl=1 tp=#325] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#419]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END tRNAMolecule v Hydrocarbon: false
+BRIDGE-KPSET-SKIP tRNAMolecule v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-VERIFY tRNAMolecule v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START tRNAMolecule v FattyAcid
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#91] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#149]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END tRNAMolecule v FattyAcid: false
+BRIDGE-KPSET-SKIP tRNAMolecule v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 3: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START AminoGroup v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoGroup v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY AminoGroup v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START AminoGroup v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoGroup v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY AminoGroup v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START AminoGroup v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoGroup v NucleicAcid: false
+BRIDGE-KPSET-VERIFY AminoGroup v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START AminoGroup v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoGroup v FattyAcid: false
+BRIDGE-PAIR-START AminoGroup v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoGroup v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 5: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START CarboxyGroup v EntireRNAMolecule
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#19] [c=29 ind=false det=true tag=3 lvl=1 tp=#43]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarboxyGroup v EntireRNAMolecule: false
+BRIDGE-PAIR-START CarboxyGroup v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#21] [c=29 ind=false det=true tag=3 lvl=1 tp=#48]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=1 tp=#17] [c=¬29 ind=false det=true tag=1 lvl=1 tp=#28]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=1 tp=#19] [c=¬23 ind=false det=true tag=1 lvl=1 tp=#56]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=1 lvl=1 tp=#68] [c=29 ind=false det=true tag=3 lvl=1 tp=#88]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarboxyGroup v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY CarboxyGroup v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START CarboxyGroup v NucleicAcid
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#21] [c=29 ind=false det=true tag=3 lvl=1 tp=#45]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarboxyGroup v NucleicAcid: false
+BRIDGE-KPSET-VERIFY CarboxyGroup v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START CarboxyGroup v FattyAcid
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#21] [c=29 ind=false det=true tag=3 lvl=1 tp=#46]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarboxyGroup v FattyAcid: false
+BRIDGE-PAIR-START CarboxyGroup v InorganicMolecularEntity
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#24] [c=29 ind=false det=true tag=1 lvl=1 tp=#34]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarboxyGroup v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 60: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START HydroxyGroup v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END HydroxyGroup v EntireRNAMolecule: false
+BRIDGE-PAIR-START HydroxyGroup v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END HydroxyGroup v Hydrocarbon: false
+BRIDGE-PAIR-START HydroxyGroup v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END HydroxyGroup v NucleicAcid: false
+BRIDGE-PAIR-START HydroxyGroup v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END HydroxyGroup v FattyAcid: false
+BRIDGE-PAIR-START HydroxyGroup v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END HydroxyGroup v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 7: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START CarbonHydrogenSubstructure v EntireRNAMolecule
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#19] [c=29 ind=false det=true tag=3 lvl=1 tp=#39]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenSubstructure v EntireRNAMolecule: false
+BRIDGE-PAIR-START CarbonHydrogenSubstructure v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#19] [c=29 ind=false det=true tag=3 lvl=1 tp=#43]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=1 tp=#17] [c=¬29 ind=false det=true tag=1 lvl=1 tp=#28]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=1 tp=#19] [c=¬23 ind=false det=true tag=1 lvl=1 tp=#48]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#19] [c=29 ind=false det=true tag=3 lvl=1 tp=#77]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=¬23 ind=false det=true tag=1 lvl=1 tp=#59] [c=¬29 ind=false det=true tag=1 lvl=1 tp=#59] [c=298 ind=false det=true tag=1 lvl=1 tp=#61]
+DDB-LINE branching_level=1
+BRIDGE-PAIR-END CarbonHydrogenSubstructure v Hydrocarbon: true
+BRIDGE-PAIR-START CarbonHydrogenSubstructure v NucleicAcid
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#19] [c=29 ind=false det=true tag=3 lvl=1 tp=#40]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenSubstructure v NucleicAcid: false
+BRIDGE-PAIR-START CarbonHydrogenSubstructure v FattyAcid
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#19] [c=29 ind=false det=true tag=3 lvl=1 tp=#41]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenSubstructure v FattyAcid: false
+BRIDGE-PAIR-START CarbonHydrogenSubstructure v InorganicMolecularEntity
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=1 tp=#24] [c=29 ind=false det=true tag=1 lvl=1 tp=#31]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenSubstructure v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 134: 9 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP CarbonChain v C10-24Chain: propagated-false
+BRIDGE-KPSET-SKIP CarbonChain v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP CarbonChain v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP CarbonChain v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP CarbonChain v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP CarbonChain v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 145: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START CarbonHydrogenHydroxySubstructure v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenHydroxySubstructure v EntireRNAMolecule: false
+BRIDGE-PAIR-START CarbonHydrogenHydroxySubstructure v Hydrocarbon
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=1 tp=#20] [c=¬29 ind=false det=true tag=1 lvl=1 tp=#32]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=1 tp=#22] [c=¬23 ind=false det=true tag=1 lvl=1 tp=#53]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenHydroxySubstructure v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY CarbonHydrogenHydroxySubstructure v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START CarbonHydrogenHydroxySubstructure v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenHydroxySubstructure v NucleicAcid: false
+BRIDGE-KPSET-VERIFY CarbonHydrogenHydroxySubstructure v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START CarbonHydrogenHydroxySubstructure v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenHydroxySubstructure v FattyAcid: false
+BRIDGE-PAIR-START CarbonHydrogenHydroxySubstructure v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonHydrogenHydroxySubstructure v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 51: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START AliphaticMediumChainStructure v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AliphaticMediumChainStructure v EntireMolecularEntity: false
+BRIDGE-PAIR-START AliphaticMediumChainStructure v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AliphaticMediumChainStructure v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY AliphaticMediumChainStructure v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START AliphaticMediumChainStructure v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AliphaticMediumChainStructure v NucleicAcid: false
+BRIDGE-KPSET-VERIFY AliphaticMediumChainStructure v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START AliphaticMediumChainStructure v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AliphaticMediumChainStructure v FattyAcid: false
+BRIDGE-PAIR-START AliphaticMediumChainStructure v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AliphaticMediumChainStructure v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 218: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START Polynucleotide v EntireMolecularEntity
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#18] [c=82 ind=false det=true tag=5 lvl=1 tp=#61]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=78 ind=false det=false tag=2 lvl=1 tp=#35] [c=¬78 ind=false det=true tag=6 lvl=1 tp=#66]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Polynucleotide v EntireMolecularEntity: false
+BRIDGE-PAIR-START Polynucleotide v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Polynucleotide v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY Polynucleotide v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START Polynucleotide v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Polynucleotide v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY Polynucleotide v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START Polynucleotide v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Polynucleotide v FattyAcid: false
+BRIDGE-PAIR-START Polynucleotide v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Polynucleotide v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 55: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START Gene v EntireRNAMolecule
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#17] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#28]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#15] [c=82 ind=false det=true tag=5 lvl=1 tp=#89]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=78 ind=false det=false tag=4 lvl=1 tp=#71] [c=¬78 ind=false det=true tag=6 lvl=1 tp=#95]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Gene v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY Gene v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START Gene v Hydrocarbon
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#17] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#31]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#15] [c=82 ind=false det=true tag=5 lvl=1 tp=#92]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=78 ind=false det=false tag=4 lvl=1 tp=#74] [c=¬78 ind=false det=true tag=6 lvl=1 tp=#99]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Gene v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY Gene v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START Gene v FattyAcid
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#17] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#30]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#15] [c=82 ind=false det=true tag=5 lvl=1 tp=#90]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=78 ind=false det=false tag=4 lvl=1 tp=#72] [c=¬78 ind=false det=true tag=6 lvl=1 tp=#95]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Gene v FattyAcid: false
+BRIDGE-PAIR-START Gene v InorganicMolecularEntity
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#22] [c=¬131 ind=false det=true tag=1 lvl=1 tp=#30]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#20] [c=82 ind=false det=true tag=4 lvl=1 tp=#99]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=78 ind=false det=false tag=2 lvl=1 tp=#73] [c=¬78 ind=false det=true tag=5 lvl=1 tp=#104]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Gene v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 184: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START GeneRegion v EntireRNAMolecule
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#17] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#28]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#15] [c=82 ind=false det=true tag=6 lvl=1 tp=#93]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=78 ind=false det=false tag=4 lvl=1 tp=#67] [c=¬78 ind=false det=true tag=7 lvl=1 tp=#100]
+DDB-LINE branching_level=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END GeneRegion v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY GeneRegion v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START GeneRegion v Hydrocarbon
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#17] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#32]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#15] [c=82 ind=false det=true tag=6 lvl=1 tp=#96]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=78 ind=false det=false tag=4 lvl=1 tp=#70] [c=¬78 ind=false det=true tag=7 lvl=1 tp=#101]
+DDB-LINE branching_level=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END GeneRegion v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY GeneRegion v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START GeneRegion v FattyAcid
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#17] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#29]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#15] [c=82 ind=false det=true tag=6 lvl=1 tp=#94]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=78 ind=false det=false tag=4 lvl=1 tp=#68] [c=¬78 ind=false det=true tag=7 lvl=1 tp=#101]
+DDB-LINE branching_level=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END GeneRegion v FattyAcid: false
+BRIDGE-PAIR-START GeneRegion v InorganicMolecularEntity
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#22] [c=¬131 ind=false det=true tag=1 lvl=1 tp=#29]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#20] [c=82 ind=false det=true tag=4 lvl=1 tp=#95]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=78 ind=false det=false tag=2 lvl=1 tp=#69] [c=¬78 ind=false det=true tag=5 lvl=1 tp=#102]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END GeneRegion v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 175: 11 candidates, no satisfiability job
+BRIDGE-PAIR-START EntireOligopeptideMolecule v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntireOligopeptideMolecule v EntireMolecularEntity: false
+BRIDGE-PAIR-START EntireOligopeptideMolecule v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntireOligopeptideMolecule v EntireRNAMolecule: false
+BRIDGE-PAIR-START EntireOligopeptideMolecule v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#68] [c=29 ind=false det=true tag=5 lvl=2 tp=#85]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#65] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#67]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#130] [c=29 ind=false det=true tag=5 lvl=2 tp=#147]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#130] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#132]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬207 ind=false det=true tag=10 lvl=1 tp=#293] [c=207 ind=false det=true tag=1 lvl=1 tp=#337]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntireOligopeptideMolecule v Hydrocarbon: false
+BRIDGE-PAIR-START EntireOligopeptideMolecule v BioMolecularSequence
+DDB-CLOSURE [c=¬143 ind=true det=true tag=0 lvl=0 tp=#0] [c=143 ind=false det=true tag=2 lvl=0 tp=#31]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=273 ind=false det=true tag=0 lvl=0 tp=#1] [c=274 ind=false det=true tag=0 lvl=0 tp=#1] [c=¬275 ind=false det=false tag=2 lvl=0 tp=#29]
+DDB-LINE branching_level=2
+BRIDGE-PAIR-END EntireOligopeptideMolecule v BioMolecularSequence: true
+BRIDGE-KPSET-VERIFY EntireOligopeptideMolecule v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START EntireOligopeptideMolecule v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntireOligopeptideMolecule v NucleicAcid: false
+BRIDGE-KPSET-VERIFY EntireOligopeptideMolecule v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START EntireOligopeptideMolecule v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntireOligopeptideMolecule v FattyAcid: false
+BRIDGE-KPSET-SKIP EntireOligopeptideMolecule v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-PAIR-START EntireOligopeptideMolecule v OligoOrPolymer
+DDB-CLOSURE [c=95 ind=false det=false tag=7 lvl=1 tp=#106] [c=¬95 ind=false det=true tag=8 lvl=1 tp=#122]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=¬207 ind=false det=true tag=9 lvl=1 tp=#138] [c=207 ind=false det=true tag=8 lvl=1 tp=#181]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=84 ind=false det=true tag=8 lvl=2 tp=#132] [c=¬84 ind=false det=true tag=10 lvl=2 tp=#225]
+DDB-LINE branching_level=10
+DDB-CLOSURE [c=¬29 ind=false det=true tag=8 lvl=3 tp=#244] [c=29 ind=false det=true tag=13 lvl=3 tp=#264]
+DDB-LINE branching_level=13
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntireOligopeptideMolecule v OligoOrPolymer: false
+BRIDGE-KPSET-DERIVED subject 99: 11 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP AminoAcidSequence v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP AminoAcidSequence v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP AminoAcidSequence v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP AminoAcidSequence v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-SKIP AminoAcidSequence v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP AminoAcidSequence v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP AminoAcidSequence v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-SKIP AminoAcidSequence v OligoOrPolymer: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 161: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Pentose v Deoxyribose: propagated-false
+BRIDGE-KPSET-SKIP Pentose v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Pentose v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP Pentose v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 186: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Hexose v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Hexose v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP Hexose v Glucose: propagated-false
+BRIDGE-KPSET-SKIP Hexose v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 228: 6 candidates, no satisfiability job
+BRIDGE-PAIR-START ProteinSubunit v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ProteinSubunit v EntireMolecularEntity: false
+BRIDGE-PAIR-START ProteinSubunit v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ProteinSubunit v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP ProteinSubunit v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 31: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP EntireDNAMolecule v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireDNAMolecule v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireDNAMolecule v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-SKIP EntireDNAMolecule v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireDNAMolecule v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 41: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START DNARegion v Hydrocarbon
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#44]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#85] [c=29 ind=false det=true tag=4 lvl=2 tp=#102]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#82] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#84]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#142]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#156] [c=29 ind=false det=true tag=4 lvl=2 tp=#173]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#156] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#158]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#277]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#227] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#393]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END DNARegion v Hydrocarbon: false
+BRIDGE-KPSET-SKIP DNARegion v BioMolecularSequence: deterministic-subsumer
+BRIDGE-PAIR-START DNARegion v FattyAcid
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#41]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#95] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#159]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#27] [c=82 ind=false det=true tag=6 lvl=1 tp=#316]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=78 ind=false det=false tag=5 lvl=1 tp=#209] [c=¬78 ind=false det=true tag=7 lvl=1 tp=#321]
+DDB-LINE branching_level=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END DNARegion v FattyAcid: false
+BRIDGE-KPSET-SKIP DNARegion v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 47: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START RNARegion v EntireRNAMolecule
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#43]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#83] [c=29 ind=false det=true tag=4 lvl=2 tp=#100]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=¬207 ind=false det=true tag=6 lvl=1 tp=#142] [c=207 ind=false det=true tag=0 lvl=1 tp=#167]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#27] [c=82 ind=false det=true tag=9 lvl=1 tp=#396]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=78 ind=false det=false tag=8 lvl=1 tp=#278] [c=¬78 ind=false det=true tag=10 lvl=1 tp=#401]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END RNARegion v EntireRNAMolecule: false
+BRIDGE-PAIR-START RNARegion v Hydrocarbon
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#44]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#84] [c=29 ind=false det=true tag=4 lvl=2 tp=#101]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#81] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#83]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#140]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#154] [c=29 ind=false det=true tag=4 lvl=2 tp=#171]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#154] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#156]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#285]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#27] [c=82 ind=false det=true tag=5 lvl=1 tp=#556]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END RNARegion v Hydrocarbon: false
+BRIDGE-KPSET-SKIP RNARegion v BioMolecularSequence: deterministic-subsumer
+BRIDGE-PAIR-START RNARegion v FattyAcid
+DDB-CLOSURE [c=131 ind=false det=true tag=0 lvl=1 tp=#28] [c=¬131 ind=false det=true tag=2 lvl=1 tp=#41]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=207 ind=false det=true tag=0 lvl=1 tp=#94] [c=¬207 ind=false det=true tag=4 lvl=1 tp=#158]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=¬82 ind=false det=true tag=0 lvl=1 tp=#27] [c=82 ind=false det=true tag=6 lvl=1 tp=#326]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=78 ind=false det=false tag=5 lvl=1 tp=#208] [c=¬78 ind=false det=true tag=7 lvl=1 tp=#331]
+DDB-LINE branching_level=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END RNARegion v FattyAcid: false
+BRIDGE-KPSET-SKIP RNARegion v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 107: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP EntireRNAMolecule v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireRNAMolecule v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireRNAMolecule v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-SKIP EntireRNAMolecule v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireRNAMolecule v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 221: 3 candidates, no satisfiability job
+BRIDGE-PAIR-START PortionOfHomogenousGas v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHomogenousGas v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 223: 3 candidates, no satisfiability job
+BRIDGE-PAIR-START PortionOfHomogenousLiquid v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHomogenousLiquid v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 224: 3 candidates, no satisfiability job
+BRIDGE-PAIR-START PortionOfHomogenousSolid v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHomogenousSolid v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 126: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP FunctionalGroup v HydroxyGroup: propagated-false
+BRIDGE-KPSET-SKIP FunctionalGroup v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP FunctionalGroup v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP FunctionalGroup v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP FunctionalGroup v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP FunctionalGroup v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 144: 9 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP StructuralGroup v C10-24Chain: propagated-false
+BRIDGE-KPSET-SKIP StructuralGroup v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP StructuralGroup v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP StructuralGroup v CarbonChain: propagated-false
+BRIDGE-KPSET-SKIP StructuralGroup v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP StructuralGroup v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP StructuralGroup v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 117: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP AliphaticChain v AliphaticMediumChainStructure: propagated-false
+BRIDGE-KPSET-SKIP AliphaticChain v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP AliphaticChain v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP AliphaticChain v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP AliphaticChain v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP AliphaticChain v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 119: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START AromaticHydrocarbon v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AromaticHydrocarbon v EntireMolecularEntity: false
+BRIDGE-PAIR-START AromaticHydrocarbon v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AromaticHydrocarbon v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY AromaticHydrocarbon v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START AromaticHydrocarbon v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AromaticHydrocarbon v NucleicAcid: false
+BRIDGE-KPSET-VERIFY AromaticHydrocarbon v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START AromaticHydrocarbon v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AromaticHydrocarbon v FattyAcid: false
+BRIDGE-PAIR-START AromaticHydrocarbon v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AromaticHydrocarbon v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 120: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START CyclicAliphatic v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CyclicAliphatic v EntireMolecularEntity: false
+BRIDGE-PAIR-START CyclicAliphatic v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CyclicAliphatic v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY CyclicAliphatic v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START CyclicAliphatic v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CyclicAliphatic v NucleicAcid: false
+BRIDGE-KPSET-VERIFY CyclicAliphatic v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START CyclicAliphatic v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CyclicAliphatic v FattyAcid: false
+BRIDGE-PAIR-START CyclicAliphatic v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CyclicAliphatic v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 139: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START Oligosaccharide v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Oligosaccharide v EntireMolecularEntity: false
+BRIDGE-PAIR-START Oligosaccharide v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Oligosaccharide v EntireRNAMolecule: false
+BRIDGE-PAIR-START Oligosaccharide v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Oligosaccharide v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 140: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START Polysaccharide v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Polysaccharide v EntireMolecularEntity: false
+BRIDGE-PAIR-START Polysaccharide v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Polysaccharide v EntireRNAMolecule: false
+BRIDGE-PAIR-START Polysaccharide v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Polysaccharide v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 83: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP EntireNucleicAcidMolecule v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireNucleicAcidMolecule v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireNucleicAcidMolecule v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireNucleicAcidMolecule v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireNucleicAcidMolecule v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireNucleicAcidMolecule v Polynucleotide: propagated-false
+BRIDGE-KPSET-DERIVED subject 173: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP NucleicAcidRegion v Gene: propagated-false
+BRIDGE-KPSET-SKIP NucleicAcidRegion v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP NucleicAcidRegion v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP NucleicAcidRegion v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP NucleicAcidRegion v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 235: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START WaterMolecule v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END WaterMolecule v EntireMolecularEntity: false
+BRIDGE-PAIR-START WaterMolecule v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END WaterMolecule v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY WaterMolecule v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START WaterMolecule v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END WaterMolecule v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY WaterMolecule v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START WaterMolecule v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END WaterMolecule v NucleicAcid: false
+BRIDGE-KPSET-VERIFY WaterMolecule v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START WaterMolecule v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END WaterMolecule v FattyAcid: false
+BRIDGE-KPSET-DERIVED subject 9: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START AminoAcidMonomer v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoAcidMonomer v EntireMolecularEntity: false
+BRIDGE-PAIR-START AminoAcidMonomer v Monomer
+DDB-CLOSURE [c=84 ind=false det=true tag=0 lvl=1 tp=#19] [c=¬84 ind=false det=true tag=2 lvl=1 tp=#29]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#77] [c=29 ind=false det=true tag=5 lvl=2 tp=#97]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoAcidMonomer v Monomer: false
+BRIDGE-PAIR-START AminoAcidMonomer v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoAcidMonomer v EntireRNAMolecule: false
+BRIDGE-PAIR-START AminoAcidMonomer v Hydrocarbon
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#69] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#71]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#122] [c=29 ind=false det=true tag=5 lvl=2 tp=#139]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#122] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#124]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoAcidMonomer v Hydrocarbon: false
+BRIDGE-PAIR-START AminoAcidMonomer v NucleicAcid
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#92] [c=29 ind=false det=true tag=6 lvl=2 tp=#110]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoAcidMonomer v NucleicAcid: false
+BRIDGE-PAIR-START AminoAcidMonomer v FattyAcid
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#90] [c=29 ind=false det=true tag=6 lvl=2 tp=#110]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END AminoAcidMonomer v FattyAcid: false
+BRIDGE-KPSET-DERIVED subject 27: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START Deoxyribonucleotide v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Deoxyribonucleotide v EntireMolecularEntity: false
+BRIDGE-PAIR-START Deoxyribonucleotide v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Deoxyribonucleotide v EntireRNAMolecule: false
+BRIDGE-PAIR-START Deoxyribonucleotide v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#77] [c=29 ind=false det=true tag=4 lvl=2 tp=#94]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#74] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#76]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#140] [c=29 ind=false det=true tag=4 lvl=2 tp=#157]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#140] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#142]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Deoxyribonucleotide v Hydrocarbon: false
+BRIDGE-PAIR-START Deoxyribonucleotide v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Deoxyribonucleotide v NucleicAcid: false
+BRIDGE-PAIR-START Deoxyribonucleotide v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Deoxyribonucleotide v FattyAcid: false
+BRIDGE-KPSET-SKIP Deoxyribonucleotide v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 103: 8 candidates, no satisfiability job
+BRIDGE-PAIR-START Ribonucleotide v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Ribonucleotide v EntireMolecularEntity: false
+BRIDGE-PAIR-START Ribonucleotide v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Ribonucleotide v EntireRNAMolecule: false
+BRIDGE-PAIR-START Ribonucleotide v Hydrocarbon
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#77] [c=29 ind=false det=true tag=4 lvl=2 tp=#94]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#74] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#76]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#140] [c=29 ind=false det=true tag=4 lvl=2 tp=#157]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#140] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#142]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=17 ind=false det=true tag=3 lvl=2 tp=#213] [c=¬17 ind=false det=true tag=4 lvl=2 tp=#223]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Ribonucleotide v Hydrocarbon: false
+BRIDGE-PAIR-START Ribonucleotide v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Ribonucleotide v NucleicAcid: false
+BRIDGE-PAIR-START Ribonucleotide v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Ribonucleotide v FattyAcid: false
+BRIDGE-KPSET-SKIP Ribonucleotide v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 138: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Monosaccharide v Deoxyribose: propagated-false
+BRIDGE-KPSET-SKIP Monosaccharide v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Monosaccharide v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP Monosaccharide v Pentose: propagated-false
+BRIDGE-KPSET-SKIP Monosaccharide v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 206: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START NonSteroidLipid v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END NonSteroidLipid v EntireMolecularEntity: false
+BRIDGE-PAIR-START NonSteroidLipid v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END NonSteroidLipid v EntireRNAMolecule: false
+BRIDGE-PAIR-START NonSteroidLipid v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END NonSteroidLipid v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 207: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START Steroid v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Steroid v EntireMolecularEntity: false
+BRIDGE-PAIR-START Steroid v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Steroid v EntireRNAMolecule: false
+BRIDGE-PAIR-START Steroid v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Steroid v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 112: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START Adenine v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Adenine v EntireMolecularEntity: false
+BRIDGE-PAIR-START Adenine v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Adenine v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP Adenine v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 113: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START Cytosine v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Cytosine v EntireMolecularEntity: false
+BRIDGE-PAIR-START Cytosine v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Cytosine v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP Cytosine v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 114: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START Guanine v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Guanine v EntireMolecularEntity: false
+BRIDGE-PAIR-START Guanine v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Guanine v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP Guanine v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 115: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START Thymine v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Thymine v EntireMolecularEntity: false
+BRIDGE-PAIR-START Thymine v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Thymine v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP Thymine v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 116: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START Uracil v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Uracil v EntireMolecularEntity: false
+BRIDGE-PAIR-START Uracil v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Uracil v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP Uracil v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 101: 6 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP EntireProteinMolecule v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireProteinMolecule v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP EntireProteinMolecule v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-SKIP EntireProteinMolecule v ProteinSubunit: propagated-false
+BRIDGE-KPSET-DERIVED subject 176: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START EntirePolypeptideMolecule v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntirePolypeptideMolecule v EntireMolecularEntity: false
+BRIDGE-PAIR-START EntirePolypeptideMolecule v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntirePolypeptideMolecule v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP EntirePolypeptideMolecule v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 226: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START ProteinDomain v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ProteinDomain v EntireMolecularEntity: false
+BRIDGE-PAIR-START ProteinDomain v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ProteinDomain v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP ProteinDomain v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 227: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START ProteinSubstructure v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ProteinSubstructure v EntireMolecularEntity: false
+BRIDGE-PAIR-START ProteinSubstructure v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ProteinSubstructure v EntireRNAMolecule: false
+BRIDGE-KPSET-SKIP ProteinSubstructure v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 131: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP DNA v DNARegion: propagated-false
+BRIDGE-KPSET-SKIP DNA v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP DNA v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-SKIP DNA v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP DNA v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 132: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP RNA v RNARegion: propagated-false
+BRIDGE-KPSET-SKIP RNA v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP RNA v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP RNA v BioMolecularSequence: deterministic-subsumer
+BRIDGE-KPSET-SKIP RNA v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP RNA v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 162: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START Electron v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Electron v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 163: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START Neutron v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Neutron v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 164: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START Proton v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Proton v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 222: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP PortionOfHomogenousMatter v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP PortionOfHomogenousMatter v PortionOfHomogenousGas: propagated-false
+BRIDGE-KPSET-DERIVED subject 13: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START HydrogenAtom v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END HydrogenAtom v EntireRNAMolecule: false
+BRIDGE-VERIFY round 0 subject 65/94 deferred=0 permanent=0
+BRIDGE-KPSET-DERIVED subject 15: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START NitrogenAtom v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END NitrogenAtom v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 19: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START CarbonAtom v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END CarbonAtom v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 23: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START OxygenAtom v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END OxygenAtom v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 91: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START PhosphorusAtom v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PhosphorusAtom v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 141: 2 candidates, no satisfiability job
+BRIDGE-PAIR-START SulphurAtom v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END SulphurAtom v EntireRNAMolecule: false
+BRIDGE-KPSET-DERIVED subject 37: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START Phosphate v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Phosphate v EntireMolecularEntity: false
+BRIDGE-PAIR-START Phosphate v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Phosphate v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY Phosphate v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START Phosphate v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Phosphate v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY Phosphate v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START Phosphate v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Phosphate v NucleicAcid: false
+BRIDGE-KPSET-VERIFY Phosphate v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START Phosphate v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Phosphate v FattyAcid: false
+BRIDGE-PAIR-START Phosphate v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Phosphate v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 68: 3 candidates, no satisfiability job
+BRIDGE-PAIR-START EntireMolecularEntity v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntireMolecularEntity v EntireRNAMolecule: false
+BRIDGE-PAIR-START EntireMolecularEntity v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EntireMolecularEntity v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 74: 9 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP MolecularGroup v C10-24Chain: propagated-false
+BRIDGE-KPSET-SKIP MolecularGroup v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP MolecularGroup v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP MolecularGroup v CarbonChain: propagated-false
+BRIDGE-KPSET-SKIP MolecularGroup v StructuralGroup: propagated-false
+BRIDGE-KPSET-SKIP MolecularGroup v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP MolecularGroup v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP MolecularGroup v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 79: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Nucleotide v Deoxyribonucleotide: propagated-false
+BRIDGE-KPSET-SKIP Nucleotide v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Nucleotide v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP Nucleotide v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP Nucleotide v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP Nucleotide v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP Nucleotide v OrganicMolecularEntity: propagated-false
+BRIDGE-KPSET-DERIVED subject 85: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Monomer v AminoAcidMonomer: propagated-false
+BRIDGE-PAIR-START Monomer v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Monomer v EntireMolecularEntity: false
+BRIDGE-PAIR-START Monomer v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Monomer v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY Monomer v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START Monomer v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Monomer v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY Monomer v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START Monomer v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Monomer v NucleicAcid: false
+BRIDGE-KPSET-VERIFY Monomer v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START Monomer v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Monomer v FattyAcid: false
+BRIDGE-KPSET-SKIP Monomer v OrganicMolecularEntity: propagated-false
+BRIDGE-KPSET-DERIVED subject 118: 8 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Hydrocarbon v AliphaticMediumChainStructure: propagated-false
+BRIDGE-KPSET-SKIP Hydrocarbon v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Hydrocarbon v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP Hydrocarbon v AliphaticChain: propagated-false
+BRIDGE-KPSET-SKIP Hydrocarbon v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP Hydrocarbon v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP Hydrocarbon v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 125: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Carbohydrate v Deoxyribose: propagated-false
+BRIDGE-KPSET-SKIP Carbohydrate v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Carbohydrate v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP Carbohydrate v Monosaccharide: propagated-false
+BRIDGE-KPSET-SKIP Carbohydrate v Pentose: propagated-false
+BRIDGE-KPSET-SKIP Carbohydrate v OrganicMolecularEntity: propagated-false
+BRIDGE-KPSET-DERIVED subject 155: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP NucleicAcid v DNARegion: propagated-false
+BRIDGE-KPSET-SKIP NucleicAcid v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP NucleicAcid v DNA: propagated-false
+BRIDGE-KPSET-SKIP NucleicAcid v BioMolecularSequence: propagated-false
+BRIDGE-KPSET-SKIP NucleicAcid v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP NucleicAcid v OrganicMolecularEntity: propagated-false
+BRIDGE-KPSET-DERIVED subject 183: 7 candidates, no satisfiability job
+BRIDGE-PAIR-START FattyAcid v EntireMolecularEntity
+DDB-CLOSURE [c=¬29 ind=false det=true tag=3 lvl=2 tp=#111] [c=29 ind=false det=true tag=5 lvl=2 tp=#146]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END FattyAcid v EntireMolecularEntity: false
+BRIDGE-PAIR-START FattyAcid v Monomer
+DDB-CLOSURE [c=84 ind=false det=true tag=0 lvl=1 tp=#13] [c=¬84 ind=false det=true tag=3 lvl=1 tp=#33]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#86] [c=29 ind=false det=true tag=7 lvl=2 tp=#104]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=¬84 ind=false det=true tag=3 lvl=1 tp=#45] [c=84 ind=false det=true tag=8 lvl=1 tp=#128]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END FattyAcid v Monomer: false
+BRIDGE-PAIR-START FattyAcid v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END FattyAcid v EntireRNAMolecule: false
+BRIDGE-PAIR-START FattyAcid v Hydrocarbon
+DDB-CLOSURE [c=29 ind=false det=true tag=0 lvl=2 tp=#78] [c=¬29 ind=false det=true tag=1 lvl=2 tp=#80]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=23 ind=false det=true tag=0 lvl=2 tp=#167] [c=¬23 ind=false det=true tag=1 lvl=2 tp=#168]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬29 ind=false det=true tag=5 lvl=2 tp=#292] [c=29 ind=false det=true tag=7 lvl=2 tp=#342]
+DDB-LINE branching_level=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END FattyAcid v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY FattyAcid v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START FattyAcid v NucleicAcid
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#114] [c=29 ind=false det=true tag=7 lvl=2 tp=#132]
+DDB-LINE branching_level=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END FattyAcid v NucleicAcid: false
+BRIDGE-PAIR-START FattyAcid v InorganicMolecularEntity
+DDB-CLOSURE [c=¬29 ind=false det=true tag=0 lvl=2 tp=#116] [c=29 ind=false det=true tag=5 lvl=2 tp=#136]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END FattyAcid v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 196: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP InorganicMolecularEntity v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP InorganicMolecularEntity v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 197: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP OrganicMolecularEntity v Deoxyribose: propagated-false
+BRIDGE-KPSET-SKIP OrganicMolecularEntity v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP OrganicMolecularEntity v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP OrganicMolecularEntity v Carbohydrate: propagated-false
+BRIDGE-KPSET-SKIP OrganicMolecularEntity v Monosaccharide: propagated-false
+BRIDGE-KPSET-SKIP OrganicMolecularEntity v Pentose: propagated-false
+BRIDGE-KPSET-DERIVED subject 198: 5 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Lipid v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Lipid v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP Lipid v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Lipid v NonSteroidLipid: propagated-false
+BRIDGE-KPSET-DERIVED subject 204: 11 candidates, no satisfiability job
+BRIDGE-PAIR-START OligoOrPolymer v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END OligoOrPolymer v EntireMolecularEntity: false
+BRIDGE-KPSET-SKIP OligoOrPolymer v AminoAcidSequence: propagated-false
+BRIDGE-PAIR-START OligoOrPolymer v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END OligoOrPolymer v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY OligoOrPolymer v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START OligoOrPolymer v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END OligoOrPolymer v Hydrocarbon: false
+BRIDGE-KPSET-SKIP OligoOrPolymer v Peptide: propagated-false
+BRIDGE-KPSET-SKIP OligoOrPolymer v BioMolecularSequence: propagated-false
+BRIDGE-KPSET-VERIFY OligoOrPolymer v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START OligoOrPolymer v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END OligoOrPolymer v NucleicAcid: false
+BRIDGE-KPSET-SKIP OligoOrPolymer v EntireOligopeptideMolecule: propagated-false
+BRIDGE-KPSET-VERIFY OligoOrPolymer v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START OligoOrPolymer v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END OligoOrPolymer v FattyAcid: false
+BRIDGE-KPSET-SKIP OligoOrPolymer v OrganicMolecularEntity: propagated-false
+BRIDGE-KPSET-DERIVED subject 211: 4 candidates, no satisfiability job
+BRIDGE-PAIR-START Nucleoside v EntireMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Nucleoside v EntireMolecularEntity: false
+BRIDGE-PAIR-START Nucleoside v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Nucleoside v EntireRNAMolecule: false
+BRIDGE-PAIR-START Nucleoside v InorganicMolecularEntity
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Nucleoside v InorganicMolecularEntity: false
+BRIDGE-KPSET-DERIVED subject 219: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START PortionOfHeterogenousLiquid v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHeterogenousLiquid v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY PortionOfHeterogenousLiquid v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START PortionOfHeterogenousLiquid v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHeterogenousLiquid v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY PortionOfHeterogenousLiquid v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START PortionOfHeterogenousLiquid v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHeterogenousLiquid v NucleicAcid: false
+BRIDGE-KPSET-VERIFY PortionOfHeterogenousLiquid v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START PortionOfHeterogenousLiquid v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHeterogenousLiquid v FattyAcid: false
+BRIDGE-KPSET-DERIVED subject 220: 5 candidates, no satisfiability job
+BRIDGE-PAIR-START PortionOfHeterogenousSolid v EntireRNAMolecule
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHeterogenousSolid v EntireRNAMolecule: false
+BRIDGE-KPSET-VERIFY PortionOfHeterogenousSolid v Hydrocarbon: pseudo-model-false is advisory
+BRIDGE-PAIR-START PortionOfHeterogenousSolid v Hydrocarbon
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHeterogenousSolid v Hydrocarbon: false
+BRIDGE-KPSET-VERIFY PortionOfHeterogenousSolid v NucleicAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START PortionOfHeterogenousSolid v NucleicAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHeterogenousSolid v NucleicAcid: false
+BRIDGE-KPSET-VERIFY PortionOfHeterogenousSolid v FattyAcid: pseudo-model-false is advisory
+BRIDGE-PAIR-START PortionOfHeterogenousSolid v FattyAcid
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END PortionOfHeterogenousSolid v FattyAcid: false
+BRIDGE-KPSET-DERIVED subject 35: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP HeterocyclicBase v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP HeterocyclicBase v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP HeterocyclicBase v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 124: 11 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Peptide v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP Peptide v AminoAcidSequence: propagated-false
+BRIDGE-KPSET-SKIP Peptide v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP Peptide v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP Peptide v BioMolecularSequence: propagated-false
+BRIDGE-KPSET-SKIP Peptide v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP Peptide v EntireOligopeptideMolecule: propagated-false
+BRIDGE-KPSET-SKIP Peptide v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP Peptide v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-SKIP Peptide v OligoOrPolymer: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 133: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP BioMolecularSequence v DNARegion: propagated-false
+BRIDGE-KPSET-SKIP BioMolecularSequence v Hydrocarbon: propagated-false
+BRIDGE-KPSET-SKIP BioMolecularSequence v DNA: propagated-false
+BRIDGE-KPSET-SKIP BioMolecularSequence v NucleicAcid: propagated-false
+BRIDGE-KPSET-SKIP BioMolecularSequence v FattyAcid: propagated-false
+BRIDGE-KPSET-SKIP BioMolecularSequence v OrganicMolecularEntity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 17: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 25: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP CollectiveMaterialEntity v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP CollectiveMaterialEntity v PortionOfHomogenousGas: propagated-false
+BRIDGE-KPSET-SKIP CollectiveMaterialEntity v PortionOfHomogenousMatter: propagated-false
+BRIDGE-KPSET-DERIVED subject 72: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 121: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP MonoMolecularEntity v EntireMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-SKIP MonoMolecularEntity v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP MonoMolecularEntity v InorganicMolecularEntity: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 151: 5 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP CompoundOfCollectiveMaterialEntities v EntireRNAMolecule: inherited-countermodel
+BRIDGE-KPSET-SKIP CompoundOfCollectiveMaterialEntities v Hydrocarbon: inherited-countermodel
+BRIDGE-KPSET-SKIP CompoundOfCollectiveMaterialEntities v NucleicAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP CompoundOfCollectiveMaterialEntities v FattyAcid: inherited-countermodel
+BRIDGE-KPSET-SKIP CompoundOfCollectiveMaterialEntities v PortionOfHeterogenousLiquid: propagated-false
+BRIDGE-VERIFY round 0 subject 94/94 deferred=0 permanent=0
+BRIDGE-SAT-PHASE verify-total: 0.65s
+BRIDGE-SOURCE-POST-CLOSURE seeded=238 combined=476
+KM_TIMING race: HT worker exited @ 1.14s (success=true)
+KM_TIMING race: read_tout done @ 1.14s
+KM_TIMING engine block done @ 1.20s (subs_keys=89)

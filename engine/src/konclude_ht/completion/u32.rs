@@ -858,8 +858,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     pub(crate) fn collect_backend_neighbour_expansion_cut_individual_ids(
         &self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> std::collections::HashSet<Cint64> {
-        let mut prop_cut_indi_nodes_ids = std::collections::HashSet::new();
+    ) -> crate::fxhash::FxHashSet<Cint64> {
+        let mut prop_cut_indi_nodes_ids = crate::fxhash::FxHashSet::default();
         let exp_cont_data = calc_alg_context.backend_neighbour_expansion_controlling_data(false);
         if exp_cont_data.is_some() {
             for &prop_cut_indi_node in calc_alg_context

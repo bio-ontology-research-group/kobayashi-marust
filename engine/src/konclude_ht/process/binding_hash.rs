@@ -31,7 +31,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::context::ProcessContext;
@@ -104,7 +104,7 @@ impl Default for ConceptVariableBindingPathSetHash {
     fn default() -> Self {
         ConceptVariableBindingPathSetHash {
             process_context: INVALID,
-            map: HashMap::new(),
+            map: HashMap::default(),
             last_var_bind_des_linker: Id::NONE,
         }
     }
@@ -115,7 +115,7 @@ impl ConceptVariableBindingPathSetHash {
     pub fn new(process_context: Cint64) -> Self {
         ConceptVariableBindingPathSetHash {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
             last_var_bind_des_linker: Id::NONE,
         }
     }
@@ -262,7 +262,7 @@ impl Default for ConceptPropagationBindingSetHash {
     fn default() -> Self {
         ConceptPropagationBindingSetHash {
             process_context: INVALID,
-            map: HashMap::new(),
+            map: HashMap::default(),
             last_propagation_binding_descriptor: Id::NONE,
         }
     }
@@ -273,7 +273,7 @@ impl ConceptPropagationBindingSetHash {
     pub fn new(process_context: Cint64) -> Self {
         ConceptPropagationBindingSetHash {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
             last_propagation_binding_descriptor: Id::NONE,
         }
     }

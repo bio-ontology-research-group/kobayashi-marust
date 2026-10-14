@@ -12,6 +12,11 @@ import ContextCalculus.FiniteDatatypeCover
 import ContextCalculus.SingletonMergeClash
 import ContextCalculus.DLSafeAtomicTaxonomyExtension
 import ContextCalculus.DatatypeValueEmbedding
+import ContextCalculus.LabelledIsolatedExtension
+import ContextCalculus.CandidateModelRefutation
+import ContextCalculus.MergeRelocation
+import ContextCalculus.DatatypeCellRealization
+import ContextCalculus.RoleDisjointnessNormalization
 import ContextCalculus.ReflexiveRoleNormalization
 import ContextCalculus.NativeCardinalityNormalization
 import ContextCalculus.HypertableauProductionGlobalPublication
@@ -297,6 +302,15 @@ end ContextCalculus.Hypertableau
 #print axioms ContextCalculus.DatatypeValueEmbedding.has_value_iff
 #print axioms ContextCalculus.DatatypeValueEmbedding.disjunctive_has_value_iff
 #print axioms ContextCalculus.DatatypeValueEmbedding.subproperty_iff
+-- Bridge-TBox datatype labels realized by concrete values (anyURI, double,
+-- IEEE facet intervals, rdfs:Literal); cell counts are Rust-side evidence.
+#print axioms ContextCalculus.DatatypeCellRealization.formula_transfer
+#print axioms ContextCalculus.DatatypeCellRealization.sensitive_exact
+#print axioms ContextCalculus.DatatypeCellRealization.fresh_value_avoids_literals
+#print axioms ContextCalculus.DatatypeCellRealization.two_distinct_realizers
+#print axioms ContextCalculus.DatatypeCellRealization.top_positive
+#print axioms ContextCalculus.DatatypeCellRealization.atomic_cell_decides
+#print axioms ContextCalculus.DatatypeCellRealization.cell_cover_valid
 #print axioms ContextCalculus.FunctionalDatatypeQuotient.functional_preserved
 #print axioms ContextCalculus.FunctionalDatatypeQuotient.exists_preserved
 #print axioms ContextCalculus.FunctionalDatatypeQuotient.forall_preserved
@@ -316,3 +330,38 @@ end ContextCalculus.Hypertableau
 #print axioms ContextCalculus.DatatypeClassTransport.tbox_preserved
 
 #print axioms ContextCalculus.DatatypeClassTransport.abox_preserved
+#print axioms ContextCalculus.LabelledIsolatedExtension.labelled_old_concepts_preserved
+#print axioms ContextCalculus.LabelledIsolatedExtension.labelled_fresh_concepts_shell
+#print axioms ContextCalculus.LabelledIsolatedExtension.shellWith_empty
+#print axioms ContextCalculus.LabelledIsolatedExtension.labelled_inclusion_extended
+#print axioms ContextCalculus.LabelledIsolatedExtension.labelled_role_inclusion_extended
+#print axioms ContextCalculus.LabelledIsolatedExtension.labelled_functionality_extended
+#print axioms ContextCalculus.LabelledIsolatedExtension.labelled_transitivity_extended
+#print axioms ContextCalculus.LabelledIsolatedExtension.labelled_inverse_roles_extended
+#print axioms ContextCalculus.LabelledIsolatedExtension.labelled_countermodel_preserved
+
+-- Role disjointness (AsymmetricObjectProperty as Dis(R, R⁻)), irreflexivity
+-- as ⊤ ⊑ ¬∃R.Self, the merge conflict condition, and Thing-typed ABox elision.
+#print axioms ContextCalculus.RoleDisjointnessNormalization.asymmetric_iff_disjoint_inverse
+#print axioms ContextCalculus.RoleDisjointnessNormalization.asymmetric_irreflexive
+#print axioms ContextCalculus.RoleDisjointnessNormalization.irreflexive_iff_global_not_self
+#print axioms ContextCalculus.RoleDisjointnessNormalization.irreflexive_of_empty
+#print axioms ContextCalculus.RoleDisjointnessNormalization.reflexive_role_nonempty
+#print axioms ContextCalculus.RoleDisjointnessNormalization.mirrored_negation_detects_either_orientation
+#print axioms ContextCalculus.RoleDisjointnessNormalization.merge_conflict_incident
+#print axioms ContextCalculus.RoleDisjointnessNormalization.reported_conflict_is_merged_clash
+#print axioms ContextCalculus.RoleDisjointnessNormalization.top_identity_abox_entailment_iff
+#print axioms ContextCalculus.RoleDisjointnessNormalization.top_identity_abox_consistent_iff
+#print axioms ContextCalculus.CandidateModelRefutation.countermodel_refutes
+#print axioms ContextCalculus.CandidateModelRefutation.known_super_refutes
+#print axioms ContextCalculus.CandidateModelRefutation.and_left_necessary
+#print axioms ContextCalculus.CandidateModelRefutation.and_right_necessary
+#print axioms ContextCalculus.CandidateModelRefutation.marker_refutes_host
+#print axioms ContextCalculus.CandidateModelRefutation.marker_extension_conservative
+#print axioms ContextCalculus.CandidateModelRefutation.marker_extension_implies
+-- Merge link relocation (phase 5 ancestor/nominal/self arms) and the read-off
+-- of a merged subject root through its merge representative.
+#print axioms ContextCalculus.MergeRelocation.relocated_link_holds
+#print axioms ContextCalculus.MergeRelocation.relocated_self_link_holds
+#print axioms ContextCalculus.MergeRelocation.representative_label_holds
+#print axioms ContextCalculus.MergeRelocation.realizes_comp

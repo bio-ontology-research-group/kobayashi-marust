@@ -1,0 +1,24 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "finite-role-index-30b7d32e1814",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-finite-role-index-30b7d32e1814",
+      "sha256": "30b7d32e1814c5eabd231ce92134c70b3d30714e0c364e1225cf736678b43a16"
+    }
+  ],
+  "source_commit": "fc1482d2 plus pinned finite role index changes",
+  "source_manifest_sha256": "1789a4c77822007a6b67b995aa60d0d2bae7d6557a489b821e5240bc66d9f189",
+  "flags": {
+    "KM_HT_DDB": "1",
+    "KM_HT_NATIVE_FULL": "1",
+    "KM_CACHE_CONFORMANCE": "1",
+    "KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE": "1"
+  },
+  "frontend_validation_pending": [
+    "ore_ont_15687 forced-nominal old-binary memory failure"
+  ],
+  "release_approved": false,
+  "scope": "Paired finite-model verifier optimization; certification pending; no release approval.",
+  "certification_pending": true
+}

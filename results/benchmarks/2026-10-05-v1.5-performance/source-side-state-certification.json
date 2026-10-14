@@ -1,0 +1,41 @@
+{
+  "routing_gate": "passed",
+  "theorems": [
+    "eval_mask",
+    "transfer_model",
+    "inactive_delta_preserves_subsumptions",
+    "inactive_delta_preserves_query_satisfiability",
+    "mask_preserves_domain",
+    "mask_preserves_range",
+    "inactive_delta_preserves_subsumptions_with_background"
+  ],
+  "sorryAx": false,
+  "source_sha256": {
+    "engine/src/incremental_ht.rs": "0abd097bb27ce588759baccbb5b52f577392bbb10f8832f3ae756a003e3f7109",
+    "lean/ContextCalculus/IncrementalSourceLocality.lean": "f2908c9eeafe36e32239db81a0e45299652d53dd0b119b6350c3faf8210b3261",
+    "lean/run-routing-certification-gate.sh": "03a56e09643b28f6602d45ed8838b600b94d9e78d85e3ef9ceae5a17646eefe3"
+  },
+  "logs_sha256": {
+    "source-side-key-tests.log": "37ffcfff4a4d21eb3da3ed6884e3a03ed3435a7342eba28fc706f20724373860",
+    "source-side-key-9944.log": "aa70a9de89e4305ae64f813c5a1f425604c3884b828161d243cad50e0f24bfd8",
+    "source-side-routing-gate.log": "ba1410c053421094a3231a44bdf236b1e92c99f676b3dd1136308b66090eb5cc"
+  },
+  "probe": {
+    "ontology": "ore_ont_9944",
+    "edit": "32 source axioms removed",
+    "raw_side_fingerprint_equal": false,
+    "name_resolved_side_fingerprint_equal": true,
+    "key_bytes": 129333,
+    "typed_inputs_sha256": {
+      "9944-source-0.json": "50dfd110917ac72db3dab22349adf5afe8a00437f386f5b9702ef9ffa02d54ce",
+      "9944-source-3.json": "7d33f9ef2dcee90ce9e162e2e570055c8aaf720a724f145a23738ee42923d3f6"
+    }
+  },
+  "production_reuse_enabled": false,
+  "remaining": [
+    "Verify exact source metadata coverage and unchanged complete RBox.",
+    "Connect source activation and typed-side equivalence to retained rows with full certificate binding.",
+    "Validate every update against fresh reasoning and preserve all failures."
+  ],
+  "release_approved": false
+}

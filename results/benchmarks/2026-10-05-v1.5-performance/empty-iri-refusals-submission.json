@@ -1,0 +1,9 @@
+{
+  "job_id": 53313326,
+  "submitted_at": "2026-10-05T23:07:45.465658+00:00",
+  "script_sha256": "19eb720610daf8bc9d24e200e71649d701aa00ef244cfdd37f2d9459ce5324cf",
+  "files_manifest_sha256": "85262cd6d2a77e76dce6af4b261d07f637af6bc89132d036957e57a8b1b72806",
+  "scope": "Exact old/new frontend refusals on all 212 frozen invalid inputs; never solved counts.",
+  "main_frontend_audit": 53312770,
+  "reason": "The first main-audit snapshot has 26 nonzero frontend outcomes, all previously adjudicated invalid. Both binaries must be tested; a prior invalid label alone cannot prove unchanged refusal."
+}

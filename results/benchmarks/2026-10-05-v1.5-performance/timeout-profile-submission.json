@@ -1,0 +1,12 @@
+{
+  "job_id": "53304360",
+  "submitted_utc": "2026-10-05T21:00:07.741631+00:00",
+  "scope": "Eight selected diagnostic timeout cases, not release acceptance",
+  "timeout_s": 60,
+  "memory_mib": 20480,
+  "array": "0-7%4",
+  "artifact_inventory_sha256": "8350cce9d52f02fbfa22e7d266d9f3cd74dcce3c657ef27bc51b670e4e751bcd",
+  "input_manifest_sha256": "e694db8c701baed7aa657f5375d69581be4ee294ca55295c86b6129e2d42ab63",
+  "supersedes_failed_job": "53303950",
+  "runner_sha256": "0bf495fc1fdec82cb43c2359d1b2c7a20b1a7f4fc91253c09857f0a1e1b4475b"
+}

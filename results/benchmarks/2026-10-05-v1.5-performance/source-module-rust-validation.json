@@ -1,0 +1,50 @@
+{
+  "diagnostic_only": true,
+  "production_route_enabled": false,
+  "release_approved": false,
+  "rows": [
+    {
+      "revision": 1,
+      "selected_axioms": 656,
+      "analysis_s": 0.026196328,
+      "python_sort_and_render_s": 0.11513676994945854,
+      "identical_validated_module_bytes": true,
+      "module_sha256": "39fff52d228058ccc8f9cd7494dde881cf0a3640c77a4b573bf9d895d73bbfc3",
+      "rust_output_sha256": "d66d44f35673f1bd5898598c21a88aabb95faaf567cad02ddef3a0cc74dd0c85"
+    },
+    {
+      "revision": 2,
+      "selected_axioms": 657,
+      "analysis_s": 0.024858385,
+      "python_sort_and_render_s": 0.09085084102116525,
+      "identical_validated_module_bytes": true,
+      "module_sha256": "79e181ae26c9249e5c154c3fc5e03011d0858d260e9e470d9f93c8870d19b11d",
+      "rust_output_sha256": "17cd0213b8b0d28e4c44c25f45100fcbfa7687b025a809329765908984ae8cc8"
+    },
+    {
+      "revision": 3,
+      "selected_axioms": 7828,
+      "analysis_s": 0.040115204,
+      "python_sort_and_render_s": 0.2759292480768636,
+      "identical_validated_module_bytes": true,
+      "module_sha256": "a4ea1de8c74686f98d38551014433487b7adc079e3bc2b046e4e34962c72d5e7",
+      "rust_output_sha256": "e46bb3e6a1a597137978ab490dd2e2c603528e7a3eb30044f7bba8cdc8cb1a25"
+    },
+    {
+      "revision": 4,
+      "selected_axioms": 7887,
+      "analysis_s": 0.039690516,
+      "python_sort_and_render_s": 0.2611184479901567,
+      "identical_validated_module_bytes": true,
+      "module_sha256": "d6fd0fb60eb207429a6c28dd839accad64012ef5bcb308d7a26c9c1f6ed71eb4",
+      "rust_output_sha256": "ad8f0f3c9f10d7d2d93f9f911f32b63edaf7ba066d4751a4e0e4b74aacb4a4d2"
+    }
+  ],
+  "source_manifest_sha256": "4dd79f9fba1ffb5f966f0579c8433a9690526cb1f893db54509ab86a76102203",
+  "unit_test_log_sha256": "026a6b0b78e9f56ca634e6961e9d2836ddd5eccdd09965c0f64c634aae425363",
+  "unit_tests_passed": 8,
+  "finite_model_module_comparisons": 192,
+  "scope": "Rust module extraction only; rendered module bytes equal the previously validated four-update modules. Excludes original normalization, affected-query discovery, retained-session overhead and result serialization. No end-to-end update speedup claim.",
+  "prior_module_validation_sha256": "42f2888250551259fe531ceab17438269d460754ea08f1c9bb61afbd60e43a65",
+  "test_binary_sha256": "4537279255f08d3946c03975eb9ab18ac5f101b35d070f1ac9e84b2729851401"
+}

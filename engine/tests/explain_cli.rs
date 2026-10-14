@@ -226,7 +226,8 @@ Ontology(
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("route=ht_general"), "stderr: {stderr}");
+    // ht_general is a measurement arm, never an automatic route.
+    assert!(!stderr.contains("route=ht_general"), "stderr: {stderr}");
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["status"], "entailed");
     assert_eq!(report["justifications"][0]["axiomCount"], 1);
@@ -301,9 +302,12 @@ Ontology(
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    // The certified nominal leaf first gives the complete-answer-or-defer
+    // native bridge a bounded attempt; either certified mechanism may answer.
     assert!(
-        stderr.contains("route=certified_nominals"),
-        "native-ABox explanation did not exercise certified_nominals: {stderr}"
+        stderr.contains("route=certified_nominals")
+            || stderr.contains("bounded bridge-first accepted"),
+        "native-ABox explanation did not exercise a certified nominal route: {stderr}"
     );
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["status"], "entailed");
@@ -341,9 +345,11 @@ Ontology(
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    // The singleton-aware path is now a certified nominal route; the
+    // uncertified ht_general arm is never selected automatically.
     assert!(
-        stderr.contains("route=ht_general"),
-        "automatic explanation did not exercise the singleton-aware routing path: {stderr}"
+        !stderr.contains("route=ht_general"),
+        "automatic explanation used the uncertified ht_general arm: {stderr}"
     );
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["status"], "entailed");

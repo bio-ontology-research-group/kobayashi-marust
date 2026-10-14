@@ -1,0 +1,16 @@
+{
+  "diagnostic_only": true,
+  "typed_input_sha256": "2959b72fb7b4f3f5806148ae8d7587493fda048ae27f31ee5c8d628891194fce",
+  "source_axioms_checked": 311,
+  "blank_type_failures": [
+    247
+  ],
+  "positive_classes": [
+    "Abstract-Information",
+    "Intangible-Thing",
+    "km_src_Thing"
+  ],
+  "witness_found": true,
+  "release_approved": false,
+  "limitations": "Checks source GCIs on an edgeless padding node only. Does not prove two-sorted model transport, reverse transport, query preservation, ABox/RBox compatibility, or executable source binding. Production admission remains unchanged."
+}

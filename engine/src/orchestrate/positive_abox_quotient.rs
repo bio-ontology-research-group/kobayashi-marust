@@ -388,4 +388,39 @@ mod tests {
         .unwrap();
         assert!(try_build(source.path()).unwrap().is_none());
     }
+
+    /// Re-validation of this rewrite is skipped for the orchestrator's own
+    /// output (`TrustedRewrite`). The rewrite copies every non-ABox line
+    /// verbatim, keeps each class expression of a `ClassAssertion` verbatim,
+    /// keeps the named role of an `ObjectPropertyAssertion`, drops identity
+    /// axioms, and replaces individuals by the one fresh named individual
+    /// `<urn:km:positive-abox-quotient>`. This test fails if the rewrite of a
+    /// valid source is ever rejected by `check_source`.
+    #[test]
+    fn quotients_of_valid_sources_pass_conformance() {
+        // The rewrite admits only full-IRI roles and full-IRI or blank-node
+        // individuals.
+        let sources = [
+            "Prefix(:=<http://e/>)\nOntology(<http://e/o>\n\
+             Declaration(Class(:A))\nDeclaration(ObjectProperty(:r))\nDeclaration(NamedIndividual(<http://e/a>))\n\
+             SubClassOf(:A ObjectSomeValuesFrom(:r :B))\n\
+             ClassAssertion(:A <http://e/a>)\nClassAssertion(ObjectSomeValuesFrom(:r ObjectIntersectionOf(:A :B)) <http://e/b>)\n\
+             ObjectPropertyAssertion(<http://e/r> <http://e/a> <http://e/b>)\nObjectPropertyAssertion(<http://e/r> <http://e/b> _:c)\n\
+             SameIndividual(<http://e/a> <http://e/d>)\nDifferentIndividuals(<http://e/a> <http://e/b>)\n)\n",
+            "Prefix(:=<http://e/>)\nPrefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)\nOntology(\n\
+             AnnotationAssertion(rdfs:label :A \"A\")\n\
+             ClassAssertion(Annotation(rdfs:comment \"c\") :A <http://e/a>)\n\
+             ClassAssertion(:A _:x)\nObjectPropertyAssertion(<http://e/r> _:x <http://e/a>)\n)\n",
+        ];
+        for text in sources {
+            crate::frontend::conformance::check_source(text)
+                .unwrap_or_else(|e| panic!("fixture must be valid: {e}\n{text}"));
+            let source = TempPath::new(".source.ofn");
+            fs::write(source.path(), text).unwrap();
+            let quotient = try_build(source.path()).unwrap().expect("quotient");
+            let rewritten = fs::read_to_string(quotient.path()).unwrap();
+            crate::frontend::conformance::check_source(&rewritten)
+                .unwrap_or_else(|e| panic!("quotient rejected: {e}\n{rewritten}"));
+        }
+    }
 }

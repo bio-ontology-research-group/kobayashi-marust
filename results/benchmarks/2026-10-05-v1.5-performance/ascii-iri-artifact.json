@@ -1,0 +1,25 @@
+{
+  "binary": "check-ascii-iri-312f26508037",
+  "binary_sha256": "312f265080379ecd6c25749b19ed3af6309c82a8b8530ec2fef325c93d015a70",
+  "input_manifest_sha256": "0309377d05dfd0cd81eb46050416272fbd52b16e77f21d9a37d732b352817fb4",
+  "source_head": "4105dd567770942e377aa70111999b6ac319c409",
+  "source_files": {
+    "engine/vendor/owl-functional-syntax/src/lib.rs": "0b021783feddc0f9d84221f8e432d7cd9e250e1222e8cd03e7ae89120bd6eaed",
+    "engine/vendor/owl-functional-syntax/grammars/ofn-iri-cached.pest": "cc488e1f0dfe00670a9808e780aab0d1336b8a6bf5b406a446581ec7e78c0c4a",
+    "engine/vendor/owl-functional-syntax/grammars/ofn.pest": "a325031929e5be9f2beb75b7cd9a20e013c092d1bc608757b1b8e4bc6005ea96",
+    "engine/vendor/owl-functional-syntax/grammars/bcp47.pest": "59a708843d34b6865f7dd0811d78a5293d39a976298168dc2bec09a8335391ca",
+    "engine/vendor/owl-functional-syntax/grammars/rfc3987.pest": "d18f8663d25d68d7e8c260957cdc032edb74169bf1dd3f8350790ac55eb733a0",
+    "engine/vendor/owl-functional-syntax/grammars/sparql.pest": "b1456b40666c6b3cd2738b6e26546ef482bcacfa72a56a07444fb4162f0f104f",
+    "results/benchmarks/2026-10-05-v1.5-performance/check_ascii_iri.rs": "8e3763329cd355ab8062264761c407090dc7f57fb4f5280cacd8eed065a7ecc3",
+    "/workspace/.work/target-diagnostic/release/deps/libkm_owl_functional_syntax-f0d3b7dd642f82d5.rlib": "28c24b6948a1c4bf5d48cf3b80111707b2f69908125493bc21360f1575a58129"
+  },
+  "compile_options": [
+    "--edition=2021",
+    "-O",
+    "-C",
+    "panic=abort"
+  ],
+  "diagnostic_only": true,
+  "release_approved": false,
+  "certification_pending": true
+}

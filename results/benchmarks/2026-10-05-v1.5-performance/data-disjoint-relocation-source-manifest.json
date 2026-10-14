@@ -1,0 +1,15 @@
+{
+  "base_commit": "2032f7650acff095d779224e243d173b9c4e2360",
+  "files": {
+    "engine/src/frontend/datatypes.rs": "fb388ba76506e7de46db52edc3933a23ba963c43f3c37ea8a85a8ee5209177a6",
+    "engine/src/konclude_ht/bridge.rs": "a17e765271ef076cbbb64f22178dfcde917926ce01fb8ead32e28505ed309915",
+    "engine/src/konclude_ht/completion/u08.rs": "9ddf7e23db15df7f690b3f0f11c625bbf3cabd9d970c9e2fff76481585171e8b",
+    "engine/src/konclude_ht/completion/u14.rs": "99176a44b89d973966f0949acbf15caa0409f155da86c81b8fd8dcda1fa9d939",
+    "engine/src/konclude_ht/completion/u15.rs": "e6b55b09697667e806f55431b7a75a2d0891c7df3b96bf505b62c6f4a2e282bc",
+    "engine/src/konclude_ht/completion/selftest.rs": "562dc6da947e6e0b1a03633e4c88e108e0bde1923a230ac5315d485a19d3b5b4",
+    "engine/src/konclude_ht/process/context.rs": "f891085749f2a5cea208a5fe0bf2829c73edb908c7e8dabd1a698c4bc3843168",
+    "engine/src/konclude_ht/process/distinct.rs": "a1dcfa7d5aa83e7ebb841df34d5101c55147a28c16ffce2f42eb6d65706332e6"
+  },
+  "patch_sha256": "f16776def189bd6264f1ace7cedc9b926304a9d13d2dd9c476d32b087850c7f7",
+  "production_enabled": false
+}

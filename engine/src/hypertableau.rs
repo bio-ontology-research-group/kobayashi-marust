@@ -41,7 +41,7 @@
 #![allow(dead_code)]
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -83,7 +83,7 @@ fn build_nodecertain_map(
     // unique disjunct heads across all concept-level disjunctions
     let mut heads: Vec<C> = Vec::new();
     {
-        let mut seen: HashSet<C> = HashSet::new();
+        let mut seen: HashSet<C> = HashSet::default();
         for &cid in cids {
             for a in clauses[cid].0.head.iter() {
                 if let Atom::Concept { lit, .. } = a {
@@ -94,7 +94,7 @@ fn build_nodecertain_map(
             }
         }
     }
-    let mut closure: HashMap<C, HashSet<C>> = HashMap::new();
+    let mut closure: HashMap<C, HashSet<C>> = HashMap::default();
     let mut qf = QoSat::new_opts(clauses, true, fprop);
     qf.complete_roles = true;
     qf.node_cap = cap;
@@ -104,7 +104,7 @@ fn build_nodecertain_map(
         let lab: HashSet<C> = rf.root_label.into_iter().collect();
         closure.insert(h, lab);
     }
-    let mut out: HashMap<usize, Vec<C>> = HashMap::new();
+    let mut out: HashMap<usize, Vec<C>> = HashMap::default();
     for &cid in cids {
         let hs: Vec<C> = clauses[cid]
             .0
@@ -251,7 +251,7 @@ pub fn dep_contains(d: &DepSet, level: Level) -> bool {
 /// be introduced unless `subs` already contained one. Runs on the (small) set of
 /// query concepts the HT classifies, not the full signature.
 pub fn transitive_close_subs(subs: Vec<(C, C)>) -> Vec<(C, C)> {
-    let mut sup: HashMap<C, HashSet<C>> = HashMap::new();
+    let mut sup: HashMap<C, HashSet<C>> = HashMap::default();
     for (a, b) in &subs {
         sup.entry(*a).or_default().insert(*b);
     }
@@ -682,7 +682,7 @@ impl Ext {
             merge_deps: Vec::new(),
             merges: 0,
             watch: false,
-            lit_disj: HashMap::new(),
+            lit_disj: HashMap::default(),
             dirty: Vec::new(),
             dirty_in: Vec::new(),
             open: Vec::new(),
@@ -699,14 +699,14 @@ impl Ext {
             i2_in_touched: Vec::new(),
             i2_lo: 0,
             i2_last_lo: 0,
-            i3_sig: HashMap::new(),
+            i3_sig: HashMap::default(),
             i3_node_sig: Vec::new(),
             block3: false,
             incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
             node_obligs: Vec::new(),
             oblig_sat: Vec::new(),
-            nominals: HashSet::new(),
-            nom_carriers: HashMap::new(),
+            nominals: HashSet::default(),
+            nom_carriers: HashMap::default(),
         }
     }
 
@@ -1067,7 +1067,7 @@ impl Ext {
         address_step: NodeAddressStep,
     ) -> Node {
         let id = self.concepts.len();
-        self.concepts.push(HashMap::new());
+        self.concepts.push(HashMap::default());
         if let Some(block_bits) = &mut self.block_bits {
             block_bits.push(Vec::new());
         }
@@ -2666,7 +2666,7 @@ impl LeanHtRegularCertificate {
         derive(
             self,
             (role, source, target),
-            &mut HashSet::new(),
+            &mut HashSet::default(),
             self.cover.len().saturating_add(1),
         )
     }
@@ -3425,13 +3425,13 @@ impl LeanHtRefutationState {
         Self {
             labels: labels.iter().copied().collect(),
             label_order: labels.to_vec(),
-            edges: HashSet::new(),
+            edges: HashSet::default(),
             edge_order: Vec::new(),
-            obligations: HashSet::new(),
+            obligations: HashSet::default(),
             obligation_order: Vec::new(),
             equalities: Vec::new(),
             apart: Vec::new(),
-            minimums: HashSet::new(),
+            minimums: HashSet::default(),
             active_nodes: 1,
             root_count: 1,
             witness_parent: vec![None],
@@ -3513,7 +3513,7 @@ impl LeanHtRefutationState {
             return Err("equality-free frontier address metadata length mismatch".to_string());
         }
         let mut addresses: Vec<Vec<(R, CLit)>> = Vec::with_capacity(self.active_nodes);
-        let mut occupied = HashSet::with_capacity(self.active_nodes);
+        let mut occupied = HashSet::with_capacity_and_hasher(self.active_nodes, Default::default());
         for node in 0..self.active_nodes {
             let address = match (self.witness_parent[node], self.witness_step[node]) {
                 (None, None) if node == 0 => Vec::new(),
@@ -3570,7 +3570,7 @@ impl LeanHtRefutationState {
         }
         let mut addresses: Vec<(usize, Vec<LeanHtCardinalityAddressStep>)> =
             Vec::with_capacity(self.active_nodes);
-        let mut occupied = HashSet::with_capacity(self.active_nodes);
+        let mut occupied = HashSet::with_capacity_and_hasher(self.active_nodes, Default::default());
         for node in 0..self.active_nodes {
             let address = match (self.cardinality_parent[node], self.cardinality_step[node]) {
                 (None, None) if node < self.root_count => (node, Vec::new()),
@@ -3670,7 +3670,7 @@ impl LeanHtRefutationState {
     }
 
     fn pairwise_blocker_ancestor(&self, node: Node) -> Option<Node> {
-        self.pairwise_blocker_ancestor_avoiding(node, &HashSet::new())
+        self.pairwise_blocker_ancestor_avoiding(node, &HashSet::default())
     }
 
     fn pairwise_blocker_ancestor_avoiding(
@@ -3920,7 +3920,7 @@ impl LeanHtRefutationState {
             pairs
         };
         let folds = state
-            .next_fold_assignment(&HashSet::new())
+            .next_fold_assignment(&HashSet::default())
             .unwrap_or_default();
         state.with_fold_assignment(folds)
     }
@@ -3946,13 +3946,13 @@ impl LeanHtRefutationState {
             pairs
         };
         let folds = state
-            .next_fold_assignment(&HashSet::new())
+            .next_fold_assignment(&HashSet::default())
             .unwrap_or_default();
         state.with_fold_assignment(folds)
     }
 
     fn blocked_open_leaf(&self) -> LeanHtBlockedOpenLeaf {
-        self.blocked_open_leaf_avoiding(&HashSet::new())
+        self.blocked_open_leaf_avoiding(&HashSet::default())
     }
 
     fn blocked_open_leaf_avoiding(
@@ -3978,7 +3978,7 @@ impl LeanHtRefutationState {
                 (source, blockers)
             })
             .collect();
-        let folds = Self::next_fold_assignment_from_options(&fold_options, &HashSet::new())
+        let folds = Self::next_fold_assignment_from_options(&fold_options, &HashSet::default())
             .unwrap_or_default();
         let mut labels: Vec<_> = self.labels.iter().copied().collect();
         labels.sort_unstable();
@@ -4490,8 +4490,8 @@ type TriggerTables = (
 /// Build the trigger tables of `recs` (index construction and
 /// `Ht::rebuild_triggers` share this one definition).
 fn trigger_tables(recs: &[ClauseRec]) -> TriggerTables {
-    let mut concept_triggers: HashMap<CLit, Vec<(usize, usize)>> = HashMap::new();
-    let mut role_triggers: HashMap<R, Vec<(usize, usize)>> = HashMap::new();
+    let mut concept_triggers: HashMap<CLit, Vec<(usize, usize)>> = HashMap::default();
+    let mut role_triggers: HashMap<R, Vec<(usize, usize)>> = HashMap::default();
     let mut global_clauses = Vec::new();
     let mut global_disj = Vec::new();
     for (cid, rec) in recs.iter().enumerate() {
@@ -5038,7 +5038,7 @@ fn trigger_absorb(clauses: &mut [Clause]) -> (usize, Vec<TriggerAbsorptionEviden
 /// of any other shape (chains, ≥2 body roles, disjunctive/empty heads) are skipped —
 /// B2a only needs the simple single-step universals. See docs/KONCLUDE-BLOCKING-SPEC.md.
 fn index_forall(clauses: &[Clause]) -> HashMap<(CLit, R), Vec<CLit>> {
-    let mut idx: HashMap<(CLit, R), Vec<CLit>> = HashMap::new();
+    let mut idx: HashMap<(CLit, R), Vec<CLit>> = HashMap::default();
     for c in clauses {
         if c.body.len() != 2 || c.head.len() != 1 {
             continue;
@@ -5078,12 +5078,12 @@ fn ht_chain_unfolding_clauses(
     chains: &[(R, R, R)],
     transitive: &[R],
 ) -> Vec<Clause> {
-    use std::collections::{HashMap, HashSet};
+    use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
     if chains.is_empty() {
         return Vec::new();
     }
     let transitive: HashSet<R> = transitive.iter().copied().collect();
-    let mut superrole: HashMap<R, Vec<R>> = HashMap::new();
+    let mut superrole: HashMap<R, Vec<R>> = HashMap::default();
     // sub-role S⊑R from single-role-body/head clauses (these are NOT raw chain
     // axioms; they're the normal role-hierarchy clauses, kept in the clause set)
     for c in clauses {
@@ -5102,7 +5102,7 @@ fn ht_chain_unfolding_clauses(
         }
     }
     // creation roles (roles with some ∃R.D exists-head) + super-role closure
-    let mut creation_roles: HashSet<R> = HashSet::new();
+    let mut creation_roles: HashSet<R> = HashSet::default();
     for c in clauses {
         for a in &c.head {
             if let Atom::Exists { r, .. } = a {
@@ -5111,7 +5111,7 @@ fn ht_chain_unfolding_clauses(
         }
     }
     let creation_closure: HashSet<R> = {
-        let mut out = HashSet::new();
+        let mut out = HashSet::default();
         for &r in &creation_roles {
             let mut st = vec![r];
             while let Some(u) = st.pop() {
@@ -5125,7 +5125,7 @@ fn ht_chain_unfolding_clauses(
         out
     };
     let super_close = |r: R| -> HashSet<R> {
-        let mut out = HashSet::new();
+        let mut out = HashSet::default();
         out.insert(r);
         let mut st = vec![r];
         while let Some(u) = st.pop() {
@@ -5179,7 +5179,7 @@ fn ht_chain_unfolding_clauses(
     }
     // emit chain-unfolding clauses
     let mut out: Vec<Clause> = Vec::new();
-    let mut chain_markers: HashMap<(R, CLit, CLit), C> = HashMap::new();
+    let mut chain_markers: HashMap<(R, CLit, CLit), C> = HashMap::default();
     for (d, r, e) in &forall_clauses {
         for &(r1, r2, u) in chains.iter() {
             if !super_close(u).contains(r) {
@@ -5240,7 +5240,7 @@ fn ht_transitive_chain_compose(
         return Vec::new();
     }
     // sub-role hierarchy R⊑S from single-role-body→role-head clauses.
-    let mut sub_super: HashMap<R, Vec<R>> = HashMap::new();
+    let mut sub_super: HashMap<R, Vec<R>> = HashMap::default();
     for c in clauses {
         if c.body.len() == 1 && c.head.len() == 1 {
             if let (Atom::Role { r: u, s: us, t: ut }, Atom::Role { r: v, s: vs, t: vt }) =
@@ -5273,7 +5273,7 @@ fn ht_transitive_chain_compose(
     }
     // seen_p: for each clause R(X,Y) ∧ C1(Y) ∧ ... → P(X) where R is transitive,
     // key (R, sorted [C1,...]) → P (the head CLit).  P is the __trans__R__C marker.
-    let mut seen_p: HashMap<(R, Vec<CLit>), CLit> = HashMap::new();
+    let mut seen_p: HashMap<(R, Vec<CLit>), CLit> = HashMap::default();
     for c in clauses {
         let roles: Vec<&Atom> = c
             .body
@@ -5333,10 +5333,10 @@ fn ht_transitive_chain_compose(
     let z: Var = 2;
     let mut out: Vec<Clause> = Vec::new();
     // mid-marker maps keyed by (s, P) / (s, operands) so repeated chains share
-    let mut mid_p: HashMap<(R, CLit), C> = HashMap::new();
-    let mut mid_c: HashMap<(R, Vec<CLit>), C> = HashMap::new();
+    let mut mid_p: HashMap<(R, CLit), C> = HashMap::default();
+    let mut mid_c: HashMap<(R, Vec<CLit>), C> = HashMap::default();
     for &(r, s, u) in chains {
-        let mut seen2 = HashSet::new();
+        let mut seen2 = HashSet::default();
         let t = match super_trans(u, &sub_super, &trans, &mut seen2) {
             Some(t) => t,
             None => continue,
@@ -5450,7 +5450,7 @@ fn has_inverse_bridge(clauses: &[Clause]) -> bool {
 /// has its forward composed counterpart and real (∃-created) edges are untouched.
 fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
     // bridge `s(a,b) → r(b,a)` ⇒ r ⟸ s (a reversed r-edge comes from an s-edge).
-    let mut bridge_src: HashMap<R, Vec<R>> = HashMap::new();
+    let mut bridge_src: HashMap<R, Vec<R>> = HashMap::default();
     let bridge_of = |c: &Clause| -> Option<(R, R)> {
         if c.body.len() == 1 && c.head.len() == 1 {
             if let (
@@ -5479,7 +5479,7 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
         }
     }
     // inverse-equivalent pairs: r⟸s AND s⟸r.
-    let mut inv_of: HashMap<R, R> = HashMap::new();
+    let mut inv_of: HashMap<R, R> = HashMap::default();
     for (&r, ss) in &bridge_src {
         for &s in ss {
             if bridge_src.get(&s).map_or(false, |v| v.contains(&r)) {
@@ -5488,7 +5488,7 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
         }
     }
     // a pair is composable iff EVERY clause with r-or-s in its body is single-role.
-    let mut bad: HashSet<R> = HashSet::new();
+    let mut bad: HashSet<R> = HashSet::default();
     for (c, _, _) in clauses {
         let roles: Vec<R> = c
             .body
@@ -5560,8 +5560,8 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
     // its single-role consumers fire over the forward `s`-edge swapped, and the bridge
     // is dropped — no reversed `r`-edge is ever created. Sound: `r`-edges are EXACTLY
     // the reversed `s`-edges when the bridge is `r`'s only producer.
-    let mut multi_bodied: HashSet<R> = HashSet::new();
-    let mut otherwise_produced: HashSet<R> = HashSet::new();
+    let mut multi_bodied: HashSet<R> = HashSet::default();
+    let mut otherwise_produced: HashSet<R> = HashSet::default();
     for (c, _, _) in clauses {
         let is_bridge = bridge_of(c).is_some();
         let rb: Vec<R> = c
@@ -5594,7 +5594,7 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
             }
         }
     }
-    let mut oneway: HashMap<R, R> = HashMap::new();
+    let mut oneway: HashMap<R, R> = HashMap::default();
     // KM_HT_QO_INVCHAIN (port #2, in-pass inverse for CHAIN consumers): relax the
     // single-role-body restriction. A consequent role `r` of a bridge `s(a,b)→r(b,a)`
     // whose r-edges come SOLELY from that one bridge (single source) and that is NOT
@@ -5782,13 +5782,13 @@ fn harvest_global(recs: &[ClauseRec]) -> Vec<Clause> {
     // graph, so no cross-concept contamination — the soundness fix). Cached per
     // distinct disjunct concept. None ⇒ QoSat bailed (out of fragment) for that
     // seed, in which case we skip any disjunction mentioning it (conservative).
-    let mut needed: HashSet<C> = HashSet::new();
+    let mut needed: HashSet<C> = HashSet::default();
     for d in &disjs {
         for &c in d {
             needed.insert(c);
         }
     }
-    let mut definite: HashMap<C, Option<(HashSet<C>, bool)>> = HashMap::new();
+    let mut definite: HashMap<C, Option<(HashSet<C>, bool)>> = HashMap::default();
     for &c in &needed {
         let mut qs = QoSat::new(recs);
         let g = qs.saturate_global(&[c]);
@@ -5800,7 +5800,7 @@ fn harvest_global(recs: &[ClauseRec]) -> Vec<Clause> {
             definite.insert(c, Some((g.label_pos[0].clone(), dead)));
         }
     }
-    let mut emitted: HashSet<C> = HashSet::new();
+    let mut emitted: HashSet<C> = HashSet::default();
     let mut extra: Vec<Clause> = Vec::new();
     for disj in &disjs {
         // Intersect the definite labels of the LIVE (satisfiable) disjuncts.
@@ -6415,24 +6415,24 @@ impl<'a> QoSat<'a> {
         // mode, so it implies `fprop_on`.
         let fcheck = std::env::var_os("KM_HT_QO_FCHECK").is_some();
         let fprop_on = fprop_on || fcheck;
-        let mut concept_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
+        let mut concept_trig: HashMap<CLit, Vec<usize>> = HashMap::default();
         let fastimpl = std::env::var_os("KM_HT_QO_FASTIMPL").is_some();
-        let mut simple_impl: HashMap<CLit, Vec<CLit>> = HashMap::new();
-        let mut role_tgt_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
-        let mut role_src_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
-        let mut role_noguard: HashMap<R, Vec<usize>> = HashMap::new();
-        let mut role_guard_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
-        let mut prop_rule: HashMap<CLit, Vec<(R, CLit)>> = HashMap::new();
+        let mut simple_impl: HashMap<CLit, Vec<CLit>> = HashMap::default();
+        let mut role_tgt_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::default();
+        let mut role_src_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::default();
+        let mut role_noguard: HashMap<R, Vec<usize>> = HashMap::default();
+        let mut role_guard_trig: HashMap<CLit, Vec<usize>> = HashMap::default();
+        let mut prop_rule: HashMap<CLit, Vec<(R, CLit)>> = HashMap::default();
         // KM_HT_QO_NOPROP (diagnostic): route NF4 through the per-edge path instead
         // of the backward-link `prop` store, to isolate whether `prop` is a source
         // of over-approximation. Read once (not per clause).
         let no_prop = std::env::var_os("KM_HT_QO_NOPROP").is_some();
-        let mut fprop_rule: HashMap<CLit, Vec<(R, CLit)>> = HashMap::new();
+        let mut fprop_rule: HashMap<CLit, Vec<(R, CLit)>> = HashMap::default();
         let no_inv = skip_inverse;
         // Body-guard concepts: any concept id occurring in a clause BODY (either
         // polarity). An inverse/∀ operand that is NOT a body guard can trigger
         // nothing further, so a containment miss on it is inert (see `kp_guard`).
-        let mut kp_guard_set: HashSet<C> = HashSet::new();
+        let mut kp_guard_set: HashSet<C> = HashSet::default();
         for rec in clauses.iter() {
             for a in &rec.1 {
                 if let Atom::Concept { lit, .. } = a {
@@ -6449,7 +6449,7 @@ impl<'a> QoSat<'a> {
         // never fires — the transitive+inverse unsat is missed.  `reach_by_role[R]`
         // lets `kp_finalize` mark such a filler insufficient (→ residue → complete
         // tableau, which decides it correctly).
-        let mut reach_by_role: HashMap<R, Vec<C>> = HashMap::new();
+        let mut reach_by_role: HashMap<R, Vec<C>> = HashMap::default();
         for rec in clauses.iter() {
             let body = &rec.1;
             let head = &rec.0.head;
@@ -6490,7 +6490,7 @@ impl<'a> QoSat<'a> {
         // is never materialised, but the FORWARD inverse edge `S(p,h)` (= R⁻) IS in
         // `out_edges[p]`. So `reach_via_inv[S]` lets the reach post-pass flag the
         // filler `h` from `p --S--> h` when `p` carries the reach concept `C`.
-        let mut inv_map: HashMap<R, R> = HashMap::new();
+        let mut inv_map: HashMap<R, R> = HashMap::default();
         for rec in clauses.iter() {
             let body = &rec.1;
             let head = &rec.0.head;
@@ -6516,7 +6516,7 @@ impl<'a> QoSat<'a> {
                 }
             }
         }
-        let mut reach_via_inv: HashMap<R, Vec<C>> = HashMap::new();
+        let mut reach_via_inv: HashMap<R, Vec<C>> = HashMap::default();
         for (&r, cs) in reach_by_role.iter() {
             if let Some(&rinv) = inv_map.get(&r) {
                 reach_via_inv
@@ -6533,8 +6533,8 @@ impl<'a> QoSat<'a> {
         // `R(x,y)→S(x,y)`. The effective range of r folds in all super-role
         // ranges (a hierarchy S-edge fires range(S) at runtime, so the filler key
         // must account for it: same key ⇒ same forced label ⇒ sound sharing).
-        let mut direct_range: HashMap<R, Vec<CLit>> = HashMap::new();
-        let mut superrole: HashMap<R, Vec<R>> = HashMap::new();
+        let mut direct_range: HashMap<R, Vec<CLit>> = HashMap::default();
+        let mut superrole: HashMap<R, Vec<R>> = HashMap::default();
         for rec in clauses.iter() {
             let body = &rec.1;
             let head = &rec.0.head;
@@ -6582,9 +6582,9 @@ impl<'a> QoSat<'a> {
         all_roles.dedup();
         // intern effective-range sets → class ids (0 = empty), so roles with the
         // same effective range share one filler-node class.
-        let mut class_of_set: HashMap<Vec<CLit>, u32> = HashMap::new();
-        let mut range_class: HashMap<R, u32> = HashMap::new();
-        let mut class_set: Vec<HashSet<CLit>> = vec![HashSet::new()];
+        let mut class_of_set: HashMap<Vec<CLit>, u32> = HashMap::default();
+        let mut range_class: HashMap<R, u32> = HashMap::default();
+        let mut class_set: Vec<HashSet<CLit>> = vec![HashSet::default()];
         let mut next_class: u32 = 1;
         for &r in &all_roles {
             let mut seen: Vec<R> = vec![r];
@@ -6619,7 +6619,7 @@ impl<'a> QoSat<'a> {
             range_class.insert(r, id);
         }
         let mut global = Vec::new();
-        let mut inv_bridge_cid: HashSet<usize> = HashSet::new();
+        let mut inv_bridge_cid: HashSet<usize> = HashSet::default();
         for (cid, rec) in clauses.iter().enumerate() {
             let body = &rec.1;
             let head = &rec.0.head;
@@ -6870,7 +6870,7 @@ impl<'a> QoSat<'a> {
                 }
             }
             // detect transitive roles (R∘R⊑R) for self-propagation
-            let mut transitive: HashSet<R> = HashSet::new();
+            let mut transitive: HashSet<R> = HashSet::default();
             for rec in clauses.iter() {
                 let body = &rec.1;
                 let head = &rec.0.head;
@@ -6921,7 +6921,7 @@ impl<'a> QoSat<'a> {
             // needs propagation into a created successor (the bound that prevents
             // the ∀-cascade on every edge).  This is the gating Konclude uses to
             // keep the saturation bounded.
-            let mut creation_roles: HashSet<R> = HashSet::new();
+            let mut creation_roles: HashSet<R> = HashSet::default();
             for rec in clauses.iter() {
                 for a in &rec.0.head {
                     if let Atom::Exists { r, .. } = a {
@@ -6931,7 +6931,7 @@ impl<'a> QoSat<'a> {
             }
             // close over super-roles
             let creation_closure: HashSet<R> = {
-                let mut out = HashSet::new();
+                let mut out = HashSet::default();
                 for &r in &creation_roles {
                     let mut st = vec![r];
                     while let Some(u) = st.pop() {
@@ -6947,7 +6947,7 @@ impl<'a> QoSat<'a> {
             if !chains.is_empty() {
                 // super-role closure (reflexive-transitive) for chain targeting
                 let super_close = |r: R| -> HashSet<R> {
-                    let mut out = HashSet::new();
+                    let mut out = HashSet::default();
                     out.insert(r);
                     let mut st = vec![r];
                     while let Some(u) = st.pop() {
@@ -6975,7 +6975,7 @@ impl<'a> QoSat<'a> {
                 let snap: Vec<(CLit, Vec<(R, CLit)>)> =
                     fprop_rule.iter().map(|(k, v)| (*k, v.clone())).collect();
                 // M2 marker for (R2, parent_guard, E): carries ∀R2.E
-                let mut chain_markers: HashMap<(R, CLit, CLit), CLit> = HashMap::new();
+                let mut chain_markers: HashMap<(R, CLit, CLit), CLit> = HashMap::default();
                 for (guard, rules) in &snap {
                     for &(r, e) in rules {
                         // Konclude propagation-into-creation-direction gate: only
@@ -7036,19 +7036,19 @@ impl<'a> QoSat<'a> {
         // from the clause stream by the frontend, so detection from `clauses`
         // here would find nothing — the chain info MUST come through the side
         // channel.  See `install_edge_compose`.
-        let mut chain_fwd: HashMap<R, Vec<(R, R)>> = HashMap::new();
-        let mut chain_bwd: HashMap<R, Vec<(R, R)>> = HashMap::new();
+        let mut chain_fwd: HashMap<R, Vec<(R, R)>> = HashMap::default();
+        let mut chain_bwd: HashMap<R, Vec<(R, R)>> = HashMap::default();
         QoSat {
             clauses,
             label: Vec::new(),
             out_edges: Vec::new(),
             in_edges: Vec::new(),
-            edge_seen: HashSet::new(),
+            edge_seen: HashSet::default(),
             edge_seen_on: std::env::var_os("KM_HT_QO_EDGESET").is_some(),
-            concept_node: HashMap::new(),
+            concept_node: HashMap::default(),
             pending: Vec::new(),
             pending_by_node: Vec::new(),
-            node_unsat: HashSet::new(),
+            node_unsat: HashSet::default(),
             lit_work: Vec::new(),
             edge_work: Vec::new(),
             edge_budget: u64::MAX,
@@ -7061,12 +7061,12 @@ impl<'a> QoSat<'a> {
             role_noguard,
             role_guard_trig,
             prop_rule,
-            prop: HashMap::new(),
+            prop: HashMap::default(),
             fprop_rule,
-            fprop: HashMap::new(),
+            fprop: HashMap::default(),
             fprop_on,
             fcheck,
-            forall_nodes: HashSet::new(),
+            forall_nodes: HashSet::default(),
             track_forall: false,
             global,
             unsupported: false,
@@ -7077,18 +7077,18 @@ impl<'a> QoSat<'a> {
             node_cap: QO_NODE_CAP,
             range_class,
             class_set,
-            filler_node: HashMap::new(),
+            filler_node: HashMap::default(),
             node_range: Vec::new(),
             qo_insufficient: false,
             kpset: false,
             kpwrite: std::env::var_os("KM_HT_QO_KPWRITE").is_some(),
-            inv_edges: HashSet::new(),
+            inv_edges: HashSet::default(),
             inv_bridge_cid,
             kp_insufficient: false,
             kp_miss: 0,
-            kp_check1: HashSet::new(),
+            kp_check1: HashSet::default(),
             kp_checkn: Vec::new(),
-            kp_insuff_nodes: HashSet::new(),
+            kp_insuff_nodes: HashSet::default(),
             kp_guard: std::rc::Rc::new(kp_guard_set),
             kp_guard_only: std::env::var_os("KM_HT_QO_KPGUARD").is_some(),
             rsucc: std::env::var_os("KM_RSUCC").is_some(),
@@ -7100,7 +7100,7 @@ impl<'a> QoSat<'a> {
             sat_mode: std::env::var_os("KM_HT_QO_SAT").is_some()
                 || std::env::var_os("KM_HT_QO_KPWRITE").is_some(),
             is_filler: Vec::new(),
-            sat_filler: HashMap::new(),
+            sat_filler: HashMap::default(),
             card_defer: std::env::var_os("KM_HT_QO_CARD").is_some(),
             branch_ms: std::env::var("KM_HT_QO_RES_MS")
                 .ok()
@@ -7123,16 +7123,16 @@ impl<'a> QoSat<'a> {
             psplit: std::env::var_os("KM_HT_QO_PSPLIT").is_some(),
             approx: std::env::var_os("KM_HT_QO_APPROX").is_some(),
             node_certain: None,
-            nc_resolved: HashSet::new(),
+            nc_resolved: HashSet::default(),
             qo_parent: Vec::new(),
             split_mode: std::env::var_os("KM_HT_QO_SPLIT").is_some(),
             node_fil: Vec::new(),
-            src_forall: HashMap::new(),
-            split_filler: HashMap::new(),
+            src_forall: HashMap::default(),
+            split_filler: HashMap::default(),
             card_merge: std::env::var_os("KM_HT_QO_CARDMERGE").is_some(),
             merged_into: Vec::new(),
             node_seed: Vec::new(),
-            seed_node: HashMap::new(),
+            seed_node: HashMap::default(),
             merge_budget: std::env::var("KM_HT_QO_MERGE_BUDGET")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -7261,7 +7261,7 @@ impl<'a> QoSat<'a> {
 
     fn new_node(&mut self) -> Node {
         let id = self.label.len();
-        self.label.push(HashSet::new());
+        self.label.push(HashSet::default());
         self.out_edges.push(Vec::new());
         self.in_edges.push(Vec::new());
         self.node_range.push(0);
@@ -7847,7 +7847,7 @@ impl<'a> QoSat<'a> {
         // only with complete role re-firing, which guarantees clauses whose guard
         // arrives after an edge are re-anchored on that edge.
         let prop_batch_on = self.complete_roles && self.prop_batch_on && !self.tracing;
-        let mut prop_batch: HashMap<Node, HashSet<CLit>> = HashMap::new();
+        let mut prop_batch: HashMap<Node, HashSet<CLit>> = HashMap::default();
         while let Some((n, lit)) = self.lit_work.pop() {
             let d = QO_DRAIN.fetch_add(1, Ordering::Relaxed);
             if self.edgeprobe && d % 5_000 == 0 {
@@ -8531,7 +8531,7 @@ impl<'a> QoSat<'a> {
         let mut pm = PModel {
             nodes: vec![PmNode::default()],
         };
-        let mut map: HashMap<Node, usize> = HashMap::new();
+        let mut map: HashMap<Node, usize> = HashMap::default();
         map.insert(0, 0);
         let mut queue: Vec<(Node, u32)> = vec![(0, 0)];
         let mut head = 0usize;
@@ -8730,7 +8730,7 @@ impl<'a> QoSat<'a> {
 
     /// BFS subtree from `root` over `out_edges` (root included).
     fn qo_subtree(&self, root: Node) -> HashSet<Node> {
-        let mut seen = HashSet::new();
+        let mut seen = HashSet::default();
         let mut stack = vec![root];
         seen.insert(root);
         while let Some(n) = stack.pop() {
@@ -8999,7 +8999,7 @@ impl<'a> QoSat<'a> {
                 if nai >= nn {
                     continue;
                 }
-                let empty = HashSet::new();
+                let empty = HashSet::default();
                 let clean = g_label_pos.get(nai).unwrap_or(&empty);
                 let mut cs: Vec<C> = Vec::new();
                 for &lit in &self.label[nai] {
@@ -10903,7 +10903,7 @@ impl Ht {
         variable_count: usize,
         node_budget: usize,
     ) -> LeanHtRefutationOutcome {
-        self.lean_refutation_avoiding_folds(state, variable_count, node_budget, &HashSet::new())
+        self.lean_refutation_avoiding_folds(state, variable_count, node_budget, &HashSet::default())
     }
 
     fn lean_refutation_avoiding_folds(
@@ -12291,7 +12291,7 @@ impl Ht {
                 "regular SAT publication requires KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER"
                     .to_string()
             })?;
-        let table = self.lean_production_blocking_document_json(leaf, &HashSet::new())?;
+        let table = self.lean_production_blocking_document_json(leaf, &HashSet::default())?;
         let table = serde_json::from_str(&table).map_err(|error| error.to_string())?;
         let regular = serde_json::from_str(regular).map_err(|error| error.to_string())?;
         let assignment = assignment
@@ -12339,7 +12339,7 @@ impl Ht {
                 "finite SAT publication requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"
                     .to_string()
             })?;
-        let table = self.lean_production_blocking_document_json(leaf, &HashSet::new())?;
+        let table = self.lean_production_blocking_document_json(leaf, &HashSet::default())?;
         let table = serde_json::from_str(&table).map_err(|error| error.to_string())?;
         let finite = serde_json::from_str(finite).map_err(|error| error.to_string())?;
         let assignment = assignment
@@ -12550,7 +12550,7 @@ impl Ht {
             })?;
         let table = self.lean_equality_production_blocking_document_json(
             state,
-            &HashSet::new(),
+            &HashSet::default(),
             false,
             false,
             false,
@@ -12872,7 +12872,7 @@ impl Ht {
         regular_edges.sort_unstable();
         regular_edges.dedup();
 
-        let mut cover: HashSet<(usize, Node, Node)> = HashSet::new();
+        let mut cover: HashSet<(usize, Node, Node)> = HashSet::default();
         for source in 0..leaf.node_count {
             for &(role, edge_source, target) in &regular_edges {
                 if edge_source == redirect[source] {
@@ -13049,7 +13049,7 @@ impl Ht {
             })
         };
 
-        let mut labels = HashSet::new();
+        let mut labels = HashSet::default();
         for label in &equality_state.labels {
             labels.insert((
                 quotient(label.node)?,
@@ -13059,7 +13059,7 @@ impl Ht {
                 },
             ));
         }
-        let mut edges = HashSet::new();
+        let mut edges = HashSet::default();
         for edge in &equality_state.edges {
             edges.insert((
                 edge.role as R,
@@ -13067,7 +13067,7 @@ impl Ht {
                 quotient(edge.target)?,
             ));
         }
-        let mut obligations = HashSet::new();
+        let mut obligations = HashSet::default();
         for obligation in &equality_state.obligations {
             obligations.insert((
                 obligation.role as R,
@@ -13171,7 +13171,7 @@ impl Ht {
                 .map(|value| value as usize)
                 .ok_or_else(|| "anchored cardinality edge node is out of range".to_string())
         };
-        let mut multiplicity: HashMap<(usize, usize, usize), usize> = HashMap::new();
+        let mut multiplicity: HashMap<(usize, usize, usize), usize> = HashMap::default();
         for edge in &equality_state.edges {
             *multiplicity
                 .entry((dense(edge.source)?, edge.role, dense(edge.target)?))
@@ -13299,7 +13299,7 @@ impl Ht {
                 .unwrap_or(0),
         );
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         let mut frontier_history = Vec::new();
         loop {
@@ -13340,7 +13340,7 @@ impl Ht {
                     return Ok((false, source));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = leaf.next_fold_assignment(&rejected_assignments) {
                         let mut candidate_leaf = leaf.clone();
                         candidate_leaf.folds = folds.clone();
@@ -13438,7 +13438,7 @@ impl Ht {
         variable_count: usize,
         node_budget: usize,
     ) -> LeanHtEqRefutationOutcome {
-        self.lean_eq_refutation_avoiding_folds(state, variable_count, node_budget, &HashSet::new())
+        self.lean_eq_refutation_avoiding_folds(state, variable_count, node_budget, &HashSet::default())
     }
 
     fn lean_eq_refutation_avoiding_folds(
@@ -13620,7 +13620,7 @@ impl Ht {
             definitions,
             variable_count,
             node_budget,
-            &HashSet::new(),
+            &HashSet::default(),
         )
     }
 
@@ -14509,7 +14509,7 @@ impl Ht {
             role_count = role_count.max(role as usize + 1);
         }
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         let mut frontier_history = Vec::new();
         loop {
@@ -14550,7 +14550,7 @@ impl Ht {
                     ));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
                         let candidate_state = open.with_fold_assignment(folds.clone());
                         let seed = self.lean_native_abox_seed_json(
@@ -14701,7 +14701,7 @@ impl Ht {
             })
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         let mut cardinality_frontier_history = Vec::new();
         loop {
@@ -14748,7 +14748,7 @@ impl Ht {
                     ));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
                         let candidate_state = open.with_fold_assignment(folds.clone());
                         let seed = self.lean_native_abox_seed_json(
@@ -15509,7 +15509,7 @@ impl Ht {
         }
         let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         let mut frontier_history = Vec::new();
         loop {
@@ -15551,7 +15551,7 @@ impl Ht {
                     return Ok((false, source));
                 }
                 LeanHtEqRefutationOutcome::Open(state) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
                         let Some(run) = self.lean_equality_production_terminal_run(
                             &state,
@@ -15652,7 +15652,7 @@ impl Ht {
         let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
         let definitions = self.lean_cardinality_definitions();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         let mut cardinality_frontier_history = Vec::new();
         loop {
@@ -15692,7 +15692,7 @@ impl Ht {
                     return Ok((false, source));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
                         let candidate_state = state.with_fold_assignment(folds.clone());
                         let node_count = candidate_state.representatives.len();
@@ -15826,7 +15826,7 @@ impl Ht {
         }
         let definitions = self.lean_cardinality_definitions();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         let mut frontier_history = Vec::new();
         loop {
@@ -15864,7 +15864,7 @@ impl Ht {
                     return Ok((false, raw, run));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
                         let candidate_state = open.with_fold_assignment(folds.clone());
                         let node_count = candidate_state.representatives.len();
@@ -16002,7 +16002,7 @@ impl Ht {
                 .any(|atom| matches!(atom, Atom::Eq { .. }))
         });
         if has_equality {
-            let mut forbidden_folds = HashSet::new();
+            let mut forbidden_folds = HashSet::default();
             let mut production_history = Vec::new();
             loop {
                 let mut state = LeanHtRefutationState::root(&initial_labels);
@@ -16036,7 +16036,7 @@ impl Ht {
                         return Ok((false, terminal, run));
                     }
                     LeanHtEqRefutationOutcome::Open(state) => {
-                        let mut rejected_assignments = HashSet::new();
+                        let mut rejected_assignments = HashSet::default();
                         while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
                             let candidate_state = state.with_fold_assignment(folds.clone());
                             if let Ok(anchored) =
@@ -16134,7 +16134,7 @@ impl Ht {
             }
         }
 
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         loop {
             let mut state = LeanHtRefutationState::root(&initial_labels);
@@ -16168,7 +16168,7 @@ impl Ht {
                     return Ok((false, terminal, run));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = leaf.next_fold_assignment(&rejected_assignments) {
                         let mut candidate_leaf = leaf.clone();
                         candidate_leaf.folds = folds.clone();
@@ -16397,7 +16397,7 @@ impl Ht {
             }),
         };
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         let mut cardinality_frontier_history = Vec::new();
         loop {
@@ -16447,7 +16447,7 @@ impl Ht {
                     return Ok((false, document, run));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
                         let candidate_state = open.with_fold_assignment(folds.clone());
                         let seed = self.lean_native_abox_seed_json(
@@ -16581,7 +16581,7 @@ impl Ht {
             }),
         };
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
-        let mut forbidden_folds = HashSet::new();
+        let mut forbidden_folds = HashSet::default();
         let mut production_history = Vec::new();
         let mut frontier_history = Vec::new();
         loop {
@@ -16678,7 +16678,7 @@ impl Ht {
                     return Ok((false, document, run));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
-                    let mut rejected_assignments = HashSet::new();
+                    let mut rejected_assignments = HashSet::default();
                     while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
                         let candidate_state = open.with_fold_assignment(folds.clone());
                         let seed = self.lean_native_abox_seed_json(
@@ -16915,7 +16915,7 @@ impl Ht {
             if is_blocked {
                 continue;
             }
-            let mut signatures = HashSet::new();
+            let mut signatures = HashSet::default();
             let mut cursor = node;
             while let Some(parent) = self.ext.pred[cursor] {
                 let signature = self.ext.i3_signature_full(cursor, parent);
@@ -16950,7 +16950,7 @@ impl Ht {
 
         type Address = (Node, Vec<(R, CLit)>);
         let mut addresses: Vec<Option<Address>> = vec![None; node_count];
-        let mut occupied: HashMap<Address, Node> = HashMap::new();
+        let mut occupied: HashMap<Address, Node> = HashMap::default();
         for node in 0..node_count {
             let address = match (self.ext.pred[node], steps[node]) {
                 (None, NodeAddressStep::Root) => (node, Vec::new()),
@@ -17110,7 +17110,7 @@ impl Ht {
         // ontology grounding, so a wrong fold is rejected rather than assumed.
         let mut blocked_by = vec![None; self.ext.num_nodes()];
         if self.block_mode == 6 {
-            let mut signatures: HashMap<Vec<u64>, Node> = HashMap::new();
+            let mut signatures: HashMap<Vec<u64>, Node> = HashMap::default();
             for node in 0..self.ext.num_nodes() {
                 if !self.ext.blockable[node] {
                     continue;
@@ -17651,7 +17651,7 @@ impl Ht {
         if named.is_empty() {
             return Err("HT Lean taxonomy certificate requires named concepts".to_string());
         }
-        let mut unique = HashSet::with_capacity(named.len());
+        let mut unique = HashSet::with_capacity_and_hasher(named.len(), Default::default());
         if !named.iter().all(|concept| unique.insert(*concept)) {
             return Err("HT Lean taxonomy certificate requires unique named concepts".to_string());
         }
@@ -17662,7 +17662,7 @@ impl Ht {
         if named.is_empty() {
             return Err("HT Lean taxonomy certificate requires named concepts".to_string());
         }
-        let mut unique = HashSet::with_capacity(named.len());
+        let mut unique = HashSet::with_capacity_and_hasher(named.len(), Default::default());
         if !named.iter().all(|concept| unique.insert(*concept)) {
             return Err("HT Lean taxonomy certificate requires unique named concepts".to_string());
         }
@@ -18033,12 +18033,12 @@ impl Ht {
             index,
             cert_body_normalization,
             cert_preprocessing,
-            card_defs: HashMap::new(),
+            card_defs: HashMap::default(),
             cert_card_defs_override: None,
             cert_concept_count_floor: 0,
             cert_role_count_floor: 0,
             cert_variable_count_floor: 0,
-            cert_exact_cardinality_markers: HashSet::new(),
+            cert_exact_cardinality_markers: HashSet::default(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             card_recog: std::env::var_os("KM_NO_HT_CARD_RECOG").is_none(),
             pc_tainted: Vec::new(),
@@ -18070,7 +18070,7 @@ impl Ht {
             } else {
                 1
             },
-            cache: HashMap::new(),
+            cache: HashMap::default(),
             steps: 0,
             backtracks: 0,
             backjumps: 0,
@@ -18096,7 +18096,7 @@ impl Ht {
                 .unwrap_or(200_000),
             tick: 0,
             cur_depth: 0,
-            activity: HashMap::new(),
+            activity: HashMap::default(),
             ord_mode: env_u8("KM_HT_ORD", 0),
             pick_mode: env_u8("KM_HT_PICK", 0),
             do_restart: std::env::var_os("KM_HT_RESTART").is_some(),
@@ -18124,33 +18124,33 @@ impl Ht {
             oblig_propagate_each: std::env::var_os("KM_HT_OBLIG_PROPAGATE_EACH").is_some(),
             decisions: Vec::new(),
             learned: Vec::new(),
-            lwatch: HashMap::new(),
+            lwatch: HashMap::default(),
             satcache: std::env::var_os("KM_HT_SATCACHE").is_some(),
-            sat_sigs: HashSet::new(),
+            sat_sigs: HashSet::default(),
             satcache3: std::env::var_os("KM_HT_SATCACHE3").is_some(),
-            sat_sigs3: HashSet::new(),
+            sat_sigs3: HashSet::default(),
             sc3_pooled: 0,
             phase_save: std::env::var_os("KM_HT_PHASE").is_some(),
-            phase: HashMap::new(),
+            phase: HashMap::default(),
             lblng: std::env::var_os("KM_HT_LBLCACHE").is_some(),
-            cur_choices: HashMap::new(),
+            cur_choices: HashMap::default(),
             dec_sig: Vec::new(),
             dec_choice: Vec::new(),
             lng: Vec::new(),
-            lng_watch: HashMap::new(),
+            lng_watch: HashMap::default(),
             lng_fires: 0,
             satfold: std::env::var_os("KM_HT_SATFOLD").is_some(),
             force_fast: false,
             force_qmerge: false,
             force_number: false,
             sat_labels: Vec::new(),
-            satfold_watch: HashMap::new(),
+            satfold_watch: HashMap::default(),
             satfold_hits: 0,
             nom_set: Vec::new(),
             native_abox: Arc::new(NativeAboxState::default()),
             qo_edge_chains: Vec::new(),
-            ht_chain_fwd: HashMap::new(),
-            ht_chain_bwd: HashMap::new(),
+            ht_chain_fwd: HashMap::default(),
+            ht_chain_bwd: HashMap::default(),
             ht_tcc_clauses: Vec::new(),
         };
         if ht.trace {
@@ -18362,7 +18362,7 @@ impl Ht {
     /// Each tuple is `(marker, is_min, n, role, filler, exact)`; fillers are
     /// positive and `exact` records a removed source recognition split.
     pub fn set_card_defs_raw(&mut self, defs: &[(C, bool, u32, R, C, bool)]) {
-        let mut map: HashMap<C, CardDef> = HashMap::new();
+        let mut map: HashMap<C, CardDef> = HashMap::default();
         self.cert_exact_cardinality_markers.clear();
         for &(marker, is_min, n, role, filler, exact) in defs {
             map.insert(
@@ -18406,7 +18406,7 @@ impl Ht {
                 )
             })
             .collect();
-        let mut indexed = HashMap::new();
+        let mut indexed = HashMap::default();
         for &(marker, definition) in &exact {
             indexed.entry(marker).or_insert(definition);
         }
@@ -18461,7 +18461,7 @@ impl Ht {
             // is amortised.
             let (distinct, dup_max) = if std::env::var_os("KM_HT_LABELPROBE").is_some() {
                 let nn = self.ext.num_nodes();
-                let mut counts: HashMap<Vec<C>, u32> = HashMap::new();
+                let mut counts: HashMap<Vec<C>, u32> = HashMap::default();
                 for n in 0..nn {
                     let mut s: Vec<C> = self.ext.concepts[n]
                         .keys()
@@ -18656,7 +18656,7 @@ impl Ht {
             // O(n²) pairwise scan with one pass (identical result; pure cost fix).
             // mode 2: full label (pos+neg); mode 0 (core): positive concepts only.
             // Signature key packs each literal as (c<<1)|neg, sorted for canonicity.
-            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity(nn);
+            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity_and_hasher(nn, Default::default());
             for n in 0..nn {
                 if !self.ext.blockable[n] {
                     continue;
@@ -18689,7 +18689,7 @@ impl Ht {
             // subset does, while the parent+edge match keeps it complete under
             // transitive roles (the case subset drops) — sound+complete for SH
             // without inverse (guaranteed by ht_routable). Hashed O(n).
-            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity(nn);
+            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity_and_hasher(nn, Default::default());
             for n in 0..nn {
                 if !self.ext.blockable[n] {
                     continue;
@@ -18724,7 +18724,7 @@ impl Ht {
             // blocker into n's position respects every constraint n carries — sound
             // under inverse + number. Folds less than mode 3 (so larger models), but
             // it is the correct blocking for the inverse-bound family. Hashed O(n).
-            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity(nn);
+            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity_and_hasher(nn, Default::default());
             for n in 0..nn {
                 if !self.ext.blockable[n] {
                     continue;
@@ -20787,7 +20787,7 @@ impl Ht {
     fn try_satfold(&mut self, n: Node) -> bool {
         // positive core of n + the set of concepts n forbids (its negatives).
         let mut s: Vec<CLit> = Vec::new();
-        let mut neg: HashSet<C> = HashSet::new();
+        let mut neg: HashSet<C> = HashSet::default();
         let mut dep = dep_empty();
         for (k, d) in &self.ext.concepts[n] {
             if k.neg {
@@ -20925,7 +20925,7 @@ impl Ht {
 
     /// All nodes reachable from `root` via role edges (BFS), `root` included.
     fn subtree_nodes(&self, root: Node) -> HashSet<Node> {
-        let mut seen = HashSet::new();
+        let mut seen = HashSet::default();
         let mut stack = vec![root];
         seen.insert(root);
         while let Some(n) = stack.pop() {
@@ -21053,7 +21053,7 @@ impl Ht {
     /// residue concept parked ONLY on these is fully explained by the forward pass
     /// + `certain_disjunction_consequences` and needs no model build.
     fn concept_level_disjunction_cids(&self) -> HashSet<usize> {
-        let mut out = HashSet::new();
+        let mut out = HashSet::default();
         for (cid, (cl, _, _)) in self.index.clauses.iter().enumerate() {
             if cl.head.len() < 2 {
                 continue;
@@ -21073,8 +21073,8 @@ impl Ht {
 
     fn certain_disjunction_consequences(&self, subs: &[(C, C)], qset: &HashSet<C>) -> Vec<(C, C)> {
         // closure maps: fwd[a] = subsumers of a; inv[b] = concepts subsumed by b.
-        let mut fwd: HashMap<C, HashSet<C>> = HashMap::new();
-        let mut inv: HashMap<C, HashSet<C>> = HashMap::new();
+        let mut fwd: HashMap<C, HashSet<C>> = HashMap::default();
+        let mut inv: HashMap<C, HashSet<C>> = HashMap::default();
         for &(a, b) in subs {
             fwd.entry(a).or_default().insert(b);
             inv.entry(b).or_default().insert(a);
@@ -21365,7 +21365,7 @@ impl Ht {
         // overlap ⇒ core-cloning saves; low overlap ⇒ each test's model is mostly
         // query-specific and cloning a core buys little.
         let core_sigs: Option<HashSet<Vec<C>>> = if std::env::var_os("KM_HT_COREPROBE").is_some() {
-            let mut s: HashSet<Vec<C>> = HashSet::new();
+            let mut s: HashSet<Vec<C>> = HashSet::default();
             for n in 0..self.ext.num_nodes() {
                 let mut v: Vec<C> = self.ext.concepts[n]
                     .keys()
@@ -21431,7 +21431,7 @@ impl Ht {
         // This is the sound, no-shared-filler route to classifying Horn/near-Horn
         // giants (e.g. ore_ont_7581) that the QoSat shared-node gate over-approximates.
         let hornfast = std::env::var_os("KM_HT_HORNFAST").is_some();
-        let mut exact: HashSet<C> = HashSet::new();
+        let mut exact: HashSet<C> = HashSet::default();
         // KM_HT_WITREUSE: pseudo-model witness reuse across the per-concept queries.
         // In a COMPLETE clash-free model, any node carrying concept C already
         // carries every subsumer of C (C ⊑ B ⇒ every C-individual is a B-individual
@@ -21446,7 +21446,7 @@ impl Ht {
         // it for production workers; direct worker users can still select it with
         // the environment flag.
         let witreuse = std::env::var_os("KM_HT_WITREUSE").is_some();
-        let mut wit: HashMap<C, Vec<C>> = HashMap::new();
+        let mut wit: HashMap<C, Vec<C>> = HashMap::default();
         let mut wit_hits = 0u64;
         for (qi, &a) in queries.iter().enumerate() {
             if witreuse {
@@ -21575,7 +21575,7 @@ impl Ht {
         // confirmed (A ⊑ B and B ⊑* X told ⇒ A ⊑ X) cuts the per-pair test count
         // while leaving the result set identical. Gated KM_HT_NO_TOLD.
         let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
-        let mut told: HashMap<C, Vec<C>> = HashMap::new();
+        let mut told: HashMap<C, Vec<C>> = HashMap::default();
         if use_told && !naive {
             for (c, _, _) in &self.index.clauses {
                 if c.body.len() == 1 && c.head.len() == 1 {
@@ -21632,7 +21632,7 @@ impl Ht {
                     continue;
                 }
                 // known = transitive closure of A's told subsumers (no test).
-                let mut known: HashSet<C> = HashSet::new();
+                let mut known: HashSet<C> = HashSet::default();
                 let mut stack: Vec<C> = told.get(&a).cloned().unwrap_or_default();
                 while let Some(x) = stack.pop() {
                     if known.insert(x) {
@@ -21660,7 +21660,7 @@ impl Ht {
                 let mut possible: HashSet<C> = if modelprune {
                     cand.iter().copied().collect()
                 } else {
-                    HashSet::new()
+                    HashSet::default()
                 };
                 for b in cand {
                     if known.contains(&b) {
@@ -21825,7 +21825,7 @@ impl Ht {
 
         // told subsumers (read-only; same construction as `classify`).
         let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
-        let mut told: HashMap<C, Vec<C>> = HashMap::new();
+        let mut told: HashMap<C, Vec<C>> = HashMap::default();
         if use_told {
             for (c, _, _) in &self.index.clauses {
                 if c.body.len() == 1 && c.head.len() == 1 {
@@ -21862,7 +21862,7 @@ impl Ht {
                                 }
                                 let (a, lab) = &labels[li];
                                 let a = *a;
-                                let mut known: HashSet<C> = HashSet::new();
+                                let mut known: HashSet<C> = HashSet::default();
                                 let mut stack: Vec<C> = told.get(&a).cloned().unwrap_or_default();
                                 while let Some(x) = stack.pop() {
                                     if known.insert(x) {
@@ -22216,7 +22216,7 @@ impl Ht {
                         .unwrap_or(5000);
                     if res <= rcap {
                         let t_res = Instant::now();
-                        let rc = self.qo_residue_complete(&residue, &qset, &HashMap::new());
+                        let rc = self.qo_residue_complete(&residue, &qset, &HashMap::default());
                         if trace {
                             eprintln!(
                                 "QOPHASE residue-complete ({} concepts) returned {} in {:.1}s",
@@ -22371,7 +22371,7 @@ impl Ht {
             } else {
                 // inverse-having roles: any role in an inverse-bridge clause (a single
                 // role head whose args are swapped versus a body role atom).
-                let mut inv_roles: HashSet<R> = HashSet::new();
+                let mut inv_roles: HashSet<R> = HashSet::default();
                 for rec in self.index.clauses.iter() {
                     let head = &rec.0.head;
                     if head.len() == 1 {
@@ -22589,8 +22589,8 @@ impl Ht {
                 if std::env::var_os("KM_HT_TESTONE_TRACE").is_some() {
                     let e = &w2.ext;
                     let nn = e.num_nodes();
-                    let mut ebyrole: std::collections::HashMap<R, u64> =
-                        std::collections::HashMap::new();
+                    let mut ebyrole: crate::fxhash::FxHashMap<R, u64> =
+                        crate::fxhash::FxHashMap::default();
                     let mut tot_e = 0u64;
                     for s in 0..nn {
                         for (r, _t, _d) in &e.out_edges[s] {
@@ -22787,7 +22787,7 @@ impl Ht {
             let concept_level: HashSet<usize> = if discharge || nodecertain {
                 self.concept_level_disjunction_cids()
             } else {
-                HashSet::new()
+                HashSet::default()
             };
             let concept_level_ref = &concept_level;
             // KM_HT_QO_NODECERTAIN: precompute cid → ⋂-closure D of its disjuncts
@@ -23003,7 +23003,7 @@ impl Ht {
                                         // Tag this residue concept by the DISTINCT clauses
                                         // whose parked disjunctions left it insufficient.
                                         if let Some(h) = res_hist_ref {
-                                            let mut seen: HashSet<usize> = HashSet::new();
+                                            let mut seen: HashSet<usize> = HashSet::default();
                                             for &(_n, cid) in qf.pending.iter() {
                                                 if seen.insert(cid) {
                                                     h[cid].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -23019,7 +23019,7 @@ impl Ht {
                     .collect();
                 handles.into_iter().map(|h| h.join().unwrap()).collect()
             });
-            let mut known: HashMap<C, HashSet<C>> = HashMap::new();
+            let mut known: HashMap<C, HashSet<C>> = HashMap::default();
             for part in parts {
                 match part {
                     Some((u, sb, r, kn)) => {
@@ -23280,7 +23280,7 @@ impl Ht {
                     residue.len(), queries.len(), subs.len(), t_pc.elapsed().as_secs_f64()
                 );
             }
-            match self.qo_residue_complete(&residue, &qset, &HashMap::new()) {
+            match self.qo_residue_complete(&residue, &qset, &HashMap::default()) {
                 Some((ru, rs)) => {
                     unsat.extend(ru);
                     subs.extend(rs);
@@ -23758,7 +23758,7 @@ impl Ht {
                                 .collect();
                             handles.into_iter().map(|h| h.join().unwrap()).collect()
                         });
-                        let mut model: HashMap<C, Option<HashSet<C>>> = HashMap::new();
+                        let mut model: HashMap<C, Option<HashSet<C>>> = HashMap::default();
                         for part in parts {
                             for (a, m) in part {
                                 model.insert(a, m);
@@ -23945,7 +23945,7 @@ impl Ht {
 
         // --- Told subsumers (Mechanism 1, free syntactic seeding). ---
         let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
-        let mut told: HashMap<C, Vec<C>> = HashMap::new();
+        let mut told: HashMap<C, Vec<C>> = HashMap::default();
         if use_told {
             for (c, _, _) in &self.index.clauses {
                 if c.body.len() == 1 && c.head.len() == 1 {
@@ -23966,7 +23966,7 @@ impl Ht {
         let mut sat_q: Vec<C> = Vec::new();
         // possible[A] = candidate subsumers (over-approximation; true subsumers
         // are a subset, so no subsumption is missed).
-        let mut possible: HashMap<C, HashSet<C>> = HashMap::new();
+        let mut possible: HashMap<C, HashSet<C>> = HashMap::default();
         // KM_HT_QO_TALLY: diagnostic — count dead/suff/insuff across ALL query
         // concepts WITHOUT running any residue test (so it never bails on the
         // first insufficient concept). Reveals how many concepts genuinely need
@@ -24042,7 +24042,7 @@ impl Ht {
         let mut subs: Vec<(C, C)> = Vec::new();
         let mut tests: u64 = 0;
         for &a in &sat_q {
-            let mut known: HashSet<C> = HashSet::new();
+            let mut known: HashSet<C> = HashSet::default();
             let mut stack: Vec<C> = told.get(&a).cloned().unwrap_or_default();
             while let Some(x) = stack.pop() {
                 if known.insert(x) {
@@ -24685,7 +24685,7 @@ mod tests {
         const FC: C = 21;
         let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, MK, X)])];
         let mut t = ht(cls);
-        let mut defs = HashMap::new();
+        let mut defs = HashMap::default();
         defs.insert(
             MK,
             CardDef {
@@ -24713,7 +24713,7 @@ mod tests {
             Clause::new(vec![con(false, FC, X)], vec![con(true, G, X)]),
         ];
         let mut t = ht(cls);
-        let mut defs = HashMap::new();
+        let mut defs = HashMap::default();
         defs.insert(
             MK,
             CardDef {
@@ -24736,7 +24736,7 @@ mod tests {
         const MK: C = 20;
         let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, MK, X)])];
         let mut t = ht(cls);
-        let mut defs = HashMap::new();
+        let mut defs = HashMap::default();
         defs.insert(
             MK,
             CardDef {
@@ -24763,7 +24763,7 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![con(false, MX, X)]),
         ];
         let mut t = ht(cls);
-        let mut defs = HashMap::new();
+        let mut defs = HashMap::default();
         defs.insert(
             MN,
             CardDef {
@@ -24802,7 +24802,7 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![con(false, MX, X)]),
         ];
         let mut t = ht(cls);
-        let mut defs = HashMap::new();
+        let mut defs = HashMap::default();
         defs.insert(
             MX,
             CardDef {
@@ -24835,7 +24835,7 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![con(false, MX, X)]),
         ];
         let mut t = ht(cls);
-        let mut defs = HashMap::new();
+        let mut defs = HashMap::default();
         defs.insert(
             MX,
             CardDef {
@@ -24862,7 +24862,7 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![con(false, MX, X)]),
         ];
         let mut t = ht(cls);
-        let mut defs = HashMap::new();
+        let mut defs = HashMap::default();
         defs.insert(
             MX,
             CardDef {
@@ -27115,7 +27115,7 @@ mod tests {
         let mut satisfiable = Ht::new_certified(Vec::new());
         satisfiable.set_nominals(vec![SUBJECT]);
         satisfiable.set_native_abox(vec![(vec![SUBJECT], vec![MARKER])], Vec::new(), Vec::new());
-        satisfiable.set_card_defs(HashMap::from([(MARKER, definition)]));
+        satisfiable.set_card_defs(HashMap::from_iter([(MARKER, definition)]));
         let (sat, sat_document) = satisfiable
             .lean_global_decision_certificate_json()
             .expect("native ABox minimum has a joint finite model");
@@ -27132,7 +27132,7 @@ mod tests {
         let mut inconsistent = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         inconsistent.set_nominals(vec![SUBJECT]);
         inconsistent.set_native_abox(vec![(vec![SUBJECT], vec![MARKER])], Vec::new(), Vec::new());
-        inconsistent.set_card_defs(HashMap::from([(MARKER, definition)]));
+        inconsistent.set_card_defs(HashMap::from_iter([(MARKER, definition)]));
         let (sat, unsat_document) = inconsistent
             .lean_global_decision_certificate_json()
             .expect("native ABox contradiction has a joint cardinality refutation");
@@ -27411,7 +27411,7 @@ mod tests {
         let t = Ht::new(clauses.clone());
         assert!(t.index.inverse_bridge);
         assert_eq!(t.index.inverse_bridge, has_inverse_bridge(&clauses));
-        assert_eq!(t.index.number_roles, HashSet::from([R0]));
+        assert_eq!(t.index.number_roles, HashSet::from_iter([R0]));
         assert_eq!(t.cert_number_roles, t.index.number_roles);
         assert_eq!(t.index.role_triggers.len(), 1);
         assert_eq!(t.index.role_triggers[&R0].len(), 3);
@@ -28226,7 +28226,7 @@ mod tests {
 
         if std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER").is_some() {
             let assignment = open
-                .next_fold_assignment(&HashSet::new())
+                .next_fold_assignment(&HashSet::default())
                 .expect("cyclic terminal exposes a Cartesian fold assignment");
             let run = cyclic
                 .lean_equality_production_terminal_run(&open, &assignment, &[])
@@ -28257,7 +28257,7 @@ mod tests {
         if let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
         {
-            let mut rejected = HashSet::new();
+            let mut rejected = HashSet::default();
             while let Some(assignment) = open.next_fold_assignment(&rejected) {
                 assert!(rejected.insert(assignment));
             }
@@ -28413,7 +28413,7 @@ mod tests {
         else {
             panic!("the role-cycle obstruction must expose finite blocker assignments");
         };
-        let mut rejected = HashSet::new();
+        let mut rejected = HashSet::default();
         while let Some(assignment) = open.next_fold_assignment(&rejected) {
             assert!(rejected.insert(assignment));
         }
@@ -28519,7 +28519,7 @@ mod tests {
         else {
             panic!("the native ABox role-cycle obstruction must expose blocker assignments");
         };
-        let mut rejected = HashSet::new();
+        let mut rejected = HashSet::default();
         while let Some(assignment) = open.next_fold_assignment(&rejected) {
             assert!(rejected.insert(assignment));
         }
@@ -28635,7 +28635,7 @@ mod tests {
     #[test]
     fn cardinality_frontier_distinguishes_minimum_siblings_and_lean_checks_it() {
         let mut reasoner = Ht::new_certified(Vec::new());
-        reasoner.set_card_defs(HashMap::from([(
+        reasoner.set_card_defs(HashMap::from_iter([(
             B,
             CardDef {
                 kind: CardKind::Min,
@@ -28699,7 +28699,7 @@ mod tests {
     fn cardinality_decision_blocks_and_checks_a_cyclic_minimum() {
         let mut reasoner = Ht::new_certified(vec![Clause::new(Vec::new(), vec![con(false, B, X)])]);
         reasoner.block_mode = 6;
-        reasoner.set_card_defs(HashMap::from([(
+        reasoner.set_card_defs(HashMap::from_iter([(
             B,
             CardDef {
                 kind: CardKind::Min,
@@ -29014,10 +29014,10 @@ mod tests {
 
         let options = vec![(7, vec![5, 3]), (9, vec![6, 4])];
         let first =
-            LeanHtRefutationState::next_fold_assignment_from_options(&options, &HashSet::new())
+            LeanHtRefutationState::next_fold_assignment_from_options(&options, &HashSet::default())
                 .expect("the finite blocker product is nonempty");
         assert_eq!(first, vec![(7, 5), (9, 6)]);
-        let rejected_assignments = HashSet::from([first]);
+        let rejected_assignments = HashSet::from_iter([first]);
         let second = LeanHtRefutationState::next_fold_assignment_from_options(
             &options,
             &rejected_assignments,
@@ -29046,7 +29046,7 @@ mod tests {
                 .is_none(),
             "the blocker product must report exhaustion after every unique assignment",
         );
-        let mut forbidden_pairs = HashSet::new();
+        let mut forbidden_pairs = HashSet::default();
         LeanHtRefutationState::learn_exhausted_fold_options(
             &mut forbidden_pairs,
             &options,
@@ -29065,7 +29065,7 @@ mod tests {
         );
         assert!(
             LeanHtRefutationState::learn_exhausted_fold_options(
-                &mut HashSet::new(),
+                &mut HashSet::default(),
                 &[(7, Vec::new())],
                 "test empty blocker family",
             )
@@ -29218,7 +29218,7 @@ mod tests {
         }
         if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER") {
             let document = cyclic
-                .lean_production_blocking_document_json(&leaf, &HashSet::from([leaf.folds.clone()]))
+                .lean_production_blocking_document_json(&leaf, &HashSet::from_iter([leaf.folds.clone()]))
                 .expect("serialize the exact production blocker table");
             let path = std::env::temp_dir().join(format!(
                 "km-ht-production-blocking-{}-{}.json",
@@ -29265,7 +29265,7 @@ mod tests {
             assert!(cyclic
                 .lean_production_blocking_history_passes(
                     &leaf,
-                    &HashSet::from([leaf.folds.clone()]),
+                    &HashSet::from_iter([leaf.folds.clone()]),
                     &mut production_history,
                 )
                 .expect("check the genuine equality-free production history prefix"));
@@ -29273,7 +29273,7 @@ mod tests {
             assert!(!cyclic
                 .lean_production_blocking_history_passes(
                     &leaf,
-                    &HashSet::from([leaf.folds.clone()]),
+                    &HashSet::from_iter([leaf.folds.clone()]),
                     &mut production_history,
                 )
                 .expect("reject a stale equality-free production history extension"));
@@ -30080,7 +30080,7 @@ mod tests {
         assert!(contains_edge(&equality_wire, R0, 0, 2));
 
         let mut cardinality = Ht::new_certified(clauses);
-        cardinality.set_card_defs(HashMap::from([(
+        cardinality.set_card_defs(HashMap::from_iter([(
             B,
             CardDef {
                 kind: CardKind::Min,
@@ -30100,7 +30100,7 @@ mod tests {
         if let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
         {
-            let mut exhausted = HashSet::new();
+            let mut exhausted = HashSet::default();
             while let Some(assignment) = cardinality_open.next_fold_assignment(&exhausted) {
                 assert!(exhausted.insert(assignment));
             }
@@ -30166,7 +30166,7 @@ mod tests {
             filler: CLit::pos(B),
         };
         let mut satisfiable = Ht::new_certified(Vec::new());
-        satisfiable.set_card_defs(HashMap::from([(A, definition)]));
+        satisfiable.set_card_defs(HashMap::from_iter([(A, definition)]));
         let (sat, sat_certificate) = satisfiable
             .lean_cardinality_decision_certificate_json()
             .expect("an unasserted cardinality marker has a checked quotient model");
@@ -30179,7 +30179,7 @@ mod tests {
         assert_eq!(sat_wire["certificate"]["node_count"], serde_json::json!(1));
 
         let mut inconsistent = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
-        inconsistent.set_card_defs(HashMap::from([(A, definition)]));
+        inconsistent.set_card_defs(HashMap::from_iter([(A, definition)]));
         let (sat, unsat_certificate) = inconsistent
             .lean_cardinality_decision_certificate_json()
             .expect("the empty-head clause has a checked cardinality refutation");

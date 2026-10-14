@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+## [1.5.0] - 2026-10-14
+
+### Verified performance and correctness
+
+- The Cargo package and lockfile identify version 1.5.0.
+  On combined source manifest `7c99458ed0084910cb145d99192b64d42479f6f5eaf0206f42b2b1177d57705f`,
+  IBEX job 53634952 completed all 1,920 inputs in 60/60 successful array tasks
+  under the 240-second and 20-GiB limits. It admitted 1,708 inputs and
+  preserved all 212 invalid-input refusals; 1,661 admitted answers were
+  independently verified, compared with 1,655 for Konclude, 1,212 for RustDL,
+  and 1,411 for ELK. The candidate's full-corpus mean is 3.2557 seconds
+  (median 0.2305 seconds) over its 1,661 verified solves.
+- On independently verified common inputs, the candidate beat each reference
+  on both mean and median runtime: Konclude, n=1,641, 2.6468/0.2268 seconds
+  versus 2.9347/0.2668; RustDL, n=1,205, 1.4107/0.1691 versus 5.0630/0.3183;
+  ELK, n=1,399, 2.0140/0.1743 versus 11.7327/4.7464. All four exact-source
+  Lean certification gates passed against the same manifest: 412 tests
+  passed, none failed, two were ignored, and no `sorryAx` was found.
+- Preserve inherited positive completion labels when reading copy-on-write
+  label sets, including local shadows, and reuse immutable analyser visits
+  when the corrected root stays unchanged.
+- Before scanning two negative-nominal merge candidates' full label maps,
+  probe the processed concept tag in both main maps. An opposite-polarity
+  hit proves the same clash the existing scan would find; every miss takes
+  the existing path. Three regressions cover 363 bounded layouts, dependency
+  and pending state, and copy-on-write rollback. All 33 reference fixtures
+  passed. A paired diagnostic on ORE 10621 fell from 144.49 to 65.78 seconds
+  with identical output and Konclude agreement. This selected-case result
+  does not establish the full-corpus performance goal.
+- An earlier profile-guided build passed all 56 held-out panel runs with
+  unchanged semantic output and reference agreements. For the combined source
+  manifest above, fresh PGO training completed on 22 independently verified
+  inputs, and the resulting profile was used for the release-mode build. The
+  training timings are not benchmark results; the full-corpus measurements
+  above come from the profile-use binary.
+- Ordinary frontend clause and metadata outputs remained byte-identical on
+  1,919 inputs. ORE 15687's ordinary million-cardinality path remained
+  memory-capped before producing artifacts, so no ordinary-output identity is
+  claimed for that input. Its production symbolic frontend comparison matched
+  clauses, metadata, and typed `TInput` byte-for-byte. An independent source
+  audit found the current producer and serialization paths unchanged from the
+  tested source; this supports equivalence when an ordinary run completes, but
+  is not an observed ordinary-output hash for ORE 15687.
+
 ### Deferred engine thread budget in the production race
 
 - Start the CB stack of `race_cb_vs_ht` before the supervisor reads, converts,

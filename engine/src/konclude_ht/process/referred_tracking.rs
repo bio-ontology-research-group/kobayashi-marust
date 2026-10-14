@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use crate::fxhash::FxHashSet as HashSet;
 
 use super::super::model::substrate::{Cint64, Id};
 

@@ -370,6 +370,10 @@ impl IncrementalBridgeClassifier {
         self.result.clone()
     }
 
+    pub(crate) fn result_ref(&self) -> &IncrementalResult {
+        &self.result
+    }
+
     pub(crate) fn updated_typed(
         &self,
         candidate: &[JClause],
@@ -377,12 +381,77 @@ impl IncrementalBridgeClassifier {
         kind: HtChangeKind,
         input: TInput,
     ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
+        self.updated_typed_with_activation(candidate, changed_clauses, kind, input, false)
+    }
+
+    /// The caller must establish the positive Horn source-profile boundary for
+    /// both revisions. All other bridge clients retain component invalidation.
+    pub(crate) fn updated_typed_with_activation(
+        &self,
+        candidate: &[JClause],
+        changed_clauses: &[JClause],
+        kind: HtChangeKind,
+        input: TInput,
+        positive_horn_source: bool,
+    ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
+        self.updated_typed_with_source_activation(candidate, changed_clauses, kind, input,
+            positive_horn_source, false)
+    }
+
+    pub(crate) fn source_axioms_match(&self, expected: &[crate::json_io::SourceAxiomMeta]) -> bool {
+        self.input.source_axioms == expected
+    }
+
+    /// `source_covered` requires exact source TBox coverage for both revisions,
+    /// identical public IRI ownership and unchanged complete source RBoxes.
+    pub(crate) fn updated_typed_with_source_activation(
+        &self, candidate: &[JClause], changed_clauses: &[JClause], kind: HtChangeKind,
+        input: TInput, positive_horn_source: bool, source_covered: bool,
+    ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
+        self.updated_typed_with_source_module(candidate, changed_clauses, kind, input,
+            positive_horn_source, source_covered, |_, _| None)
+    }
+
+    /// A source module callback is eligible only after all source-locality
+    /// guards pass. Declining the module retains the complete-input fallback.
+    pub(crate) fn updated_typed_with_source_module(
+        &self, candidate: &[JClause], changed_clauses: &[JClause], kind: HtChangeKind,
+        input: TInput, positive_horn_source: bool, source_covered: bool,
+        reclassify: impl FnOnce(&TInput, &[usize]) -> Option<crate::konclude_ht::bridge::BridgedClassification>,
+    ) -> Result<(Self, BridgeDeltaStats), IncrementalReasoningError> {
         let side_fingerprint = bridge_side_fingerprint(&input)?;
         let queries = bridge_query_names(&input);
         let old_queries = bridge_query_names(&self.input);
-        let side_changed = self.side_fingerprint != side_fingerprint || old_queries != queries;
-        let mut affected =
-            affected_concepts(&self.source_clauses, candidate, changed_clauses, &queries);
+        let source_activation = if source_covered && !self.result.inconsistent {
+            positive_source_side_fingerprint(&self.input)
+                .zip(positive_source_side_fingerprint(&input))
+                .filter(|(old,new)| old == new)
+                .and_then(|_| {
+                    let global = input.role_domains.iter().chain(&input.role_ranges)
+                        .map(|(_,id)| input.concepts.get(*id).cloned()).collect::<Option<Vec<_>>>()?;
+                    crate::incremental_activation::source_affected(
+                        &self.input.source_axioms, &input.source_axioms, &queries, &global)
+                })
+        } else { None };
+        let source_reuse = source_activation.is_some();
+        let side_changed = !source_reuse
+            && (self.side_fingerprint != side_fingerprint || old_queries != queries);
+        let activation = source_activation.or_else(|| if positive_horn_source && !side_changed && !self.result.inconsistent
+            && !input.number && input.nominals.is_empty() && input.nominal_abox.is_empty()
+            && input.native_abox.is_empty() && input.rule_data_roles.is_none()
+            && input.rule_source_classes.is_none() && input.rule_source_abox.is_none()
+            && changed_clauses.iter().all(|c| !clause_symbols(c).iter().any(|s| matches!(s, Symbol::Role(_))))
+        {
+            // Roles are universally available in the abstraction. Their typed
+            // domains/ranges therefore contribute global concept premises.
+            input.role_domains.iter().chain(&input.role_ranges)
+                .map(|(_, id)| input.concepts.get(*id).cloned())
+                .collect::<Option<Vec<_>>>()
+                .and_then(|global| crate::incremental_activation::affected(
+                    &self.source_clauses, candidate, changed_clauses, &queries, &global))
+        } else { None });
+        let mut affected = activation.unwrap_or_else(||
+            affected_concepts(&self.source_clauses, candidate, changed_clauses, &queries));
         // A concept-only replacement has the same dependency boundary as an
         // addition plus a removal: `affected_concepts` walks both snapshots
         // from every removed and inserted symbol.  Rebuilding every query here
@@ -394,33 +463,56 @@ impl IncrementalBridgeClassifier {
         if side_changed || self.result.inconsistent {
             affected.extend(queries.iter().cloned());
         }
+        let mut deletion_reproved = false;
+        if source_reuse && std::env::var_os("KM_INCREMENTAL_DELETION_SUPPORT").is_some()
+            && !crate::tableau::ht_lean_certification_requested()
+        {
+            if let Some(supported) = crate::incremental_deletion::supported_rows_with_background(
+                &self.input.source_axioms, &input.source_axioms, &queries, &affected, &self.result, Some(&input),
+            ) {
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!("bridge incremental deletion supported_rows={} invalidated_before={}", supported.len(), affected.len());
+                }
+                affected.retain(|q| !supported.contains(q));
+                deletion_reproved = true;
+            }
+        }
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!(
-                "bridge incremental delta kind={kind:?} side_changed={side_changed} inconsistent={} queries={} affected={}",
+                "bridge incremental delta kind={kind:?} side_changed={side_changed} source_locality={source_reuse} inconsistent={} queries={} affected={}",
                 self.result.inconsistent,
                 queries.len(),
                 affected.len()
             );
         }
+        // Preserve first-position lookup semantics while avoiding one full
+        // concept-vector scan per affected symbol on large updates.
+        let mut concept_ids = HashMap::with_capacity(input.concepts.len());
+        for (id, name) in input.concepts.iter().enumerate() {
+            concept_ids.entry(name.as_str()).or_insert(id);
+        }
         let mut rebuilt_ids: Vec<usize> = affected
             .iter()
-            .filter_map(|name| {
-                input
-                    .concepts
-                    .iter()
-                    .position(|candidate| candidate == name)
-            })
+            .filter_map(|name| concept_ids.get(name.as_str()).copied())
             .collect();
         rebuilt_ids.sort_unstable();
         rebuilt_ids.dedup();
 
-        let classification =
-            crate::konclude_ht::bridge::bridged_classify_queries(&input, &rebuilt_ids).ok_or_else(
+        // Pure deletion preserves the prior global model. If every invalidated
+        // row has a fresh source proof, no consistency or subject probe remains.
+        let module_result = if deletion_reproved && rebuilt_ids.is_empty() {
+            Some(crate::konclude_ht::bridge::BridgedClassification {
+                consistent: true, unsatisfiable: Vec::new(), subsumptions: Vec::new(),
+            })
+        } else if source_reuse { reclassify(&input, &rebuilt_ids) } else { None };
+        let classification = module_result.or_else(||
+            crate::konclude_ht::bridge::bridged_classify_queries(&input, &rebuilt_ids)).ok_or_else(
                 || IncrementalReasoningError::HtDeferred {
                     detail: "bridge incremental subject reclassification deferred".into(),
                 },
             )?;
         let rebuilt = bridge_result(&input, classification, Some(&rebuilt_ids));
+        let query_set: HashSet<&str> = queries.iter().map(String::as_str).collect();
         let result = if rebuilt.inconsistent {
             result_from_inconsistent_queries(&queries)
         } else {
@@ -430,14 +522,19 @@ impl IncrementalBridgeClassifier {
                 .subsumptions
                 .retain(|subject, _| !affected.contains(subject));
             for (subject, supers) in rebuilt.subsumptions {
-                merged.subsumptions.insert(subject, supers);
+                // Source-level closure can emit incidental rows outside the
+                // requested subjects. Those rows are not a complete replacement
+                // for the exact retained taxonomy of an unaffected subject.
+                if affected.contains(&subject) {
+                    merged.subsumptions.insert(subject, supers);
+                }
             }
             for query in &queries {
                 merged.subsumptions.entry(query.clone()).or_default();
             }
             merged
                 .subsumptions
-                .retain(|subject, _| queries.contains(subject));
+                .retain(|subject, _| query_set.contains(subject.as_str()));
             merged.dropped = 0;
             merged.unresolved.clear();
             merged
@@ -468,6 +565,51 @@ fn bridge_query_names(input: &TInput) -> Vec<String> {
 }
 
 fn bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoningError> {
+    // Match TInput's wire fields and skip conditions exactly, without first
+    // materializing clauses, source expressions or proof payloads that are
+    // immediately discarded. Exhaustive destructuring forces added fields to
+    // receive an explicit fingerprint decision.
+    let TInput {
+        rule_data_roles, rule_source_classes, rule_source_abox,
+        concepts, roles, dropped, fenced, inverse, number,
+        inverse_cardinality_role_separable, nominals, nominal_abox, native_abox,
+        card_defs, cardinality_exact_pairs, cardinality_projection_complete,
+        chains, transitive, role_domains, role_ranges,
+        clauses: _, queries: _, source_axioms: _, definers: _,
+        direct_projection_source: _, mixed_projection_source: _, bundle_projection_source: _,
+    } = input;
+    let mut side = serde_json::Map::new();
+    macro_rules! field {
+        ($name:ident, $keep:expr) => {
+            if $keep {
+                side.insert(stringify!($name).into(), serde_json::to_value($name)
+                    .map_err(|error| IncrementalReasoningError::HtDeferred {
+                        detail: format!("cannot fingerprint typed bridge state: {error}"),
+                    })?);
+            }
+        };
+    }
+    field!(rule_data_roles, rule_data_roles.is_some());
+    field!(rule_source_classes, rule_source_classes.is_some());
+    field!(rule_source_abox, rule_source_abox.is_some());
+    field!(concepts, true); field!(roles, true);
+    field!(dropped, true); field!(fenced, true); field!(inverse, true); field!(number, true);
+    field!(inverse_cardinality_role_separable, *inverse_cardinality_role_separable);
+    field!(nominals, true);
+    field!(nominal_abox, !nominal_abox.is_empty());
+    field!(native_abox, !native_abox.is_empty());
+    field!(card_defs, !card_defs.is_empty());
+    field!(cardinality_exact_pairs, !cardinality_exact_pairs.is_empty());
+    field!(cardinality_projection_complete, *cardinality_projection_complete);
+    field!(chains, !chains.is_empty()); field!(transitive, !transitive.is_empty());
+    field!(role_domains, !role_domains.is_empty()); field!(role_ranges, !role_ranges.is_empty());
+    serde_json::to_vec(&side).map_err(|error| IncrementalReasoningError::HtDeferred {
+        detail: format!("cannot encode typed bridge fingerprint: {error}"),
+    })
+}
+
+#[cfg(test)]
+fn legacy_bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoningError> {
     let mut side =
         serde_json::to_value(input).map_err(|error| IncrementalReasoningError::HtDeferred {
             detail: format!("cannot fingerprint typed bridge state: {error}"),
@@ -488,6 +630,52 @@ fn bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoni
     serde_json::to_vec(&side).map_err(|error| IncrementalReasoningError::HtDeferred {
         detail: format!("cannot encode typed bridge fingerprint: {error}"),
     })
+}
+
+/// Source-based reuse additionally needs identical source
+/// RBoxes, complete positive source metadata and a checked activation boundary.
+/// This value compares only supported typed side constraints by their names.
+fn positive_source_side_fingerprint(input: &TInput) -> Option<Vec<u8>> {
+    // Deliberately exhaustive: an added typed field must receive an explicit
+    // treatment instead of silently disappearing from reuse admission.
+    let TInput {
+        rule_data_roles, rule_source_classes, rule_source_abox,
+        concepts, roles, queries, dropped, fenced, inverse, number,
+        inverse_cardinality_role_separable, nominals, nominal_abox, native_abox,
+        card_defs, cardinality_exact_pairs, cardinality_projection_complete,
+        chains, transitive, role_domains, role_ranges,
+        // These encode the changing theory, its generated implementation, or
+        // its proof provenance. They are NOT certified by this side key.
+        clauses: _, direct_projection_source: _, mixed_projection_source: _,
+        bundle_projection_source: _, definers: _, source_axioms: _,
+    } = input;
+    if rule_data_roles.is_some() || rule_source_classes.is_some() || rule_source_abox.is_some()
+        || *dropped != 0 || !fenced.is_empty() || *number || !nominals.is_empty()
+        || !nominal_abox.is_empty() || !native_abox.is_empty()
+        || !card_defs.is_empty() || !cardinality_exact_pairs.is_empty()
+    { return None; }
+    if concepts.iter().collect::<BTreeSet<_>>().len() != concepts.len()
+        || roles.iter().collect::<BTreeSet<_>>().len() != roles.len()
+    { return None; }
+    let public = queries.iter().map(|id| concepts.get(*id)).collect::<Option<BTreeSet<_>>>()?;
+    if public.len() != queries.len() { return None; }
+    // Generated domain/range markers need structural interpretation. Until
+    // that is established, admit only public named class endpoints.
+    let named_endpoint = |pairs: &[(usize, usize)]| -> Option<BTreeSet<(&String, &String)>> {
+        pairs.iter().map(|(r,c)| {
+            let c=concepts.get(*c)?;
+            if !public.contains(c) { return None; }
+            Some((roles.get(*r)?, c))
+        }).collect()
+    };
+    let domains=named_endpoint(role_domains)?;
+    let ranges=named_endpoint(role_ranges)?;
+    let chains=chains.iter().map(|(a,b,c)| Some((roles.get(*a)?,roles.get(*b)?,roles.get(*c)?)))
+        .collect::<Option<BTreeSet<_>>>()?;
+    let transitive=transitive.iter().map(|r| roles.get(*r)).collect::<Option<BTreeSet<_>>>()?;
+    let roles: BTreeSet<_> = roles.iter().collect();
+    serde_json::to_vec(&(public, roles, inverse, inverse_cardinality_role_separable,
+        cardinality_projection_complete, chains, transitive, domains, ranges)).ok()
 }
 
 fn bridge_result(
@@ -1711,6 +1899,105 @@ fn term_symbols(term: &JTerm, symbols: &mut Vec<Symbol>) {
 mod typed_tests {
     use super::*;
     use crate::orchestrate::cb_to_ht::{NativeIndividualJson, TInput};
+
+    #[test]
+    fn compact_side_fingerprint_is_byte_identical_for_all_retained_fields() {
+        let populated = serde_json::json!({
+            "rule_data_roles": [true,false],
+            "rule_source_classes": {"source":"Ontology()","concept_iris":["urn:A",null]},
+            "rule_source_abox": {"source":"Ontology()","object_properties":"roles", "data_axioms":"data",
+                "rules":"rules", "concept_iris":["urn:A"],"role_iris":["urn:r"],"nominal_iris":["urn:i"]},
+            "concepts":["A","B"],"roles":["r"],"dropped":1,
+            "fenced":[{"reason":"test","detail":"retained"}],"inverse":true,"number":true,
+            "inverse_cardinality_role_separable":true,"nominals":[0],
+            "nominal_abox":{"complete":true,"same":[["i","j"]],"different":[["i","k"]]},
+            "native_abox":{"complete":true,"individuals":[{"proxies":[0],"assertions":[1]}],
+                "different":[[0,1]],"role_assertions":[[0,0,1]],"negative_role_assertions":[[0,1,0]]},
+            "card_defs":[{"marker":0,"min":true,"n":2,"role":0,"filler":1,"exact":true}],
+            "cardinality_exact_pairs":[{"maximum":0,"minimum":1}],"cardinality_projection_complete":true,
+            "chains":[[0,0,0]],"transitive":[0],"role_domains":[[0,0]],"role_ranges":[[0,1]]
+        });
+        let check = |value| {
+            let input:TInput=serde_json::from_value(value).unwrap();
+            assert_eq!(bridge_side_fingerprint(&input).unwrap(),legacy_bridge_side_fingerprint(&input).unwrap());
+        };
+        check(serde_json::json!({}));
+        check(populated.clone());
+        for (key,value) in populated.as_object().unwrap() {
+            let mut only=serde_json::Map::new();only.insert(key.clone(),value.clone());
+            check(serde_json::Value::Object(only));
+            let mut without=populated.as_object().unwrap().clone();without.remove(key);
+            check(serde_json::Value::Object(without));
+        }
+        // Some(empty) remains distinct from absent optional source evidence.
+        check(serde_json::json!({"rule_data_roles":[]}));
+    }
+
+    #[test]
+    fn compact_side_fingerprint_optional_frozen_input_probe() {
+        let Some(path)=std::env::var_os("KM_SIDE_KEY_INPUT") else { return; };
+        let input:TInput=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let mut rows=Vec::new();
+        for repetition in 0..8 {
+            let mut answers=Vec::new();
+            for compact in if repetition%2==0 { [false,true] } else { [true,false] } {
+                let start=std::time::Instant::now();
+                let bytes=if compact { bridge_side_fingerprint(&input) } else { legacy_bridge_side_fingerprint(&input) }.unwrap();
+                rows.push(serde_json::json!({"repetition":repetition,"compact":compact,"elapsed_s":start.elapsed().as_secs_f64(),"bytes":bytes.len()}));
+                answers.push(bytes);
+            }
+            assert_eq!(answers[0],answers[1]);
+        }
+        let output=std::env::var_os("KM_SIDE_KEY_OUTPUT").expect("fingerprint probe output");
+        std::fs::write(output,serde_json::to_vec(&rows).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn source_side_key_ignores_reindexing_but_retains_constraint_meaning() {
+        let old=TInput { concepts: vec!["A".into(),"B".into(),"Q_old".into()],
+            roles: vec!["r".into(),"s".into()], queries: vec![0,1], inverse:true,
+            chains:vec![(0,1,0)], transitive:vec![0], role_domains:vec![(0,0)],
+            role_ranges:vec![(1,1)], ..Default::default() };
+        let new=TInput { concepts:vec!["Q_new".into(),"B".into(),"A".into()],
+            roles:vec!["s".into(),"r".into()],queries:vec![2,1],inverse:true,
+            chains:vec![(1,0,1)],transitive:vec![1],role_domains:vec![(1,2)],
+            role_ranges:vec![(0,1)],..Default::default() };
+        let key=positive_source_side_fingerprint(&old).unwrap();
+        assert_eq!(Some(key.clone()),positive_source_side_fingerprint(&new));
+        assert_ne!(bridge_side_fingerprint(&old).unwrap(),bridge_side_fingerprint(&new).unwrap());
+        let mut changed=new.clone(); changed.role_domains[0].1=1;
+        assert_ne!(Some(key.clone()),positive_source_side_fingerprint(&changed));
+        let mut changed=new.clone(); changed.chains[0]=(0,1,1);
+        assert_ne!(Some(key.clone()),positive_source_side_fingerprint(&changed));
+        let mut changed=new.clone(); changed.inverse=false;
+        assert_ne!(Some(key.clone()),positive_source_side_fingerprint(&changed));
+        for bad in 0..7 {
+            let mut changed=new.clone();
+            match bad {
+                0 => changed.role_domains[0].1=0, // private definer endpoint
+                1 => changed.chains[0].0=99,
+                2 => changed.number=true,
+                3 => changed.rule_data_roles=Some(vec![]),
+                4 => changed.native_abox.complete=true,
+                5 => changed.dropped=1,
+                _ => changed.concepts.push("A".into()),
+            }
+            assert!(positive_source_side_fingerprint(&changed).is_none(),"guard {bad}");
+        }
+    }
+
+    #[test]
+    fn source_side_key_optional_frozen_input_probe() {
+        let Some(old_path)=std::env::var_os("KM_SOURCE_ACTIVATION_OLD") else { return; };
+        let new_path=std::env::var_os("KM_SOURCE_ACTIVATION_NEW").expect("paired source probe");
+        let read=|path| serde_json::from_slice::<TInput>(&std::fs::read(path).unwrap()).unwrap();
+        let old=read(old_path); let new=read(new_path);
+        let old_key=positive_source_side_fingerprint(&old).expect("supported old typed state");
+        let new_key=positive_source_side_fingerprint(&new).expect("supported new typed state");
+        assert_eq!(old_key,new_key);
+        eprintln!("source-side-key name_resolved_equal=true raw_equal={} bytes={}",
+            bridge_side_fingerprint(&old).unwrap()==bridge_side_fingerprint(&new).unwrap(),old_key.len());
+    }
 
     fn concept_clause(body: usize, head: usize) -> HtClause {
         HtClause {

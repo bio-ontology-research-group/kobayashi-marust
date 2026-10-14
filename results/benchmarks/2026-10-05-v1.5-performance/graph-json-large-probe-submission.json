@@ -1,0 +1,21 @@
+{
+  "job_id": "53336568",
+  "cases": [
+    "ore_ont_14459",
+    "ore_ont_11085",
+    "ore_ont_8486"
+  ],
+  "repetitions": 2,
+  "arms": [
+    "expanded",
+    "graph"
+  ],
+  "same_binary": true,
+  "timeout_s": 240,
+  "audit_timeout_s": 600,
+  "memory_gib": 20,
+  "cpus": 1,
+  "release_approved": false,
+  "runner_sha256": "bc4ac4e60a07d5d64e26a1c353506a2e770e1a023112a92a8b48dac79055f5dc",
+  "selection": "Three additional cases with retained taxonomy outputs larger than 1 GiB. Original experiment and its controls are retained."
+}

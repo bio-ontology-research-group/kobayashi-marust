@@ -730,15 +730,17 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: descriptor
-        // chain, the saturation/reapply label-set reads, the backend association
-        // cache handler (W6-DEFER[api]), the status/critical masks, and the ~9
-        // siblings are all not yet ported.
-        let _ = (
-            &mut *process_indi,
-            con_sat_pro_linker,
-            &mut *calc_alg_context,
+        // The complete nominal association expansion above is not implemented.
+        // A nominal descriptor alone does not include its individual's asserted
+        // types. Never advertise that partial label as a sufficient cached
+        // model; exact completion must perform the nominal merge and expansion.
+        self.update_direct_adding_individual_status_flags(
+            *process_indi,
+            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT
+                | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION,
+            calc_alg_context,
         );
+        self.set_insufficient_node_occured(calc_alg_context);
     }
 }
 

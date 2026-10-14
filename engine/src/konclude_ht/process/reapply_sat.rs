@@ -100,10 +100,10 @@ pub struct LabelSetMapEntry {
 /// then the merge of the two sorted reapply-map streams.
 pub struct ReapplyConceptLabelSetIterator {
     // mConDesDepBeginIt / mConDesDepEndIt → Vec snapshot + position cursor.
-    con_des_dep: Vec<LabelSetMapEntry>,
+    con_des_dep: std::sync::Arc<Vec<LabelSetMapEntry>>,
     con_des_dep_pos: usize,
     // mAdditionalConDesDepBeginIt / mAdditionalConDesDepEndIt.
-    additional_con_des_dep: Vec<LabelSetMapEntry>,
+    additional_con_des_dep: std::sync::Arc<Vec<LabelSetMapEntry>>,
     additional_con_des_dep_pos: usize,
     // KONCLUDE-PORT-NOTE[ownership]: `CConceptDescriptor* mConceptDesLinkerIt` → `ConDescId`.
     concept_des_linker_it: ConDescId,
@@ -117,10 +117,12 @@ impl ReapplyConceptLabelSetIterator {
     pub fn new(
         concept_count: Cint64,
         concept_des_linker: ConDescId,
-        con_des_dep: Vec<LabelSetMapEntry>,
-        additional_con_des_dep: Vec<LabelSetMapEntry>,
+        con_des_dep: impl Into<std::sync::Arc<Vec<LabelSetMapEntry>>>,
+        additional_con_des_dep: impl Into<std::sync::Arc<Vec<LabelSetMapEntry>>>,
         skip_empty_concept_descriptors: bool,
     ) -> Self {
+        let con_des_dep = con_des_dep.into();
+        let additional_con_des_dep = additional_con_des_dep.into();
         let mut it = ReapplyConceptLabelSetIterator {
             concept_count,
             concept_des_linker_it: concept_des_linker,
@@ -496,7 +498,7 @@ pub struct SignatureBlockingCandidateHash {
     // KONCLUDE-PORT-NOTE[memory-pool]: `CMemoryAllocationManager* mMemMan` (opaque).
     pub mem_man: Cint64,
     /// `CPROCESSHASH<cint64,CSignatureBlockingCandidateData> mSigBlockCandidateHash`.
-    pub sig_block_candidate_hash: std::collections::HashMap<Cint64, SignatureBlockingCandidateData>,
+    pub sig_block_candidate_hash: crate::fxhash::FxHashMap<Cint64, SignatureBlockingCandidateData>,
 }
 
 impl Default for SignatureBlockingCandidateHash {
@@ -504,7 +506,7 @@ impl Default for SignatureBlockingCandidateHash {
         SignatureBlockingCandidateHash {
             context: INVALID,
             mem_man: INVALID,
-            sig_block_candidate_hash: std::collections::HashMap::new(),
+            sig_block_candidate_hash: crate::fxhash::FxHashMap::default(),
         }
     }
 }
@@ -517,7 +519,7 @@ impl SignatureBlockingCandidateHash {
             context,
             // W2.7-DEFER[api]: mContext->getUsedMemoryAllocationManager(); opaque pool handle.
             mem_man: INVALID,
-            sig_block_candidate_hash: std::collections::HashMap::new(),
+            sig_block_candidate_hash: crate::fxhash::FxHashMap::default(),
         }
     }
 

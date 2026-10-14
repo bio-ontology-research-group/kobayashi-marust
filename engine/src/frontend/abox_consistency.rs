@@ -342,18 +342,25 @@ impl AboxData {
             }
         }
         // role assertions contribute domain/range memberships
+        // Allocate only when a membership is actually new.
+        fn add_member(mem: &mut HashMap<String, HashSet<String>>, individual: &str, class: &str) {
+            match mem.get_mut(individual) {
+                Some(classes) => {
+                    if !classes.contains(class) {
+                        classes.insert(class.to_string());
+                    }
+                }
+                None => {
+                    mem.insert(individual.to_string(), HashSet::from([class.to_string()]));
+                }
+            }
+        }
         for (p, a, b) in &self.roles {
             if let Some(d) = dom.get(p.as_str()) {
-                self.mem
-                    .entry(a.clone())
-                    .or_default()
-                    .insert((*d).to_string());
+                add_member(&mut self.mem, a, d);
             }
             if let Some(c) = rng.get(p.as_str()) {
-                self.mem
-                    .entry(b.clone())
-                    .or_default()
-                    .insert((*c).to_string());
+                add_member(&mut self.mem, b, c);
             }
         }
         // merge co-referent individuals (SameIndividual)
@@ -388,39 +395,69 @@ impl AboxData {
                 }
                 seen
             };
-            let neg: Vec<(String, String, String)> = self
-                .neg_roles
-                .iter()
-                .map(|(p, a, b)| (p.clone(), uf_find(&mut parent, a), uf_find(&mut parent, b)))
-                .collect();
+            // Negative assertions indexed by their (representative) endpoint
+            // pair: a positive assertion can only clash with the negatives
+            // on its own endpoint pair, so this finds exactly the same clashes
+            // as scanning every negative assertion.
+            let mut neg: HashMap<(String, String), Vec<String>> = HashMap::new();
+            for (p, a, b) in &self.neg_roles {
+                let key = (uf_find(&mut parent, a), uf_find(&mut parent, b));
+                neg.entry(key).or_default().push(p.clone());
+            }
             for (p, a, b) in &self.roles {
-                let ra = uf_find(&mut parent, a);
-                let rb = uf_find(&mut parent, b);
+                let key = (uf_find(&mut parent, a), uf_find(&mut parent, b));
+                let Some(negated) = neg.get(&key) else { continue };
                 let sups = role_ancestors(p);
-                if neg
-                    .iter()
-                    .any(|(np, na, nb)| *na == ra && *nb == rb && sups.contains(np))
-                {
+                if negated.iter().any(|np| sups.contains(np)) {
                     return true;
                 }
             }
         }
-        let mut merged: HashMap<String, HashSet<String>> = HashMap::new();
-        for (ind, cs) in &self.mem {
-            let r = uf_find(&mut parent, ind);
-            merged.entry(r).or_default().extend(cs.iter().cloned());
+        // Asserted classes per SameIndividual representative. Without any
+        // SameIndividual pair every individual is its own representative, so
+        // the per-individual sets are used as they are.
+        let mut merged_owned: HashMap<String, HashSet<String>> = HashMap::new();
+        if !self.same.is_empty() {
+            for (ind, cs) in &self.mem {
+                let r = uf_find(&mut parent, ind);
+                merged_owned.entry(r).or_default().extend(cs.iter().cloned());
+            }
         }
+        let merged: Box<dyn Iterator<Item = &HashSet<String>>> = if self.same.is_empty() {
+            Box::new(self.mem.values())
+        } else {
+            Box::new(merged_owned.values())
+        };
         // an individual whose closed class set contains both ends of a disjoint
         // pair witnesses global inconsistency
         let mut cache: HashMap<String, HashSet<String>> = HashMap::new();
-        for cs in merged.values() {
-            let mut all: HashSet<String> = HashSet::new();
+        // Index each disjoint pair by both endpoints: a clash needs some class
+        // in the closed set whose partner is also present, so scanning the
+        // closed set's partners is equivalent to scanning every pair.
+        let mut partners: HashMap<&str, Vec<&str>> = HashMap::new();
+        for (a, b) in &self.disjoint {
+            partners.entry(a.as_str()).or_default().push(b.as_str());
+            partners.entry(b.as_str()).or_default().push(a.as_str());
+        }
+        for cs in merged {
+            // Fill the memo first, then union the memoised closures by
+            // reference instead of cloning a closure per asserted class.
             for c in cs {
-                all.extend(ancestors(&self.sup, c, &mut cache));
+                if !cache.contains_key(c.as_str()) {
+                    let closure = ancestors(&self.sup, c, &mut cache);
+                    debug_assert!(cache.contains_key(c.as_str()));
+                    drop(closure);
+                }
             }
-            for (a, b) in &self.disjoint {
-                if all.contains(a) && all.contains(b) {
-                    return true;
+            let mut all: HashSet<&str> = HashSet::new();
+            for c in cs {
+                all.extend(cache[c.as_str()].iter().map(String::as_str));
+            }
+            for c in &all {
+                if let Some(ps) = partners.get(c) {
+                    if ps.iter().any(|p| all.contains(p)) {
+                        return true;
+                    }
                 }
             }
         }
@@ -432,6 +469,56 @@ impl AboxData {
 mod tests {
     use super::*;
     use crate::frontend::syntax::Axiom;
+
+    /// The endpoint-indexed disjointness scan returns exactly the boolean of
+    /// the historical every-pair scan, including reflexive `(A,A)` pairs and
+    /// both orientations, on pseudo-random hierarchies and ABoxes.
+    #[test]
+    fn endpoint_indexed_disjoint_scan_matches_every_pair_scan() {
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = |bound: u64| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) % bound
+        };
+        let mut seen = [0usize; 2];
+        for _ in 0..2_000 {
+            let classes = 2 + next(12);
+            let name = |i: u64| format!("C{i}");
+            let mut sup: HashMap<String, Vec<String>> = HashMap::new();
+            for _ in 0..next(2 * classes) {
+                sup.entry(name(next(classes))).or_default().push(name(next(classes)));
+            }
+            let disjoint: Vec<(String, String)> = (0..1 + next(4))
+                .map(|_| (name(next(classes)), name(next(classes))))
+                .collect();
+            let mut mem: HashMap<String, HashSet<String>> = HashMap::new();
+            for i in 0..1 + next(4) {
+                let entry = mem.entry(format!("i{i}")).or_default();
+                for _ in 0..1 + next(3) {
+                    entry.insert(name(next(classes)));
+                }
+            }
+            let mut cache = HashMap::new();
+            let expected = mem.values().any(|cs| {
+                let mut all: HashSet<String> = HashSet::new();
+                for c in cs {
+                    all.extend(ancestors(&sup, c, &mut cache));
+                }
+                disjoint.iter().any(|(a, b)| all.contains(a) && all.contains(b))
+            });
+            let data = AboxData {
+                sup,
+                disjoint,
+                mem,
+                roles: Vec::new(),
+                neg_roles: Vec::new(),
+                same: Vec::new(),
+            };
+            assert_eq!(data.is_inconsistent(&[]), expected);
+            seen[usize::from(expected)] += 1;
+        }
+        assert!(seen[0] > 100 && seen[1] > 100, "{seen:?}");
+    }
 
     fn ont(axioms: Vec<Axiom>) -> Ontology {
         let mut o = Ontology::new();

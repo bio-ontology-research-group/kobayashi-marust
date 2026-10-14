@@ -1,0 +1,30 @@
+{
+  "source_sha256": "e8e00e63ab8bbef80de3059389b565613c3a79c0210c9ed710cc8703d4849791",
+  "runs": {
+    "old": {
+      "binary_sha256": "581fa39658df9e72714cf7c0d072ca65a0c87035af6f3b7570eb84b18ec02035",
+      "status": "ok",
+      "returncode": 0,
+      "peak_bytes": 2045612032,
+      "wall_s": 8.653239481966011,
+      "output_sha256": "a5719a825832fd8f2575d30ebede76e47661f10af244cc5c048bcd873305fe9d",
+      "output_bytes": 175535414
+    },
+    "new": {
+      "binary_sha256": "28d91ea43376bbca278956e6cf2de49a2bfcafeb168eb5ee69a50008f47b5b67",
+      "status": "ok",
+      "returncode": 0,
+      "peak_bytes": 2045304832,
+      "wall_s": 8.851398876984604,
+      "output_sha256": "a5719a825832fd8f2575d30ebede76e47661f10af244cc5c048bcd873305fe9d",
+      "output_bytes": 175535414
+    }
+  },
+  "byte_identical": true,
+  "scope": "All symbolic frontend evidence fields; no reasoning or performance claim.",
+  "limits": {
+    "seconds_per_run": 240,
+    "memory_gib": 20,
+    "cpus": 1
+  }
+}

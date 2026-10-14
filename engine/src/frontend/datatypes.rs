@@ -339,6 +339,9 @@ enum Val {
     Bool(bool),
     /// string with optional language tag
     Str(String, Option<String>),
+    /// `xsd:anyURI` value: the IRI denoted by the whitespace-collapsed lexical
+    /// form (XSD 1.1 `whiteSpace=collapse`; OWL 2 parses relative IRIs as-is).
+    Uri(String),
     /// recognised datatype but value not represented exactly (e.g. enormous
     /// exponents) — comparable only for identity of the raw token
     Opaque(String),
@@ -385,6 +388,7 @@ struct NamedDt {
 const XSD_NS: &str = "http://www.w3.org/2001/XMLSchema#";
 const RDF_PLAIN_LITERAL_IRI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral";
 const RDFS_LITERAL_IRI: &str = "http://www.w3.org/2000/01/rdf-schema#Literal";
+const RDF_XML_LITERAL_IRI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral";
 const OWL_REAL_IRI: &str = "http://www.w3.org/2002/07/owl#real";
 const OWL_RATIONAL_IRI: &str = "http://www.w3.org/2002/07/owl#rational";
 
@@ -452,6 +456,7 @@ fn builtin_datatype_key(name: &str) -> Option<&str> {
         "owl:rational" | OWL_RATIONAL_IRI => Some("rational"),
         "rdfs:Literal" | RDFS_LITERAL_IRI => Some("rdfs:Literal"),
         "rdf:PlainLiteral" | RDF_PLAIN_LITERAL_IRI => Some("rdf:PlainLiteral"),
+        "rdf:XMLLiteral" | RDF_XML_LITERAL_IRI => Some("XMLLiteral"),
         _ => None,
     }
 }
@@ -567,6 +572,17 @@ fn named_dt_kind(local: &str) -> Option<NamedDt> {
             str_level: None,
             finite_bool: true,
         },
+        // RDF Concepts: the XML-value space of rdf:XMLLiteral is disjoint from
+        // the value space of every other datatype of the map.
+        "XMLLiteral" => NamedDt {
+            kind: "XMLLiteral",
+            part: Partition::Other,
+            min: None,
+            max: None,
+            integral: false,
+            str_level: None,
+            finite_bool: false,
+        },
         "anyURI" => NamedDt {
             kind: "anyURI",
             part: Partition::Uri,
@@ -645,6 +661,8 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
             _ => return Some((Val::Opaque(tok.to_string()), Some(dt))),
         },
         Some("string") => Val::Str(lex.to_string(), None),
+        Some("anyURI") => Val::Uri(lex.split([' ', '\t', '\n', '\r'])
+            .filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" ")),
         Some("dateTime" | "dateTimeStamp") => super::datetime_value::parse(
             lex, builtin == Some("dateTimeStamp"),
         ).map(Val::DateTime).unwrap_or_else(|| Val::Opaque(tok.to_string())),
@@ -876,6 +894,8 @@ enum DRange {
     OneOf(Vec<Val>),
     /// Complement in the data-value universe, with unknown decisions retained.
     Complement(Box<DRange>),
+    /// `DataUnionOf`: a value is in the union iff it is in some member.
+    Union(Vec<DRange>),
     /// recognised structure but no decision support — emit nothing
     Unknown,
 }
@@ -941,6 +961,57 @@ fn range_from_node(node: &Node) -> DRange {
     match node {
         Node::Atom(s) => range_of_named(s),
         Node::List(h, args) => match *h {
+            // Intersection of facet intervals of one base: the conjunction of
+            // their facets (exact for IEEE ranks and for decimal intervals).
+            "DataIntersectionOf" if args.len() >= 2 => {
+                let members: Vec<DRange> = args.iter().map(range_from_node).collect();
+                match &members[0] {
+                    DRange::Float(first) => {
+                        let mut range = first.clone();
+                        for member in &members[1..] {
+                            let DRange::Float(other) = member else { return DRange::Unknown };
+                            if other.part != range.part { return DRange::Unknown; }
+                            range.lo = range.lo.max(other.lo);
+                            range.hi = range.hi.min(other.hi);
+                            range.nan = range.nan && other.nan;
+                        }
+                        DRange::Float(range)
+                    }
+                    DRange::Num(first) => {
+                        let mut range = first.clone();
+                        for member in &members[1..] {
+                            let DRange::Num(other) = member else { return DRange::Unknown };
+                            if other.base_kind != range.base_kind { return DRange::Unknown; }
+                            let tighter_lo = match (&range.min, &other.min) {
+                                (None, b) => b.clone(),
+                                (a, None) => a.clone(),
+                                (Some(a), Some(b)) => match rat_cmp(&a.0, &b.0) {
+                                    Some(std::cmp::Ordering::Less) => Some(*b),
+                                    Some(std::cmp::Ordering::Greater) => Some(*a),
+                                    Some(std::cmp::Ordering::Equal) => Some((a.0, a.1 && b.1)),
+                                    None => return DRange::Unknown,
+                                },
+                            };
+                            let tighter_hi = match (&range.max, &other.max) {
+                                (None, b) => b.clone(),
+                                (a, None) => a.clone(),
+                                (Some(a), Some(b)) => match rat_cmp(&a.0, &b.0) {
+                                    Some(std::cmp::Ordering::Less) => Some(*a),
+                                    Some(std::cmp::Ordering::Greater) => Some(*b),
+                                    Some(std::cmp::Ordering::Equal) => Some((a.0, a.1 && b.1)),
+                                    None => return DRange::Unknown,
+                                },
+                            };
+                            range.min = tighter_lo;
+                            range.max = tighter_hi;
+                        }
+                        DRange::Num(range)
+                    }
+                    _ => DRange::Unknown,
+                }
+            }
+            "DataUnionOf" if args.len() >= 2 =>
+                DRange::Union(args.iter().map(range_from_node).collect()),
             "DataComplementOf" if args.len() == 1 =>
                 DRange::Complement(Box::new(range_from_node(&args[0]))),
             "DataOneOf" => {
@@ -1008,10 +1079,12 @@ fn range_from_node(node: &Node) -> DRange {
                         Some((Val::Num(rv), _)) => rv,
                         _ => return DRange::Unknown,
                     };
+                    // At equal endpoints an exclusive bound is the tighter one
+                    // (e.g. `nonNegativeInteger minExclusive 0` excludes 0).
                     let tighter_min = |cur: &Option<(Rat, bool)>, nb: (Rat, bool)| match cur {
                         None => Some(nb),
-                        Some((c, _)) => {
-                            if c.lt(&nb.0).unwrap_or(false) {
+                        Some((c, incl)) => {
+                            if c.lt(&nb.0).unwrap_or(false) || (*c == nb.0 && *incl && !nb.1) {
                                 Some(nb)
                             } else {
                                 *cur
@@ -1020,8 +1093,8 @@ fn range_from_node(node: &Node) -> DRange {
                     };
                     let tighter_max = |cur: &Option<(Rat, bool)>, nb: (Rat, bool)| match cur {
                         None => Some(nb),
-                        Some((c, _)) => {
-                            if nb.0.lt(c).unwrap_or(false) {
+                        Some((c, incl)) => {
+                            if nb.0.lt(c).unwrap_or(false) || (*c == nb.0 && *incl && !nb.1) {
                                 Some(nb)
                             } else {
                                 *cur
@@ -1053,6 +1126,7 @@ fn val_eq(v: &Val, w: &Val) -> Option<bool> {
         (Val::DateTime(a), Val::DateTime(b)) => Some(a == b),
         (Val::Bool(a), Val::Bool(b)) => Some(a == b),
         (Val::Str(a, la), Val::Str(b, lb)) => Some(a == b && la == lb),
+        (Val::Uri(a), Val::Uri(b)) => Some(a == b),
         // cross-partition values are always distinct
         (Val::Num(_), Val::Bool(_) | Val::Str(..))
         | (Val::Bool(_), Val::Num(_) | Val::Str(..))
@@ -1073,6 +1147,7 @@ fn val_partition(v: &Val) -> Option<Partition> {
         Val::DateTime(_) => Some(Partition::Time),
         Val::Bool(_) => Some(Partition::Boolean),
         Val::Str(..) => Some(Partition::Strings),
+        Val::Uri(_) => Some(Partition::Uri),
         Val::Opaque(_) => None,
     }
 }
@@ -1120,6 +1195,17 @@ fn in_num_range(v: &Rat, r: &NumRange) -> Option<bool> {
 /// `v ∈ D`?
 fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
     match d {
+        DRange::Union(members) => {
+            let mut unknown = false;
+            for member in members {
+                match val_in_range(v, member) {
+                    Some(true) => return Some(true),
+                    Some(false) => {}
+                    None => unknown = true,
+                }
+            }
+            if unknown { None } else { Some(false) }
+        }
         DRange::Float(r) => r.contains(v),
         DRange::Top => Some(true),
         DRange::Unknown => None,
@@ -1141,7 +1227,7 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
         }
         DRange::Num(r) => match v {
             Val::Num(rv) => in_num_range(rv, r),
-            Val::Bool(_) | Val::Str(..) | Val::Float32(_) | Val::Float64(_) | Val::DateTime(_) => Some(false),
+            Val::Bool(_) | Val::Str(..) | Val::Uri(_) | Val::Float32(_) | Val::Float64(_) | Val::DateTime(_) => Some(false),
             Val::Opaque(_) => None,
         },
         DRange::Named(nd) => match v {
@@ -1179,6 +1265,7 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
                 Some(true)
             }
             Val::Bool(_) => Some(nd.part == Partition::Boolean),
+            Val::Uri(_) => Some(nd.part == Partition::Uri),
             Val::Str(_, lang) => {
                 if nd.part != Partition::Strings {
                     return Some(false);
@@ -1214,6 +1301,24 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
         (DRange::Num(_), DRange::Float(_)) => None,
 
         (_, DRange::Top) => Some(true),
+        // A union is below `d2` iff every member is; a member decided
+        // outside `d2` refutes it only when that member is non-empty, which
+        // we do not track, so only the positive direction is decided.
+        (DRange::Union(members), _) => {
+            let mut all = true;
+            for member in members {
+                match range_subsumed(member, d2) {
+                    Some(true) => {}
+                    _ => all = false,
+                }
+            }
+            all.then_some(true)
+        }
+        // `d1` is below a union when it is below one member (sufficient).
+        (_, DRange::Union(members)) => members
+            .iter()
+            .any(|member| range_subsumed(d1, member) == Some(true))
+            .then_some(true),
         (DRange::Unknown, _) | (_, DRange::Unknown) => None,
         (DRange::OneOf(vals), _) => {
             // every enumerated value in d2
@@ -1421,6 +1526,17 @@ fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
             Some(a.part != b.part),
         (DRange::Float(_), DRange::Num(_)) | (DRange::Num(_), DRange::Float(_)) => Some(true),
 
+        (DRange::Union(members), other) | (other, DRange::Union(members)) => {
+            let mut all = true;
+            for member in members {
+                match range_disjoint(member, other) {
+                    Some(true) => {}
+                    Some(false) => return Some(false),
+                    None => all = false,
+                }
+            }
+            all.then_some(true)
+        }
         (DRange::Unknown, _) | (_, DRange::Unknown) => None,
         (DRange::Top, _) | (_, DRange::Top) => Some(false), // named ranges are non-empty
         (DRange::OneOf(vals), other) | (other, DRange::OneOf(vals)) => {
@@ -1676,6 +1792,58 @@ pub(crate) fn bridge_exact_finite_values(name: &str) -> Option<Vec<String>> {
     }).collect()
 }
 
+/// `true` when `range` is an admitted integral decimal-tower range and every
+/// integer it contains lies in one of the admitted integral ranges or integer
+/// values named in `head` (the frontend's finite-difference cover).
+pub(crate) fn bridge_exact_integral_cover(range: &str, head: &[&str]) -> bool {
+    if !bridge_tbox_atomic_name(range) || range.starts_with("__dt__val__") {
+        return false;
+    }
+    let Some(DtEntry::Range(_, outer)) = classify_name(range) else { return false };
+    let Some(outer) = integral_interval(&outer) else { return false };
+    let mut parts = Vec::new();
+    for name in head {
+        if !bridge_tbox_atomic_name(name) {
+            return false;
+        }
+        match classify_name(name) {
+            Some(DtEntry::Range(_, inner)) => match integral_interval(&inner) {
+                Some(interval) => parts.push(interval),
+                None => return false,
+            },
+            Some(DtEntry::Value(_, Val::Num(value))) if value.is_integer() =>
+                parts.push((Some(value.num), Some(value.num))),
+            _ => return false,
+        }
+    }
+    integral_difference(outer, &parts, 0).is_some_and(|missing| missing.is_empty())
+}
+
+/// Bridge-TBox variant of [`bridge_exact_finite_values`]: the enumerated
+/// literals may be any value of the bridge-TBox map (e.g. xsd:double,
+/// xsd:decimal, xsd:anyURI). The narrow function stays unchanged for the data
+/// ABox projection.
+pub(crate) fn bridge_tbox_finite_values(name: &str) -> Option<Vec<String>> {
+    let text = name.strip_prefix("__dt__c__")?;
+    let mut parser = Parser::new(text);
+    let Node::List("DataOneOf", args) = parser.parse().ok()? else { return None };
+    let literals = glued_atoms(&args)?;
+    if literals.is_empty() { return None; }
+    literals.into_iter().map(|literal| {
+        let name = format!("__dt__val__{literal}");
+        bridge_tbox_atomic_name(&name).then_some(name)
+    }).collect()
+}
+
+/// Bridge-TBox variant of [`bridge_exact_finite_cover`].
+pub(crate) fn bridge_tbox_finite_cover(range: &str, head: &[&str]) -> bool {
+    let Some(values) = bridge_tbox_finite_values(range) else { return false };
+    values.iter().all(|value| head.iter().any(|other|
+        bridge_exact_value_equal(value, other) == Some(true)))
+        && head.iter().all(|value| values.iter().any(|other|
+            bridge_exact_value_equal(value, other) == Some(true)))
+}
+
 /// Compare a finite range with a proposed value-concept cover extensionally.
 /// Lexical aliases can repeat a value, but cannot omit or add a value.
 pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
@@ -1688,6 +1856,607 @@ pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
 
 pub(crate) fn bridge_exact_atomic_name(name: &str) -> bool {
     bridge_exact_atomic_family(name).is_some()
+}
+
+/// `true` for a literal whose lexical form is in the xsd:decimal lexical
+/// space `(\+|-)?([0-9]+(\.[0-9]*)?|\.[0-9]+)` (no exponent, no padding).
+fn exact_decimal_lexical(literal: &str) -> bool {
+    let Some(close) = literal.rfind('"') else { return false };
+    if !literal.starts_with('"') || close == 0 {
+        return false;
+    }
+    let lex = &literal[1..close];
+    let digits = lex.strip_prefix(['+', '-']).unwrap_or(lex);
+    let (whole, fraction) = match digits.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (digits, None),
+    };
+    let all_digits = |text: &str| text.bytes().all(|byte| byte.is_ascii_digit());
+    all_digits(whole) && fraction.is_none_or(all_digits)
+        && (!whole.is_empty() || fraction.is_some_and(|fraction| !fraction.is_empty()))
+}
+
+/// Bridge-TBox extension of [`bridge_exact_atomic_family`]. It is consumed
+/// only by the native completion bridge's TBox datatype certificate
+/// (`konclude_ht::bridge`), which additionally checks relation-clause
+/// evidence, body sensitivity, and exact IEEE cell sizes for the members
+/// added here. The data-ABox projection and tableau callers keep the narrower
+/// map. The additional members are:
+///
+/// * `xsd:anyURI` as a named range. OWL 2 (Structural Specification,
+///   section 4.6) gives it the set of all IRIs as value space, disjoint from
+///   `xsd:string` and from every other datatype of the map except
+///   `rdfs:Literal`. Its literal values remain opaque and are not admitted.
+/// * `xsd:double` as a named range and its literal values, parsed at binary64
+///   width (XSD 1.1 round-half-to-even lexical mapping) and compared by
+///   identity: `+0` and `-0` are distinct, `NaN` is one value equal to itself.
+/// * Facet intervals `minInclusive/minExclusive/maxInclusive/maxExclusive`
+///   over `xsd:double` or `xsd:float` with same-width facet values. Facets
+///   compare by IEEE equality (both zeros satisfy a zero bound) and exclude
+///   `NaN` (OWL 2 section 4.2, XSD 1.1 section 3.3.4).
+/// * `rdfs:Literal`, the top data range ("any set of data values that
+///   contains the union of the value spaces of all datatypes").
+pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
+    if let Some(family) = bridge_exact_atomic_family(name) {
+        return Some(family);
+    }
+    let rest = name.strip_prefix("__dt__")?;
+    if let Some(literal) = rest.strip_prefix("val__") {
+        let (value, datatype) = parse_literal(literal)?;
+        return match (value, datatype.as_deref().and_then(builtin_datatype_key)) {
+            (Val::Float64(_), Some("double")) => Some("double"),
+            (Val::Uri(_), Some("anyURI")) => Some("anyURI"),
+            // xsd:decimal values are exact rationals; the decimal lexical space
+            // has no exponent (XSD 1.1 decimalLexicalRep), so require it.
+            (Val::Num(_), Some("decimal")) if exact_decimal_lexical(literal) => Some("decimal"),
+            _ => None,
+        };
+    }
+    if let Some(text) = rest.strip_prefix("c__") {
+        return match parse_complex(text) {
+            DRange::Float(range) if range.part == Partition::Float32 => Some("float"),
+            DRange::Float(range) if range.part == Partition::Float64 => Some("double"),
+            // Facet intervals over the decimal tower (decimal or an integer
+            // datatype base). Their realizability is certified by
+            // `bridge_decimal_cells_realizable`.
+            DRange::Num(range) if !matches!(range.base_kind, "real" | "rational") => Some("decimal"),
+            // A union of named datatypes from the exact map. Its semantics
+            // reaches the bridge through the member inclusions and the union
+            // cover clause, both checked by the bridge.
+            DRange::OneOf(_) => bridge_tbox_finite_values(name).map(|_| "finite"),
+            DRange::Union(_) => union_member_names(name)
+                .filter(|members| members.iter().all(|member| {
+                    !member.starts_with("__dt__c__") && bridge_tbox_atomic_name(member)
+                }))
+                .map(|_| "union"),
+            _ => None,
+        };
+    }
+    if matches!(rest, "opaque" | "val") {
+        return None;
+    }
+    match range_of_internal_name(rest) {
+        DRange::Top => Some("literal"),
+        DRange::Named(datatype) if datatype.kind == "anyURI" => Some("anyURI"),
+        DRange::Named(datatype) if datatype.kind == "XMLLiteral" => Some("XMLLiteral"),
+        DRange::Named(datatype) if datatype.kind == "double" => Some("double"),
+        // Every bounded/unbounded integer datatype of the map (`long`, `short`,
+        // `unsignedInt`, `negativeInteger`, ...): an integral interval, decided
+        // by `bridge_decimal_cells_realizable` like the narrow members.
+        DRange::Named(datatype) if datatype.part == Partition::Numeric && datatype.integral => Some("decimal"),
+        _ => None,
+    }
+}
+
+pub(crate) fn bridge_tbox_atomic_name(name: &str) -> bool {
+    bridge_tbox_atomic_family(name).is_some()
+}
+
+/// `true` for an admitted IEEE facet interval (`__dt__c__DatatypeRestriction`
+/// over float/double), as opposed to a named range or a literal value.
+pub(crate) fn bridge_ieee_facet_range(name: &str) -> bool {
+    name.strip_prefix("__dt__c__")
+        .is_some_and(|text| matches!(parse_complex(text), DRange::Float(_)))
+}
+
+/// `true` for an admitted facet interval of any width or base: IEEE
+/// (float/double) or decimal tower.
+pub(crate) fn bridge_facet_range(name: &str) -> bool {
+    bridge_tbox_atomic_name(name)
+        && name.strip_prefix("__dt__c__")
+            .is_some_and(|text| matches!(parse_complex(text), DRange::Float(_) | DRange::Num(_)))
+}
+
+/// `true` for an admitted named or facet decimal-tower range.
+pub(crate) fn bridge_decimal_range(name: &str) -> bool {
+    !name.starts_with("__dt__val__")
+        && bridge_tbox_atomic_family(name) == Some("decimal")
+        && DecimalInterval::of(name).is_some()
+}
+
+/// `true` for an admitted named or facet IEEE range (not a literal value).
+pub(crate) fn bridge_ieee_range(name: &str) -> bool {
+    if name.starts_with("__dt__val__") {
+        return false;
+    }
+    matches!(bridge_tbox_atomic_family(name), Some("float" | "double"))
+        && bridge_ieee_interval(name).is_some()
+}
+
+fn bridge_ieee_interval(name: &str) -> Option<FloatRange> {
+    match bridge_exact_atomic_range(name)? {
+        DRange::Float(range) => Some(range),
+        DRange::Named(datatype) if matches!(datatype.part, Partition::Float32 | Partition::Float64) =>
+            Some(FloatRange::full(datatype.part)),
+        _ => None,
+    }
+}
+
+/// An admitted decimal-tower range as an interval of the decimal value
+/// space, optionally restricted to integers.
+#[derive(Clone, Debug)]
+struct DecimalInterval {
+    integral: bool,
+    lo: Option<(Rat, bool)>,
+    hi: Option<(Rat, bool)>,
+}
+
+impl DecimalInterval {
+    fn of(name: &str) -> Option<Self> {
+        match bridge_exact_atomic_range(name)? {
+            DRange::Named(datatype)
+                if datatype.part == Partition::Numeric
+                    && !matches!(datatype.kind, "float" | "double" | "real" | "rational") =>
+            {
+                Some(Self {
+                    integral: datatype.integral,
+                    lo: datatype.min.map(|bound| (Rat::from_int(bound), true)),
+                    hi: datatype.max.map(|bound| (Rat::from_int(bound), true)),
+                })
+            }
+            DRange::Num(range) if !matches!(range.base_kind, "real" | "rational") => Some(Self {
+                integral: range.integral,
+                lo: range.min,
+                hi: range.max,
+            }),
+            _ => None,
+        }
+    }
+
+    /// Interval membership of a decimal value, ignoring integrality.
+    fn spans(&self, value: &Rat) -> Option<bool> {
+        if let Some((bound, inclusive)) = &self.lo {
+            if !(if *inclusive { bound.le(value)? } else { bound.lt(value)? }) {
+                return Some(false);
+            }
+        }
+        if let Some((bound, inclusive)) = &self.hi {
+            if !(if *inclusive { value.le(bound)? } else { value.lt(bound)? }) {
+                return Some(false);
+            }
+        }
+        Some(true)
+    }
+
+    fn contains(&self, value: &Rat) -> Option<bool> {
+        Some((!self.integral || value.is_integer()) && self.spans(value)?)
+    }
+}
+
+fn rat_cmp(left: &Rat, right: &Rat) -> Option<std::cmp::Ordering> {
+    let a = left.num.checked_mul(right.den)?;
+    let b = right.num.checked_mul(left.den)?;
+    Some(a.cmp(&b))
+}
+
+fn rat_midpoint(left: &Rat, right: &Rat) -> Option<Rat> {
+    let num = left.num.checked_mul(right.den)?.checked_add(right.num.checked_mul(left.den)?)?;
+    Rat::new(num, left.den.checked_mul(right.den)?.checked_mul(2)?)
+}
+
+/// Number of integers strictly between `lo` and `hi` (`None` bound is
+/// unbounded); saturates at `u128::MAX`.
+fn integers_strictly_between(lo: Option<&Rat>, hi: Option<&Rat>) -> Option<u128> {
+    let (Some(lo), Some(hi)) = (lo, hi) else { return Some(u128::MAX) };
+    let first = if lo.is_integer() { lo.num.checked_add(1)? } else { div_floor_rat(lo)?.checked_add(1)? };
+    let last = if hi.is_integer() { hi.num.checked_sub(1)? } else { div_floor_rat(hi)? };
+    Some(if last < first { 0 } else { (last - first) as u128 + 1 })
+}
+
+/// Number of values of `interval` (saturating; `u128::MAX` = infinite) and
+/// how many of them are among `values`.
+fn decimal_interval_capacity(interval: &DecimalInterval, values: &[Rat]) -> Option<(u128, u128)> {
+    let occupied = values.iter().map(|value| interval.contains(value)).collect::<Option<Vec<bool>>>()?
+        .into_iter().filter(|&inside| inside).count() as u128;
+    let size: u128 = if interval.integral {
+        let lo = match &interval.lo {
+            None => None,
+            Some((bound, inclusive)) => {
+                let floor = div_floor_rat(bound)?;
+                Some(if bound.is_integer() && *inclusive { floor } else { floor.checked_add(1)? })
+            }
+        };
+        let hi = match &interval.hi {
+            None => None,
+            Some((bound, inclusive)) => {
+                let floor = div_floor_rat(bound)?;
+                Some(if bound.is_integer() && !inclusive { floor.checked_sub(1)? } else { floor })
+            }
+        };
+        match (lo, hi) {
+            (Some(lo), Some(hi)) if hi < lo => 0,
+            (Some(lo), Some(hi)) => (hi - lo) as u128 + 1,
+            _ => u128::MAX,
+        }
+    } else {
+        match (&interval.lo, &interval.hi) {
+            (Some((lo, li)), Some((hi, hi_inc))) => match rat_cmp(lo, hi)? {
+                std::cmp::Ordering::Greater => 0,
+                std::cmp::Ordering::Equal => u128::from(*li && *hi_inc),
+                std::cmp::Ordering::Less => u128::MAX,
+            },
+            _ => u128::MAX,
+        }
+    };
+    Some((size, occupied))
+}
+
+/// Values of the decimal-tower range `name` that are not among `literals`
+/// (saturating; `u128::MAX` = infinite). `None` when undecided.
+pub(crate) fn bridge_decimal_free_capacity(name: &str, literals: &[&str]) -> Option<u128> {
+    let interval = DecimalInterval::of(name)?;
+    let mut values: Vec<Rat> = Vec::new();
+    for literal in literals {
+        let Some(token) = literal.strip_prefix("__dt__val__") else { continue };
+        match parse_literal(token) {
+            Some((Val::Num(value), _)) => if !values.contains(&value) { values.push(value) },
+            Some((Val::Opaque(_), datatype))
+                if datatype.as_deref().and_then(builtin_datatype_key).and_then(named_dt_kind)
+                    .is_some_and(|d| d.part == Partition::Numeric) => return None,
+            _ => {}
+        }
+    }
+    let (size, occupied) = decimal_interval_capacity(&interval, &values)?;
+    Some(size.saturating_sub(occupied))
+}
+
+/// Fast exact path of [`bridge_decimal_cells_realizable`] for a cell-covered
+/// vocabulary. A member is *atomic* when the present clauses relate it to
+/// every other member by inclusion or disjointness. When every non-atomic
+/// member has a present cover whose heads are all atomic, every admissible
+/// label contains an atomic `C` and then equals the inclusion closure of `C`
+/// (any other member is disjoint from `C`). Such a label is realized exactly
+/// by the values of `C`, so it suffices that each atomic member holds
+/// `required` values outside `literals`. `None` = not applicable.
+fn decimal_cells_by_atoms(
+    ranges: &[&str],
+    intervals: &[DecimalInterval],
+    inclusion: &dyn Fn(usize, usize) -> bool,
+    disjoint: &dyn Fn(usize, usize) -> bool,
+    literals: &[&str],
+    required: u128,
+    covers: &[(usize, Vec<usize>)],
+) -> Option<bool> {
+    let k = ranges.len();
+    let atomic: Vec<bool> = (0..k)
+        .map(|i| (0..k).all(|j| i == j || inclusion(i, j) || disjoint(i, j)))
+        .collect();
+    let covered = (0..k).all(|i| atomic[i] || covers.iter().any(|(body, heads)|
+        *body == i && !heads.is_empty() && heads.iter().all(|&head| atomic[head])));
+    if !covered {
+        return None;
+    }
+    let mut values: Vec<Rat> = Vec::new();
+    for literal in literals {
+        let Some(token) = literal.strip_prefix("__dt__val__") else { continue };
+        match parse_literal(token) {
+            Some((Val::Num(value), _)) => if !values.contains(&value) { values.push(value) },
+            Some((Val::Opaque(_), _)) => return None,
+            _ => {}
+        }
+    }
+    for (index, interval) in intervals.iter().enumerate() {
+        if !atomic[index] {
+            continue;
+        }
+        let (size, occupied) = decimal_interval_capacity(interval, &values)?;
+        if size.saturating_sub(occupied) < required {
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                eprintln!("BRIDGE-DECIMAL-CELL: atomic={} size={size} occupied={occupied} required={required}", ranges[index]);
+            }
+            return Some(false);
+        }
+    }
+    Some(true)
+}
+
+/// Exact cell certificate for the decimal-tower ranges (`decimal`, the
+/// admitted integer datatypes, and decimal/integer facet intervals); the
+/// counterpart of [`bridge_ieee_cells_realizable`] with the same obligation:
+/// every label set `S` closed under the present inclusions and free of
+/// present disjoint pairs needs two values that lie in every range of `S`,
+/// in no body-sensitive range outside `S`, and that are no present literal.
+///
+/// Values are counted exactly over the decimal line cut at every range
+/// endpoint: an open piece holds infinitely many decimals (or the exact
+/// number of integers when a member of `S` is integral); an endpoint piece
+/// holds one value. For example, with `nonNegativeInteger` and a
+/// body-sensitive `positiveInteger`, the label `{nonNegativeInteger}` is
+/// realized only by `0`, so two forced-distinct successors fail the
+/// certificate.
+pub(crate) fn bridge_decimal_cells_realizable(
+    ranges: &[&str],
+    body_sensitive: &[bool],
+    inclusion: &dyn Fn(usize, usize) -> bool,
+    disjoint: &dyn Fn(usize, usize) -> bool,
+    literals: &[&str],
+    required: u128,
+    covers: &[(usize, Vec<usize>)],
+) -> Option<bool> {
+    if ranges.is_empty() {
+        return Some(true);
+    }
+    if body_sensitive.len() != ranges.len() {
+        return None;
+    }
+    let intervals: Vec<DecimalInterval> =
+        ranges.iter().map(|name| DecimalInterval::of(name)).collect::<Option<_>>()?;
+    if let Some(decided) = decimal_cells_by_atoms(ranges, &intervals, inclusion, disjoint, literals, required, covers) {
+        return Some(decided);
+    }
+    if ranges.len() > 20 {
+        return None;
+    }
+    let mut values: Vec<Rat> = Vec::new();
+    for literal in literals {
+        let Some(token) = literal.strip_prefix("__dt__val__") else { continue };
+        match parse_literal(token) {
+            Some((Val::Num(value), _)) => values.push(value),
+            Some((Val::Opaque(_), datatype))
+                if datatype.as_deref().and_then(builtin_datatype_key)
+                    .and_then(named_dt_kind).is_some_and(|d| d.part == Partition::Numeric
+                        && !matches!(d.kind, "float" | "double")) => return None,
+            _ => {}
+        }
+    }
+    let mut unique: Vec<Rat> = Vec::new();
+    for value in values {
+        if !unique.contains(&value) {
+            unique.push(value);
+        }
+    }
+    let values = unique;
+    // Cut points: every finite endpoint, sorted and deduplicated.
+    let mut cuts: Vec<Rat> = Vec::new();
+    for interval in &intervals {
+        for (bound, _) in interval.lo.iter().chain(interval.hi.iter()) {
+            cuts.push(*bound);
+        }
+    }
+    let mut failed = false;
+    cuts.sort_by(|a, b| rat_cmp(a, b).unwrap_or_else(|| { failed = true; std::cmp::Ordering::Equal }));
+    if failed {
+        return None;
+    }
+    cuts.dedup();
+    enum Piece { Open(Option<Rat>, Option<Rat>), Point(Rat) }
+    let mut pieces: Vec<Piece> = Vec::new();
+    let mut previous: Option<Rat> = None;
+    for cut in &cuts {
+        pieces.push(Piece::Open(previous, Some(*cut)));
+        pieces.push(Piece::Point(*cut));
+        previous = Some(*cut);
+    }
+    pieces.push(Piece::Open(previous, None));
+    let k = ranges.len();
+    // Per piece: representative membership vector and per-domain capacity.
+    struct Cell { spans: u32, point: Option<Rat>, lo: Option<Rat>, hi: Option<Rat> }
+    let mut cells: Vec<Cell> = Vec::new();
+    for piece in pieces {
+        let (representative, point, lo, hi) = match piece {
+            Piece::Point(value) => (value, Some(value), None, None),
+            Piece::Open(None, None) => (Rat::from_int(0), None, None, None),
+            Piece::Open(None, Some(hi)) => (Rat::new(hi.num.checked_sub(hi.den)?, hi.den)?, None, None, Some(hi)),
+            Piece::Open(Some(lo), None) => (Rat::new(lo.num.checked_add(lo.den)?, lo.den)?, None, Some(lo), None),
+            Piece::Open(Some(lo), Some(hi)) => (rat_midpoint(&lo, &hi)?, None, Some(lo), Some(hi)),
+        };
+        let mut spans = 0u32;
+        for (index, interval) in intervals.iter().enumerate() {
+            if interval.spans(&representative)? {
+                spans |= 1 << index;
+            }
+        }
+        cells.push(Cell { spans, point, lo, hi });
+    }
+    let sensitive = body_sensitive.iter().enumerate()
+        .fold(0u32, |mask, (index, &flag)| if flag { mask | (1 << index) } else { mask });
+    let integral_mask = intervals.iter().enumerate()
+        .fold(0u32, |mask, (index, range)| if range.integral { mask | (1 << index) } else { mask });
+    for set in 1u32..(1u32 << k) {
+        let member = |index: usize| set & (1 << index) != 0;
+        let closed = (0..k).all(|i| !member(i) || (0..k).all(|j| member(j) || !inclusion(i, j)));
+        if !closed {
+            continue;
+        }
+        if (0..k).any(|i| member(i) && (i..k).any(|j| member(j) && disjoint(i, j))) {
+            continue;
+        }
+        // A present cover clause `A -> B1 ∨ … ∨ values` forces a non-value
+        // node labelled `A` to carry one of the range heads.
+        if covers.iter().any(|(body, heads)| member(*body) && !heads.iter().any(|&h| member(h))) {
+            continue;
+        }
+        let integers_only = set & integral_mask != 0;
+        let excluded = sensitive & !set;
+        let mut available: u128 = 0;
+        for cell in &cells {
+            if cell.spans & set != set {
+                continue;
+            }
+            let blocking = cell.spans & excluded;
+            match &cell.point {
+                Some(value) => {
+                    if integers_only && !value.is_integer() {
+                        continue;
+                    }
+                    // A non-integral excluded range removes the point; an
+                    // integral one only when the point is an integer.
+                    let removed = (0..k).any(|j| blocking & (1 << j) != 0
+                        && (!intervals[j].integral || value.is_integer()));
+                    if removed || values.iter().any(|literal| literal == value) {
+                        continue;
+                    }
+                    available = available.saturating_add(1);
+                }
+                None => {
+                    let removed_all = (0..k).any(|j| blocking & (1 << j) != 0
+                        && (!intervals[j].integral || integers_only));
+                    if removed_all {
+                        continue;
+                    }
+                    if !integers_only {
+                        // Infinitely many non-integer decimals remain; integral
+                        // exclusions and finitely many literals cannot exhaust them.
+                        available = u128::MAX;
+                        continue;
+                    }
+                    let count = integers_strictly_between(cell.lo.as_ref(), cell.hi.as_ref())?;
+                    let mut occupied = 0u128;
+                    for literal in &values {
+                        if !literal.is_integer() { continue; }
+                        let above = match &cell.lo { Some(lo) => lo.lt(literal)?, None => true };
+                        let below = match &cell.hi { Some(hi) => literal.lt(hi)?, None => true };
+                        if above && below { occupied += 1; }
+                    }
+                    available = available.saturating_add(count.saturating_sub(occupied));
+                }
+            }
+        }
+        if available < required {
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                let labels: Vec<&str> = (0..k).filter(|&index| member(index)).map(|index| ranges[index]).collect();
+                eprintln!("BRIDGE-DECIMAL-CELL: label={labels:?} available={available} required={required}");
+            }
+            return Some(false);
+        }
+    }
+    Some(true)
+}
+
+/// Exact cell certificate for the IEEE ranges of one width.
+///
+/// The completion bridge treats data ranges as atomic concepts related only
+/// by the pairwise inclusion/disjointness clauses present in its input. A
+/// completion graph can therefore label a data node with any set `S` of
+/// ranges that is closed under the present inclusions and contains no
+/// present disjoint pair. Translating that graph into an OWL model replaces
+/// the node by a concrete value `v`; this is faithful when
+///
+/// * `v` lies in every range of `S` (positive/head occurrences), and
+/// * `v` lies in no body-sensitive range outside `S` (a range with a
+///   negative-polarity occurrence, i.e. an HT body occurrence other than a
+///   pure relation clause), and
+/// * `v` is none of the literal values present in the vocabulary (so value
+///   concepts and singleton merges keep their abstract truth).
+///
+/// At most two sibling data nodes are ever forced distinct in the admitted
+/// fragment (data cardinalities are bounded by two), so the caller requires
+/// `required = 2` such values when the input can force two distinct data
+/// successors, and `1` otherwise (then unforced data siblings may share a
+/// value and only body-sensitive literals need to be avoided).
+/// Values are counted exactly over binary32/binary64 ranks, with `NaN` as a
+/// separate single value that only the unrestricted named range contains.
+///
+/// `None` means the certificate could not be evaluated (unknown range,
+/// mixed widths, or more than 16 ranges); callers must fail closed.
+pub(crate) fn bridge_ieee_cells_realizable(
+    ranges: &[&str],
+    body_sensitive: &[bool],
+    inclusion: &dyn Fn(usize, usize) -> bool,
+    disjoint: &dyn Fn(usize, usize) -> bool,
+    literals: &[&str],
+    required: u128,
+) -> Option<bool> {
+    if ranges.is_empty() {
+        return Some(true);
+    }
+    if ranges.len() > 16 || body_sensitive.len() != ranges.len() {
+        return None;
+    }
+    let intervals: Vec<FloatRange> = ranges.iter().map(|name| bridge_ieee_interval(name))
+        .collect::<Option<_>>()?;
+    let part = intervals[0].part;
+    if intervals.iter().any(|range| range.part != part) {
+        return None;
+    }
+    let full = FloatRange::full(part);
+    // Literal values of this width, by rank (finite/infinite) or NaN.
+    let mut literal_ranks: Vec<u64> = Vec::new();
+    let mut literal_nan = false;
+    for literal in literals {
+        let Some(token) = literal.strip_prefix("__dt__val__") else { continue };
+        let Some((value, _)) = parse_literal(token) else { continue };
+        match full.value_bits(&value) {
+            Some((_, true)) => literal_nan = true,
+            Some((bits, false)) => literal_ranks.push(FloatRange::rank(bits, part)),
+            None => {}
+        }
+    }
+    literal_ranks.sort_unstable();
+    literal_ranks.dedup();
+    // Elementary segments of [full.lo, full.hi] on which every interval's
+    // membership is constant.
+    let mut cuts: Vec<u128> = vec![full.lo as u128, full.hi as u128 + 1];
+    for range in &intervals {
+        if range.lo <= range.hi {
+            cuts.push((range.lo.max(full.lo)) as u128);
+            cuts.push((range.hi.min(full.hi)) as u128 + 1);
+        }
+    }
+    cuts.retain(|&cut| cut >= full.lo as u128 && cut <= full.hi as u128 + 1);
+    cuts.sort_unstable();
+    cuts.dedup();
+    let mut counts: std::collections::HashMap<u32, u128> = std::collections::HashMap::new();
+    for window in cuts.windows(2) {
+        let (start, end) = (window[0], window[1]); // [start, end)
+        let mask = intervals.iter().enumerate().fold(0u32, |mask, (index, range)| {
+            if range.lo <= range.hi && range.lo as u128 <= start && start <= range.hi as u128 {
+                mask | (1 << index)
+            } else {
+                mask
+            }
+        });
+        let occupied = literal_ranks.iter()
+            .filter(|&&rank| start <= rank as u128 && (rank as u128) < end).count() as u128;
+        *counts.entry(mask).or_default() += (end - start) - occupied;
+    }
+    let nan_mask = intervals.iter().enumerate()
+        .fold(0u32, |mask, (index, range)| if range.nan { mask | (1 << index) } else { mask });
+    if !literal_nan {
+        *counts.entry(nan_mask).or_default() += 1;
+    }
+    let sensitive = body_sensitive.iter().enumerate()
+        .fold(0u32, |mask, (index, &flag)| if flag { mask | (1 << index) } else { mask });
+    let k = ranges.len();
+    for set in 1u32..(1u32 << k) {
+        let member = |index: usize| set & (1 << index) != 0;
+        let closed = (0..k).all(|i| !member(i) || (0..k).all(|j| member(j) || !inclusion(i, j)));
+        if !closed {
+            continue;
+        }
+        let clash = (0..k).any(|i| member(i) && (i..k).any(|j| member(j) && disjoint(i, j)));
+        if clash {
+            continue;
+        }
+        let available: u128 = counts.iter()
+            .filter(|(&vector, _)| vector & set == set && (vector & !set & sensitive) == 0)
+            .map(|(_, &count)| count)
+            .sum();
+        if available < required {
+            return Some(false);
+        }
+    }
+    Some(true)
 }
 
 fn bridge_exact_atomic_range(name: &str) -> Option<DRange> {
@@ -1704,7 +2473,7 @@ fn bridge_exact_atomic_range(name: &str) -> Option<DRange> {
 /// decimal`) and checks literal membership through the same OWL 2 datatype
 /// implementation that emits the frontend relation clauses.
 pub(crate) fn bridge_exact_atomic_subsumed(sub: &str, sup: &str) -> Option<bool> {
-    if !bridge_exact_atomic_name(sub) || !bridge_exact_atomic_name(sup) {
+    if !bridge_tbox_atomic_name(sub) || !bridge_tbox_atomic_name(sup) {
         return None;
     }
     if sub == sup {
@@ -1719,7 +2488,7 @@ pub(crate) fn bridge_exact_atomic_subsumed(sub: &str, sup: &str) -> Option<bool>
 /// Exact disjointness relation for two admitted atomic bridge datatype
 /// symbols. `None` remains a fail-closed unknown.
 pub(crate) fn bridge_exact_atomic_disjoint(left: &str, right: &str) -> Option<bool> {
-    if !bridge_exact_atomic_name(left) || !bridge_exact_atomic_name(right) {
+    if !bridge_tbox_atomic_name(left) || !bridge_tbox_atomic_name(right) {
         return None;
     }
     range_disjoint(
@@ -1761,7 +2530,7 @@ pub(crate) fn exact_datetime_literal(literal: &str) -> bool {
 }
 
 pub(crate) fn bridge_exact_value_equal(left: &str, right: &str) -> Option<bool> {
-    if !bridge_exact_atomic_name(left) || !bridge_exact_atomic_name(right) {
+    if !bridge_tbox_atomic_name(left) || !bridge_tbox_atomic_name(right) {
         return None;
     }
     let left = left.strip_prefix("__dt__val__")?;
@@ -1770,8 +2539,11 @@ pub(crate) fn bridge_exact_value_equal(left: &str, right: &str) -> Option<bool> 
     let right_value = parse_literal(right)?.0;
     // Atomic admission above has checked integer lexical forms and subtype
     // bounds. Their exact rational values preserve cross-datatype identity.
-    if matches!(left_value, Val::Float32(_) | Val::Num(_) | Val::DateTime(_))
-        || matches!(right_value, Val::Float32(_) | Val::Num(_) | Val::DateTime(_)) {
+    // IEEE values compare by identity of the parsed binary32/binary64 datum
+    // (OWL 2 section 4.2: +0 and -0 are distinct data values, NaN is one
+    // value identical to itself); the two widths are disjoint value spaces.
+    if matches!(left_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_))
+        || matches!(right_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_)) {
         return val_eq(&left_value, &right_value);
     }
     exact_literal_value_equal(left, right)
@@ -1861,11 +2633,407 @@ mod finite_literal_realization_tests {
     }
 }
 
+/// Member concept names of a `DataUnionOf` whose members are all named
+/// datatypes; `None` for any other symbol.
+pub(crate) fn union_member_names(name: &str) -> Option<Vec<String>> {
+    let text = name.strip_prefix("__dt__c__")?;
+    let mut parser = Parser::new(text);
+    let Node::List("DataUnionOf", args) = parser.parse().ok()? else { return None };
+    if args.len() < 2 {
+        return None;
+    }
+    args.iter()
+        .map(|arg| arg.as_atom().map(|atom| format!("__dt__{}", datatype_concept_key(atom))))
+        .collect()
+}
+
+/// `true` when `range` is a `DataUnionOf` of named datatypes and `head`
+/// names every member: then `range(x) -> head` is valid.
+pub(crate) fn bridge_exact_union_cover(range: &str, head: &[&str]) -> bool {
+    union_member_names(range).is_some_and(|members|
+        members.iter().all(|member| head.contains(&member.as_str())))
+}
+
+/// Upper bound on the cells of one role group; larger groups keep the
+/// pairwise relation clauses only (and the bridge's cell certificate defers).
+const MAX_INTEGRAL_CELLS: usize = 64;
+
+/// Name of the integral cell `[lo, hi]` (`None` = unbounded).
+fn integral_cell_name(lo: Option<i128>, hi: Option<i128>) -> String {
+    match (lo, hi) {
+        (Some(lo), Some(hi)) if lo == hi => format!("__dt__val__\"{lo}\"^^xsd:integer"),
+        (None, None) => "__dt__integer".to_string(),
+        (Some(lo), None) => format!("__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"{lo}\"^^xsd:integer)"),
+        (None, Some(hi)) => format!("__dt__c__DatatypeRestriction(xsd:integer xsd:maxInclusive \"{hi}\"^^xsd:integer)"),
+        (Some(lo), Some(hi)) => format!(
+            "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"{lo}\"^^xsd:integer xsd:maxInclusive \"{hi}\"^^xsd:integer)"),
+    }
+}
+
+/// Cell covers `(A, [C1..Cm])` for every integral range `A` of a role group
+/// that another integral range of the group splits. Groups with fewer than
+/// two integral ranges, or more than `MAX_INTEGRAL_CELLS` cells, get none.
+fn integral_cell_covers(names: &BTreeSet<String>, groups: &[BTreeSet<String>]) -> Vec<(String, Vec<String>)> {
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    let mut seen: BTreeSet<(String, Vec<String>)> = BTreeSet::new();
+    for group in groups {
+        let ranges: Vec<(&String, (Option<i128>, Option<i128>))> = names.iter()
+            .filter(|name| group.contains(*name) && !name.starts_with("__dt__val__"))
+            .filter_map(|name| match classify_name(name)? {
+                DtEntry::Range(_, range) => integral_interval(&range).map(|interval| (name, interval)),
+                DtEntry::Value(..) => None,
+            })
+            .filter(|(_, interval)| !matches!(interval, (Some(lo), Some(hi)) if lo > hi))
+            .collect();
+        if ranges.len() < 2 {
+            continue;
+        }
+        let mut cuts: Vec<i128> = Vec::new();
+        let mut overflow = false;
+        for (_, (lo, hi)) in &ranges {
+            if let Some(lo) = lo { cuts.push(*lo); }
+            if let Some(hi) = hi {
+                match hi.checked_add(1) { Some(next) => cuts.push(next), None => overflow = true }
+            }
+        }
+        if overflow {
+            continue;
+        }
+        cuts.sort_unstable();
+        cuts.dedup();
+        let mut segments: Vec<(Option<i128>, Option<i128>)> = Vec::new();
+        let mut previous: Option<i128> = None;
+        for &cut in &cuts {
+            segments.push((previous, Some(cut - 1)));
+            previous = Some(cut);
+        }
+        segments.push((previous, None));
+        let inside = |segment: &(Option<i128>, Option<i128>), range: &(Option<i128>, Option<i128>)| {
+            let lower = match (range.0, segment.0) { (None, _) => true, (Some(_), None) => false, (Some(r), Some(s)) => r <= s };
+            let upper = match (range.1, segment.1) { (None, _) => true, (Some(_), None) => false, (Some(r), Some(s)) => s <= r };
+            lower && upper
+        };
+        let segments: Vec<_> = segments.into_iter()
+            .filter(|segment| ranges.iter().any(|(_, range)| inside(segment, range)))
+            .collect();
+        if segments.len() > MAX_INTEGRAL_CELLS {
+            continue;
+        }
+        let cell_names: Vec<String> = segments.iter().map(|segment| {
+            ranges.iter().find(|(_, range)| range == segment)
+                .map(|(name, _)| (*name).clone())
+                .unwrap_or_else(|| integral_cell_name(segment.0, segment.1))
+        }).collect();
+        for (name, range) in &ranges {
+            let heads: Vec<String> = segments.iter().zip(&cell_names)
+                .filter(|(segment, _)| inside(segment, range))
+                .map(|(_, cell)| cell.clone())
+                .collect();
+            if heads.len() == 1 && heads[0] == **name {
+                continue; // the range is itself a cell
+            }
+            if seen.insert(((*name).clone(), heads.clone())) {
+                out.push(((*name).clone(), heads));
+            }
+        }
+    }
+    out
+}
+
+/// The integer interval `[lo, hi]` (`None` = unbounded) of an integral
+/// decimal-tower range; `None` for every other range.
+fn integral_interval(range: &DRange) -> Option<(Option<i128>, Option<i128>)> {
+    match range {
+        DRange::Named(datatype)
+            if datatype.part == Partition::Numeric && datatype.integral =>
+            Some((datatype.min, datatype.max)),
+        DRange::Num(range) if range.integral => {
+            let lo = match &range.min {
+                None => None,
+                Some((bound, inclusive)) => {
+                    let mut value = div_ceil_rat(bound)?;
+                    if !inclusive && Rat::from_int(value) == *bound {
+                        value = value.checked_add(1)?;
+                    }
+                    Some(value)
+                }
+            };
+            let hi = match &range.max {
+                None => None,
+                Some((bound, inclusive)) => {
+                    let mut value = div_floor_rat(bound)?;
+                    if !inclusive && Rat::from_int(value) == *bound {
+                        value = value.checked_sub(1)?;
+                    }
+                    Some(value)
+                }
+            };
+            Some((lo, hi))
+        }
+        _ => None,
+    }
+}
+
+/// The integers of `outer` outside every interval of `parts`, when that set
+/// is finite with at most `cap` elements (sorted); `None` otherwise.
+fn integral_difference(
+    outer: (Option<i128>, Option<i128>),
+    parts: &[(Option<i128>, Option<i128>)],
+    cap: usize,
+) -> Option<Vec<i128>> {
+    // Sort the parts by lower end and sweep the outer interval.
+    let mut parts: Vec<_> = parts.iter().copied()
+        .filter(|(lo, hi)| match (lo, hi) { (Some(lo), Some(hi)) => lo <= hi, _ => true })
+        .collect();
+    parts.sort_by(|a, b| match (a.0, b.0) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, _) => std::cmp::Ordering::Less,
+        (_, None) => std::cmp::Ordering::Greater,
+        (Some(x), Some(y)) => x.cmp(&y),
+    });
+    let mut missing: Vec<i128> = Vec::new();
+    // `cursor` = smallest outer integer not yet covered (None = -infinity).
+    let mut cursor: Option<i128> = outer.0;
+    let mut push_range = |from: Option<i128>, to: Option<i128>, missing: &mut Vec<i128>| -> Option<()> {
+        // integers in [from, to]; unbounded ends make the difference infinite
+        let (from, to) = (from?, to?);
+        if from > to {
+            return Some(());
+        }
+        let width = to.checked_sub(from)?;
+        if width >= cap as i128 || missing.len() + (width as usize) + 1 > cap {
+            return None;
+        }
+        missing.extend(from..=to);
+        Some(())
+    };
+    for (lo, hi) in parts {
+        // gap [cursor, lo-1]
+        match lo {
+            None => {}
+            Some(lo) => {
+                let gap_end = lo.checked_sub(1)?;
+                let gap_end = match outer.1 { Some(top) => gap_end.min(top), None => gap_end };
+                if cursor.is_none_or(|c| c <= gap_end) {
+                    push_range(cursor, Some(gap_end), &mut missing)?;
+                }
+            }
+        }
+        cursor = match hi {
+            None => return Some(missing), // covered to +infinity
+            Some(hi) => {
+                let next = hi.checked_add(1)?;
+                Some(match cursor { Some(c) => c.max(next), None => next })
+            }
+        };
+        if let (Some(c), Some(top)) = (cursor, outer.1) {
+            if c > top {
+                return Some(missing);
+            }
+        }
+    }
+    // tail [cursor, outer.hi]
+    if let (Some(c), Some(top)) = (cursor, outer.1) {
+        if c > top {
+            return Some(missing);
+        }
+    }
+    push_range(cursor, outer.1, &mut missing)?;
+    Some(missing)
+}
+
 /// The datatype-relation clauses for the `__dt__` concepts in `names`
 /// (collected from the clause set). Every emitted clause is justified by the
 /// OWL 2 datatype map; unknown relations emit nothing. `cap` bounds the
 /// finite-cover enumeration width.
 pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DLClause> {
+    datatype_relation_clauses_grouped(names, cap, None)
+}
+
+/// Role groups of a clause set for the finite-difference covers: one set of
+/// `__dt__` names per connected component of roles, where the roles of every
+/// clause deriving a role atom (inclusions, inverses, chains, transitivity,
+/// symmetry, role assertions) are connected. A name is in
+/// a group when a clause places it on the target of a role atom of that
+/// group. A datatype atom on a term that no role atom of its clause reaches
+/// (outside the role-free relation clauses) joins every group.
+pub fn datatype_role_groups(clauses: &[DLClause]) -> Vec<BTreeSet<String>> {
+    datatype_role_groups_linked(clauses, &[])
+}
+
+/// As [`datatype_role_groups`], additionally connecting each listed role set
+/// (RBox inclusions, inverses and chains carried outside the clause stream).
+pub fn datatype_role_groups_linked(clauses: &[DLClause], linked: &[Vec<String>]) -> Vec<BTreeSet<String>> {
+    use std::collections::BTreeMap;
+    let mut parent: BTreeMap<String, String> = BTreeMap::new();
+    fn find(parent: &mut BTreeMap<String, String>, role: &str) -> String {
+        let mut current = role.to_string();
+        loop {
+            let next = parent.get(&current).cloned().unwrap_or_else(|| current.clone());
+            if next == current { break; }
+            current = next;
+        }
+        parent.insert(role.to_string(), current.clone());
+        current
+    }
+    for roles in linked {
+        for window in roles.windows(2) {
+            let (a, b) = (find(&mut parent, &window[0]), find(&mut parent, &window[1]));
+            if a != b { parent.insert(a, b); }
+        }
+    }
+    let mut placements: Vec<(String, String)> = Vec::new();
+    let mut universal: BTreeSet<String> = BTreeSet::new();
+    // A Skolem successor `f(x)` is placed by role atoms of other clauses
+    // (`A(x) -> r(x, f(x))` and `A(x) -> D(f(x))`): collect its roles first.
+    fn skolem_name(term: &Term) -> Option<&str> {
+        match term {
+            Term::Fun(name, _) | Term::Aux(name, _) => Some(name.as_str()),
+            _ => None,
+        }
+    }
+    let mut skolem_roles: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for clause in clauses {
+        for atom in clause.body.iter().chain(clause.head.iter()) {
+            if let Atom::Role(role, _, target) = atom {
+                if let Some(name) = skolem_name(target) {
+                    skolem_roles.entry(name.to_string()).or_default().insert(role.clone());
+                }
+            }
+        }
+    }
+    for clause in clauses {
+        let atoms: Vec<&Atom> = clause.body.iter().chain(clause.head.iter()).collect();
+        let roles: Vec<(&String, &Term)> = atoms.iter().filter_map(|atom| match atom {
+            Atom::Role(role, _, target) => Some((role, target)),
+            _ => None,
+        }).collect();
+        let pure = atoms.iter().all(|atom| match atom {
+            Atom::Concept(name, _) => name.starts_with("__dt__"),
+            Atom::Eq(..) => true,
+            Atom::Role(..) => false,
+        });
+        // Only a clause that derives a role edge (inclusion, inverse, chain,
+        // transitivity, symmetry) lets an edge of one role be an edge of
+        // another; roles that merely co-occur in a body stay separate.
+        if clause.head.iter().any(|atom| matches!(atom, Atom::Role(..))) {
+            for window in roles.windows(2) {
+                let (a, b) = (find(&mut parent, window[0].0), find(&mut parent, window[1].0));
+                if a != b { parent.insert(a, b); }
+            }
+        }
+        for (role, _) in &roles {
+            find(&mut parent, role);
+        }
+        if pure {
+            continue;
+        }
+        for atom in &atoms {
+            let Atom::Concept(name, term) = atom else { continue };
+            if !name.starts_with("__dt__") { continue; }
+            let mut placed = false;
+            for (role, target) in &roles {
+                if *target == term {
+                    placements.push((name.clone(), (*role).clone()));
+                    placed = true;
+                }
+            }
+            if !placed {
+                if let Some(roles) = skolem_name(term).and_then(|name| skolem_roles.get(name)) {
+                    for role in roles {
+                        placements.push((name.clone(), role.clone()));
+                    }
+                    placed = !roles.is_empty();
+                }
+            }
+            if !placed {
+                universal.insert(name.clone());
+            }
+        }
+    }
+    let mut groups: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (name, role) in placements {
+        let root = find(&mut parent, &role);
+        groups.entry(root).or_default().insert(name);
+    }
+    let mut out: Vec<BTreeSet<String>> = groups.into_values().collect();
+    if out.is_empty() && !universal.is_empty() {
+        out.push(BTreeSet::new());
+    }
+    for group in &mut out {
+        group.extend(universal.iter().cloned());
+    }
+    out
+}
+
+/// As [`datatype_relation_clauses`]; with `groups`, a finite-difference cover
+/// for a range `A` is built per role group from the parts in that group
+/// (`None` = one group holding every name). A data node is reached only
+/// through role atoms of its group, and every non-relation clause reading a
+/// datatype atom on that node is guarded by such a role atom, so only ranges
+/// of the node's group can occur in a body that tests the node.
+pub fn datatype_relation_clauses_grouped(
+    names: &BTreeSet<String>,
+    cap: usize,
+    groups: Option<&[BTreeSet<String>]>,
+) -> Vec<DLClause> {
+    // `DataUnionOf` of named datatypes: add the member datatypes to the
+    // vocabulary (and to the union's role groups) so that their relations and
+    // the union cover `U -> M1 ∨ … ∨ Mk` can be emitted. Inputs without a
+    // union keep the original vocabulary and order.
+    let unions: Vec<(String, Vec<String>)> = names.iter()
+        .filter_map(|name| union_member_names(name).map(|members| (name.clone(), members)))
+        .collect();
+    let mut expanded_names: BTreeSet<String> = BTreeSet::new();
+    let mut expanded_groups: Vec<BTreeSet<String>> = Vec::new();
+    if !unions.is_empty() {
+        expanded_names = names.clone();
+        for (_, members) in &unions {
+            expanded_names.extend(members.iter().cloned());
+        }
+        if let Some(groups) = groups {
+            expanded_groups = groups.iter().map(|group| {
+                let mut group = group.clone();
+                for (union, members) in &unions {
+                    if group.contains(union) {
+                        group.extend(members.iter().cloned());
+                    }
+                }
+                group
+            }).collect();
+        }
+    }
+    let (names, groups): (&BTreeSet<String>, Option<&[BTreeSet<String>]>) = if unions.is_empty() {
+        (names, groups)
+    } else {
+        (&expanded_names, groups.map(|_| expanded_groups.as_slice()))
+    };
+    // Integral cells. Within one role group, the integral ranges cut the
+    // integer line into elementary segments ("cells") on which every range of
+    // the group is constant. Each range `A` is covered exactly by its cells:
+    // `A(x) → C1(x) ∨ … ∨ Cm(x)`. A cell is named by an equal existing range,
+    // by its integer value when it is a single point, and otherwise by the
+    // integer facet interval it denotes; the ordinary relation clauses below
+    // then relate every cell to every range. With these covers every
+    // admissible label of a data node contains a cell, and a cell decides
+    // membership in every range of its group, so pairwise clauses can no
+    // longer admit a label with no realizing value (e.g. two distinct
+    // non-positive natural numbers, or `[8,99]` outside both `<=24` and `>24`).
+    let cell_groups: Vec<BTreeSet<String>> = match groups {
+        Some(groups) => groups.to_vec(),
+        None => vec![names.clone()],
+    };
+    let cell_covers = integral_cell_covers(names, &cell_groups);
+    let mut with_cells: BTreeSet<String> = BTreeSet::new();
+    let names = if cell_covers.is_empty() {
+        names
+    } else {
+        with_cells = names.clone();
+        for (_, heads) in &cell_covers {
+            with_cells.extend(heads.iter().cloned());
+        }
+        &with_cells
+    };
     let entries: Vec<DtEntry> = names.iter().filter_map(|n| classify_name(n)).collect();
     let mut out: Vec<DLClause> = Vec::new();
     let mut new_val_names: BTreeSet<String> = BTreeSet::new();
@@ -1955,6 +3123,13 @@ pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DL
                 }
             }
         }
+    }
+    for (union, members) in &unions {
+        out.push(clause([cx(union)], members.iter().map(|member| cx(member)).collect::<Vec<_>>()));
+    }
+    // Integral cell covers (see `integral_cell_covers` above).
+    for (range, heads) in &cell_covers {
+        out.push(clause([cx(range)], heads.iter().map(|head| cx(head)).collect::<Vec<_>>()));
     }
     // relations for value concepts introduced by the covers (against the
     // pre-existing entries) — one more pass, no further covers
@@ -2564,6 +3739,201 @@ mod tests {
             assert!(!bridge_exact_atomic_name(&value(invalid)));
             assert_eq!(bridge_exact_value_equal(&midnight, &value(invalid)), None);
         }
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_map_and_cells() {
+        let double = |text: &str| format!("__dt__val__\"{text}\"^^xsd:double");
+        for name in ["__dt__anyURI", "__dt__double", "__dt__Literal", &double("1.0E-17"), &double("NaN"),
+            "__dt__c__DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double xsd:maxInclusive \"1.0\"^^xsd:double)"] {
+            assert!(bridge_tbox_atomic_name(name), "{name}");
+            assert!(!bridge_exact_atomic_name(name), "narrow map unchanged for {name}");
+        }
+        for name in ["__dt__val__\"+INF\"^^xsd:double", "__dt__PlainLiteral",
+            "__dt__c__DatatypeRestriction(xsd:double xsd:minInclusive \"0\"^^xsd:integer)",
+            "__dt__c__DatatypeRestriction(xsd:double xsd:pattern \"1.*\")"] {
+            assert!(!bridge_tbox_atomic_name(name), "{name}");
+        }
+        assert_eq!(bridge_exact_atomic_disjoint("__dt__anyURI", "__dt__string"), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed("__dt__anyURI", "__dt__Literal"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint("__dt__double", "__dt__float"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint("__dt__double", "__dt__decimal"), Some(true));
+        assert_eq!(bridge_exact_value_equal(&double("1"), &double("1.0E0")), Some(true));
+        assert_eq!(bridge_exact_value_equal(&double("0.0"), &double("-0.0")), Some(false));
+        assert_eq!(bridge_exact_value_equal(&double("NaN"), &double("NaN")), Some(true));
+        assert_eq!(bridge_exact_value_equal(&double("1.0"), "__dt__val__\"1.0\"^^xsd:float"), Some(false));
+        let nonneg = "__dt__c__DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double)";
+        let pos = "__dt__c__DatatypeRestriction(xsd:double xsd:minExclusive \"0.0\"^^xsd:double)";
+        let neg = "__dt__c__DatatypeRestriction(xsd:double xsd:maxExclusive \"0.0\"^^xsd:double)";
+        let unit = "__dt__c__DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double xsd:maxInclusive \"1.0\"^^xsd:double)";
+        assert_eq!(bridge_exact_atomic_subsumed(&double("-0.0"), nonneg), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(&double("-0.0"), pos), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(&double("NaN"), nonneg), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed(&double("NaN"), "__dt__double"), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed(unit, nonneg), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(pos, neg), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed(unit, pos), Some(false));
+        assert_eq!(bridge_exact_atomic_disjoint(unit, pos), Some(false));
+        // The SIO vocabulary: [0,1], (0,INF], [-INF,0) under xsd:double.
+        let names = ["__dt__double", unit, pos, neg];
+        let rel = |names: &[&str]| {
+            let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+            let a = names.clone();
+            let b = names;
+            (move |i: usize, j: usize| i != j && bridge_exact_atomic_subsumed(&a[i], &a[j]) == Some(true),
+             move |i: usize, j: usize| bridge_exact_atomic_disjoint(&b[i], &b[j]) == Some(true))
+        };
+        let (inclusion, disjoint) = rel(&names);
+        assert_eq!(bridge_ieee_cells_realizable(&names, &[false; 4], &inclusion, &disjoint, &[], 2), Some(true));
+        // With every interval body-sensitive the label {double} alone is
+        // realized only by NaN: one value, so the certificate fails.
+        assert_eq!(bridge_ieee_cells_realizable(&names, &[false, true, true, true], &inclusion, &disjoint, &[], 2), Some(false));
+        // Missing inclusion evidence makes {[0,1]} without {double} admissible
+        // in the graph; a sensitive double then has no realizing value.
+        let no_inclusion = |_: usize, _: usize| false;
+        assert_eq!(bridge_ieee_cells_realizable(&names, &[true, false, false, false], &no_inclusion, &disjoint, &[], 2), Some(false));
+        // Signed zeros: [0,0] has two values unless both are present literals.
+        let zero = "__dt__c__DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double xsd:maxInclusive \"0.0\"^^xsd:double)";
+        let (inclusion, disjoint) = rel(&[zero]);
+        assert_eq!(bridge_ieee_cells_realizable(&[zero], &[false], &inclusion, &disjoint, &[], 2), Some(true));
+        assert_eq!(bridge_ieee_cells_realizable(&[zero], &[false], &inclusion, &disjoint, &[&double("-0.0")], 2), Some(false));
+        assert_eq!(bridge_ieee_cells_realizable(&[zero, "__dt__float"], &[false, false], &inclusion, &disjoint, &[], 2), None);
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_integral_difference_covers() {
+        let cover = |names: &[&str]| {
+            let set: BTreeSet<String> = names.iter().map(|n| n.to_string()).collect();
+            datatype_relation_clauses(&set, 8).into_iter()
+                .filter(|clause| clause.body.len() == 1 && clause.head.len() >= 2)
+                .map(|clause| format!("{:?} -> {:?}", clause.body, clause.head))
+                .collect::<Vec<_>>()
+        };
+        let gap = cover(&["__dt__nonNegativeInteger", "__dt__positiveInteger"]);
+        assert_eq!(gap.len(), 1, "{gap:?}");
+        assert!(gap[0].contains("__dt__positiveInteger") && gap[0].contains("__dt__val__\\\"0\\\"^^xsd:integer"), "{gap:?}");
+        // integer \ (positive ∪ negative) = {0}; integer \ positive alone is infinite.
+        let both = cover(&["__dt__integer", "__dt__positiveInteger", "__dt__negativeInteger"]);
+        assert!(both.iter().any(|c| c.starts_with("[Concept(\"__dt__integer\"") && c.contains("__dt__val__\\\"0\\\"^^xsd:integer")), "{both:?}");
+        // integer is split by positiveInteger into the cells (<= 0) and positiveInteger.
+        let split = cover(&["__dt__integer", "__dt__positiveInteger"]);
+        assert!(split.len() == 1 && split[0].contains("maxInclusive \\\"0\\\"") && split[0].contains("__dt__positiveInteger"), "{split:?}");
+        // Exclusive facets at an equal endpoint: nonNegativeInteger > 0 = positiveInteger.
+        let positive = "__dt__c__DatatypeRestriction(xsd:nonNegativeInteger xsd:minExclusive \"0\"^^xsd:integer)";
+        assert!(!bridge_exact_integral_cover("__dt__nonNegativeInteger", &[positive]));
+        assert!(bridge_exact_integral_cover("__dt__nonNegativeInteger", &[positive, "__dt__val__\"0\"^^xsd:integer"]));
+        // A wide difference becomes one interval cell.
+        let wide = cover(&["__dt__unsignedByte", "__dt__c__DatatypeRestriction(xsd:unsignedByte xsd:minInclusive \"10\"^^xsd:integer)"]);
+        assert!(wide.len() == 1 && wide[0].contains("maxInclusive \\\"9\\\""), "{wide:?}");
+        assert_eq!(integral_difference((Some(0), Some(10)), &[(Some(2), Some(4)), (Some(3), Some(9))], 8), Some(vec![0, 1, 10]));
+        assert_eq!(integral_difference((None, None), &[(None, Some(-1)), (Some(1), None)], 8), Some(vec![0]));
+        assert_eq!(integral_difference((None, None), &[(Some(1), None)], 8), None);
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_union_relations() {
+        let union = "__dt__c__DataUnionOf(xsd:decimal xsd:float xsd:integer xsd:long)";
+        assert_eq!(union_member_names(union).unwrap(),
+            vec!["__dt__decimal", "__dt__float", "__dt__integer", "__dt__long"]);
+        assert_eq!(bridge_tbox_atomic_family(union), Some("union"));
+        assert_eq!(bridge_tbox_atomic_family("__dt__long"), Some("decimal"));
+        let exact = "__dt__c__DataUnionOf(xsd:decimal xsd:float)";
+        assert_eq!(bridge_tbox_atomic_family(exact), Some("union"));
+        assert_eq!(bridge_exact_atomic_subsumed("__dt__positiveInteger", exact), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed("__dt__float", exact), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(exact, "__dt__string"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(exact, "__dt__double"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(exact, "__dt__integer"), Some(false));
+        let clauses = datatype_relation_clauses(&[exact.to_string(), "__dt__string".to_string()].into_iter().collect(), 8);
+        let atom = |name: &str| Atom::Concept(name.into(), Term::Var("x".into()));
+        assert!(clauses.iter().any(|clause| clause.body == vec![atom(exact)]
+            && clause.head.contains(&atom("__dt__decimal")) && clause.head.contains(&atom("__dt__float"))));
+        assert!(clauses.iter().any(|clause| clause.body == vec![atom("__dt__float")] && clause.head == vec![atom(exact)]));
+        assert!(bridge_exact_union_cover(exact, &["__dt__decimal", "__dt__float"]));
+        assert!(!bridge_exact_union_cover(exact, &["__dt__decimal"]));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_uri_xml_and_decimal_values() {
+        let uri = |text: &str| format!("__dt__val__\"{text}\"^^xsd:anyURI");
+        assert_eq!(bridge_tbox_atomic_family(&uri("http://x/a")), Some("anyURI"));
+        assert_eq!(bridge_exact_value_equal(&uri("http://x/a"), &uri(" http://x/a ")), Some(true), "whiteSpace=collapse");
+        assert_eq!(bridge_exact_value_equal(&uri("http://x/a"), &uri("http://x/b")), Some(false));
+        assert_eq!(bridge_exact_value_equal(&uri("http://x/a"), "__dt__val__\"http://x/a\"^^xsd:string"), Some(false),
+            "anyURI and string value spaces are disjoint");
+        assert_eq!(bridge_exact_atomic_subsumed(&uri("http://x/a"), "__dt__anyURI"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(&uri("http://x/a"), "__dt__string"), Some(true));
+        assert_eq!(datatype_concept_key("rdf:XMLLiteral"), "XMLLiteral");
+        assert_eq!(datatype_concept_key("<http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral>"), "XMLLiteral");
+        assert_eq!(bridge_tbox_atomic_family("__dt__XMLLiteral"), Some("XMLLiteral"));
+        for other in ["__dt__string", "__dt__anyURI", "__dt__integer", "__dt__double", "__dt__boolean"] {
+            assert_eq!(bridge_exact_atomic_disjoint("__dt__XMLLiteral", other), Some(true), "{other}");
+        }
+        assert_eq!(bridge_exact_atomic_subsumed("__dt__XMLLiteral", "__dt__Literal"), Some(true));
+        assert!(!bridge_tbox_atomic_name("__dt__val__\"<a/>\"^^rdf:XMLLiteral"), "XML values stay opaque");
+        let dec = |text: &str| format!("__dt__val__\"{text}\"^^xsd:decimal");
+        assert_eq!(bridge_tbox_atomic_family(&dec("1.50")), Some("decimal"));
+        assert!(!bridge_tbox_atomic_name(&dec("1.5E2")), "no exponent in the decimal lexical space");
+        assert!(!bridge_tbox_atomic_name(&dec(".")));
+        assert_eq!(bridge_exact_value_equal(&dec("1.50"), &dec("1.5")), Some(true));
+        assert_eq!(bridge_exact_value_equal(&dec("2.0"), "__dt__val__\"2\"^^xsd:integer"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(&dec("1.5"), "__dt__integer"), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed(&dec("1.5"), "__dt__decimal"), Some(true));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_facet_intersections() {
+        let both = "__dt__c__DataIntersectionOf(DatatypeRestriction(xsd:double xsd:maxInclusive \"1000.0\"^^xsd:double) DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double))";
+        let single = "__dt__c__DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double xsd:maxInclusive \"1000.0\"^^xsd:double)";
+        assert_eq!(bridge_tbox_atomic_family(both), Some("double"));
+        assert_eq!(bridge_exact_atomic_subsumed(both, single), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed(single, both), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(both, "__dt__val__\"1000.5\"^^xsd:double"), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint(both, "__dt__val__\"NaN\"^^xsd:double"), Some(true));
+        let ints = "__dt__c__DataIntersectionOf(DatatypeRestriction(xsd:integer xsd:minExclusive \"3\"^^xsd:integer) DatatypeRestriction(xsd:integer xsd:maxExclusive \"5\"^^xsd:integer))";
+        assert_eq!(bridge_exact_atomic_subsumed("__dt__val__\"4\"^^xsd:integer", ints), Some(true));
+        assert_eq!(bridge_exact_atomic_disjoint("__dt__val__\"5\"^^xsd:integer", ints), Some(true));
+        let mixed = "__dt__c__DataIntersectionOf(DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double) DatatypeRestriction(xsd:float xsd:minInclusive \"0.0\"^^xsd:float))";
+        assert!(!bridge_tbox_atomic_name(mixed));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_double_enumerations() {
+        let one = "__dt__c__DataOneOf(\"1.0\"^^xsd:double)";
+        assert_eq!(bridge_tbox_atomic_family(one), Some("finite"));
+        assert!(bridge_exact_finite_values(one).is_none(), "the narrow projection map is unchanged");
+        assert!(bridge_tbox_finite_cover(one, &["__dt__val__\"1.0\"^^xsd:double"]));
+        assert!(bridge_tbox_finite_cover(one, &["__dt__val__\"1\"^^xsd:double"]), "same binary64 value");
+        assert!(!bridge_tbox_finite_cover(one, &["__dt__val__\"1\"^^xsd:integer"]), "double is not decimal");
+        assert_eq!(bridge_exact_atomic_disjoint(one, "__dt__val__\"0.0\"^^xsd:double"), Some(true));
+        assert_eq!(bridge_exact_atomic_subsumed(one, "__dt__double"), Some(true));
+    }
+
+    #[test]
+    fn bridge_tbox_datatype_extension_decimal_cell_counts() {
+        let names = ["__dt__integer", "__dt__nonNegativeInteger", "__dt__positiveInteger", "__dt__decimal"];
+        let a: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+        let b = a.clone();
+        let inclusion = move |i: usize, j: usize| i != j && bridge_exact_atomic_subsumed(&a[i], &a[j]) == Some(true);
+        let disjoint = move |i: usize, j: usize| bridge_exact_atomic_disjoint(&b[i], &b[j]) == Some(true);
+        assert_eq!(bridge_decimal_cells_realizable(&names, &[false; 4], &inclusion, &disjoint, &[], 2, &[]), Some(true));
+        // {nonNegativeInteger, integer, decimal} avoiding positiveInteger: only 0.
+        assert_eq!(bridge_decimal_cells_realizable(&names, &[false, false, true, false], &inclusion, &disjoint, &[], 2, &[]), Some(false));
+        // {decimal} avoiding integer: infinitely many non-integers remain.
+        assert_eq!(bridge_decimal_cells_realizable(&names, &[true, false, false, false], &inclusion, &disjoint, &[], 2, &[]), Some(true));
+        let digit = "__dt__c__DatatypeRestriction(xsd:int xsd:minInclusive \"0\"^^xsd:integer xsd:maxInclusive \"9\"^^xsd:integer)";
+        let small = ["__dt__int", digit];
+        let a: Vec<String> = small.iter().map(|n| n.to_string()).collect();
+        let b = a.clone();
+        let inclusion = move |i: usize, j: usize| i != j && bridge_exact_atomic_subsumed(&a[i], &a[j]) == Some(true);
+        let disjoint = move |i: usize, j: usize| bridge_exact_atomic_disjoint(&b[i], &b[j]) == Some(true);
+        assert_eq!(bridge_decimal_cells_realizable(&small, &[false, true], &inclusion, &disjoint, &[], 2, &[]), Some(true));
+        let eight: Vec<String> = (0..8).map(|v| format!("__dt__val__\"{v}\"^^xsd:integer")).collect();
+        let eight: Vec<&str> = eight.iter().map(String::as_str).collect();
+        assert_eq!(bridge_decimal_cells_realizable(&small, &[false, false], &inclusion, &disjoint, &eight, 2, &[]), Some(true));
+        let nine: Vec<String> = (0..9).map(|v| format!("__dt__val__\"{v}\"^^xsd:integer")).collect();
+        let nine: Vec<&str> = nine.iter().map(String::as_str).collect();
+        assert_eq!(bridge_decimal_cells_realizable(&small, &[false, false], &inclusion, &disjoint, &nine, 2, &[]), Some(false));
     }
 
     #[test]

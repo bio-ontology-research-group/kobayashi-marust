@@ -1,0 +1,14 @@
+{
+"consistent": true,
+"subsumptions": [
+[
+"A6",
+"A0"
+],
+[
+"A6",
+"A1"
+]
+],
+"unsatisfiable": []
+}

@@ -1,0 +1,1672 @@
+{
+  "diagnostic_only": true,
+  "reason": "a datatype equivalence is not an exact atomic restriction",
+  "affected_equivalences": [
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "ObservationEvent"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Event"
+          },
+          {
+            "Forall": [
+              {
+                "Name": "usingStrictOrder"
+              },
+              {
+                "Name": "__dt__boolean"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "consistOf"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "doRelease"
+              },
+              {
+                "Name": "Alert"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "consistOf"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "doRelease"
+              },
+              {
+                "Name": "Alert"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "About"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"column > (value1 * 0.9) AND column < (value1 * 1.1)\""
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Area"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"(column > value1 AND column < value2)\""
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasValue2"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasValue2"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Change"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"instrument.column != (SELECT AVG(instrument.column) FROM instrument KEEP 2 ROWS)\""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Decrease"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"instrument.column < (SELECT AVG(instrument.column) FROM instrument KEEP 2 ROWS)\""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Equal"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"column = value1\""
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "EventStream"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Stream"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "hasStreamURL"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "Exists": [
+              {
+                "Name": "isStreaming"
+              },
+              {
+                "Name": "InstrumentProgram"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "FleckNetwork"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "EventInstrument"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "hasCapabilities"
+              },
+              {
+                "Name": "FleckCapabilities"
+              }
+            ]
+          },
+          {
+            "Exists": [
+              {
+                "Name": "hasSensor"
+              },
+              {
+                "Name": "Sensor"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasIP"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasLocation"
+              },
+              {
+                "Name": "MeasurementLocation"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasPort"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasIP"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasLocation"
+              },
+              {
+                "Name": "MeasurementLocation"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasPort"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Greater"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"column > value1\""
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Increase"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"instrument.column > (SELECT AVG(instrument.column) FROM instrument KEEP 2 ROWS)\""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Less"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"column < value1\""
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasValue1"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Mail"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Alert"
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasDestinationMail"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasMessage"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasTitle"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasDestinationMail"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasMessage"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasTitle"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "ObservationIntersection"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Observations"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "matchingClauseCmd"
+              },
+              {
+                "Name": "__dt__val__\"&&\"^^xsd:string"
+              }
+            ]
+          },
+          {
+            "Exists": [
+              {
+                "Name": "whereClauseCmd"
+              },
+              {
+                "Name": "__dt__val__\"AND\"^^xsd:string"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasLeftValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasRightValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasLeftValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasRightValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "ObservationSequence"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Observations"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "matchingClauseCmd"
+              },
+              {
+                "Name": "__dt__val__\",\"^^xsd:string"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasLeftValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasRightValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasLeftValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasRightValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "ObservationUnion"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Observations"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "matchingClauseCmd"
+              },
+              {
+                "Name": "__dt__val__\"||\"^^xsd:string"
+              }
+            ]
+          },
+          {
+            "Exists": [
+              {
+                "Name": "whereClauseCmd"
+              },
+              {
+                "Name": "__dt__val__\"OR\"^^xsd:string"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasLeftValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasRightValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasLeftValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasRightValue"
+              },
+              {
+                "Name": "Observations"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "Received"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Trigger"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "trigCmd"
+              },
+              {
+                "Name": "__dt__val__\"column = column\""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "SMS"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Alert"
+          },
+          {
+            "Or": [
+              {
+                "AtLeast": [
+                  2,
+                  {
+                    "Name": "hasTitle"
+                  },
+                  {
+                    "Name": "__dt__string"
+                  }
+                ]
+              },
+              {
+                "AtMost": [
+                  0,
+                  {
+                    "Name": "hasTitle"
+                  },
+                  {
+                    "Name": "__dt__string"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasDestinationSMS"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasMessage"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasDestinationSMS"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasMessage"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "SingleObservation"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "Observations"
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "belongsTo"
+              },
+              {
+                "Name": "ObservationEvent"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasTrigger"
+              },
+              {
+                "Name": "Trigger"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "linkPos"
+              },
+              {
+                "Name": "__dt__integer"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "usesProgram"
+              },
+              {
+                "Name": "InstrumentProgram"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "belongsTo"
+              },
+              {
+                "Name": "ObservationEvent"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasTrigger"
+              },
+              {
+                "Name": "Trigger"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "linkPos"
+              },
+              {
+                "Name": "__dt__integer"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "usesProgram"
+              },
+              {
+                "Name": "InstrumentProgram"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "WeatherStation"
+      },
+      "right": {
+        "And": [
+          {
+            "Name": "EventInstrument"
+          },
+          {
+            "Exists": [
+              {
+                "Name": "hasCapabilities"
+              },
+              {
+                "Name": "WM1600Capabilities"
+              }
+            ]
+          },
+          {
+            "Exists": [
+              {
+                "Name": "hasSensor"
+              },
+              {
+                "Name": "Sensor"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasIP"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasLocation"
+              },
+              {
+                "Name": "MeasurementLocation"
+              }
+            ]
+          },
+          {
+            "AtLeast": [
+              1,
+              {
+                "Name": "hasPort"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasIP"
+              },
+              {
+                "Name": "__dt__string"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasLocation"
+              },
+              {
+                "Name": "MeasurementLocation"
+              }
+            ]
+          },
+          {
+            "AtMost": [
+              1,
+              {
+                "Name": "hasPort"
+              },
+              {
+                "Name": "__dt__int"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_31"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"1\"^^xsd:int"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_10"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"110\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_11"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"111\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_12"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"112\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_7"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"113\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_8"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"114\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_9"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"115\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_18"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"124\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_17"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"125\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_16"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"13\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_14"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"14\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_15"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"16\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_33"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"2\"^^xsd:int"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_6"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"2\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_13"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"20\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_32"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"3\"^^xsd:int"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_20"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"4\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_28"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"5\"^^xsd:int"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_24"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"64\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_25"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"67\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_19"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"68\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_23"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"69\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_21"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"71\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_22"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "hasSensorNo"
+          },
+          {
+            "Name": "__dt__val__\"72\"^^xsd:integer"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_26"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "statCmd"
+          },
+          {
+            "Name": "__dt__val__\"AVERAGE\"^^xsd:string"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_27"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "statCmd"
+          },
+          {
+            "Name": "__dt__val__\"CURRENT\"^^xsd:string"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_29"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "statCmd"
+          },
+          {
+            "Name": "__dt__val__\"MAXIMUM\"^^xsd:string"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_30"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "statCmd"
+          },
+          {
+            "Name": "__dt__val__\"MINIMUM\"^^xsd:string"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_2"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "timeTypeCmd"
+          },
+          {
+            "Name": "__dt__val__\"EHOUR\"^^xsd:string"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_4"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "timeTypeCmd"
+          },
+          {
+            "Name": "__dt__val__\"EMIN\"^^xsd:string"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_0"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "timeTypeCmd"
+          },
+          {
+            "Name": "__dt__val__\"ESEC\"^^xsd:string"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_3"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "usesMemory"
+          },
+          {
+            "Name": "__dt__val__\"2\"^^xsd:int"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_5"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "usesMemory"
+          },
+          {
+            "Name": "__dt__val__\"3\"^^xsd:int"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "equivalent",
+      "left": {
+        "Name": "km_src___ground_assertion_1"
+      },
+      "right": {
+        "Exists": [
+          {
+            "Name": "usesMemory"
+          },
+          {
+            "Name": "__dt__val__\"4\"^^xsd:int"
+          }
+        ]
+      }
+    }
+  ],
+  "scope": "The source compiler accepts the transformed input, but native datatype admission correctly defers. No guard was bypassed."
+}

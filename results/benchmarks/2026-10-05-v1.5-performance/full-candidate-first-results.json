@@ -1,0 +1,22 @@
+{
+  "job_id": "53298536",
+  "partial": true,
+  "recorded": 46,
+  "outcome_counts": [
+    {
+      "admission": "invalid_input",
+      "measurement": "process_error",
+      "audit": null,
+      "verified": false,
+      "count": 7
+    },
+    {
+      "admission": "checks_passed",
+      "measurement": "executed_unvalidated",
+      "audit": "compared",
+      "verified": true,
+      "count": 39
+    }
+  ],
+  "not_release_evidence": true
+}

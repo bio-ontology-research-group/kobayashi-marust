@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id};
 use super::super::model::{RoleId, INVALID};
@@ -182,7 +182,7 @@ impl RoleBackwardPropagationHash {
     pub fn new(context: Cint64) -> Self {
         Self {
             context,
-            role_back_prop_data_hash: HashMap::new(),
+            role_back_prop_data_hash: HashMap::default(),
         }
     }
 

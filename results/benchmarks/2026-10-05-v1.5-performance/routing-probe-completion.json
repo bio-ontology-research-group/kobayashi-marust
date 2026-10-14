@@ -1,0 +1,718 @@
+{
+  "job_id": "53298748",
+  "completed_chunks": 32,
+  "verified_pairs": 96,
+  "mean_candidate_s": 6.526375596547344,
+  "mean_skip_inproc_s": 6.477131135257271,
+  "median_paired_ratio": 0.9988225664618442,
+  "nonpaired": [],
+  "pairs": [
+    {
+      "ontology": "ore_ont_9928",
+      "repetition": 0,
+      "candidate_s": 0.07388375140726566,
+      "skip_inproc_s": 0.07493640296161175,
+      "ratio": 1.0142474026331392
+    },
+    {
+      "ontology": "ore_ont_9928",
+      "repetition": 1,
+      "candidate_s": 0.07521191984415054,
+      "skip_inproc_s": 0.07435447163879871,
+      "ratio": 0.9885995702924673
+    },
+    {
+      "ontology": "ore_ont_9928",
+      "repetition": 2,
+      "candidate_s": 0.07480893656611443,
+      "skip_inproc_s": 0.07537424005568027,
+      "ratio": 1.0075566304710968
+    },
+    {
+      "ontology": "ore_ont_8665",
+      "repetition": 0,
+      "candidate_s": 0.04594743996858597,
+      "skip_inproc_s": 0.0444390494376421,
+      "ratio": 0.9671713912249486
+    },
+    {
+      "ontology": "ore_ont_8665",
+      "repetition": 1,
+      "candidate_s": 0.07551320642232895,
+      "skip_inproc_s": 0.04417150281369686,
+      "ratio": 0.5849506981157077
+    },
+    {
+      "ontology": "ore_ont_8665",
+      "repetition": 2,
+      "candidate_s": 0.07583056017756462,
+      "skip_inproc_s": 0.04370088316500187,
+      "ratio": 0.5762964570309386
+    },
+    {
+      "ontology": "ore_ont_8781",
+      "repetition": 0,
+      "candidate_s": 0.1736917831003666,
+      "skip_inproc_s": 0.1848040632903576,
+      "ratio": 1.0639770056570255
+    },
+    {
+      "ontology": "ore_ont_8781",
+      "repetition": 1,
+      "candidate_s": 0.1895411517471075,
+      "skip_inproc_s": 0.1843140460550785,
+      "ratio": 0.9724223175608683
+    },
+    {
+      "ontology": "ore_ont_8781",
+      "repetition": 2,
+      "candidate_s": 0.16359438747167587,
+      "skip_inproc_s": 0.1842225156724453,
+      "ratio": 1.1260931289854972
+    },
+    {
+      "ontology": "ore_ont_7216",
+      "repetition": 0,
+      "candidate_s": 0.22750612162053585,
+      "skip_inproc_s": 0.206923209130764,
+      "ratio": 0.9095280938237666
+    },
+    {
+      "ontology": "ore_ont_7216",
+      "repetition": 1,
+      "candidate_s": 0.20926525071263313,
+      "skip_inproc_s": 0.23609288223087788,
+      "ratio": 1.1281991703203746
+    },
+    {
+      "ontology": "ore_ont_7216",
+      "repetition": 2,
+      "candidate_s": 0.21545929834246635,
+      "skip_inproc_s": 0.21509104780852795,
+      "ratio": 0.9982908580099751
+    },
+    {
+      "ontology": "ore_ont_2749",
+      "repetition": 0,
+      "candidate_s": 0.2969194892793894,
+      "skip_inproc_s": 0.2691661100834608,
+      "ratio": 0.9065289406792232
+    },
+    {
+      "ontology": "ore_ont_2749",
+      "repetition": 1,
+      "candidate_s": 0.2653893567621708,
+      "skip_inproc_s": 0.2956095188856125,
+      "ratio": 1.1138710402411638
+    },
+    {
+      "ontology": "ore_ont_2749",
+      "repetition": 2,
+      "candidate_s": 0.2648375127464533,
+      "skip_inproc_s": 0.2713102027773857,
+      "ratio": 1.0244402311583751
+    },
+    {
+      "ontology": "ore_ont_10742",
+      "repetition": 0,
+      "candidate_s": 0.36299116164445877,
+      "skip_inproc_s": 0.35686407051980495,
+      "ratio": 0.9831205501067953
+    },
+    {
+      "ontology": "ore_ont_10742",
+      "repetition": 1,
+      "candidate_s": 0.35741718858480453,
+      "skip_inproc_s": 0.35448265448212624,
+      "ratio": 0.9917896111423807
+    },
+    {
+      "ontology": "ore_ont_10742",
+      "repetition": 2,
+      "candidate_s": 0.3568266872316599,
+      "skip_inproc_s": 0.35709323361516,
+      "ratio": 1.0007469911669669
+    },
+    {
+      "ontology": "ore_ont_7180",
+      "repetition": 0,
+      "candidate_s": 0.5225038174539804,
+      "skip_inproc_s": 0.5173712559044361,
+      "ratio": 0.9901769874628784
+    },
+    {
+      "ontology": "ore_ont_7180",
+      "repetition": 1,
+      "candidate_s": 0.5101122353225946,
+      "skip_inproc_s": 0.4813976548612118,
+      "ratio": 0.9437092889112456
+    },
+    {
+      "ontology": "ore_ont_7180",
+      "repetition": 2,
+      "candidate_s": 0.5294647198170424,
+      "skip_inproc_s": 0.5127336997538805,
+      "ratio": 0.9684001229223672
+    },
+    {
+      "ontology": "ore_ont_8329",
+      "repetition": 0,
+      "candidate_s": 0.6393652446568012,
+      "skip_inproc_s": 0.6284529771655798,
+      "ratio": 0.9829326545626061
+    },
+    {
+      "ontology": "ore_ont_8329",
+      "repetition": 1,
+      "candidate_s": 0.618355467915535,
+      "skip_inproc_s": 0.6214638408273458,
+      "ratio": 1.0050268382396441
+    },
+    {
+      "ontology": "ore_ont_8329",
+      "repetition": 2,
+      "candidate_s": 0.6063588671386242,
+      "skip_inproc_s": 0.6159206964075565,
+      "ratio": 1.0157692577566386
+    },
+    {
+      "ontology": "ore_ont_9303",
+      "repetition": 0,
+      "candidate_s": 0.8467916399240494,
+      "skip_inproc_s": 0.729215482249856,
+      "ratio": 0.86115101740407
+    },
+    {
+      "ontology": "ore_ont_9303",
+      "repetition": 1,
+      "candidate_s": 0.75152238458395,
+      "skip_inproc_s": 0.7820232603698969,
+      "ratio": 1.0405854521589966
+    },
+    {
+      "ontology": "ore_ont_9303",
+      "repetition": 2,
+      "candidate_s": 0.7207252066582441,
+      "skip_inproc_s": 0.7500045951455832,
+      "ratio": 1.040624898667132
+    },
+    {
+      "ontology": "ore_ont_7356",
+      "repetition": 0,
+      "candidate_s": 1.0968314930796623,
+      "skip_inproc_s": 1.1267558205872774,
+      "ratio": 1.0272825203291658
+    },
+    {
+      "ontology": "ore_ont_7356",
+      "repetition": 1,
+      "candidate_s": 1.0898012164980173,
+      "skip_inproc_s": 1.0917800478637218,
+      "ratio": 1.0018157727627277
+    },
+    {
+      "ontology": "ore_ont_7356",
+      "repetition": 2,
+      "candidate_s": 1.1172632742673159,
+      "skip_inproc_s": 1.0945403911173344,
+      "ratio": 0.9796620155040155
+    },
+    {
+      "ontology": "ore_ont_15291",
+      "repetition": 0,
+      "candidate_s": 1.283454665914178,
+      "skip_inproc_s": 1.324028555303812,
+      "ratio": 1.0316130288565621
+    },
+    {
+      "ontology": "ore_ont_15291",
+      "repetition": 1,
+      "candidate_s": 1.2716349195688963,
+      "skip_inproc_s": 1.2807878851890564,
+      "ratio": 1.0071977935485312
+    },
+    {
+      "ontology": "ore_ont_15291",
+      "repetition": 2,
+      "candidate_s": 1.2826763913035393,
+      "skip_inproc_s": 1.2873098123818636,
+      "ratio": 1.0036123071335363
+    },
+    {
+      "ontology": "ore_ont_8579",
+      "repetition": 0,
+      "candidate_s": 1.257740432396531,
+      "skip_inproc_s": 1.2790807131677866,
+      "ratio": 1.0169671581047872
+    },
+    {
+      "ontology": "ore_ont_8579",
+      "repetition": 1,
+      "candidate_s": 1.3541569206863642,
+      "skip_inproc_s": 1.2811329402029514,
+      "ratio": 0.9460742109220251
+    },
+    {
+      "ontology": "ore_ont_8579",
+      "repetition": 2,
+      "candidate_s": 1.3627105839550495,
+      "skip_inproc_s": 1.3557865004986525,
+      "ratio": 0.9949188892066128
+    },
+    {
+      "ontology": "ore_ont_7482",
+      "repetition": 0,
+      "candidate_s": 0.05001557245850563,
+      "skip_inproc_s": 0.048401668667793274,
+      "ratio": 0.9677319740356606
+    },
+    {
+      "ontology": "ore_ont_7482",
+      "repetition": 1,
+      "candidate_s": 0.04491293057799339,
+      "skip_inproc_s": 0.047403302043676376,
+      "ratio": 1.0554488748258886
+    },
+    {
+      "ontology": "ore_ont_7482",
+      "repetition": 2,
+      "candidate_s": 0.07933764904737473,
+      "skip_inproc_s": 0.046370912343263626,
+      "ratio": 0.5844755031192601
+    },
+    {
+      "ontology": "ore_ont_13665",
+      "repetition": 0,
+      "candidate_s": 1.878146693110466,
+      "skip_inproc_s": 1.8470135796815157,
+      "ratio": 0.9834234921355426
+    },
+    {
+      "ontology": "ore_ont_13665",
+      "repetition": 1,
+      "candidate_s": 1.8699628133326769,
+      "skip_inproc_s": 1.8669818826019764,
+      "ratio": 0.9984058876949602
+    },
+    {
+      "ontology": "ore_ont_13665",
+      "repetition": 2,
+      "candidate_s": 1.8765053320676088,
+      "skip_inproc_s": 1.9033533446490765,
+      "ratio": 1.0143074533936365
+    },
+    {
+      "ontology": "ore_ont_12330",
+      "repetition": 0,
+      "candidate_s": 2.3139829840511084,
+      "skip_inproc_s": 2.3740728609263897,
+      "ratio": 1.025968158490985
+    },
+    {
+      "ontology": "ore_ont_12330",
+      "repetition": 1,
+      "candidate_s": 2.354970457032323,
+      "skip_inproc_s": 2.380982495844364,
+      "ratio": 1.011045590289409
+    },
+    {
+      "ontology": "ore_ont_12330",
+      "repetition": 2,
+      "candidate_s": 2.398158499971032,
+      "skip_inproc_s": 2.3994781970977783,
+      "ratio": 1.0005502960403836
+    },
+    {
+      "ontology": "ore_ont_10608",
+      "repetition": 0,
+      "candidate_s": 3.1871888879686594,
+      "skip_inproc_s": 3.1755180656909943,
+      "ratio": 0.9963382081552425
+    },
+    {
+      "ontology": "ore_ont_10608",
+      "repetition": 1,
+      "candidate_s": 3.218132771551609,
+      "skip_inproc_s": 3.246135516092181,
+      "ratio": 1.0087015504108834
+    },
+    {
+      "ontology": "ore_ont_10608",
+      "repetition": 2,
+      "candidate_s": 3.1745863407850266,
+      "skip_inproc_s": 3.271837417036295,
+      "ratio": 1.0306342514619462
+    },
+    {
+      "ontology": "ore_ont_10930",
+      "repetition": 0,
+      "candidate_s": 4.381819760426879,
+      "skip_inproc_s": 4.353032503277063,
+      "ratio": 0.9934302963782766
+    },
+    {
+      "ontology": "ore_ont_10930",
+      "repetition": 1,
+      "candidate_s": 4.345003670081496,
+      "skip_inproc_s": 4.3518263678997755,
+      "ratio": 1.001570239828624
+    },
+    {
+      "ontology": "ore_ont_10930",
+      "repetition": 2,
+      "candidate_s": 4.3742023576051,
+      "skip_inproc_s": 4.333675727248192,
+      "ratio": 0.9907350810402159
+    },
+    {
+      "ontology": "ore_ont_4242",
+      "repetition": 0,
+      "candidate_s": 7.123306276276708,
+      "skip_inproc_s": 7.053287820890546,
+      "ratio": 0.9901705117440549
+    },
+    {
+      "ontology": "ore_ont_4242",
+      "repetition": 1,
+      "candidate_s": 7.203381413593888,
+      "skip_inproc_s": 7.217490293085575,
+      "ratio": 1.001958646735693
+    },
+    {
+      "ontology": "ore_ont_4242",
+      "repetition": 2,
+      "candidate_s": 7.278693960979581,
+      "skip_inproc_s": 7.3559779319912195,
+      "ratio": 1.0106178349338426
+    },
+    {
+      "ontology": "ore_ont_6223",
+      "repetition": 0,
+      "candidate_s": 9.542170831933618,
+      "skip_inproc_s": 9.55277145281434,
+      "ratio": 1.0011109234017532
+    },
+    {
+      "ontology": "ore_ont_6223",
+      "repetition": 1,
+      "candidate_s": 9.412387561053038,
+      "skip_inproc_s": 9.553568799048662,
+      "ratio": 1.0149995138937766
+    },
+    {
+      "ontology": "ore_ont_6223",
+      "repetition": 2,
+      "candidate_s": 9.333396354690194,
+      "skip_inproc_s": 9.204967083409429,
+      "ratio": 0.9862398138469468
+    },
+    {
+      "ontology": "ore_ont_6835",
+      "repetition": 0,
+      "candidate_s": 12.991457093507051,
+      "skip_inproc_s": 13.012292884290218,
+      "ratio": 1.0016038070736177
+    },
+    {
+      "ontology": "ore_ont_6835",
+      "repetition": 1,
+      "candidate_s": 12.951726663857698,
+      "skip_inproc_s": 13.020518992096186,
+      "ratio": 1.0053114407077826
+    },
+    {
+      "ontology": "ore_ont_6835",
+      "repetition": 2,
+      "candidate_s": 12.922907406464219,
+      "skip_inproc_s": 12.85465300269425,
+      "ratio": 0.9947183399506656
+    },
+    {
+      "ontology": "ore_ont_4166",
+      "repetition": 0,
+      "candidate_s": 17.993238300085068,
+      "skip_inproc_s": 18.048693995922804,
+      "ratio": 1.0030820297554484
+    },
+    {
+      "ontology": "ore_ont_4166",
+      "repetition": 1,
+      "candidate_s": 18.202547632157803,
+      "skip_inproc_s": 18.098857095465064,
+      "ratio": 0.994303515156881
+    },
+    {
+      "ontology": "ore_ont_4166",
+      "repetition": 2,
+      "candidate_s": 18.138754963874817,
+      "skip_inproc_s": 18.279926471412182,
+      "ratio": 1.0077828664546449
+    },
+    {
+      "ontology": "ore_ont_14861",
+      "repetition": 0,
+      "candidate_s": 20.255968319252133,
+      "skip_inproc_s": 20.264624727889895,
+      "ratio": 1.0004273510158255
+    },
+    {
+      "ontology": "ore_ont_14861",
+      "repetition": 1,
+      "candidate_s": 20.274712774902582,
+      "skip_inproc_s": 20.294154239818454,
+      "ratio": 1.0009589021127805
+    },
+    {
+      "ontology": "ore_ont_14861",
+      "repetition": 2,
+      "candidate_s": 20.256815124303102,
+      "skip_inproc_s": 20.234241692349315,
+      "ratio": 0.9988856376574862
+    },
+    {
+      "ontology": "ore_ont_3237",
+      "repetition": 0,
+      "candidate_s": 35.908754620701075,
+      "skip_inproc_s": 36.27689072303474,
+      "ratio": 1.0102519874671854
+    },
+    {
+      "ontology": "ore_ont_3237",
+      "repetition": 1,
+      "candidate_s": 36.378920994699,
+      "skip_inproc_s": 35.95989629626274,
+      "ratio": 0.9884816622654279
+    },
+    {
+      "ontology": "ore_ont_3237",
+      "repetition": 2,
+      "candidate_s": 34.743791688233614,
+      "skip_inproc_s": 35.111103547737,
+      "ratio": 1.0105720142119026
+    },
+    {
+      "ontology": "ore_ont_12721",
+      "repetition": 0,
+      "candidate_s": 0.07953701727092266,
+      "skip_inproc_s": 0.07748480886220932,
+      "ratio": 0.9741980718019257
+    },
+    {
+      "ontology": "ore_ont_12721",
+      "repetition": 1,
+      "candidate_s": 0.08181972801685333,
+      "skip_inproc_s": 0.07910924404859543,
+      "ratio": 0.9668724886533527
+    },
+    {
+      "ontology": "ore_ont_12721",
+      "repetition": 2,
+      "candidate_s": 0.08138072304427624,
+      "skip_inproc_s": 0.08397560007870197,
+      "ratio": 1.0318856473296993
+    },
+    {
+      "ontology": "ore_ont_3733",
+      "repetition": 0,
+      "candidate_s": 86.1657207235694,
+      "skip_inproc_s": 85.71733052656054,
+      "ratio": 0.9947961881680611
+    },
+    {
+      "ontology": "ore_ont_3733",
+      "repetition": 1,
+      "candidate_s": 91.01820893771946,
+      "skip_inproc_s": 89.95090010762215,
+      "ratio": 0.9882736779535221
+    },
+    {
+      "ontology": "ore_ont_3733",
+      "repetition": 2,
+      "candidate_s": 74.94397189840674,
+      "skip_inproc_s": 71.3497615866363,
+      "ratio": 0.9520413687622173
+    },
+    {
+      "ontology": "ore_ont_8844",
+      "repetition": 0,
+      "candidate_s": 1.7790011800825596,
+      "skip_inproc_s": 1.7399994935840368,
+      "ratio": 0.9780766382084621
+    },
+    {
+      "ontology": "ore_ont_8844",
+      "repetition": 1,
+      "candidate_s": 1.734392149373889,
+      "skip_inproc_s": 1.7615614794194698,
+      "ratio": 1.01566504441074
+    },
+    {
+      "ontology": "ore_ont_8844",
+      "repetition": 2,
+      "candidate_s": 1.6540029887109995,
+      "skip_inproc_s": 1.6742236651480198,
+      "ratio": 1.012225296190534
+    },
+    {
+      "ontology": "ore_ont_10431",
+      "repetition": 0,
+      "candidate_s": 0.142535999417305,
+      "skip_inproc_s": 0.11045586876571178,
+      "ratio": 0.7749331342065264
+    },
+    {
+      "ontology": "ore_ont_10431",
+      "repetition": 1,
+      "candidate_s": 0.11398218013346195,
+      "skip_inproc_s": 0.11169497668743134,
+      "ratio": 0.9799336752170161
+    },
+    {
+      "ontology": "ore_ont_10431",
+      "repetition": 2,
+      "candidate_s": 0.11034344509243965,
+      "skip_inproc_s": 0.08856411650776863,
+      "ratio": 0.8026223617866426
+    },
+    {
+      "ontology": "ore_ont_8189",
+      "repetition": 0,
+      "candidate_s": 0.10533863306045532,
+      "skip_inproc_s": 0.10323717258870602,
+      "ratio": 0.9800504296411057
+    },
+    {
+      "ontology": "ore_ont_8189",
+      "repetition": 1,
+      "candidate_s": 0.10409872978925705,
+      "skip_inproc_s": 0.07336637750267982,
+      "ratio": 0.7047768752914333
+    },
+    {
+      "ontology": "ore_ont_8189",
+      "repetition": 2,
+      "candidate_s": 0.10265528969466686,
+      "skip_inproc_s": 0.10326077416539192,
+      "ratio": 1.0058982296238799
+    },
+    {
+      "ontology": "ore_ont_1618",
+      "repetition": 0,
+      "candidate_s": 0.07207908108830452,
+      "skip_inproc_s": 0.10077694803476334,
+      "ratio": 1.3981441843202869
+    },
+    {
+      "ontology": "ore_ont_1618",
+      "repetition": 1,
+      "candidate_s": 0.07349328882992268,
+      "skip_inproc_s": 0.07243925333023071,
+      "ratio": 0.9856580714174977
+    },
+    {
+      "ontology": "ore_ont_1618",
+      "repetition": 2,
+      "candidate_s": 0.07145930826663971,
+      "skip_inproc_s": 0.07349009998142719,
+      "ratio": 1.0284188549266373
+    },
+    {
+      "ontology": "ore_ont_13306",
+      "repetition": 0,
+      "candidate_s": 0.10790928825736046,
+      "skip_inproc_s": 0.08392877131700516,
+      "ratio": 0.7777715215472233
+    },
+    {
+      "ontology": "ore_ont_13306",
+      "repetition": 1,
+      "candidate_s": 0.1185422781854868,
+      "skip_inproc_s": 0.13661497831344604,
+      "ratio": 1.1524578437718258
+    },
+    {
+      "ontology": "ore_ont_13306",
+      "repetition": 2,
+      "candidate_s": 0.11076424270868301,
+      "skip_inproc_s": 0.0823406632989645,
+      "ratio": 0.7433866858596747
+    },
+    {
+      "ontology": "ore_ont_6696",
+      "repetition": 0,
+      "candidate_s": 0.1387269888073206,
+      "skip_inproc_s": 0.13706321455538273,
+      "ratio": 0.9880068451983146
+    },
+    {
+      "ontology": "ore_ont_6696",
+      "repetition": 1,
+      "candidate_s": 0.13832660391926765,
+      "skip_inproc_s": 0.13812187500298023,
+      "ratio": 0.9985199599318805
+    },
+    {
+      "ontology": "ore_ont_6696",
+      "repetition": 2,
+      "candidate_s": 0.1378519870340824,
+      "skip_inproc_s": 0.13993174768984318,
+      "ratio": 1.0150869109724663
+    },
+    {
+      "ontology": "ore_ont_2678",
+      "repetition": 0,
+      "candidate_s": 0.1708783134818077,
+      "skip_inproc_s": 0.16962162777781487,
+      "ratio": 0.9926457273694556
+    },
+    {
+      "ontology": "ore_ont_2678",
+      "repetition": 1,
+      "candidate_s": 0.18026276677846909,
+      "skip_inproc_s": 0.20399617962539196,
+      "ratio": 1.1316600941562693
+    },
+    {
+      "ontology": "ore_ont_2678",
+      "repetition": 2,
+      "candidate_s": 0.16881011240184307,
+      "skip_inproc_s": 0.16860070265829563,
+      "ratio": 0.9987594952662021
+    }
+  ],
+  "chunk_sha256": {
+    "0.json": "a571ae2067c25f17f868185b22faf39435907e1ef55684ad3cb160f6cc29ba02",
+    "1.json": "77acfe5884165536cb31f024dac34ae96515ab3a656b5f440fba4540b38c7483",
+    "10.json": "f841248541e1f210cfdc292e3420bd451bd9b121d372d95dea08cb7fdae60e74",
+    "11.json": "9e0794f5f783efa51feef003e78ed0912b3dc7927f16c8f440533fdcc9784c0b",
+    "12.json": "cc41dde016b2b2ce62af857f59dfc6b879de378fcd674317c00e8dfab8c28d1a",
+    "13.json": "e061752d746188782ff4e36c30a0fce32a88a6f50a806630f3257f8c80a5bc56",
+    "14.json": "ad97f1295e2b919533d65418db21227742350c9e82823e52c46d5e467b218a36",
+    "15.json": "0b58e4f2f3b8f8622126ec96d643b3e9e3f8a145d89f4b85d8eea518685ffd4e",
+    "16.json": "4a47555735702bc0e22bcdb7ac57264f2f9af398686eeb1a2081bb9673718f5b",
+    "17.json": "fa4fd05eacee9e6d0e2adce9f7ec84e8bf55f7d2bd2de5e1567ec4693492ed4c",
+    "18.json": "1b431abe18ef0ae4a0f4d2ab1401bf0a4c0166074bc1a491268db8f16c217c4c",
+    "19.json": "a23dc7f66960b9bafc16987e61457be993dd8ca818bf1171d0649d339d69827e",
+    "2.json": "d6423c7fedfd9808dabdc617053863599938ce5657637bca49b2dd321b66d409",
+    "20.json": "c63ed9b98d5fe66573f29af2dce972f7b7bf6d6f1f2e43c54be39eb4f6c9b9ef",
+    "21.json": "b83a656dd03bf591701282b8ec8b1f0ce0d25532340c2fde842a071cde317a70",
+    "22.json": "f203f4200bb19cda9ad4a31298d886028d07e75bad40cad9c7927fa178f48732",
+    "23.json": "777c549b5a72e252fd35b71fc5f619a31ada90020c40d930f26ede70121dcdfe",
+    "24.json": "7e98e6941ff2371ee7bdcd9efd6a5a5cf560a8e161397409a7499719cb721517",
+    "25.json": "b7ca0b892f39b860580495cab3e5332493923d205dd0599f7382d3de8e5ccf94",
+    "26.json": "8a67bbe070df045bfc9418f437e351142f00f64fb1b537fa25287b8d26b14fb5",
+    "27.json": "1cc880ad032297a1727168e9fb2f374dc6fa7715dddf049cc6b5da0ad635bb0b",
+    "28.json": "28346f04da75daaa497e58fc571f802534aacc079b3b694287f382da9b712234",
+    "29.json": "b2ff392fe7a4516f4839b046b6dae53106c20439c1d15404d85ebb5789830a21",
+    "3.json": "8d89294a8de79103405fc44efce9e5dd35096d2b753cc60c89e75cbe353aba1d",
+    "30.json": "5031ce26851e9277ea8ce79201412df8c750cc18f1c6ab49a7df0b3774dedbaa",
+    "31.json": "c318370035be1d42f4043d15df02681a73b58cdaf4a844733fe07fcb7371aa84",
+    "4.json": "a9a94d5fbc056c5e0836e4570ad0be9529d2437ed7ce5ec8b5c3f7cc84d32623",
+    "5.json": "ba2bb6b35f9f53341a53fd6d780cbf792d176c1ff6a632d8e785d3989efd9819",
+    "6.json": "334da3e9507ec84e4742548daaa1b843210b191efad40f0ef53bcf53668305b9",
+    "7.json": "3cc9d107e160bf3e5211a82bca4129ee09ac5724a4e68bee170a3145e837a2b2",
+    "8.json": "26deea84287184bd5493b381d92f3d53b5801416247a18d64d9c7b5813eb44bd",
+    "9.json": "11ff0af48918af93bd59f7be10a0e4abe99df08691f733f58e1b87777228c33b"
+  },
+  "scope": "32 selected diagnostic inputs, three paired repetitions; not full-corpus acceptance."
+}

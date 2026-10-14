@@ -1,0 +1,9 @@
+{
+  "tests": 74,
+  "failed": 0,
+  "test_log_sha256": "5be5b2a28086ffc1ac3cbd58a83161ef1f89462f1211bea70eb0f3460e0e194d",
+  "patch_sha256": "0fa73e602b5c2b986a0aaad1d1e33d9b99039f4beec9c571459f622a66d22ab4",
+  "source_manifest_sha256": "43df4315c0e59d7cc1eddbf54b52cb1d903e89f1eb5f62a952b7b7a034798351",
+  "production_admission_changed": false,
+  "release_approved": false
+}

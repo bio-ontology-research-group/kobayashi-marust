@@ -1,0 +1,9 @@
+{
+  "job_id": 53314986,
+  "source_job_id": 53312770,
+  "submitted_at": "2026-10-05T23:31:56.210640+00:00",
+  "script_sha256": "030d87d15dd4c3d8ad83557534ee9812ba3a1b79f1e204766bb2ca32fb7301b7",
+  "files_manifest_sha256": "a30c0b22240093c951d55b960da744976b0d726c285767c2b27cc77787f56514",
+  "scope": "Frontend preservation for ore_ont_15687 only, whose old binary hit the original comparison memory cap. 64 GiB/2400 s validation limits do not change classification benchmark limits or solved counts.",
+  "release_approved": false
+}

@@ -1,0 +1,122 @@
+{
+  "status": "complete",
+  "frontend_job": "53312770",
+  "source_chunks": {
+    "0": "8b60caa629b07c22a8a3690c3df94364bc237313b5b977100dc11d03a14903bc",
+    "1": "f556f9eb1dadbe803a28ebc49df81f31419336c4825e837bb2a009d5782c49df",
+    "2": "6c44ccf2da6ba35a933d14f89bd539802f50dd4819dba08b43276fa62f9fb482",
+    "3": "261342bdb1770ca8dd1a103efe15bde2c24299a6be413401ec139fc7a4604036",
+    "4": "a859d1eae42469d9a22980d1fbf713496d9fbd45a4371b7907205efd7e219814",
+    "5": "91f1fe4143fa8f5e6b552e5b17276f098bc512ac52b0a71224d171f370fbca8e",
+    "6": "ab67cadeb3cea727aebee1b541f5a49fa85321f79d3601ed1e21dac4bba0ba4d",
+    "7": "5ad1f81f538a5bf70a98004e14545cd6469e18284b6a29299387ef250e2faab9",
+    "8": "9612c3b4079e46437ad511bbe6ea0a879c378106f008febc08314d5401c6eb8a",
+    "9": "df41e0446e29c6f870cf8da318fa43f2d71eba41408b006647cc4ae05b93913c",
+    "10": "38374f31673a12fb1564a58842413749b75cfbbb67d2e0ad590cbbae69d73f7d",
+    "11": "4e1343b072d71f6aedf9a78bfbf8b4e00da732bc90ca015f97099d58a8cd3db6",
+    "12": "30033c250fdfa8a36005af4785d92661fb3104004fa5b0a7a5a987fb83ee8ad6",
+    "13": "bee9171f75641c81a664f38ea72611c5f8a8cd3e5ef1f297bc4f179d257437be",
+    "14": "d032536fa0b12d53afa2e5b05ec1fd9855d1626bc624fac5479f981b563ff9da",
+    "15": "6b6f3a19f8a6efaac6b3e695d69f2b624ae796130f5fa4a4c4a271a63f4b23f1",
+    "16": "209afeeb9366266e9d59caa5dc60627d586665a99aa6fb3d10f05fa684282480",
+    "17": "86aa910a04e25d35d9094f659544699624e8a88f22d99a9ec0f2472a6d623ae9",
+    "18": "d6efd4020a6ae1f5915ad8eddfb9bb7096239225782db4df7f2dab0cf99d7091",
+    "19": "d912a046a948a6dacba781cfcae3e4e554497dbc818821a095feaa04e3f21b78",
+    "20": "4b0a871f747d53ad2d443e366d33b3bdbac32b9798987ed79be6502e707941b6",
+    "21": "c965c8dd032df90a1b9d232167a41fcfeda16d2e7801f87b9040d81f50854383",
+    "22": "1af4c5d74efa33c74b35f8b55e50c35ec74b2d37ddfbfa827c54c7e59714ad45",
+    "23": "916ba98fb3c106bf86c23b541afebc18b68ebfadde76c7bfa971c23ed1053e13",
+    "24": "a7d313e8e8dabebf80565ae39cb47e3e588bf8bf707ff4fc09dce2b184781a1e",
+    "25": "7ed88b487e73bc6a495019cc1aa020a8948cad2a5f7a087d33ad728788c9350a",
+    "26": "47d45f74413dec3779e248e3ffcacbd01bbf6b034df89ce97238dc8183738a5d",
+    "27": "e86957834f93a3af418dc9121f5afd6b604845532595b511421665cd4e5de05e",
+    "28": "5aa0c5f8252b0e7adf92091f830fe60336489a2a245e24b18db0fac91913bff2",
+    "29": "0d9206ae8ebc29c7979527d9c56ec99ce65ef66685331c1d96a3ad7744e74853",
+    "30": "94613a12aa683fe0964835ca50a07d2a137ad34dcc1c4acbb6f08011d78b55c7",
+    "31": "a3b446b7b716514e40554ef3f1b4aea20342972f61cf0860d443e81df78c04c7",
+    "32": "e41645ab008be791973ddb7912e2434ec8de07c9149dde9b691e136a61af477a",
+    "33": "0e2aaaa07047fa0fefa146d135d147ff232914b4ecbc549fe362912fc7119380",
+    "34": "6621381f685464e90e9580602c69bd6f46b33df88b5e5d78ed0d7866cfc56be8",
+    "35": "32be1cf9132dcb7cc4a39935d347fc295e236da389963d210a31733268fb2d9a",
+    "36": "0dc061a4749f8487f18fce76e565b02e3516ca490c22df44c11a605dfdcc3444",
+    "37": "be03d2c3ab352f3ad14d4fe5d9d824f15ad21e767e7ef081805b436ce554a7cc",
+    "38": "f09b2d05dacb91e54abaf3237b773ee3aa39ce6b8f8ac5bbe7b1748fbbd43ca0",
+    "39": "2f3369cae61ee43e442646a9b476f303bc7948aeed0d5a524f4aee02d334a6ac",
+    "40": "6aed10b4c2f31da63e2b71cf510d2580e267a9b296351035b523a5e1a09a18a6",
+    "41": "84e661c6f012898800c96415d5c19e5664f546edaaa20c52e7123fd6b2f39d3a",
+    "42": "23599fa9ee09475e7d7cb808b9147f412a70a03124833719e12d178963fa7737",
+    "43": "89c1e2b87a5f972b1b2684330a881edb51c852dd4cd1f12fc9932f24e4f0e85f",
+    "44": "2e0bfcac932a0364e2cfe3712909b1c0cb8f467a42dafe02d2ee66be8a364347",
+    "45": "2c950e1b8509280bd6f8bf0f69e13a56d1ae5e16a34e40734046051ae3320363",
+    "46": "5d912fe5ff9cb18e5fabd2edf6ecb274e60097d3ec3d307b6654e4caa4bbf6a8",
+    "47": "5f94f01ce3f95f3e9af97a599c5b8a5b5f2fb86c883fe471faf39685d097a5a5",
+    "48": "1b3103634f090ea764a9d8a30e1208cc43c2eb4f9f5acff0715e3ee17c0af3be",
+    "49": "df4a580aa38b856bebc91f919d74404fd795bf70f46addee443f92e49efd262c",
+    "50": "c83fdd0e4880c854bd9bbf7c0a7298b900950d6d5cd5428d11b06a456e6b29ee",
+    "51": "311931a00aa4185967a6e6b1fa12ce9af99959df2acb7fce373923d8cf265935",
+    "52": "d93635417195b773df29178596e6971bdc5dc423bc32c22059831e59206f2c81",
+    "53": "f9d1deecb6c2ddbe5da1e3226995c0af95413f329c0b186aa024a8f783785da4",
+    "54": "72a4f8404abbe738b4b624728363e4bf9ce9965d65a5f7550ad7b8a59b61adca",
+    "55": "25d390fc4dfe53f7e7f5f5d86f353c1907ab4280b6e76310717a6e0299bc81bc",
+    "56": "15bfd7db8f37363b4d3699e6d91ee42dcd667652704b923c3e5b7c5bab8a0f42",
+    "57": "eba23b029fb38a433daad1850e138e9bd045f079a49049e5d602b27491fc407e",
+    "58": "650512f04fbc84bc6f832ecb93ffffa09020e2287b67bcf965f1fe8412c79920",
+    "59": "b2aead1a7a3164267881cb9da52573c208d7dc764261791a00e786c3a34480e5"
+  },
+  "manifest_sha256": "0309377d05dfd0cd81eb46050416272fbd52b16e77f21d9a37d732b352817fb4",
+  "runner_sha256": "15452ca9ae31ef88589cd5ebf3f3ad83a40d70263801bfc8f3f85652bd54cbca",
+  "checker_sha256": "a90200efc45d784e12d7e9eb5713a1c3e48a79453e1fe7f681fcbed89d798b4f",
+  "selected": [
+    "ore_ont_13404",
+    "ore_ont_15687",
+    "ore_ont_6446",
+    "ore_ont_8050"
+  ],
+  "outcomes": [
+    {
+      "ontology": "ore_ont_13404",
+      "source_sha256": "c87bfc9c4b37cc513de1dafcbab6666fdf83fb135b97c5deed56178a45437991",
+      "execution_status": "ok",
+      "returncode": 0,
+      "passed": true,
+      "receipt_sha256": "c0db517dc25ec4be04aeb35df866a235c0cc7cd187b2df0cd73fed9b8b57a1f6",
+      "renaming": {
+        "": "km_src_empty_iri",
+        "__nom__": "__nom__km_src_empty_iri"
+      }
+    },
+    {
+      "ontology": "ore_ont_15687",
+      "source_sha256": "e8e00e63ab8bbef80de3059389b565613c3a79c0210c9ed710cc8703d4849791",
+      "execution_status": "ok",
+      "returncode": 1,
+      "passed": false
+    },
+    {
+      "ontology": "ore_ont_6446",
+      "source_sha256": "5bec1016e6e08740f1c442e2fa06ba47ad532ddd549f851bfd4ff89742faf55d",
+      "execution_status": "ok",
+      "returncode": 0,
+      "passed": true,
+      "receipt_sha256": "ebe10695c9bcea00a2798fd205f758cdca1d5fe0d3d529549b6aacd3930f54b6",
+      "renaming": {
+        "": "km_src_empty_iri",
+        "__nom__": "__nom__km_src_empty_iri"
+      }
+    },
+    {
+      "ontology": "ore_ont_8050",
+      "source_sha256": "a43722d87607c7731997aee220cc27a27a7dcf56721acf80d1a29ec2a799477f",
+      "execution_status": "ok",
+      "returncode": 0,
+      "passed": true,
+      "receipt_sha256": "a1e614f1c3dcfd497ec1cca480516e2da715d74cb519fd9b57d4f3d290ffc4ee",
+      "renaming": {
+        "": "km_src_empty_iri",
+        "__nom__": "__nom__km_src_empty_iri"
+      }
+    }
+  ],
+  "scope": "Only failed admitted-input frontend comparisons; invalid-input refusals require their own audit.",
+  "all_selected_preserved": false
+}

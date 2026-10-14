@@ -1,0 +1,11 @@
+{
+  "job_id": "53299394",
+  "submitted_utc": "2026-10-05T19:29:01.458839+00:00",
+  "scope": "Three repetitions of all four DDB/native-full flag combinations on original 1123, same pinned binary and references",
+  "motivation": {
+    "v145_verified_s": 209.88434983044863,
+    "candidate_status": "timeout",
+    "candidate_s": 240.04848261363804
+  },
+  "release_evidence": false
+}

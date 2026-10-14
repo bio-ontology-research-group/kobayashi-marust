@@ -641,7 +641,7 @@ impl BackendRepresentativeMemoryCache {
                     .label_cache_item_ext_data(testing_array_index_data)
                     .get_index(prop_mark_label_item);
                 if testing_prio_prop_mark_index >= 0 {
-                    let mut neighbour_indi_id_set = std::collections::HashSet::new();
+                    let mut neighbour_indi_id_set = crate::fxhash::FxHashSet::default();
                     let data_id = testing_array_ref.at(testing_prio_prop_mark_index);
                     if data_id.is_some() {
                         cache_context

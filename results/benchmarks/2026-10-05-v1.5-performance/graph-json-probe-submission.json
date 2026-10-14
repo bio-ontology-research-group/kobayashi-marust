@@ -1,0 +1,20 @@
+{
+  "job_id": "53336382",
+  "cases": [
+    "ore_ont_10689",
+    "ore_ont_8737",
+    "ore_ont_10174"
+  ],
+  "repetitions": 2,
+  "arms": [
+    "expanded",
+    "graph"
+  ],
+  "same_binary": true,
+  "timeout_s": 240,
+  "audit_timeout_s": 600,
+  "memory_gib": 20,
+  "cpus": 1,
+  "release_approved": false,
+  "runner_sha256": "7ce457dbd1c6ba017529d30561e7f659840b6032092c292989563cb9f56e75e8"
+}

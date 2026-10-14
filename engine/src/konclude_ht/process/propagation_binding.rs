@@ -53,7 +53,7 @@
     clippy::type_complexity
 )]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, VariableId};
@@ -142,7 +142,7 @@ impl PropagationBindingReapplyConceptHash {
     pub fn new(process_context: Cint64) -> Self {
         PropagationBindingReapplyConceptHash {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 
@@ -1134,7 +1134,7 @@ impl PropagationBindingMap {
     pub fn new(process_context: Cint64) -> Self {
         PropagationBindingMap {
             process_context,
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 

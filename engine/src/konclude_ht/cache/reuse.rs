@@ -21,7 +21,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use crate::fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::ConceptId;
@@ -181,7 +181,7 @@ pub struct ReuseCompletionGraphCompatibilityEntryHash {
 impl ReuseCompletionGraphCompatibilityEntryHash {
     pub fn new() -> Self {
         ReuseCompletionGraphCompatibilityEntryHash {
-            map: HashMap::new(),
+            map: HashMap::default(),
             context: INVALID,
         }
     }
@@ -192,7 +192,7 @@ impl ReuseCompletionGraphCompatibilityEntryHash {
     /// `HashMap`; the `CContext*` is kept as an opaque back-handle.
     pub fn new_with_context(context: Cint64) -> Self {
         ReuseCompletionGraphCompatibilityEntryHash {
-            map: HashMap::new(),
+            map: HashMap::default(),
             context,
         }
     }
@@ -830,7 +830,7 @@ impl ReuseCompletionGraphCacheReader {
                     self.entry_voting_vec[i].reset();
                 }
 
-                let mut tested_concept_set: HashSet<ConceptId> = HashSet::new();
+                let mut tested_concept_set: HashSet<ConceptId> = HashSet::default();
 
                 for i in 0..TEST_CONCEPT_LINKER_VEC_SIZE {
                     self.test_concept_linker_vec[i].clear();

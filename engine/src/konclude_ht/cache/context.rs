@@ -29,7 +29,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use crate::fxhash::FxHashMap as HashMap;
 
 use super::super::model::substrate::{Arena, Cint64, Id, INVALID};
 use super::super::model::IndividualId;

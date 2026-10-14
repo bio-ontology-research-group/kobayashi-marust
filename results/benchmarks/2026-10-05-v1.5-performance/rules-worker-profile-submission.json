@@ -1,0 +1,10 @@
+{
+  "job_id": 53328863,
+  "submitted_at": "2026-10-06T03:49:45.981275+00:00",
+  "diagnostic_only": true,
+  "task_count": 2,
+  "slurm_state_last_observed": "PENDING",
+  "files_sha256": "96103f4e2859a2fcf55dd7d828b8720f75c053daf19aea4a973f4b0d0a5441f9",
+  "purpose": "Capture source-model SWRL worker inputs and stats without skipping consistency or source-model verification.",
+  "release_approved": false
+}

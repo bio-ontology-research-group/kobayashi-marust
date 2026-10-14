@@ -23,6 +23,27 @@ theorem exists_preserved {O : Type u} {V : Type v} {W : Type w}
   · rintro ⟨w, ⟨v, edge, rfl⟩, hw⟩
     exact ⟨v, edge, (profile v).mpr hw⟩
 
+/-- A source global data range entails the identical local universal at every
+object. The Rust admission guard requires the same role and atomic range;
+this lemma does not justify arbitrary local datatype universals. -/
+theorem global_range_implies_local {O : Type u} {V : Type v}
+    (r : O → V → Prop) (p : V → Prop)
+    (global : ∀ x y, r x y → p y) (x : O) :
+    ∀ y, r x y → p y := global x
+
+/-- Adding a class-local copy of a global range preserves a theory. -/
+theorem redundant_local_range {O : Type u} {V : Type v}
+    (theory : Prop) (c : O → Prop) (r : O → V → Prop) (p : V → Prop)
+    (global : theory → ∀ x y, r x y → p y) :
+    (theory ∧ ∀ x, c x → ∀ y, r x y → p y) ↔ theory := by
+  constructor
+  · exact And.left
+  · intro valid
+    exact ⟨valid, fun x _ => global_range_implies_local r p (global valid) x⟩
+
+#print axioms global_range_implies_local
+#print axioms redundant_local_range
+
 theorem forall_preserved {O : Type u} {V : Type v} {W : Type w}
     (f : V → W) (r : O → V → Prop) (p : V → Prop) (q : W → Prop)
     (profile : ∀ v, p v ↔ q (f v)) (x : O) :

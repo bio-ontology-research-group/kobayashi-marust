@@ -1,0 +1,102 @@
+[
+  {
+    "rest": false,
+    "ddb": false,
+    "rc": 0,
+    "elapsed_s": 0.010768325068056583,
+    "answer": {
+      "consistent": true,
+      "subsumptions": [
+        [
+          "urn:C",
+          "urn:B"
+        ],
+        [
+          "urn:D",
+          "urn:B"
+        ],
+        [
+          "urn:E",
+          "urn:B"
+        ]
+      ],
+      "unsatisfiable": [],
+      "dropped": 0
+    }
+  },
+  {
+    "rest": false,
+    "ddb": true,
+    "rc": 0,
+    "elapsed_s": 0.009821134968660772,
+    "answer": {
+      "consistent": true,
+      "subsumptions": [
+        [
+          "urn:C",
+          "urn:B"
+        ],
+        [
+          "urn:D",
+          "urn:B"
+        ],
+        [
+          "urn:E",
+          "urn:B"
+        ]
+      ],
+      "unsatisfiable": [],
+      "dropped": 0
+    }
+  },
+  {
+    "rest": true,
+    "ddb": false,
+    "rc": 0,
+    "elapsed_s": 0.00813148298766464,
+    "answer": {
+      "consistent": true,
+      "subsumptions": [
+        [
+          "urn:C",
+          "urn:B"
+        ],
+        [
+          "urn:D",
+          "urn:B"
+        ],
+        [
+          "urn:E",
+          "urn:B"
+        ]
+      ],
+      "unsatisfiable": [],
+      "dropped": 0
+    }
+  },
+  {
+    "rest": true,
+    "ddb": true,
+    "rc": 0,
+    "elapsed_s": 0.005352966021746397,
+    "answer": {
+      "consistent": true,
+      "subsumptions": [
+        [
+          "urn:C",
+          "urn:B"
+        ],
+        [
+          "urn:D",
+          "urn:B"
+        ],
+        [
+          "urn:E",
+          "urn:B"
+        ]
+      ],
+      "unsatisfiable": [],
+      "dropped": 0
+    }
+  }
+]

@@ -1,0 +1,31 @@
+{
+  "diagnostic_only": true,
+  "release_approved": false,
+  "timeout_s": 30,
+  "memory_gib": 20,
+  "cpu": 0,
+  "cpus": 1,
+  "status": "ok",
+  "exit_code": 0,
+  "wall_s": 1.7198522880207747,
+  "binary_sha256": "b62a468d5f2b112eaccb37033753ab7730c7577cfd67472d2ef2b12b46d3ffd8",
+  "runner_sha256": "3d92275096606a735fac705c92f867a996626a702e767781aaf5ab87c8d994de",
+  "stdout_sha256": "f6b2b0159efbd4f7fbde8640db5132eb1fe2da8d429b5126b824630c75ac64e2",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "library_sha256": {
+    ".work/target-diagnostic/release/deps/libkobayashi_marust-b19375eab8275719.rlib": "d525b8afcdbc35455217aeeb030092a7f2593790436b1b0d57c65078da614b8b",
+    ".work/target-diagnostic/release/deps/libkm_owl_functional_syntax-d66ae5e99ad63ec7.rlib": "d8fad691ca9e7279798f36483a4f5ee46d6a198a6667f52f4e1c354716b85b37"
+  },
+  "command": [
+    "/tmp/agent/km-v150-diagnostics/probe-validation-cost",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_236.owl",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_11896.owl",
+    "/tmp/agent/km-v150-diagnostics/median-phase-probe/ore_ont_3250.owl"
+  ],
+  "compile_options": [
+    "--edition=2021",
+    "-O",
+    "-C",
+    "panic=abort"
+  ]
+}

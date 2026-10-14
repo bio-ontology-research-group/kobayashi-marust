@@ -1,0 +1,10 @@
+{
+  "artifacts": [
+    {
+      "id": "km",
+      "version": "15b5eaf9-atmost-dependency",
+      "path": "/ibex/scratch/projects/c2014/hohndor/km/v150-performance-20261005/km-atmost-15b5eaf9",
+      "sha256": "4f4f2d9cec9eb83bcb49c2baf51d79b2157354c9808f3b464c5b66a52292f0ab"
+    }
+  ]
+}

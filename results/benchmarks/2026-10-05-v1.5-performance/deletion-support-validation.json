@@ -1,0 +1,155 @@
+{
+  "diagnostic_only": true,
+  "binary": {
+    "path": "/tmp/agent/km-v150-diagnostics/km-deletion-support-7c00966374dd",
+    "sha256": "7c00966374dd454ec3b99796f7997322ab867391beec94092d2baec4221d9a68"
+  },
+  "tests": {
+    "role-tests": {
+      "passed": 5,
+      "sha256": "3bed521cea4d0d14011dd0c21ac9a5a327bdc915c621225cc3b1e9e120f760fd"
+    },
+    "source-tests": {
+      "passed": 26,
+      "sha256": "82f81b713f8068c3f825b25dedb18d087d167c2821f3cd98e4e6c3f9455fad4a"
+    },
+    "enabled-tests": {
+      "passed": 26,
+      "sha256": "13031e7dedcdebbe9de525026d09dab9bb0c246d2bf48f83ac29c7f4b3bff95c"
+    },
+    "typed-tests": {
+      "passed": 14,
+      "sha256": "04122888f9304551169f0fda6b9efe04bae8aabd50ff5b4b39902b86a53fc838"
+    }
+  },
+  "modes": {
+    "module": {
+      "cases": [
+        {
+          "repetition": 0,
+          "revision": 1,
+          "retained_s": 1.1867769889067858,
+          "fresh_s": 1.6512582240393385,
+          "faster": true
+        },
+        {
+          "repetition": 0,
+          "revision": 2,
+          "retained_s": 1.481419677962549,
+          "fresh_s": 1.6497817379422486,
+          "faster": true
+        },
+        {
+          "repetition": 0,
+          "revision": 3,
+          "retained_s": 1.6777070190291852,
+          "fresh_s": 1.6268542790785432,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 4,
+          "retained_s": 2.1139218739699572,
+          "fresh_s": 1.7843391739297658,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 1,
+          "retained_s": 1.2211308230180293,
+          "fresh_s": 1.6479373540496454,
+          "faster": true
+        },
+        {
+          "repetition": 1,
+          "revision": 2,
+          "retained_s": 1.4254856469342485,
+          "fresh_s": 1.6258994899690151,
+          "faster": true
+        },
+        {
+          "repetition": 1,
+          "revision": 3,
+          "retained_s": 1.594157051993534,
+          "fresh_s": 1.6757159408880398,
+          "faster": true
+        },
+        {
+          "repetition": 1,
+          "revision": 4,
+          "retained_s": 2.193860490922816,
+          "fresh_s": 1.6488972229417413,
+          "faster": false
+        }
+      ],
+      "faster": 5,
+      "total": 8,
+      "all_answers_match": true
+    },
+    "full-input": {
+      "cases": [
+        {
+          "repetition": 0,
+          "revision": 1,
+          "retained_s": 1.2916886809980497,
+          "fresh_s": 1.6320009999908507,
+          "faster": true
+        },
+        {
+          "repetition": 0,
+          "revision": 2,
+          "retained_s": 1.9760104670422152,
+          "fresh_s": 1.6506566710304469,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 3,
+          "retained_s": 1.9598540479782969,
+          "fresh_s": 1.7236482390435413,
+          "faster": false
+        },
+        {
+          "repetition": 0,
+          "revision": 4,
+          "retained_s": 1.9538787750061601,
+          "fresh_s": 1.5834477180615067,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 1,
+          "retained_s": 1.1721821930259466,
+          "fresh_s": 1.6066297380020842,
+          "faster": true
+        },
+        {
+          "repetition": 1,
+          "revision": 2,
+          "retained_s": 1.7251607030630112,
+          "fresh_s": 1.6018083590315655,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 3,
+          "retained_s": 1.9711541569558904,
+          "fresh_s": 1.606530906050466,
+          "faster": false
+        },
+        {
+          "repetition": 1,
+          "revision": 4,
+          "retained_s": 1.8171102439519018,
+          "fresh_s": 1.6061861460329965,
+          "faster": false
+        }
+      ],
+      "faster": 2,
+      "total": 8,
+      "all_answers_match": true
+    }
+  },
+  "release_approved": false,
+  "scope": "Experimental source deletion reproof; exact runtime source/proof binding remains unfinished. Five revisions of ORE9944, two repetitions per mode. All-case target remains unmet."
+}

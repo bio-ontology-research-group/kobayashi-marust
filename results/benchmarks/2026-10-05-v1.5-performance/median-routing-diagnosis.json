@@ -1,0 +1,104 @@
+{
+  "scope": "local diagnostic only, no release performance claim",
+  "ontology": "ore_ont_4961",
+  "source_sha256": "cb8e4bf8ad01662b688b0fcf66e4e00509759772f51a93e83e5780a31729e739",
+  "mechanism": "Serial in-process CB delays launching faster HT alternative; bypass preserves all 16 published pairs and consistency.",
+  "measurements": [
+    {
+      "mode": "default",
+      "rep": 0,
+      "wall_s": 0.6665122359991074,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "default",
+      "rep": 1,
+      "wall_s": 0.5664217640878633,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "default",
+      "rep": 2,
+      "wall_s": 0.5160533089656383,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "native_full",
+      "rep": 0,
+      "wall_s": 0.5156867309706286,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "native_full",
+      "rep": 1,
+      "wall_s": 0.515890846028924,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "native_full",
+      "rep": 2,
+      "wall_s": 0.6167274300241843,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "no_inproc",
+      "rep": 0,
+      "wall_s": 0.16491855401545763,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "no_inproc",
+      "rep": 1,
+      "wall_s": 0.16490028297994286,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "no_inproc",
+      "rep": 2,
+      "wall_s": 0.21502348000649363,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "native_no_inproc",
+      "rep": 0,
+      "wall_s": 0.16512756294105202,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "native_no_inproc",
+      "rep": 1,
+      "wall_s": 0.21507558599114418,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    },
+    {
+      "mode": "native_no_inproc",
+      "rep": 2,
+      "wall_s": 0.21534573996905237,
+      "rc": 0,
+      "same_answer": true,
+      "output_sha256": "714b27b7f8bd723655b600f15751440cfde865d15f22aca1ab862e34a7b8e9dc"
+    }
+  ]
+}
