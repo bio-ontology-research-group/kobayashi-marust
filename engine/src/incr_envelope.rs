@@ -98,10 +98,64 @@ fn axiom(head: &str, args: &[&Node<'_>]) -> Option<bool> {
     allowed.then_some(false)
 }
 
+/// The legacy tokenizer is byte based outside strings. Permit UTF-8 only
+/// in quoted literal tokens, whose scanner ends at an ASCII quote boundary.
+/// Match token starts exactly: quotes embedded in atoms, IRIs, or comments
+/// cannot open a literal. This is a parser-safety check, not source admission.
+fn unicode_only_in_literal_bodies(text: &str) -> bool {
+    if text.is_ascii() { return true; }
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    let end_atom = |byte| matches!(byte, b'\t'..=b'\r' | b' ' | b'(' | b')');
+    while i < bytes.len() {
+        if !bytes[i].is_ascii() { return false; }
+        match bytes[i] {
+            byte if end_atom(byte) => i += 1,
+            b'<' => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'>' {
+                    if !bytes[i].is_ascii() { return false; }
+                    i += 1;
+                }
+                if i == bytes.len() { return false; }
+                i += 1;
+            }
+            b'#' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    if !bytes[i].is_ascii() { return false; }
+                    i += 1;
+                }
+            }
+            b'"' => {
+                i += 1;
+                loop {
+                    if i == bytes.len() { return false; }
+                    match bytes[i] {
+                        b'\\' => {
+                            if i + 1 >= bytes.len() { return false; }
+                            i += 2;
+                        }
+                        b'"' => { i += 1; break; }
+                        _ => i += 1,
+                    }
+                }
+            }
+            _ => {
+                while i < bytes.len() && !end_atom(bytes[i]) {
+                    if !bytes[i].is_ascii() { return false; }
+                    i += 1;
+                }
+            }
+        }
+    }
+    true
+}
+
 pub(crate) fn eligible(text: &str, scan: &Scan) -> Option<Eligibility> {
     // This optional optimization may decline without rejecting valid input.
-    // Bound the legacy byte parser before it sees Unicode or deep trees.
-    if !text.is_ascii() { return None; }
+    // Bound the legacy byte parser before unsafe Unicode atom boundaries or
+    // deep trees. Literal bodies keep their exact values and public admission.
+    if !unicode_only_in_literal_bodies(text) { return None; }
     let universals = universal_spellings(scan);
     let mut data_tbox = FxHashSet::default();
     let mut object_only = true;
@@ -185,8 +239,32 @@ mod tests {
         assert!(eligible(text,&scan(text).unwrap()).is_none());
     }
     #[test]
+    fn unicode_literals_preserve_safe_token_boundaries_only() {
+        // These code points have UTF-8 continuation bytes 0x85 or 0xA0,
+        // which the legacy tokenizer mistakes for whitespace in bare atoms.
+        let literal = "è l’altra \u{85}\u{a0}\u{105}\u{120}";
+        assert!(check(&format!("DataPropertyAssertion(:p :a \"{literal}\")")).is_some());
+        assert!(check(r#"DataPropertyAssertion(:p :a "è \"quoted\" and \\ tail")"#).is_some());
+        assert!(unicode_only_in_literal_bodies("# ASCII quote \" ignored\n Ontology(DataPropertyAssertion(:p :a \"è\"))"));
+        for source in [
+            "Ontology(SubClassOf(:A :\u{120}))",
+            "Ontology(\u{85}SubClassOf(:A :B))",
+            "Ontology(\u{a0}SubClassOf(:A :B))",
+            "Ontology(abc\"\u{120}\")",
+            "Prefix(:=<urn:\u{105}>) Ontology()",
+            "Ontology(SubClassOf(<urn:\u{120}> :B))",
+            "# quote \" does not open literal: \u{120}\nOntology()",
+            "<urn:quote\"> \u{120}",
+            "Ontology(DataPropertyAssertion(:p :a \"è))",
+            "<urn:unterminated \"è\"",
+        ] {
+            assert!(!unicode_only_in_literal_bodies(source), "{source:?}");
+        }
+    }
+
+    #[test]
     fn optional_parser_bounds_decline_without_rejecting_source_globally() {
-        assert!(check("DataPropertyAssertion(:p :a \"\u{120}\")").is_none());
+        assert!(check("DataPropertyAssertion(:p :a \"\u{120}\")").is_some());
         let nested=format!("SubClassOf(:A {}:B{})","ObjectComplementOf(".repeat(257),")".repeat(257));
         assert!(check(&nested).is_none());
     }

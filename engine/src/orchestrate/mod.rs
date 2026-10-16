@@ -692,12 +692,11 @@ fn use_atomic_inproc_elc(
     // historical subprocess boundary only adds clause serialization,
     // fork/exec, and taxonomy reparsing. Retain that boundary for larger
     // hierarchies, where allocator high-water during public-output mapping was
-    // measurable.
+    // measurable. Unused property declarations, including class/property
+    // punning, create no completion edges and do not change this bound.
     let flat_small = profile.source.file_bytes < INPROC_ELC_MAX
         && profile.source.abox_axioms == 0
         && profile.source.rbox_axioms == 0
-        && profile.source.distinct_object_properties == 0
-        && profile.source.distinct_data_properties == 0
         && profile.source.unions == 0
         && profile.source.complements == 0
         && profile.source.existentials == 0
@@ -3969,6 +3968,16 @@ mod tests {
         profile.source.intersections = 2;
         profile.source.max_concept_depth = 2;
         assert!(use_atomic_inproc_elc(Route::Elc, &profile));
+        // Declaration-only properties do not add role completion work.
+        profile.source.distinct_object_properties = 2;
+        profile.source.distinct_data_properties = 1;
+        assert!(use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.rbox_axioms = 1;
+        assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.rbox_axioms = 0;
+        profile.source.abox_axioms = 1;
+        assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.abox_axioms = 0;
         profile.source.file_bytes = super::INPROC_ELC_MAX;
         assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
         profile.source.file_bytes = super::INPROC_ELC_MAX - 1;

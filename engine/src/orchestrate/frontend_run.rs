@@ -618,6 +618,59 @@ mod tests {
     }
 
     #[test]
+    fn in_process_frontend_retains_flat_el_with_unused_punned_properties() {
+        let _environment_lock = crate::frontend::lock_test_environment();
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        struct RestoreInprocElc(Option<std::ffi::OsString>);
+        impl Drop for RestoreInprocElc {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("KM_NO_INPROC_ELC", value),
+                    None => std::env::remove_var("KM_NO_INPROC_ELC"),
+                }
+            }
+        }
+        let _inproc_guard = RestoreInprocElc(std::env::var_os("KM_NO_INPROC_ELC"));
+        std::env::set_var("KM_ROUTE", "elc");
+        std::env::remove_var("KM_EL_ABOX_CHECK");
+        for declaration in ["ObjectProperty", "DataProperty"] {
+            let source = format!(
+                "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) \
+                 Declaration({declaration}(<urn:B>)) SubClassOf(<urn:A> <urn:B>))"
+            );
+            std::env::remove_var("KM_NO_INPROC_ELC");
+            let clauses = TempPath::new(".clauses.json");
+            let (meta, cached, sidecar) =
+                run_ofn_in_process(&source, clauses.path()).expect("frontend parses");
+            assert_eq!(meta.route, "elc");
+            assert!(meta.el_rbox_safe);
+            assert_eq!(meta.profile.source.logical_axioms, 1);
+            assert_eq!(meta.profile.source.rbox_axioms, 0);
+            assert_eq!(meta.profile.source.existentials, 0);
+            assert_eq!(meta.profile.source.distinct_object_properties,
+                u64::from(declaration == "ObjectProperty"));
+            assert_eq!(meta.profile.source.distinct_data_properties,
+                u64::from(declaration == "DataProperty"));
+            let cached = cached.expect("unused declarations retain the typed EL input");
+            assert!(sidecar.is_none());
+            assert!(!clauses.path().exists());
+
+            // Exercise the unchanged isolated worker's actual binary handoff
+            // on the same source, and compare every clause with the typed input.
+            std::env::set_var("KM_NO_INPROC_ELC", "1");
+            let worker_clauses = TempPath::new(".clauses.json");
+            let (_, worker_cached, worker_sidecar) =
+                run_ofn_in_process(&source, worker_clauses.path()).expect("worker frontend parses");
+            assert!(worker_cached.is_none());
+            let worker_sidecar = worker_sidecar.expect("isolated EL binary handoff");
+            let decoded = crate::json_io::decode_elc_binary(
+                &std::fs::read(worker_sidecar.path()).unwrap())
+                .unwrap().expect("EL binary header");
+            assert!(cached.clauses == decoded, "typed and worker clauses differ");
+        }
+    }
+
+    #[test]
     fn in_process_frontend_writes_the_el_binary_sidecar_for_an_uncached_el_route() {
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();

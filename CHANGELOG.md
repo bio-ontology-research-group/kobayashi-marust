@@ -46,6 +46,25 @@
   retained work and fallback; the benchmark does not record a Java avoided-scan
   count. This section makes no incremental performance claim.
 
+### Incremental module routing refinements
+
+Compared with commit `92b8e5180f612fd886dac0d20e5660cadde472fe`:
+
+- Prefer the existing certified pure-object module route when the full
+  empty-signature core contains data assertions, including small cores.
+  Preserve the consistency, source-admission and publication checks.
+- Permit Unicode inside quoted literal bodies in the optional source-envelope
+  guard while preserving literal values and safe token boundaries.
+- Keep small role-free EL modules in process when unused object or data
+  property declarations are present, including class/property punning.
+  Preserve the logical and resource guards and the worker's typed clause input.
+
+The three-case debug diagnostic matched all 27 retained revisions and six fresh
+checks and confirmed the intended routes. The ordinary release-profile Rust
+suite passed 3,075 tests with zero failures and ten ignored tests. Exact-source
+Lean certification and optimized timing validation remain pending; these checks
+do not establish a performance improvement.
+
 ### Native process cleanup
 
 - During cancellation, allow the supervisor to reap terminated children before

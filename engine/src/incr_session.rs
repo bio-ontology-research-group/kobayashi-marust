@@ -1514,17 +1514,27 @@ impl Session {
                 prepared_full, started, false);
         }
         // Prefer a certified pure-object NEW module when the full common
-        // core carries a substantial assertion payload. Positive projection
-        // already removes that payload without building a second TBox index.
+        // core carries data assertions or a substantial assertion payload.
+        // Even a small data core can expand heavily in the backend. Positive
+        // projection already removes its payload without a second TBox index.
         let mut preference_reason = None;
-        if !projects_abox && union_scan.statements.iter()
-            .filter(|s| s.kind == StmtKind::Assertion)
-            .take(MODULE_RESTRICT_MIN_AXIOMS).count() >= MODULE_RESTRICT_MIN_AXIOMS {
+        let is_data_assertion = |statement: &crate::source_locality::Stmt| {
+            statement.kind == StmtKind::Assertion && matches!(
+                crate::frontend::sexpr::tokens(
+                    &prepared.text(text)[statement.start..statement.end]).next(),
+                Some("DataPropertyAssertion" | "NegativeDataPropertyAssertion"))
+        };
+        if !projects_abox && (union_scan.statements.iter().any(&is_data_assertion)
+            || union_scan.statements.iter()
+                .filter(|s| s.kind == StmtKind::Assertion)
+                .take(MODULE_RESTRICT_MIN_AXIOMS).count() >= MODULE_RESTRICT_MIN_AXIOMS) {
             let core: FxHashSet<_> = union_index.empty_module_statements().into_iter().collect();
             let assertions: FxHashSet<_> = union_scan.statements.iter()
                 .filter(|s| s.kind == StmtKind::Assertion && core.contains(&s.hash))
                 .map(|s| s.hash).collect();
-            if assertions.len() >= MODULE_RESTRICT_MIN_AXIOMS {
+            if assertions.len() >= MODULE_RESTRICT_MIN_AXIOMS
+                || union_scan.statements.iter().any(|s|
+                    assertions.contains(&s.hash) && is_data_assertion(s)) {
                 match common_nominal_update(text, scanned, new, &old, &base_tax,
                     &old_domain, new_domain.clone(), prepared, admission.clone(), delta, work,
                     prepared_full, started, true) {

@@ -911,17 +911,42 @@ fn common_data_certificate_reuses_object_rows_after_mixed_edit() {
 
 #[test]
 fn common_data_core_prefers_plain_module_before_full_common_path() {
-    let mut axioms=vec!["Declaration(DataProperty(:p))".to_string(),
-        "DataPropertyRange(:p xsd:string)".to_string(), "SubClassOf(:E :F)".to_string()];
-    for i in 0..200 { axioms.push(format!("DataPropertyAssertion(:p :a \"{i}\")")); }
-    let old=ontology(&axioms.iter().map(String::as_str).collect::<Vec<_>>());
-    axioms.push("SubClassOf(:A :B)".to_string());
-    let new=ontology(&axioms.iter().map(String::as_str).collect::<Vec<_>>());
-    let rows=session(&[old,new.clone()]);
-    assert_eq!(rows[1]["status"],"ok","{:#?}",rows[1]);
-    assert_eq!(rows[1]["receipt"]["strategy"],"common_object_module_reuse","{:#?}",rows[1]);
-    assert!(rows[1]["receipt"]["module_axioms"].as_u64().unwrap()<200);
-    assert_eq!(canonical(&rows[1]["result"]),canonical(&fresh(&new,931)));
+    // Even a single independent data assertion belongs to the full empty
+    // core. Keep it out of the independently certified pure-object query
+    // module rather than making that module's backend redo data expansion.
+    for (count, negative, unicode) in [(1, false, false), (1, false, true),
+        (1, true, false), (2, true, false), (2, false, false), (200, false, false)] {
+        let mut axioms=vec!["Declaration(DataProperty(:p))".to_string(),
+            "DataPropertyRange(:p xsd:string)".to_string(), "SubClassOf(:E :F)".to_string(),
+            "SubClassOf(:G :H)".to_string()];
+        // The positive edge also brings the same property's negative edge
+        // into the closed empty core; an isolated negative edge is local.
+        for i in 0..count {
+            let head = if negative && i + 1 == count {
+                "NegativeDataPropertyAssertion"
+            } else { "DataPropertyAssertion" };
+            let value = if unicode { format!("è l’altra Ġą {i}") } else { i.to_string() };
+            axioms.push(format!("{head}(:p :a \"{value}\")"));
+        }
+        let old=ontology(&axioms.iter().map(String::as_str).collect::<Vec<_>>());
+        axioms.push("SubClassOf(:A :B)".to_string());
+        let addition=ontology(&axioms.iter().map(String::as_str).collect::<Vec<_>>());
+        axioms.retain(|axiom| axiom != "SubClassOf(:E :F)");
+        axioms.push("SubClassOf(:B :C)".to_string());
+        let mixed=ontology(&axioms.iter().map(String::as_str).collect::<Vec<_>>());
+        let rows=session(&[old,addition.clone(),mixed.clone()]);
+        for (revision, source) in [(1, &addition), (2, &mixed)] {
+            assert_eq!(rows[revision]["status"],"ok","count={count}: {:#?}",rows[revision]);
+            let expected = if negative && count == 1 { "common_module_reuse" }
+                else { "common_object_module_reuse" };
+            assert_eq!(rows[revision]["receipt"]["strategy"],expected,
+                "count={count}, negative={negative}, unicode={unicode}, revision={revision}: {:#?}",rows[revision]);
+            assert!(rows[revision]["receipt"]["module_axioms"].as_u64().unwrap()<200);
+            assert!(rows[revision]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+            assert_eq!(canonical(&rows[revision]["result"]),
+                canonical(&fresh(source,931 + count * 3 + revision)));
+        }
+    }
 }
 
 #[test]
