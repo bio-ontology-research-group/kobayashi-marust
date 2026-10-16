@@ -95,7 +95,7 @@ public class RetainedFunctionalSyntaxTest {
         }
     }
 
-    @Test public void generatedDeclarationsSurviveAndLastEntityRemovalFallsBack() throws Exception {
+    @Test public void generatedDeclarationsFollowLastEntityRemoval() throws Exception {
         OWLOntology o=ontology(); add(o,sc("A","B"),sc("B","C"));
         RetainedFunctionalSyntax cache=new RetainedFunctionalSyntax();
         cache.commit(cache.prepare(o));
@@ -103,7 +103,8 @@ public class RetainedFunctionalSyntaxTest {
         RetainedFunctionalSyntax.Prepared p=cache.prepare(o);
         assertTrue(p.reused); parity(o,p); cache.commit(p);
         remove(o,sc("A","B"),sc("A","C"));
-        p=cache.prepare(o); assertFalse(p.reused); parity(o,p);
+        p=cache.prepare(o); assertTrue(p.reused); parity(o,p);
+        assertFalse(parse(p.source).getSignature().contains(c("A")));
     }
 
     @Test public void unsupportedAnnotationsNewDisjointAndIdChangesFallBack() throws Exception {
@@ -298,5 +299,122 @@ public class RetainedFunctionalSyntaxTest {
             assertFalse(prepared.reused);parity(o,prepared);remove(o,novel);
         }
         RetainedFunctionalSyntax.Prepared unchanged=cache.prepare(o);assertTrue(unchanged.reused);parity(o,unchanged);
+    }
+
+    private static final class CountingSerializer extends RetainedFunctionalSyntax {
+        int captures;
+        @Override Capture createCapture(OWLOntology ontology) {
+            captures++;
+            return super.createCapture(ontology);
+        }
+    }
+
+    @Test public void undeclaredIndividualsShrinkRestoreAndRepeatWithoutRecapture() throws Exception {
+        OWLOntology o=ontology(); declared(o,"A","B"); add(o,sc("A","B"));
+        Set<OWLAxiom> assertions=new HashSet<>();
+        Set<OWLNamedIndividual> individuals=new HashSet<>();
+        for(int i=0;i<22;i++) {
+            OWLNamedIndividual individual=df.getOWLNamedIndividual(IRI.create(NS+"individual"+i));
+            individuals.add(individual); assertions.add(df.getOWLClassAssertionAxiom(c("A"),individual));
+            assertFalse(o.containsAxiom(df.getOWLDeclarationAxiom(individual)));
+        }
+        OWLNamedIndividual last=df.getOWLNamedIndividual(IRI.create(NS+"last"));
+        OWLAxiom lastAssertion=df.getOWLClassAssertionAxiom(c("A"),last);
+        o.getOWLOntologyManager().addAxioms(o,assertions); add(o,lastAssertion);
+        CountingSerializer cache=new CountingSerializer();
+        RetainedFunctionalSyntax.Prepared initial=cache.prepare(o);
+        assertEquals(FlattenedOntology.functionalSyntax(o),initial.source); cache.commit(initial);
+        for(int cycle=0;cycle<2;cycle++) {
+            o.getOWLOntologyManager().removeAxioms(o,assertions);
+            RetainedFunctionalSyntax.Prepared shrunk=cache.prepare(o,Collections.emptySet(),assertions);
+            assertTrue(shrunk.reused); assertTrue(shrunk.usedSuppliedDelta); parity(o,shrunk);
+            OWLOntology parsed=parse(shrunk.source);
+            for(OWLNamedIndividual individual:individuals) assertFalse(parsed.getSignature().contains(individual));
+            assertTrue(parsed.getSignature().contains(last)); cache.commit(shrunk);
+            remove(o,lastAssertion);
+            RetainedFunctionalSyntax.Prepared empty=cache.prepare(o,Collections.emptySet(),Collections.singleton(lastAssertion));
+            assertTrue(empty.reused); assertTrue(empty.usedSuppliedDelta); parity(o,empty);
+            assertFalse(parse(empty.source).getSignature().contains(last)); cache.commit(empty);
+            Set<OWLAxiom> restoredAxioms=new HashSet<>(assertions); restoredAxioms.add(lastAssertion);
+            o.getOWLOntologyManager().addAxioms(o,restoredAxioms);
+            RetainedFunctionalSyntax.Prepared restored=cache.prepare(o,restoredAxioms,Collections.emptySet());
+            assertTrue(restored.reused); assertTrue(restored.usedSuppliedDelta); parity(o,restored);
+            assertEquals(initial.source,restored.source); cache.commit(restored);
+        }
+        assertEquals("signature edits must keep the same immutable origin",1,cache.captures);
+    }
+
+    @Test public void syntheticDeclarationsFollowFullTypedSignatureIncludingPunning() throws Exception {
+        OWLOntology o=ontology();
+        OWLObjectProperty role=df.getOWLObjectProperty(c("Shared").getIRI());
+        OWLDataProperty data=df.getOWLDataProperty(c("DataShared").getIRI());
+        OWLDatatype datatype=df.getOWLDatatype(IRI.create(NS+"customDatatype"));
+        OWLNamedIndividual individual=df.getOWLNamedIndividual(IRI.create(NS+"undeclared"));
+        OWLAnnotationProperty annotation=df.getOWLAnnotationProperty(IRI.create(NS+"annotation"));
+        OWLAxiom classEdge=sc("Shared","B");
+        Set<OWLAxiom> removable=new HashSet<>(Arrays.asList(
+                df.getOWLObjectPropertyDomainAxiom(role,c("A")),
+                df.getOWLDataPropertyRangeAxiom(data,datatype),
+                df.getOWLClassAssertionAxiom(c("A"),individual),
+                df.getOWLAnnotationAssertionAxiom(annotation,c("Shared").getIRI(),df.getOWLLiteral("value"))));
+        add(o,classEdge,sc("DataShared","B"),sc("A","B"));
+        o.getOWLOntologyManager().addAxioms(o,removable);
+        CountingSerializer cache=new CountingSerializer();
+        RetainedFunctionalSyntax.Prepared initial=cache.prepare(o); cache.commit(initial);
+        o.getOWLOntologyManager().removeAxioms(o,removable);
+        RetainedFunctionalSyntax.Prepared shrunk=cache.prepare(o);
+        assertTrue(shrunk.reused); assertFalse(shrunk.usedSuppliedDelta); parity(o,shrunk);
+        Set<OWLEntity> signature=parse(shrunk.source).getSignature();
+        assertTrue(signature.contains(c("Shared"))); assertTrue(signature.contains(c("DataShared")));
+        for(OWLEntity absent:Arrays.asList(role,data,datatype,individual,annotation)) assertFalse(signature.contains(absent));
+        cache.commit(shrunk);
+        o.getOWLOntologyManager().addAxioms(o,removable);
+        RetainedFunctionalSyntax.Prepared restored=cache.prepare(o);
+        assertTrue(restored.reused); assertEquals(initial.source,restored.source); parity(o,restored); cache.commit(restored);
+        remove(o,classEdge);
+        RetainedFunctionalSyntax.Prepared propertyOnly=cache.prepare(o,Collections.emptySet(),Collections.singleton(classEdge));
+        assertTrue(propertyOnly.reused); parity(o,propertyOnly);
+        signature=parse(propertyOnly.source).getSignature();
+        assertFalse(signature.contains(c("Shared"))); assertTrue(signature.contains(role));
+        assertFalse(propertyOnly.classes.contains(c("Shared"))); cache.commit(propertyOnly);
+        add(o,classEdge); restored=cache.prepare(o);
+        assertTrue(restored.reused); assertEquals(initial.source,restored.source); parity(o,restored);
+        assertEquals(1,cache.captures);
+    }
+
+    @Test public void discardedSignatureShrinkDoesNotMutateTheCommittedOrigin() throws Exception {
+        OWLOntology o=ontology(); declared(o,"A","B");
+        OWLNamedIndividual individual=df.getOWLNamedIndividual(IRI.create(NS+"uncommitted"));
+        OWLAxiom assertion=df.getOWLClassAssertionAxiom(c("A"),individual); add(o,assertion,sc("A","B"));
+        CountingSerializer cache=new CountingSerializer();
+        RetainedFunctionalSyntax.Prepared initial=cache.prepare(o); cache.commit(initial);
+        remove(o,assertion);
+        RetainedFunctionalSyntax.Prepared refused=cache.prepare(o,Collections.emptySet(),Collections.singleton(assertion));
+        assertTrue(refused.reused); assertFalse(parse(refused.source).getSignature().contains(individual)); parity(o,refused);
+        // Model native refusal: do not commit the detached preparation.
+        add(o,assertion);
+        RetainedFunctionalSyntax.Prepared unchanged=cache.prepare(o,Collections.emptySet(),Collections.emptySet());
+        assertTrue(unchanged.reused); assertEquals(initial.source,unchanged.source); parity(o,unchanged); cache.commit(unchanged);
+        try {cache.commit(refused);fail("stale shrink committed");} catch(IllegalStateException expected) {}
+        remove(o,assertion);
+        RetainedFunctionalSyntax.Prepared accepted=cache.prepare(o);
+        assertTrue(accepted.reused); parity(o,accepted); cache.commit(accepted);
+        add(o,assertion); RetainedFunctionalSyntax.Prepared restored=cache.prepare(o);
+        assertTrue(restored.reused); assertEquals(initial.source,restored.source); parity(o,restored);
+        assertEquals(1,cache.captures);
+    }
+
+    @Test public void signatureExtensionAndExplicitDeclarationEditsStillUseNormalRendering() throws Exception {
+        OWLOntology o=ontology(); declared(o,"A","B"); add(o,sc("A","B"));
+        RetainedFunctionalSyntax cache=new RetainedFunctionalSyntax();
+        RetainedFunctionalSyntax.Prepared initial=cache.prepare(o); cache.commit(initial);
+        OWLAxiom novel=sc("B","NewEntity"); add(o,novel);
+        RetainedFunctionalSyntax.Prepared extension=cache.prepare(o,Collections.singleton(novel),Collections.emptySet());
+        assertFalse(extension.reused); assertEquals(FlattenedOntology.functionalSyntax(o),extension.source); parity(o,extension);
+        remove(o,novel); assertEquals(initial.source,cache.prepare(o).source);
+        OWLAxiom declaration=df.getOWLDeclarationAxiom(c("A")); remove(o,declaration);
+        RetainedFunctionalSyntax.Prepared undeclared=cache.prepare(o,Collections.emptySet(),Collections.singleton(declaration));
+        assertFalse(undeclared.reused); parity(o,undeclared);
+        assertTrue(parse(undeclared.source).containsAxiom(declaration));
     }
 }

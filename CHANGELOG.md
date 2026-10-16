@@ -120,6 +120,23 @@ release source remain pending. The recorded timing misses of commit
 `fe0e85b4546e2c90f60b6ae69efc32594af6acb4` remain separate evidence; these tests
 do not establish that those misses are resolved.
 
+### OWLAPI signature shrinkage and restoration
+
+Compared with commit `cdbd4f8e0aff7d3ece2114607d5c126724ad91ab`, keep the
+original captured functional syntax when the current typed entity signature is
+a subset of the original signature. Omit synthetic declarations for entities
+that disappear and restore their original spans when those entities return.
+Compare typed entities, including punned IRIs, rather than IRI strings alone.
+Explicit declaration edits and entities outside the original signature still
+use ordinary rendering. Commit retained state only after successful native
+publication.
+
+All 18 focused serializer tests passed, including normal-renderer reparse
+parity, repeated individual deletion and restoration, typed declaration
+removal, discarded preparations and stale-commit rejection. These tests do not
+run the native reasoner or establish a timing improvement; real-case path
+validation and final timing acceptance remain pending.
+
 ### Native process cleanup
 
 - During cancellation, allow the supervisor to reap terminated children before

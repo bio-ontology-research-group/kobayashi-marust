@@ -66,8 +66,9 @@ class RetainedFunctionalSyntax {
         final List<Span> spans;
         final Map<OWLAxiom, List<Span>> byAxiom;
         final Set<OWLAxiom> axioms;
+        final Set<OWLEntity> signature;
         final int closing;
-        Origin(String source, List<Span> spans, Set<OWLAxiom> axioms) {
+        Origin(String source, List<Span> spans, Set<OWLAxiom> axioms, Set<OWLEntity> signature) {
             if (!source.endsWith(")")) throw new CaptureIneligible("ontology close missing");
             this.source = source;
             this.closing = source.length() - 1;
@@ -81,6 +82,9 @@ class RetainedFunctionalSyntax {
                 byAxiom.computeIfAbsent(span.axiom, a -> new ArrayList<>()).add(span);
             }
             this.axioms = axioms;
+            // The private preparation owns this set; State also exposes only
+            // an immutable view. Keep the original typed domain across edits.
+            this.signature = Collections.unmodifiableSet(signature);
         }
     }
 
@@ -116,8 +120,11 @@ class RetainedFunctionalSyntax {
         Set<OWLOntology> imports = importsView(root);
         Set<OWLEntity> signature = new HashSet<>(root.getSignature(Imports.INCLUDED));
         State old = committed;
+        boolean sameSignature = old != null && old.signature.equals(signature);
+        boolean withinOriginSignature = old != null && old.origin != null
+                && old.origin.signature.containsAll(signature);
         boolean supplied = old != null && old.id.equals(root.getOntologyID())
-                && old.signature.equals(signature) && suppliedAdded != null && suppliedRemoved != null
+                && (sameSignature || withinOriginSignature) && suppliedAdded != null && suppliedRemoved != null
                 && admissibleDelta(root, old, suppliedAdded, suppliedRemoved);
         Set<OWLAxiom> axioms;
         if (supplied) {
@@ -127,7 +134,7 @@ class RetainedFunctionalSyntax {
         } else {
             axioms = new HashSet<>(root.getAxioms(Imports.INCLUDED));
         }
-        if (old != null && old.origin != null && old.id.equals(root.getOntologyID()) && old.signature.equals(signature)) {
+        if (old != null && old.origin != null && old.id.equals(root.getOntologyID()) && withinOriginSignature) {
             Set<OWLAxiom> added = supplied ? new HashSet<>(suppliedAdded) : difference(axioms, old.axioms);
             Set<OWLAxiom> removed = supplied ? new HashSet<>(suppliedRemoved) : difference(old.axioms, axioms);
             boolean eligible = true;
@@ -153,8 +160,14 @@ class RetainedFunctionalSyntax {
                 StringBuilder out = new StringBuilder(old.origin.source.length());
                 int cursor = 0;
                 for (Span span : old.origin.spans) {
-                    // Synthetic declarations have no origin membership: retain.
-                    if (old.origin.axioms.contains(span.axiom) && !axioms.contains(span.axiom)) {
+                    // Explicit declarations still force normal rendering via
+                    // capturedOrigin. Synthetic declarations follow the exact
+                    // current typed signature, not just their IRI spelling.
+                    boolean omit = old.origin.axioms.contains(span.axiom)
+                            ? !axioms.contains(span.axiom)
+                            : span.axiom instanceof OWLDeclarationAxiom
+                                && !signature.contains(((OWLDeclarationAxiom)span.axiom).getEntity());
+                    if (omit) {
                         out.append(old.origin.source, cursor, span.start);
                         cursor = span.end;
                     }
@@ -175,7 +188,7 @@ class RetainedFunctionalSyntax {
             snapshot.accept(capture);
             if (capture.pending != null) throw new CaptureIneligible("unclosed axiom capture");
             source = capture.output.toString();
-            origin = new Origin(source, capture.spans, Collections.unmodifiableSet(axioms));
+            origin = new Origin(source, capture.spans, Collections.unmodifiableSet(axioms), signature);
         } catch (CaptureIneligible unsupportedCapture) {
             // Capture is an optimization. The ordinary renderer remains the
             // authority for any shape our offset bookkeeping cannot represent.
