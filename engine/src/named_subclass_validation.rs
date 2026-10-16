@@ -1,12 +1,12 @@
-//! PRIVATE prototype. Acceptance proof only; never publishes a taxonomy.
+//! Exact validated-origin admission reuse; never publishes a taxonomy.
 use std::sync::Arc;
 use crate::frontend::{conformance,sexpr::{Node,Parser}};
-use crate::source_locality::{scan,fingerprint};
+use crate::source_locality::{scan,fingerprint,StmtKind};
 use crate::fxhash::{FxHashMap,FxHashSet};
 use crate::source_reuse_grammar::outer_grammar;
 
 #[derive(Clone,Copy,PartialEq,Eq)]
-enum Form { Fixed, SubClass, DisjointRemoval }
+enum Form { Fixed, SubClass, DisjointRemoval, OriginRemoval }
 #[derive(Clone)]
 struct Entry { start:usize,end:usize,count:usize,form:Form }
 
@@ -37,6 +37,22 @@ fn form(text:&str,declared:&FxHashSet<Box<str>>)->Form {
         _=>Form::Fixed,
     }
 }
+fn origin_form(text:&str,kind:StmtKind,declared:&FxHashSet<Box<str>>)->Form {
+    let named=form(text,declared);
+    if named!=Form::Fixed {return named;}
+    if !matches!(kind,StmtKind::Logical|StmtKind::Assertion) {return Form::Fixed;}
+    // Deletion is not universally admission-preserving. A custom datatype
+    // use may still need its definition, and splitting an anonymous tree can
+    // remove the only vertex with at most one named assertion. Keep both
+    // dependencies exact. The substring check deliberately also protects
+    // harmless occurrences in annotations/literals/IRIs rather than risking
+    // a missed anonymous individual or reparsing every origin assertion.
+    if head(text)=="DatatypeDefinition" || (matches!(head(text),
+        "ObjectPropertyAssertion"|"NegativeObjectPropertyAssertion") && text.contains("_:")) {
+        return Form::Fixed;
+    }
+    Form::OriginRemoval
+}
 impl NamedSubclassCertificate {
     /// No second full check to mint. Caller passes its existing owned source.
     /// The exact public-validation cache is queried without cloning facts.
@@ -64,14 +80,17 @@ impl NamedSubclassCertificate {
             if let Some(old)=entries.get_mut(&st.hash) {
                 if &source[old.start..old.end]!=text {return None;}
                 increment_count(&mut old.count)?;
-            } else {entries.insert(st.hash,Entry{start:st.start,end:st.end,count:1,form:form(text,&declared)});}
+            } else {entries.insert(st.hash,Entry{start:st.start,end:st.end,count:1,form:origin_form(text,st.kind,&declared)});}
         }
         let entries=Arc::new(entries);
         Some(Self{origin:source.clone(),source,header_end:scanned.open_end,declared:Arc::new(declared),origin_entries:entries})
     }
-    /// NEW declarations/header/fixed spans must remain exact. Only named-only
-    /// subclass edits and delete/restore of exact validated-origin named-only
-    /// disjointness are proved. A new disjointness spelling never qualifies.
+    /// NEW declarations/header/annotations and protected origin dependencies
+    /// remain exact. Other original logical/assertion spans may be deleted
+    /// and restored up to their origin multiplicity. With datatype definitions
+    /// and anonymous object-property assertions fixed, the remaining global
+    /// validators only lose constraints/uses; isolated anonymous vertices
+    /// remain valid. Only supported named subclass axioms may be novel.
     /// No SourceFacts or cache entry for NEW is manufactured.
     pub(crate) fn derive(&self,source:Arc<String>)->Option<Self> {
         if !source.is_ascii() {return None;}
@@ -103,7 +122,7 @@ impl NamedSubclassCertificate {
             let count=entries.get(hash).map_or(0,|e|e.count);
             match old.form {
                 Form::Fixed if count!=old.count=>return None,
-                Form::DisjointRemoval if count>old.count=>return None,
+                Form::DisjointRemoval|Form::OriginRemoval if count>old.count=>return None,
                 _=>{},
             }
         }
@@ -135,6 +154,116 @@ impl NamedSubclassCertificate {
         conformance::check_user_source(text).expect("valid origin");
         NamedSubclassCertificate::from_success_cache(Arc::new(text.to_owned()))
             .expect("exact successful public validation in isolated test process")
+    }
+
+    fn extended_source(axioms: &str) -> String {
+        format!("Prefix(:=<urn:origin-subset:>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(DataProperty(:p)) Declaration(Datatype(:D)) DatatypeDefinition(:D xsd:string) {axioms})")
+    }
+
+    // Called only by the isolated child below. Exercise the actual public
+    // validator and its successful-source provenance, never a checker stub.
+    fn origin_subset_public_validator_controls() {
+        let axioms = [
+            "ClassAssertion(:A _:isolated)",
+            "ObjectPropertyAssertion(:r :i :j)",
+            "DataPropertyAssertion(:p _:isolated \"value\")",
+            "EquivalentClasses(:A ObjectIntersectionOf(:B ObjectComplementOf(:C)))",
+            "SubClassOf(Annotation(rdfs:label \"original\") :B ObjectSomeValuesFrom(:r :C))",
+            "ObjectPropertyDomain(:r :A)",
+            "SubObjectPropertyOf(ObjectPropertyChain(:r :s) :r)",
+            "DLSafeRule(Body(ClassAtom(:A Variable(:x))) Head(ClassAtom(:B Variable(:x))))",
+            "DifferentIndividuals(:i :j)",
+            "FunctionalDataProperty(:p)",
+            "DataPropertyRange(:p :D)",
+            "ClassAssertion(ObjectMaxCardinality(1 :s) :i)",
+        ];
+        let original = extended_source(&axioms.join(" "));
+        let certificate = captured(&original);
+        assert_eq!(certificate.named_disjoint_removable(), 0,
+            "new removable forms do not change the named-disjoint diagnostic");
+        for removed in 0..axioms.len() {
+            let body = axioms.iter().enumerate().filter_map(|(i, a)|
+                (i!=removed).then_some(*a)).collect::<Vec<_>>().join(" ");
+            let text = extended_source(&body);
+            let reduced = certificate.derive(Arc::new(text.clone())).expect(axioms[removed]);
+            assert!(conformance::check_user_source(&text).is_ok(), "{text}");
+            assert!(reduced.derive(Arc::new(original.clone())).is_some(),
+                "restore exact origin span: {}", axioms[removed]);
+            assert!(conformance::check_user_source(&original).is_ok());
+        }
+        let mut reduced = certificate.derive(Arc::new(extended_source("")))
+            .expect("all unprotected origin axioms removed");
+        for end in 0..=axioms.len() {
+            let text = extended_source(&axioms[..end].join(" "));
+            reduced = reduced.derive(Arc::new(text.clone())).expect("successive exact restorations");
+            assert_eq!(reduced.origin_hash(), certificate.origin_hash());
+            assert!(conformance::check_user_source(&text).is_ok());
+        }
+        let mixed = extended_source("SubClassOf(:C :A) ClassAssertion(:A _:isolated)");
+        assert!(certificate.derive(Arc::new(mixed.clone())).is_some(),
+            "origin deletions can mix with supported novel named subclass");
+        assert!(conformance::cached_source_facts(&mixed).is_none(),
+            "derived NEW has no manufactured source facts before public validation");
+        assert!(conformance::check_user_source(&mixed).is_ok());
+
+        let duplicate = "ClassAssertion(:A :i)";
+        let twice = extended_source(&format!("{duplicate} {duplicate}"));
+        let certificate = captured(&twice);
+        let once = extended_source(duplicate);
+        let reduced = certificate.derive(Arc::new(once.clone())).expect("remove one duplicate");
+        assert!(conformance::check_user_source(&once).is_ok());
+        assert!(reduced.derive(Arc::new(twice.clone())).is_some());
+        let excess = extended_source(&format!("{duplicate} {duplicate} {duplicate}"));
+        assert!(reduced.derive(Arc::new(excess.clone())).is_none(), "origin multiplicity bound");
+        assert!(conformance::check_user_source(&excess).is_ok(), "valid source falls back");
+
+        let definition_origin = extended_source("DataPropertyRange(:p :D)");
+        let certificate = captured(&definition_origin);
+        let missing = definition_origin.replace("DatatypeDefinition(:D xsd:string) ", "");
+        assert!(certificate.derive(Arc::new(missing.clone())).is_none());
+        assert!(conformance::check_user_source(&missing).is_err(),
+            "unchanged datatype declaration cannot replace a required definition");
+        let no_use = extended_source("");
+        let certificate = captured(&no_use);
+        let missing = no_use.replace("DatatypeDefinition(:D xsd:string) ", "");
+        assert!(certificate.derive(Arc::new(missing.clone())).is_none(),
+            "definitions stay fixed even when this particular removal is valid");
+        assert!(conformance::check_user_source(&missing).is_ok());
+
+        let link = "ObjectPropertyAssertion(:r _:a _:b)";
+        let named = "ObjectPropertyAssertion(:r _:a :one) ObjectPropertyAssertion(:r _:a :two)";
+        let forest = extended_source(&format!("{link} {named}"));
+        let certificate = captured(&forest);
+        let split = extended_source(named);
+        assert!(certificate.derive(Arc::new(split.clone())).is_none());
+        assert!(conformance::check_user_source(&split).is_err(),
+            "splitting loses the only anonymous vertex with permitted named degree");
+        let harmless = extended_source(link);
+        assert!(certificate.derive(Arc::new(harmless.clone())).is_none(),
+            "all anonymous-involving object assertions remain fixed conservatively");
+        assert!(conformance::check_user_source(&harmless).is_ok());
+
+        let original = extended_source("ClassAssertion(:A :i)");
+        let certificate = captured(&original);
+        for unsupported in [
+            extended_source("ClassAssertion(:B :i)"),
+            extended_source("ObjectPropertyAssertion(:r :i :j)"),
+            extended_source("EquivalentClasses(:A :B)"),
+            original.replace("<urn:origin-subset:>", "<urn:other:>"),
+            original.replace(" Declaration(Class(:C))", ""),
+        ] {
+            assert!(certificate.derive(Arc::new(unsupported.clone())).is_none());
+            assert!(conformance::check_user_source(&unsupported).is_ok(),
+                "valid unsupported edits still use full validation: {unsupported}");
+        }
+        // Simulate a selected hash colliding with a different exact text.
+        let source = Arc::new(original.clone());
+        conformance::check_user_source(&source).unwrap();
+        let mut collision = scan(&source).unwrap();
+        let last = collision.statements.len()-1;
+        collision.statements[last].hash = collision.statements[0].hash;
+        assert!(NamedSubclassCertificate::capture_scanned(source.clone(), &collision).is_none());
+        assert!(certificate.derive_scanned(source, &collision).is_none());
     }
 
     // USER_SOURCE is process-wide. Re-execute exactly this test rather than
@@ -229,5 +358,7 @@ impl NamedSubclassCertificate {
         let invalid = punned.replace("SubClassOf(:A q:B)", "SubClassOf(<urn:bad\\q> :A)");
         assert!(certificate.derive(Arc::new(invalid.clone())).is_none());
         assert!(conformance::check_user_source(&invalid).is_err());
+
+        origin_subset_public_validator_controls();
     }
 }

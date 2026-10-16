@@ -24,6 +24,16 @@ pub(crate) fn select_iris(named:&[String],map:&BTreeMap<String,String>,wanted:&B
     }
     result.into_iter().collect()
 }
+/// Compose source-private exclusion with an optional retained-session request.
+/// Both filters use full IRIs; the returned values remain frontend names.
+pub(crate) fn select_restricted(named:&[String],map:&BTreeMap<String,String>,
+    private:&BTreeSet<String>,wanted:Option<&BTreeSet<String>>)->Result<Vec<String>,String> {
+    let public=select(named,map,private)?;
+    Ok(match wanted {
+        Some(wanted)=>select_iris(&public,map,wanted),
+        None=>public,
+    })
+}
 /// `eligible` is the frontend's named signature, which also contains roles
 /// and individuals. Intersect it with the converter's actual class subjects.
 /// Do not require every registry symbol to be a class concept.
@@ -53,6 +63,32 @@ pub(crate) fn resolve(concepts:&[String],queries:&[usize],eligible:&[String])->O
         let map=BTreeMap::from([("a".into(),"<urn:x#A>".into()),("b".into(),"urn:x#B".into())]);
         let wanted=BTreeSet::from(["urn:x#A".into(),"<urn:x#B>".into(),"urn:x#Missing".into()]);
         assert_eq!(select_iris(&named,&map,&wanted),vec!["a","b"]);
+    }
+    #[test] fn retained_request_composes_with_empty_and_nonempty_private_classes() {
+        // These sets are the decoded empty/nonempty private-class files and
+        // requested full-IRI file used by the ground-source wrapper.
+        let named=vec![":A".into(),"raw_b".into(),"private".into(),"other".into()];
+        let map=BTreeMap::from([ (":A".into(),"<urn:public#A>".into()),
+            ("raw_b".into(),"urn:public#B".into()),
+            ("private".into(),"<urn:generated#A>".into()) ]);
+        let wanted=BTreeSet::from(["urn:public#A".into(),"<urn:public#B>".into(),
+            "urn:generated#A".into(),"urn:absent".into()]);
+        assert_eq!(select_restricted(&named,&map,&BTreeSet::new(),Some(&wanted)).unwrap(),
+            vec![":A","private","raw_b"]);
+        let private=BTreeSet::from(["urn:generated#A".into()]);
+        assert_eq!(select_restricted(&named,&map,&private,Some(&wanted)).unwrap(),
+            vec![":A","raw_b"]);
+        // Requested IRIs must not be compared directly with frontend names.
+        assert_eq!(select_restricted(&named,&map,&private,
+            Some(&BTreeSet::from(["raw_b".into()]))).unwrap(),Vec::<String>::new());
+        assert_eq!(select_restricted(&named,&map,&private,None).unwrap(),vec![":A","other","raw_b"]);
+    }
+    #[test] fn retained_request_preserves_missing_private_rejection() {
+        let named=vec!["A".into()];
+        let map=BTreeMap::from([("A".into(),"urn:public#A".into())]);
+        let private=BTreeSet::from(["urn:missing".into()]);
+        // Even an empty requested set must not hide invalid private metadata.
+        assert!(select_restricted(&named,&map,&private,Some(&BTreeSet::new())).is_err());
     }
     #[test] fn query_selection_is_exact_and_keeps_input_unchanged() {
         let concepts=vec!["A".into(),"helper".into(),"B".into()];let queries=vec![0,1,2];

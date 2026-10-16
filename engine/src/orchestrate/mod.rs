@@ -1784,7 +1784,13 @@ fn classify_with_evidence_mode(
     let _public_subject_file = if let Some(path) = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE") {
         let private: std::collections::BTreeSet<String> = serde_json::from_slice(&std::fs::read(path)?)
             .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?;
-        let names=public_subjects::select(&meta.named,&meta.iri_map,&private)
+        let wanted = std::env::var_os("KM_PUBLIC_SUBJECT_IRIS_FILE")
+            .map(|path| -> Result<std::collections::BTreeSet<String>, OrchestrateError> {
+                serde_json::from_slice(&std::fs::read(path)?)
+                    .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))
+            }).transpose()?;
+        let names = public_subjects::select_restricted(
+            &meta.named, &meta.iri_map, &private, wanted.as_ref())
             .map_err(OrchestrateError::OutOfFragment)?;
         let file=tmpfile::TempPath::new("-public-subjects.json");
         std::fs::write(file.path(),serde_json::to_vec(&names)

@@ -42,6 +42,11 @@ trap cleanup_checker EXIT
         ContextCalculus.IncrementalSourceLocality \
         ContextCalculus.IncrementalDeletionSupport \
         ContextCalculus.IncrementalModuleReuse \
+        ContextCalculus.IncrementalDataModuleReuse \
+        ContextCalculus.IncrementalUnionConsistency \
+        ContextCalculus.IncrementalDataConsistency \
+        ContextCalculus.IncrementalVerifiedSupport \
+        ContextCalculus.IncrementalGlobalTold \
         ContextCalculus.KMAtomicABoxPublication \
         ContextCalculus.HypertableauABoxQuotient \
         ContextCalculus.ABoxBooleanInclusion \
@@ -99,6 +104,15 @@ for theorem in \
     IncrementalModuleReuse.sandwich_query \
     IncrementalModuleReuse.deletion_no_new_consequence \
     IncrementalModuleReuse.inconsistent_superset \
+    IncrementalVerifiedSupport.verified_support_publication \
+    IncrementalVerifiedSupport.retained_support_publication \
+    IncrementalGlobalTold.reflexive_sound \
+    IncrementalGlobalTold.global_class_sound \
+    IncrementalGlobalTold.told_theory_model \
+    IncrementalGlobalTold.told_global_sound \
+    IncrementalGlobalTold.deletion_row_exact \
+    IncrementalGlobalTold.deletion_consistent \
+    IncrementalGlobalTold.deletion_satisfiable \
     IncrementalModuleReuse.module_inconsistent \
     IncrementalModuleReuse.merged_publication_exact \
     IncrementalModuleReuse.common_module_query \
@@ -126,6 +140,33 @@ for theorem in \
     IncrementalModuleReuse.nominal_module_from_envelope \
     IncrementalModuleReuse.nominal_module_named_query \
     IncrementalModuleReuse.common_nominal_module_named_query \
+    IncrementalDataModuleReuse.joinData_sat \
+    IncrementalDataModuleReuse.module_from_envelope \
+    IncrementalDataModuleReuse.module_join_models \
+    IncrementalDataModuleReuse.module_entails_iff \
+    IncrementalDataModuleReuse.module_outside \
+    IncrementalDataModuleReuse.module_named_query \
+    IncrementalDataModuleReuse.common_named_query \
+    IncrementalDataModuleReuse.common_unsat_query \
+    IncrementalDataModuleReuse.mixed_named_publication_exact \
+    IncrementalDataModuleReuse.mixed_unsat_publication_exact \
+    IncrementalUnionConsistency.union_model_of_old_model \
+    IncrementalUnionConsistency.object_union_consistent \
+    IncrementalUnionConsistency.object_new_consistent \
+    IncrementalUnionConsistency.object_affected_module_from_union \
+    IncrementalUnionConsistency.object_affected_named_query \
+    IncrementalUnionConsistency.object_affected_unsat_query \
+    IncrementalDataConsistency.data_insig_of_occurs \
+    IncrementalDataConsistency.satData_mask_agree \
+    IncrementalDataConsistency.data_locality_sound \
+    IncrementalDataConsistency.satAug_mask_agree \
+    IncrementalDataConsistency.augmented_locality_sound \
+    IncrementalDataConsistency.augmented_isModule_of_closed \
+    IncrementalDataConsistency.augmented_union_consistent \
+    IncrementalDataConsistency.augmented_new_consistent \
+    IncrementalDataConsistency.augmented_affected_module_from_union \
+    IncrementalDataConsistency.augmented_affected_named_query \
+    IncrementalDataConsistency.augmented_affected_unsat_query \
     IncrementalModuleReuse.positiveSingleton_role \
     IncrementalModuleReuse.positiveSingleton_concept \
     IncrementalModuleReuse.positiveSingleton_axiom \

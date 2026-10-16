@@ -438,8 +438,12 @@ pub struct LocalityIndex {
     class_lits: Vec<u32>,
     /// Bit0 individual-free, bit1 non-EL, bit2 positive object axiom.
     compile_flags: Vec<u8>,
+    /// All source IRI occurrences: compiler/public-name/declaration provenance.
     sig_off: Vec<u32>,
     sig: Vec<u32>,
+    /// Masked class/role occurrences only; individuals do not seed locality.
+    local_sig_off: Vec<u32>,
+    local_sig: Vec<u32>,
     /// Conjunctions: literal ranges and owning axiom.
     conj_off: Vec<u32>,
     conj_lits: Vec<u32>,
@@ -632,6 +636,65 @@ impl Builder<'_> {
                     self.collect(a, out);
                 }
             }
+        }
+    }
+
+    fn individual(&self, node: &Node<'_>) -> bool {
+        node.as_atom().is_some_and(|n| n.starts_with("_:") || self.resolve(n).is_some())
+    }
+
+    fn collect_local_role(&mut self, node: &Node<'_>, out: &mut Vec<u32>) -> bool {
+        match node {
+            Node::Atom(t) if self.resolve(t).is_some() => { self.collect(node, out); true }
+            Node::List("ObjectInverseOf", a) if a.len() == 1 =>
+                matches!(a[0], Node::Atom(_)) && self.collect_local_role(&a[0], out),
+            _ => false,
+        }
+    }
+
+    /// Returns false for an unknown/malformed shape: the WHOLE axiom then
+    /// retains its original occurrence signature. Individual interpretation is
+    /// unchanged by mask; a punned IRI still counts in every class/role slot.
+    fn collect_local_class(&mut self, node: &Node<'_>, out: &mut Vec<u32>) -> bool {
+        match node {
+            Node::Atom(t) if self.resolve(t).is_some() => { self.collect(node, out); true }
+            Node::List("ObjectOneOf", a) if !a.is_empty() => a.iter().all(|n| self.individual(n)),
+            Node::List("ObjectHasValue", a) if a.len() == 2 =>
+                self.individual(&a[1]) && self.collect_local_role(&a[0], out),
+            Node::List("ObjectHasSelf", a) if a.len() == 1 => self.collect_local_role(&a[0], out),
+            Node::List("ObjectIntersectionOf" | "ObjectUnionOf", a) if !a.is_empty() =>
+                a.iter().all(|n| self.collect_local_class(n, out)),
+            Node::List("ObjectComplementOf", a) if a.len() == 1 => self.collect_local_class(&a[0], out),
+            Node::List("ObjectSomeValuesFrom" | "ObjectAllValuesFrom", a) if a.len() == 2 =>
+                self.collect_local_role(&a[0], out) && self.collect_local_class(&a[1], out),
+            Node::List("ObjectMinCardinality" | "ObjectMaxCardinality" | "ObjectExactCardinality", a)
+                if a.len() == 2 || a.len() == 3 =>
+                a[0].as_atom().is_some_and(|n| n.parse::<u64>().is_ok())
+                    && self.collect_local_role(&a[1], out)
+                    && (a.len() == 2 || self.collect_local_class(&a[2], out)),
+            // Data class constructors, including DataHasValue, retain the
+            // complete original axiom signature through the fallback.
+            _ => false,
+        }
+    }
+
+    fn collect_local_axiom(&mut self, head: &str, a: &[&Node<'_>], out: &mut Vec<u32>) -> bool {
+        match (head, a.len()) {
+            ("SubClassOf", 2) => a.iter().all(|n| self.collect_local_class(n, out)),
+            ("EquivalentClasses" | "DisjointClasses" | "DisjointUnion", n) if n > 0 =>
+                a.iter().all(|n| self.collect_local_class(n, out)),
+            ("ObjectPropertyDomain" | "ObjectPropertyRange", 2) =>
+                self.collect_local_role(a[0], out) && self.collect_local_class(a[1], out),
+            ("ClassAssertion", 2) => self.individual(a[1]) && self.collect_local_class(a[0], out),
+            ("ObjectPropertyAssertion" | "NegativeObjectPropertyAssertion", 3) =>
+                self.individual(a[1]) && self.individual(a[2]) && self.collect_local_role(a[0], out),
+            ("DataPropertyAssertion" | "NegativeDataPropertyAssertion", n)
+                if (n == 3 || n == 4 && a[3].as_atom().is_some_and(|s| s.starts_with("^^") || s.starts_with('@')))
+                    && a[2].as_atom().is_some_and(|s| s.starts_with('"') && s.ends_with('"')) =>
+                self.individual(a[1]) && matches!(a[0], Node::Atom(_)) && self.collect_local_role(a[0], out),
+            ("SameIndividual" | "DifferentIndividuals", n) if n >= 2 =>
+                a.iter().all(|n| self.individual(n)),
+            _ => false,
         }
     }
 
@@ -1054,6 +1117,7 @@ impl LocalityIndex {
         let mut axiom_always = Vec::new();
         let mut nominal: Vec<bool> = Vec::new();
         let (mut sig_off, mut sig) = (vec![0u32], Vec::new());
+        let (mut local_sig_off, mut local_sig) = (vec![0u32], Vec::new());
         let (mut conj_off, mut conj_lits, mut conj_axiom) = (vec![0u32], Vec::new(), Vec::new());
         let mut axiom_by_hash = FxHashMap::default();
         let mut decl_entity = FxHashMap::default();
@@ -1126,6 +1190,14 @@ impl LocalityIndex {
                 buf.dedup();
                 sig.extend_from_slice(&buf);
                 sig_off.push(sig.len() as u32);
+                buf.clear();
+                for &symbol in old.local_sig_of(old_id as u32) {
+                    buf.push(bld.replay_symbol(old, symbol, remap));
+                }
+                buf.sort_unstable();
+                buf.dedup();
+                local_sig.extend_from_slice(&buf);
+                local_sig_off.push(local_sig.len() as u32);
                 for &symbol in &old.class_lits[old.class_off[old_id] as usize..old.class_off[old_id + 1] as usize] {
                     let symbol = bld.replay_symbol(old, symbol, remap);
                     bld.is_class[symbol as usize] = true;
@@ -1166,6 +1238,15 @@ impl LocalityIndex {
                 buf.dedup();
                 sig.extend_from_slice(&buf);
                 sig_off.push(sig.len() as u32);
+                buf.clear();
+                if !bld.collect_local_axiom(head, &args, &mut buf) {
+                    buf.clear();
+                    buf.extend_from_slice(&sig[sig_off[id as usize] as usize..]);
+                }
+                buf.sort_unstable();
+                buf.dedup();
+                local_sig.extend_from_slice(&buf);
+                local_sig_off.push(local_sig.len() as u32);
                 match dnf(&f) {
                     None => axiom_always.push(true),
                     Some(conjs) => {
@@ -1234,6 +1315,8 @@ impl LocalityIndex {
             compile_flags,
             sig_off,
             sig,
+            local_sig_off,
+            local_sig,
             conj_off,
             conj_lits,
             conj_axiom,
@@ -1266,11 +1349,18 @@ impl LocalityIndex {
         &self.sig[self.sig_off[ax as usize] as usize..self.sig_off[ax as usize + 1] as usize]
     }
 
+    fn local_sig_of(&self, ax: u32) -> &[u32] {
+        &self.local_sig[self.local_sig_off[ax as usize] as usize..self.local_sig_off[ax as usize + 1] as usize]
+    }
+
     fn need(&self, c: usize) -> u32 {
         self.conj_off[c + 1] - self.conj_off[c]
     }
 
-    /// Module of `seeds` with `disabled` axioms absent: (axioms, signature).
+    /// Module of `seeds` with `disabled` axioms absent. The returned signature
+    /// includes ORIGINAL occurrences of selected axioms for declaration
+    /// emission, including named individuals. Those extra occurrences are
+    /// added only after the logical fixpoint and never seed locality again.
     pub fn module(&self, seeds: &[u32], disabled: &[bool]) -> (Vec<u32>, Vec<bool>) {
         let mut st = State::fresh(self);
         let mut queue = Vec::new();
@@ -1283,7 +1373,10 @@ impl LocalityIndex {
             st.add(s, &mut queue);
         }
         st.run(self, &mut queue, disabled, &mut |_| false);
-        let axioms = (0..self.axiom_hash.len() as u32).filter(|&a| st.in_mod[a as usize]).collect();
+        let axioms: Vec<u32> = (0..self.axiom_hash.len() as u32).filter(|&a| st.in_mod[a as usize]).collect();
+        for &a in &axioms {
+            for &symbol in self.sig_of(a) { st.in_s[symbol as usize] = true; }
+        }
         (axioms, st.in_s)
     }
 
@@ -1383,7 +1476,7 @@ impl LocalityIndex {
                 continue;
             }
             if let Some(&a) = self
-                .sig_of(self.conj_axiom[c])
+                .local_sig_of(self.conj_axiom[c])
                 .iter()
                 .find(|&&a| a != b && candidate(a))
             {
@@ -1557,7 +1650,7 @@ impl State {
         if self.logging {
             self.log_m.push(ax);
         }
-        for &t in ix.sig_of(ax) {
+        for &t in ix.local_sig_of(ax) {
             self.add(t, queue);
         }
     }
@@ -1855,6 +1948,48 @@ mod tests {
     }
 
     #[test]
+    fn told_queries_traverse_thing_and_query_local_global_seeds() {
+        let text="Prefix(:=<urn:global#>) Ontology(SubClassOf(:A :B) SubClassOf(owl:Thing :G) SubClassOf(:G :H) SubClassOf(:Seed :Tail))";
+        let scanned=scan(text).unwrap(); let proofs=ToldProofs::build(text,&scanned);
+        let none=crate::fxhash::FxHashSet::default();
+        assert!(proofs.proves_all(":A",&[":G",":H"],&none));
+        let global=scanned.statements.iter().find(|s|text[s.start..s.end].contains("owl:Thing")).unwrap().hash;
+        let removed=crate::fxhash::FxHashSet::from_iter([global]);
+        assert!(!proofs.proves_all(":A",&[":G"],&removed));
+        assert!(proofs.proves_all_with_globals(":A",&[":Tail"],&none,&["urn:global#Seed".into()]));
+        assert!(!proofs.proves_all(":A",&[":Tail"],&none),"global seeds cannot mutate the donor");
+        assert!(!proofs.proves_all_with_globals(":A",&[":Tail"],&none,&["urn:global#Unknown".into()]));
+        assert!(!proofs.proves_all_with_globals(":A",&[":Unknown"],&none,&["urn:global#Unknown".into()]));
+    }
+
+    #[test]
+    fn told_global_role_seeds_come_only_from_actual_new_source() {
+        let old="Prefix(:=<urn:global#>) Ontology(SubClassOf(:A :B) SubClassOf(:G :H) ReflexiveObjectProperty(:r) SubObjectPropertyOf(:r :s) ObjectPropertyRange(:s :G))";
+        let old_scan=scan(old).unwrap(); let proofs=ToldProofs::build(old,&old_scan);
+        let none=crate::fxhash::FxHashSet::default();
+        let globals=crate::incr_global::global_named_classes(old,&old_scan).unwrap();
+        assert!(proofs.proves_all_with_globals(":A",&[":G",":H"],&none,&globals));
+        for deleted in ["ReflexiveObjectProperty(:r)","SubObjectPropertyOf(:r :s)","ObjectPropertyRange(:s :G)"] {
+            let new=old.replace(deleted,""); let new_scan=scan(&new).unwrap();
+            let actual=crate::incr_global::global_named_classes(&new,&new_scan).unwrap();
+            assert!(!proofs.proves_all_with_globals(":A",&[":G",":H"],&none,&actual));
+        }
+    }
+
+    #[test]
+    fn told_global_resolved_iris_do_not_use_colliding_source_spellings() {
+        let text="Prefix(:=<urn:base#>) Prefix(urn:=<urn:other#>) Ontology(SubClassOf(:S :T) SubClassOf(urn:A :Wrong) SubClassOf(<urn:A> :Right) SubClassOf(urn:Missing :Wrong))";
+        let scanned=scan(text).unwrap(); let proofs=ToldProofs::build(text,&scanned);
+        let none=crate::fxhash::FxHashSet::default();
+        let globals=vec!["urn:A".to_owned()];
+        assert!(proofs.proves_all_with_globals(":S",&[":Right"],&none,&globals));
+        assert!(!proofs.proves_all_with_globals(":S",&[":Wrong"],&none,&globals));
+        // This string is only a source spelling for urn:other#Missing.
+        // No class with the resolved IRI urn:Missing exists in the graph.
+        assert!(!proofs.proves_all_with_globals(":S",&[":Wrong"],&none,&["urn:Missing".into()]));
+    }
+
+    #[test]
     fn typed_data_has_value_keeps_tbox_mode() {
         let src = "Prefix(:=<http://e/>)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(<http://e/o>\n\
             SubClassOf(:A DataHasValue(:p \"1.0\"^^xsd:float))\nSubClassOf(:B :A)\nClassAssertion(:B :a)\n)\n";
@@ -1911,6 +2046,18 @@ mod tests {
         assert_eq!(actual.nominal, fresh.nominal);
         assert_eq!(actual.compile_flags, fresh.compile_flags);
         for ax in 0..actual.axiom_count() {
+            let signature = |ix: &LocalityIndex, local: bool| -> BTreeSet<String> {
+                let ids = if local { ix.local_sig_of(ax as u32) } else { ix.sig_of(ax as u32) };
+                ids.iter().map(|&id| ix.symbols[id as usize].to_string()).collect()
+            };
+            assert_eq!(signature(actual, false), signature(fresh, false));
+            assert_eq!(signature(actual, true), signature(fresh, true));
+            let formulas = |ix: &LocalityIndex| -> Vec<BTreeSet<String>> {
+                ix.conj_axiom.iter().enumerate().filter(|(_, owner)| **owner == ax as u32)
+                    .map(|(c, _)| ix.conj_lits[ix.conj_off[c] as usize..ix.conj_off[c + 1] as usize]
+                        .iter().map(|&id| ix.symbols[id as usize].to_string()).collect()).collect()
+            };
+            assert_eq!(formulas(actual), formulas(fresh));
             let classes = |ix: &LocalityIndex| -> BTreeSet<String> {
                 ix.class_lits[ix.class_off[ax] as usize..ix.class_off[ax + 1] as usize]
                     .iter().map(|&id| ix.symbols[id as usize].to_string()).collect()
@@ -1937,6 +2084,83 @@ mod tests {
             assert_eq!(affected_names(actual, actual.affected_classes(&marked)),
                 affected_names(fresh, fresh.affected_classes(&marked)));
         }
+    }
+
+    #[test]
+    fn precise_signature_keeps_selected_individual_declarations_without_locality_feedback() {
+        let text = "Prefix(:=<urn:precise#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) \
+            Declaration(Class(:Meta)) Declaration(NamedIndividual(:A)) \
+            ClassAssertion(:Meta :A) SubClassOf(:A :B))";
+        let (scan, ix) = index(text);
+        let added = scan.statements.iter().find(|s| text[s.start..s.end].starts_with("SubClassOf")).unwrap().hash;
+        let mark: Vec<_> = ix.axiom_hash.iter().map(|h| *h == added).collect();
+        assert!(ix.empty_module_avoids(&mark));
+        let (module, declaration_signature) = ix.module(&[], &vec![false; ix.axiom_count()]);
+        assert_eq!(module.len(), 1);
+        assert!(declaration_signature[ix.symbol("urn:precise#A").unwrap() as usize]);
+        let selected: BTreeSet<_> = module.iter().copied().collect();
+        let kept: Vec<_> = scan.statements.iter().filter(|s| match s.kind {
+            StmtKind::Declaration => ix.decl_entity.get(&s.hash).is_some_and(|id| declaration_signature[*id as usize]),
+            StmtKind::Logical | StmtKind::Assertion => ix.axiom_by_hash.get(&s.hash).is_some_and(|id| selected.contains(id)),
+            _ => false,
+        }).map(|s| &text[s.start..s.end]).collect();
+        assert!(kept.contains(&"Declaration(NamedIndividual(:A))"));
+        assert!(kept.contains(&"ClassAssertion(:Meta :A)"));
+        assert!(!kept.contains(&"SubClassOf(:A :B)"));
+        let emitted = format!("{}\n{}\n)", &text[..scan.open_end], kept.join("\n"));
+        let es = super::scan(&emitted).unwrap();
+        let extracted = LocalityIndex::build(&emitted, &es, false).unwrap();
+        assert!(extracted.decl_entity.values().any(|id| extracted.symbols[*id as usize].as_ref() == "urn:precise#A"));
+        assert_eq!(extracted.axiom_count(), 1);
+    }
+
+    #[test]
+    fn precise_nominal_assertion_and_fixed_literal_positions_preserve_unknown_fallback() {
+        let header = "Prefix(:=<urn:precise#>) Ontology(";
+        for body in ["ClassAssertion(:Meta :A)", "ObjectPropertyAssertion(:r :A :Z)",
+            "NegativeObjectPropertyAssertion(:r :A :Z)", "DataPropertyAssertion(:p :A \"v\"^^<urn:fixed>)",
+            "NegativeDataPropertyAssertion(:p :A \"v\"@en)", "SameIndividual(:A :Z)",
+            "DifferentIndividuals(:A :Z)", "SubClassOf(ObjectOneOf(:A) :N)",
+            "ClassAssertion(ObjectHasValue(:r :A) :Z)"] {
+            let text = format!("{header}{body} SubClassOf(:A :B))");
+            let (_, ix) = index(&text);
+            let a = ix.symbol("urn:precise#A").unwrap();
+            assert!(!ix.local_sig_of(0).contains(&a), "{body}");
+            assert!(ix.sig_of(0).contains(&a), "original occurrence lost: {body}");
+            let (module, _) = ix.module(&[], &vec![false; ix.axiom_count()]);
+            assert!(!module.contains(&1), "punned individual seeded class: {body}");
+        }
+        for body in ["ClassAssertion(Mystery(:X) :A)", "Mystery(ObjectOneOf(:A))",
+            "ObjectPropertyAssertion(Mystery(:r) :A :Z)",
+            "SubClassOf(:N ObjectHasValue(:r Mystery(:A)))", "SubClassOf(:N DataHasValue(:p \"v\"))"] {
+            let text = format!("{header}{body})");
+            let (_, ix) = index(&text);
+            assert_eq!(ix.local_sig_of(0), ix.sig_of(0), "{body}");
+        }
+        let (_, ix) = index(&format!("{header}ClassAssertion(:A :Z) SubClassOf(:A :B))"));
+        assert!(ix.module(&[], &vec![false; ix.axiom_count()]).0.contains(&1), "class position must remain");
+    }
+
+    #[test]
+    fn precise_occurrence_and_locality_records_survive_exact_donor_replay() {
+        let header = "Prefix(:=<urn:precise#>) Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(";
+        let body = "Declaration(Class(:A)) Declaration(NamedIndividual(:A)) Declaration(NamedIndividual(o:Thing)) \
+            ClassAssertion(:Meta :A) ClassAssertion(:Meta o:Thing) ObjectPropertyAssertion(:r :A :Z) \
+            DataPropertyAssertion(:p :A \"v\"^^<urn:fixed>) SubClassOf(ObjectOneOf(:A) :N) \
+            SubClassOf(:N ObjectHasValue(:r :Z)) SameIndividual(:A :Z) SubClassOf(:A :B)";
+        let old_text = format!("{header}{body})");
+        let (_, old) = index(&old_text);
+        let text = format!("{header}{body} SubClassOf(:B :C))");
+        let (_, fresh) = index(&text);
+        let (actual, stats) = full_reuse(&old_text, &old, &text);
+        assert_eq!(stats.reused_compiled_axioms, old.axiom_count());
+        assert_eq!(stats.compiled_axioms, 1);
+        assert_full_reuse_equivalent(&actual, &fresh);
+        let public = actual.live_public_class_names(|_| true).unwrap();
+        assert!(public.contains(&"o:Thing"), "individual-only builtin alias must remain");
+        let a = actual.symbol("urn:precise#A").unwrap();
+        assert!(!actual.local_sig_of(0).contains(&a));
+        assert!(actual.sig_of(0).contains(&a));
     }
 
     #[test]
@@ -2473,6 +2697,14 @@ impl ToldProofs {
     /// proofs were built on a base revision; a deletion masks its statements).
     /// Unknown names fail.
     pub fn proves_all(&self, subject: &str, supers: &[&str], removed: &crate::fxhash::FxHashSet<u128>) -> bool {
+        self.proves_all_with_globals(subject, supers, removed, &[])
+    }
+
+    /// As above, with independently proved global classes of actual NEW.
+    /// Known global ids seed this query only; unknown ids are ignored and no
+    /// persisted graph/name map is changed. The caller owns their provenance.
+    pub(crate) fn proves_all_with_globals(&self, subject: &str, supers: &[&str],
+        removed: &crate::fxhash::FxHashSet<u128>, globals: &[String]) -> bool {
         let look = |name: &str| self.spelling.get(name).or_else(|| self.ids.get(name)).copied();
         let Some(a) = look(subject) else { return supers.is_empty() };
         let mut wanted = Vec::with_capacity(supers.len());
@@ -2484,9 +2716,16 @@ impl ToldProofs {
         }
         let n = self.edges.len();
         let mut set = vec![false; n];
-        let mut stack = vec![a];
+        let mut stack = vec![a, self.thing];
         set[a as usize] = true;
         set[self.thing as usize] = true;
+        for global in globals {
+            // Globals are resolved IRIs, never published source spellings.
+            // A prefixed token can spell an unrelated resolved IRI verbatim.
+            if let Some(id) = self.ids.get(global.as_str()).copied() {
+                if !set[id as usize] { set[id as usize] = true; stack.push(id); }
+            }
+        }
         loop {
             while let Some(x) = stack.pop() {
                 for &(y, tag) in self.edges[x as usize].iter() {

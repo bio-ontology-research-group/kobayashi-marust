@@ -34,4 +34,7 @@ pub mod source_locality;
 mod source_reuse_grammar;
 mod named_subclass_validation;
 pub mod incr_session;
+mod incr_support;
+mod incr_envelope;
+mod incr_global;
 pub mod tableau;

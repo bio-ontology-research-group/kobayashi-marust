@@ -7,18 +7,32 @@
 - Retain exact source and taxonomy bases across successive deletions, sharing
   immutable locality indexes with cumulative removal masks. Reuse unaffected
   published rows for compatible additions and mixed edits through common modules.
+- For supported sources with nominals and restricted data axioms, classify a
+  nominal-free object module when an exact source certificate establishes the
+  new revision's consistency. Mark nominal and data owners during locality
+  analysis. Otherwise check the complete new source before merging rows, and
+  retain only classes in the new public signature.
+- Propose bounded source subsets for data, explicit-rule and positive object
+  assertion clashes. Retain narrow inconsistency supports only after independent
+  complete classification verifies them. Check exact support containment and
+  source admission before reuse in a later revision.
 - Reuse unchanged compiled locality axioms across revisions. Preserve preparation
   work and fallback reasons in receipts, distinguishing retained rows and compiled
   formulas from resumed backend state. Keep exact inconsistency certificates
   across validated updates and memo eviction, and share cached rendered answers.
-- Retain proofs of explicit named-class inclusions. After deletion, keep a
-  satisfiable subject's taxonomy row when every entry still has a proof supported
-  by the remaining source; reclassify subjects that do not meet that condition.
+- Retain proofs of explicit named-class inclusions. After deletion within the
+  supported source envelope, also derive global named classes from the new
+  source's reflexive object properties, named superroles and named domains or
+  ranges. Seed each proof query without changing the retained graph. Keep a
+  satisfiable subject's row only when every entry remains proved; reclassify
+  subjects that do not meet that condition.
 - Bind source-admission shortcuts to an origin accepted by the public validator.
   Preserve exact headers, declarations, fixed statements and multiplicities.
   Supported annotation-free named subclass edits and deletion or restoration of
-  original named disjointness statements use that binding. Check the new outer
-  grammar before publication; unsupported edits use full validation.
+  eligible original logical axioms and assertions use that binding. Datatype
+  definitions and protected anonymous-individual property links remain fixed.
+  Check the new outer grammar before publication; unsupported edits use full
+  validation.
 - Preserve captured functional-syntax spans and full-IRI identities in OWLAPI
   sessions. Restore original captured axiom text and render eligible new named
   subclass axioms separately, retaining synthetic declarations.
@@ -49,8 +63,10 @@ completed candidate answers matched that release's canonical answers, with
 ORE `7345` timed out at the original 240-second limit; released v1.5.0 at commit
 `d95f0b840a433b5b43c4eff48092e8b600bca8de` completed it. Later crossover runs
 completed the candidate case but do not replace or erase that original coverage
-loss. The Java changes leave the measured native inputs unchanged; this native
-corpus audit is not a new full-corpus Java measurement. Detailed performance and
+loss. The Java-only changes incorporated in commit
+`4af7b3183898d2e5fbd546a8ffd32d9caed4ab20` leave this historical audit's native
+inputs unchanged. This audit does not cover later uncommitted native changes
+and is not a new full-corpus Java measurement. Detailed performance and
 release-validation evidence is reported separately with exact source and artifact
 identities; these corpus counts alone do not establish release acceptance.
 

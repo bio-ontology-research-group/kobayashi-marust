@@ -136,7 +136,10 @@ fn nominal_abox_deletion_and_additions_stay_exact() {
         assert_eq!(row["status"], "ok", "row {index}: {row:#?}");
         assert_eq!(canonical(&row["result"]), canonical(&fresh(source, 10 + index)), "revision {index}");
     }
-    assert_eq!(rows[2]["receipt"]["strategy"], "full_classify");
+    assert_eq!(rows[2]["receipt"]["strategy"], "common_nominal_subject_reuse");
+    assert!(rows[2]["receipt"]["reclassified_subjects"].as_u64().unwrap() > 0);
+    assert_eq!(rows[2]["receipt"]["reused_subjects"], 0);
+    assert_eq!(rows[2]["receipt"]["resumed_backend_states"], 0);
     assert_eq!(rows[3]["receipt"]["strategy"], "exact_reuse");
 }
 
@@ -522,9 +525,9 @@ fn full_fallback_preserves_cross_revision_compiler_donor_without_claiming_same_c
     let second = &rows[2]["receipt"];
     assert_eq!(second["strategy"], "full_classify");
     assert_eq!(second["cross_revision_compiled_axioms"], 3);
-    assert_eq!(second["same_update_compiled_axioms"], 3);
+    assert_eq!(second["same_update_compiled_axioms"], 0);
     assert_eq!(second["compiled_locality_axioms"], 1);
-    assert_eq!(second["csr_axiom_records"], 7);
+    assert_eq!(second["csr_axiom_records"], 4);
     assert_eq!(second["reused_subjects"], 0);
     assert_eq!(second["reused_index_axioms"], 0);
     assert_eq!(second["resumed_backend_states"], 0);
@@ -724,13 +727,14 @@ fn declined_mixed_union_keeps_exact_new_full_index_for_nominal_deletion() {
     assert_eq!(fallback["added_axioms"], 1);
     assert_eq!(fallback["removed_axioms"], 1);
     // Initial OLD has its nominal TBox/full pair ready. This transaction
-    // assembles the six-axiom union, then exact five-axiom NEW after fallback.
+    // assembles the six-axiom union and a five-axiom TBox analysis.
+    // The union alone is retained with exact NEW enabled masks.
     assert_eq!(fallback["index_build_calls"], 2);
     assert_eq!(fallback["index_build_failures"], 0);
     assert_eq!(fallback["csr_axiom_records"], 11);
     assert_eq!(fallback["cross_revision_compiled_axioms"], 5);
-    assert_eq!(fallback["same_update_compiled_axioms"], 5);
-    assert_eq!(fallback["compiled_locality_axioms"], 1);
+    assert_eq!(fallback["same_update_compiled_axioms"], 0);
+    assert_eq!(fallback["compiled_locality_axioms"], 6);
     assert_eq!(fallback["reused_subjects"], 0);
     assert_eq!(fallback["resumed_backend_states"], 0);
     assert_eq!(fallback["meaningful_incremental_update"], true,
@@ -738,10 +742,9 @@ fn declined_mixed_union_keeps_exact_new_full_index_for_nominal_deletion() {
 
     let deletion = &rows[2]["receipt"];
     assert_eq!(deletion["strategy"], "module_reuse", "{deletion:#?}");
-    // The cached exact NEW full index has five axioms. Its TBox has four;
-    // a stale OLD-union full index would have six. Thus this checks the
-    // production BaseState.index -> compiler_full substitution, not only parity.
-    assert_eq!(deletion["index_axioms"], 5, "{deletion:#?}");
+    // The six-axiom union stays shared physically. Exact enabled masks must
+    // exclude the removed global axiom, as checked by the semantic rows above.
+    assert_eq!(deletion["index_axioms"], 6, "{deletion:#?}");
     assert_eq!(deletion["base_revision_statements"], 16,
         "closest fallback NEW: eleven declarations plus five axioms");
     assert_eq!(deletion["added_axioms"], 0);
@@ -811,4 +814,159 @@ fn named_subclass_validation_origin_survives_deletion_and_checks_common_revision
     assert_eq!(rows[2]["receipt"]["strategy"],"common_module_reuse");
     assert_eq!(rows[3]["status"],"error");assert_eq!(rows[4]["status"],"ok");assert_eq!(rows[4]["revision"],3);
     assert_eq!(canonical(&rows[4]["result"]),canonical(&rows[2]["result"]));
+}
+
+#[test]
+fn common_nominal_full_new_checks_data_clash_even_with_empty_probe_request() {
+    let old=ontology(&["Declaration(DataProperty(:p))","FunctionalDataProperty(:p)",
+        "DataPropertyAssertion(:p :a \"x\")","SubClassOf(:E :F)"]);
+    let new=ontology(&["Declaration(DataProperty(:p))","FunctionalDataProperty(:p)",
+        "DataPropertyAssertion(:p :a \"x\")","DataPropertyAssertion(:p :a \"y\")","SubClassOf(:E :F)"]);
+    let rows=session(&[old,new.clone()]);
+    assert_eq!(rows[1]["status"],"ok","{:#?}",rows[1]);
+    assert_eq!(rows[1]["result"]["consistent"],false);
+    assert_eq!(rows[1]["receipt"]["strategy"],"full_classify");
+    assert_eq!(rows[1]["receipt"]["reused_subjects"],0);
+    assert_eq!(rows[1]["receipt"]["fallback_reason"],"nominal common full-source result requires full finalization");
+    let unrestricted=fresh(&new,900);
+    assert_eq!(canonical(&rows[1]["result"]),canonical(&unrestricted));
+    // Exercise the exact pipeline contract with literally zero requested
+    // probes: global NEW consistency must still run, and its whole inconsistent
+    // answer must match the unrestricted fresh answer, including unsat classes.
+    let unique=FRESH.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
+    let path=std::env::temp_dir().join(format!("km-empty-request-{}-{unique}.ofn",std::process::id()));
+    let subjects=path.with_extension("subjects.json");
+    std::fs::write(&path,&new).unwrap();std::fs::write(&subjects,b"[]").unwrap();
+    let output=Command::new(env!("CARGO_BIN_EXE_km")).arg("classify").arg(&path)
+        .env("KM_ROUTE","auto").env("KM_PUBLIC_SUBJECT_IRIS_FILE",&subjects).output().unwrap();
+    let _=std::fs::remove_file(path);let _=std::fs::remove_file(subjects);
+    assert!(output.status.success(),"{}",String::from_utf8_lossy(&output.stderr));
+    let restricted:serde_json::Value=serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(canonical(&restricted),canonical(&unrestricted));
+}
+
+#[test]
+fn common_nominal_recomputes_empty_row_prunes_domain_and_preserves_refused_revision() {
+    let shared=["Declaration(DataProperty(:p))","FunctionalDataProperty(:p)",
+        "EquivalentClasses(:C ObjectOneOf(:a))","SubClassOf(:C :D)",
+        "ClassAssertion(:C :a)","SubClassOf(:E :F)"];
+    let mut old_axioms=shared.to_vec();old_axioms.extend(["ClassAssertion(:K :a)","Declaration(Class(:Z))","SubClassOf(:Z :G)"]);
+    let old=ontology(&old_axioms);
+    let mut new_axioms=shared.to_vec();new_axioms.extend(["ClassAssertion(:H :a)","SubClassOf(:A :B)"]);
+    let new=ontology(&new_axioms);
+    let invalid=new.replace("SubClassOf(:A :B)","SubClassOf(:A :Undeclared)");
+    let rows=session(&[old.clone(),invalid,old.clone(),new.clone()]);
+    assert_eq!(rows[0]["status"],"ok");assert_eq!(rows[1]["status"],"error");
+    assert_eq!(rows[2]["status"],"ok");assert_eq!(rows[2]["receipt"]["strategy"],"exact_reuse");
+    assert_eq!(canonical(&rows[2]["result"]),canonical(&fresh(&old,910)));
+    assert_eq!(rows[3]["status"],"ok","{:#?}",rows[3]);
+    assert_eq!(rows[3]["receipt"]["strategy"],"common_nominal_subject_reuse","{:#?}",rows[3]);
+    assert!(rows[3]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+    assert_eq!(rows[3]["receipt"]["resumed_backend_states"],0);
+    let old_pairs=canonical(&rows[0]["result"]).2;let new_pairs=canonical(&rows[3]["result"]).2;
+    assert!(!old_pairs.contains(&(":A".into(),":B".into())));
+    assert!(new_pairs.contains(&(":A".into(),":B".into())),"previous empty row cannot survive a mixed addition");
+    assert!(!new_pairs.iter().any(|(a,b)|a==":Z"||b==":Z"));
+    assert_eq!(canonical(&rows[3]["result"]),canonical(&fresh(&new,911)));
+}
+
+#[test]
+fn common_object_certificate_keeps_builtin_queries() {
+    // Builtin spellings remain in the public domain without declarations;
+    // owl:Nothing is absent from this TBox. Ordinary undeclared classes and
+    // reserved non-class vocabulary remain rejected at public admission.
+    // Shared disjointness disables positive-ABox projection. With no C/D
+    // assertions it preserves consistency and leaves the OLD core certificate.
+    let abox_only="ClassAssertion(owl:Thing :a)";
+    let old=ontology(&["SubClassOf(owl:Thing :A)",abox_only,"ClassAssertion(:K :a)","SubClassOf(:E :F)","DisjointClasses(:C :D)"]);
+    let new=ontology(&["SubClassOf(owl:Thing :A)",abox_only,"SubClassOf(:B :G)","SubClassOf(:E :F)","DisjointClasses(:C :D)"]);
+    let rows=session(&[old,new.clone()]);
+    assert_eq!(rows[0]["status"],"ok","{:#?}",rows[0]);
+    assert_eq!(rows[1]["status"],"ok","{:#?}",rows[1]);
+    assert_eq!(rows[1]["receipt"]["strategy"],"common_object_module_reuse","{:#?}",rows[1]);
+    assert!(rows[1]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+    let result=canonical(&rows[1]["result"]);
+    // Public output omits top-subject pairs; test the global axiom through
+    // an ordinary requested class and compare the complete builtin contract fresh.
+    assert!(result.2.contains(&(":B".into(),":A".into())));
+    assert!(result.2.contains(&(":B".into(),":G".into())));
+    assert_eq!(result,canonical(&fresh(&new,920)));
+    assert_eq!(rows[1]["receipt"]["resumed_backend_states"],0);
+}
+
+#[test]
+fn common_data_certificate_reuses_object_rows_after_mixed_edit() {
+    let shared=["Declaration(DataProperty(:p))", "FunctionalDataProperty(:p)",
+        "DataPropertyRange(:p xsd:string)", "DataPropertyAssertion(:p :a \"x\")", "SubClassOf(:E :F)"];
+    let mut old_axioms=shared.to_vec();old_axioms.push("ClassAssertion(:K :a)");
+    let mut new_axioms=shared.to_vec();new_axioms.push("SubClassOf(:A :B)");
+    let new=ontology(&new_axioms);
+    let rows=session(&[ontology(&old_axioms),new.clone()]);
+    assert_eq!(rows[1]["status"],"ok","{:#?}",rows[1]);
+    assert_eq!(rows[1]["receipt"]["strategy"],"common_object_module_reuse","{:#?}",rows[1]);
+    assert!(rows[1]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+    assert_eq!(canonical(&rows[1]["result"]),canonical(&fresh(&new,930)));
+    assert_eq!(rows[1]["receipt"]["resumed_backend_states"],0);
+}
+
+#[test]
+fn common_data_core_prefers_plain_module_before_full_common_path() {
+    let mut axioms=vec!["Declaration(DataProperty(:p))".to_string(),
+        "DataPropertyRange(:p xsd:string)".to_string(), "SubClassOf(:E :F)".to_string()];
+    for i in 0..200 { axioms.push(format!("DataPropertyAssertion(:p :a \"{i}\")")); }
+    let old=ontology(&axioms.iter().map(String::as_str).collect::<Vec<_>>());
+    axioms.push("SubClassOf(:A :B)".to_string());
+    let new=ontology(&axioms.iter().map(String::as_str).collect::<Vec<_>>());
+    let rows=session(&[old,new.clone()]);
+    assert_eq!(rows[1]["status"],"ok","{:#?}",rows[1]);
+    assert_eq!(rows[1]["receipt"]["strategy"],"common_object_module_reuse","{:#?}",rows[1]);
+    assert!(rows[1]["receipt"]["module_axioms"].as_u64().unwrap()<200);
+    assert_eq!(canonical(&rows[1]["result"]),canonical(&fresh(&new,931)));
+}
+
+#[test]
+fn global_deletion_reuses_proved_rows_and_forgets_removed_role_premises() {
+    let shared = [
+        "ReflexiveObjectProperty(:r)",
+        "ObjectPropertyRange(:r :G)",
+        "SubClassOf(:G :H)",
+        "SubClassOf(:A :C)",
+        "SubClassOf(:B :C)",
+        "SubClassOf(:D :C)",
+        "SubClassOf(:E owl:Thing)",
+        "Declaration(DataProperty(:p))",
+        "DataPropertyRange(:p xsd:string)",
+        "DataPropertyAssertion(:p :a \"x\")",
+    ];
+    // Reflexivity makes this domain global. Removing it loses E ⊑ C,
+    // while D's complete row still follows from D ⊑ C and global G/H.
+    let mut original = shared.to_vec();
+    original.push("ObjectPropertyDomain(:r ObjectUnionOf(:A :B))");
+    let old = ontology(&original);
+    let deleted = ontology(&shared);
+    let repaired = ontology(&shared.iter().copied()
+        .filter(|axiom| *axiom != "ObjectPropertyRange(:r :G)").collect::<Vec<_>>());
+    let invalid = deleted.replace("SubClassOf(:E owl:Thing)", "SubClassOf(:E :Undeclared)");
+    let rows = session(&[old.clone(), deleted.clone(), invalid, deleted.clone(), repaired.clone()]);
+    assert_eq!(rows.len(), 5);
+    for (index, source) in [(0, &old), (1, &deleted), (4, &repaired)] {
+        assert_eq!(rows[index]["status"], "ok", "{:#?}", rows[index]);
+        assert_eq!(canonical(&rows[index]["result"]), canonical(&fresh(source, 940 + index)));
+    }
+    assert_eq!(rows[1]["receipt"]["strategy"], "subject_reuse", "{:#?}", rows[1]);
+    assert!(rows[1]["receipt"]["told_subjects"].as_u64().unwrap() > 0);
+    assert!(rows[1]["receipt"]["reused_subjects"].as_u64().unwrap() > 0);
+    assert!(rows[1]["receipt"]["reclassified_subjects"].as_u64().unwrap() > 0);
+    assert_eq!(rows[1]["receipt"]["resumed_backend_states"], 0);
+    assert_eq!(rows[2]["status"], "error");
+    assert_eq!(rows[3]["receipt"]["strategy"], "exact_reuse");
+    assert_eq!(canonical(&rows[3]["result"]), canonical(&rows[1]["result"]));
+    let before = canonical(&rows[0]["result"]).2;
+    let after = canonical(&rows[1]["result"]).2;
+    let repaired_pairs = canonical(&rows[4]["result"]).2;
+    assert!(before.contains(&(":E".into(), ":C".into())));
+    assert!(!after.contains(&(":E".into(), ":C".into())));
+    assert!(after.contains(&(":D".into(), ":C".into())));
+    assert!(after.contains(&(":E".into(), ":G".into())));
+    assert!(!repaired_pairs.contains(&(":E".into(), ":G".into())));
 }
