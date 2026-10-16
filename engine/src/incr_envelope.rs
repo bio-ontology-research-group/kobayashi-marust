@@ -60,6 +60,36 @@ fn cardinality_axiom(head: &str, args: &[&Node<'_>],
     a.len() == 2 && a[0].as_atom() == Some("1") && named_atom(&a[1])
         && !forbidden(&a[1], universals)
 }
+// Literal values stay in the fixed native datatype/literal interpretation.
+// This recognizes token shape only; public source admission remains required.
+fn literal_tokens(args: &[Node<'_>]) -> bool {
+    let [Node::Atom(lexical), suffix @ ..] = args else { return false; };
+    if !lexical.starts_with('"') || !lexical.ends_with('"') || lexical.len() < 2 {
+        return false;
+    }
+    match suffix {
+        [] => true,
+        [Node::Atom(suffix)] => {
+            if let Some(datatype) = suffix.strip_prefix("^^") {
+                named_atom(&Node::Atom(datatype))
+            } else if let Some(language) = suffix.strip_prefix('@') {
+                !language.is_empty() && language.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            } else { false }
+        }
+        _ => false,
+    }
+}
+
+fn has_value_axiom(head: &str, args: &[&Node<'_>],
+    builtin_classes: &FxHashSet<String>, universals: &FxHashSet<String>) -> bool
+{
+    if head != "SubClassOf" || args.len() != 2 || !named_atom(args[0])
+        || forbidden(args[0], universals)
+        || args[0].as_atom().is_some_and(|c| builtin_classes.contains(c)) { return false; }
+    let Node::List("DataHasValue", values) = args[1] else { return false; };
+    let Some(property) = values.first() else { return false; };
+    named_atom(property) && !forbidden(property, universals) && literal_tokens(&values[1..])
+}
 fn atom(node: &Node<'_>) -> bool { node.as_atom().is_some() }
 fn role(node: &Node<'_>) -> bool {
     atom(node) || matches!(node, Node::List("ObjectInverseOf", a) if a.len()==1 && atom(&a[0]))
@@ -191,15 +221,24 @@ pub(crate) fn eligible(text: &str, scan: &Scan) -> Option<Eligibility> {
         if parser.peek().is_some() { return None; }
         let Node::List(head, args) = &node else { return None; };
         let args: Vec<_> = args.iter().filter(|a|a.head()!=Some("Annotation")).collect();
-        if cardinality_axiom(head, &args, &builtin_classes, &universals) {
-            // Mark even unchanged cardinal owners. Retained query modules
-            // must omit these axioms, hence their owners are absent from the
-            // closed logical signature used by IncrementalDataCardinality.
+        if cardinality_axiom(head, &args, &builtin_classes, &universals)
+            || has_value_axiom(head, &args, &builtin_classes, &universals) {
+            // Mark even unchanged positive data-value/cardinality owners.
+            // Retained object modules must omit these axioms and their class
+            // owners from the closed logical signature, before declarations.
             data_tbox.insert(statement.hash);
             object_only = false;
             continue;
         }
         if forbidden(&node, &universals) { return None; }
+        if *head == "EquivalentDataProperties" {
+            if args.len() != 2 || !args.iter().all(|arg| named_atom(arg)) { return None; }
+            // One original source owner represents both directed subproperty
+            // obligations; every such owner stays dirty in object queries.
+            data_tbox.insert(statement.hash);
+            object_only = false;
+            continue;
+        }
         if statement.kind==StmtKind::Declaration {
             if args.len()!=1 || !matches!(args[0], Node::List("Class"|"ObjectProperty"|"DataProperty"|"NamedIndividual"|"Datatype"|"AnnotationProperty", a) if a.len()==1 && atom(&a[0])) { return None; }
             if matches!(args[0].head(), Some("DataProperty" | "Datatype")) { object_only = false; }
@@ -236,15 +275,56 @@ mod tests {
         for class in ["DataSomeValuesFrom(:p xsd:string)","DataAllValuesFrom(:p xsd:string)",
             "DataHasValue(:p \"x\")","DataMinCardinality(1 :p)","DataMaxCardinality(1 :p)","DataExactCardinality(1 :p)"] {
             if !class.starts_with("DataMinCardinality(1 ") && !class.starts_with("DataExactCardinality(1 ") {
-                assert!(check(&format!("SubClassOf(:A {class})")).is_none());
+                if !class.starts_with("DataHasValue(") {
+                    assert!(check(&format!("SubClassOf(:A {class})")).is_none());
+                }
             }
             assert!(check(&format!("ClassAssertion({class} :a)")).is_none());
             assert!(check(&format!("DataPropertyDomain(:p {class})")).is_none());
         }
         for axiom in ["HasKey(:A () (:p))","DLSafeRule(Body(ClassAtom(:A Variable(:x))) Head(ClassAtom(:B Variable(:x))))",
-            "DatatypeDefinition(:D xsd:string)","EquivalentDataProperties(:p :q)","UnknownAxiom(:A)"] {
+            "DatatypeDefinition(:D xsd:string)","UnknownAxiom(:A)"] {
             assert!(check(axiom).is_none(),"{axiom}");
         }
+    }
+    #[test]
+    fn named_has_value_and_binary_equivalence_mark_exact_original_owners() {
+        let axioms = ["SubClassOf(:A DataHasValue(:p \"01\"^^xsd:integer))",
+            "SubClassOf(:B DataHasValue(:q \"1\"^^<http://www.w3.org/2001/XMLSchema#int>))",
+            "SubClassOf(:C DataHasValue(:p \"è \\\"quoted\\\"\"@en))",
+            "SubClassOf(:D DataHasValue(:q \"plain\"))", "EquivalentDataProperties(:p :q)"];
+        let text = source(&axioms.join(" "));
+        let admitted = eligible(&text, &scan(&text).unwrap()).unwrap();
+        assert!(!admitted.object_only);
+        assert_eq!(admitted.data_tbox, axioms.iter().map(|a| fingerprint(a.as_bytes())).collect());
+        for axiom in ["SubClassOf(ObjectIntersectionOf(:A :B) DataHasValue(:p \"x\"))",
+            "SubClassOf(:A ObjectIntersectionOf(:B DataHasValue(:p \"x\")))",
+            "SubClassOf(DataHasValue(:p \"x\") :A)",
+            "EquivalentClasses(:A DataHasValue(:p \"x\"))",
+            "SubClassOf(:A DataHasValue(ObjectInverseOf(:r) \"x\"))",
+            "SubClassOf(:A DataHasValue(:p :notALiteral))",
+            "SubClassOf(:A DataHasValue(:p \"x\" junk))",
+            "SubClassOf(:A DataHasValue(:p \"x\" ^^))",
+            "SubClassOf(:A DataHasValue(:p \"x\" @))",
+            "SubClassOf(:A DataHasValue(:p \"x\"^^xsd:string \"extra\"))",
+            "EquivalentDataProperties(:p)", "EquivalentDataProperties(:p :q :r)",
+            "EquivalentDataProperties(:p ObjectInverseOf(:r))"] {
+            assert!(check(axiom).is_none(), "{axiom}");
+        }
+    }
+    #[test]
+    fn has_value_and_equivalent_data_respect_resolved_builtin_aliases() {
+        for class in ["owl:Thing", "owl:Nothing", "<http://www.w3.org/2002/07/owl#Thing>"] {
+            assert!(check(&format!("SubClassOf({class} DataHasValue(:p \"x\"))")).is_none());
+        }
+        for local in ["topDataProperty", "bottomDataProperty"] {
+            let text = format!("Prefix(t:=<http://www.w3.org/2002/07/owl#{local}>) Ontology(SubClassOf(<urn:A> DataHasValue(t: \"x\")))");
+            assert!(eligible(&text, &scan(&text).unwrap()).is_none());
+            let text = format!("Prefix(t:=<http://www.w3.org/2002/07/owl#{local}>) Ontology(EquivalentDataProperties(<urn:p> t:))");
+            assert!(eligible(&text, &scan(&text).unwrap()).is_none());
+        }
+        let text = "Prefix(t:=<http://www.w3.org/2002/07/owl#>) Prefix(t:=<urn:ordinary#>) Ontology(SubClassOf(t:Thing DataHasValue(t:topDataProperty \"x\")))";
+        assert!(eligible(text, &scan(text).unwrap()).is_some());
     }
     #[test]
     fn cardinality_one_is_top_level_named_and_marks_exact_owner_hashes() {

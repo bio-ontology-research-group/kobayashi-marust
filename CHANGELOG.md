@@ -80,6 +80,25 @@ unsatisfiable-class queries, and the optional pure-object module path. Its 18
 axiom audits and 39 focused tests passed. Full release gates and optimized timing
 validation remain pending; this entry makes no performance claim.
 
+### Incremental fixed-data-value reuse
+
+Compared with commit `fe0e85b4546e2c90f60b6ae69efc32594af6acb4`, permit
+retained query reuse for top-level `SubClassOf(C DataHasValue(p literal))`
+with ordinary named classes and data properties, and binary
+`EquivalentDataProperties(p q)` axioms. Mark every data owner, including
+unchanged axioms. Keep the complete new-source consistency check when an
+affected module contains data restrictions, and preserve the pure-object
+module guard. Unsupported positions, property forms and built-in aliases
+continue to decline at this optional reuse boundary.
+
+The extended fixed-domain Lean module passed 20 axiom audits without `sorryAx`;
+nine envelope unit tests and 35 public module-reuse tests passed. These checks
+cover value aliases, functionality clashes, owner deletion and restoration,
+unaffected rows and refused-update rollback. Full release certification and
+real-case performance validation remain pending. This entry makes no timing
+claim and does not replace the failing measurements of commit
+`fe0e85b4546e2c90f60b6ae69efc32594af6acb4`.
+
 ### Native process cleanup
 
 - During cancellation, allow the supervisor to reap terminated children before

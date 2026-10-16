@@ -175,6 +175,8 @@ for theorem in \
     IncrementalDataCardinality.extended_new_consistent \
     IncrementalDataCardinality.owner_absent_of_omitted \
     IncrementalDataCardinality.joinData_mask_sat \
+    IncrementalDataCardinality.equivalentData_iff_subproperties \
+    IncrementalDataCardinality.equivalentData_join_sat \
     IncrementalDataCardinality.module_from_envelope \
     IncrementalDataCardinality.module_join_models \
     IncrementalDataCardinality.module_entails_iff \

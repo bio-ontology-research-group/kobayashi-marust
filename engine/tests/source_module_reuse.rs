@@ -971,6 +971,81 @@ fn cardinality_owner_removal_restoration_and_new_data_clash_stay_exact() {
 }
 
 #[test]
+fn has_value_data_owners_use_full_new_queries_and_keep_unaffected_rows() {
+    let shared = ["Declaration(DataProperty(:p))", "Declaration(DataProperty(:q))",
+        "SubClassOf(:C DataHasValue(:p \"01\"^^xsd:integer))",
+        "EquivalentDataProperties(:p :q)", "FunctionalDataProperty(:q)",
+        "ClassAssertion(:C :a)", "DataPropertyAssertion(:q :a \"1\"^^xsd:int)",
+        "SubClassOf(:E :F)", "DisjointClasses(:G :H)"];
+    let mut before = shared.to_vec();
+    before.push("DataPropertyAssertion(:p :a \"01\"^^xsd:integer)");
+    let mut after = shared.to_vec();
+    after.push("SubClassOf(:A :B)");
+    let old = ontology(&before);
+    let new = ontology(&after);
+    let invalid = new.replace("SubClassOf(:A :B)", "SubClassOf(:A :Undeclared)");
+    let rows = session(&[old.clone(), new.clone(), invalid, new.clone()]);
+    for (index, source) in [(0, &old), (1, &new)] {
+        assert_eq!(rows[index]["status"], "ok", "{:#?}", rows[index]);
+        assert_eq!(rows[index]["result"]["consistent"], true);
+        assert_eq!(canonical(&rows[index]["result"]), canonical(&fresh(source, 980 + index)));
+    }
+    // C's affected module contains its data-value owner. The pure-object
+    // shortcut must decline; full NEW consistency and selected rows still run.
+    assert_eq!(rows[1]["receipt"]["strategy"], "common_nominal_subject_reuse", "{:#?}", rows[1]);
+    assert!(rows[1]["receipt"]["reused_subjects"].as_u64().unwrap() > 0);
+    assert!(rows[1]["receipt"]["reclassified_subjects"].as_u64().unwrap() > 0);
+    assert!(canonical(&rows[1]["result"]).2.contains(&(":E".into(), ":F".into())));
+    assert_eq!(rows[2]["status"], "error");
+    assert_eq!(rows[3]["receipt"]["strategy"], "exact_reuse");
+    assert_eq!(canonical(&rows[3]["result"]), canonical(&rows[1]["result"]));
+}
+
+#[test]
+fn has_value_owner_removal_alias_repair_and_readdition_stay_exact() {
+    let shared = ["Declaration(DataProperty(:p))", "Declaration(DataProperty(:q))",
+        "FunctionalDataProperty(:p)", "SubClassOf(:C DataHasValue(:p \"1\"^^xsd:integer))",
+        "SubClassOf(:E :F)", "DisjointClasses(:G :H)"];
+    let conflict = "SubClassOf(:C DataHasValue(:p \"2\"^^xsd:int))";
+    let alias = "SubClassOf(:C DataHasValue(:p \"01\"^^<http://www.w3.org/2001/XMLSchema#int>))";
+    let mut before = shared.to_vec(); before.extend([conflict, "DataPropertyAssertion(:q :a \"x\")"]);
+    let mut deleted = shared.to_vec(); deleted.push("SubClassOf(:A :B)");
+    let mut repaired = deleted.clone(); repaired.push(alias);
+    let mut restored = repaired.clone(); restored.extend([conflict, "SubClassOf(:B :D)"]);
+    let revisions = [ontology(&before), ontology(&deleted), ontology(&repaired), ontology(&restored)];
+    let rows = session(&revisions);
+    for (index, source) in revisions.iter().enumerate() {
+        assert_eq!(rows[index]["status"], "ok", "{:#?}", rows[index]);
+        assert_eq!(rows[index]["result"]["consistent"], true);
+        assert_eq!(canonical(&rows[index]["result"]), canonical(&fresh(source, 990 + index)));
+    }
+    assert!(canonical(&rows[0]["result"]).1.contains(":C"));
+    assert!(!canonical(&rows[1]["result"]).1.contains(":C"));
+    assert!(!canonical(&rows[2]["result"]).1.contains(":C"));
+    assert!(canonical(&rows[3]["result"]).1.contains(":C"));
+    assert!(rows[1]["receipt"]["reused_subjects"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn has_value_equivalent_properties_never_hide_new_global_value_clash() {
+    let old = ontology(&["Declaration(DataProperty(:p))", "Declaration(DataProperty(:q))",
+        "EquivalentDataProperties(:p :q)", "FunctionalDataProperty(:q)",
+        "SubClassOf(:C DataHasValue(:p \"01\"^^xsd:integer))", "ClassAssertion(:C :a)",
+        "DataPropertyAssertion(:q :a \"1\"^^xsd:int)", "SubClassOf(:E :F)"]);
+    let new = old.replace("SubClassOf(:E :F)",
+        "SubClassOf(:E :F)\nSubClassOf(:A :B)\nDataPropertyAssertion(:q :a \"2\"^^xsd:integer)");
+    let rows = session(&[old.clone(), new.clone(), old.clone()]);
+    for (index, source) in [(0, &old), (1, &new), (2, &old)] {
+        assert_eq!(rows[index]["status"], "ok", "{:#?}", rows[index]);
+        assert_eq!(canonical(&rows[index]["result"]), canonical(&fresh(source, 1000 + index)));
+    }
+    assert_eq!(rows[0]["result"]["consistent"], true);
+    assert_eq!(rows[1]["result"]["consistent"], false);
+    assert_eq!(rows[1]["receipt"]["reused_subjects"], 0);
+    assert_eq!(rows[2]["receipt"]["strategy"], "exact_reuse");
+}
+
+#[test]
 fn common_data_core_prefers_plain_module_before_full_common_path() {
     // Even a single independent data assertion belongs to the full empty
     // core. Keep it out of the independently certified pure-object query

@@ -1,24 +1,27 @@
 import ContextCalculus.IncrementalDataConsistency
 
 /-!
-# Fixed-domain data cardinality in retained object modules
+# Fixed-domain data restrictions in retained object modules
 
 This boundary adds only top-level inclusions from an ordinary named class to
-an unqualified minimum-one or exact-one restriction on an ordinary data
-property. The executable guard must reject nested or qualified restrictions,
-other cardinalities and built-in class/property aliases outside this model.
+an unqualified minimum-one, exact-one, or fixed-literal value restriction on an
+ordinary data property, together with binary ordinary data-property equivalence.
+The executable guard must reject nested or qualified restrictions, other
+cardinalities and built-in class/property aliases outside this model.
 The value domain, datatype ranges and literal map remain fixed across models.
 Existing object/data axiom types and their proof APIs are unchanged.
 
 Full masking agrees on retained class/property names. The exact non-locality
-trigger of either new inclusion is its class owner. A closed logical module
-which omits a marked cardinal axiom therefore excludes that owner. Every
-cardinal owner must be marked even when its source statement is unchanged.
+trigger of every owner inclusion is its class owner. A closed logical module
+which omits a marked owner axiom therefore excludes that owner. Every owner
+axiom must be marked even when its source statement is unchanged. Data-property
+equivalence has the disjunction of its two property names as its locality trigger;
+it is exactly the conjunction of the two existing subproperty inclusions.
 
 Object query reuse requires this owner-absence premise explicitly: empty data
-relations on the fresh side cannot satisfy an inhabited positive-cardinality
-owner. No data witnesses are manufactured. The optional affected object-module
-path has the same premise for every NEW cardinal axiom and must decline when
+relations on the fresh side cannot satisfy an inhabited positive-cardinality or
+fixed-value owner. No data witnesses are manufactured. The optional affected
+object-module path has the same premise for every NEW owner axiom and must decline when
 it fails. Full consistency follows only from a closed full-union module kept
 in an actually consistent OLD source; the closed signature may be nonempty.
 
@@ -37,27 +40,31 @@ open IncrementalDataConsistency
 inductive CardAx where
   | minOne : Nat → Nat → CardAx
   | exactOne : Nat → Nat → CardAx
+  | hasValue : Nat → Nat → Nat → CardAx
 
 def owner : CardAx → Nat
-  | .minOne c _ | .exactOne c _ => c
+  | .minOne c _ | .exactOne c _ | .hasValue c _ _ => c
 
 def property : CardAx → Nat
-  | .minOne _ p | .exactOne _ p => p
+  | .minOne _ p | .exactOne _ p | .hasValue _ p _ => p
 
 inductive ExtAx where
   | base : AugAx → ExtAx
   | card : CardAx → ExtAx
+  | equivalentData : Nat → Nat → ExtAx
 
 variable {U V D : Type}
 
-def satCard (i : DataInterp U D) : CardAx → Prop
+def satCard (literal : Nat → D) (i : DataInterp U D) : CardAx → Prop
   | .minOne c p => ∀ x, i.obj.cls c x → ∃ d, i.dp p x d
   | .exactOne c p => ∀ x, i.obj.cls c x → ∃! d, i.dp p x d
+  | .hasValue c p l => ∀ x, i.obj.cls c x → i.dp p x (literal l)
 
 def satExt (ranges : Nat → D → Prop) (literal : Nat → D)
     (i : DataInterp U D) : ExtAx → Prop
   | .base a => satAug ranges literal i a
-  | .card a => satCard i a
+  | .card a => satCard literal i a
+  | .equivalentData p q => ∀ x d, i.dp p x d ↔ i.dp q x d
 
 def Models (ranges : Nat → D → Prop) (literal : Nat → D)
     (O : ExtAx → Prop) (i : DataInterp U D) : Prop :=
@@ -82,28 +89,30 @@ theorem card_insig_of_occurs (S : Nat → Bool) (a : CardAx)
     (h : ∀ n, OccursCard n a → S n = true) : CardInSig S a :=
   ⟨h _ (Or.inl rfl), h _ (Or.inr rfl)⟩
 
-theorem satCard_mask_agree (S : Nat → Bool) (i : DataInterp U D)
+theorem satCard_mask_agree (literal : Nat → D) (S : Nat → Bool) (i : DataInterp U D)
     (a : CardAx) (h : CardInSig S a) :
-    satCard (maskAug S i) a ↔ satCard i a := by
+    satCard literal (maskAug S i) a ↔ satCard literal i a := by
   cases a <;> rcases h with ⟨hc, hp⟩ <;>
     simp only [owner, property] at hc hp <;>
     simp [satCard, maskAug, mask, hc, hp]
 
-/-- For positive unqualified cardinality, the exact Rust trigger is SigC. -/
+/-- For positive cardinality or a fixed literal value, the exact Rust trigger is SigC. -/
 def nonLocalCard (S : Nat → Bool) (a : CardAx) : Bool := S (owner a)
 
-theorem card_locality_sound (S : Nat → Bool) (i : DataInterp U D)
-    (a : CardAx) (h : nonLocalCard S a = false) : satCard (maskAug S i) a := by
+theorem card_locality_sound (literal : Nat → D) (S : Nat → Bool) (i : DataInterp U D)
+    (a : CardAx) (h : nonLocalCard S a = false) : satCard literal (maskAug S i) a := by
   cases a <;> simp [nonLocalCard, owner] at h <;>
     simp [satCard, maskAug, mask, h]
 
 def OccursExt (n : Nat) : ExtAx → Prop
   | .base a => OccursAug n a
   | .card a => OccursCard n a
+  | .equivalentData p q => n = p ∨ n = q
 
 def nonLocalExt (S : Nat → Bool) : ExtAx → Bool
   | .base a => nonLocalAug S a
   | .card a => nonLocalCard S a
+  | .equivalentData p q => S p || S q
 
 theorem satExt_mask_agree (ranges : Nat → D → Prop) (literal : Nat → D)
     (S : Nat → Bool) (i : DataInterp U D) (a : ExtAx)
@@ -111,14 +120,21 @@ theorem satExt_mask_agree (ranges : Nat → D → Prop) (literal : Nat → D)
     satExt ranges literal (maskAug S i) a ↔ satExt ranges literal i a := by
   cases a with
   | base a => exact satAug_mask_agree ranges literal S i a h
-  | card a => exact satCard_mask_agree S i a (card_insig_of_occurs S a h)
+  | card a => exact satCard_mask_agree literal S i a (card_insig_of_occurs S a h)
+  | equivalentData p q =>
+      have hp := h p (Or.inl rfl)
+      have hq := h q (Or.inr rfl)
+      simp [satExt, maskAug, hp, hq]
 
 theorem extended_locality_sound (ranges : Nat → D → Prop) (literal : Nat → D)
     (S : Nat → Bool) (i : DataInterp U D) (a : ExtAx)
     (h : nonLocalExt S a = false) : satExt ranges literal (maskAug S i) a := by
   cases a with
   | base a => exact augmented_locality_sound ranges literal S i a h
-  | card a => exact card_locality_sound S i a h
+  | card a => exact card_locality_sound literal S i a h
+  | equivalentData p q =>
+      have hpq : S p = false ∧ S q = false := by simpa [nonLocalExt] using h
+      simp [satExt, maskAug, hpq.1, hpq.2]
 
 noncomputable def extended (ranges : Nat → D → Prop) (literal : Nat → D) :
     MaskedSemantics ExtAx (Concept × Concept) (DataModel D) Nat where
@@ -177,9 +193,9 @@ theorem owner_absent_of_omitted {V M : ExtAx → Prop} {S : Nat → Prop}
 
 /-- No data witnesses are manufactured on the fresh side: owner absence is
 essential. Existing base joinData_sat and allowedData remain unchanged. -/
-theorem joinData_mask_sat (S : Nat → Prop) (i : Interp U) (j : DataInterp V D)
-    (a : CardAx) (h : ¬ S (owner a)) (hj : satCard j a) :
-    satCard (joinData (mask (bsig S) i) j) a := by
+theorem joinData_mask_sat (literal : Nat → D) (S : Nat → Prop) (i : Interp U) (j : DataInterp V D)
+    (a : CardAx) (h : ¬ S (owner a)) (hj : satCard literal j a) :
+    satCard literal (joinData (mask (bsig S) i) j) a := by
   cases a with
   | minOne c p =>
       have hc : bsig S c = false := by classical simpa [bsig, owner] using h
@@ -193,6 +209,34 @@ theorem joinData_mask_sat (S : Nat → Prop) (i : Interp U) (j : DataInterp V D)
       cases x with
       | inl x => simp [joinData, union, mask, hc] at hx
       | inr y => exact hj y hx
+  | hasValue c p l =>
+      have hc : bsig S c = false := by classical simpa [bsig, owner] using h
+      intro x hx
+      cases x with
+      | inl x => simp [joinData, union, mask, hc] at hx
+      | inr y => exact hj y hx
+
+/-- Property equivalence is exactly the conjunction of both existing inclusions. -/
+theorem equivalentData_iff_subproperties (ranges : Nat → D → Prop) (literal : Nat → D)
+    (i : DataInterp U D) (p q : Nat) :
+    satExt ranges literal i (.equivalentData p q) ↔
+      satData ranges literal i (.sub p q) ∧ satData ranges literal i (.sub q p) := by
+  constructor
+  · intro h
+    exact ⟨fun x d hp => (h x d).mp hp, fun x d hq => (h x d).mpr hq⟩
+  · rintro ⟨hpq, hqp⟩ x d
+    exact ⟨hpq x d, hqp x d⟩
+
+/-- The fresh object component has empty data relations; the actual NEW model
+supplies both relations on the other component. No data witnesses are added. -/
+theorem equivalentData_join_sat (ranges : Nat → D → Prop) (literal : Nat → D)
+    (i : Interp U) (j : DataInterp V D) (p q : Nat)
+    (hj : satExt ranges literal j (.equivalentData p q)) :
+    satExt ranges literal (joinData i j) (.equivalentData p q) := by
+  intro x d
+  cases x with
+  | inl x => simp [joinData]
+  | inr x => exact hj x d
 
 structure Module (ranges : Nat → D → Prop) (literal : Nat → D)
     (O : ExtAx → Prop) (M : Axiom → Prop) (S : Nat → Prop) : Prop where
@@ -225,7 +269,10 @@ theorem module_join_models {ranges : Nat → D → Prop} {literal : Nat → D}
   | base a =>
       exact IncrementalDataModuleReuse.module_join_models hm.baseModule i hi j
         (fun b hb => hj (.base b) hb) a ha
-  | card a => exact joinData_mask_sat S i j a (hm.cardAbsent a ha) (hj (.card a) ha)
+  | card a => exact joinData_mask_sat literal S i j a (hm.cardAbsent a ha) (hj (.card a) ha)
+  | equivalentData p q =>
+      exact equivalentData_join_sat ranges literal (mask (bsig S) i) j p q
+        (hj (.equivalentData p q) ha)
 
 theorem module_entails_iff {ranges : Nat → D → Prop} {literal : Nat → D}
     {O : ExtAx → Prop} {M : Axiom → Prop} {S : Nat → Prop}
@@ -330,6 +377,8 @@ theorem mixed_unsat_publication_exact {Subj : Type} (subject : Subj → Concept)
 #print axioms extended_new_consistent
 #print axioms owner_absent_of_omitted
 #print axioms joinData_mask_sat
+#print axioms equivalentData_iff_subproperties
+#print axioms equivalentData_join_sat
 #print axioms module_from_envelope
 #print axioms module_join_models
 #print axioms module_entails_iff
