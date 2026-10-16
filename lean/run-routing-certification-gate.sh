@@ -45,6 +45,7 @@ trap cleanup_checker EXIT
         ContextCalculus.IncrementalDataModuleReuse \
         ContextCalculus.IncrementalUnionConsistency \
         ContextCalculus.IncrementalDataConsistency \
+        ContextCalculus.IncrementalDataCardinality \
         ContextCalculus.IncrementalVerifiedSupport \
         ContextCalculus.IncrementalGlobalTold \
         ContextCalculus.KMAtomicABoxPublication \
@@ -167,6 +168,24 @@ for theorem in \
     IncrementalDataConsistency.augmented_affected_module_from_union \
     IncrementalDataConsistency.augmented_affected_named_query \
     IncrementalDataConsistency.augmented_affected_unsat_query \
+    IncrementalDataCardinality.satCard_mask_agree \
+    IncrementalDataCardinality.card_locality_sound \
+    IncrementalDataCardinality.extended_isModule_of_closed \
+    IncrementalDataCardinality.extended_union_consistent \
+    IncrementalDataCardinality.extended_new_consistent \
+    IncrementalDataCardinality.owner_absent_of_omitted \
+    IncrementalDataCardinality.joinData_mask_sat \
+    IncrementalDataCardinality.module_from_envelope \
+    IncrementalDataCardinality.module_join_models \
+    IncrementalDataCardinality.module_entails_iff \
+    IncrementalDataCardinality.module_outside \
+    IncrementalDataCardinality.common_named_query \
+    IncrementalDataCardinality.common_unsat_query \
+    IncrementalDataCardinality.mixed_named_publication_exact \
+    IncrementalDataCardinality.mixed_unsat_publication_exact \
+    IncrementalDataCardinality.extended_affected_module_from_union \
+    IncrementalDataCardinality.extended_affected_named_query \
+    IncrementalDataCardinality.extended_affected_unsat_query \
     IncrementalModuleReuse.positiveSingleton_role \
     IncrementalModuleReuse.positiveSingleton_concept \
     IncrementalModuleReuse.positiveSingleton_axiom \

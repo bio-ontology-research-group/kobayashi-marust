@@ -65,6 +65,21 @@ suite passed 3,075 tests with zero failures and ten ignored tests. Exact-source
 Lean certification and optimized timing validation remain pending; these checks
 do not establish a performance improvement.
 
+### Incremental data-cardinality reuse
+
+Compared with commit `26d96c831f1f8ed1adc2a2e297f0622f73eb7d2b`, retain
+unaffected rows when a source contains top-level named-class inclusions into
+unqualified `DataMinCardinality(1 p)` or `DataExactCardinality(1 p)` restrictions.
+Mark every cardinality owner as affected, including unchanged axioms. Check the
+actual new source when the affected module contains these restrictions; do not
+project them out of a published answer. Reject unsupported constructor positions,
+counts, fillers and built-in aliases at this optional reuse boundary.
+
+The fixed-data-domain proof covers consistency transfer, retained named and
+unsatisfiable-class queries, and the optional pure-object module path. Its 18
+axiom audits and 39 focused tests passed. Full release gates and optimized timing
+validation remain pending; this entry makes no performance claim.
+
 ### Native process cleanup
 
 - During cancellation, allow the supervisor to reap terminated children before

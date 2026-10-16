@@ -10,11 +10,11 @@ pub(crate) struct Eligibility { pub data_tbox: FxHashSet<u128>, pub object_only:
 /// Exact spellings recognized by the locality resolver, including partial-base
 /// aliases and default prefixes. Last bindings win; unresolved inputs decline
 /// at the existing public boundary, never acquire new admission here.
-fn universal_spellings(scan: &Scan) -> FxHashSet<String> {
+fn builtin_spellings(scan: &Scan, locals: &[&str]) -> FxHashSet<String> {
     let mut result = FxHashSet::default();
     // The data boundary models ordinary properties; fixed-empty bottomData
     // needs a separate semantic constructor and is conservatively excluded.
-    for local in ["topObjectProperty", "topDataProperty", "bottomDataProperty"] {
+    for local in locals {
         let iri = format!("http://www.w3.org/2002/07/owl#{local}");
         result.insert(format!("<{iri}>"));
         result.insert(iri.clone());
@@ -39,6 +39,26 @@ fn forbidden(node: &Node<'_>, universals: &FxHashSet<String>) -> bool {
             | "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality")
             || args.iter().any(|arg| forbidden(arg, universals)),
     }
+}
+// The only data class constructor exception is an entire top-level axiom.
+// Public admission supplies entity typing; this guard additionally requires
+// named tokens and excludes fixed builtins under every effective prefix alias.
+fn named_atom(node: &Node<'_>) -> bool {
+    node.as_atom().is_some_and(|token| {
+        (token.starts_with('<') && token.ends_with('>'))
+            || (!matches!(token.as_bytes().first(), Some(b'"' | b'^' | b'@'))
+                && !token.starts_with("_:") && token.contains(':'))
+    })
+}
+fn cardinality_axiom(head: &str, args: &[&Node<'_>],
+    builtin_classes: &FxHashSet<String>, universals: &FxHashSet<String>) -> bool
+{
+    if head != "SubClassOf" || args.len() != 2 || !named_atom(args[0])
+        || forbidden(args[0], universals)
+        || args[0].as_atom().is_some_and(|c| builtin_classes.contains(c)) { return false; }
+    let Node::List("DataMinCardinality" | "DataExactCardinality", a) = args[1] else { return false; };
+    a.len() == 2 && a[0].as_atom() == Some("1") && named_atom(&a[1])
+        && !forbidden(&a[1], universals)
 }
 fn atom(node: &Node<'_>) -> bool { node.as_atom().is_some() }
 fn role(node: &Node<'_>) -> bool {
@@ -156,7 +176,9 @@ pub(crate) fn eligible(text: &str, scan: &Scan) -> Option<Eligibility> {
     // Bound the legacy byte parser before unsafe Unicode atom boundaries or
     // deep trees. Literal bodies keep their exact values and public admission.
     if !unicode_only_in_literal_bodies(text) { return None; }
-    let universals = universal_spellings(scan);
+    let universals = builtin_spellings(scan,
+        &["topObjectProperty", "topDataProperty", "bottomDataProperty"]);
+    let builtin_classes = builtin_spellings(scan, &["Thing", "Nothing"]);
     let mut data_tbox = FxHashSet::default();
     let mut object_only = true;
     for statement in &scan.statements {
@@ -166,9 +188,18 @@ pub(crate) fn eligible(text: &str, scan: &Scan) -> Option<Eligibility> {
         if slice.len()>32_768 || slice.bytes().filter(|b|*b==b'(').count()>256 { return None; }
         let mut parser = Parser::new(slice);
         let node = parser.parse().ok()?;
-        if parser.peek().is_some() || forbidden(&node, &universals) { return None; }
+        if parser.peek().is_some() { return None; }
         let Node::List(head, args) = &node else { return None; };
         let args: Vec<_> = args.iter().filter(|a|a.head()!=Some("Annotation")).collect();
+        if cardinality_axiom(head, &args, &builtin_classes, &universals) {
+            // Mark even unchanged cardinal owners. Retained query modules
+            // must omit these axioms, hence their owners are absent from the
+            // closed logical signature used by IncrementalDataCardinality.
+            data_tbox.insert(statement.hash);
+            object_only = false;
+            continue;
+        }
+        if forbidden(&node, &universals) { return None; }
         if statement.kind==StmtKind::Declaration {
             if args.len()!=1 || !matches!(args[0], Node::List("Class"|"ObjectProperty"|"DataProperty"|"NamedIndividual"|"Datatype"|"AnnotationProperty", a) if a.len()==1 && atom(&a[0])) { return None; }
             if matches!(args[0].head(), Some("DataProperty" | "Datatype")) { object_only = false; }
@@ -201,16 +232,70 @@ mod tests {
         assert_eq!(result.data_tbox,axioms.iter().map(|a|fingerprint(a.as_bytes())).collect());
     }
     #[test]
-    fn all_data_class_constructors_decline_even_when_only_in_assertions() {
+    fn unsupported_data_class_positions_and_constructors_decline() {
         for class in ["DataSomeValuesFrom(:p xsd:string)","DataAllValuesFrom(:p xsd:string)",
             "DataHasValue(:p \"x\")","DataMinCardinality(1 :p)","DataMaxCardinality(1 :p)","DataExactCardinality(1 :p)"] {
-            assert!(check(&format!("SubClassOf(:A {class})")).is_none());
+            if !class.starts_with("DataMinCardinality(1 ") && !class.starts_with("DataExactCardinality(1 ") {
+                assert!(check(&format!("SubClassOf(:A {class})")).is_none());
+            }
             assert!(check(&format!("ClassAssertion({class} :a)")).is_none());
             assert!(check(&format!("DataPropertyDomain(:p {class})")).is_none());
         }
         for axiom in ["HasKey(:A () (:p))","DLSafeRule(Body(ClassAtom(:A Variable(:x))) Head(ClassAtom(:B Variable(:x))))",
             "DatatypeDefinition(:D xsd:string)","EquivalentDataProperties(:p :q)","UnknownAxiom(:A)"] {
             assert!(check(axiom).is_none(),"{axiom}");
+        }
+    }
+    #[test]
+    fn cardinality_one_is_top_level_named_and_marks_exact_owner_hashes() {
+        let cards=["SubClassOf(:A DataMinCardinality(1 :p))",
+            "SubClassOf(:B DataExactCardinality(1 :q))"];
+        let text=source(&format!("{} SubClassOf(:E :F)",cards.join(" ")));
+        let result=eligible(&text,&scan(&text).unwrap()).unwrap();
+        assert!(!result.object_only);
+        assert_eq!(result.data_tbox,cards.iter().map(|a|fingerprint(a.as_bytes())).collect());
+        for axiom in [
+            "SubClassOf(ObjectIntersectionOf(:A :B) DataMinCardinality(1 :p))",
+            "SubClassOf(:A DataMinCardinality(1 :p xsd:string))",
+            "SubClassOf(:A DataExactCardinality(1 :p rdfs:Literal))",
+            "SubClassOf(:A DataMinCardinality(0 :p))",
+            "SubClassOf(:A DataExactCardinality(2 :p))",
+            "SubClassOf(:A DataMaxCardinality(1 :p))",
+            "SubClassOf(:A ObjectIntersectionOf(:B DataMinCardinality(1 :p)))",
+            "SubClassOf(DataMinCardinality(1 :p) :A)",
+            "EquivalentClasses(:A DataExactCardinality(1 :p))",
+            "SubClassOf(owl:topObjectProperty DataMinCardinality(1 :p))",
+            "SubClassOf(:A DataMinCardinality(1 _:p))",
+            "SubClassOf(:A DataMinCardinality(1 \"literal\"))",
+        ] { assert!(check(axiom).is_none(),"{axiom}"); }
+    }
+    #[test]
+    fn cardinality_builtin_aliases_decline_and_last_prefix_binding_wins() {
+        for local in ["Thing","Nothing"] {
+            let iri=format!("http://www.w3.org/2002/07/owl#{local}");
+            for token in [format!("owl:{local}"),format!("<{iri}>")] {
+                assert!(check(&format!("SubClassOf({token} DataMinCardinality(1 :p))")).is_none());
+            }
+            for (prefix,base,suffix) in [("t:","http://www.w3.org/2002/07/owl#",local),
+                (":","http://www.w3.org/2002/07/owl#",local),
+                ("t:",if local == "Thing" {"http://www.w3.org/2002/07/owl#Th"}
+                    else {"http://www.w3.org/2002/07/owl#No"},if local == "Thing" {"ing"} else {"thing"}),
+                ("t:",iri.as_str(),"")] {
+                let text=format!("Prefix({prefix}=<{base}>) Ontology(SubClassOf({prefix}{suffix} DataMinCardinality(1 <urn:p>)))");
+                assert!(eligible(&text,&scan(&text).unwrap()).is_none(),"{text}");
+            }
+        }
+        for local in ["topDataProperty","bottomDataProperty"] {
+            for token in [format!("owl:{local}"),format!("<http://www.w3.org/2002/07/owl#{local}>")] {
+                assert!(check(&format!("SubClassOf(:A DataExactCardinality(1 {token}))")).is_none());
+            }
+            let text=format!("Prefix(t:=<http://www.w3.org/2002/07/owl#{local}>) Ontology(SubClassOf(<urn:A> DataExactCardinality(1 t:)))");
+            assert!(eligible(&text,&scan(&text).unwrap()).is_none());
+        }
+        for (first,last,accepted) in [("http://www.w3.org/2002/07/owl#","urn:ordinary#",true),
+            ("urn:ordinary#","http://www.w3.org/2002/07/owl#",false)] {
+            let text=format!("Prefix(t:=<{first}>) Prefix(t:=<{last}>) Ontology(SubClassOf(t:Thing DataMinCardinality(1 <urn:p>)))");
+            assert_eq!(eligible(&text,&scan(&text).unwrap()).is_some(),accepted);
         }
     }
     #[test]

@@ -910,6 +910,67 @@ fn common_data_certificate_reuses_object_rows_after_mixed_edit() {
 }
 
 #[test]
+fn cardinality_data_owners_reclassify_after_mixed_assertion_edit() {
+    for constructor in ["DataMinCardinality", "DataExactCardinality"] {
+        let card=format!("SubClassOf(:C {constructor}(1 :p))");
+        let shared=["Declaration(DataProperty(:p))",card.as_str(),"SubClassOf(:E :F)"];
+        let mut before=shared.to_vec();before.push("DataPropertyAssertion(:p :a \"x\")");
+        let mut after=shared.to_vec();after.push("SubClassOf(:A :B)");
+        let old=ontology(&before);let new=ontology(&after);
+        let invalid=new.replace("SubClassOf(:A :B)","SubClassOf(:A :Undeclared)");
+        let rows=session(&[old.clone(),new.clone(),invalid,new.clone()]);
+        for (index,source) in [(0,&old),(1,&new)] {
+            assert_eq!(rows[index]["status"],"ok","{constructor}: {:#?}",rows[index]);
+            assert_eq!(canonical(&rows[index]["result"]),canonical(&fresh(source,950+index)));
+        }
+        // The affected C module contains a cardinal owner, so the optional
+        // pure-object shortcut must decline and actual full NEW must run.
+        assert_eq!(rows[1]["receipt"]["strategy"],"common_nominal_subject_reuse","{constructor}: {:#?}",rows[1]);
+        assert!(rows[1]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+        assert!(rows[1]["receipt"]["reclassified_subjects"].as_u64().unwrap()>0);
+        assert_eq!(rows[2]["status"],"error");
+        assert_eq!(rows[3]["receipt"]["strategy"],"exact_reuse");
+        assert_eq!(canonical(&rows[3]["result"]),canonical(&rows[1]["result"]));
+    }
+}
+
+#[test]
+fn cardinality_owner_removal_restoration_and_new_data_clash_stay_exact() {
+    let card="SubClassOf(:C DataMinCardinality(1 :p))";
+    let shared=["Declaration(DataProperty(:p))","Declaration(DataProperty(:q))",
+        "DataPropertyRange(:p DataOneOf(\"x\"))",
+        "DataPropertyRange(:p DataComplementOf(DataOneOf(\"x\")))","SubClassOf(:E :F)"];
+    let mut before=shared.to_vec();before.extend([card,"DataPropertyAssertion(:q :a \"x\")"]);
+    let mut after=shared.to_vec();after.push("SubClassOf(:A :B)");
+    let mut restored=after.clone();restored.extend([card,"SubClassOf(:B :D)"]);
+    let revisions=[ontology(&before),ontology(&after),ontology(&restored)];
+    let rows=session(&revisions);
+    for (index,source) in revisions.iter().enumerate() {
+        assert_eq!(rows[index]["status"],"ok","{:#?}",rows[index]);
+        assert_eq!(rows[index]["result"]["consistent"],true);
+        assert_eq!(canonical(&rows[index]["result"]),canonical(&fresh(source,960+index)));
+    }
+    // Empty property range makes C unsatisfiable only while its min1 axiom
+    // exists. Never reuse the old C row across removal or restoration.
+    assert!(canonical(&rows[0]["result"]).1.contains(":C"));
+    assert!(!canonical(&rows[1]["result"]).1.contains(":C"));
+    assert!(canonical(&rows[2]["result"]).1.contains(":C"));
+    assert!(rows[1]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+
+    let old=ontology(&["Declaration(DataProperty(:p))",
+        "SubClassOf(:C DataExactCardinality(1 :p))","ClassAssertion(:C :a)",
+        "DataPropertyAssertion(:p :a \"x\")","SubClassOf(:E :F)"]);
+    let new=old.replace("SubClassOf(:E :F)",
+        "SubClassOf(:E :F)\nDataPropertyAssertion(:p :a \"y\")\nSubClassOf(:A :B)");
+    let rows=session(&[old,new.clone()]);
+    assert_eq!(rows[1]["status"],"ok","{:#?}",rows[1]);
+    assert_eq!(rows[1]["result"]["consistent"],false);
+    assert_eq!(rows[1]["receipt"]["strategy"],"full_classify");
+    assert_eq!(rows[1]["receipt"]["reused_subjects"],0);
+    assert_eq!(canonical(&rows[1]["result"]),canonical(&fresh(&new,970)));
+}
+
+#[test]
 fn common_data_core_prefers_plain_module_before_full_common_path() {
     // Even a single independent data assertion belongs to the full empty
     // core. Keep it out of the independently certified pure-object query
