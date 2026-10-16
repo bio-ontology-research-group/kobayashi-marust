@@ -46,6 +46,11 @@
   retained work and fallback; the benchmark does not record a Java avoided-scan
   count. This section makes no incremental performance claim.
 
+### Native process cleanup
+
+- During cancellation, allow the supervisor to reap terminated children before
+  stopping it. Bound the cleanup wait and preserve the caller's interrupt state.
+
 ### Native corpus evidence and known coverage limitation
 
 The 1,920-input audit used native candidate binary
@@ -65,8 +70,9 @@ ORE `7345` timed out at the original 240-second limit; released v1.5.0 at commit
 completed the candidate case but do not replace or erase that original coverage
 loss. The Java-only changes incorporated in commit
 `4af7b3183898d2e5fbd546a8ffd32d9caed4ab20` leave this historical audit's native
-inputs unchanged. This audit does not cover later uncommitted native changes
-and is not a new full-corpus Java measurement. Detailed performance and
+inputs unchanged. This audit does not cover the later native changes committed in
+`947660153efe744b877b0638345ab85e73e91172` and is not a new full-corpus
+Java measurement. Detailed performance and
 release-validation evidence is reported separately with exact source and artifact
 identities; these corpus counts alone do not establish release acceptance.
 

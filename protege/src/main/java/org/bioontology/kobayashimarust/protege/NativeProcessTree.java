@@ -24,33 +24,63 @@ final class NativeProcessTree {
         List<ProcessHandle> descendants = new ArrayList<>(process.descendants()
                 .collect(Collectors.toList()));
         Collections.reverse(descendants);
-        for (ProcessHandle descendant : descendants) {
-            descendant.destroy();
-        }
-        process.destroy();
+        // Preserve interruption without letting it skip ownership cleanup.
+        boolean interrupted = Thread.interrupted();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         try {
-            if (!process.waitFor(500, TimeUnit.MILLISECONDS)) {
+            for (ProcessHandle descendant : descendants) {
+                descendant.destroy();
+            }
+            // Keep the supervisor alive to reap its children. Killing it immediately
+            // can orphan zombies under a subreaper; ProcessHandle still sees them alive.
+            interrupted |= awaitDescendants(descendants, phaseDeadline(deadline, 500));
+            for (ProcessHandle descendant : descendants) {
+                if (descendant.isAlive()) {
+                    descendant.destroyForcibly();
+                }
+            }
+            interrupted |= awaitDescendants(descendants, phaseDeadline(deadline, 500));
+            process.destroy();
+            interrupted |= awaitProcess(process, phaseDeadline(deadline, 500));
+            if (process.isAlive()) {
                 process.destroyForcibly();
-                process.waitFor(5, TimeUnit.SECONDS);
             }
-        } catch (InterruptedException error) {
-            process.destroyForcibly();
-            Thread.currentThread().interrupt();
-        }
-        for (ProcessHandle descendant : descendants) {
-            if (descendant.isAlive()) {
-                descendant.destroyForcibly();
+            interrupted |= awaitProcess(process, deadline);
+            interrupted |= awaitDescendants(descendants, deadline);
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
             }
         }
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    }
+
+    private static long phaseDeadline(long deadline, long millis) {
+        return Math.min(deadline, System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis));
+    }
+
+    private static boolean awaitDescendants(List<ProcessHandle> descendants, long deadline) {
+        boolean interrupted = false;
         while (descendants.stream().anyMatch(ProcessHandle::isAlive)
                 && System.nanoTime() < deadline) {
             try {
-                Thread.sleep(10);
+                TimeUnit.NANOSECONDS.sleep(Math.min(TimeUnit.MILLISECONDS.toNanos(10),
+                        Math.max(0, deadline - System.nanoTime())));
             } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                break;
+                interrupted = true;
             }
         }
+        return interrupted;
+    }
+
+    private static boolean awaitProcess(Process process, long deadline) {
+        boolean interrupted = false;
+        while (process.isAlive() && System.nanoTime() < deadline) {
+            try {
+                process.waitFor(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            } catch (InterruptedException error) {
+                interrupted = true;
+            }
+        }
+        return interrupted;
     }
 }
