@@ -58,6 +58,9 @@ jobs:
           for test_name in "${checker_tests[@]}"; do
             skip_args+=(--skip "$test_name")
           done
+          worker_root=$(cd "${CARGO_TARGET_DIR:-target}/release" && pwd)
+          KM_OFN_BIN="$worker_root/ofn" KM_ELC_BIN="$worker_root/elc" \
+          KM_ENGINE="$worker_root/kobayashi-marust" KM_TAB_BIN="$worker_root/tableau_cli" \
           cargo test --release --locked --lib -- \
             --test-threads=1 "${skip_args[@]}" 2>&1 | tee /tmp/km-test.log
           status=${PIPESTATUS[0]}

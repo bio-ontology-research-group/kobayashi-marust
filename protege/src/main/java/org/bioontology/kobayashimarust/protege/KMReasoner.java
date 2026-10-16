@@ -38,6 +38,19 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private final Set<OWLClass> unsatisfiable = new HashSet<>();
     private volatile Classifier.Session incrementalSession;
     private OWLOntology committedOntology;
+    private final RetainedFunctionalSyntax serialized = new RetainedFunctionalSyntax();
+    private boolean sourceSynchronized;
+    private Set<OWLOntology> committedImports = Collections.emptySet();
+    private boolean lastPreparationUsedDelta;
+    private FlushContext flushContext;
+
+    private static final class FlushContext {
+        final boolean allowDelta;
+        boolean handled;
+        FlushContext(boolean allowDelta) { this.allowDelta = allowDelta; }
+    }
+
+    boolean lastPreparationUsedDelta() { return lastPreparationUsedDelta; }
 
     protected KMReasoner(OWLOntology rootOntology, OWLReasonerConfiguration config,
                          BufferingMode bufferingMode) {
@@ -50,20 +63,32 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     // ---- classification -------------------------------------------------
 
-    private synchronized void classify() {
+    private synchronized void classify() { classify(null, null); }
+
+    private void classify(Set<OWLAxiom> added, Set<OWLAxiom> removed) {
+        try {
+            classifySource(added, removed);
+            sourceSynchronized = true;
+        } catch (RuntimeException | Error failure) {
+            sourceSynchronized = false;
+            throw failure;
+        }
+    }
+
+    private void classifySource(Set<OWLAxiom> added, Set<OWLAxiom> removed) {
         OWLOntology ont = getRootOntology();
-        final OWLOntology candidate;
+        final RetainedFunctionalSyntax.Prepared prepared;
         final String candidateSource;
         try {
-            candidate = FlattenedOntology.snapshot(ont);
-            candidateSource = FlattenedOntology.functionalSyntaxOfSnapshot(candidate);
+            prepared = added == null ? serialized.prepare(ont) : serialized.prepare(ont, added, removed);
+            candidateSource = prepared.source;
         } catch (Exception error) {
             throw new ReasonerInternalException(error);
         }
 
         // Complete IRI -> named class. Local fragments are not unique.
         Map<String, OWLClass> byIri = new HashMap<>();
-        Set<OWLClass> classes = new HashSet<>(candidate.getClassesInSignature(Imports.INCLUDED));
+        Set<OWLClass> classes = new HashSet<>(prepared.classes);
         classes.add(owlThing); classes.add(owlNothing);
         for (OWLClass c : classes) byIri.put(c.getIRI().toString(), c);
 
@@ -85,13 +110,24 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             }
             throw new ReasonerInternalException(e);
         }
+        // The native transaction has succeeded. The retained fast path changes
+        // only its tiny exact delta in our private detached snapshot; preparation
+        // and native refusal never mutate this committed snapshot or cache.
+        if (prepared.fallbackSnapshot != null) {
+            committedOntology = prepared.fallbackSnapshot;
+        } else {
+            OWLOntologyManager manager = committedOntology.getOWLOntologyManager();
+            manager.removeAxioms(committedOntology, prepared.removed);
+            manager.addAxioms(committedOntology, prepared.added);
+        }
+        serialized.commit(prepared);
+        committedImports = prepared.imports;
         // Commit the Java-side hierarchy only after the native transaction has
         // succeeded. A declined update therefore leaves the preceding answers
         // intact, matching the native session's atomic revision contract.
         group.clear(); rep.clear(); supers.clear(); subs.clear(); unsatisfiable.clear();
         consistent = res.consistent;
         dropped = res.dropped;
-        committedOntology = candidate;
 
         // direct (non-closed) named subsumptions
         List<OWLClass[]> pairs = new ArrayList<>();
@@ -145,6 +181,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 if (!rc.equals(rd)) { supers.get(rc).add(rd); subs.get(rd).add(rc); }
             }
         }
+        lastPreparationUsedDelta = prepared.usedSuppliedDelta;
     }
 
     private OWLClass find(OWLClass c) {
@@ -281,7 +318,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- precompute / metadata -----------------------------------------
 
     @Override public String getReasonerName() { return "Kobayashi-MaRust"; }
-    @Override public Version getReasonerVersion() { return new Version(1, 4, 4, 0); }
+    @Override public Version getReasonerVersion() { return new Version(1, 5, 1, 0); }
 
     @Override public void precomputeInferences(InferenceType... types) { /* eager in ctor */ }
     @Override public boolean isPrecomputed(InferenceType inferenceType) { return true; }
@@ -289,8 +326,41 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY));
     }
 
+    @Override public synchronized void flush() {
+        // OWLReasonerBase advances its private bookkeeping before handleChanges
+        // succeeds. Its effective delta is usable only while both revisions agree.
+        Set<OWLOntology> closure = RetainedFunctionalSyntax.importsView(getRootOntology());
+        boolean safe = sourceSynchronized && closure.equals(committedImports);
+        for (OWLOntologyChange change : getPendingChanges()) {
+            if (!closure.contains(change.getOntology()) && !committedImports.contains(change.getOntology()))
+                continue; // unrelated ontology in the same source manager
+            if (!(change instanceof AddAxiom) && !(change instanceof RemoveAxiom)) {
+                safe = false;
+            } else if (!RetainedFunctionalSyntax.safeDeltaAxiom(change.getAxiom())) {
+                safe = false;
+            }
+        }
+        FlushContext previous = flushContext;
+        FlushContext current = new FlushContext(safe);
+        flushContext = current;
+        try {
+            super.flush();
+            // Empty base diffs can suppress the callback after a failed native
+            // revision, or for annotations/ontology identity/import changes.
+            if (!current.handled && !safe) classify();
+        } catch (RuntimeException | Error failure) {
+            sourceSynchronized = false;
+            throw failure;
+        } finally {
+            flushContext = previous;
+        }
+    }
+
     @Override protected void handleChanges(Set<OWLAxiom> addAxioms, Set<OWLAxiom> removeAxioms) {
-        classify(); // re-run on flush()
+        FlushContext context = flushContext;
+        if (context != null) context.handled = true;
+        if (context != null && context.allowDelta) classify(addAxioms, removeAxioms);
+        else classify();
     }
 
     @Override public void interrupt() {

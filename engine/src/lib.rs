@@ -31,5 +31,7 @@ pub mod routing;
 pub mod sample_prof;
 pub mod source_incremental;
 pub mod source_locality;
+mod source_reuse_grammar;
+mod named_subclass_validation;
 pub mod incr_session;
 pub mod tableau;

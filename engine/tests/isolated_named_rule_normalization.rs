@@ -24,7 +24,14 @@ fn isolated_rule_frontend_preserves_source_counts_and_refuses_connected_names() 
         let output = command.arg("ofn").arg(input).arg("--meta").arg(&meta).output().unwrap();
         if expected_projected == 0 {
             assert!(!output.status.success(), "{name}: an uncertified rule set was admitted");
-            assert!(String::from_utf8_lossy(&output.stderr).contains("DL-safe rules"), "{name}");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if name == "prefix_alias" {
+                assert_eq!(output.status.code(), Some(3), "{name}: {stderr}");
+                assert!(output.stdout.is_empty(), "{name}: refused input emitted clauses");
+                assert_eq!(stderr.trim(), "out of fragment: builtin canonicalization: rebound owl prefix", "{name}");
+            } else {
+                assert!(stderr.contains("DL-safe rules"), "{name}: {stderr}");
+            }
             continue;
         }
         assert!(output.status.success(), "{name}: {}", String::from_utf8_lossy(&output.stderr));

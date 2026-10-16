@@ -4,6 +4,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.semanticweb.owlapi.apibinding.OWLManager;
 import org.semanticweb.owlapi.model.*;
+import org.semanticweb.owlapi.model.parameters.Imports;
 import org.semanticweb.owlapi.reasoner.OWLReasoner;
 import org.semanticweb.owlapi.reasoner.BufferingMode;
 import org.semanticweb.owlapi.reasoner.UnsupportedEntailmentTypeException;
@@ -188,6 +189,67 @@ public class ReasonerTest {
     }
 
     @Test
+    public void successiveSnapshotsPreserveIdentityAndAnnotatedImportsClosure() throws Exception {
+        for (boolean anonymous : new boolean[]{false, true}) {
+            OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+            OWLDataFactory df = manager.getOWLDataFactory();
+            OWLOntology ontology = anonymous
+                    ? manager.createOntology(new OWLOntologyID())
+                    : manager.createOntology(IRI.create(NS.substring(0, NS.length() - 1)));
+            assertEquals(anonymous, ontology.getOntologyID().isAnonymous());
+            OWLOntology imported = manager.createOntology(IRI.create(NS + "snapshotImport"));
+            manager.applyChange(new AddImport(ontology,
+                    df.getOWLImportsDeclaration(imported.getOntologyID().getOntologyIRI().get())));
+            OWLClass a = cls(df, "SnapshotA"), b = cls(df, "SnapshotB");
+            OWLClass c = cls(df, "SnapshotC"), x = cls(df, "SnapshotX"), y = cls(df, "SnapshotY");
+            for (OWLClass cls : new OWLClass[]{a, b, c}) {
+                manager.addAxiom(ontology, df.getOWLDeclarationAxiom(cls));
+            }
+            for (OWLClass cls : new OWLClass[]{x, y}) {
+                manager.addAxiom(imported, df.getOWLDeclarationAxiom(cls));
+            }
+            OWLAnnotation rootNote = df.getOWLAnnotation(df.getRDFSComment(), df.getOWLLiteral("root axiom"));
+            OWLAnnotation importNote = df.getOWLAnnotation(df.getRDFSComment(), df.getOWLLiteral("import axiom"));
+            OWLAxiom rootAxiom = df.getOWLSubClassOfAxiom(a, b, Collections.singleton(rootNote));
+            OWLAxiom importedAxiom = df.getOWLSubClassOfAxiom(x, y, Collections.singleton(importNote));
+            OWLAxiom label = df.getOWLAnnotationAssertionAxiom(
+                    df.getRDFSLabel(), x.getIRI(), df.getOWLLiteral("imported label"));
+            manager.addAxiom(ontology, rootAxiom);
+            manager.addAxiom(imported, importedAxiom);
+            manager.addAxiom(imported, label);
+
+            OWLOntology first = FlattenedOntology.snapshot(ontology);
+            String firstSource = FlattenedOntology.functionalSyntaxOfSnapshot(first);
+            assertEquals(ontology.getOntologyID(), first.getOntologyID());
+            assertEquals(ontology.getAxioms(Imports.INCLUDED), first.getAxioms());
+            assertTrue(first.getImportsDeclarations().isEmpty());
+            assertFalse("native answers must use full entity IRIs", firstSource.contains("Prefix("));
+            assertTrue(firstSource.contains("Class(<" + a.getIRI() + ">)"));
+            OWLOntology roundtrip = OWLManager.createOWLOntologyManager()
+                    .loadOntologyFromOntologyDocument(
+                            new org.semanticweb.owlapi.io.StringDocumentSource(firstSource));
+            assertEquals("full-IRI serialization preserves annotated closure axioms",
+                    first.getAxioms(), roundtrip.getAxioms());
+
+            OWLAxiom addition = df.getOWLSubClassOfAxiom(b, c);
+            manager.addAxiom(ontology, addition);
+            OWLOntology second = FlattenedOntology.snapshot(ontology);
+            String secondSource = FlattenedOntology.functionalSyntaxOfSnapshot(second);
+            assertEquals(ontology.getOntologyID(), second.getOntologyID());
+            assertEquals(ontology.getAxioms(Imports.INCLUDED), second.getAxioms());
+            assertTrue(second.containsAxiom(rootAxiom));
+            assertTrue(second.containsAxiom(importedAxiom));
+            assertTrue(second.containsAxiom(label));
+            assertFalse("snapshots must remain detached", first.containsAxiom(addition));
+            int firstBody = firstSource.indexOf('\n', firstSource.indexOf("Ontology("));
+            int secondBody = secondSource.indexOf('\n', secondSource.indexOf("Ontology("));
+            assertTrue(firstBody > 0 && secondBody > 0);
+            assertEquals("prefixes and ontology identity must stay stable",
+                    firstSource.substring(0, firstBody), secondSource.substring(0, secondBody));
+        }
+    }
+
+    @Test
     public void bufferingFlushUsesNativeIncrementalSession() throws Exception {
         OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
         OWLDataFactory df = manager.getOWLDataFactory();
@@ -195,11 +257,17 @@ public class ReasonerTest {
         OWLClass a = cls(df, "IncrementalA");
         OWLClass b = cls(df, "IncrementalB");
         OWLClass c = cls(df, "IncrementalC");
+        OWLClass x = cls(df, "UnchangedX");
+        OWLClass y = cls(df, "UnchangedY");
         manager.addAxiom(ontology, df.getOWLSubClassOfAxiom(a, b));
+        manager.addAxiom(ontology, df.getOWLDeclarationAxiom(c));
+        manager.addAxiom(ontology, df.getOWLSubClassOfAxiom(x, y));
 
         KMReasoner reasoner = (KMReasoner) new KMReasonerFactory().createReasoner(ontology);
         assertEquals(BufferingMode.BUFFERING, reasoner.getBufferingMode());
         assertFalse(superContains(reasoner, a, c));
+        assertTrue(superContains(reasoner, x, y));
+        assertEquals(1L, reasoner.getLastIncrementalReceipt().revision);
 
         OWLAxiom addition = df.getOWLSubClassOfAxiom(b, c);
         manager.addAxiom(ontology, addition);
@@ -210,17 +278,101 @@ public class ReasonerTest {
 
         reasoner.flush();
         assertTrue(superContains(reasoner, a, c));
+        assertTrue("the independent component remains exact", superContains(reasoner, x, y));
         assertTrue(reasoner.getCommittedOntologySnapshot().containsAxiom(addition));
         assertTrue(reasoner.getPendingChanges().isEmpty());
         Classifier.IncrementalReceipt receipt = reasoner.getLastIncrementalReceipt();
         assertNotNull(receipt);
-        assertEquals("el_delta", receipt.strategy);
+        assertEquals("common_module_reuse", receipt.strategy);
+        assertEquals(2L, receipt.revision);
         assertTrue(receipt.meaningful_incremental_update);
-        assertTrue("incremental route must report retained native state",
-                receipt.retained_states > 0);
-        assertTrue("incremental route must report invalidated or newly derived state",
-                receipt.invalidated_states > 0);
+        assertTrue("the independent component's published row must actually be retained",
+                receipt.reused_subjects > 0);
+        assertTrue("the changed component must be reclassified", receipt.reclassified_subjects > 0);
+        assertTrue("source delta counters must be verified", receipt.statement_delta_verified);
+        assertEquals(1L, receipt.added_axioms);
+        assertEquals(0L, receipt.removed_axioms);
+        assertTrue(receipt.module_axioms > 0);
+        assertTrue(receipt.rebuilt_index_axioms > 0);
+        assertEquals("building a union index does not reuse old index work", 0L,
+                receipt.reused_index_axioms);
+        assertEquals("module classification does not resume a backend fixpoint", 0L,
+                receipt.resumed_backend_states);
+        assertEquals("legacy state counters must not invent retained backend work", 0,
+                receipt.retained_states);
+        assertFalse(receipt.reused_complete_answer);
         reasoner.dispose();
+    }
+
+    @Test
+    public void incrementalReceiptPreservesCompilerCountersAndLegacyAbsence() {
+        com.google.gson.Gson gson = new com.google.gson.Gson();
+        Classifier.IncrementalReceipt current = gson.fromJson(
+                "{\"strategy\":\"full_classify\",\"meaningful_incremental_update\":true,"
+                + "\"index_build_calls\":2,\"index_build_failures\":0,"
+                + "\"cross_revision_compiled_axioms\":4000000000,\"same_update_compiled_axioms\":3,"
+                + "\"compiled_locality_axioms\":4,\"csr_axiom_records\":5,"
+                + "\"csr_conjunctions\":6,\"csr_literal_records\":7}",
+                Classifier.IncrementalReceipt.class);
+        assertEquals("full_classify", current.strategy);
+        assertTrue(current.meaningful_incremental_update);
+        assertEquals(Long.valueOf(2), current.index_build_calls);
+        assertEquals(Long.valueOf(0), current.index_build_failures);
+        assertEquals(Long.valueOf(4000000000L), current.cross_revision_compiled_axioms);
+        assertEquals(Long.valueOf(3), current.same_update_compiled_axioms);
+        assertEquals(Long.valueOf(4), current.compiled_locality_axioms);
+        assertEquals(Long.valueOf(5), current.csr_axiom_records);
+        assertEquals(Long.valueOf(6), current.csr_conjunctions);
+        assertEquals(Long.valueOf(7), current.csr_literal_records);
+        assertEquals(0L, current.reused_subjects);
+        assertEquals(0L, current.resumed_backend_states);
+
+        Classifier.IncrementalReceipt legacy = gson.fromJson(
+                "{\"revision\":5,\"strategy\":\"el_delta\",\"retained_states\":7}",
+                Classifier.IncrementalReceipt.class);
+        assertEquals(5L, legacy.revision);
+        assertEquals("el_delta", legacy.strategy);
+        assertEquals(7, legacy.retained_states);
+        assertNull(legacy.index_build_calls);
+        assertNull(legacy.index_build_failures);
+        assertNull(legacy.cross_revision_compiled_axioms);
+        assertNull(legacy.same_update_compiled_axioms);
+        assertNull(legacy.compiled_locality_axioms);
+        assertNull(legacy.csr_axiom_records);
+        assertNull(legacy.csr_conjunctions);
+        assertNull(legacy.csr_literal_records);
+    }
+
+    @Test
+    public void nativeReceiptRevisionSurvivesRejectedReplacement() throws Exception {
+        String declarations = "Declaration(Class(<urn:receipt:A>)) "
+                + "Declaration(Class(<urn:receipt:B>)) Declaration(Class(<urn:receipt:C>)) ";
+        String initial = "Ontology(" + declarations
+                + "SubClassOf(<urn:receipt:A> <urn:receipt:B>))";
+        String extended = "Ontology(" + declarations
+                + "SubClassOf(<urn:receipt:A> <urn:receipt:B>) "
+                + "SubClassOf(<urn:receipt:B> <urn:receipt:C>))";
+        try (Classifier.Session session = new Classifier.Session(initial)) {
+            assertEquals(1L, session.receipt().revision);
+            Classifier.Result committed = session.replace(extended);
+            Classifier.IncrementalReceipt receipt = session.receipt();
+            assertEquals(2L, receipt.revision);
+            try {
+                session.replace("Ontology(Declaration(Class(<urn:receipt:A>)) "
+                        + "SubClassOf(<urn:receipt:A> <urn:receipt:Missing>))");
+                fail("an undeclared nonbuiltin class must be rejected");
+            } catch (RuntimeException expected) {
+                assertTrue(expected.getMessage().contains("no matching declaration"));
+            }
+            assertSame("rejection must preserve the last committed answer", committed, session.result());
+            assertSame("rejection must preserve its receipt and revision", receipt, session.receipt());
+            session.replace(extended);
+            assertEquals("only successful transactions advance the native revision", 3L,
+                    session.receipt().revision);
+            assertEquals("exact_reuse", session.receipt().strategy);
+            assertTrue(session.receipt().reused_complete_answer);
+            assertEquals(0L, session.receipt().resumed_backend_states);
+        }
     }
 
     @Test
@@ -286,8 +438,16 @@ public class ReasonerTest {
         assertTrue("a clean session must recover after the failed transaction",
                 superContains(reasoner, a, c));
         assertTrue(reasoner.getCommittedOntologySnapshot().containsAxiom(valid));
-        assertNull("a restarted native session must not claim retained delta work",
-                reasoner.getLastIncrementalReceipt());
+        Classifier.IncrementalReceipt restarted = reasoner.getLastIncrementalReceipt();
+        assertNotNull(restarted);
+        assertEquals("full_classify", restarted.strategy);
+        assertEquals("a restarted native session starts its own revision sequence", 1L,
+                restarted.revision);
+        assertFalse("a restarted native session must not claim retained delta work",
+                restarted.meaningful_incremental_update);
+        assertEquals(0L, restarted.reused_subjects);
+        assertEquals(0L, restarted.resumed_backend_states);
+        assertFalse(restarted.reused_complete_answer);
         reasoner.dispose();
     }
 }

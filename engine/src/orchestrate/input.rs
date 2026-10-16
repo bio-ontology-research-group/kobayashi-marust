@@ -180,6 +180,17 @@ pub fn prepare(path: &Path) -> Result<PreparedInput<'_>, OrchestrateError> {
     prepare_with_format(path, sniff(path)?)
 }
 
+/// Internal reasoning paths may receive a registered generated OFN document.
+/// Its format is established by the producer, independently of whether source
+/// re-validation is enabled. Public input format selection remains in prepare.
+pub(crate) fn prepare_for_reasoning(path: &Path) -> Result<PreparedInput<'_>, OrchestrateError> {
+    if super::is_registered_functional_rewrite(path) {
+        prepare_with_format(path, InputFormat::Functional)
+    } else {
+        prepare(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +202,58 @@ mod tests {
             prepare_with_format(path.path(), InputFormat::parse(format).unwrap()).unwrap();
         let functional = std::fs::read_to_string(prepared.path()).unwrap();
         crate::frontend::ofn_to_clauses(&functional).unwrap()
+    }
+
+    #[test]
+    fn registered_functional_input_keeps_format_when_validation_bypass_is_disabled() {
+        const CHILD: &str = "KM_TEST_REGISTERED_FUNCTIONAL_INPUT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let source = "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) SubClassOf(<urn:A> <urn:B>))";
+            crate::frontend::conformance::check_user_source(source).unwrap();
+            let file = TempPath::new("-registered-functional.ofn");
+            std::fs::write(file.path(), source).unwrap();
+            let _registered = super::super::TrustedRewrite::register(file.path());
+            assert!(super::super::is_registered_functional_rewrite(file.path()));
+            assert_eq!(super::super::is_trusted_rewrite(file.path()),
+                std::env::var_os("KM_NO_TRUSTED_REWRITES").is_none());
+            let prepared = prepare_for_reasoning(file.path()).unwrap();
+            assert_eq!(prepared.path(), file.path());
+            assert_eq!(std::fs::read_to_string(prepared.path()).unwrap(), source);
+            // Public format selection remains user-configured even for a
+            // generated-looking OFN path; do not feed that deliberately wrong
+            // syntax into the upstream RDF reader's unchecked error path.
+            let configured = std::env::var("KM_INPUT_FORMAT").unwrap();
+            assert_eq!(sniff(file.path()).unwrap(), InputFormat::parse(&configured).unwrap());
+            let external_source = match configured.as_str() {
+                "rdfxml" => r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:owl="http://www.w3.org/2002/07/owl#"><owl:Class rdf:about="urn:A"><rdfs:subClassOf rdf:resource="urn:B"/></owl:Class><owl:Class rdf:about="urn:B"/></rdf:RDF>"#,
+                "turtle" => "@prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . <urn:A> a owl:Class ; rdfs:subClassOf <urn:B> . <urn:B> a owl:Class .",
+                other => panic!("unexpected child format {other}"),
+            };
+            let external = TempPath::new("-public-external-format.ofn");
+            std::fs::write(external.path(), external_source).unwrap();
+            let converted = prepare(external.path()).unwrap();
+            assert_ne!(converted.path(), external.path());
+            let functional = std::fs::read_to_string(converted.path()).unwrap();
+            assert!(functional.contains("Ontology("));
+            crate::frontend::ofn_to_clauses(&functional).unwrap();
+            return;
+        }
+        for format in ["rdfxml", "turtle"] {
+            for no_trust in [false, true] {
+                let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+                command.args(["--exact", "orchestrate::input::tests::registered_functional_input_keeps_format_when_validation_bypass_is_disabled", "--nocapture", "--test-threads=1"]);
+                for (key, _) in std::env::vars_os() {
+                    if key.to_string_lossy().starts_with("KM_") { command.env_remove(key); }
+                }
+                command.env(CHILD, "1").env("KM_INPUT_FORMAT", format);
+                if no_trust { command.env("KM_NO_TRUSTED_REWRITES", "1"); }
+                let output = command.output().unwrap();
+                assert!(output.status.success(), "{format}, no_trust={no_trust}: {} {}",
+                    String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+                assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                    "child exact filter must execute its test, not pass zero tests");
+            }
+        }
     }
 
     #[test]

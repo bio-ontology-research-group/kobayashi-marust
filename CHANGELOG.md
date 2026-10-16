@@ -1,6 +1,58 @@
 # Changelog
 
-## Unreleased
+## [1.5.1]
+
+### Incremental source and OWLAPI updates
+
+- Retain exact source and taxonomy bases across successive deletions, sharing
+  immutable locality indexes with cumulative removal masks. Reuse unaffected
+  published rows for compatible additions and mixed edits through common modules.
+- Reuse unchanged compiled locality axioms across revisions. Preserve preparation
+  work and fallback reasons in receipts, distinguishing retained rows and compiled
+  formulas from resumed backend state. Keep exact inconsistency certificates
+  across validated updates and memo eviction, and share cached rendered answers.
+- Retain proofs of explicit named-class inclusions. After deletion, keep a
+  satisfiable subject's taxonomy row when every entry still has a proof supported
+  by the remaining source; reclassify subjects that do not meet that condition.
+- Bind source-admission shortcuts to an origin accepted by the public validator.
+  Preserve exact headers, declarations, fixed statements and multiplicities.
+  Supported annotation-free named subclass edits and deletion or restoration of
+  original named disjointness statements use that binding. Check the new outer
+  grammar before publication; unsupported edits use full validation.
+- Preserve captured functional-syntax spans and full-IRI identities in OWLAPI
+  sessions. Restore original captured axiom text and render eligible new named
+  subclass axioms separately, retaining synthetic declarations.
+- Pass checked effective axiom additions and removals from OWLAPI flush into
+  source preparation. When ontology identity, signature and delta checks permit,
+  update the retained axiom set from that delta. Unsupported changes use ordinary
+  snapshot/rendering. Commit source caches and detached snapshots only after
+  native classification succeeds; refusal preserves the previous committed answers.
+- These paths retain exact answers, proofs, rows, indexes and preparation work.
+  They do not establish resumed backend saturation. Native receipts distinguish
+  retained work and fallback; the benchmark does not record a Java avoided-scan
+  count. This section makes no incremental performance claim.
+
+### Native corpus evidence and known coverage limitation
+
+The 1,920-input audit used native candidate binary
+`29c18639238349b2b075040bcd863fe9f4ebec2e1654bddcfbf40755a80ad461`,
+built from private source manifest
+`7e26e2565db59f5fa0bf69e2a33149ce86687dc129554958be61f3ad0f4eef11`
+on Git base `2fcdbe10e3c0d52b9f0cc6ed224bd891e4481c55` plus uncommitted changes.
+Against released **v1.5.0, commit
+`d95f0b840a433b5b43c4eff48092e8b600bca8de`**, it independently verified
+**1,660** candidate answers versus **1,661** for that release. All **1,662**
+completed candidate answers matched that release's canonical answers, with
+**zero differences**. The run preserved **212** expected invalid-input refusals,
+**33** timeouts and **13** admitted process errors.
+
+ORE `7345` timed out at the original 240-second limit; released v1.5.0 at commit
+`d95f0b840a433b5b43c4eff48092e8b600bca8de` completed it. Later crossover runs
+completed the candidate case but do not replace or erase that original coverage
+loss. The Java changes leave the measured native inputs unchanged; this native
+corpus audit is not a new full-corpus Java measurement. Detailed performance and
+release-validation evidence is reported separately with exact source and artifact
+identities; these corpus counts alone do not establish release acceptance.
 
 ## [1.5.0] - 2026-10-14
 

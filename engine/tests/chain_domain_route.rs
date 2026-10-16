@@ -94,11 +94,10 @@ fn chain_domain_recognition_is_default_on() {
 }
 
 #[test]
-fn chain_domain_opt_out_reproduces_the_historical_gap() {
-    // Contract of the A/B opt-out and proof that the pass is load-bearing:
-    // WITHOUT the recognition the chain feeding the domain restriction is
-    // never composed, the clash is missed, and the witness looks consistent.
-    // This is the exact under-detection documented for the pre-fix binaries.
+fn chain_domain_opt_out_preserves_sound_inconsistency_detection() {
+    // The opt-out disables this recognition pass, while other certified
+    // mechanisms still detect the source contradiction. Never require the
+    // historical missed clash as public behavior.
     let out = classify(
         &[("KM_NO_CHAIN_DOMAIN", "1")],
         &fixture("chain_domain_unsat.ofn"),
@@ -106,9 +105,7 @@ fn chain_domain_opt_out_reproduces_the_historical_gap() {
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     let v = json_of(&out);
     assert_eq!(
-        v["consistent"], true,
-        "KM_NO_CHAIN_DOMAIN should reproduce the historical under-detection \
-         (consistent witness); if this now fails, some OTHER mechanism closes \
-         the clash and the opt-out no longer isolates chain-domain (stderr: {stderr})"
+        v["consistent"], false,
+        "the chain-domain opt-out lost sound inconsistency detection (stderr: {stderr})"
     );
 }

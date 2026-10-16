@@ -97,6 +97,8 @@ macro_rules! cached_completion_flag {
 }
 
 cached_completion_flag!(bridge_progress_enabled, "KM_BRIDGE_PROGRESS");
+cached_completion_flag!(bridge_phase_timing_enabled, "KM_BRIDGE_PHASE_TIMING");
+cached_completion_flag!(ht_singleton_scan_after_merge_enabled, "KM_HT_SINGLETON_SCAN_AFTER_MERGE");
 cached_completion_flag!(bridge_base_audit_enabled, "KM_BRIDGE_BASE_AUDIT");
 cached_completion_flag!(bridge_search_log_enabled, "KM_BRIDGE_SEARCH_LOG");
 cached_completion_flag!(bridge_dump_clash_enabled, "KM_BRIDGE_DUMP_CLASH");

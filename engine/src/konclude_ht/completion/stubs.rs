@@ -2693,8 +2693,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         reuse_visits: bool,
     ) -> Option<ClassificationAnalyserBoundedIntegrationResult> {
         // Opt-in observation only: never inspect or change a reasoning verdict.
-        let mut phase_started = std::env::var_os("KM_BRIDGE_PHASE_TIMING")
-            .is_some().then(std::time::Instant::now);
+        let mut phase_started = super::bridge_phase_timing_enabled().then(std::time::Instant::now);
         let record_phase = |phase: &str, started: &mut Option<std::time::Instant>| {
             if let Some(last) = started {
                 let now = std::time::Instant::now();

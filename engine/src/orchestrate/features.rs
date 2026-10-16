@@ -638,7 +638,7 @@ pub fn extract(cfg: &Config, ont: &Path) -> Features {
     if !ont.exists() {
         return blank("no_ont");
     }
-    let prepared = match super::input::prepare(ont) {
+    let prepared = match super::input::prepare_for_reasoning(ont) {
         Ok(prepared) => prepared,
         Err(_) => return blank("input_unsupported"),
     };

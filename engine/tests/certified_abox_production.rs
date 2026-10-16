@@ -17,6 +17,7 @@ fn classify(source: &str) -> (serde_json::Value, String) {
             command.env_remove(key);
         }
     }
+    command.env("KM_TIMING", "1");
     command.env("KM_ABOX_PRODUCTION_TRACE", "1");
     command.env("KM_NOMINAL_HT_PROBE_TRACE", "1");
     command.env("KM_DEBUG_INERT_ABOX", "1");
@@ -35,7 +36,7 @@ fn classify(source: &str) -> (serde_json::Value, String) {
 }
 
 #[test]
-fn expressive_class_identity_abox_uses_complete_general_ht_probe() {
+fn expressive_class_identity_abox_uses_certified_bridge_probe() {
     let (result, stderr) = classify(
         r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -51,8 +52,8 @@ Ontology(
     );
     assert_eq!(result["consistent"], true);
     assert!(
-        stderr.contains("KM_NOMINAL_HT_PROBE result=accepted"),
-        "automatic route did not publish through the complete general HT probe: {stderr}"
+        stderr.contains("KM_TIMING bounded bridge-first accepted"),
+        "automatic route did not publish through the certified bridge-first probe: {stderr}"
     );
 }
 
@@ -106,7 +107,7 @@ Ontology(
 }
 
 #[test]
-fn unsupported_probe_restores_exact_nominal_route() {
+fn unsupported_inert_probe_falls_back_to_certified_bridge() {
     let (result, stderr) = classify(
         r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -126,8 +127,9 @@ Ontology(
         .iter()
         .any(|pair| pair[0] == ":A" && pair[1] == ":B"));
     assert!(
-        stderr.contains("KM_ABOX_PRODUCTION result=declined"),
-        "unsupported normalized input did not decline before nominal fallback: {stderr}"
+        stderr.contains("KM_DEBUG_INERT_ABOX decline=abox axiom=NegativeRoleAssertion")
+            && stderr.contains("KM_TIMING bounded bridge-first accepted"),
+        "unsupported inert-role input did not decline before certified bridge fallback: {stderr}"
     );
 }
 
@@ -145,8 +147,8 @@ Ontology(
     );
     assert_eq!(result["consistent"], false);
     assert!(
-        stderr.contains("KM_NOMINAL_HT_PROBE result=accepted"),
-        "singleton identity semantics did not use the complete HT probe: {stderr}"
+        stderr.contains("KM_TIMING bounded bridge-first accepted"),
+        "singleton identity semantics did not use the certified bridge-first probe: {stderr}"
     );
     assert!(
         !stderr.contains("KM_ABOX_PRODUCTION result=accepted"),

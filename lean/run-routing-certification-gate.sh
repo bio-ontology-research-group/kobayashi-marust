@@ -101,6 +101,17 @@ for theorem in \
     IncrementalModuleReuse.inconsistent_superset \
     IncrementalModuleReuse.module_inconsistent \
     IncrementalModuleReuse.merged_publication_exact \
+    IncrementalModuleReuse.common_module_query \
+    IncrementalModuleReuse.mixed_publication_exact \
+    IncrementalModuleReuse.module_has_model \
+    IncrementalModuleReuse.common_module_consistency \
+    IncrementalModuleReuse.entailsC_iff_sroiq \
+    IncrementalModuleReuse.full_module_entails_iff \
+    IncrementalModuleReuse.full_module_outside \
+    IncrementalModuleReuse.full_module_named_query \
+    IncrementalModuleReuse.common_full_module_named_query \
+    IncrementalModuleReuse.full_module_named_sandwich \
+    IncrementalModuleReuse.mixed_named_publication_exact \
     IncrementalModuleReuse.locality_sound \
     IncrementalModuleReuse.axiom_local_sound \
     IncrementalModuleReuse.eval_mask_agree \
@@ -112,6 +123,17 @@ for theorem in \
     IncrementalModuleReuse.nominal_module_entails_iff \
     IncrementalModuleReuse.nominal_module_outside \
     IncrementalModuleReuse.nominal_unaffected_query \
+    IncrementalModuleReuse.nominal_module_from_envelope \
+    IncrementalModuleReuse.nominal_module_named_query \
+    IncrementalModuleReuse.common_nominal_module_named_query \
+    IncrementalModuleReuse.positiveSingleton_role \
+    IncrementalModuleReuse.positiveSingleton_concept \
+    IncrementalModuleReuse.positiveSingleton_axiom \
+    IncrementalModuleReuse.positive_source_has_model \
+    IncrementalModuleReuse.positiveRole_noTop \
+    IncrementalModuleReuse.positiveConcept_plain \
+    IncrementalModuleReuse.positiveAxiom_split \
+    IncrementalModuleReuse.positive_tbox_named_query \
     IncrementalModuleReuse.told_sound \
     IncrementalModuleReuse.told_row_exact \
     IncrementalSourceLocality.eval_mask \
@@ -325,6 +347,10 @@ fi
         source_locality::tests::
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         incr_session::tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
+        source_reuse_grammar::tests::
+    CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
+        named_subclass_validation::
     CARGO_TARGET_DIR="$target_root" cargo test --release --test source_module_reuse
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         incremental_activation::tests::

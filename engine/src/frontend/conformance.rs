@@ -169,6 +169,13 @@ pub fn cached_source_facts(text: &str) -> Option<SourceFacts> {
         .filter(|(source, _)| &**source == text).map(|(_, facts)| facts.clone())
 }
 
+/// Private admission provenance only: no statistics clone and no caller flag.
+/// The entry is installed only after exact successful public-source validation.
+pub(crate) fn cached_user_source_accepted(text: &str) -> bool {
+    USER_SOURCE.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
+        .is_some_and(|(source, _)| &**source == text)
+}
+
 const SOURCE_STATISTICS_BOUND: usize = 4 * 1024 * 1024;
 
 /// Node form of the symbolic scheduler's token scan: a `DLSafeRule(` or an

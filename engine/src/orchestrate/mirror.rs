@@ -1636,7 +1636,7 @@ pub fn try_classify(cfg: &Config, ont: &Path) -> Result<Option<Classification>, 
     if ACTIVE.with(|a| a.get()) {
         return Ok(None);
     }
-    let prepared = super::input::prepare(ont)?;
+    let prepared = super::input::prepare_for_reasoning(ont)?;
     let text = std::fs::read_to_string(prepared.path())?;
     let complement_candidates = text
         .match_indices("ObjectComplementOf(")

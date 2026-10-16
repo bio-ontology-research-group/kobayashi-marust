@@ -60,6 +60,36 @@ public final class Classifier {
         public int added_rules;
         public int removed_rules;
         public boolean meaningful_incremental_update;
+        // The default source session retains exact answers and locality rows;
+        // these counters distinguish that work from resumed worker fixpoints.
+        public long base_revision_statements;
+        public long removed_statements;
+        public long removed_axioms;
+        public long added_statements;
+        public long added_axioms;
+        public long reused_index_axioms;
+        public long rebuilt_index_axioms;
+        // Null means an older native receipt did not report this work.
+        public Long index_build_calls;
+        public Long index_build_failures;
+        public Long cross_revision_compiled_axioms;
+        public Long same_update_compiled_axioms;
+        public Long compiled_locality_axioms;
+        public Long csr_axiom_records;
+        public Long csr_conjunctions;
+        public Long csr_literal_records;
+        public long resumed_backend_states;
+        public boolean reused_complete_answer;
+        public boolean statement_delta_verified;
+        public long affected_subjects;
+        public long reclassified_subjects;
+        public long module_axioms;
+        public long index_axioms;
+        public long reused_subjects;
+        public long told_subjects;
+        public long published_pairs;
+        public double seconds;
+        public String fallback_reason;
     }
 
     /**
@@ -168,6 +198,11 @@ public final class Classifier {
                 throw failure("KM incremental " + op + " failed: "
                         + (wire == null ? line : wire.error));
             }
+            // The default protocol places the committed revision beside the
+            // receipt. Older route-specific receipts can carry it inside.
+            if (wire.receipt != null && wire.revision != null) {
+                wire.receipt.revision = wire.revision;
+            }
             return new Response(toResult(wire.result), wire.receipt);
         }
 
@@ -221,6 +256,7 @@ public final class Classifier {
     private static final class WireResponse {
         String status;
         String error;
+        Long revision;
         WireResult result;
         IncrementalReceipt receipt;
     }

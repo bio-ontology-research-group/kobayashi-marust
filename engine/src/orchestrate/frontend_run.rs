@@ -340,7 +340,7 @@ pub fn run_ofn_split_cached(
 > {
     // Trust holds only for the registered file itself, read unconverted.
     let trusted = super::is_trusted_rewrite(ont);
-    let prepared = super::input::prepare(ont)?;
+    let prepared = super::input::prepare_for_reasoning(ont)?;
     let trusted = trusted && prepared.path() == ont;
     let ont = prepared.path();
     let clauses = TempPath::new(".clauses.json");
@@ -471,7 +471,7 @@ pub fn run_ofn_split_cached(
 /// absorption portfolio to obtain the *plain* clause set. Port of
 /// `_ofn_clauses_file`; returns None on any failure.
 pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath> {
-    let prepared = super::input::prepare(ont).ok()?;
+    let prepared = super::input::prepare_for_reasoning(ont).ok()?;
     let ont = prepared.path();
     let clauses = TempPath::new(".clauses.json");
     let (ofn_prog, ofn_pre) = cfg.ofn_cmd();

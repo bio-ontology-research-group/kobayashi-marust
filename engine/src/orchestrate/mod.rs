@@ -1274,13 +1274,21 @@ impl Drop for TrustedRewrite {
 }
 
 /// Whether `path` is a registered rewrite (see `TrustedRewrite`).
+/// Every registered producer writes Functional Syntax: positive/ABox quotient,
+/// its TBox/data-free subsets, and canonical builtin rewrites. This format fact
+/// survives KM_NO_TRUSTED_REWRITES, which disables validation bypass only.
+/// No user path or environment marker can register this internal format proof.
+pub(crate) fn is_registered_functional_rewrite(path: &Path) -> bool {
+    TRUSTED_REWRITES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|registered| registered == path)
+}
+
 pub(crate) fn is_trusted_rewrite(path: &Path) -> bool {
     std::env::var_os("KM_NO_TRUSTED_REWRITES").is_none()
-        && TRUSTED_REWRITES
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .iter()
-            .any(|trusted| trusted == path)
+        && is_registered_functional_rewrite(path)
 }
 
 /// Environment variable naming the one document an `ofn` worker may read
@@ -1343,18 +1351,34 @@ fn classify_with_evidence_mode(
     // A registered rewrite (`TrustedRewrite`) is the orchestrator's own
     // conformance-preserving rewrite of a source this classification already
     // validated; re-validating it only repeats that check.
-    if is_trusted_rewrite(ont) {
-        timing_mark("trusted rewrite: source re-validation skipped");
-    } else {
-        let prepared_input = input::prepare(ont)?;
+    {
+        let prepared_input = input::prepare_for_reasoning(ont)?;
         let source = std::fs::read_to_string(prepared_input.path())?;
-        if crate::frontend::conformance::has_imports(&source).map_err(OrchestrateError::from_conformance)? {
-            return Err(OrchestrateError::OutOfFragment(
-                "cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into()));
+        if is_trusted_rewrite(ont) {
+            timing_mark("trusted rewrite: source re-validation skipped");
+        } else {
+            if crate::frontend::conformance::has_imports(&source).map_err(OrchestrateError::from_conformance)? {
+                return Err(OrchestrateError::OutOfFragment(
+                    "cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into()));
+            }
+            crate::frontend::conformance::check_source(
+                &source,
+            ).map_err(OrchestrateError::from_conformance)?;
         }
-        crate::frontend::conformance::check_source(
-            &source,
-        ).map_err(OrchestrateError::from_conformance)?;
+        // Every input, including independently generated trusted rewrites,
+        // reaches probes only after semantic builtin aliases are canonical.
+        // The registration proves a rewrite of the validated original source;
+        // it never authorizes trusting a user-controlled marker or path.
+        if let std::borrow::Cow::Owned(canonical) =
+            crate::frontend::builtin_aliases::canonicalize(&source)
+                .map_err(OrchestrateError::from_conformance)?
+        {
+            let rewritten = tmpfile::TempPath::new("-builtin-iris.ofn");
+            std::fs::write(rewritten.path(), canonical)?;
+            let _trusted = TrustedRewrite::register(rewritten.path());
+            timing_mark("builtin IRI aliases canonicalized");
+            return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+        }
     }
     timing_mark("second source check done");
     let automatic_requested = std::env::var("KM_ROUTE")
@@ -3375,6 +3399,30 @@ mod tests {
             assert!(!super::is_trusted_rewrite(user.path()));
         }
         assert!(!super::is_trusted_rewrite(rewrite.path()));
+    }
+
+    #[test]
+    fn builtin_alias_trusted_input_is_normalized_before_classification_probes() {
+        let source = "Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(Declaration(Class(<urn:A>)) Declaration(NamedIndividual(<urn:a>)) SubClassOf(<urn:A> o:Nothing) ClassAssertion(<urn:A> <urn:a>))";
+        // Establish the original-source proof before registering the rewrite;
+        // no environment marker or user-controlled filename authorizes trust.
+        crate::frontend::conformance::check_user_source(source).unwrap();
+        let file = super::tmpfile::TempPath::new("-trusted-builtin-alias.ofn");
+        std::fs::write(file.path(), source).unwrap();
+        assert!(!super::is_trusted_rewrite(file.path()));
+        {
+            let _trusted = super::TrustedRewrite::register(file.path());
+            assert!(super::is_trusted_rewrite(file.path()));
+            let mut cfg = super::Config::from_env();
+            cfg.elc = false;
+            cfg.elc_portfolio = false;
+            cfg.ht_race = false;
+            cfg.tab_race = false;
+            let evidence = super::classify_with_evidence_mode(&cfg, file.path(), false).unwrap();
+            assert!(!evidence.classification.consistent);
+            assert_eq!(evidence.classification.dropped, 0);
+        }
+        assert!(!super::is_trusted_rewrite(file.path()));
     }
 
     #[test]

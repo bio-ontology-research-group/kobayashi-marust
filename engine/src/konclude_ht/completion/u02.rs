@@ -2080,7 +2080,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // the existing exact per-concept scan instead of rebuilding every
         // singleton's index after each merge. Both paths select the first two
         // live positive carriers in node order with their current dependencies.
-        let scan_after_merge = std::env::var_os("KM_HT_SINGLETON_SCAN_AFTER_MERGE").is_some();
+        let scan_after_merge = super::ht_singleton_scan_after_merge_enabled();
         let singleton_concepts = self.singleton_concepts.clone(); // tiny (distinct literal values)
         // A dry first scan needs no label snapshots or descriptor journals.
         // Use the differential-tested reference index initially; allocate the

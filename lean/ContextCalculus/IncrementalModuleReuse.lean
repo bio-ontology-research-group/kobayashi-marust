@@ -32,6 +32,13 @@ and every unknown statement as non-local, and data properties like object
 properties without inverses. The Rust/Lean binding (parser, formula compiler,
 DNF weakening, fixpoint propagation) is an executable obligation checked by
 tests, not by this file.
+
+The named-subclass source-admission certificate preserves that executable
+obligation; it does not add a semantic publication rule. Its exact successful
+public-validation origin, outer-grammar check, fixed statement multiplicities
+and compact validation of new named inclusions are documented in
+`lean/SOURCE-REUSE-ADMISSION.md` and exercised by the routing gate. These Lean
+theorems do not establish the Rust parser's acceptance equivalence.
 -/
 
 namespace ContextCalculus.IncrementalModuleReuse
@@ -152,6 +159,66 @@ theorem merged_publication_exact {Subj : Type u} (query : Subj → Q)
   · rw [if_neg h]
     obtain ⟨M, S, hm, hM, hq⟩ := oldModule s h
     exact unaffected_query sem hm hsub hM hq
+
+/-- Arbitrary edits preserve a query when a module of a common supertheory
+is contained in both revisions. Unlike deletion reuse, neither revision
+needs to contain the other. This is a semantic transfer obligation; a source
+implementation must still validate both revisions and establish the module. -/
+theorem common_module_query {O O' V M : Ax → Prop} {S : Sym → Prop}
+    (hm : IsModule sem V M S)
+    (hO : ∀ a, O a → V a) (hO' : ∀ a, O' a → V a)
+    (hMO : ∀ a, M a → O a) (hMO' : ∀ a, M a → O' a)
+    {q : Q} (hq : ∀ s, sem.sigQ q s → S s) :
+    Entails sem O q ↔ Entails sem O' q := by
+  rw [module_entails sem (module_restrict sem hm hO hMO) hq,
+    module_entails sem (module_restrict sem hm hO' hMO') hq]
+
+/-- Publication after additions or mixed edits: unaffected answers have a
+common module, and recomputed answers come from a module of the new source.
+No consistency assumption is inferred from the old source. -/
+theorem mixed_publication_exact {Subj : Type u} (query : Subj → Q)
+    {O O' V U : Ax → Prop} (affected : Subj → Prop) [DecidablePred affected]
+    (hO : ∀ a, O a → V a) (hO' : ∀ a, O' a → V a)
+    (hU : ∀ a, U a → O' a)
+    (commonModule : ∀ s, ¬ affected s → ∃ M S, IsModule sem V M S ∧
+      (∀ a, M a → O a) ∧ (∀ a, M a → O' a) ∧
+      ∀ x, sem.sigQ (query s) x → S x)
+    (newModule : ∀ s, affected s → ∃ M S, IsModule sem O' M S ∧
+      (∀ a, M a → U a) ∧ ∀ x, sem.sigQ (query s) x → S x) (s : Subj) :
+    (if affected s then Entails sem U (query s) else Entails sem O (query s)) ↔
+      Entails sem O' (query s) := by
+  by_cases h : affected s
+  · rw [if_pos h]
+    obtain ⟨M, S, hm, hMU, hq⟩ := newModule s h
+    exact (sandwich_query sem hm hMU hU hq).symm
+  · rw [if_neg h]
+    obtain ⟨M, S, hm, hMO, hMO', hq⟩ := commonModule s h
+    exact common_module_query sem hm hO hO' hMO hMO' hq
+
+/-- A module and its source are equisatisfiable: masking extends a model of
+the module to a model of the source. This also applies to the empty signature. -/
+theorem module_has_model {O M : Ax → Prop} {S : Sym → Prop}
+    (hm : IsModule sem O M S) :
+    (∃ i, Models sem O i) ↔ ∃ i, Models sem M i := by
+  constructor
+  · rintro ⟨i, hi⟩
+    exact ⟨i, fun a ha => hi a (hm.sub a ha)⟩
+  · rintro ⟨i, hi⟩
+    refine ⟨sem.mask S i, ?_⟩
+    intro a ha
+    by_cases hM : M a
+    · exact (sem.agree_ax S i a (hm.covers a hM)).mpr (hi a hM)
+    · exact hm.rest_local a ha hM i
+
+/-- Consistency may transfer across arbitrary edits only with a common
+module certificate; old consistency alone is insufficient for additions. -/
+theorem common_module_consistency {O O' V M : Ax → Prop} {S : Sym → Prop}
+    (hm : IsModule sem V M S)
+    (hO : ∀ a, O a → V a) (hO' : ∀ a, O' a → V a)
+    (hMO : ∀ a, M a → O a) (hMO' : ∀ a, M a → O' a) :
+    (∃ i, Models sem O i) ↔ ∃ i, Models sem O' i := by
+  rw [module_has_model sem (module_restrict sem hm hO hMO),
+    module_has_model sem (module_restrict sem hm hO' hMO')]
 
 end Abstract
 
@@ -1077,6 +1144,105 @@ theorem union_sat_assertion (i : Interp U) (j : Interp V) :
 def EntailsC (O : Axiom → Prop) (q : Concept × Concept) : Prop :=
   ∀ (W : Type) (i : Interp W), (∀ a, O a → sat i a) → holds i q
 
+theorem entailsC_iff_sroiq {O : Axiom → Prop} {q : Concept × Concept} :
+    EntailsC O q ↔ Entails sroiq O q := by
+  constructor
+  · intro h m hm
+    exact h m.1 m.2 hm
+  · intro h W i hi
+    exact h ⟨W, i⟩ hi
+
+/-- Full modules, including assertions and nominals, decide covered queries. -/
+theorem full_module_entails_iff {O M : Axiom → Prop} {S : Nat → Prop}
+    (hm : IsModule sroiq O M S) {q : Concept × Concept}
+    (hs1 : ∀ n, OccursC n q.1 → S n) (hs2 : ∀ n, OccursC n q.2 → S n) :
+    EntailsC O q ↔ EntailsC M q := by
+  rw [entailsC_iff_sroiq, entailsC_iff_sroiq]
+  exact module_entails sroiq hm (fun n hn => hn.elim (hs1 n) (hs2 n))
+
+/-- A full module can omit a named target only when that target is not a
+superclass of any satisfiable covered subject. Masking an ontology model
+preserves the subject and empties the outside target. No TBox-only or
+nominal-free assumption is needed. -/
+theorem full_module_outside {O M : Axiom → Prop} {S : Nat → Prop}
+    (hm : IsModule sroiq O M S) {c : Concept} (hs : ∀ n, OccursC n c → S n)
+    {b : Nat} (hb : ¬ S b) (e : EntailsC O (c, .atom b)) : EntailsC O (c, .bot) := by
+  intro W i hi x hx
+  have hmask : ∀ a, O a → sat (mask (bsig S) i) a := by
+    intro a ha
+    by_cases hM : M a
+    · exact (sat_mask_agree (bsig S) i a
+        (axinsig_of_occurs _ a fun n hn => bsig_true (hm.covers a hM n hn))).mpr
+        (hi a (hm.sub a hM))
+    · exact hm.rest_local a ha hM ⟨W, i⟩
+  have hxmask := (eval_mask_agree (bsig S) i c
+    (insig_of_occurs _ c fun n hn => bsig_true (hs n hn)) x).mpr hx
+  have hbad := e W (mask (bsig S) i) hmask x hxmask
+  have hb' : bsig S b = false := by
+    classical
+    simp [bsig, hb]
+  simp [eval, mask, hb'] at hbad
+
+/-- A subject-only full module fixes its entire named superclass row,
+including targets outside its signature and unsatisfiable subjects. -/
+theorem full_module_named_query {O M : Axiom → Prop} {S : Nat → Prop}
+    (hm : IsModule sroiq O M S) {c : Concept} (hs : ∀ n, OccursC n c → S n)
+    (b : Nat) : EntailsC O (c, .atom b) ↔ EntailsC M (c, .atom b) := by
+  constructor
+  · intro e
+    by_cases hb : S b
+    · apply (full_module_entails_iff hm hs ?_).mp e
+      intro n hn
+      change n = b at hn
+      exact hn.symm ▸ hb
+    · have hbot := (full_module_entails_iff hm (q := (c, .bot)) hs (fun _ h => h.elim)).mp
+        (full_module_outside hm hs hb e)
+      intro W i hi x hx
+      exact False.elim (hbot W i hi x hx)
+  · intro e W i hi
+    exact e W i (fun a ha => hi a (hm.sub a ha))
+
+/-- A common subject module transfers the whole named row across arbitrary
+edits, without assuming that every possible target occurs in its signature. -/
+theorem common_full_module_named_query {O O' V M : Axiom → Prop} {S : Nat → Prop}
+    (hm : IsModule sroiq V M S)
+    (hO : ∀ a, O a → V a) (hO' : ∀ a, O' a → V a)
+    (hMO : ∀ a, M a → O a) (hMO' : ∀ a, M a → O' a)
+    {c : Concept} (hs : ∀ n, OccursC n c → S n) (b : Nat) :
+    EntailsC O (c, .atom b) ↔ EntailsC O' (c, .atom b) :=
+  (full_module_named_query (module_restrict sroiq hm hO hMO) hs b).trans
+    (full_module_named_query (module_restrict sroiq hm hO' hMO') hs b).symm
+
+/-- Reclassification may include extra new-source axioms beyond the subject
+module; the entire named row remains exact, including outside targets. -/
+theorem full_module_named_sandwich {O M U : Axiom → Prop} {S : Nat → Prop}
+    (hm : IsModule sroiq O M S) (hMU : ∀ a, M a → U a) (hU : ∀ a, U a → O a)
+    {c : Concept} (hs : ∀ n, OccursC n c → S n) (b : Nat) :
+    EntailsC O (c, .atom b) ↔ EntailsC U (c, .atom b) :=
+  (full_module_named_query hm hs b).trans
+    (full_module_named_query (module_restrict sroiq hm hU hMU) hs b).symm
+
+/-- The concrete named-row publication boundary for arbitrary edits. A
+subject's module need only cover that subject, not every published target. -/
+theorem mixed_named_publication_exact {Subj : Type} (subject : Subj → Concept)
+    {O O' V U : Axiom → Prop} (affected : Subj → Prop) [DecidablePred affected]
+    (hO : ∀ a, O a → V a) (hO' : ∀ a, O' a → V a) (hU : ∀ a, U a → O' a)
+    (commonModule : ∀ s, ¬ affected s → ∃ M S, IsModule sroiq V M S ∧
+      (∀ a, M a → O a) ∧ (∀ a, M a → O' a) ∧
+      ∀ n, OccursC n (subject s) → S n)
+    (newModule : ∀ s, affected s → ∃ M S, IsModule sroiq O' M S ∧
+      (∀ a, M a → U a) ∧ ∀ n, OccursC n (subject s) → S n)
+    (s : Subj) (b : Nat) :
+    (if affected s then EntailsC U (subject s, .atom b)
+      else EntailsC O (subject s, .atom b)) ↔ EntailsC O' (subject s, .atom b) := by
+  by_cases h : affected s
+  · rw [if_pos h]
+    obtain ⟨M, S, hm, hMU, hs⟩ := newModule s h
+    exact (full_module_named_sandwich hm hMU hU hs b).symm
+  · rw [if_neg h]
+    obtain ⟨M, S, hm, hMO, hMO', hs⟩ := commonModule s h
+    exact common_full_module_named_query hm hO hO' hMO hMO' hs b
+
 /-- For a consistent ontology whose non-assertion axioms mention no individual
 and no universal role, the assertions do not change any subsumption between
 such concepts: the TBox alone decides it. -/
@@ -1446,6 +1612,52 @@ theorem nominal_unaffected_query {O O' M : Axiom → Prop} {S : Nat → Prop}
     (nominal_module_entails_iff (nominal_module_deletion hm hsub hkeep) hq1 hq2 hs1 hs2).symm
 
 
+/-- A syntactic analysis envelope need not be consistent. Only the actual
+revision needs a model; this matters when the envelope is the union of two
+individually consistent revisions with conflicting assertions. -/
+theorem nominal_module_from_envelope {V O M : Axiom → Prop} {S : Nat → Prop}
+    (hsub : ∀ a, O a → V a) (hkeep : ∀ a, M a → O a)
+    (hplain : ∀ a, M a → PlainAx a)
+    (hcov : ∀ a, M a → ∀ n, OccursA n a → S n)
+    (hrest : ∀ a, V a → ¬ M a →
+      AssertionAx a ∨ (TBoxAx a ∧ nonLocalN (bsig S) a = false))
+    (hconsistent : ∃ (W : Type) (j : Interp W), ∀ a, O a → sat j a) :
+    NominalModule O M S where
+  sub := hkeep
+  plain := hplain
+  cov := hcov
+  rest := fun a ha hm => hrest a (hsub a ha) hm
+  consistent := hconsistent
+
+/-- A nominal-free subject module determines the entire named row, including
+targets outside its signature. Consistency remains an explicit module premise. -/
+theorem nominal_module_named_query {O M : Axiom → Prop} {S : Nat → Prop}
+    (hm : NominalModule O M S) {c : Concept} (hc : Plain c)
+    (hs : ∀ n, OccursC n c → S n) (b : Nat) :
+    EntailsC O (c, .atom b) ↔ EntailsC M (c, .atom b) := by
+  constructor
+  · intro e
+    by_cases hb : S b
+    · apply (nominal_module_entails_iff hm (q := (c, .atom b)) hc trivial hs ?_).mp e
+      intro n hn
+      change n = b at hn
+      exact hn.symm ▸ hb
+    · have hbot := (nominal_module_entails_iff hm (q := (c, .bot)) hc trivial
+        hs (fun _ h => h.elim)).mp (nominal_module_outside hm hc hs hb e)
+      intro W i hi x hx
+      exact False.elim (hbot W i hi x hx)
+  · intro e W i hi
+    exact e W i (fun a ha => hi a (hm.sub a ha))
+
+/-- Both revisions must independently satisfy the nominal-module contract.
+No consistency claim about their union is required or inferred. -/
+theorem common_nominal_module_named_query {O O' M : Axiom → Prop} {S : Nat → Prop}
+    (hm : NominalModule O M S) (hm' : NominalModule O' M S)
+    {c : Concept} (hc : Plain c) (hs : ∀ n, OccursC n c → S n) (b : Nat) :
+    EntailsC O (c, .atom b) ↔ EntailsC O' (c, .atom b) :=
+  (nominal_module_named_query hm hc hs b).trans
+    (nominal_module_named_query hm' hc hs b).symm
+
 /-! ## Told proofs: rows kept under deletion without reclassification
 
 The retained session keeps the row of a satisfiable subject whose every
@@ -1497,6 +1709,17 @@ theorem told_row_exact {O O' : Axiom → Prop} (hsub : ∀ a, O' a → O a)
 #print axioms inconsistent_superset
 #print axioms module_inconsistent
 #print axioms merged_publication_exact
+#print axioms common_module_query
+#print axioms mixed_publication_exact
+#print axioms module_has_model
+#print axioms common_module_consistency
+#print axioms entailsC_iff_sroiq
+#print axioms full_module_entails_iff
+#print axioms full_module_outside
+#print axioms full_module_named_query
+#print axioms common_full_module_named_query
+#print axioms full_module_named_sandwich
+#print axioms mixed_named_publication_exact
 #print axioms locality_sound
 #print axioms axiom_local_sound
 #print axioms eval_mask_agree
@@ -1508,7 +1731,130 @@ theorem told_row_exact {O O' : Axiom → Prop} (hsub : ∀ a, O' a → O a)
 #print axioms nominal_module_entails_iff
 #print axioms nominal_module_outside
 #print axioms nominal_unaffected_query
+#print axioms nominal_module_from_envelope
+#print axioms nominal_module_named_query
+#print axioms common_nominal_module_named_query
 #print axioms told_sound
 #print axioms told_row_exact
 
+end ContextCalculus.IncrementalModuleReuse
+
+namespace ContextCalculus.IncrementalModuleReuse
+
+/-- A concrete nonempty model used only after source-level object admission. -/
+def positiveSingleton : Interp Unit where
+  cls := fun _ _ => True
+  rl := fun _ _ _ => True
+  ind := fun _ => ()
+
+/-- Universal and empty roles stay outside this positive object certificate. -/
+def PositiveRole : Role → Prop
+  | .name _ | .inv _ => True
+  | _ => False
+
+def PositiveConcept : Concept → Prop
+  | .atom _ | .top => True
+  | .and c d | .or c d => PositiveConcept c ∧ PositiveConcept d
+  | .some r c | .all r c => PositiveRole r ∧ PositiveConcept c
+  | .self r => PositiveRole r
+  | _ => False
+
+theorem positiveSingleton_role (r : Role) (h : PositiveRole r) (x y : Unit) :
+    positiveSingleton.role r x y := by
+  cases r <;> simp_all [PositiveRole, Interp.role, positiveSingleton]
+
+theorem positiveSingleton_concept : ∀ c : Concept, PositiveConcept c →
+    ∀ x : Unit, eval positiveSingleton c x
+  | .atom _, _, _ => trivial
+  | .top, _, _ => trivial
+  | .bot, h, _ => h.elim
+  | .not _, h, _ => h.elim
+  | .and c d, h, x => ⟨positiveSingleton_concept c h.1 x,
+      positiveSingleton_concept d h.2 x⟩
+  | .or c _, h, x => Or.inl (positiveSingleton_concept c h.1 x)
+  | .some r c, h, x => ⟨(), positiveSingleton_role r h.1 x (),
+      positiveSingleton_concept c h.2 ()⟩
+  | .all _ c, h, _ => fun y _ => positiveSingleton_concept c h.2 y
+  | .atLeast _ _ _, h, _ => h.elim
+  | .atMost _ _ _, h, _ => h.elim
+  | .nominal _, h, _ => h.elim
+  | .self r, h, x => positiveSingleton_role r h x x
+
+def PositiveAxiom : Axiom → Prop
+  | .sub c d => PositiveConcept c ∧ PositiveConcept d
+  | .roleSub r rs s => PositiveRole r ∧ (∀ t ∈ rs, PositiveRole t) ∧ PositiveRole s
+  | .trans r | .func r | .symm r | .refl r => PositiveRole r
+  | .classAssert c _ => PositiveConcept c
+  | .roleAssert r _ _ => PositiveRole r
+  | .same _ _ => True
+  | _ => False
+
+theorem positiveSingleton_axiom : ∀ a : Axiom, PositiveAxiom a → sat positiveSingleton a
+  | .sub _ d, h => fun x _ => positiveSingleton_concept d h.2 x
+  | .roleSub _ _ s, h => fun x y _ => positiveSingleton_role s h.2.2 x y
+  | .trans r, h => fun x _ z _ _ => positiveSingleton_role r h x z
+  | .func _, _ => fun _ y z _ _ => Subsingleton.elim y z
+  | .symm r, h => fun x y _ => positiveSingleton_role r h y x
+  | .refl r, h => fun x => positiveSingleton_role r h x x
+  | .classAssert c _, h => positiveSingleton_concept c h ()
+  | .roleAssert r _ _, h => positiveSingleton_role r h () ()
+  | .same _ _, _ => rfl
+  | .asymm _, h => h.elim
+  | .irrefl _, h => h.elim
+  | .disjointRoles _ _, h => h.elim
+  | .negRoleAssert _ _ _, h => h.elim
+  | .diff _ _, h => h.elim
+
+theorem positive_source_has_model {O : Axiom → Prop}
+    (h : ∀ a, O a → PositiveAxiom a) :
+    ∃ (W : Type) (j : Interp W), Nonempty W ∧ ∀ a, O a → sat j a :=
+  ⟨Unit, positiveSingleton, inferInstance, fun a ha => positiveSingleton_axiom a (h a ha)⟩
+
+
+theorem positiveRole_noTop (r : Role) (h : PositiveRole r) : RoleNoTop r := by
+  cases r <;> simp_all [PositiveRole, RoleNoTop]
+
+theorem positiveConcept_plain : ∀ c : Concept, PositiveConcept c → Plain c
+  | .atom _, _ | .top, _ => trivial
+  | .and c d, h | .or c d, h =>
+      ⟨positiveConcept_plain c h.1, positiveConcept_plain d h.2⟩
+  | .some r c, h | .all r c, h =>
+      ⟨positiveRole_noTop r h.1, positiveConcept_plain c h.2⟩
+  | .self r, h => positiveRole_noTop r h
+  | .bot, h | .not _, h | .atLeast _ _ _, h | .atMost _ _ _, h | .nominal _, h => h.elim
+
+theorem positiveAxiom_split : ∀ a : Axiom, PositiveAxiom a → PlainAx a ∨ AssertionAx a
+  | .sub c d, h => Or.inl ⟨positiveConcept_plain c h.1, positiveConcept_plain d h.2⟩
+  | .roleSub r rs s, h => Or.inl ⟨positiveRole_noTop r h.1,
+      (fun t ht => positiveRole_noTop t (h.2.1 t ht)), positiveRole_noTop s h.2.2⟩
+  | .trans r, h | .func r, h | .symm r, h | .refl r, h => Or.inl (positiveRole_noTop r h)
+  | .classAssert c _, h => Or.inr (topFree_of_plain c (positiveConcept_plain c h))
+  | .roleAssert r _ _, h => Or.inr (positiveRole_noTop r h)
+  | .same _ _, _ => Or.inr trivial
+  | .asymm _, h | .irrefl _, h | .disjointRoles _ _, h | .negRoleAssert _ _ _, h | .diff _ _, h => h.elim
+
+/-- The exact positive object source has the same named taxonomy as its TBox.
+The runtime must discharge PositiveAxiom for every resolved source axiom. -/
+theorem positive_tbox_named_query {O : Axiom → Prop}
+    (h : ∀ a, O a → PositiveAxiom a) (c b : Nat) :
+    EntailsC O (.atom c, .atom b) ↔
+      EntailsC (fun a => O a ∧ PlainAx a) (.atom c, .atom b) := by
+  apply tbox_entails_iff (fun _ ha => ha.1) (fun _ ha => ha.2)
+  · intro a ha
+    rcases positiveAxiom_split a (h a ha) with hp | hs
+    · exact Or.inl ⟨ha, hp⟩
+    · exact Or.inr hs
+  · exact ⟨Unit, positiveSingleton, fun a ha => positiveSingleton_axiom a (h a ha)⟩
+  · trivial
+  · trivial
+
+#print axioms positiveRole_noTop
+#print axioms positiveConcept_plain
+#print axioms positiveAxiom_split
+#print axioms positive_tbox_named_query
+
+#print axioms positiveSingleton_role
+#print axioms positiveSingleton_concept
+#print axioms positiveSingleton_axiom
+#print axioms positive_source_has_model
 end ContextCalculus.IncrementalModuleReuse

@@ -8,6 +8,7 @@
 
 pub mod abox_consistency;
 pub mod bottom_prepass;
+pub(crate) mod builtin_aliases;
 pub mod clauses;
 pub mod conformance;
 pub mod data_abox;
@@ -1032,6 +1033,10 @@ fn ofn_to_clauses_representation(
     if !TRUSTED_REWRITE.with(|flag| flag.get()) {
         conformance::check_source(text).map_err(parse::OutOfFragment)?;
     }
+    // Validation applies to the original bytes. Only exact resolved OWL
+    // constants are rewritten; ordinary source spelling/identity is retained.
+    let builtin_source = builtin_aliases::canonicalize(text).map_err(parse::OutOfFragment)?;
+    let text = builtin_source.as_ref();
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
