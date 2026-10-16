@@ -846,6 +846,54 @@ fn common_nominal_full_new_checks_data_clash_even_with_empty_probe_request() {
 }
 
 #[test]
+fn common_nominal_deletion_reuses_exact_initial_pair_without_index_builds() {
+    let shared = ["EquivalentClasses(:C ObjectOneOf(:a))", "SubClassOf(:C :D)",
+        "ClassAssertion(:C :a)", "SubClassOf(:E :F)"];
+    // These assertions are in the FULL empty core but absent from TBox
+    // analysis. The nominal owner forces the guarded common nominal path.
+    let assertion_g = "ClassAssertion(:G :a)";
+    let assertion_h = "ClassAssertion(:H :a)";
+    // Removing this unused declaration is valid NEW source, but deliberately
+    // lies outside ordinary deletion admission. Exercise the common path and
+    // its exact NEW public-domain pruning rather than the subject shortcut.
+    let mut initial = shared.to_vec();
+    initial.extend(["Declaration(Class(:Z))", assertion_g, assertion_h]);
+    let original = ontology(&initial);
+    let mut first = shared.to_vec(); first.push(assertion_h);
+    let deleted_g = ontology(&first);
+    let mut second = shared.to_vec(); second.push(assertion_g);
+    let deleted_h = ontology(&second);
+    let invalid = deleted_g.replace("SubClassOf(:E :F)", "SubClassOf(:E :Undeclared)");
+    let revisions = [original.clone(), deleted_g.clone(), invalid,
+        deleted_g.clone(), original.clone(), deleted_h.clone()];
+    let rows = session(&revisions);
+    assert_eq!(rows.len(), revisions.len());
+    for (index, source) in [(0, &original), (1, &deleted_g), (3, &deleted_g),
+        (4, &original), (5, &deleted_h)] {
+        assert_eq!(rows[index]["status"], "ok", "revision {index}: {:#?}", rows[index]);
+        assert_eq!(canonical(&rows[index]["result"]), canonical(&fresh(source, 1100 + index)),
+            "revision {index}");
+        if index == 1 || index == 5 {
+            assert!(!canonical(&rows[index]["result"]).2.iter().any(|(a,b)| a == ":Z" || b == ":Z"));
+        }
+    }
+    assert_eq!(rows[2]["status"], "error");
+    assert_eq!(rows[3]["receipt"]["strategy"], "exact_reuse");
+    assert_eq!(rows[4]["receipt"]["strategy"], "exact_reuse");
+    for index in [1, 5] {
+        let receipt = &rows[index]["receipt"];
+        assert_eq!(receipt["strategy"], "common_nominal_subject_reuse", "{receipt:#?}");
+        // These are actual public preparation counters, including the
+        // ordinary deletion attempt before common-module preparation.
+        assert_eq!(receipt["index_build_calls"], 0, "{receipt:#?}");
+        assert_eq!(receipt["csr_axiom_records"], 0);
+        assert_eq!(receipt["compiled_locality_axioms"], 0);
+        assert_eq!(receipt["resumed_backend_states"], 0);
+        assert!(receipt["reclassified_subjects"].as_u64().unwrap() > 0);
+    }
+}
+
+#[test]
 fn common_nominal_recomputes_empty_row_prunes_domain_and_preserves_refused_revision() {
     let shared=["Declaration(DataProperty(:p))","FunctionalDataProperty(:p)",
         "EquivalentClasses(:C ObjectOneOf(:a))","SubClassOf(:C :D)",

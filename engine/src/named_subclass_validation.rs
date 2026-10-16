@@ -57,12 +57,11 @@ impl NamedSubclassCertificate {
     /// No second full check to mint. Caller passes its existing owned source.
     /// The exact public-validation cache is queried without cloning facts.
     pub(crate) fn from_success_cache(source:Arc<String>)->Option<Self> {
-        if !source.is_ascii() {return None;}
         let scanned=scan(&source).ok()?;
         Self::capture_scanned(source,&scanned)
     }
     pub(crate) fn capture_scanned(source:Arc<String>,scanned:&crate::source_locality::Scan)->Option<Self> {
-        if !conformance::cached_user_source_accepted(&source) || !source.is_ascii() {return None;}
+        if !conformance::cached_user_source_accepted(&source) {return None;}
         if !outer_grammar(&source,&scanned) {return None;}
         let mut declared=FxHashSet::default();
         for st in &scanned.statements {
@@ -93,12 +92,14 @@ impl NamedSubclassCertificate {
     /// remain valid. Only supported named subclass axioms may be novel.
     /// No SourceFacts or cache entry for NEW is manufactured.
     pub(crate) fn derive(&self,source:Arc<String>)->Option<Self> {
-        if !source.is_ascii() {return None;}
         let scanned=scan(&source).ok()?;
         self.derive_scanned(source,&scanned)
     }
     pub(crate) fn derive_scanned(&self,source:Arc<String>,scanned:&crate::source_locality::Scan)->Option<Self> {
-        if !source.is_ascii() {return None;}
+        // The fallible scanner and outer grammar check UTF-8 span boundaries.
+        // Retained spans are compared byte-for-byte with validated provenance;
+        // novel named subclasses still pass the ordinary source checker below.
+        // Unicode in a retained IRI, literal or comment adds no new obligation.
         if !outer_grammar(&source,&scanned) || source[..scanned.open_end]!=self.source[..self.header_end] {return None;}
         let mut entries:FxHashMap<u128,Entry>=FxHashMap::default();
         let mut changed=String::from(&source[..scanned.open_end]);changed.push('\n');
@@ -360,5 +361,46 @@ impl NamedSubclassCertificate {
         assert!(conformance::check_user_source(&invalid).is_err());
 
         origin_subset_public_validator_controls();
+        unicode_origin_public_validator_controls();
+    }
+
+    fn unicode_origin_public_validator_controls() {
+        let make = |body: &str| format!(
+            "Prefix(:=<urn:unicode-admission:>) Ontology(\n# A Coruña / 東京\nAnnotation(rdfs:label \"Καλημέρα\") Declaration(Class(<urn:é>)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(NamedIndividual(<urn:東京>)) {body})");
+        let original = make("SubClassOf(<urn:é> :B) ClassAssertion(:C <urn:東京>)");
+        assert!(NamedSubclassCertificate::from_success_cache(Arc::new(original.clone())).is_none(),
+            "Unicode does not bypass successful public-validation provenance");
+        let origin = captured(&original);
+        let changed = make("SubClassOf(<urn:é> :B) SubClassOf(:B :C)");
+        let derived = origin.derive(Arc::new(changed.clone())).expect("unchanged Unicode spans plus exact deletion and named addition");
+        assert!(conformance::cached_source_facts(&changed).is_none());
+        assert!(conformance::check_user_source(&changed).is_ok());
+        assert!(derived.derive(Arc::new(original.clone())).is_some(), "restore exact original assertion");
+        let unicode_addition = make("SubClassOf(:C <urn:é>)");
+        assert!(origin.derive(Arc::new(unicode_addition.clone())).is_some());
+        assert!(conformance::check_user_source(&unicode_addition).is_ok());
+        // Equal-looking Unicode is not equal source provenance. New syntax
+        // still uses full validation, even when that source would be valid.
+        for unsupported in [
+            changed.replace("Καλημέρα", "Καλησπέρα"),
+            changed.replace("<urn:é>", "<urn:e\u{0301}>"),
+            make("ClassAssertion(:B <urn:東京>)"),
+        ] {
+            assert!(origin.derive(Arc::new(unsupported.clone())).is_none());
+            assert!(conformance::check_user_source(&unsupported).is_ok());
+        }
+        for gap in ["\u{0085}", "\u{00a0}", "\u{2003}"] {
+            let invalid = changed.replace(" Declaration(Class(:B))", &format!("{gap}Declaration(Class(:B))"));
+            assert!(origin.derive(Arc::new(invalid.clone())).is_none(), "unsupported Unicode trivia must decline");
+            // The legacy full tokenizer can panic when continuation bytes
+            // 0x85/0xA0 are classified as whitespace. The reuse scanner must
+            // reject those boundaries fallibly, without reaching that parser.
+            if let Ok(scanned) = scan(&invalid) {
+                assert!(!outer_grammar(&invalid, &scanned));
+            }
+            if gap == "\u{2003}" {
+                assert!(conformance::check_user_source(&invalid).is_err());
+            }
+        }
     }
 }

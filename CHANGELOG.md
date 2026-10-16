@@ -99,6 +99,27 @@ real-case performance validation remain pending. This entry makes no timing
 claim and does not replace the failing measurements of commit
 `fe0e85b4546e2c90f60b6ae69efc32594af6acb4`.
 
+### Incremental preparation reuse
+
+Compared with commit `c55003ac696d0b19abd0f817fef7211c9a7721fd`:
+
+- Reuse the existing full and TBox locality indexes when the new source is
+  an exact-text subset of the selected original revision. Require matching
+  source provenance, index modes, complete enabled masks and no historical
+  removals. Keep the original source spans and recompute the new public domain.
+- Reuse validated UTF-8 source spans without Unicode normalization. Retained
+  headers and statements remain byte-exact. Novel named subclass axioms still
+  use the source checker; unsupported trivia or changed fixed syntax declines
+  reuse.
+
+These changes preserve the admission, locality, consistency and publication
+checks. All 74 focused tests passed, including fresh-result parity, removal of
+an unused public class, refused-update rollback and actual zero-index-build
+receipts. Final performance measurements and certification from the eventual
+release source remain pending. The recorded timing misses of commit
+`fe0e85b4546e2c90f60b6ae69efc32594af6acb4` remain separate evidence; these tests
+do not establish that those misses are resolved.
+
 ### Native process cleanup
 
 - During cancellation, allow the supervisor to reap terminated children before

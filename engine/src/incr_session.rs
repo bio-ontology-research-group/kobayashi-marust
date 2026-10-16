@@ -605,6 +605,16 @@ impl PreparedCompiler {
         match self { Self::Exact(_) => exact, Self::Union { scan, .. } => scan }
     }
 
+    fn tbox_index(&self, exact: &str, scanned: &Scan,
+        cached: Option<&Arc<LocalityIndex>>, work: &mut PreparationWork)
+        -> Result<Arc<LocalityIndex>, String>
+    {
+        match cached {
+            Some(index) => Ok(index.clone()),
+            None => work.build_index(self.text(exact), self.scan(scanned), true).map(Arc::new),
+        }
+    }
+
     /// Called only after successful complete, consistent full classification.
     /// Keep the same full-index/mask contract as successful common reuse.
     fn consistent_union_base(&self, text: &str, scanned: &Scan,
@@ -708,6 +718,28 @@ struct BaseState {
 }
 
 impl BaseState {
+    /// Only an unmasked exact-source pair can stand for OLD union NEW on
+    /// deletion. A compiler-only donor or a historical masked base cannot.
+    fn exact_union_pair(&self, selected: &Statements, new: &Statements)
+        -> Option<(PreparedCompiler, Arc<LocalityIndex>)>
+    {
+        let tbox = self.index.as_ref()?.as_ref()?;
+        let full = self.full.as_ref()?;
+        if !self.consistent || !tbox.tbox_mode || !full.full_mode
+            || tbox.spelling_conflict || full.spelling_conflict
+            || !self.removed_hashes.is_empty()
+            || self.disabled.len() != tbox.axiom_count()
+            || self.full_disabled.len() != full.axiom_count()
+            || self.disabled.iter().any(|disabled| *disabled)
+            || self.full_disabled.iter().any(|disabled| *disabled)
+            || !(std::ptr::eq(self.statements.as_ref(), selected) || self.statements.exact_eq(selected))
+            || !new.confirms_subset(&self.statements)
+        { return None; }
+        let source = self.statements.text.clone();
+        let scanned = scan(&source).ok()?;
+        Some((PreparedCompiler::Union { source, scan: scanned, index: full.clone() }, tbox.clone()))
+    }
+
     fn index(&mut self, work: &mut PreparationWork) -> Option<&LocalityIndex> {
         if self.index.is_none() {
             let consistent = self.consistent;
@@ -1396,6 +1428,7 @@ impl Session {
         if admission.is_some() { stage("common source validation certificate", started); }
         stage("common source validated", started);
         let base_tax = self.memo[bi].taxonomy.clone();
+        let selected_statements = self.memo[bi].statements.as_ref().expect("selected statements").clone();
         let base = self.memo[bi].base.as_mut().expect("selected complete base");
         // This may populate a full compiler alongside a nominal TBox index.
         // Resolve the OLD domain before selecting its compiler donor.
@@ -1406,7 +1439,13 @@ impl Session {
         let old = base.statements.clone();
         let previous = base.compiler_full.clone();
         let previous_told = base.told.clone();
-        if old.confirms_subset(new) {
+        let mut cached_tbox = None;
+        if let Some((prepared, tbox)) = base.exact_union_pair(&selected_statements, new) {
+            // Both immutable indexes describe exact OLD. For this deletion
+            // OLD union NEW is OLD; keep its original source spans as well.
+            *prepared_new = Some(prepared);
+            cached_tbox = Some(tbox);
+        } else if old.confirms_subset(new) {
             // For an exact addition, the union is NEW. Keep the established
             // one-build path and its exact source provenance.
             let index = Arc::new(match previous {
@@ -1510,7 +1549,7 @@ impl Session {
                 }
             }
             return common_nominal_update(text, scanned, new, &old, &base_tax,
-                &old_domain, new_domain, prepared, admission, delta, work,
+                &old_domain, new_domain, prepared, cached_tbox.as_ref(), admission, delta, work,
                 prepared_full, started, false);
         }
         // Prefer a certified pure-object NEW module when the full common
@@ -1536,7 +1575,7 @@ impl Session {
                 || union_scan.statements.iter().any(|s|
                     assertions.contains(&s.hash) && is_data_assertion(s)) {
                 match common_nominal_update(text, scanned, new, &old, &base_tax,
-                    &old_domain, new_domain.clone(), prepared, admission.clone(), delta, work,
+                    &old_domain, new_domain.clone(), prepared, cached_tbox.as_ref(), admission.clone(), delta, work,
                     prepared_full, started, true) {
                     Ok(Some(answer)) => return Ok(Some(answer)),
                     Ok(None) => {},
@@ -2063,6 +2102,7 @@ fn object_common_module(text: &str, scanned: &Scan, old: &Statements, new: &Stat
 fn common_nominal_update(text: &str, scanned: &Scan, new: &Arc<Statements>, old: &Statements,
     base_tax: &Taxonomy, old_domain: &FxHashSet<Box<str>>,
     new_domain: Arc<FxHashSet<Box<str>>>, prepared: &PreparedCompiler,
+    cached_tbox: Option<&Arc<LocalityIndex>>,
     admission: Option<Arc<crate::named_subclass_validation::NamedSubclassCertificate>>,
     delta: StatementDelta, work: &mut PreparationWork,
     prepared_full: &mut Option<Result<(Taxonomy, f64), String>>, started: Instant, module_only: bool)
@@ -2081,7 +2121,7 @@ fn common_nominal_update(text: &str, scanned: &Scan, new: &Arc<Statements>, old:
         return Err(decline.into());
     };
     stage("nominal common source shape checked", started);
-    let tbox = work.build_index(union_text, union_scan, true)?;
+    let tbox = prepared.tbox_index(text, scanned, cached_tbox, work)?;
     let Some(names) = nominal_common_subjects(&tbox, old, new, old_domain, &new_domain, &eligible.data_tbox) else {
         return Err(decline.into());
     };
@@ -3121,6 +3161,114 @@ mod tests {
         let entry = forged.counts.remove(&new_hash).unwrap(); forged.counts.insert(old_hash, entry);
         assert!(!old.confirms_subset(&forged), "hash collision must not admit the fast path");
     }
+    fn exact_pair_fixture() -> (Arc<Statements>, Arc<Statements>, BaseState) {
+        let make = |body: &str| Arc::new(format!("Prefix(:=<urn:pair#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:K)) Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a)) SubClassOf(:A ObjectSomeValuesFrom(:r ObjectOneOf(:a))) ClassAssertion(:K :a) {body})"));
+        let text = make("SubClassOf(:B :C)");
+        let scanned = scan(&text).unwrap();
+        let old = Arc::new(Statements::of(&scanned, &text));
+        let next = make("");
+        let new = Arc::new(Statements::of(&scan(&next).unwrap(), &next));
+        let mut base = BaseState { statements: old.clone(), source: Some((text.clone(), scanned)),
+            index: None, compiler_full: None, admission: None, disabled: Arc::from([]),
+            full_disabled: Arc::from([]), removed_hashes: Arc::new(FxHashSet::default()),
+            class_domain: None, full: None, told: None, consistent: true, witness: None,
+            anonymous: FxHashSet::default(), source_bytes: text.len() };
+        let mut work = PreparationWork::default();
+        assert!(base.index(&mut work).unwrap().tbox_mode);
+        assert_eq!(work.index_build_calls, 2);
+        (old, new, base)
+    }
+
+    #[test]
+    fn exact_union_pair_reuses_both_indexes_with_fresh_module_and_domain_parity() {
+        let (old, new, base) = exact_pair_fixture();
+        let (prepared, cached) = base.exact_union_pair(&old, &new).unwrap();
+        assert!(Arc::ptr_eq(prepared.index(), base.full.as_ref().unwrap()));
+        assert!(Arc::ptr_eq(&cached, base.index.as_ref().unwrap().as_ref().unwrap()));
+        assert!(std::ptr::eq(prepared.text(&new.text), old.text.as_str()));
+        let new_scan = scan(&new.text).unwrap();
+        let mut reused_work = PreparationWork::default();
+        let tbox = prepared.tbox_index(&new.text, &new_scan, Some(&cached), &mut reused_work).unwrap();
+        assert!(Arc::ptr_eq(&tbox, &cached));
+        assert_eq!(reused_work.index_build_calls, 0);
+        let mut fresh_work = PreparationWork::default();
+        let old_scan = scan(&old.text).unwrap();
+        let full = Arc::new(fresh_work.build_index(&old.text, &old_scan, false).unwrap());
+        let fresh = PreparedCompiler::Union { source: old.text.clone(), scan: old_scan, index: full };
+        let fresh_tbox = fresh.tbox_index(&new.text, &new_scan, None, &mut fresh_work).unwrap();
+        assert_eq!(fresh_work.index_build_calls, 2);
+        assert_eq!(class_domain(prepared.index()), class_domain(fresh.index()));
+        let domain = |index: &LocalityIndex| index.live_public_class_names(|h| new.counts.contains_key(&h)).unwrap().into_iter().map(str::to_string).collect::<BTreeSet<_>>();
+        assert_eq!(domain(prepared.index()), domain(fresh.index()));
+        for (a,b) in [(prepared.index().as_ref(), fresh.index().as_ref()), (tbox.as_ref(), fresh_tbox.as_ref())] {
+            assert_eq!(a.axiom_hash, b.axiom_hash);
+            for seed in a.names.iter().map(|n| Some(n.as_ref())).chain(std::iter::once(None)) {
+                let module = |ix: &LocalityIndex| {
+                    let seeds: Vec<_> = seed.into_iter().map(|name| ix.named(name).unwrap()).collect();
+                    let disabled: Vec<_> = ix.axiom_hash.iter().map(|h| !new.counts.contains_key(h)).collect();
+                    let (members, signature) = ix.module(&seeds, &disabled);
+                    (members.into_iter().map(|id| ix.axiom_hash[id as usize]).collect::<BTreeSet<_>>(),
+                        ix.symbols.iter().zip(signature).filter(|(_,yes)| *yes).map(|(n,_)| n.to_string()).collect::<BTreeSet<_>>())
+                };
+                assert_eq!(module(a),module(b), "seed {seed:?}");
+            }
+        }
+        // A tentative deletion and a later deletion keep the donor immutable;
+        // their masked/historical views must never requalify as an exact pair.
+        let removed = [fingerprint(b"SubClassOf(:B :C)")];
+        let candidate = base.after_deletion(new.clone(), &removed);
+        assert!(candidate.exact_union_pair(&new, &new).is_none());
+        drop(candidate);
+        assert!(base.exact_union_pair(&old, &new).is_some());
+        let repeated = base.after_deletion(new.clone(), &removed).after_deletion(new.clone(), &[]);
+        assert!(repeated.exact_union_pair(&new, &new).is_none());
+        assert!(base.disabled.iter().all(|x| !x) && base.full_disabled.iter().all(|x| !x));
+    }
+
+    #[test]
+    fn exact_union_pair_rejects_masks_missing_pairs_and_unconfirmed_source() {
+        let (old, new, mut base) = exact_pair_fixture();
+        let saved = base.disabled.clone();
+        base.disabled = Arc::from([]);
+        assert!(base.exact_union_pair(&old,&new).is_none());
+        base.disabled = vec![true; saved.len()].into();
+        assert!(base.exact_union_pair(&old,&new).is_none());
+        base.disabled = saved;
+        let saved = base.full_disabled.clone();
+        base.full_disabled = Arc::from([]);
+        assert!(base.exact_union_pair(&old,&new).is_none());
+        base.full_disabled = vec![true; saved.len()].into();
+        assert!(base.exact_union_pair(&old,&new).is_none());
+        base.full_disabled = saved;
+        base.removed_hashes = Arc::new([fingerprint(b"historical")].into_iter().collect());
+        assert!(base.exact_union_pair(&old,&new).is_none());
+        base.removed_hashes = Arc::new(FxHashSet::default());
+        let full = base.full.take();
+        assert!(base.compiler_full.is_some());
+        assert!(base.exact_union_pair(&old,&new).is_none());
+        base.full = full;
+        let tbox = base.index.take();
+        base.index = Some(Some(base.full.as_ref().unwrap().clone()));
+        assert!(base.exact_union_pair(&old,&new).is_none());
+        base.index = None;
+        assert!(base.exact_union_pair(&old,&new).is_none());
+        base.index = tbox;
+        let changed = Arc::new(new.text.replacen("urn:pair#","urn:other#",1));
+        let changed = Statements::of(&scan(&changed).unwrap(),&changed);
+        assert!(base.exact_union_pair(&old,&changed).is_none());
+        assert!(base.exact_union_pair(&new,&new).is_none());
+        let mut collided = Statements::of(&scan(&new.text).unwrap(),&new.text);
+        collided.collision = true;
+        assert!(base.exact_union_pair(&old,&collided).is_none());
+        // A forged matching hash must still compare exact statement bytes.
+        let changed = Arc::new(new.text.replace("ClassAssertion(:K :a)","ClassAssertion(:B :a)"));
+        let mut forged = Statements::of(&scan(&changed).unwrap(),&changed);
+        let entry = forged.counts.remove(&fingerprint(b"ClassAssertion(:B :a)")).unwrap();
+        forged.counts.insert(fingerprint(b"ClassAssertion(:K :a)"),entry);
+        assert!(base.exact_union_pair(&old,&forged).is_none());
+        assert!(base.exact_union_pair(&old,&new).is_some());
+    }
+
     #[test]
     fn pending_union_materializes_exact_new_before_nominal_full_index_reuse() {
         let make = |body: &str| Arc::new(format!("Prefix(:=<urn:prepared#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:K)) Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a)) {body})"));
