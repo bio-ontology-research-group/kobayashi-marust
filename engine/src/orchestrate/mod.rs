@@ -1228,7 +1228,11 @@ pub fn classify_json(
     initial_cfg: &Config,
     ont: &Path,
 ) -> Result<JsonClassification, OrchestrateError> {
-    validate_user_input(ont)?;
+    // A registered rewrite names a document whose validation the caller already
+    // established (`TrustedRewrite`); unregistered input is always validated.
+    if !is_trusted_rewrite(ont) {
+        validate_user_input(ont)?;
+    }
     timing_mark("validate_user_input done");
     classify_with_evidence_mode(initial_cfg, ont, true).map(|evidence| JsonClassification {
         classification: evidence.classification,
@@ -1254,7 +1258,7 @@ static TRUSTED_REWRITES: std::sync::Mutex<Vec<std::path::PathBuf>> =
 pub(crate) struct TrustedRewrite(std::path::PathBuf);
 
 impl TrustedRewrite {
-    fn register(path: &Path) -> TrustedRewrite {
+    pub(crate) fn register(path: &Path) -> TrustedRewrite {
         TRUSTED_REWRITES
             .lock()
             .unwrap_or_else(|e| e.into_inner())

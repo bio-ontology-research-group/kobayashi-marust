@@ -1101,7 +1101,19 @@ fn classify_text(text: &str) -> Result<Taxonomy, String> {
 
 /// The pipeline with extra environment settings (existing pipeline options only).
 fn classify_text_with(text: &str, settings: &[(&str, &str)]) -> Result<Taxonomy, String> {
-    let rows = classify_rows_with(text, settings)?;
+    classify_text_impl(text, settings, false)
+}
+
+/// Like `classify_text_with` for a text whose conformance this session already
+/// established through a derived admission certificate (the same certificate
+/// that lets the common path skip `check_user_source`). The pipeline then does
+/// not repeat whole-source validation. Callers must hold such a certificate.
+fn classify_text_certified(text: &str, settings: &[(&str, &str)]) -> Result<Taxonomy, String> {
+    classify_text_impl(text, settings, true)
+}
+
+fn classify_text_impl(text: &str, settings: &[(&str, &str)], certified: bool) -> Result<Taxonomy, String> {
+    let rows = classify_rows_impl(text, settings, certified)?;
     let started = Instant::now();
     let tax = Taxonomy::from_rows(rows);
     stage("rows indexed", started);
@@ -1110,9 +1122,14 @@ fn classify_text_with(text: &str, settings: &[(&str, &str)]) -> Result<Taxonomy,
 
 /// The pipeline's grouped answer, before indexing.
 fn classify_rows_with(text: &str, settings: &[(&str, &str)]) -> Result<TaxonomyRows, String> {
+    classify_rows_impl(text, settings, false)
+}
+
+fn classify_rows_impl(text: &str, settings: &[(&str, &str)], certified: bool) -> Result<TaxonomyRows, String> {
     let started = Instant::now();
     let path = crate::orchestrate::tmpfile::TempPath::new(".ofn");
     std::fs::write(path.path(), text).map_err(|e| e.to_string())?;
+    let _trusted = certified.then(|| crate::orchestrate::TrustedRewrite::register(path.path()));
     let _env = FullEnvironment::capture();
     for (key, value) in settings {
         std::env::set_var(key, value);
@@ -1281,7 +1298,9 @@ impl Session {
             Some(answer) => { let (tax, seconds) = answer?; (Arc::new(tax), seconds) },
             None => {
                 let full_started = Instant::now();
-                (Arc::new(classify_text(&text)?), full_started.elapsed().as_secs_f64())
+                let tax = if prepared_admission.is_some() { classify_text_certified(&text, &[])? }
+                    else { classify_text(&text)? };
+                (Arc::new(tax), full_started.elapsed().as_secs_f64())
             },
         };
         // An inconsistent answer is complete; a consistent one must be.
@@ -1427,6 +1446,25 @@ impl Session {
         }
         if admission.is_some() { stage("common source validation certificate", started); }
         stage("common source validated", started);
+        if predicts_empty_module_decline(self.memo[bi].base.as_ref().expect("selected complete base"),
+            self.memo[bi].statements.as_ref().expect("selected statements"), new, text, scanned)
+        {
+            // Skip the union-index assembly the full path would repeat, but
+            // keep the optional independent-support proposal of that path.
+            if delta.added_axioms != 0 {
+                if let Some(certificate) = early_object_support_with(new, scanned, &mut verify_support) {
+                    let old_total = self.memo[bi].statements.as_ref().expect("selected statements").total;
+                    let mut tax = Taxonomy::empty(); tax.consistent = false;
+                    let mut receipt = Receipt { strategy: "verified_inconsistency_support",
+                        base_revision_statements: old_total, ..Default::default() };
+                    receipt.apply_delta(delta);
+                    *prepared_inconsistency = Some(certificate);
+                    stage("independent object support verified", started);
+                    return Ok(Some((tax, receipt, None)));
+                }
+            }
+            return Err(EARLY_DECLINE_REASON.into());
+        }
         let base_tax = self.memo[bi].taxonomy.clone();
         let selected_statements = self.memo[bi].statements.as_ref().expect("selected statements").clone();
         let base = self.memo[bi].base.as_mut().expect("selected complete base");
@@ -1647,7 +1685,9 @@ impl Session {
                     path = file.path().to_string_lossy().into_owned();
                     settings.push(("KM_PUBLIC_SUBJECT_IRIS_FILE", path.as_str()));
                 }
-                classify_text_with(&out, &settings).map_err(|e| format!("common module classification: {e}"))?
+                if admission.is_some() { classify_text_certified(&out, &settings) }
+                    else { classify_text_with(&out, &settings) }
+                    .map_err(|e| format!("common module classification: {e}"))?
             };
             if !module_tax.consistent || module_tax.dropped != 0 {
                 return Err("common module classification was not complete and consistent".into());
@@ -2094,6 +2134,25 @@ fn object_common_module(text: &str, scanned: &Scan, old: &Statements, new: &Stat
     }
     output.push_str(")\n");
     Some((output, module.len()))
+}
+
+const EARLY_DECLINE_REASON: &str = "early_decline_empty_signature_module";
+
+/// Cheap, conservative prediction that the common path would decline with
+/// "changed axiom belongs to the union empty-signature module" after building
+/// the union index. It fires only when the retained full compiler of the base
+/// says the source is outside the positive-object projection (assertions stay
+/// in every module), the edit adds or removes an assertion, and NEW is not
+/// eligible for the nominal common route. A wrong prediction only forgoes
+/// reuse: the full classification it falls back to is always sound.
+fn predicts_empty_module_decline(base: &BaseState, old: &Statements, new: &Statements,
+    text: &str, scanned: &Scan) -> bool
+{
+    let Some(full) = base.compiler_full.as_ref() else { return false };
+    if !full.full_mode || full.positive_object_source { return false; }
+    let touches = |a: &Statements, b: &Statements| a.counts.iter()
+        .any(|(hash, (_, kind, ..))| *kind == StmtKind::Assertion && !b.counts.contains_key(hash));
+    (touches(new, old) || touches(old, new)) && crate::incr_envelope::eligible(text, scanned).is_none()
 }
 
 /// Both actual revisions need models. The guarded augmented empty-core
