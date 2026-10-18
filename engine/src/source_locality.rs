@@ -412,6 +412,12 @@ pub struct LocalityIndex {
     /// `positive_tbox_named_query`. Requires prior complete source validation;
     /// never true for a TBox build that skips assertions. No publication alone.
     pub positive_object_source: bool,
+    /// The complete source is certainly NOT in the positive object fragment:
+    /// exact for a full index (`!positive_object_source`), a conservative
+    /// witness for a TBox build (some axiom or skipped assertion statement
+    /// that the full compiler would refuse; `false` means only "not seen").
+    /// Never true for a source that a full build certifies positive.
+    pub outside_positive_object: bool,
     /// Assertions and rules are outside every module (see `build`).
     pub tbox_mode: bool,
     /// Per logical axiom: it mentions a nominal (TBox mode only). A class
@@ -1109,6 +1115,8 @@ impl LocalityIndex {
         let mut donor_remap = donor.map(|(old, _)| vec![u32::MAX; old.symbols.len()]);
         let mut all_individual_free = true;
         let mut all_positive_object = !tbox;
+        // TBox builds skip assertions, so only a witness can be recorded.
+        let mut tbox_outside_positive = false;
         let (mut class_off, mut class_lits) = (vec![0u32], Vec::new());
         let mut compile_flags = Vec::new();
         let mut assertions = crate::fxhash::FxHashSet::default();
@@ -1158,6 +1166,11 @@ impl LocalityIndex {
                         || universal_role_aliases.iter().any(|alias| slice.contains(alias))
                     {
                         all_individual_free = false;
+                    }
+                    // Cheap lexical head test (no parsing of skipped assertions).
+                    let head = slice.split('(').next().unwrap_or("").trim();
+                    if !matches!(head, "ClassAssertion" | "ObjectPropertyAssertion" | "SameIndividual") {
+                        tbox_outside_positive = true;
                     }
                     assertions.insert(st.hash);
                     continue;
@@ -1230,7 +1243,9 @@ impl LocalityIndex {
                     Node::List(h, a) => (*h, a.iter().filter(|n| n.head() != Some("Annotation")).collect::<Vec<_>>()),
                     Node::Atom(_) => return Err("malformed statement".into()),
                 };
-                positive_object = !tbox && bld.positive_object_axiom(head, &args);
+                let admitted = bld.positive_object_axiom(head, &args);
+                positive_object = !tbox && admitted;
+                if tbox && !admitted { tbox_outside_positive = true; }
                 let f = bld.axiom(head, &args);
                 buf.clear();
                 for a in &args { bld.collect(a, &mut buf); }
@@ -1297,6 +1312,7 @@ impl LocalityIndex {
         Ok((LocalityIndex {
             full_mode: !tbox,
             positive_object_source: all_positive_object,
+            outside_positive_object: if tbox { tbox_outside_positive } else { !all_positive_object },
             tbox_mode: tbox && all_individual_free,
             nominal,
             // At most 1 % of the axioms use non-EL constructors.
@@ -2041,6 +2057,7 @@ mod tests {
         assert_eq!((actual.full_mode, actual.tbox_mode, actual.el_like, actual.spelling_conflict),
             (fresh.full_mode, fresh.tbox_mode, fresh.el_like, fresh.spelling_conflict));
         assert_eq!(actual.positive_object_source, fresh.positive_object_source);
+        assert_eq!(actual.outside_positive_object, fresh.outside_positive_object);
         assert_eq!(actual.axiom_hash, fresh.axiom_hash);
         assert_eq!(actual.axiom_always, fresh.axiom_always);
         assert_eq!(actual.nominal, fresh.nominal);
@@ -2822,6 +2839,28 @@ mod positive_object_tests {
         assert!(index("SubClassOf(:A ObjectAllValuesFrom(ObjectInverseOf(:r) ObjectUnionOf(:B owl:Thing))) ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b) SameIndividual(:a <urn:test#a>) ClassAssertion(:A _:x) SameIndividual(_:x _:y)").positive_object_source);
         for bad in ["SubClassOf(:A o:Nothing)", "SubClassOf(:A ObjectSomeValuesFrom(o:topObjectProperty :B))", "ObjectPropertyAssertion(ObjectInverseOf(o:bottomObjectProperty) :a :b)", "DifferentIndividuals(:a :b)", "DifferentIndividuals(:a <urn:test#a>)", "SubClassOf(:A ObjectComplementOf(:B))", "ClassAssertion(ObjectOneOf(:a) :b)", "SubClassOf(:A ObjectMinCardinality(1 :r :B))", "DataPropertyAssertion(:d :a \"x\")", "DisjointClasses(:A :B)", "Unknown(:A)", "SubClassOf(:A)", "ObjectPropertyAssertion(:r :a)"] {
             assert!(!index(bad).positive_object_source, "{bad}");
+        }
+    }
+    #[test]
+    fn tbox_outside_positive_witness_implies_full_refusal() {
+        let head = "Prefix(:=<urn:test#>) Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(";
+        let positive = "SubClassOf(:A :B) ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b) SameIndividual(:a :c)";
+        let cases = [
+            (positive.to_owned(), false),
+            (format!("{positive} DifferentIndividuals(:a :b)"), true),
+            (format!("{positive} DataPropertyAssertion(:d :a \"x\")"), true),
+            (format!("{positive} SubClassOf(:A ObjectComplementOf(:B))"), true),
+            (format!("{positive} DLSafeRule(Body(ClassAtom(:A Variable(:x))) Head(ClassAtom(:B Variable(:x))))"), true),
+        ];
+        for (body, outside) in cases {
+            let text = format!("{head}{body})");
+            let sc = scan(&text).unwrap();
+            let full = LocalityIndex::build(&text, &sc, false).unwrap();
+            let tbox = LocalityIndex::build_mode(&text, &sc, true).unwrap();
+            assert_eq!(full.outside_positive_object, !full.positive_object_source, "{body}");
+            assert_eq!(full.outside_positive_object, outside, "{body}");
+            assert_eq!(tbox.outside_positive_object, outside, "{body}");
+            assert!(!tbox.outside_positive_object || !full.positive_object_source);
         }
     }
     #[test]

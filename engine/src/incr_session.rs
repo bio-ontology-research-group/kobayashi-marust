@@ -838,6 +838,10 @@ pub struct Session {
     current: Option<usize>,
     revision: u64,
     clock: u64,
+    /// The current transaction's NEW text passed `check_user_source` (the
+    /// public validation the pipeline would repeat), so a classification of
+    /// exactly that text may run with `classify_text_certified`.
+    validated_new: bool,
 }
 
 #[derive(Default)]
@@ -1151,7 +1155,7 @@ fn classify_rows_impl(text: &str, settings: &[(&str, &str)], certified: bool) ->
 impl Session {
     pub fn new() -> Self {
         apply_production_defaults();
-        Session { memo: Vec::new(), current: None, revision: 0, clock: 0 }
+        Session { memo: Vec::new(), current: None, revision: 0, clock: 0, validated_new: false }
     }
 
     /// A source whose outer grammar cannot be inherited gets the ordinary
@@ -1200,6 +1204,7 @@ impl Session {
     /// Classify one complete revision (init or replace).
     fn update(&mut self, text: String) -> Result<(Arc<Taxonomy>, Receipt), String> {
         let started = Instant::now();
+        self.validated_new = false;
         let mut preparation = PreparationWork::default();
         preparation.prior_compilers = self.memo.iter().filter_map(|revision|
             revision.base.as_ref().and_then(|base| base.compiler_full.clone())).collect();
@@ -1262,7 +1267,12 @@ impl Session {
             return Ok((tax, receipt));
         }
         let mut fallback_reason = None;
-        match self.deletion(&text, &scanned, &statements, started, transaction_delta, &mut preparation) {
+        let deletion_attempt = self.deletion(&text, &scanned, &statements, started, transaction_delta, &mut preparation);
+        if std::env::var_os("KM_INCR_TIMING").is_some() {
+            if let Err(reason) = &deletion_attempt { stage(&format!("deletion declined: {reason}"), started); }
+        }
+        stage("deletion attempt finished", started);
+        match deletion_attempt {
             Ok(Some((tax, mut receipt, base))) => {
                 let tax = Arc::new(tax);
                 receipt.set_transaction_delta(transaction_delta);
@@ -1298,7 +1308,7 @@ impl Session {
             Some(answer) => { let (tax, seconds) = answer?; (Arc::new(tax), seconds) },
             None => {
                 let full_started = Instant::now();
-                let tax = if prepared_admission.is_some() { classify_text_certified(&text, &[])? }
+                let tax = if prepared_admission.is_some() || self.validated_new { classify_text_certified(&text, &[])? }
                     else { classify_text(&text)? };
                 (Arc::new(tax), full_started.elapsed().as_secs_f64())
             },
@@ -1431,24 +1441,42 @@ impl Session {
             return if self.memo.is_empty() { Ok(None) }
                 else { Err("no complete consistent base with compatible exact source identities".into()) };
         };
-        let admission = self.memo[bi].base.as_ref().and_then(|base| base.admission.as_ref())
-            .and_then(|origin| origin.derive_scanned(new.text.clone(), scanned)).map(Arc::new);
+        stage("common base and delta selected", started);
+        // A removed declaration or annotation is a fixed origin entry, so the
+        // derivation would refuse it after a full pass: skip the pass (the
+        // only loss is a certificate that was not available anyway). Java
+        // renders drop the declaration of an entity whose last use is deleted.
+        let admission = if delta.removed_statements > delta.removed_axioms { None } else {
+            self.memo[bi].base.as_ref().and_then(|base| base.admission.as_ref())
+                .and_then(|origin| origin.derive_scanned(new.text.clone(), scanned)).map(Arc::new)
+        };
+        stage("common admission derivation", started);
         // Transaction-local until full or module publication succeeds. Never
         // recapture NEW or install public validation provenance on a decline.
         *prepared_admission = admission.clone();
+        let predicted_decline = predicts_empty_module_decline(
+            self.memo[bi].base.as_ref().expect("selected complete base"),
+            self.memo[bi].statements.as_ref().expect("selected statements"), new, text, scanned);
+        stage("common decline predicted", started);
         if admission.is_none() {
+            // The predicted decline ends in the ordinary full classification,
+            // whose pipeline validates NEW itself and reports its error. Only
+            // an addition (independent-support proposal) needs the verdict
+            // here, because that proposal must never certify an invalid NEW.
+            if predicted_decline && delta.added_axioms == 0 {
+                return Err(EARLY_DECLINE_REASON.into());
+            }
             match crate::frontend::conformance::check_user_source(text) {
-            Ok(()) => {},
+            Ok(()) => self.validated_new = true,
             Err(crate::frontend::conformance::UserSourceError::Imports) =>
                 return Err("unresolved owl:imports in new revision".into()),
             Err(crate::frontend::conformance::UserSourceError::Invalid(error)) => return Err(error),
         }
         }
+        let certified_new = admission.is_some() || self.validated_new;
         if admission.is_some() { stage("common source validation certificate", started); }
         stage("common source validated", started);
-        if predicts_empty_module_decline(self.memo[bi].base.as_ref().expect("selected complete base"),
-            self.memo[bi].statements.as_ref().expect("selected statements"), new, text, scanned)
-        {
+        if predicted_decline {
             // Skip the union-index assembly the full path would repeat, but
             // keep the optional independent-support proposal of that path.
             if delta.added_axioms != 0 {
@@ -1587,7 +1615,7 @@ impl Session {
                 }
             }
             return common_nominal_update(text, scanned, new, &old, &base_tax,
-                &old_domain, new_domain, prepared, cached_tbox.as_ref(), admission, delta, work,
+                &old_domain, new_domain, prepared, cached_tbox.as_ref(), admission, certified_new, delta, work,
                 prepared_full, started, false);
         }
         // Prefer a certified pure-object NEW module when the full common
@@ -1613,7 +1641,7 @@ impl Session {
                 || union_scan.statements.iter().any(|s|
                     assertions.contains(&s.hash) && is_data_assertion(s)) {
                 match common_nominal_update(text, scanned, new, &old, &base_tax,
-                    &old_domain, new_domain.clone(), prepared, cached_tbox.as_ref(), admission.clone(), delta, work,
+                    &old_domain, new_domain.clone(), prepared, cached_tbox.as_ref(), admission.clone(), certified_new, delta, work,
                     prepared_full, started, true) {
                     Ok(Some(answer)) => return Ok(Some(answer)),
                     Ok(None) => {},
@@ -2148,8 +2176,16 @@ const EARLY_DECLINE_REASON: &str = "early_decline_empty_signature_module";
 fn predicts_empty_module_decline(base: &BaseState, old: &Statements, new: &Statements,
     text: &str, scanned: &Scan) -> bool
 {
-    let Some(full) = base.compiler_full.as_ref() else { return false };
-    if !full.full_mode || full.positive_object_source { return false; }
+    // A retained full compiler decides exactly. Without one (an init that
+    // kept only the TBox index) the TBox build's conservative witness is
+    // enough: it is set only for an axiom or skipped assertion statement the
+    // full compiler would also refuse, so it implies !positive_object_source.
+    let outside_positive = match base.compiler_full.as_ref() {
+        Some(full) => full.full_mode && !full.positive_object_source,
+        None => base.index.as_ref().and_then(|index| index.as_ref())
+            .is_some_and(|index| index.outside_positive_object),
+    };
+    if !outside_positive { return false; }
     let touches = |a: &Statements, b: &Statements| a.counts.iter()
         .any(|(hash, (_, kind, ..))| *kind == StmtKind::Assertion && !b.counts.contains_key(hash));
     (touches(new, old) || touches(old, new)) && crate::incr_envelope::eligible(text, scanned).is_none()
@@ -2163,6 +2199,7 @@ fn common_nominal_update(text: &str, scanned: &Scan, new: &Arc<Statements>, old:
     new_domain: Arc<FxHashSet<Box<str>>>, prepared: &PreparedCompiler,
     cached_tbox: Option<&Arc<LocalityIndex>>,
     admission: Option<Arc<crate::named_subclass_validation::NamedSubclassCertificate>>,
+    certified_new: bool,
     delta: StatementDelta, work: &mut PreparationWork,
     prepared_full: &mut Option<Result<(Taxonomy, f64), String>>, started: Instant, module_only: bool)
     -> Result<Option<(Taxonomy, Receipt, Option<BaseState>)>, String>
@@ -2221,7 +2258,7 @@ fn common_nominal_update(text: &str, scanned: &Scan, new: &Arc<Statements>, old:
     // Do not special-case an empty request: the full source's consistency
     // check is required even when no existing row needs a new subject probe.
     let full_started = Instant::now();
-    let complete = match classify_requested_rows(text, &names) {
+    let complete = match classify_requested_rows(text, &names, certified_new) {
         Ok(complete) => complete,
         Err(error) => {
             *prepared_full = Some(Err(error));
@@ -2261,12 +2298,15 @@ fn common_full_base(text: &str, scanned: &Scan, new: Arc<Statements>, full: Arc<
         anonymous: anonymous_assertions(text, scanned), source_bytes: text.len() }
 }
 
-fn classify_requested_rows(text: &str, names: &[String]) -> Result<TaxonomyRows, String> {
+/// `certified`: the caller holds a derived admission certificate for `text`
+/// (the one that let the common path skip `check_user_source`), so the pipeline
+/// does not validate the whole source a second and third time.
+fn classify_requested_rows(text: &str, names: &[String], certified: bool) -> Result<TaxonomyRows, String> {
     let file = crate::orchestrate::tmpfile::TempPath::new("-subjects.json");
     std::fs::write(file.path(), serde_json::to_vec(names).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     let path = file.path().to_string_lossy().into_owned();
-    classify_rows_with(text, &[("KM_PUBLIC_SUBJECT_IRIS_FILE", path.as_str())])
+    classify_rows_impl(text, &[("KM_PUBLIC_SUBJECT_IRIS_FILE", path.as_str())], certified)
 }
 
 /// Classify the complete revision `text`, restricting only the bridge's
@@ -2755,7 +2795,7 @@ mod tests {
         let index = Arc::new(LocalityIndex::build(&old.text, &scanned, false).unwrap());
         let domain = Arc::new(class_domain(&index));
         let base = common_full_base(&old.text,&scanned,old.clone(),index,domain,None);
-        let mut session = Session { memo: Vec::new(), current: None, revision:0, clock:0 };
+        let mut session = Session { memo: Vec::new(), current: None, revision:0, clock:0, validated_new: false };
         session.insert(Revision { text:old.text.clone(), statements:Some(old.clone()),
             text_key:fingerprint(old.text.as_bytes()), content_key:scanned.content_key(),
             taxonomy:Arc::new(Taxonomy::empty()), inconsistency:None, base:Some(base),last_use:0 });
@@ -2971,7 +3011,7 @@ mod tests {
         assert_eq!(prepared.witness.as_ref().unwrap().len(), 2);
         let cert = InconsistencyCertificate::from_verified_inconsistent(original.clone(), prepared.witness.as_deref()).unwrap();
         let mut taxonomy = Taxonomy::empty(); taxonomy.consistent = false;
-        let mut session = Session { memo: Vec::new(), current: None, revision: 0, clock: 0 };
+        let mut session = Session { memo: Vec::new(), current: None, revision: 0, clock: 0, validated_new: false };
         session.insert(Revision { text: original.text.clone(), statements: Some(original.clone()),
             text_key: fingerprint(original.text.as_bytes()), content_key: 1,
             taxonomy: Arc::new(taxonomy), inconsistency: Some(cert), base: None, last_use: 0 });
@@ -3115,7 +3155,7 @@ mod tests {
         let certificate = InconsistencyCertificate::from_verified_inconsistent(original.clone(), Some(&[clash_hash(&original)])).unwrap();
         let mut taxonomy = Taxonomy::empty(); taxonomy.consistent = false;
         let taxonomy = Arc::new(taxonomy);
-        let mut session = Session { memo: Vec::new(), current: None, revision: 0, clock: 0 };
+        let mut session = Session { memo: Vec::new(), current: None, revision: 0, clock: 0, validated_new: false };
         session.insert(Revision { text: original.text.clone(), statements: Some(original.clone()),
             text_key: fingerprint(original.text.as_bytes()), content_key: 1, taxonomy,
             inconsistency: Some(certificate.clone()), base: None, last_use: 0 });
@@ -3143,7 +3183,7 @@ mod tests {
         let original = certificate_source("SubClassOf(owl:Thing owl:Nothing)");
         let certificate = InconsistencyCertificate::from_verified_inconsistent(original.clone(), None).unwrap();
         let mut taxonomy = Taxonomy::empty(); taxonomy.consistent = false;
-        let mut session = Session { memo: Vec::new(), current: None, revision: 0, clock: 0 };
+        let mut session = Session { memo: Vec::new(), current: None, revision: 0, clock: 0, validated_new: false };
         session.insert(Revision { text: original.text.clone(), statements: Some(original.clone()),
             text_key: fingerprint(original.text.as_bytes()), content_key: 1,
             taxonomy: Arc::new(taxonomy), inconsistency: Some(certificate.clone()),
@@ -3220,6 +3260,42 @@ mod tests {
         let entry = forged.counts.remove(&new_hash).unwrap(); forged.counts.insert(old_hash, entry);
         assert!(!old.confirms_subset(&forged), "hash collision must not admit the fast path");
     }
+    #[test]
+    fn empty_module_decline_prediction_needs_no_full_compiler() {
+        let head = "Prefix(:=<urn:pred#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) \
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) SubClassOf(:A :B) ";
+        let make = |body: &str| Arc::new(format!("{head}{body})"));
+        let state = |text: &Arc<String>, full: bool| {
+            let scanned = scan(text).unwrap();
+            let mut work = PreparationWork::default();
+            let tbox = Arc::new(work.build_index(text, &scanned, true).unwrap());
+            let compiler_full = full.then(|| Arc::new(work.build_index(text, &scanned, false).unwrap()));
+            BaseState { statements: Arc::new(Statements::of(&scanned, text)), source: None,
+                index: Some(Some(tbox)), compiler_full, admission: None, disabled: Arc::from([]),
+                full_disabled: Arc::from([]), removed_hashes: Arc::new(FxHashSet::default()),
+                class_domain: None, full: None, told: None, consistent: true, witness: None,
+                anonymous: FxHashSet::default(), source_bytes: text.len() }
+        };
+        for (old_body, new_body) in [
+            ("ClassAssertion(:A :a) DifferentIndividuals(:a :b)", "DifferentIndividuals(:a :b)"),
+            ("ClassAssertion(:A :a) DifferentIndividuals(:a :b)", "ClassAssertion(:A :a) ClassAssertion(:B :b) DifferentIndividuals(:a :b)"),
+            ("ClassAssertion(:A :a)", "ClassAssertion(:B :a)"),
+            ("ClassAssertion(:A :a)", ""),
+            ("DifferentIndividuals(:a :b)", "SubClassOf(:B :A) DifferentIndividuals(:a :b)"),
+        ] {
+            let (old_text, new_text) = (make(old_body), make(new_body));
+            let old = Statements::of(&scan(&old_text).unwrap(), &old_text);
+            let new_scan = scan(&new_text).unwrap();
+            let new = Statements::of(&new_scan, &new_text);
+            let exact = predicts_empty_module_decline(&state(&old_text, true), &old, &new, &new_text, &new_scan);
+            let tbox_only = predicts_empty_module_decline(&state(&old_text, false), &old, &new, &new_text, &new_scan);
+            // TBox-only prediction is conservative: never fires when the exact one does not.
+            assert!(!tbox_only || exact, "{old_body} -> {new_body}");
+            // These sources have a witness (DifferentIndividuals) or are positive.
+            assert_eq!(tbox_only, exact, "{old_body} -> {new_body}");
+        }
+    }
+
     fn exact_pair_fixture() -> (Arc<Statements>, Arc<Statements>, BaseState) {
         let make = |body: &str| Arc::new(format!("Prefix(:=<urn:pair#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:K)) Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a)) SubClassOf(:A ObjectSomeValuesFrom(:r ObjectOneOf(:a))) ClassAssertion(:K :a) {body})"));
         let text = make("SubClassOf(:B :C)");
