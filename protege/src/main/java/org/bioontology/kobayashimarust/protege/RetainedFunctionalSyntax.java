@@ -32,14 +32,20 @@ class RetainedFunctionalSyntax {
         private final RetainedFunctionalSyntax owner;
         private final long generation;
         private final State state;
+        // Non-null when the state shares the committed axiom set and must patch
+        // it in place at commit; nothing is mutated before the commit.
+        private final Set<OWLAxiom> patchAdded, patchRemoved;
 
-        private Prepared(RetainedFunctionalSyntax owner, State state, boolean reused,
+        private Prepared(RetainedFunctionalSyntax owner, State state, String source, boolean reused,
                          OWLOntology snapshot, Set<OWLAxiom> added,
-                         Set<OWLAxiom> removed, boolean usedSuppliedDelta, Set<OWLOntology> imports) {
+                         Set<OWLAxiom> removed, boolean usedSuppliedDelta, Set<OWLOntology> imports,
+                         Set<OWLAxiom> patchAdded, Set<OWLAxiom> patchRemoved) {
             this.owner = owner;
             this.generation = owner.generation;
             this.state = state;
-            this.source = state.source;
+            this.patchAdded = patchAdded;
+            this.patchRemoved = patchRemoved;
+            this.source = source;
             this.reused = reused;
             this.usedSuppliedDelta = usedSuppliedDelta;
             this.imports = Collections.unmodifiableSet(imports);
@@ -64,7 +70,8 @@ class RetainedFunctionalSyntax {
     private static final class Origin {
         final String source;
         final List<Span> spans;
-        final Map<OWLAxiom, List<Span>> byAxiom;
+        // Axioms with at least one captured span (only membership is queried).
+        final Set<OWLAxiom> captured;
         final Set<OWLAxiom> axioms;
         final Set<OWLEntity> signature;
         final int closing;
@@ -73,13 +80,13 @@ class RetainedFunctionalSyntax {
             this.source = source;
             this.closing = source.length() - 1;
             this.spans = Collections.unmodifiableList(new ArrayList<>(spans));
-            this.byAxiom = new HashMap<>();
+            this.captured = new HashSet<>();
             int previous = 0;
             for (Span span : spans) {
                 if (span.start < previous || span.end <= span.start || span.end > closing)
                     throw new CaptureIneligible("invalid overlapping capture");
                 previous = span.end;
-                byAxiom.computeIfAbsent(span.axiom, a -> new ArrayList<>()).add(span);
+                captured.add(span.axiom);
             }
             this.axioms = axioms;
             // The private preparation owns this set; State also exposes only
@@ -92,18 +99,21 @@ class RetainedFunctionalSyntax {
         final OWLOntologyID id;
         final Set<OWLEntity> signature;
         final Set<OWLAxiom> axioms;
+        // Backing set of the unmodifiable view above. Successive committed states
+        // share it and patch it in place in commit(); never the Origin's set.
+        private final Set<OWLAxiom> owned;
         final Origin origin;
         // Only currently active non-origin axioms; historical additions vanish.
         final Map<OWLAxiom, String> additions;
-        final String source;
+        // The rendered text is not retained here: only Origin.source is kept.
         State(OWLOntologyID id, Set<OWLEntity> signature, Set<OWLAxiom> axioms,
-              Origin origin, Map<OWLAxiom, String> additions, String source) {
+              Origin origin, Map<OWLAxiom, String> additions) {
             this.id = id;
             this.signature = Collections.unmodifiableSet(signature);
+            this.owned = axioms;
             this.axioms = Collections.unmodifiableSet(axioms);
             this.origin = origin;
             this.additions = Collections.unmodifiableMap(additions);
-            this.source = source;
         }
     }
 
@@ -126,17 +136,15 @@ class RetainedFunctionalSyntax {
         boolean supplied = old != null && old.id.equals(root.getOntologyID())
                 && (sameSignature || withinOriginSignature) && suppliedAdded != null && suppliedRemoved != null
                 && admissibleDelta(root, old, suppliedAdded, suppliedRemoved);
-        Set<OWLAxiom> axioms;
-        if (supplied) {
-            axioms = new HashSet<>(old.axioms);
-            axioms.removeAll(suppliedRemoved);
-            axioms.addAll(suppliedAdded);
-        } else {
-            axioms = new HashSet<>(root.getAxioms(Imports.INCLUDED));
-        }
+        // A certified delta is applied to the committed set only at commit();
+        // until then membership in the next revision is an overlay on `old`.
+        final Set<OWLAxiom> nextAxioms = supplied ? null : new HashSet<>(root.getAxioms(Imports.INCLUDED));
+        final java.util.function.Predicate<OWLAxiom> inNext = supplied
+                ? a -> (old.axioms.contains(a) && !suppliedRemoved.contains(a)) || suppliedAdded.contains(a)
+                : nextAxioms::contains;
         if (old != null && old.origin != null && old.id.equals(root.getOntologyID()) && withinOriginSignature) {
-            Set<OWLAxiom> added = supplied ? new HashSet<>(suppliedAdded) : difference(axioms, old.axioms);
-            Set<OWLAxiom> removed = supplied ? new HashSet<>(suppliedRemoved) : difference(old.axioms, axioms);
+            Set<OWLAxiom> added = supplied ? new HashSet<>(suppliedAdded) : difference(nextAxioms, old.axioms);
+            Set<OWLAxiom> removed = supplied ? new HashSet<>(suppliedRemoved) : difference(old.axioms, nextAxioms);
             boolean eligible = true;
             for (OWLAxiom a : removed)
                 eligible &= capturedOrigin(old.origin, a)
@@ -148,7 +156,7 @@ class RetainedFunctionalSyntax {
             if (eligible) {
                 Map<OWLAxiom, String> active = new LinkedHashMap<>();
                 for (Map.Entry<OWLAxiom, String> entry : old.additions.entrySet())
-                    if (axioms.contains(entry.getKey())) active.put(entry.getKey(), entry.getValue());
+                    if (inNext.test(entry.getKey())) active.put(entry.getKey(), entry.getValue());
                 List<OWLAxiom> order = new ArrayList<>(added);
                 Collections.sort(order);
                 for (OWLAxiom a : order) {
@@ -164,7 +172,7 @@ class RetainedFunctionalSyntax {
                     // capturedOrigin. Synthetic declarations follow the exact
                     // current typed signature, not just their IRI spelling.
                     boolean omit = old.origin.axioms.contains(span.axiom)
-                            ? !axioms.contains(span.axiom)
+                            ? !inNext.test(span.axiom)
                             : span.axiom instanceof OWLDeclarationAxiom
                                 && !signature.contains(((OWLDeclarationAxiom)span.axiom).getEntity());
                     if (omit) {
@@ -175,10 +183,20 @@ class RetainedFunctionalSyntax {
                 out.append(old.origin.source, cursor, old.origin.closing);
                 for (String text : active.values()) out.append('\n').append(text).append('\n');
                 out.append(old.origin.source, old.origin.closing, old.origin.source.length());
-                State state = new State(root.getOntologyID(), signature, axioms,
-                        old.origin, active, out.toString());
-                return new Prepared(this, state, true, null, added, removed, supplied, imports);
+                State state = new State(root.getOntologyID(), signature,
+                        supplied ? old.owned : nextAxioms, old.origin, active);
+                return new Prepared(this, state, out.toString(), true, null, added, removed,
+                        supplied, imports, supplied ? added : null, supplied ? removed : null);
             }
+        }
+        // Fallback owns a fresh set; the committed one is untouched until commit.
+        final Set<OWLAxiom> axioms;
+        if (supplied) {
+            axioms = new HashSet<>(old.axioms);
+            axioms.removeAll(suppliedRemoved);
+            axioms.addAll(suppliedAdded);
+        } else {
+            axioms = nextAxioms;
         }
         OWLOntology snapshot = FlattenedOntology.snapshot(root);
         Origin origin = null;
@@ -188,17 +206,19 @@ class RetainedFunctionalSyntax {
             snapshot.accept(capture);
             if (capture.pending != null) throw new CaptureIneligible("unclosed axiom capture");
             source = capture.output.toString();
-            origin = new Origin(source, capture.spans, Collections.unmodifiableSet(axioms), signature);
+            // The origin keeps its own copy: committed states patch their set in place.
+            origin = new Origin(source, capture.spans, new HashSet<>(axioms), signature);
         } catch (CaptureIneligible unsupportedCapture) {
             // Capture is an optimization. The ordinary renderer remains the
             // authority for any shape our offset bookkeeping cannot represent.
             source = FlattenedOntology.functionalSyntaxOfSnapshot(snapshot);
         }
         State state = new State(root.getOntologyID(), signature, axioms, origin,
-                Collections.emptyMap(), source);
-        return new Prepared(this, state, false, snapshot,
+                Collections.emptyMap());
+        return new Prepared(this, state, source, false, snapshot,
                 old == null ? new HashSet<>(axioms) : difference(axioms, old.axioms),
-                old == null ? new HashSet<>() : difference(old.axioms, axioms), false, imports);
+                old == null ? new HashSet<>() : difference(old.axioms, axioms), false, imports,
+                null, null);
     }
 
     // OWLAPI's concurrent ontology facade is used by change events, while its
@@ -239,6 +259,12 @@ class RetainedFunctionalSyntax {
     void commit(Prepared prepared) {
         if (prepared.owner != this || prepared.generation != generation)
             throw new IllegalStateException("stale or foreign serializer transaction");
+        // Patch in place only now that the native transaction has succeeded; the
+        // new state shares the set of the one it replaces.
+        if (prepared.patchAdded != null) {
+            prepared.state.owned.removeAll(prepared.patchRemoved);
+            prepared.state.owned.addAll(prepared.patchAdded);
+        }
         committed = prepared.state;
         generation++;
     }
@@ -266,7 +292,7 @@ class RetainedFunctionalSyntax {
     // Novel axioms still require the independent named-subclass renderer path.
     private static boolean capturedOrigin(Origin origin, OWLAxiom a) {
         return !(a instanceof OWLDeclarationAxiom)
-                && origin.axioms.contains(a) && origin.byAxiom.containsKey(a);
+                && origin.axioms.contains(a) && origin.captured.contains(a);
     }
 
     private static void fullIri(FunctionalSyntaxObjectRenderer renderer) {

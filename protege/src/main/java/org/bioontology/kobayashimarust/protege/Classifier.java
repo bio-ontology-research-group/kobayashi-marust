@@ -166,7 +166,9 @@ public final class Classifier {
             JsonObject command = new JsonObject();
             command.addProperty("op", op);
             command.addProperty("functional_syntax", source);
-            input.write(gson.toJson(command));
+            // Stream the request: same bytes as toJson(command), without a second
+            // copy of the whole source as an intermediate String.
+            gson.toJson(command, input);
             input.newLine();
             input.flush();
 
