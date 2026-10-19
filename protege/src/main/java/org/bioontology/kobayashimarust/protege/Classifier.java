@@ -12,7 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -106,6 +109,15 @@ public final class Classifier {
         private final BufferedReader output;
         private final ExecutorService reads;
         private final Gson gson = new Gson();
+        /** The retained committed answer: subject IRI to its superclass IRIs (non-empty rows only). */
+        private final Map<String, String[]> rows = new HashMap<>();
+        /** One String instance per distinct IRI: the retained rows must not hold 2 copies per pair. */
+        private Map<String, String> pool = new HashMap<>();
+        private List<String> unsat = new ArrayList<>();
+        private boolean consistent = true;
+        private int dropped;
+        /** Revision of the committed answer; -1 until the first one. */
+        private long committedRevision = -1;
         private Result result;
         private IncrementalReceipt receipt;
         private volatile boolean closed;
@@ -131,9 +143,7 @@ public final class Classifier {
                 return thread;
             });
             try {
-                Response response = command("init", functionalSyntax);
-                this.result = response.result;
-                this.receipt = response.receipt;
+                transact("init", functionalSyntax);
             } catch (Exception error) {
                 close();
                 throw error;
@@ -145,27 +155,132 @@ public final class Classifier {
         }
 
         public synchronized Result replace(String functionalSyntax) throws Exception {
-            Response response = command("replace", functionalSyntax);
-            this.result = response.result;
-            this.receipt = response.receipt;
-            return result;
+            replaceRows(functionalSyntax);
+            return result();
+        }
+
+        /**
+         * Replace the source and patch the retained rows. Returns whether the
+         * answer (rows, unsatisfiable classes, consistency) differs from the
+         * committed one. A refused or failed update leaves the committed answer
+         * untouched.
+         */
+        public synchronized boolean replaceRows(String functionalSyntax) throws Exception {
+            return transact("replace", functionalSyntax);
         }
 
         public synchronized Result result() {
+            if (result == null && committedRevision >= 0) {
+                Result r = new Result();
+                r.consistent = consistent;
+                r.dropped = dropped;
+                for (Map.Entry<String, String[]> e : rows.entrySet()) {
+                    for (String o : e.getValue()) r.subsumptions.add(new String[]{e.getKey(), o});
+                }
+                r.unsatisfiable.addAll(unsat);
+                result = r;
+            }
             return result;
         }
+
+        /** Retained subject rows; the map is the live committed state, read it under no concurrent update. */
+        public synchronized Map<String, String[]> rows() { return Collections.unmodifiableMap(rows); }
+
+        public synchronized List<String> unsatisfiable() { return Collections.unmodifiableList(unsat); }
+
+        public synchronized boolean consistent() { return consistent; }
+
+        public synchronized int dropped() { return dropped; }
 
         public synchronized IncrementalReceipt receipt() {
             return receipt;
         }
 
-        private Response command(String op, String source) throws Exception {
+        /**
+         * One transaction. The native answer is a row delta against the committed
+         * revision when it can be, else the complete taxonomy. A delta that does
+         * not apply to the committed revision is replaced by a complete answer
+         * for the same native revision (`classify`). Nothing is committed until
+         * the whole answer has been validated.
+         */
+        private boolean transact(String op, String source) throws Exception {
+            WireResponse wire = exchange(op, source,
+                    "replace".equals(op) && committedRevision >= 0 ? committedRevision : null);
+            if (wire.revision != null && wire.receipt != null) wire.receipt.revision = wire.revision;
+            boolean isDelta = wire.result.delta != null && wire.result.delta;
+            if (isDelta && (wire.result.base_revision == null || wire.revision == null
+                    || committedRevision < 0 || wire.result.base_revision != committedRevision
+                    || wire.revision != committedRevision + 1)) {
+                WireResponse full = exchange("classify", null, null);
+                if (full.result.delta != null && full.result.delta) {
+                    throw failure("KM answered a complete-answer request with a delta");
+                }
+                if (full.revision == null || !full.revision.equals(wire.revision)) {
+                    throw failure("KM complete answer is for revision " + full.revision
+                            + ", not " + wire.revision);
+                }
+                wire = new WireResponse(wire, full.result);
+                isDelta = false;
+            }
+            WireResult r = wire.result;
+            if (r.dropped != 0) {
+                throw new RuntimeException("Kobayashi-MaRust declined a complete classification: "
+                        + r.dropped + " clause(s) were dropped");
+            }
+            List<String> newUnsat = r.unsatisfiable == null ? new ArrayList<>() : r.unsatisfiable;
+            boolean changed;
+            if (isDelta) {
+                // Validate every row before the first mutation.
+                if (r.rows != null) for (WireRow row : r.rows) {
+                    if (row == null || row.s == null) throw failure("KM returned a malformed delta row");
+                }
+                changed = r.rows != null && !r.rows.isEmpty();
+                if (r.rows != null) for (WireRow row : r.rows) {
+                    if (row.o == null || row.o.length == 0) {
+                        rows.remove(row.s);
+                    } else {
+                        String[] o = new String[row.o.length];
+                        for (int i = 0; i < o.length; i++) o[i] = intern(row.o[i]);
+                        rows.put(intern(row.s), o);
+                    }
+                }
+                changed |= !newUnsat.equals(unsat) || r.consistent != consistent;
+            } else {
+                Map<String, ArrayList<String>> grouped = new HashMap<>();
+                if (r.subsumptions != null) for (String[] p : r.subsumptions) {
+                    grouped.computeIfAbsent(p[0], k -> new ArrayList<>()).add(p[1]);
+                }
+                rows.clear();
+                pool = new HashMap<>();
+                for (Map.Entry<String, ArrayList<String>> e : grouped.entrySet()) {
+                    String[] o = new String[e.getValue().size()];
+                    for (int i = 0; i < o.length; i++) o[i] = intern(e.getValue().get(i));
+                    rows.put(intern(e.getKey()), o);
+                }
+                changed = true;
+            }
+            unsat = newUnsat;
+            consistent = r.consistent;
+            dropped = r.dropped;
+            committedRevision = wire.revision == null ? committedRevision + 1 : wire.revision;
+            receipt = wire.receipt;
+            if (changed) result = null;
+            return changed;
+        }
+
+        private String intern(String iri) {
+            String known = pool.putIfAbsent(iri, iri);
+            return known == null ? iri : known;
+        }
+
+        private WireResponse exchange(String op, String source, Long baseRevision) throws Exception {
             if (closed || !process.isAlive()) {
                 throw failure("KM incremental process is not running");
             }
             JsonObject command = new JsonObject();
             command.addProperty("op", op);
-            command.addProperty("functional_syntax", source);
+            if (source != null) command.addProperty("functional_syntax", source);
+            if (baseRevision != null) command.addProperty("base_revision", baseRevision);
             // Stream the request: same bytes as toJson(command), without a second
             // copy of the whole source as an intermediate String.
             gson.toJson(command, input);
@@ -194,18 +309,14 @@ public final class Classifier {
             try {
                 wire = gson.fromJson(line, WireResponse.class);
             } catch (RuntimeException error) {
-                throw failure("KM returned invalid incremental JSON: " + line, error);
+                throw failure("KM returned invalid incremental JSON: "
+                        + (line.length() > 4096 ? line.substring(0, 4096) + "..." : line), error);
             }
             if (wire == null || !"ok".equals(wire.status) || wire.result == null) {
                 throw failure("KM incremental " + op + " failed: "
                         + (wire == null ? line : wire.error));
             }
-            // The default protocol places the committed revision beside the
-            // receipt. Older route-specific receipts can carry it inside.
-            if (wire.receipt != null && wire.revision != null) {
-                wire.receipt.revision = wire.revision;
-            }
-            return new Response(toResult(wire.result), wire.receipt);
+            return wire;
         }
 
         private RuntimeException failure(String message) {
@@ -245,22 +356,27 @@ public final class Classifier {
         }
     }
 
-    private static final class Response {
-        final Result result;
-        final IncrementalReceipt receipt;
-
-        Response(Result result, IncrementalReceipt receipt) {
-            this.result = result;
-            this.receipt = receipt;
-        }
-    }
-
     private static final class WireResponse {
         String status;
         String error;
         Long revision;
         WireResult result;
         IncrementalReceipt receipt;
+
+        WireResponse() {}
+
+        /** The replace response's receipt and revision with the complete answer of that revision. */
+        WireResponse(WireResponse base, WireResult result) {
+            this.status = base.status;
+            this.revision = base.revision;
+            this.receipt = base.receipt;
+            this.result = result;
+        }
+    }
+
+    private static final class WireRow {
+        String s;
+        String[] o;
     }
 
     private static final class WireResult {
@@ -268,6 +384,10 @@ public final class Classifier {
         int dropped;
         List<String[]> subsumptions;
         List<String> unsatisfiable;
+        // Row-delta answers: only subjects whose superclass set changed.
+        Boolean delta;
+        Long base_revision;
+        List<WireRow> rows;
     }
 
     private Classifier() {}
@@ -292,19 +412,6 @@ public final class Classifier {
                     "km.timeout.seconds must be greater than zero");
         }
         return timeout;
-    }
-
-    private static Result toResult(WireResult wire) {
-        Result result = new Result();
-        result.consistent = wire.consistent;
-        result.dropped = wire.dropped;
-        if (wire.subsumptions != null) result.subsumptions.addAll(wire.subsumptions);
-        if (wire.unsatisfiable != null) result.unsatisfiable.addAll(wire.unsatisfiable);
-        if (result.dropped != 0) {
-            throw new RuntimeException("Kobayashi-MaRust declined a complete classification: "
-                    + result.dropped + " clause(s) were dropped");
-        }
-        return result;
     }
 
     public static Result classify(OWLOntology ontology) throws Exception {

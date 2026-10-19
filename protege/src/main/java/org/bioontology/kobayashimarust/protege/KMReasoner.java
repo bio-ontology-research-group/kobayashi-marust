@@ -42,6 +42,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private boolean sourceSynchronized;
     private Set<OWLOntology> committedImports = Collections.emptySet();
     private boolean lastPreparationUsedDelta;
+    private boolean hierarchyBuilt;
+    private Set<OWLClass> lastClasses;
     private FlushContext flushContext;
 
     private static final class FlushContext {
@@ -92,14 +94,17 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         classes.add(owlThing); classes.add(owlNothing);
         for (OWLClass c : classes) byIri.put(c.getIRI().toString(), c);
 
-        Classifier.Result res;
+        // Whether the native answer differs from the one the Java hierarchy was built from.
+        boolean answerChanged;
+        Classifier.Session session;
         try {
             if (incrementalSession == null) {
                 incrementalSession = new Classifier.Session(candidateSource);
-                res = incrementalSession.result();
+                answerChanged = true;
             } else {
-                res = incrementalSession.replace(candidateSource);
+                answerChanged = incrementalSession.replaceRows(candidateSource);
             }
+            session = incrementalSession;
         } catch (Exception e) {
             // A protocol failure may have terminated the native process. Drop
             // the handle so a later OWLAPI flush can start a clean session;
@@ -125,18 +130,35 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // Commit the Java-side hierarchy only after the native transaction has
         // succeeded. A declined update therefore leaves the preceding answers
         // intact, matching the native session's atomic revision contract.
+        // The hierarchy is a function of the retained rows, the unsatisfiable
+        // classes, consistency and the declared class set; when none changed
+        // (an empty row delta) the built hierarchy is already exact.
+        boolean classSetChanged = lastClasses == null || !lastClasses.equals(classes);
+        if (!hierarchyBuilt || answerChanged || classSetChanged) {
+            hierarchyBuilt = false;
+            rebuildHierarchy(session, byIri, classes);
+            lastClasses = classes;
+            hierarchyBuilt = true;
+        }
+        lastPreparationUsedDelta = prepared.usedSuppliedDelta;
+    }
+
+    private void rebuildHierarchy(Classifier.Session session, Map<String, OWLClass> byIri, Set<OWLClass> classes) {
         group.clear(); rep.clear(); supers.clear(); subs.clear(); unsatisfiable.clear();
-        consistent = res.consistent;
-        dropped = res.dropped;
+        consistent = session.consistent();
+        dropped = session.dropped();
 
         // direct (non-closed) named subsumptions
         List<OWLClass[]> pairs = new ArrayList<>();
-        for (String[] p : res.subsumptions) {
-            OWLClass a = byIri.get(normalizeIri(p[0]));
-            OWLClass b = byIri.get(normalizeIri(p[1]));
-            if (a != null && b != null && !a.equals(b)) pairs.add(new OWLClass[]{a, b});
+        for (Map.Entry<String, String[]> row : session.rows().entrySet()) {
+            OWLClass a = byIri.get(normalizeIri(row.getKey()));
+            if (a == null) continue;
+            for (String o : row.getValue()) {
+                OWLClass b = byIri.get(normalizeIri(o));
+                if (b != null && !a.equals(b)) pairs.add(new OWLClass[]{a, b});
+            }
         }
-        for (String u : res.unsatisfiable) {
+        for (String u : session.unsatisfiable()) {
             OWLClass c = byIri.get(normalizeIri(u));
             if (c != null) unsatisfiable.add(c);
         }
@@ -181,7 +203,6 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 if (!rc.equals(rd)) { supers.get(rc).add(rd); subs.get(rd).add(rc); }
             }
         }
-        lastPreparationUsedDelta = prepared.usedSuppliedDelta;
     }
 
     private OWLClass find(OWLClass c) {

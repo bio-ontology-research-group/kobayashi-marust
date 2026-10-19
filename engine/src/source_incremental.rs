@@ -1949,7 +1949,9 @@ fn is_bottom(name: &str) -> bool {
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum SourceCommand {
     Init { functional_syntax: String },
-    Replace { functional_syntax: String },
+    // `base_revision` (row-delta request) is accepted and ignored: this session always
+    // publishes the complete answer.
+    Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
     Classify,
     Stats,
 }
@@ -1972,7 +1974,7 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
                     Err(error) => error_response("init", error),
                 }
             }
-            Ok(SourceCommand::Replace { functional_syntax }) => match session.as_mut() {
+            Ok(SourceCommand::Replace { functional_syntax, .. }) => match session.as_mut() {
                 Some(classifier) => match classifier.replace_source(&functional_syntax) {
                     Ok(receipt) => session_response("replace", classifier, Some(receipt)),
                     Err(error) => error_response("replace", error),

@@ -323,6 +323,62 @@ impl Taxonomy {
         self.rows.iter().map(|r| r.as_ref().map_or(0, |v| v.len())).sum()
     }
 
+    /// Write the `result` object as the difference to `prev`, the taxonomy the
+    /// client holds at `base_revision`: every subject whose set of superclasses
+    /// differs (an empty `o` removes the subject), and the complete
+    /// unsatisfiable list. Applying the rows to `prev` gives exactly `self`.
+    fn publish_delta<W: Write>(&self, prev: &Taxonomy, base_revision: u64, w: &mut W) -> std::io::Result<()> {
+        write!(w, "{{\"delta\":true,\"base_revision\":{base_revision},\"consistent\":{},\"dropped\":{},\"rows\":[",
+            self.consistent, self.dropped)?;
+        let mut first = true;
+        let mut emit = |w: &mut W, subject: &Arc<str>, row: &[&Arc<str>]| -> std::io::Result<()> {
+            if !first { w.write_all(b",")?; }
+            first = false;
+            w.write_all(b"{\"s\":")?;
+            w.write_all(subject.as_bytes())?;
+            w.write_all(b",\"o\":[")?;
+            for (k, o) in row.iter().enumerate() {
+                if k > 0 { w.write_all(b",")?; }
+                w.write_all(o.as_bytes())?;
+            }
+            w.write_all(b"]}")
+        };
+        let aligned = prev.iris.len() <= self.iris.len()
+            && prev.iris.iter().zip(&self.iris).all(|(a, b)| Arc::ptr_eq(a, b) || a == b);
+        const NONE: &[u32] = &[];
+        fn slice(r: &Option<Arc<[u32]>>) -> &[u32] { r.as_deref().unwrap_or(NONE) }
+        for (s, row) in self.rows.iter().enumerate() {
+            let new_row = slice(row);
+            let changed = if aligned {
+                let old = prev.rows.get(s).map_or(NONE, slice);
+                new_row != old
+            } else {
+                let old_row = prev.ids.get(&*self.iris[s]).map_or(NONE, |&id| slice(&prev.rows[id as usize]));
+                let mut a: Vec<&str> = new_row.iter().map(|&o| &*self.iris[o as usize]).collect();
+                let mut b: Vec<&str> = old_row.iter().map(|&o| &*prev.iris[o as usize]).collect();
+                a.sort_unstable(); b.sort_unstable();
+                a != b
+            };
+            if changed {
+                let objects: Vec<&Arc<str>> = new_row.iter().map(|&o| &self.escaped[o as usize]).collect();
+                emit(w, &self.escaped[s], &objects)?;
+            }
+        }
+        if !aligned {
+            // Subjects the new taxonomy does not mention at all lose their row.
+            for (s, row) in prev.rows.iter().enumerate() {
+                if slice(row).is_empty() || self.ids.contains_key(&*prev.iris[s]) { continue; }
+                emit(w, &prev.escaped[s], &[])?;
+            }
+        }
+        w.write_all(b"],\"unsatisfiable\":[")?;
+        for (k, u) in self.unsat.iter().enumerate() {
+            if k > 0 { w.write_all(b",")?; }
+            w.write_all(self.escaped[*u as usize].as_bytes())?;
+        }
+        w.write_all(b"]}")
+    }
+
     fn write_json<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
         let escaped = &self.escaped;
         let cache_chunks = self.pair_count() <= RENDER_CACHE_PAIRS;
@@ -2412,7 +2468,9 @@ fn replace_rows(tax: &mut Taxonomy, fresh: &Taxonomy, subjects: &[&str]) {
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
     Init { functional_syntax: String },
-    Replace { functional_syntax: String },
+    /// `base_revision`: the revision whose answer the client already holds. When it
+    /// equals the last published revision the answer is sent as a row delta.
+    Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
     Classify,
     Stats,
 }
@@ -2424,6 +2482,8 @@ fn write_error<W: Write>(w: &mut W, op: &str, error: &str) -> std::io::Result<()
 
 pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std::io::Result<()> {
     let mut session = Session::new();
+    // The taxonomy last published in full or as a delta, with its revision.
+    let mut published: Option<(u64, Arc<Taxonomy>)> = None;
     for line in reader.lines() {
         let line = line?;
         if line.trim().is_empty() {
@@ -2431,8 +2491,18 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
         }
         let request_started = Instant::now();
         match serde_json::from_str::<Command>(&line) {
-            Ok(Command::Init { functional_syntax }) | Ok(Command::Replace { functional_syntax }) => {
+            Ok(command @ (Command::Init { .. } | Command::Replace { .. })) => {
+                let (functional_syntax, base_revision) = match command {
+                    Command::Init { functional_syntax } => (functional_syntax, None),
+                    Command::Replace { functional_syntax, base_revision } => (functional_syntax, base_revision),
+                    _ => unreachable!(),
+                };
                 drop(line);
+                let delta_base = match (&published, base_revision) {
+                    (Some((revision, tax)), Some(base)) if *revision == base && session.revision == base
+                        && session.current.is_some() => Some(tax.clone()),
+                    _ => None,
+                };
                 stage("request parsed", request_started);
                 let op = if session.current.is_none() { "init" } else { "replace" };
                 match session.update(functional_syntax) {
@@ -2474,7 +2544,11 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
                         })).map_err(std::io::Error::other)?;
                         writer.write_all(b",\"result\":")?;
                         stage("receipt written", request_started);
-                        tax.publish(&mut writer)?;
+                        match &delta_base {
+                            Some(prev) => tax.publish_delta(prev, session.revision - 1, &mut writer)?,
+                            None => tax.publish(&mut writer)?,
+                        }
+                        published = Some((session.revision, tax.clone()));
                         writer.write_all(b"}")?;
                     }
                     Err(error) => write_error(&mut writer, op, &error)?,
@@ -3689,4 +3763,173 @@ mod tests {
         assert!(object_common_module(&nominal_text,&nominal_scan,&nominal,&nominal,&nf,&nt,&[":B".into()],&ne).is_none(),"affected nominal module requires full NEW classification");
     }
 
+
+    // ---- row-delta answers -------------------------------------------------
+
+    fn tax_of(iris: &[&str], rows: Vec<(u32, Vec<u32>)>, unsat: &[&str]) -> Taxonomy {
+        Taxonomy::from_rows(TaxonomyRows {
+            consistent: true, dropped: 0,
+            unsatisfiable: unsat.iter().map(|s| s.to_string()).collect(),
+            iris: iris.iter().map(|s| Arc::<str>::from(*s)).collect(), rows,
+        })
+    }
+
+    fn delta_value(new: &Taxonomy, prev: &Taxonomy) -> serde_json::Value {
+        let mut out = Vec::new();
+        new.publish_delta(prev, 3, &mut out).unwrap();
+        serde_json::from_slice(&out).unwrap()
+    }
+
+    /// Superclass sets by subject, from a full or a delta-patched answer.
+    type Pairs = std::collections::BTreeMap<String, std::collections::BTreeSet<String>>;
+
+    fn pairs_of(tax: &Taxonomy) -> Pairs {
+        let mut out = Vec::new();
+        tax.publish(&mut out).unwrap();
+        pairs_of_value(&serde_json::from_slice(&out).unwrap())
+    }
+
+    fn pairs_of_value(v: &serde_json::Value) -> Pairs {
+        let mut m = Pairs::new();
+        for p in v["subsumptions"].as_array().unwrap() {
+            m.entry(p[0].as_str().unwrap().into()).or_default().insert(p[1].as_str().unwrap().into());
+        }
+        m
+    }
+
+    fn patch(base: &mut Pairs, delta: &serde_json::Value) {
+        for r in delta["rows"].as_array().unwrap() {
+            let o: std::collections::BTreeSet<String> =
+                r["o"].as_array().unwrap().iter().map(|x| x.as_str().unwrap().into()).collect();
+            let s = r["s"].as_str().unwrap().to_string();
+            if o.is_empty() { base.remove(&s); } else { base.insert(s, o); }
+        }
+    }
+
+    #[test]
+    fn delta_of_identical_taxonomy_is_empty() {
+        let t = tax_of(&["http://e/A", "http://e/B"], vec![(0, vec![1])], &["http://e/U"]);
+        let d = delta_value(&t.clone(), &t);
+        assert_eq!(d["delta"], true);
+        assert_eq!(d["base_revision"], 3);
+        assert_eq!(d["rows"], serde_json::json!([]));
+        assert_eq!(d["unsatisfiable"], serde_json::json!(["http://e/U"]));
+    }
+
+    #[test]
+    fn delta_removes_subjects_and_patches_rows_aligned_and_unaligned() {
+        let prev = tax_of(&["http://e/A", "http://e/B\"q", "http://e/C"],
+            vec![(0, vec![1, 2]), (2, vec![1])], &[]);
+        // Aligned: same ids, one row shrinks and one subject loses its row.
+        let mut next = prev.clone();
+        next.rows[0] = Some(vec![1u32].into());
+        next.rows[2] = None;
+        next.rendered = std::sync::OnceLock::new();
+        let d = delta_value(&next, &prev);
+        let mut state = pairs_of(&prev);
+        patch(&mut state, &d);
+        assert_eq!(state, pairs_of(&next));
+        assert!(d["rows"].as_array().unwrap().iter().any(|r| r["s"] == "http://e/C" && r["o"] == serde_json::json!([])));
+        // Unaligned: different id order, an IRI dropped altogether, a new one added.
+        let other = tax_of(&["http://e/D", "http://e/B\"q", "http://e/A"],
+            vec![(2, vec![1, 0]), (0, vec![1])], &["http://e/D"]);
+        let d = delta_value(&other, &prev);
+        let mut state = pairs_of(&prev);
+        patch(&mut state, &d);
+        assert_eq!(state, pairs_of(&other));
+        assert!(d["rows"].as_array().unwrap().iter().any(|r| r["s"] == "http://e/C" && r["o"] == serde_json::json!([])));
+        assert_eq!(d["unsatisfiable"], serde_json::json!(["http://e/D"]));
+    }
+
+    fn ofn(axioms: &str) -> String {
+        format!("Prefix(:=<urn:d:>) Ontology(<urn:d:o> Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) {axioms})")
+    }
+
+    fn session_lines(commands: &[serde_json::Value]) -> Vec<serde_json::Value> {
+        let input = commands.iter().map(|c| c.to_string()).collect::<Vec<_>>().join("\n") + "\n";
+        let mut out = Vec::new();
+        run_jsonl_session(std::io::Cursor::new(input), &mut out).unwrap();
+        String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+    }
+
+    /// The pipeline rewrites process-wide KM_* settings, so the session protocol
+    /// tests run alone in a child process (as the admission tests above do).
+    #[test]
+    fn session_row_delta_protocol_runs_isolated() {
+        const CHILD: &str = "KM_INCR_ROW_DELTA_TEST_CHILD";
+        if std::env::var(CHILD).as_deref() != Ok("1") {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            for (key, _) in std::env::vars_os() {
+                if key.to_string_lossy().starts_with("KM_") { command.env_remove(key); }
+            }
+            let output = command.args(["--exact", "incr_session::tests::session_row_delta_protocol_runs_isolated",
+                    "--nocapture", "--test-threads=1"])
+                .env(CHILD, "1").output().expect("launch isolated row-delta test");
+            assert!(output.status.success(), "isolated row-delta protocol failed:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"));
+            return;
+        }
+        session_delta_mismatch_failure_and_recovery_equal_full_answers();
+        session_delta_after_refused_update_uses_last_published_revision();
+    }
+
+    fn session_delta_mismatch_failure_and_recovery_equal_full_answers() {
+        use serde_json::json;
+        let src = [
+            ofn("SubClassOf(:A :B)"),
+            ofn("SubClassOf(:A :B) SubClassOf(:B :C)"),
+            ofn("SubClassOf(:A :B) SubClassOf(:B :C)"),
+            ofn("SubClassOf(:B :C)"),
+            ofn("SubClassOf(:A :B)"),
+        ];
+        let lines = session_lines(&[
+            json!({"op":"init","functional_syntax":src[0]}),
+            json!({"op":"replace","functional_syntax":src[1],"base_revision":1}),   // delta
+            json!({"op":"replace","functional_syntax":src[2],"base_revision":2}),   // empty delta
+            json!({"op":"replace","functional_syntax":"Ontology(","base_revision":3}), // refused
+            json!({"op":"replace","functional_syntax":src[3],"base_revision":99}),  // mismatch: full
+            json!({"op":"replace","functional_syntax":src[4],"base_revision":4}),   // delta again
+            json!({"op":"replace","functional_syntax":src[0]}),                     // no base: full
+        ]);
+        // Independent sessions give the reference full answers.
+        let reference: Vec<Pairs> = src.iter().map(|s| {
+            let l = session_lines(&[json!({"op":"init","functional_syntax":s})]);
+            pairs_of_value(&l[0]["result"])
+        }).collect::<Vec<_>>();
+        assert_eq!(lines[0]["result"].get("delta"), None);
+        let mut state = pairs_of_value(&lines[0]["result"]);
+        assert_eq!(state, reference[0]);
+        assert_eq!(lines[1]["result"]["delta"], true);
+        patch(&mut state, &lines[1]["result"]);
+        assert_eq!(state, reference[1]);
+        assert_eq!(lines[2]["result"]["delta"], true);
+        assert_eq!(lines[2]["result"]["rows"], json!([]));
+        assert_eq!(lines[3]["status"], "error");
+        // The refused update left revision 3 published: base_revision 3 still matches,
+        // but this request carries 99 and receives the complete answer.
+        assert_eq!(lines[4]["result"].get("delta"), None);
+        assert_eq!(lines[4]["revision"], 4);
+        state = pairs_of_value(&lines[4]["result"]);
+        assert_eq!(state, reference[3]);
+        assert_eq!(lines[5]["result"]["delta"], true);
+        assert_eq!(lines[5]["result"]["base_revision"], 4);
+        patch(&mut state, &lines[5]["result"]);
+        assert_eq!(state, reference[4]);
+        assert_eq!(lines[6]["result"].get("delta"), None);
+        assert_eq!(pairs_of_value(&lines[6]["result"]), reference[0]);
+    }
+
+    fn session_delta_after_refused_update_uses_last_published_revision() {
+        use serde_json::json;
+        let lines = session_lines(&[
+            json!({"op":"init","functional_syntax":ofn("SubClassOf(:A :B)")}),
+            json!({"op":"replace","functional_syntax":"Ontology(","base_revision":1}),
+            json!({"op":"replace","functional_syntax":ofn("SubClassOf(:A :C)"),"base_revision":1}),
+        ]);
+        assert_eq!(lines[1]["status"], "error");
+        assert_eq!(lines[2]["result"]["delta"], true);
+        assert_eq!(lines[2]["result"]["base_revision"], 1);
+        assert_eq!(lines[2]["revision"], 2);
+    }
 }
