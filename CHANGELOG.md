@@ -26,6 +26,15 @@
   ranges. Seed each proof query without changing the retained graph. Keep a
   satisfiable subject's row only when every entry remains proved; reclassify
   subjects that do not meet that condition.
+- Treat `SubObjectPropertyOf(R owl:topObjectProperty)` as inert when checking
+  whether a source fits the nominal/object common envelope. The axiom holds in
+  every interpretation and the frontend already elides it. Every other mention
+  of a universal builtin, including the left side of the same axiom, still
+  declines. Additions and mixed edits of ABox-dominated sources that carry such
+  inclusions (ore_ont_5295) now classify a small object module instead of a
+  module that covers the whole ABox. The common path also streams its module
+  into the pipeline input file, and rejects non-superset deletion bases by the
+  statements added since the current revision before scanning the whole source.
 - Bind source-admission shortcuts to an origin accepted by the public validator.
   Preserve exact headers, declarations, fixed statements and multiplicities.
   Supported annotation-free named subclass edits and deletion or restoration of
