@@ -943,6 +943,37 @@ fn common_object_certificate_keeps_builtin_queries() {
 }
 
 #[test]
+fn vacuous_universal_super_role_keeps_common_object_reuse_exact() {
+    // R <= owl:topObjectProperty holds in every interpretation (the frontend
+    // elides it). It must not stop the common object certificate, and the
+    // answers must stay equal to fresh classification. Any other use of the
+    // builtin keeps declining to the established route.
+    let vacuous = "SubObjectPropertyOf(:r owl:topObjectProperty)";
+    let old = ontology(&[vacuous, "SubClassOf(owl:Thing :A)", "ClassAssertion(:K :a)",
+        "SubClassOf(:E :F)", "DisjointClasses(:C :D)"]);
+    let new = ontology(&[vacuous, "SubClassOf(owl:Thing :A)",
+        "SubClassOf(:B :G)", "SubClassOf(:E :F)", "DisjointClasses(:C :D)"]);
+    let rows = session(&[old.clone(), new.clone()]);
+    assert_eq!(rows[0]["status"], "ok", "{:#?}", rows[0]);
+    assert_eq!(rows[1]["status"], "ok", "{:#?}", rows[1]);
+    assert_eq!(rows[1]["receipt"]["strategy"], "common_object_module_reuse", "{:#?}", rows[1]);
+    assert!(rows[1]["receipt"]["reused_subjects"].as_u64().unwrap() > 0);
+    assert_eq!(canonical(&rows[0]["result"]), canonical(&fresh(&old, 960)));
+    let result = canonical(&rows[1]["result"]);
+    assert!(result.2.contains(&(":B".into(), ":G".into())));
+    assert_eq!(result, canonical(&fresh(&new, 961)));
+    // A second use of the builtin outside the vacuous slot declines the
+    // object certificate; the answer is still exact.
+    let used = "SubClassOf(:B ObjectSomeValuesFrom(owl:topObjectProperty :G))";
+    let old = ontology(&[vacuous, used, "ClassAssertion(:K :a)", "SubClassOf(:E :F)"]);
+    let new = ontology(&[vacuous, used, "SubClassOf(:A :C)", "SubClassOf(:E :F)"]);
+    let rows = session(&[old, new.clone()]);
+    assert_eq!(rows[1]["status"], "ok", "{:#?}", rows[1]);
+    assert_ne!(rows[1]["receipt"]["strategy"], "common_object_module_reuse", "{:#?}", rows[1]);
+    assert_eq!(canonical(&rows[1]["result"]), canonical(&fresh(&new, 962)));
+}
+
+#[test]
 fn common_data_certificate_reuses_object_rows_after_mixed_edit() {
     let shared=["Declaration(DataProperty(:p))", "FunctionalDataProperty(:p)",
         "DataPropertyRange(:p xsd:string)", "DataPropertyAssertion(:p :a \"x\")", "SubClassOf(:E :F)"];

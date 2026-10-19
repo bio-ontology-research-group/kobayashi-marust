@@ -208,6 +208,7 @@ pub(crate) fn eligible(text: &str, scan: &Scan) -> Option<Eligibility> {
     if !unicode_only_in_literal_bodies(text) { return None; }
     let universals = builtin_spellings(scan,
         &["topObjectProperty", "topDataProperty", "bottomDataProperty"]);
+    let top_roles = builtin_spellings(scan, &["topObjectProperty"]);
     let builtin_classes = builtin_spellings(scan, &["Thing", "Nothing"]);
     let mut data_tbox = FxHashSet::default();
     let mut object_only = true;
@@ -230,7 +231,20 @@ pub(crate) fn eligible(text: &str, scan: &Scan) -> Option<Eligibility> {
             object_only = false;
             continue;
         }
-        if forbidden(&node, &universals) { return None; }
+        // `SubObjectPropertyOf(R owl:topObjectProperty)` (a role or role chain
+        // on the left) holds in every interpretation, so it is a vacuous
+        // axiom. The frontend already elides it exactly when the builtin has
+        // no other occurrence (`frontend::top_role`), and KM classifies the
+        // retained ontology. Here the bare builtin in that super-role slot is
+        // skipped, while every other position of every statement, including
+        // the left side of this one, is still checked: any other occurrence
+        // declines as before. The index compiles the axiom as never
+        // non-local, so no module contains it.
+        let vacuous_super = *head == "SubObjectPropertyOf" && args.len() == 2
+            && args[1].as_atom().is_some_and(|token| top_roles.contains(token));
+        if vacuous_super {
+            if forbidden(args[0], &universals) { return None; }
+        } else if forbidden(&node, &universals) { return None; }
         if *head == "EquivalentDataProperties" {
             if args.len() != 2 || !args.iter().all(|arg| named_atom(arg)) { return None; }
             // One original source owner represents both directed subproperty
@@ -402,6 +416,54 @@ mod tests {
         assert!(eligible(text,&scan(text).unwrap()).is_some());
         let text="Prefix(t:=<urn:ordinary#>) Prefix(t:=<http://www.w3.org/2002/07/owl#>) Ontology(SubDataPropertyOf(t:topDataProperty :p))";
         assert!(eligible(text,&scan(text).unwrap()).is_none());
+    }
+    #[test]
+    fn vacuous_top_object_super_role_is_skipped_only_in_that_slot() {
+        // The tautology R <= U (role or chain on the left) does not decline.
+        for axiom in [
+            "SubObjectPropertyOf(:r owl:topObjectProperty)",
+            "SubObjectPropertyOf(:r <http://www.w3.org/2002/07/owl#topObjectProperty>)",
+            "SubObjectPropertyOf(ObjectInverseOf(:r) owl:topObjectProperty)",
+            "SubObjectPropertyOf(ObjectPropertyChain(:r :s) owl:topObjectProperty)",
+        ] {
+            let text = source(&format!("{axiom} SubClassOf(:A :B) ClassAssertion(:A :a)"));
+            let result = eligible(&text, &scan(&text).unwrap());
+            assert!(result.as_ref().is_some_and(|e| e.object_only && e.data_tbox.is_empty()), "{axiom}");
+        }
+        let text = "Prefix(t:=<http://www.w3.org/2002/07/owl#>) Ontology(SubObjectPropertyOf(<urn:r> t:topObjectProperty))";
+        assert!(eligible(text, &scan(text).unwrap()).is_some());
+        let split = "Prefix(t:=<http://www.w3.org/2002/07/owl#top>) Ontology(SubObjectPropertyOf(<urn:r> t:ObjectProperty))";
+        assert!(eligible(split, &scan(split).unwrap()).is_some());
+        // Last binding wins: a rebound prefix that no longer spells the builtin
+        // is an ordinary role, and one that now does is still the vacuous slot.
+        let rebound = "Prefix(t:=<http://www.w3.org/2002/07/owl#>) Prefix(t:=<urn:ordinary#>) Ontology(SubObjectPropertyOf(<urn:r> t:topObjectProperty))";
+        assert!(eligible(rebound, &scan(rebound).unwrap()).is_some());
+        // Every other occurrence of any universal builtin declines, even next
+        // to a vacuous inclusion.
+        let vacuous = "SubObjectPropertyOf(:r owl:topObjectProperty)";
+        for other in [
+            "SubObjectPropertyOf(owl:topObjectProperty :s)",
+            "SubObjectPropertyOf(ObjectPropertyChain(owl:topObjectProperty :s) :t)",
+            "SubObjectPropertyOf(ObjectPropertyChain(:s owl:topObjectProperty) owl:topObjectProperty)",
+            "SubObjectPropertyOf(ObjectInverseOf(owl:topObjectProperty) owl:topObjectProperty)",
+            "SubObjectPropertyOf(:s ObjectInverseOf(owl:topObjectProperty))",
+            "SubObjectPropertyOf(:s owl:topDataProperty)",
+            "SubObjectPropertyOf(:s owl:bottomDataProperty)",
+            "SubDataPropertyOf(:d owl:topDataProperty)",
+            "ObjectPropertyDomain(owl:topObjectProperty :A)",
+            "ObjectPropertyRange(owl:topObjectProperty :A)",
+            "TransitiveObjectProperty(owl:topObjectProperty)",
+            "SubClassOf(:A ObjectSomeValuesFrom(owl:topObjectProperty :B))",
+            "SubClassOf(:A ObjectAllValuesFrom(owl:topObjectProperty :B))",
+            "ClassAssertion(ObjectSomeValuesFrom(owl:topObjectProperty :B) :a)",
+            "ObjectPropertyAssertion(owl:topObjectProperty :a :b)",
+        ] {
+            let text = source(&format!("{vacuous} {other}"));
+            assert!(eligible(&text, &scan(&text).unwrap()).is_none(), "{other}");
+        }
+        // Three arguments are never the two-sided inclusion shape.
+        let text = source("SubObjectPropertyOf(:r owl:topObjectProperty :s)");
+        assert!(eligible(&text, &scan(&text).unwrap()).is_none());
     }
     #[test]
     fn unicode_literals_preserve_safe_token_boundaries_only() {

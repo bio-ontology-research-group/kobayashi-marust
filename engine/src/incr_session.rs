@@ -1066,6 +1066,17 @@ fn anonymous_assertions(text: &str, scanned: &Scan) -> FxHashSet<u128> {
 
 /// Fingerprints only select comparisons: equal hashes must name equal text.
 fn statement_delta(old: &Statements, new: &Statements) -> Option<StatementDelta> {
+    statement_delta_probe(old, new, None)
+}
+
+/// `statement_delta`, additionally listing (up to `ADDED_PROBE_MAX`) the
+/// fingerprints of statements of NEW that OLD lacks. The list is complete only
+/// when it is not longer than the cap; a longer one is truncated and unusable.
+const ADDED_PROBE_MAX: usize = 32;
+
+fn statement_delta_probe(old: &Statements, new: &Statements, mut added: Option<&mut Vec<u128>>)
+    -> Option<StatementDelta>
+{
     if old.collision || new.collision || old.header() != new.header() { return None; }
     let mut delta = StatementDelta::default();
     for (hash, &(count, kind, a, b)) in &old.counts {
@@ -1082,6 +1093,9 @@ fn statement_delta(old: &Statements, new: &Statements) -> Option<StatementDelta>
         if !old.counts.contains_key(hash) {
             delta.added_statements += count as usize;
             if matches!(kind, StmtKind::Logical | StmtKind::Assertion) { delta.added_axioms += 1; }
+            if let Some(list) = added.as_deref_mut() {
+                if list.len() <= ADDED_PROBE_MAX { list.push(*hash); }
+            }
         }
     }
     Some(delta)
@@ -1186,9 +1200,27 @@ fn classify_rows_with(text: &str, settings: &[(&str, &str)]) -> Result<TaxonomyR
 }
 
 fn classify_rows_impl(text: &str, settings: &[(&str, &str)], certified: bool) -> Result<TaxonomyRows, String> {
-    let started = Instant::now();
     let path = crate::orchestrate::tmpfile::TempPath::new(".ofn");
     std::fs::write(path.path(), text).map_err(|e| e.to_string())?;
+    classify_rows_at(&path, settings, certified)
+}
+
+/// The pipeline on a source already written to `path` (a fresh temporary
+/// file of this process); `certified` as for `classify_text_certified`.
+fn classify_taxonomy_at(path: &crate::orchestrate::tmpfile::TempPath, settings: &[(&str, &str)],
+    certified: bool) -> Result<Taxonomy, String>
+{
+    let rows = classify_rows_at(path, settings, certified)?;
+    let started = Instant::now();
+    let tax = Taxonomy::from_rows(rows);
+    stage("rows indexed", started);
+    Ok(tax)
+}
+
+fn classify_rows_at(path: &crate::orchestrate::tmpfile::TempPath, settings: &[(&str, &str)], certified: bool)
+    -> Result<TaxonomyRows, String>
+{
+    let started = Instant::now();
     let _trusted = certified.then(|| crate::orchestrate::TrustedRewrite::register(path.path()));
     let _env = FullEnvironment::capture();
     for (key, value) in settings {
@@ -1297,8 +1329,14 @@ impl Session {
         let content_key = scanned.content_key();
         let statements = Arc::new(Statements::of(&scanned, &text));
         stage("statements", started);
+        // The statements NEW has beyond the current revision are necessary
+        // members of any deletion base: checking them first rejects a base
+        // that is not a superset without scanning every statement of NEW.
+        let mut added_probe = Vec::new();
         let transaction_delta = self.current.and_then(|i| self.memo[i].statements.as_ref())
-            .and_then(|old| statement_delta(old, &statements));
+            .and_then(|old| statement_delta_probe(old, &statements, Some(&mut added_probe)));
+        if added_probe.len() > ADDED_PROBE_MAX { added_probe.clear(); }
+        stage("transaction delta", started);
         if let Some(i) = self.memo.iter().position(|r| {
             r.content_key == content_key && r.content_key != 0
                 && r.statements.as_ref().is_some_and(|s| s.exact_eq(&statements))
@@ -1322,8 +1360,9 @@ impl Session {
                 base: None, last_use: 0 });
             return Ok((tax, receipt));
         }
+        stage("content/inconsistency checks", started);
         let mut fallback_reason = None;
-        let deletion_attempt = self.deletion(&text, &scanned, &statements, started, transaction_delta, &mut preparation);
+        let deletion_attempt = self.deletion(&text, &scanned, &statements, started, transaction_delta, &added_probe, &mut preparation);
         if std::env::var_os("KM_INCR_TIMING").is_some() {
             if let Err(reason) = &deletion_attempt { stage(&format!("deletion declined: {reason}"), started); }
         }
@@ -1369,6 +1408,7 @@ impl Session {
                 (Arc::new(tax), full_started.elapsed().as_secs_f64())
             },
         };
+        stage("full classified", started);
         // An inconsistent answer is complete; a consistent one must be.
         let reusable = !tax.consistent || tax.dropped == 0;
         // Retain independently verified support and its exact full index.
@@ -1394,6 +1434,7 @@ impl Session {
             witness_index.or_else(|| prepared_new.take().and_then(|prepared|
                 prepared.into_exact(&text, &scanned, &mut preparation)))
         };
+        stage("full prepared_index", started);
         let prepared_domain = prepared_index.as_ref().map(|index| Arc::new(class_domain(index)));
         let admission = prepared_admission.or_else(||
             (initial && reusable && tax.consistent).then(||
@@ -1417,6 +1458,7 @@ impl Session {
             witness,
         }));
         if let Some(base) = base.as_mut() { base.admission = admission; }
+        stage("full base built", started);
         // Skip it when the classification itself was long: the initial
         // revision must still answer within the caller's per-revision budget.
         if initial && full_seconds < EAGER_INDEX_MAX_SECONDS {
@@ -1608,6 +1650,7 @@ impl Session {
                 source: union, scan: union_scan, index,
             });
         }
+        stage("common index built", started);
         let prepared = prepared_new.as_ref().expect("completed union preparation");
         let union_index = prepared.index().clone();
         let union_scan = prepared.scan(scanned);
@@ -1626,6 +1669,7 @@ impl Session {
                 domain
             }
         });
+        stage("common new_domain", started);
         let mut marked = vec![false; union_index.axiom_count()];
         let mut disabled = vec![false; union_index.axiom_count()];
         for (id, hash) in union_index.axiom_hash.iter().enumerate() {
@@ -1649,6 +1693,7 @@ impl Session {
                 }
             }
         }
+        stage("common masks", started);
         let projects_abox = analysis_disabled.iter().any(|disabled| *disabled);
         let module_disabled: Vec<bool> = disabled.iter().zip(&analysis_disabled)
             .map(|(absent, assertion)| *absent || *assertion).collect();
@@ -1674,6 +1719,7 @@ impl Session {
                 &old_domain, new_domain, prepared, cached_tbox.as_ref(), admission, certified_new, delta, work,
                 prepared_full, started, false);
         }
+        stage("common empty_module_avoids", started);
         // Prefer a certified pure-object NEW module when the full common
         // core carries data assertions or a substantial assertion payload.
         // Even a small data core can expand heavily in the backend. Positive
@@ -1706,6 +1752,7 @@ impl Session {
                 }
             }
         }
+        stage("common preference done", started);
         let Some(affected) = union_index.affected_classes_with_disabled(&marked, &analysis_disabled) else {
             return Err("union affected-subject certificate unavailable".into());
         };
@@ -1716,6 +1763,7 @@ impl Session {
             if let Some(id) = union_index.named(name) { wanted.insert(id); }
             else if !is_builtin_class_name(name) { return Err("new public class missing from union index".into()); }
         }
+        stage("common affected computed", started);
         let relevant: Vec<u32> = wanted.into_iter().collect();
         let names: Vec<&str> = relevant.iter().map(|&id| &*union_index.names[id as usize]).collect();
         let mut receipt = Receipt {
@@ -1735,27 +1783,40 @@ impl Session {
         modified.extend(names.iter().map(|name| Box::<str>::from(*name)));
         if !relevant.is_empty() {
             let (module, signature) = union_index.module(&relevant, &module_disabled);
+            stage("common module extracted", started);
             receipt.module_axioms = module.len();
-            let mut out = String::from(new.header());
-            out.push('\n');
-            let in_module: FxHashSet<u32> = module.iter().copied().collect();
-            let mut emitted = FxHashSet::default();
-            for statement in &scanned.statements {
-                let keep = match statement.kind {
-                    StmtKind::Declaration => union_index.decl_entity.get(&statement.hash)
-                        .is_some_and(|&id| signature[id as usize]),
-                    StmtKind::Logical | StmtKind::Assertion => union_index.axiom_by_hash.get(&statement.hash)
-                        .is_some_and(|id| in_module.contains(id)),
-                    StmtKind::Annotation | StmtKind::Import => false,
-                };
-                if keep && emitted.insert(statement.hash) {
-                    out.push_str(&text[statement.start..statement.end]);
-                    out.push('\n');
-                }
-            }
-            out.push_str(")\n");
-            stage("common new-source module emitted", started);
             let module_tax = if module.is_empty() { Taxonomy::empty() } else {
+                // Stream the NEW-source module straight into the pipeline's
+                // input file: the module covers most of a large ABox-dominated
+                // source, so a String copy would be a second source-sized
+                // buffer plus a second write.
+                let module_file = crate::orchestrate::tmpfile::TempPath::new(".ofn");
+                {
+                    use std::io::Write;
+                    let io = |e: std::io::Error| e.to_string();
+                    let in_module: FxHashSet<u32> = module.iter().copied().collect();
+                    let mut emitted = FxHashSet::default();
+                    let mut out = std::io::BufWriter::with_capacity(1 << 20,
+                        std::fs::File::create(module_file.path()).map_err(io)?);
+                    out.write_all(new.header().as_bytes()).map_err(io)?;
+                    out.write_all(b"\n").map_err(io)?;
+                    for statement in &scanned.statements {
+                        let keep = match statement.kind {
+                            StmtKind::Declaration => union_index.decl_entity.get(&statement.hash)
+                                .is_some_and(|&id| signature[id as usize]),
+                            StmtKind::Logical | StmtKind::Assertion => union_index.axiom_by_hash.get(&statement.hash)
+                                .is_some_and(|id| in_module.contains(id)),
+                            StmtKind::Annotation | StmtKind::Import => false,
+                        };
+                        if keep && emitted.insert(statement.hash) {
+                            out.write_all(text[statement.start..statement.end].as_bytes()).map_err(io)?;
+                            out.write_all(b"\n").map_err(io)?;
+                        }
+                    }
+                    out.write_all(b")\n").map_err(io)?;
+                    out.flush().map_err(io)?;
+                }
+                stage("common new-source module emitted", started);
                 let file = (module.len() >= MODULE_RESTRICT_MIN_AXIOMS)
                     .then(|| crate::orchestrate::tmpfile::TempPath::new("-common-subjects.json"));
                 let mut settings = Vec::new();
@@ -1769,8 +1830,7 @@ impl Session {
                     path = file.path().to_string_lossy().into_owned();
                     settings.push(("KM_PUBLIC_SUBJECT_IRIS_FILE", path.as_str()));
                 }
-                if admission.is_some() { classify_text_certified(&out, &settings) }
-                    else { classify_text_with(&out, &settings) }
+                classify_taxonomy_at(&module_file, &settings, admission.is_some())
                     .map_err(|e| format!("common module classification: {e}"))?
             };
             if !module_tax.consistent || module_tax.dropped != 0 {
@@ -1799,7 +1859,7 @@ impl Session {
     /// Deletion reuse against the closest stored superset revision.
     /// `Ok(None)`: no applicable base. `Err`: a base applied but reuse declined.
     fn deletion(&mut self, text: &str, scanned: &Scan, new: &Arc<Statements>, started: Instant,
-        transaction_delta: Option<StatementDelta>, work: &mut PreparationWork)
+        transaction_delta: Option<StatementDelta>, added_probe: &[u128], work: &mut PreparationWork)
         -> Result<Option<(Taxonomy, Receipt, Option<BaseState>)>, String>
     {
         // A base: consistent, complete, same header, statement superset,
@@ -1814,6 +1874,7 @@ impl Session {
         candidates.sort_unstable();
         let best = candidates.into_iter().find_map(|(_, i)| {
             let old = &self.memo[i].base.as_ref().expect("candidate base").statements;
+            if added_probe.iter().any(|hash| !old.counts.contains_key(hash)) { return None; }
             let subset = new.counts.iter().all(|(h, (n, ..))| {
                 old.counts.get(h).is_some_and(|(m, ..)| m >= n)
             });
@@ -2887,7 +2948,7 @@ mod tests {
         session.memo[0].taxonomy=Arc::new(tax);
         let before=(session.current,session.clock,session.memo.len());
         let result=session.deletion(&new.text,&scan(&new.text).unwrap(),&new,Instant::now(),
-            statement_delta(&old,&new),&mut PreparationWork::default());
+            statement_delta(&old,&new),&[],&mut PreparationWork::default());
         assert!(matches!(result,Err(ref reason) if reason=="no exact told rows survived the global deletion"));
         assert_eq!(before,(session.current,session.clock,session.memo.len()));
         assert!(session.memo[0].taxonomy.rows[e as usize].as_ref().unwrap().contains(&a));
@@ -2902,7 +2963,7 @@ mod tests {
         let mut session=early_support_session(&old);
         let before=(session.current,session.clock,session.memo.len());
         let result=session.deletion(&new.text,&scan(&new.text).unwrap(),&new,Instant::now(),
-            statement_delta(&old,&new),&mut PreparationWork::default());
+            statement_delta(&old,&new),&[],&mut PreparationWork::default());
         assert!(matches!(result,Err(ref reason) if reason=="a removed or nominal axiom is in the module of the empty signature"));
         assert_eq!(before,(session.current,session.clock,session.memo.len()));
     }
