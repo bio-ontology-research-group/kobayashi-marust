@@ -69,6 +69,30 @@ public class RetainedFunctionalSyntaxTest {
         parity(o,p);
     }
 
+    @Test public void initialSnapshotSignatureIncludesImportedOntologyAnnotations() throws Exception {
+        OWLOntology root = ontology();
+        OWLOntologyManager manager = root.getOWLOntologyManager();
+        OWLOntology imported = manager.createOntology(IRI.create(NS + "import"));
+        manager.applyChange(new AddImport(root, df.getOWLImportsDeclaration(imported.getOntologyID()
+                .getOntologyIRI().get())));
+        add(root, sc("A", "B"));
+        add(imported, df.getOWLClassAssertionAxiom(c("C"), df.getOWLNamedIndividual(IRI.create(NS + "i"))));
+        OWLAnnotation nested = df.getOWLAnnotation(
+                df.getOWLAnnotationProperty(IRI.create(NS + "nested")), df.getOWLLiteral("note"));
+        manager.applyChange(new AddOntologyAnnotation(imported, df.getOWLAnnotation(
+                df.getOWLAnnotationProperty(IRI.create(NS + "onlyInOntologyAnnotation")),
+                df.getOWLLiteral("value", df.getOWLDatatype(IRI.create(NS + "customType"))),
+                Collections.singleton(nested))));
+        OWLOntology snapshot = FlattenedOntology.snapshot(root);
+        Set<OWLEntity> snapshotSignature = new HashSet<>(snapshot.getSignature());
+        assertEquals(root.getSignature(org.semanticweb.owlapi.model.parameters.Imports.INCLUDED),
+                RetainedFunctionalSyntax.initialSignature(root, snapshot));
+        assertEquals("do not mutate the renderer's cached domain", snapshotSignature, snapshot.getSignature());
+        RetainedFunctionalSyntax.Prepared prepared = new RetainedFunctionalSyntax().prepare(root);
+        assertEquals(FlattenedOntology.functionalSyntax(root), prepared.source);
+        parity(root, prepared);
+    }
+
     @Test public void additionsDeletionAndOriginRestorationMatchNormalReparse() throws Exception {
         OWLOntology o = ontology();
         declared(o,"A","B","C","D");

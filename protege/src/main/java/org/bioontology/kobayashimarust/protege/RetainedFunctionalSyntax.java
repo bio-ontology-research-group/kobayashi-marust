@@ -128,8 +128,14 @@ class RetainedFunctionalSyntax {
                      Set<OWLAxiom> suppliedRemoved) throws Exception {
         FlattenedOntology.validateImports(root);
         Set<OWLOntology> imports = importsView(root);
-        Set<OWLEntity> signature = new HashSet<>(root.getSignature(Imports.INCLUDED));
         State old = committed;
+        // Initialization always needs the detached snapshot. Build its signature
+        // once and let the renderer reuse OWLAPI's cache, instead of sorting the
+        // same (potentially very large) entity domain on both ontology objects.
+        OWLOntology initialSnapshot = old == null ? FlattenedOntology.snapshot(root) : null;
+        Set<OWLEntity> signature = initialSnapshot == null
+                ? new HashSet<>(root.getSignature(Imports.INCLUDED))
+                : initialSignature(root, initialSnapshot);
         boolean sameSignature = old != null && old.signature.equals(signature);
         boolean withinOriginSignature = old != null && old.origin != null
                 && old.origin.signature.containsAll(signature);
@@ -198,7 +204,8 @@ class RetainedFunctionalSyntax {
         } else {
             axioms = nextAxioms;
         }
-        OWLOntology snapshot = FlattenedOntology.snapshot(root);
+        OWLOntology snapshot = initialSnapshot == null
+                ? FlattenedOntology.snapshot(root) : initialSnapshot;
         Origin origin = null;
         String source;
         try {
@@ -219,6 +226,17 @@ class RetainedFunctionalSyntax {
                 old == null ? new HashSet<>(axioms) : difference(axioms, old.axioms),
                 old == null ? new HashSet<>() : difference(old.axioms, axioms), false, imports,
                 null, null);
+    }
+
+    static Set<OWLEntity> initialSignature(OWLOntology root, OWLOntology snapshot) {
+        Set<OWLEntity> signature = new HashSet<>(snapshot.getSignature());
+        // FlattenedOntology copies the imports-closure axioms, but deliberately
+        // omits ontology annotations. Their typed entities still belong to the
+        // live signature used by the retained serializer's eligibility checks.
+        for (OWLOntology member : root.getImportsClosure())
+            for (OWLAnnotation annotation : member.getAnnotations())
+                signature.addAll(annotation.getSignature());
+        return signature;
     }
 
     // OWLAPI's concurrent ontology facade is used by change events, while its
