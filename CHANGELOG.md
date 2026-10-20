@@ -22,6 +22,9 @@
   a complete response before mutation, recover a full answer on a mismatched
   delta, and skip hierarchy rebuilding when the published state is unchanged.
 - Reap cancelled native workers before stopping their supervisor.
+- Reuse the initial detached snapshot signature in the OWLAPI serializer,
+  avoiding duplicate sorting on large ontologies. Preserve the exact rendered
+  source and ontology-annotation entities across the imports closure.
 
 These changes reuse answers and preparation work. The default source session
 reports zero resumed backend states. Receipts distinguish actual reuse from
@@ -32,10 +35,11 @@ The earlier per-route adapter remains available through
 
 ### Comparison identities and validation
 
-The tested implementation is commit
-`4dd7995b5def62bb8f9140dd2be62b671816f71b`. The release preparation changes
-documentation, evidence tooling, and asset publication only; the native and Java
-implementation remains byte-identical to that commit.
+The native implementation is commit
+`4dd7995b5def62bb8f9140dd2be62b671816f71b`. The final Java adapter is commit
+`11db48ce73029227c7a28b9ad5e2e2a25189cc2a`, which removes redundant signature
+construction after ORE 12351 exceeded the original initialization timeout once.
+Subsequent release preparation changes documentation and evidence tooling only.
 
 All four benchmark arms have explicit identities:
 
@@ -51,8 +55,11 @@ Candidate native SHA-256:
 Released baseline native SHA-256:
 `1dbc0dd92170abcd70e948fa2dc2d9d13d5c72076bcff9ad7a664921188e5900`.
 The candidate is an ordinary release build with mimalloc and no PGO; the
-baseline is the published v1.5.0 profile-use binary. The OWLAPI arms use Java
-sources from the same respective commits. External reasoner comparisons from
+baseline is the published v1.5.0 profile-use binary. The candidate OWLAPI arms use Java sources from
+`11db48ce73029227c7a28b9ad5e2e2a25189cc2a`; both released OWLAPI arms use
+`d95f0b840a433b5b43c4eff48092e8b600bca8de`. The original candidate adapter
+at `4dd7995b5def62bb8f9140dd2be62b671816f71b` remains separately identified
+in the preserved first-panel evidence. External reasoner comparisons from
 older releases are not new v1.5.1 measurements.
 
 The frozen panel comprises 80 ontologies, initialization plus eight update
@@ -72,7 +79,8 @@ in separate reruns in 74.0 and 94.9 seconds with byte-identical output. Those
 reruns do not replace the original coverage counts.
 
 Pre-release implementation checks recorded 3,094 passing Rust tests in the CI
-recipe, 75 passing Java tests, six transactional fixtures, and 502 passing
+recipe, 75 passing Java tests before the signature fix (76 afterward), six
+transactional fixtures, and 502 passing
 Lean-gate tests without `sorryAx`. Checker-dependent tests run inside the Lean
 gates. The literal parallel Rust run also exposed existing checker-environment
 failures and a known thread-parallel flake, documented in the evidence.

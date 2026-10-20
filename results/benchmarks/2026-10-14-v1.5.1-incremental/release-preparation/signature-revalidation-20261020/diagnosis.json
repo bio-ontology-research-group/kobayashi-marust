@@ -1,0 +1,121 @@
+{
+  "source_commit": "11db48ce73029227c7a28b9ad5e2e2a25189cc2a",
+  "before_source_commit": "144b120b71aeac6ef10a6f174380eb41ee3349d8",
+  "symptom": "ORE 12351 candidate fresh repetition 3 initialization exceeded 240 seconds in the original OWLAPI panel",
+  "mechanism": "Redundant sorting and caching of the complete entity signature on both live ontology and detached rendering snapshot",
+  "fix": "On initialization, compute signature on the snapshot and add ontology-annotation entities from the imports closure",
+  "workstation_diagnostic_not_benchmark": {
+    "old_phase_log": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nSLF4J(W): Class path contains SLF4J bindings targeting slf4j-api versions 1.7.x or earlier.\nSLF4J(W): Ignoring binding found at [jar:file:/state/m2-km/ch/qos/logback/logback-classic/1.2.13/logback-classic-1.2.13.jar!/org/slf4j/impl/StaticLoggerBinder.class]\nSLF4J(W): See https://www.slf4j.org/codes.html#ignoredBindings for an explanation.\nload-start 0.588006642\nload-end 31.439951143\ncopy-end 34.162318678\nreasoner-end 82.816277707\nconsistent=true\ndispose-end 82.886468401\n",
+    "new_phase_log": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nSLF4J(W): Class path contains SLF4J bindings targeting slf4j-api versions 1.7.x or earlier.\nSLF4J(W): Ignoring binding found at [jar:file:/state/m2-km/ch/qos/logback/logback-classic/1.2.13/logback-classic-1.2.13.jar!/org/slf4j/impl/StaticLoggerBinder.class]\nSLF4J(W): See https://www.slf4j.org/codes.html#ignoredBindings for an explanation.\nload-start 0.56183902\nload-end 34.816596246\ncopy-end 37.780908127\nreasoner-end 81.987793052\nconsistent=true\ndispose-end 82.062748684\n",
+    "old_serializer": {
+      "seconds": 30.736623782,
+      "chars": 254555634,
+      "sha256": "f7481e2f297bd400d13770ec430e534a27a973857e03d218bf74d8cc5f21bfa5"
+    },
+    "new_serializer": {
+      "seconds": 28.451794868,
+      "chars": 254555634,
+      "sha256": "f7481e2f297bd400d13770ec430e534a27a973857e03d218bf74d8cc5f21bfa5"
+    }
+  },
+  "test_receipt": {
+    "binary": "/workspace/.work/gates-4dd7995b/stage/native/km",
+    "binary_sha256": "5ee715d66e391e561e188c735a8fa6a0aaabc4383e7d8bd243b52495b2cac3a8",
+    "jar_sha256": "8ffdfbc4d3e947afe1b03d86a17bb9d57ff5f73b12acfc01b1f2d00f5e2cabb9",
+    "groups": {
+      "delta10": {
+        "exit": 0,
+        "wall_s": 1.3,
+        "summary": {
+          "junit_run_count": 10,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 10,
+          "finished": 10,
+          "passed": 10,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 826,
+          "status": "passed_no_skips"
+        }
+      },
+      "existing": {
+        "exit": 0,
+        "wall_s": 43.2,
+        "summary": {
+          "junit_run_count": 34,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 34,
+          "finished": 34,
+          "passed": 34,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 42839,
+          "status": "passed_no_skips"
+        }
+      },
+      "private": {
+        "exit": 0,
+        "wall_s": 2.2,
+        "summary": {
+          "junit_run_count": 23,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 23,
+          "finished": 23,
+          "passed": 23,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 1917,
+          "status": "passed_no_skips"
+        }
+      },
+      "process3": {
+        "exit": 0,
+        "wall_s": 1.8,
+        "summary": {
+          "junit_run_count": 3,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 3,
+          "finished": 3,
+          "passed": 3,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 1407,
+          "status": "passed_no_skips"
+        }
+      },
+      "rowdelta6": {
+        "exit": 0,
+        "wall_s": 0.6,
+        "summary": {
+          "junit_run_count": 6,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 6,
+          "finished": 6,
+          "passed": 6,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 257,
+          "status": "passed_no_skips"
+        }
+      }
+    }
+  },
+  "validation_array": 54083337,
+  "validation_status_at_preparation": "submitted; completion and all five paired repetitions required before release",
+  "baseline_commit": "d95f0b840a433b5b43c4eff48092e8b600bca8de"
+}

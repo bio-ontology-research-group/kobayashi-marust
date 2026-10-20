@@ -9,12 +9,13 @@ that the default source session resumes backend saturation.
 
 | Benchmark arm | Version | Source commit | Build |
 |---|---|---|---|
-| Candidate retained and fresh | KM 1.5.1 | `4dd7995b5def62bb8f9140dd2be62b671816f71b` | Release, mimalloc, no PGO |
+| Candidate native, retained and fresh | KM 1.5.1 | `4dd7995b5def62bb8f9140dd2be62b671816f71b` | Release, mimalloc, no PGO |
+| Final candidate OWLAPI adapter | KM 1.5.1 | `11db48ce73029227c7a28b9ad5e2e2a25189cc2a` | Maven, JDK 17.0.20.1+1 |
 | Released retained and fresh | KM 1.5.0 | `d95f0b840a433b5b43c4eff48092e8b600bca8de` | Published profile-use executable |
 
 The final release commit adds documentation and publication/evidence tooling;
-its Rust, vendored parser, Lean, and Java sources must match the candidate
-commit above. The annotated `v1.5.1` tag and `build-completion.json` identify
+its Rust, vendored parser, and Lean sources must match the native candidate
+commit above, and its Java sources must match the final adapter commit. The annotated `v1.5.1` tag and `build-completion.json` identify
 the exact final source commit. No abbreviated commit serves as a source binding.
 
 - Candidate native SHA-256:
@@ -22,7 +23,7 @@ the exact final source commit. No abbreviated commit serves as a source binding.
 - Released native SHA-256:
   `1dbc0dd92170abcd70e948fa2dc2d9d13d5c72076bcff9ad7a664921188e5900`.
 - Candidate Protégé JAR SHA-256:
-  `4931544c2662352cdf96799d01d7f52822535961d7b8cd3df3c91ae224e4ab03`.
+  `8ffdfbc4d3e947afe1b03d86a17bb9d57ff5f73b12acfc01b1f2d00f5e2cabb9`.
 
 The Java adapters are compiled from the respective source commits, with class
 manifests in the benchmark bindings. The v1.5.0 tag's POM still says 1.4.5;
@@ -48,6 +49,24 @@ recovery arrays 54048085 and 54048086 use separate output directories and the
 same binaries, inputs, drivers, limits, and machine class. The original failed
 attempts remain evidence. Recovery replaces only those infrastructure-failed
 case measurements in the final timing table.
+
+The original OWLAPI panel used the adapter at
+`4dd7995b5def62bb8f9140dd2be62b671816f71b` (JAR SHA-256
+`4931544c2662352cdf96799d01d7f52822535961d7b8cd3df3c91ae224e4ab03`).
+ORE 12351 exceeded the initialization limit in candidate fresh repetition 3.
+The final adapter avoids sorting the full entity signature on both the live
+ontology and its detached rendering snapshot. It reuses the snapshot signature
+and includes ontology-annotation entities from the imports closure. The full
+ORE 12351 serialized source remains byte-identical, including annotations.
+All 76 Java tests pass after this change.
+
+Array 54083337 revalidates all 80 OWLAPI cases with the final adapter. Each
+array task runs one complete four-arm repetition. Task `5*i+r` selects case
+`i` and repetition `r`; arm order, inputs, per-request limits, and machine class
+remain unchanged. The final report combines all five repetitions only when
+all their terminal records and bindings are available. It retains the original
+panel and its timeout as separate evidence. CLI measurements continue to use
+the identical native executable; the Java-only change does not alter them.
 
 For each update, compute the median of five paired retained/fresh ratios,
 not the ratio of unrelated aggregate medians. The per-cell target is strictly

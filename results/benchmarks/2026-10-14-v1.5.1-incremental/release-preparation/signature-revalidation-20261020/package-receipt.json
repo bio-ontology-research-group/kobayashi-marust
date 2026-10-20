@@ -1,0 +1,106 @@
+{
+  "source_commit": "11db48ce73029227c7a28b9ad5e2e2a25189cc2a",
+  "jar_sha256": "8ffdfbc4d3e947afe1b03d86a17bb9d57ff5f73b12acfc01b1f2d00f5e2cabb9",
+  "class_count": 35,
+  "class_manifest_sha256": "bbd5cbf9beb74680c007543913bd6a4c33f5897d5eaa1864579f7ed2f0c9fa9b",
+  "source_manifest_sha256": "19a3ca91d0e881657dbad3bb09d6ef03f13a3598a6f504f332098f23bd08cfd2",
+  "command": "mvn -o -Dmaven.repo.local=/state/m2-km -Dmaven.test.skip=true package",
+  "jdk": "17.0.20.1+1",
+  "tests": {
+    "binary": "/workspace/.work/gates-4dd7995b/stage/native/km",
+    "binary_sha256": "5ee715d66e391e561e188c735a8fa6a0aaabc4383e7d8bd243b52495b2cac3a8",
+    "jar_sha256": "8ffdfbc4d3e947afe1b03d86a17bb9d57ff5f73b12acfc01b1f2d00f5e2cabb9",
+    "groups": {
+      "delta10": {
+        "exit": 0,
+        "wall_s": 1.3,
+        "summary": {
+          "junit_run_count": 10,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 10,
+          "finished": 10,
+          "passed": 10,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 826,
+          "status": "passed_no_skips"
+        }
+      },
+      "existing": {
+        "exit": 0,
+        "wall_s": 43.2,
+        "summary": {
+          "junit_run_count": 34,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 34,
+          "finished": 34,
+          "passed": 34,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 42839,
+          "status": "passed_no_skips"
+        }
+      },
+      "private": {
+        "exit": 0,
+        "wall_s": 2.2,
+        "summary": {
+          "junit_run_count": 23,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 23,
+          "finished": 23,
+          "passed": 23,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 1917,
+          "status": "passed_no_skips"
+        }
+      },
+      "process3": {
+        "exit": 0,
+        "wall_s": 1.8,
+        "summary": {
+          "junit_run_count": 3,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 3,
+          "finished": 3,
+          "passed": 3,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 1407,
+          "status": "passed_no_skips"
+        }
+      },
+      "rowdelta6": {
+        "exit": 0,
+        "wall_s": 0.6,
+        "summary": {
+          "junit_run_count": 6,
+          "junit_failure_count": 0,
+          "junit_ignored_count": 0,
+          "junit_assumption_failure_count": 0,
+          "started": 6,
+          "finished": 6,
+          "passed": 6,
+          "failed": 0,
+          "assumption_skipped": 0,
+          "ignored": 0,
+          "runtime_ms_diagnostic_only": 257,
+          "status": "passed_no_skips"
+        }
+      }
+    }
+  }
+}

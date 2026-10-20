@@ -1,0 +1,12 @@
+{
+  "original_driver_sha256": "9c6f1551799bfa7a0ecf24bdb6c5a4ed60b1a7ce9971ee376b180397c2280231",
+  "sharded_driver_sha256": "7aeca29528b67ce23aab9db5e5eaaa0d78129a03dad41bcce3d07ecff2228d93",
+  "source_commit": "11db48ce73029227c7a28b9ad5e2e2a25189cc2a",
+  "changes": [
+    "Resolve unchanged runner modules from frozen runtime",
+    "Add required --repetition 0..4",
+    "Execute selected repetition without changing arm order, limits or measurement",
+    "Record shard repetition; aggregate only after all five shards finish"
+  ],
+  "native_source_unchanged": true
+}

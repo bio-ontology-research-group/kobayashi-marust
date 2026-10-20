@@ -1,0 +1,31 @@
+{
+  "source_commit": "11db48ce73029227c7a28b9ad5e2e2a25189cc2a",
+  "files": {
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/Classifier.java": "bb18aa7800a5f555d6c9b7fda7ee7d7bd1d26cfd53b4b366d12d8ec451dc9135",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/FlattenedOntology.java": "31367afe0b1ff0fc14a7b5aea1451e28c495d5785a6d8b6714ca7df931daf5db",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationConfiguration.java": "c4dabcf406871cb58138581793fa24951d26b5099edf778fb2b4b50c87749486",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationController.java": "67771d15064c48617bcb7ce3b0d6520599de68d2fd78e0827bf40e65d041b484",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationGenerator.java": "7443e59cc83105d054143955dfa18aa0635eebeaa22f11a2f154174102ab29a6",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationGeneratorFactory.java": "a4ae336960bdbc98c9b68c4b78ed43a7eb737084800ec33a7e39fea8d3abc28f",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMExplanationRun.java": "c8f3651e548d23685bd5c0b92888a4632f82357f43abebf7ab7cd06106b8dace",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMNativeExplanationResult.java": "037228c2147955223ffc3a49844e664ffa17aa3f7112d9183aa7c56415331d94",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMNativeExplanationService.java": "78916cd18489fc1548c3133de3d5be760bdc555471324abd079893792dd33413",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMReasoner.java": "c6bbaff511e5578b419933c3a8c2be85d25812c54f28f79f303bf16cc921099a",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMReasonerFactory.java": "18809a0e914aefd97b67e9220e78de74c11b907249c27f4bda70946994336e28",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/KMReasonerInfo.java": "a29e21bde7140a516f92f00673d5eae41337ad872bd46aeff32030c29554463e",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/NativeProcessTree.java": "aa5e9678fe86503fe48ab10ac3966803fc1d523ea92e6d3e2ebbdd2460fe1c8a",
+    "protege/src/main/java/org/bioontology/kobayashimarust/protege/RetainedFunctionalSyntax.java": "ed52699611e28feeca73be622c1af230ac57b36633be1bc8b9dd8adea02b6645",
+    "protege/src/main/resources/META-INF/services/org.semanticweb.owl.explanation.api.ExplanationGeneratorFactory": "7fa222195ac1558dcdc7055f95c50587765f707242e17ec672bfe3e370b03a57",
+    "protege/src/main/resources/plugin.xml": "dd47ec4ec7fe831e2ef0a6857160460f15fc754566d105b77f0113d44c1ceb3c",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/ExplanationGeneratorTest.java": "52516a53525087a7731c7beac53b0f94ac019bddd3f1aab86b9d4c19130c017d",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/KMExplanationControllerTest.java": "f25a55c2ad89f9d8931a4f78c24e5d24501f4abec86615c1fd3e29ee14d43bf7",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/NativeProcessTreeTest.java": "732df6afa3c9d76f3f259739a2272ab8b148e4e50c044c4c20a9e9669beb961d",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/PluginRegistrationTest.java": "bed9f9400df6a9f142e5ee180cb96e15e76ec760ef6f8d66d6711b0e151b29e1",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/ReasonerTest.java": "766545ed2bf73f35dc8dce91f4fcde51cc07a03bd828175957de70d499c487d7",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/RetainedFunctionalSyntaxNativeTest.java": "0116e67325d5d03b302f6f1a796b23b7b1db966940f3677f3a76c4e95dcec747",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/RetainedFunctionalSyntaxTest.java": "0f48834191435b61c1c13320a8768ee3bde627907ba0818779ff7b4776b3a8ec",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/RowDeltaProtocolTest.java": "6c75121b54376a4819c6bbf6b68c9e10f0ed495ca9eec233abac037b87ab50c9",
+    "protege/src/test/java/org/bioontology/kobayashimarust/protege/SuppliedDeltaTest.java": "7de3dd62b96a01ed8b2a29e5010b6b87606a8c173e16b028854255417fb42d8a",
+    "protege/pom.xml": "5df74c7bef5ad0be0030083234593128d2bf62433b22c0814c5e6019e1040a53"
+  }
+}
