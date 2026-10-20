@@ -1,0 +1,37 @@
+{
+  "status": "submitted_not_release_ready",
+  "candidate_commit": "4dd7995b5def62bb8f9140dd2be62b671816f71b",
+  "original_jobs": {
+    "cli": 54015525,
+    "owlapi": 54015526
+  },
+  "recovery_jobs": {
+    "cli": 54048085,
+    "owlapi": 54048086
+  },
+  "recovery_indices": {
+    "cli": [
+      62,
+      75,
+      76,
+      77,
+      78,
+      79
+    ],
+    "owlapi": [
+      64,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79
+    ]
+  },
+  "remote_original": "/ibex/project/c2014/hohndor/km/v151-incremental-20261014/validation/full80-4dd7995b-v1",
+  "remote_recovery": "/ibex/project/c2014/hohndor/km/v151-incremental-20261014/validation/full80-4dd7995b-recovery-20261020",
+  "preservation": "No original results deleted. Only recovery output paths and job names/array indices differ; same runtime, inputs, binaries, and resource limits.",
+  "summary_validation": "Rejects missing repetitions, zero denominators, missing semantic identities and differing consistency verdicts."
+}

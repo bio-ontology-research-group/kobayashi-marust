@@ -4,177 +4,97 @@
 
 ### Incremental source and OWLAPI updates
 
-- Retain exact source and taxonomy bases across successive deletions, sharing
-  immutable locality indexes with cumulative removal masks. Reuse unaffected
-  published rows for compatible additions and mixed edits through common modules.
-- For supported sources with nominals and restricted data axioms, classify a
-  nominal-free object module when an exact source certificate establishes the
-  new revision's consistency. Mark nominal and data owners during locality
-  analysis. Otherwise check the complete new source before merging rows, and
-  retain only classes in the new public signature.
-- Propose bounded source subsets for data, explicit-rule and positive object
-  assertion clashes. Retain narrow inconsistency supports only after independent
-  complete classification verifies them. Check exact support containment and
-  source admission before reuse in a later revision.
-- Reuse unchanged compiled locality axioms across revisions. Preserve preparation
-  work and fallback reasons in receipts, distinguishing retained rows and compiled
-  formulas from resumed backend state. Keep exact inconsistency certificates
-  across validated updates and memo eviction, and share cached rendered answers.
-- Retain proofs of explicit named-class inclusions. After deletion within the
-  supported source envelope, also derive global named classes from the new
-  source's reflexive object properties, named superroles and named domains or
-  ranges. Seed each proof query without changing the retained graph. Keep a
-  satisfiable subject's row only when every entry remains proved; reclassify
-  subjects that do not meet that condition.
-- Treat `SubObjectPropertyOf(R owl:topObjectProperty)` as inert when checking
-  whether a source fits the nominal/object common envelope. The axiom holds in
-  every interpretation and the frontend already elides it. Every other mention
-  of a universal builtin, including the left side of the same axiom, still
-  declines. Additions and mixed edits of ABox-dominated sources that carry such
-  inclusions (ore_ont_5295) now classify a small object module instead of a
-  module that covers the whole ABox. The common path also streams its module
-  into the pipeline input file, and rejects non-superset deletion bases by the
-  statements added since the current revision before scanning the whole source.
-- Bind source-admission shortcuts to an origin accepted by the public validator.
-  Preserve exact headers, declarations, fixed statements and multiplicities.
-  Supported annotation-free named subclass edits and deletion or restoration of
-  eligible original logical axioms and assertions use that binding. Datatype
-  definitions and protected anonymous-individual property links remain fixed.
-  Check the new outer grammar before publication; unsupported edits use full
-  validation.
-- Preserve captured functional-syntax spans and full-IRI identities in OWLAPI
-  sessions. Restore original captured axiom text and render eligible new named
-  subclass axioms separately, retaining synthetic declarations.
-- Pass checked effective axiom additions and removals from OWLAPI flush into
-  source preparation. When ontology identity, signature and delta checks permit,
-  update the retained axiom set from that delta. Unsupported changes use ordinary
-  snapshot/rendering. Commit source caches and detached snapshots only after
-  native classification succeeds; refusal preserves the previous committed answers.
-- These paths retain exact answers, proofs, rows, indexes and preparation work.
-  They do not establish resumed backend saturation. Native receipts distinguish
-  retained work and fallback; the benchmark does not record a Java avoided-scan
-  count. This section makes no incremental performance claim.
+- Retain exact source snapshots, taxonomy rows, locality indexes, and compiled
+  locality axioms across additions, deletions, and mixed edits. Reclassify
+  affected modules or subjects when the source and consistency checks permit;
+  otherwise classify the complete new revision.
+- Reuse independently checked named-inclusion proofs and narrow inconsistency
+  supports. Preserve full-IRI identities, statement multiplicities, source
+  admission, and the current public signature. Refused updates leave the
+  committed revision and answer intact.
+- Extend eligible nominal and fixed-data reuse under their consistency and
+  locality certificates. Treat `SubObjectPropertyOf(R owl:topObjectProperty)`
+  as inert in the common-object envelope, matching the frontend's existing
+  tautology elimination. Other uses of universal builtins still decline.
+- Preserve captured functional-syntax spans in OWLAPI, check effective deltas,
+  retain shrinking and restored typed signatures, and stream requests.
+- Send optional revision-bound row deltas to retained Java sessions. Validate
+  a complete response before mutation, recover a full answer on a mismatched
+  delta, and skip hierarchy rebuilding when the published state is unchanged.
+- Reap cancelled native workers before stopping their supervisor.
 
-### Incremental module routing refinements
+These changes reuse answers and preparation work. The default source session
+reports zero resumed backend states. Receipts distinguish actual reuse from
+full classification; a fallback is never counted as incremental reuse.
+The earlier per-route adapter remains available through
+`KM_SOURCE_SESSION=legacy`. See the
+[incremental protocol](docs/INCREMENTAL-REASONING.md).
 
-Compared with commit `92b8e5180f612fd886dac0d20e5660cadde472fe`:
+### Comparison identities and validation
 
-- Prefer the existing certified pure-object module route when the full
-  empty-signature core contains data assertions, including small cores.
-  Preserve the consistency, source-admission and publication checks.
-- Permit Unicode inside quoted literal bodies in the optional source-envelope
-  guard while preserving literal values and safe token boundaries.
-- Keep small role-free EL modules in process when unused object or data
-  property declarations are present, including class/property punning.
-  Preserve the logical and resource guards and the worker's typed clause input.
+The tested implementation is commit
+`4dd7995b5def62bb8f9140dd2be62b671816f71b`. The release preparation changes
+documentation, evidence tooling, and asset publication only; the native and Java
+implementation remains byte-identical to that commit.
 
-The three-case debug diagnostic matched all 27 retained revisions and six fresh
-checks and confirmed the intended routes. The ordinary release-profile Rust
-suite passed 3,075 tests with zero failures and ten ignored tests. Exact-source
-Lean certification and optimized timing validation remain pending; these checks
-do not establish a performance improvement.
+All four benchmark arms have explicit identities:
 
-### Incremental data-cardinality reuse
+| Method | Version and full source commit | Execution |
+|---|---|---|
+| Candidate retained | KM 1.5.1, `4dd7995b5def62bb8f9140dd2be62b671816f71b` | Persistent source/OWLAPI session |
+| Candidate fresh | KM 1.5.1, `4dd7995b5def62bb8f9140dd2be62b671816f71b` | Fresh classification of each revision |
+| Released retained | KM 1.5.0, `d95f0b840a433b5b43c4eff48092e8b600bca8de` | Released persistent session |
+| Released fresh | KM 1.5.0, `d95f0b840a433b5b43c4eff48092e8b600bca8de` | Released fresh classifier |
 
-Compared with commit `26d96c831f1f8ed1adc2a2e297f0622f73eb7d2b`, retain
-unaffected rows when a source contains top-level named-class inclusions into
-unqualified `DataMinCardinality(1 p)` or `DataExactCardinality(1 p)` restrictions.
-Mark every cardinality owner as affected, including unchanged axioms. Check the
-actual new source when the affected module contains these restrictions; do not
-project them out of a published answer. Reject unsupported constructor positions,
-counts, fillers and built-in aliases at this optional reuse boundary.
+Candidate native SHA-256:
+`5ee715d66e391e561e188c735a8fa6a0aaabc4383e7d8bd243b52495b2cac3a8`.
+Released baseline native SHA-256:
+`1dbc0dd92170abcd70e948fa2dc2d9d13d5c72076bcff9ad7a664921188e5900`.
+The candidate is an ordinary release build with mimalloc and no PGO; the
+baseline is the published v1.5.0 profile-use binary. The OWLAPI arms use Java
+sources from the same respective commits. External reasoner comparisons from
+older releases are not new v1.5.1 measurements.
 
-The fixed-data-domain proof covers consistency transfer, retained named and
-unsatisfiable-class queries, and the optional pure-object module path. Its 18
-axiom audits and 39 focused tests passed. Full release gates and optimized timing
-validation remain pending; this entry makes no performance claim.
+The frozen panel comprises 80 ontologies, initialization plus eight update
+revisions, four arms, and five paired repetitions on both CLI and OWLAPI.
+Resources are one Intel Xeon Gold 6248 CPU, a 240-second per-request limit,
+and 20,480 MiB memory. CLI acceptance uses end-to-end update time. OWLAPI
+acceptance uses apply/flush plus taxonomy publication, with harness file-load
+time and end-to-end time reported alongside. Whole-session comparisons include
+initialization. Missing answers and timeouts remain in the reported denominator.
+A finite panel gives no universal performance guarantee.
 
-### Incremental fixed-data-value reuse
+The implementation's 1,920-input correctness audit recorded 1,661 completed
+answers, all canonically identical to v1.5.0, 212 expected invalid-input
+refusals, 34 timeouts, and 13 admitted process errors. v1.5.0 completed 1,663
+answers under that audit. The two lost solves, ORE 10949 and 15687, completed
+in separate reruns in 74.0 and 94.9 seconds with byte-identical output. Those
+reruns do not replace the original coverage counts.
 
-Compared with commit `fe0e85b4546e2c90f60b6ae69efc32594af6acb4`, permit
-retained query reuse for top-level `SubClassOf(C DataHasValue(p literal))`
-with ordinary named classes and data properties, and binary
-`EquivalentDataProperties(p q)` axioms. Mark every data owner, including
-unchanged axioms. Keep the complete new-source consistency check when an
-affected module contains data restrictions, and preserve the pure-object
-module guard. Unsupported positions, property forms and built-in aliases
-continue to decline at this optional reuse boundary.
+Pre-release implementation checks recorded 3,094 passing Rust tests in the CI
+recipe, 75 passing Java tests, six transactional fixtures, and 502 passing
+Lean-gate tests without `sorryAx`. Checker-dependent tests run inside the Lean
+gates. The literal parallel Rust run also exposed existing checker-environment
+failures and a known thread-parallel flake, documented in the evidence.
+Publication additionally requires all four Lean gates from the exact tagged
+commit.
 
-The extended fixed-domain Lean module passed 20 axiom audits without `sorryAx`;
-nine envelope unit tests and 35 public module-reuse tests passed. These checks
-cover value aliases, functionality clashes, owner deletion and restoration,
-unaffected rows and refused-update rollback. Full release certification and
-real-case performance validation remain pending. This entry makes no timing
-claim and does not replace the failing measurements of commit
-`fe0e85b4546e2c90f60b6ae69efc32594af6acb4`.
+### Release artifacts and reproducibility
 
-### Incremental preparation reuse
+[Release documentation](docs/RELEASE-1.5.1.md) describes the protocol,
+limitations, and exact baseline identities. The release's
+[`BENCHMARKS.md`](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.5.1/BENCHMARKS.md)
+contains final per-case timing, coverage, failure, and before/after results.
+[`build-completion.json`](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.5.1/build-completion.json)
+binds those results, exact-tag certification, source, native executable, and
+JAR hashes. These generated receipts are bound by the annotated tag's manifest
+pointer, avoiding a source/archive checksum cycle.
 
-Compared with commit `c55003ac696d0b19abd0f817fef7211c9a7721fd`:
-
-- Reuse the existing full and TBox locality indexes when the new source is
-  an exact-text subset of the selected original revision. Require matching
-  source provenance, index modes, complete enabled masks and no historical
-  removals. Keep the original source spans and recompute the new public domain.
-- Reuse validated UTF-8 source spans without Unicode normalization. Retained
-  headers and statements remain byte-exact. Novel named subclass axioms still
-  use the source checker; unsupported trivia or changed fixed syntax declines
-  reuse.
-
-These changes preserve the admission, locality, consistency and publication
-checks. All 74 focused tests passed, including fresh-result parity, removal of
-an unused public class, refused-update rollback and actual zero-index-build
-receipts. Final performance measurements and certification from the eventual
-release source remain pending. The recorded timing misses of commit
-`fe0e85b4546e2c90f60b6ae69efc32594af6acb4` remain separate evidence; these tests
-do not establish that those misses are resolved.
-
-### OWLAPI signature shrinkage and restoration
-
-Compared with commit `cdbd4f8e0aff7d3ece2114607d5c126724ad91ab`, keep the
-original captured functional syntax when the current typed entity signature is
-a subset of the original signature. Omit synthetic declarations for entities
-that disappear and restore their original spans when those entities return.
-Compare typed entities, including punned IRIs, rather than IRI strings alone.
-Explicit declaration edits and entities outside the original signature still
-use ordinary rendering. Commit retained state only after successful native
-publication.
-
-All 18 focused serializer tests passed, including normal-renderer reparse
-parity, repeated individual deletion and restoration, typed declaration
-removal, discarded preparations and stale-commit rejection. These tests do not
-run the native reasoner or establish a timing improvement; real-case path
-validation and final timing acceptance remain pending.
-
-### Native process cleanup
-
-- During cancellation, allow the supervisor to reap terminated children before
-  stopping it. Bound the cleanup wait and preserve the caller's interrupt state.
-
-### Native corpus evidence and known coverage limitation
-
-The 1,920-input audit used native candidate binary
-`29c18639238349b2b075040bcd863fe9f4ebec2e1654bddcfbf40755a80ad461`,
-built from private source manifest
-`7e26e2565db59f5fa0bf69e2a33149ce86687dc129554958be61f3ad0f4eef11`
-on Git base `2fcdbe10e3c0d52b9f0cc6ed224bd891e4481c55` plus uncommitted changes.
-Against released **v1.5.0, commit
-`d95f0b840a433b5b43c4eff48092e8b600bca8de`**, it independently verified
-**1,660** candidate answers versus **1,661** for that release. All **1,662**
-completed candidate answers matched that release's canonical answers, with
-**zero differences**. The run preserved **212** expected invalid-input refusals,
-**33** timeouts and **13** admitted process errors.
-
-ORE `7345` timed out at the original 240-second limit; released v1.5.0 at commit
-`d95f0b840a433b5b43c4eff48092e8b600bca8de` completed it. Later crossover runs
-completed the candidate case but do not replace or erase that original coverage
-loss. The Java-only changes incorporated in commit
-`4af7b3183898d2e5fbd546a8ffd32d9caed4ab20` leave this historical audit's native
-inputs unchanged. This audit does not cover the later native changes committed in
-`947660153efe744b877b0638345ab85e73e91172` and is not a new full-corpus
-Java measurement. Detailed performance and
-release-validation evidence is reported separately with exact source and artifact
-identities; these corpus counts alone do not establish release acceptance.
+Assets include the measured Linux x86-64 executable, the Protégé 1.5.1 JAR,
+the exact tagged source archive, the two evidence files, and `SHA256SUMS`.
+The publication workflow verifies all hashes and uploads all assets to a draft
+before making the release public. After downloading the executable, run
+`chmod +x km-v1.5.1-linux-x86_64`.
 
 ## [1.5.0] - 2026-10-14
 

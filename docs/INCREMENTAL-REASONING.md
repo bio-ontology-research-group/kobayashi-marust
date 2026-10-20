@@ -91,10 +91,16 @@ silently omits an orchestration side channel.
 
 ## Complete-source session and OWLAPI lifecycle
 
-`km incremental-source` accepts one complete flattened OWL Functional Syntax
-document per transaction. It reruns the full frontend and automatic router,
-computes a duplicate-preserving normalized-clause delta, and commits the new
-classification atomically. Its JSONL operations are:
+In v1.5.1, `km incremental-source` accepts one complete flattened OWL
+Functional Syntax document per transaction. Its default session retains source
+snapshots, published taxonomy rows, locality indexes, compiled locality axioms,
+and independently checked entailment or inconsistency supports. It classifies
+an affected module or restricted subject set through the production automatic
+pipeline when the reuse conditions hold; otherwise it classifies the complete
+new source. Each successful update commits atomically. These caches reuse
+answers and preparation work; they do not resume backend saturation.
+
+Run `km incremental-source` and send one JSON object per line:
 
 ```json
 {"op":"init","functional_syntax":"Ontology(...)"}
@@ -102,6 +108,64 @@ classification atomically. Its JSONL operations are:
 {"op":"classify"}
 {"op":"stats"}
 ```
+
+A successful response has `status: "ok"`, a monotonically increasing
+`revision` (the first is 1), a `result`, and, for updates, a `receipt`.
+Full results contain `consistent`, `dropped`, `subsumptions`, and
+`unsatisfiable`. `classify` returns the current full answer without advancing
+the revision; the default session also accepts `stats` as an alias for that
+query. Before initialization, either query returns an error.
+
+A malformed or unsupported replacement returns `status: "error"`. It does not
+advance the committed revision or change the previous answer. Clients must
+check status before replacing their own state. Changes to the public signature
+remove obsolete subjects and classes from the published result.
+
+### Optional row-delta responses
+
+Clients that retain the preceding answer can include its revision:
+
+```json
+{"op":"replace","base_revision":1,"functional_syntax":"Ontology(...)"}
+```
+
+When this base matches the last published and current revision, `result`
+contains `delta: true`, `base_revision`, `consistent`, `dropped`, `rows`, and
+`unsatisfiable`. Each row has a subject IRI `s` and its complete replacement
+superclass list `o`; an empty list removes that subject's row. The
+`unsatisfiable` list replaces the complete previous list. Unmentioned rows
+remain unchanged. Validate the entire response and base revision before
+applying it. A missing or mismatched base returns a full answer. A client that
+cannot apply a delta can request `classify` for the full current revision.
+
+The OWLAPI adapter uses this protocol, validates responses before committing
+its Java state, and avoids rebuilding the hierarchy when its rows, consistency,
+unsatisfiable classes, and declared class set are unchanged. Buffering changes
+become visible at `flush()`; non-buffering changes commit on delivery. The
+adapter preserves captured source spans where eligible, checks effective axiom
+deltas, and streams complete source snapshots to its retained subprocess.
+
+### Reuse receipts
+
+Read `receipt.meaningful_incremental_update` together with the work counters.
+`reused_complete_answer`, `reused_subjects`, `reused_index_axioms`, and
+`cross_revision_compiled_axioms` identify retained work. `affected_subjects`,
+`reclassified_subjects`, `module_axioms`, and `rebuilt_index_axioms` describe
+new work. `strategy` names the chosen path and `fallback_reason` explains a
+full classification where available. A strategy name alone is not evidence of
+saved work. `resumed_backend_states` is zero for the default source session.
+The compatibility field `retained_backend` does not imply resumed saturation.
+
+Reuse eligibility is conservative. Additions, deletions, and mixed edits can
+cross its boundary and use full classification. Nominal and data reuse require
+the corresponding source and consistency checks. A failed optional reuse
+attempt never authorizes publication of an incomplete taxonomy.
+
+### Legacy per-route source adapters
+
+The following adapter details describe the opt-in
+`KM_SOURCE_SESSION=legacy km incremental-source` implementation and the
+lower-level APIs. They are not the default v1.5.1 source-session strategy.
 
 For ELC and clause-complete CB routes without typed ABox, cardinality, or rule
 state, the source session retains `IncrementalClassifier` and reports an
@@ -234,7 +298,7 @@ The initial clauses receive ids `1..N` in input order. Each accepted addition
 receives a monotonically increasing id, and an id is never reused after its
 clause is removed. Failed transactions allocate nothing.
 
-The source session keeps its parallel clause mirror in this same stable-id
+The legacy source session keeps its parallel clause mirror in this same stable-id
 order. A later frontend pass may emit equivalent retained clauses in a
 different position and place fresh definers before old ABox clauses. Delta
 matching identifies semantic additions and removals, but committed additions

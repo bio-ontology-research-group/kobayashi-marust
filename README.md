@@ -21,9 +21,9 @@ without access to the expected answer.
 - KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle.
 - Conversion, routing, and certification paths fail closed when they cannot
   justify a complete result.
-- Source-level transactional incremental reasoning retains meaningful state
-  across every production mechanism, with documented exact-rebuild safety
-  boundaries and atomic route migration.
+- Source-level transactional incremental reasoning reuses exact taxonomy rows,
+  source indexes, and checked supports where eligible, with full-classification
+  fallback and atomic updates. See the [incremental API](docs/INCREMENTAL-REASONING.md).
 - The native CLI and OWLAPI/Protégé integration return verified, subset-minimal
   source-axiom explanations for every advertised entailment kind.
 - Lean provides sorry-free soundness and completeness certification for the
