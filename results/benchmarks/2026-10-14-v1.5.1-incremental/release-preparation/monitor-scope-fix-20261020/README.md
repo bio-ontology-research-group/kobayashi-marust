@@ -74,8 +74,10 @@ with the unchanged candidate and baseline artifacts.
 
 ## Reporting dependency recovery
 
-The first 20 tasks of array 54101937 completed their four measured arms but
-failed at the delayed evaluator import. The staged runtime omitted
+The first 20 tasks of array 54101937 failed at the delayed evaluator import.
+Nineteen completed all four measured arms. Task 11 separately stopped at the
+third-arm cleanup preflight, before launching that worker, because an unrelated
+`/proc` entry disappeared with ESRCH (errno 3). The staged runtime omitted
 `evaluate_public_owlapi_digest.py`. The original evaluator was restored unchanged
 (SHA256 `f816d7ce2d94978e7d8ee4b5295576d96c7998a0f263868030bd42b5cea245cb`).
 Subsequent tasks use that same evaluator. No measurement code, binding, input,
@@ -84,7 +86,8 @@ arm order, or raw measurement was changed.
 Slurm array 54102654 runs `recover-reporting.py` for tasks 0 through 19. It checks
 the original import failure, driver and input bindings, all raw record hashes,
 canonical answers and cleanup proofs, then executes only the reporting tail.
-Each recovery preserves the partial panel and writes a receipt linking its hash,
+The recovery correctly refuses task 11 because it lacks four measured arms.
+Each successful recovery preserves the partial panel and writes a receipt linking its hash,
 the error log, evaluator, recovery script, raw records and finalized panel.
 `test_runtime_packaging.py` imports both the driver and delayed evaluator to
 cover this packaging failure.
@@ -93,3 +96,17 @@ cover this packaging failure.
 hash-bound retained-arm records for the final report. Cached native receipts
 are not counted as new work; missing observations are not reported as zero.
 Full classification and partial reuse remain explicit per case and revision.
+
+### Infrastructure retry
+
+`infrastructure-retry.json` preserves the task-11 original panel and record hashes.
+Its third arm has no revisions, worker PID, or output log hashes: the exception
+occurs in `SubreaperScope.begin()` before `subprocess.Popen()`. The two earlier
+measured arms and the failed startup remain unchanged in the original shard.
+
+Slurm job 54104986 uses `owl-infrastructure-retry.sbatch` to rerun the entire
+four-arm repetition into a separate `retries/task-002-rep-1` directory. The driver,
+monitor, binary and adapter bindings, inputs, arm order, CPU model and resource
+limits remain identical. The final paired panel uses the retry and excludes the
+original partial repetition, while the release evidence preserves both.
+The cleanup check remains strict; an unconfirmed cleanup is never accepted.

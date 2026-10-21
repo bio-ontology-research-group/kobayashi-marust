@@ -1,0 +1,17 @@
+{
+  "schema": "same-config-infrastructure-retry-v1",
+  "original_array": 54101937,
+  "task": 11,
+  "ontology": "ore_ont_3053",
+  "repetition": 1,
+  "original_panel_sha256": "f1615f094a17f15e63ec8e577b53db4c64180c1df6648a29155f14804c8c74ba",
+  "cause": "TreeObservationError('cannot inspect /proc/2572581/stat: [Errno 3] No such process')",
+  "failure_phase": "SubreaperScope.begin before subprocess.Popen; no third-arm worker launched",
+  "preservation": "Original shard and all raw measurements retained unchanged. Entire paired repetition rerun in retries/task-002-rep-1 with original order, binary, adapter, driver, inputs and limits. Original partial measurements excluded from final paired acceptance.",
+  "original_record_hashes": [
+    "5ebaf56f0db19887204b05a20f8fb18c45883c3c59098ef54f504c7c67ba5ca4",
+    "da822593ca38c5f889af95a67ecd214c9e1735e4bf952803dde19f31b2210bba",
+    "6f0114ff94a146602472a658d2596c89e0fd128aae7cc705708ad5c6b56d1ecf"
+  ],
+  "retry_job": 54104986
+}
