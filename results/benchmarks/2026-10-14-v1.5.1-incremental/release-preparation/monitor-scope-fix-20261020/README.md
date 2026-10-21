@@ -71,3 +71,25 @@ detached children, PID-namespace fallback, missing scope files, RSS caps, timeou
 kills, and shared-snapshot membership callbacks. The runtime directory freezes
 the exact measurement sources; `four-arm-bindings.json` pins their hashes along
 with the unchanged candidate and baseline artifacts.
+
+## Reporting dependency recovery
+
+The first 20 tasks of array 54101937 completed their four measured arms but
+failed at the delayed evaluator import. The staged runtime omitted
+`evaluate_public_owlapi_digest.py`. The original evaluator was restored unchanged
+(SHA256 `f816d7ce2d94978e7d8ee4b5295576d96c7998a0f263868030bd42b5cea245cb`).
+Subsequent tasks use that same evaluator. No measurement code, binding, input,
+arm order, or raw measurement was changed.
+
+Slurm array 54102654 runs `recover-reporting.py` for tasks 0 through 19. It checks
+the original import failure, driver and input bindings, all raw record hashes,
+canonical answers and cleanup proofs, then executes only the reporting tail.
+Each recovery preserves the partial panel and writes a receipt linking its hash,
+the error log, evaluator, recovery script, raw records and finalized panel.
+`test_runtime_packaging.py` imports both the driver and delayed evaluator to
+cover this packaging failure.
+
+`reuse_reporting.py` extracts observed strategies and reuse counters from
+hash-bound retained-arm records for the final report. Cached native receipts
+are not counted as new work; missing observations are not reported as zero.
+Full classification and partial reuse remain explicit per case and revision.
