@@ -2,6 +2,20 @@
 
 ## [1.5.1]
 
+### Benchmark result and accepted exception
+
+All 1,232 comparable incremental update timing cells pass: 624 CLI and 608
+OWLAPI. Available answers agree across arms. Whole-session medians beat both
+fresh arms on 78/78 complete CLI cases and 75/76 complete OWLAPI cases.
+ORE 2713 is the one accepted exception: retained 4.446917 s versus candidate
+fresh 4.339352 s, a 2.48% slowdown including startup and initialization.
+The user explicitly authorized this release with that slowdown. Original
+measurements remain unchanged; diagnostic reruns do not replace them.
+Incomplete cases remain in the 80-case denominators and count as no timing pass.
+See the attached `BENCHMARKS.md` and `build-completion.json` for every case,
+exact baseline versions/commits and artifact hashes, and the
+[exception record](docs/release-1.5.1-performance-exception.json).
+
 ### Incremental source and OWLAPI updates
 
 - Retain exact source snapshots, taxonomy rows, locality indexes, and compiled

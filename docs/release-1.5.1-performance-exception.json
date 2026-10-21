@@ -1,0 +1,10 @@
+{
+  "schema": "km-v151-authorized-performance-exception-v1",
+  "user_instruction": "release v1.5.1 with the one slowdown.",
+  "scope": "OWLAPI ORE 2713 whole-session median only",
+  "original_panel_sha256": "fab2a0cbcb242c76d6230bf0107e9b46fa7d9504eef832bec39a0776cf9133a3",
+  "retained_median_s": 4.446917308494449,
+  "candidate_fresh_median_s": 4.33935160189867,
+  "original_measurements_preserved": true,
+  "other_release_gates_unchanged": true
+}
