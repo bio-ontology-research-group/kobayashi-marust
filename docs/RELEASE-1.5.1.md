@@ -60,13 +60,30 @@ and includes ontology-annotation entities from the imports closure. The full
 ORE 12351 serialized source remains byte-identical, including annotations.
 All 76 Java tests pass after this change.
 
-Array 54083337 revalidates all 80 OWLAPI cases with the final adapter. Each
+Array 54083337 revalidated all 80 OWLAPI cases with the final adapter. Each
 array task runs one complete four-arm repetition. Task `5*i+r` selects case
 `i` and repetition `r`; arm order, inputs, per-request limits, and machine class
 remain unchanged. The final report combines all five repetitions only when
 all their terminal records and bindings are available. It retains the original
 panel and its timeout as separate evidence. CLI measurements continue to use
 the identical native executable; the Java-only change does not alter them.
+
+The signature-fix panel completed ORE 12351, but exposed timing losses on
+ORE 9724 and a partial baseline answer on ORE 15703. An IBEX control measured
+8.75 seconds of supervisor CPU during 15.03 seconds of monitoring a sleeping
+worker. The OWLAPI driver scanned the whole node process table twice per tick
+while sharing its one allocated CPU with the reasoner.
+
+The final OWLAPI panel uses arrays 54101655 (the two affected cases) and
+54101937 (the other 78 cases). Its monitor reads the worker's cgroup and nested
+cgroups, reuses each membership snapshot, and retains full-table fallback and
+final subreaper cleanup. The time and memory caps, binaries, Java adapters,
+inputs, five repetitions, and balanced arm orders remain unchanged. Every arm
+uses the corrected monitor. The original and signature-fix panels remain
+separate evidence, including their failed attempts. CLI measurements retain
+their original harness; the correction changes only the OWLAPI measurements.
+See the [monitor investigation and frozen runtime](../results/benchmarks/2026-10-14-v1.5.1-incremental/release-preparation/monitor-scope-fix-20261020/README.md).
+The release report supplies completed results and exact evidence hashes.
 
 For each update, compute the median of five paired retained/fresh ratios,
 not the ratio of unrelated aggregate medians. The per-cell target is strictly

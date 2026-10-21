@@ -40,6 +40,10 @@ The native implementation is commit
 `11db48ce73029227c7a28b9ad5e2e2a25189cc2a`, which removes redundant signature
 construction after ORE 12351 exceeded the original initialization timeout once.
 Subsequent release preparation changes documentation and evidence tooling only.
+The OWLAPI benchmark monitor now samples the job cgroup and reuses its process
+snapshot, avoiding repeated whole-node scans on the worker’s allocated CPU.
+The corrected panel retains the original limits and records both earlier panels,
+including their timeouts; see the [release protocol](docs/RELEASE-1.5.1.md).
 
 All four benchmark arms have explicit identities:
 

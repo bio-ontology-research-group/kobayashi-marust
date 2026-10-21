@@ -1,0 +1,32 @@
+[
+  {
+    "double_scan": true,
+    "wall": 15.03414123877883,
+    "user_cpu": 3.4440549999999996,
+    "sys_cpu": 5.3053040000000005,
+    "scans": [
+      611,
+      8.70826369151473
+    ],
+    "process_count": 750,
+    "hostname": "cn512-27-r",
+    "affinity": [
+      30
+    ]
+  },
+  {
+    "double_scan": false,
+    "wall": 15.029548620805144,
+    "user_cpu": 2.5500299999999996,
+    "sys_cpu": 3.742197,
+    "scans": [
+      432,
+      6.209373466670513
+    ],
+    "process_count": 752,
+    "hostname": "cn512-27-r",
+    "affinity": [
+      30
+    ]
+  }
+]
