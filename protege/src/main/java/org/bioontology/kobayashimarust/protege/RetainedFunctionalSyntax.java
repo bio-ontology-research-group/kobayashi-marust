@@ -52,10 +52,7 @@ class RetainedFunctionalSyntax {
             this.fallbackSnapshot = snapshot;
             this.added = Collections.unmodifiableSet(added);
             this.removed = Collections.unmodifiableSet(removed);
-            Set<OWLClass> classes = new HashSet<>();
-            for (OWLEntity entity : state.signature)
-                if (entity.isOWLClass()) classes.add(entity.asOWLClass());
-            this.classes = Collections.unmodifiableSet(classes);
+            this.classes = state.classes;
         }
     }
 
@@ -98,6 +95,7 @@ class RetainedFunctionalSyntax {
     private static final class State {
         final OWLOntologyID id;
         final Set<OWLEntity> signature;
+        final Set<OWLClass> classes;
         final Set<OWLAxiom> axioms;
         // Backing set of the unmodifiable view above. Successive committed states
         // share it and patch it in place in commit(); never the Origin's set.
@@ -106,14 +104,21 @@ class RetainedFunctionalSyntax {
         // Only currently active non-origin axioms; historical additions vanish.
         final Map<OWLAxiom, String> additions;
         // The rendered text is not retained here: only Origin.source is kept.
-        State(OWLOntologyID id, Set<OWLEntity> signature, Set<OWLAxiom> axioms,
+        State(OWLOntologyID id, Set<OWLEntity> signature, Set<OWLClass> classes, Set<OWLAxiom> axioms,
               Origin origin, Map<OWLAxiom, String> additions) {
             this.id = id;
             this.signature = Collections.unmodifiableSet(signature);
+            this.classes = Collections.unmodifiableSet(classes);
             this.owned = axioms;
             this.axioms = Collections.unmodifiableSet(axioms);
             this.origin = origin;
             this.additions = Collections.unmodifiableMap(additions);
+        }
+        static Set<OWLClass> classesOf(Set<OWLEntity> signature) {
+            Set<OWLClass> classes = new HashSet<>();
+            for (OWLEntity entity : signature)
+                if (entity.isOWLClass()) classes.add(entity.asOWLClass());
+            return Collections.unmodifiableSet(classes);
         }
     }
 
@@ -129,11 +134,87 @@ class RetainedFunctionalSyntax {
         FlattenedOntology.validateImports(root);
         Set<OWLOntology> imports = importsView(root);
         State old = committed;
-        // Initialization always needs the detached snapshot. Build its signature
-        // once and let the renderer reuse OWLAPI's cache, instead of sorting the
-        // same (potentially very large) entity domain on both ontology objects.
-        OWLOntology initialSnapshot = old == null ? FlattenedOntology.snapshot(root) : null;
-        Set<OWLEntity> signature = initialSnapshot == null
+        boolean directRenderable = root.getImportsDeclarations().isEmpty()
+                && root.getAnnotations().isEmpty();
+        // When root has no imports or ontology annotations, render root directly
+        // without duplicating its axioms in a second OWLOntologyManager.
+        OWLOntology initialSnapshot = old == null
+                ? (directRenderable ? root : FlattenedOntology.snapshot(root))
+                : null;
+        boolean fastDelta = old != null && old.origin != null && old.id.equals(root.getOntologyID())
+                && directRenderable && suppliedAdded != null && suppliedRemoved != null
+                && admissibleDelta(root, old, suppliedAdded, suppliedRemoved);
+        if (fastDelta) {
+            boolean mayAddEntity = false;
+            for (OWLAxiom a : suppliedAdded) {
+                for (OWLEntity e : a.getSignature()) {
+                    if (!old.signature.contains(e)) { mayAddEntity = true; break; }
+                }
+                if (mayAddEntity) break;
+            }
+            boolean mayRemoveEntity = false;
+            if (!mayAddEntity) {
+                for (OWLAxiom a : suppliedRemoved) {
+                    if (a instanceof OWLDeclarationAxiom) { mayRemoveEntity = true; break; }
+                    for (OWLEntity e : a.getSignature()) {
+                        OWLDeclarationAxiom decl = root.getOWLOntologyManager().getOWLDataFactory().getOWLDeclarationAxiom(e);
+                        if (!old.axioms.contains(decl) || suppliedRemoved.contains(decl)) {
+                            mayRemoveEntity = true;
+                            break;
+                        }
+                    }
+                    if (mayRemoveEntity) break;
+                }
+            }
+            if (!mayAddEntity && !mayRemoveEntity) {
+                Set<OWLEntity> signature = old.signature;
+                final java.util.function.Predicate<OWLAxiom> inNext =
+                        a -> (old.axioms.contains(a) && !suppliedRemoved.contains(a)) || suppliedAdded.contains(a);
+                Set<OWLAxiom> added = new HashSet<>(suppliedAdded);
+                Set<OWLAxiom> removed = new HashSet<>(suppliedRemoved);
+                boolean eligible = true;
+                for (OWLAxiom a : removed)
+                    eligible &= capturedOrigin(old.origin, a)
+                            || (!old.origin.axioms.contains(a)
+                                && old.additions.containsKey(a) && namedSubclass(a));
+                for (OWLAxiom a : added)
+                    eligible &= old.origin.axioms.contains(a)
+                            ? capturedOrigin(old.origin, a) : namedSubclass(a);
+                if (eligible) {
+                    Map<OWLAxiom, String> active = new LinkedHashMap<>();
+                    for (Map.Entry<OWLAxiom, String> entry : old.additions.entrySet())
+                        if (inNext.test(entry.getKey())) active.put(entry.getKey(), entry.getValue());
+                    List<OWLAxiom> order = new ArrayList<>(added);
+                    Collections.sort(order);
+                    for (OWLAxiom a : order) {
+                        if (old.origin.axioms.contains(a)) continue;
+                        String text = old.additions.get(a);
+                        if (text == null) text = renderAxiom(root, a);
+                        active.put(a, text);
+                    }
+                    StringBuilder out = new StringBuilder(old.origin.source.length());
+                    int cursor = 0;
+                    for (Span span : old.origin.spans) {
+                        boolean omit = old.origin.axioms.contains(span.axiom)
+                                ? !inNext.test(span.axiom)
+                                : span.axiom instanceof OWLDeclarationAxiom
+                                    && !signature.contains(((OWLDeclarationAxiom)span.axiom).getEntity());
+                        if (omit) {
+                            out.append(old.origin.source, cursor, span.start);
+                            cursor = span.end;
+                        }
+                    }
+                    out.append(old.origin.source, cursor, old.origin.closing);
+                    for (String text : active.values()) out.append('\n').append(text).append('\n');
+                    out.append(old.origin.source, old.origin.closing, old.origin.source.length());
+                    State state = new State(root.getOntologyID(), signature, old.classes,
+                            old.owned, old.origin, active);
+                    return new Prepared(this, state, out.toString(), true, null, added, removed,
+                            true, imports, added, removed);
+                }
+            }
+        }
+        Set<OWLEntity> signature = initialSnapshot == null || initialSnapshot == root
                 ? new HashSet<>(root.getSignature(Imports.INCLUDED))
                 : initialSignature(root, initialSnapshot);
         boolean sameSignature = old != null && old.signature.equals(signature);
@@ -190,6 +271,7 @@ class RetainedFunctionalSyntax {
                 for (String text : active.values()) out.append('\n').append(text).append('\n');
                 out.append(old.origin.source, old.origin.closing, old.origin.source.length());
                 State state = new State(root.getOntologyID(), signature,
+                        sameSignature ? old.classes : State.classesOf(signature),
                         supplied ? old.owned : nextAxioms, old.origin, active);
                 return new Prepared(this, state, out.toString(), true, null, added, removed,
                         supplied, imports, supplied ? added : null, supplied ? removed : null);
@@ -205,7 +287,8 @@ class RetainedFunctionalSyntax {
             axioms = nextAxioms;
         }
         OWLOntology snapshot = initialSnapshot == null
-                ? FlattenedOntology.snapshot(root) : initialSnapshot;
+                ? (directRenderable ? root : FlattenedOntology.snapshot(root))
+                : initialSnapshot;
         Origin origin = null;
         String source;
         try {
@@ -220,7 +303,7 @@ class RetainedFunctionalSyntax {
             // authority for any shape our offset bookkeeping cannot represent.
             source = FlattenedOntology.functionalSyntaxOfSnapshot(snapshot);
         }
-        State state = new State(root.getOntologyID(), signature, axioms, origin,
+        State state = new State(root.getOntologyID(), signature, State.classesOf(signature), axioms, origin,
                 Collections.emptyMap());
         return new Prepared(this, state, source, false, snapshot,
                 old == null ? new HashSet<>(axioms) : difference(axioms, old.axioms),
@@ -272,6 +355,18 @@ class RetainedFunctionalSyntax {
 
     static boolean safeDeltaAxiom(OWLAxiom axiom) {
         return !axiom.isAnnotated() && (axiom.isLogicalAxiom() || axiom instanceof OWLDeclarationAxiom);
+    }
+
+    boolean hasCommittedRevision() {
+        return committed != null;
+    }
+
+    OWLOntology committedSnapshot() throws Exception {
+        if (committed == null) return null;
+        OWLOntologyManager manager = org.semanticweb.owlapi.apibinding.OWLManager.createOWLOntologyManager();
+        OWLOntology snapshot = manager.createOntology(committed.id);
+        manager.addAxioms(snapshot, committed.axioms);
+        return snapshot;
     }
 
     void commit(Prepared prepared) {

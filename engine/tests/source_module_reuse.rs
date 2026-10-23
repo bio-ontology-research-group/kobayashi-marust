@@ -470,14 +470,16 @@ fn declined_common_module_reports_completed_preparation_in_full_fallback() {
     let receipt = &rows[1]["receipt"];
     assert_eq!(receipt["strategy"], "full_classify");
     assert_eq!(receipt["fallback_reason"], "changed axiom belongs to the union empty-signature module");
-    // The initial base was already indexed. This transaction compiled the
-    // NEW three-axiom theory; the addition union shares that same index.
+    // The initial base was already indexed and assertion-free, so its two
+    // compiled axioms are reused when assembling the NEW three-axiom theory.
     assert_eq!(receipt["index_build_calls"], 1);
     assert_eq!(receipt["index_build_failures"], 0);
     assert_eq!(receipt["rebuilt_index_axioms"], 3);
+    assert_eq!(receipt["cross_revision_compiled_axioms"], 2);
+    assert_eq!(receipt["compiled_locality_axioms"], 1);
     assert_eq!(receipt["reused_index_axioms"], 0);
     assert_eq!(receipt["resumed_backend_states"], 0);
-    assert_eq!(receipt["meaningful_incremental_update"], false);
+    assert_eq!(receipt["meaningful_incremental_update"], true);
 }
 
 #[test]
@@ -519,9 +521,10 @@ fn full_fallback_preserves_cross_revision_compiler_donor_without_claiming_same_c
     }
     let first = &rows[1]["receipt"];
     assert_eq!(first["strategy"], "full_classify");
-    assert_eq!(first["cross_revision_compiled_axioms"], 0);
+    assert_eq!(first["cross_revision_compiled_axioms"], 2);
     assert_eq!(first["same_update_compiled_axioms"], 0);
-    assert_eq!(first["meaningful_incremental_update"], false);
+    assert_eq!(first["compiled_locality_axioms"], 1);
+    assert_eq!(first["meaningful_incremental_update"], true);
     let second = &rows[2]["receipt"];
     assert_eq!(second["strategy"], "full_classify");
     assert_eq!(second["cross_revision_compiled_axioms"], 3);

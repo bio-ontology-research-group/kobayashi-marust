@@ -1,6 +1,6 @@
 //! Exact validated-origin admission reuse; never publishes a taxonomy.
 use std::sync::Arc;
-use crate::frontend::{conformance,sexpr::{Node,Parser}};
+use crate::frontend::conformance;
 use crate::source_locality::{scan,fingerprint,StmtKind};
 use crate::fxhash::{FxHashMap,FxHashSet};
 use crate::source_reuse_grammar::outer_grammar;
@@ -20,27 +20,44 @@ pub(crate) struct NamedSubclassCertificate {
     origin_entries:Arc<FxHashMap<u128,Entry>>,
 }
 fn increment_count(count:&mut usize)->Option<()> { *count=count.checked_add(1)?;Some(()) }
-fn node(text:&str)->Option<Node<'_>> {
-    let mut parser=Parser::new(text);let value=parser.parse().ok()?;
-    parser.peek().is_none().then_some(value)
-}
-fn declared_atom<'a>(value:&Node<'a>,declared:&FxHashSet<Box<str>>)->Option<&'a str> {
-    let atom=value.as_atom()?;
-    (!atom.starts_with("_:") && !atom.starts_with('"') && declared.contains(atom)).then_some(atom)
-}
-fn head(text:&str)->&str { &text[..text.bytes().take_while(u8::is_ascii_alphabetic).count()] }
+fn head(text:&str)->&str { text.split_once('(').map_or(text,|(h,_)|h.trim()) }
 fn form(text:&str,declared:&FxHashSet<Box<str>>)->Form {
     if !matches!(head(text),"SubClassOf"|"DisjointClasses") {return Form::Fixed;}
-    match node(text) {
-        Some(Node::List("SubClassOf",args)) if args.len()==2 && args.iter().all(|v|declared_atom(v,declared).is_some()) => Form::SubClass,
-        Some(Node::List("DisjointClasses",args)) if args.len()>=2 && args.iter().all(|v|declared_atom(v,declared).is_some()) => Form::DisjointRemoval,
-        _=>Form::Fixed,
+    let mut tok = crate::frontend::sexpr::tokens(text);
+    let Some(h @ ("SubClassOf" | "DisjointClasses")) = tok.next() else { return Form::Fixed; };
+    if tok.next() != Some("(") { return Form::Fixed; }
+    if h == "SubClassOf" {
+        let Some(a) = tok.next() else { return Form::Fixed; };
+        if a == "(" || a == ")" || a.starts_with("_:") || a.starts_with('"') { return Form::Fixed; }
+        let Some(b) = tok.next() else { return Form::Fixed; };
+        if b == "(" || b == ")" || b.starts_with("_:") || b.starts_with('"') { return Form::Fixed; }
+        if tok.next() != Some(")") || tok.next().is_some() { return Form::Fixed; }
+        return if declared.contains(a) && declared.contains(b) {
+            Form::SubClass
+        } else {
+            Form::Fixed
+        };
     }
+    let mut args = 0usize;
+    loop {
+        match tok.next() {
+            Some(")") => break,
+            Some("(") | None => return Form::Fixed,
+            Some(atom) => {
+                if atom.starts_with("_:") || atom.starts_with('"') || !declared.contains(atom) {
+                    return Form::Fixed;
+                }
+                args += 1;
+            }
+        }
+    }
+    if tok.next().is_some() { return Form::Fixed; }
+    if args >= 2 { Form::DisjointRemoval } else { Form::Fixed }
 }
 fn origin_form(text:&str,kind:StmtKind,declared:&FxHashSet<Box<str>>)->Form {
+    if !matches!(kind,StmtKind::Logical|StmtKind::Assertion) {return Form::Fixed;}
     let named=form(text,declared);
     if named!=Form::Fixed {return named;}
-    if !matches!(kind,StmtKind::Logical|StmtKind::Assertion) {return Form::Fixed;}
     // Deletion is not universally admission-preserving. A custom datatype
     // use may still need its definition, and splitting an anonymous tree can
     // remove the only vertex with at most one named assertion. Keep both
@@ -65,15 +82,26 @@ impl NamedSubclassCertificate {
         if !outer_grammar(&source,&scanned) {return None;}
         let mut declared=FxHashSet::default();
         for st in &scanned.statements {
+            if st.kind!=StmtKind::Declaration {continue;}
             let text=&source[st.start..st.end];
-            if head(text)!="Declaration" {continue;}
-            if let Some(Node::List("Declaration",args))=node(text) {
-                if let [Node::List("Class",names)]=args.as_slice() {
-                    if let [Node::Atom(name)]=names.as_slice() {declared.insert(Box::<str>::from(*name));}
+            let mut tok=crate::frontend::sexpr::tokens(text);
+            if tok.next()==Some("Declaration")
+                && tok.next()==Some("(")
+                && tok.next()==Some("Class")
+                && tok.next()==Some("(")
+            {
+                if let Some(name)=tok.next() {
+                    if name!="(" && name!=")"
+                        && tok.next()==Some(")")
+                        && tok.next()==Some(")")
+                        && tok.next().is_none()
+                    {
+                        declared.insert(Box::<str>::from(name));
+                    }
                 }
             }
         }
-        let mut entries:FxHashMap<u128,Entry>=FxHashMap::default();
+        let mut entries:FxHashMap<u128,Entry>=FxHashMap::with_capacity_and_hasher(scanned.statements.len(),Default::default());
         for st in &scanned.statements {
             let text=&source[st.start..st.end];
             if let Some(old)=entries.get_mut(&st.hash) {
@@ -101,7 +129,7 @@ impl NamedSubclassCertificate {
         // novel named subclasses still pass the ordinary source checker below.
         // Unicode in a retained IRI, literal or comment adds no new obligation.
         if !outer_grammar(&source,&scanned) || source[..scanned.open_end]!=self.source[..self.header_end] {return None;}
-        let mut entries:FxHashMap<u128,Entry>=FxHashMap::default();
+        let mut entries:FxHashMap<u128,Entry>=FxHashMap::with_capacity_and_hasher(scanned.statements.len(),Default::default());
         let mut changed=String::from(&source[..scanned.open_end]);changed.push('\n');
         let mut added=false;
         for st in &scanned.statements {

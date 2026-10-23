@@ -120,12 +120,21 @@ impl Facts {
                     self.types.entry(individual).or_default().push((class, hash));
                     self.records += 1;
                 } else if let Node::List("ObjectMaxCardinality" | "ObjectExactCardinality", fields) = class {
-                    // Qualified restrictions would need separate filler facts.
-                    if let [Node::Atom("1"), role] = fields.as_slice() {
-                        if let Some(role) = named(role, prefixes) {
-                            self.at_most_one.entry((role, individual)).or_insert(hash);
-                            self.records += 1;
+                    // Qualified restrictions would need separate filler facts,
+                    // except when the filler is owl:Thing.
+                    let unqual_role = match fields.as_slice() {
+                        [Node::Atom("1"), role] => Some(role),
+                        [Node::Atom("1"), role, filler]
+                            if named(filler, prefixes).as_deref()
+                                == Some("http://www.w3.org/2002/07/owl#Thing") =>
+                        {
+                            Some(role)
                         }
+                        _ => None,
+                    };
+                    if let Some(role) = unqual_role.and_then(|role| named(role, prefixes)) {
+                        self.at_most_one.entry((role, individual)).or_insert(hash);
+                        self.records += 1;
                     }
                 }
             }

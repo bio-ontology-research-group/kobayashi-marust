@@ -27,22 +27,28 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private final OWLClass owlThing;
     private final OWLClass owlNothing;
 
+    private static final int[] EMPTY_INTS = new int[0];
+
     private boolean consistent = true;
     private int dropped = 0;
-    // representative -> the equivalence group (set of classes that are mutually equivalent)
-    private final Map<OWLClass, Set<OWLClass>> group = new HashMap<>();
-    private final Map<OWLClass, OWLClass> rep = new HashMap<>();
-    // condensed proper super relation over representatives (transitively closed)
-    private final Map<OWLClass, Set<OWLClass>> supers = new HashMap<>();
-    private final Map<OWLClass, Set<OWLClass>> subs = new HashMap<>();
+    private OWLClass[] classById = new OWLClass[0];
+    private final Map<OWLClass, Integer> idByClass = new HashMap<>();
+    private final Map<String, Integer> idByIri = new HashMap<>();
+    private int[][] rawSup = new int[0][];
+    private int[] repId = EMPTY_INTS;
+    private OWLClassNode[] nodeByRepId = new OWLClassNode[0];
+    private int[][] supersByRep = new int[0][];
+    private int[][] subsByRep;
+    private int thingId = -1;
+    private int nothingId = -1;
     private final Set<OWLClass> unsatisfiable = new HashSet<>();
     private volatile Classifier.Session incrementalSession;
-    private OWLOntology committedOntology;
     private final RetainedFunctionalSyntax serialized = new RetainedFunctionalSyntax();
     private boolean sourceSynchronized;
     private Set<OWLOntology> committedImports = Collections.emptySet();
     private boolean lastPreparationUsedDelta;
     private boolean hierarchyBuilt;
+    private Set<OWLClass> lastPreparedClasses;
     private Set<OWLClass> lastClasses;
     private FlushContext flushContext;
 
@@ -88,12 +94,6 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             throw new ReasonerInternalException(error);
         }
 
-        // Complete IRI -> named class. Local fragments are not unique.
-        Map<String, OWLClass> byIri = new HashMap<>();
-        Set<OWLClass> classes = new HashSet<>(prepared.classes);
-        classes.add(owlThing); classes.add(owlNothing);
-        for (OWLClass c : classes) byIri.put(c.getIRI().toString(), c);
-
         // Whether the native answer differs from the one the Java hierarchy was built from.
         boolean answerChanged;
         Classifier.Session session;
@@ -115,16 +115,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             }
             throw new ReasonerInternalException(e);
         }
-        // The native transaction has succeeded. The retained fast path changes
-        // only its tiny exact delta in our private detached snapshot; preparation
-        // and native refusal never mutate this committed snapshot or cache.
-        if (prepared.fallbackSnapshot != null) {
-            committedOntology = prepared.fallbackSnapshot;
-        } else {
-            OWLOntologyManager manager = committedOntology.getOWLOntologyManager();
-            manager.removeAxioms(committedOntology, prepared.removed);
-            manager.addAxioms(committedOntology, prepared.added);
-        }
+        // The native transaction has succeeded. Commit the retained source
+        // state now; preparation and native refusal never mutate this cache.
         serialized.commit(prepared);
         committedImports = prepared.imports;
         // Commit the Java-side hierarchy only after the native transaction has
@@ -133,88 +125,166 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // The hierarchy is a function of the retained rows, the unsatisfiable
         // classes, consistency and the declared class set; when none changed
         // (an empty row delta) the built hierarchy is already exact.
-        boolean classSetChanged = lastClasses == null || !lastClasses.equals(classes);
+        boolean samePreparedClasses = lastPreparedClasses != null && lastPreparedClasses == prepared.classes;
+        Set<OWLClass> classes;
+        if (samePreparedClasses && lastClasses != null) {
+            classes = lastClasses;
+        } else {
+            classes = new HashSet<>(prepared.classes);
+            classes.add(owlThing); classes.add(owlNothing);
+        }
+        boolean classSetChanged = lastClasses == null || (classes != lastClasses && !lastClasses.equals(classes));
         if (!hierarchyBuilt || answerChanged || classSetChanged) {
+            boolean incremental = hierarchyBuilt && !classSetChanged && session.lastDeltaSubjects() != null;
             hierarchyBuilt = false;
-            rebuildHierarchy(session, byIri, classes);
+            rebuildHierarchy(session, classes, incremental);
+            lastPreparedClasses = prepared.classes;
             lastClasses = classes;
             hierarchyBuilt = true;
         }
         lastPreparationUsedDelta = prepared.usedSuppliedDelta;
     }
 
-    private void rebuildHierarchy(Classifier.Session session, Map<String, OWLClass> byIri, Set<OWLClass> classes) {
-        group.clear(); rep.clear(); supers.clear(); subs.clear(); unsatisfiable.clear();
+    private int[] encodeRow(int a, String[] vals) {
+        if (vals == null || vals.length == 0) {
+            return a == thingId ? EMPTY_INTS : new int[]{thingId};
+        }
+        int[] buf = new int[vals.length + 1];
+        int count = 0;
+        for (String o : vals) {
+            Integer bBox = idByIri.get(normalizeIri(o));
+            if (bBox != null && bBox != a) {
+                buf[count++] = bBox;
+            }
+        }
+        if (a != thingId) {
+            buf[count++] = thingId;
+        }
+        Arrays.sort(buf, 0, count);
+        int u = 0;
+        for (int i = 0; i < count; i++) {
+            if (i == 0 || buf[i] != buf[i - 1]) buf[u++] = buf[i];
+        }
+        return u == buf.length ? buf : Arrays.copyOf(buf, u);
+    }
+
+    private void rebuildHierarchy(Classifier.Session session, Set<OWLClass> classes, boolean incremental) {
+        subsByRep = null;
         consistent = session.consistent();
         dropped = session.dropped();
 
-        // direct (non-closed) named subsumptions
-        List<OWLClass[]> pairs = new ArrayList<>();
-        for (Map.Entry<String, String[]> row : session.rows().entrySet()) {
-            OWLClass a = byIri.get(normalizeIri(row.getKey()));
-            if (a == null) continue;
-            for (String o : row.getValue()) {
-                OWLClass b = byIri.get(normalizeIri(o));
-                if (b != null && !a.equals(b)) pairs.add(new OWLClass[]{a, b});
-            }
-        }
-        for (String u : session.unsatisfiable()) {
-            OWLClass c = byIri.get(normalizeIri(u));
-            if (c != null) unsatisfiable.add(c);
-        }
-
-        // closure (engine already returns the transitive closure, but be safe)
-        Map<OWLClass, Set<OWLClass>> sup = new HashMap<>();
-        for (OWLClass c : classes) sup.put(c, new HashSet<>());
-        for (OWLClass[] p : pairs) sup.get(p[0]).add(p[1]);
-        boolean changed = true;
-        while (changed) {
-            changed = false;
+        int n = classes.size();
+        if (!incremental || classById.length != n || rawSup.length != n) {
+            unsatisfiable.clear();
+            classById = new OWLClass[n];
+            idByClass.clear();
+            idByIri.clear();
+            int idx = 0;
             for (OWLClass c : classes) {
-                Set<OWLClass> s = sup.get(c);
-                for (OWLClass m : new ArrayList<>(s))
-                    if (s.addAll(sup.getOrDefault(m, Collections.emptySet()))) changed = true;
+                classById[idx] = c;
+                idByClass.put(c, idx);
+                idByIri.put(c.getIRI().toString(), idx);
+                idx++;
+            }
+            thingId = idByClass.get(owlThing);
+            nothingId = idByClass.get(owlNothing);
+
+            for (String u : session.unsatisfiable()) {
+                Integer uId = idByIri.get(normalizeIri(u));
+                if (uId != null) unsatisfiable.add(classById[uId]);
+            }
+
+            rawSup = new int[n][];
+            for (int i = 0; i < n; i++) {
+                rawSup[i] = i == thingId ? EMPTY_INTS : new int[]{thingId};
+            }
+            for (Map.Entry<String, String[]> row : session.rows().entrySet()) {
+                Integer aBox = idByIri.get(normalizeIri(row.getKey()));
+                if (aBox == null) continue;
+                int a = aBox;
+                rawSup[a] = encodeRow(a, row.getValue());
+            }
+        } else {
+            if (session.lastUnsatOrConsistentChanged()) {
+                unsatisfiable.clear();
+                for (String u : session.unsatisfiable()) {
+                    Integer uId = idByIri.get(normalizeIri(u));
+                    if (uId != null) unsatisfiable.add(classById[uId]);
+                }
+            }
+            Map<String, String[]> sessionRows = session.rows();
+            for (String sIri : session.lastDeltaSubjects()) {
+                Integer aBox = idByIri.get(normalizeIri(sIri));
+                if (aBox == null) continue;
+                int a = aBox;
+                rawSup[a] = encodeRow(a, sessionRows.get(sIri));
             }
         }
-        // everything is below Thing
-        for (OWLClass c : classes) if (!c.equals(owlThing)) sup.get(c).add(owlThing);
 
-        // equivalence = mutual subsumption (union-find by representatives)
-        for (OWLClass c : classes) rep.put(c, c);
-        for (OWLClass c : classes)
-            for (OWLClass d : sup.get(c))
-                if (!c.equals(d) && sup.getOrDefault(d, Collections.emptySet()).contains(c))
-                    union(c, d);
-        // unsatisfiable classes are equivalent to owl:Nothing
-        for (OWLClass u : unsatisfiable) union(u, owlNothing);
-
-        for (OWLClass c : classes) group.computeIfAbsent(find(c), k -> new HashSet<>()).add(c);
-
-        // condensed proper supers over representatives
-        for (OWLClass c : classes) {
-            OWLClass rc = find(c);
-            supers.computeIfAbsent(rc, k -> new HashSet<>());
-            subs.computeIfAbsent(rc, k -> new HashSet<>());
-        }
-        for (OWLClass c : classes) {
-            OWLClass rc = find(c);
-            for (OWLClass d : sup.get(c)) {
-                OWLClass rd = find(d);
-                if (!rc.equals(rd)) { supers.get(rc).add(rd); subs.get(rd).add(rc); }
+        // Equivalence = mutual subsumption (union-find by representative ID)
+        repId = new int[n];
+        for (int i = 0; i < n; i++) repId[i] = i;
+        for (int c = 0; c < n; c++) {
+            for (int d : rawSup[c]) {
+                if (c < d && Arrays.binarySearch(rawSup[d], c) >= 0) {
+                    unionId(c, d);
+                }
             }
+        }
+        for (OWLClass u : unsatisfiable) {
+            Integer uId = idByClass.get(u);
+            if (uId != null) unionId(uId, nothingId);
+        }
+        for (int i = 0; i < n; i++) findId(i);
+
+        @SuppressWarnings("unchecked")
+        Set<OWLClass>[] groups = new Set[n];
+        for (int c = 0; c < n; c++) {
+            int r = repId[c];
+            if (groups[r] == null) groups[r] = new HashSet<>();
+            groups[r].add(classById[c]);
+        }
+        nodeByRepId = new OWLClassNode[n];
+        for (int r = 0; r < n; r++) {
+            if (groups[r] != null) nodeByRepId[r] = new OWLClassNode(groups[r]);
+        }
+
+        // Condensed proper supers over representatives
+        supersByRep = new int[n][];
+        for (int c = 0; c < n; c++) {
+            int rc = repId[c];
+            if (supersByRep[rc] != null) continue;
+            int[] s = rawSup[c];
+            int[] buf = new int[s.length];
+            int count = 0;
+            for (int d : s) {
+                int rd = repId[d];
+                if (rc != rd) buf[count++] = rd;
+            }
+            Arrays.sort(buf, 0, count);
+            int u = 0;
+            for (int i = 0; i < count; i++) {
+                if (i == 0 || buf[i] != buf[i - 1]) buf[u++] = buf[i];
+            }
+            supersByRep[rc] = u == 0 ? EMPTY_INTS : (u == buf.length ? buf : Arrays.copyOf(buf, u));
         }
     }
 
-    private OWLClass find(OWLClass c) {
-        OWLClass r = rep.get(c);
-        while (!r.equals(rep.get(r))) r = rep.get(r);
-        rep.put(c, r);
+    private int findId(int c) {
+        int r = repId[c];
+        while (r != repId[r]) r = repId[r];
+        int cur = c;
+        while (cur != r) {
+            int next = repId[cur];
+            repId[cur] = r;
+            cur = next;
+        }
         return r;
     }
 
-    private void union(OWLClass a, OWLClass b) {
-        OWLClass ra = find(a), rb = find(b);
-        if (!ra.equals(rb)) rep.put(ra, rb);
+    private void unionId(int a, int b) {
+        int ra = findId(a), rb = findId(b);
+        if (ra != rb) repId[ra] = rb;
     }
 
     private static String normalizeIri(String iri) {
@@ -227,84 +297,136 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     // ---- node helpers ---------------------------------------------------
 
-    private OWLClassNode nodeOf(OWLClass repClass) {
-        return new OWLClassNode(group.getOrDefault(find(repClass),
-                Collections.singleton(repClass)));
+    private OWLClassNode nodeOfId(int r) {
+        OWLClassNode node = nodeByRepId[r];
+        return node != null ? node : new OWLClassNode(Collections.singleton(classById[r]));
     }
 
-    private OWLClass repOf(OWLClassExpression ce) {
-        if (ce.isOWLThing()) return find(owlThing);
-        if (ce.isOWLNothing()) return find(owlNothing);
-        if (ce instanceof OWLClass) return find((OWLClass) ce);
-        return null; // complex expressions are not classified
+    private int repIdOf(OWLClassExpression ce) {
+        if (ce.isOWLThing()) return repId[thingId];
+        if (ce.isOWLNothing()) return repId[nothingId];
+        if (ce instanceof OWLClass) {
+            Integer id = idByClass.get((OWLClass) ce);
+            return id != null ? repId[id] : -1;
+        }
+        return -1; // complex expressions are not classified
+    }
+
+    private int[][] ensureSubsByRep() {
+        if (subsByRep == null) {
+            int n = classById.length;
+            int[] counts = new int[n];
+            for (int r = 0; r < n; r++) {
+                int[] sups = supersByRep[r];
+                if (sups != null) {
+                    for (int sup : sups) counts[sup]++;
+                }
+            }
+            int[][] built = new int[n][];
+            for (int r = 0; r < n; r++) {
+                built[r] = counts[r] == 0 ? EMPTY_INTS : new int[counts[r]];
+            }
+            int[] pos = new int[n];
+            for (int r = 0; r < n; r++) {
+                int[] sups = supersByRep[r];
+                if (sups != null) {
+                    for (int sup : sups) built[sup][pos[sup]++] = r;
+                }
+            }
+            subsByRep = built;
+        }
+        return subsByRep;
     }
 
     // ---- class hierarchy queries ---------------------------------------
 
-    @Override public synchronized Node<OWLClass> getTopClassNode() { return nodeOf(owlThing); }
-    @Override public synchronized Node<OWLClass> getBottomClassNode() { return nodeOf(owlNothing); }
+    @Override public synchronized Node<OWLClass> getTopClassNode() { return nodeOfId(repId[thingId]); }
+    @Override public synchronized Node<OWLClass> getBottomClassNode() { return nodeOfId(repId[nothingId]); }
 
     @Override public synchronized Node<OWLClass> getEquivalentClasses(OWLClassExpression ce) {
-        OWLClass r = repOf(ce);
-        return r != null ? nodeOf(r) : new OWLClassNode();
+        int r = repIdOf(ce);
+        return r >= 0 ? nodeOfId(r) : new OWLClassNode();
     }
 
     @Override public synchronized NodeSet<OWLClass> getSuperClasses(OWLClassExpression ce, boolean direct) {
-        OWLClass r = repOf(ce);
+        int r = repIdOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
-        if (r == null) return ns;
-        Set<OWLClass> all = supers.getOrDefault(r, Collections.emptySet());
-        for (OWLClass s : direct ? minimal(all) : all) ns.addNode(nodeOf(s));
+        if (r < 0) return ns;
+        int[] all = supersByRep[r];
+        if (all == null || all.length == 0) return ns;
+        if (!direct) {
+            for (int s : all) ns.addNode(nodeOfId(s));
+        } else {
+            for (int s : minimalIds(all)) ns.addNode(nodeOfId(s));
+        }
         return ns;
     }
 
     @Override public synchronized NodeSet<OWLClass> getSubClasses(OWLClassExpression ce, boolean direct) {
-        OWLClass r = repOf(ce);
+        int r = repIdOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
-        if (r == null) return ns;
-        Set<OWLClass> all = subs.getOrDefault(r, Collections.emptySet());
-        for (OWLClass s : direct ? maximal(all) : all) ns.addNode(nodeOf(s));
+        if (r < 0) return ns;
+        int[][] subs = ensureSubsByRep();
+        int[] all = subs[r];
+        if (all == null || all.length == 0) return ns;
+        if (!direct) {
+            for (int s : all) ns.addNode(nodeOfId(s));
+        } else {
+            for (int s : maximalIds(all, subs)) ns.addNode(nodeOfId(s));
+        }
         return ns;
     }
 
     /** super-reps with no intermediate (direct supers). */
-    private Set<OWLClass> minimal(Set<OWLClass> set) {
-        Set<OWLClass> out = new HashSet<>();
-        for (OWLClass x : set) {
+    private int[] minimalIds(int[] set) {
+        int[] buf = new int[set.length];
+        int count = 0;
+        for (int x : set) {
             boolean isDirect = true;
-            for (OWLClass y : set)
-                if (!x.equals(y) && supers.getOrDefault(y, Collections.emptySet()).contains(x)) {
-                    isDirect = false; break;
+            for (int y : set) {
+                if (x != y) {
+                    int[] ySups = supersByRep[y];
+                    if (ySups != null && Arrays.binarySearch(ySups, x) >= 0) {
+                        isDirect = false;
+                        break;
+                    }
                 }
-            if (isDirect) out.add(x);
+            }
+            if (isDirect) buf[count++] = x;
         }
-        return out;
+        return count == buf.length ? buf : Arrays.copyOf(buf, count);
     }
 
     /** sub-reps with no intermediate (direct subs). */
-    private Set<OWLClass> maximal(Set<OWLClass> set) {
-        Set<OWLClass> out = new HashSet<>();
-        for (OWLClass x : set) {
+    private int[] maximalIds(int[] set, int[][] subs) {
+        int[] buf = new int[set.length];
+        int count = 0;
+        for (int x : set) {
             boolean isDirect = true;
-            for (OWLClass y : set)
-                if (!x.equals(y) && subs.getOrDefault(y, Collections.emptySet()).contains(x)) {
-                    isDirect = false; break;
+            for (int y : set) {
+                if (x != y) {
+                    int[] ySubs = subs[y];
+                    if (ySubs != null && Arrays.binarySearch(ySubs, x) >= 0) {
+                        isDirect = false;
+                        break;
+                    }
                 }
-            if (isDirect) out.add(x);
+            }
+            if (isDirect) buf[count++] = x;
         }
-        return out;
+        return count == buf.length ? buf : Arrays.copyOf(buf, count);
     }
 
-    @Override public synchronized Node<OWLClass> getUnsatisfiableClasses() { return nodeOf(owlNothing); }
+    @Override public synchronized Node<OWLClass> getUnsatisfiableClasses() { return nodeOfId(repId[nothingId]); }
 
     @Override public synchronized boolean isConsistent() { return consistent; }
 
     @Override public synchronized boolean isSatisfiable(OWLClassExpression ce) {
         if (!consistent) return false;
-        OWLClass r = repOf(ce);
         if (ce.isOWLNothing()) return false;
-        if (r == null) return true; // unknown complex expression: not refuted
-        return !find(owlNothing).equals(r);
+        int r = repIdOf(ce);
+        if (r < 0) return true; // unknown complex expression: not refuted
+        return r != repId[nothingId];
     }
 
     /** convenience for tests: dropped-clause count from the last classification. */
@@ -317,11 +439,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     /** A detached copy of the source snapshot backing the current answers. */
     public synchronized OWLOntology getCommittedOntologySnapshot() {
-        if (committedOntology == null) {
+        if (!serialized.hasCommittedRevision()) {
             throw new ReasonerInternalException("KM has no committed ontology revision");
         }
         try {
-            return FlattenedOntology.snapshot(committedOntology);
+            return serialized.committedSnapshot();
         } catch (Exception error) {
             throw new ReasonerInternalException(error);
         }
@@ -339,7 +461,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- precompute / metadata -----------------------------------------
 
     @Override public String getReasonerName() { return "Kobayashi-MaRust"; }
-    @Override public Version getReasonerVersion() { return new Version(1, 5, 1, 0); }
+    @Override public Version getReasonerVersion() { return new Version(1, 5, 2, 0); }
 
     @Override public void precomputeInferences(InferenceType... types) { /* eager in ctor */ }
     @Override public boolean isPrecomputed(InferenceType inferenceType) { return true; }
@@ -418,12 +540,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (!consistent || sub.isOWLNothing() || sup.isOWLThing() || sub.equals(sup)) {
             return true;
         }
-        OWLClass subRep = rep.containsKey(sub) ? find(sub) : null;
-        if (subRep != null && subRep.equals(find(owlNothing))) return true;
-        OWLClass supRep = rep.containsKey(sup) ? find(sup) : null;
-        if (subRep == null || supRep == null) return false;
-        return subRep.equals(supRep)
-                || supers.getOrDefault(subRep, Collections.emptySet()).contains(supRep);
+        int subRep = repIdOf(sub);
+        if (subRep >= 0 && subRep == repId[nothingId]) return true;
+        int supRep = repIdOf(sup);
+        if (subRep < 0 || supRep < 0) return false;
+        if (subRep == supRep) return true;
+        int[] sups = supersByRep[subRep];
+        return sups != null && Arrays.binarySearch(sups, supRep) >= 0;
     }
 
     @Override public synchronized boolean isEntailed(Set<? extends OWLAxiom> axioms) {

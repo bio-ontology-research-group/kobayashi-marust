@@ -2,12 +2,15 @@ package org.bioontology.kobayashimarust.protege;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import org.semanticweb.owlapi.model.OWLOntology;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +19,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -111,6 +115,9 @@ public final class Classifier {
         private final Gson gson = new Gson();
         /** The retained committed answer: subject IRI to its superclass IRIs (non-empty rows only). */
         private final Map<String, String[]> rows = new HashMap<>();
+        /** Subjects whose row changed in the most recent delta transaction; null if complete rebuild. */
+        private Set<String> lastDeltaSubjects;
+        private boolean lastUnsatOrConsistentChanged = true;
         /** One String instance per distinct IRI: the retained rows must not hold 2 copies per pair. */
         private Map<String, String> pool = new HashMap<>();
         private List<String> unsat = new ArrayList<>();
@@ -186,6 +193,10 @@ public final class Classifier {
         /** Retained subject rows; the map is the live committed state, read it under no concurrent update. */
         public synchronized Map<String, String[]> rows() { return Collections.unmodifiableMap(rows); }
 
+        synchronized Set<String> lastDeltaSubjects() { return lastDeltaSubjects; }
+
+        synchronized boolean lastUnsatOrConsistentChanged() { return lastUnsatOrConsistentChanged; }
+
         public synchronized List<String> unsatisfiable() { return Collections.unmodifiableList(unsat); }
 
         public synchronized boolean consistent() { return consistent; }
@@ -235,27 +246,42 @@ public final class Classifier {
                     if (row == null || row.s == null) throw failure("KM returned a malformed delta row");
                 }
                 changed = r.rows != null && !r.rows.isEmpty();
+                Set<String> deltaSubjects = new java.util.HashSet<>();
                 if (r.rows != null) for (WireRow row : r.rows) {
+                    String s = intern(row.s);
+                    deltaSubjects.add(s);
                     if (row.o == null || row.o.length == 0) {
-                        rows.remove(row.s);
+                        rows.remove(s);
                     } else {
                         String[] o = new String[row.o.length];
                         for (int i = 0; i < o.length; i++) o[i] = intern(row.o[i]);
-                        rows.put(intern(row.s), o);
+                        rows.put(s, o);
                     }
                 }
-                changed |= !newUnsat.equals(unsat) || r.consistent != consistent;
+                boolean unsatOrConsistentChanged = !newUnsat.equals(unsat) || r.consistent != consistent;
+                changed |= unsatOrConsistentChanged;
+                lastDeltaSubjects = deltaSubjects;
+                lastUnsatOrConsistentChanged = unsatOrConsistentChanged;
             } else {
-                Map<String, ArrayList<String>> grouped = new HashMap<>();
-                if (r.subsumptions != null) for (String[] p : r.subsumptions) {
-                    grouped.computeIfAbsent(p[0], k -> new ArrayList<>()).add(p[1]);
-                }
+                lastDeltaSubjects = null;
+                lastUnsatOrConsistentChanged = true;
                 rows.clear();
-                pool = new HashMap<>();
-                for (Map.Entry<String, ArrayList<String>> e : grouped.entrySet()) {
-                    String[] o = new String[e.getValue().size()];
-                    for (int i = 0; i < o.length; i++) o[i] = intern(e.getValue().get(i));
-                    rows.put(intern(e.getKey()), o);
+                if (r.builtRows != null) {
+                    pool = r.builtPool != null ? r.builtPool : new HashMap<>();
+                    rows.putAll(r.builtRows);
+                } else if (r.subsumptions != null) {
+                    pool = new HashMap<>();
+                    Map<String, ArrayList<String>> grouped = new HashMap<>();
+                    for (String[] p : r.subsumptions) {
+                        grouped.computeIfAbsent(p[0], k -> new ArrayList<>()).add(p[1]);
+                    }
+                    for (Map.Entry<String, ArrayList<String>> e : grouped.entrySet()) {
+                        String[] o = new String[e.getValue().size()];
+                        for (int i = 0; i < o.length; i++) o[i] = intern(e.getValue().get(i));
+                        rows.put(intern(e.getKey()), o);
+                    }
+                } else {
+                    pool = new HashMap<>();
                 }
                 changed = true;
             }
@@ -287,36 +313,180 @@ public final class Classifier {
             input.newLine();
             input.flush();
 
-            Future<String> pending = reads.submit(output::readLine);
-            final String line;
+            Future<WireResponse> pending = reads.submit(() -> {
+                String line = output.readLine();
+                if (line == null) return null;
+                return parseWireResponse(line);
+            });
+            final WireResponse wire;
             try {
-                line = pending.get(timeoutSeconds, TimeUnit.SECONDS);
+                wire = pending.get(timeoutSeconds, TimeUnit.SECONDS);
             } catch (InterruptedException error) {
                 pending.cancel(true);
                 NativeProcessTree.terminateAndWait(process);
                 Thread.currentThread().interrupt();
                 throw failure("KM incremental request was interrupted", error);
+            } catch (java.util.concurrent.ExecutionException error) {
+                Throwable cause = error.getCause() != null ? error.getCause() : error;
+                if (cause instanceof InvalidWireJsonException) {
+                    throw failure("KM returned invalid incremental JSON: "
+                            + ((InvalidWireJsonException) cause).snippet, cause.getCause());
+                }
+                throw failure("KM incremental " + op + " failed", cause);
             } catch (Exception error) {
                 pending.cancel(true);
                 NativeProcessTree.terminateAndWait(process);
                 throw failure("KM incremental request timed out after "
                         + timeoutSeconds + " seconds", error);
             }
-            if (line == null) {
+            if (wire == null) {
                 throw failure("KM incremental process closed its output");
             }
-            WireResponse wire;
-            try {
-                wire = gson.fromJson(line, WireResponse.class);
-            } catch (RuntimeException error) {
-                throw failure("KM returned invalid incremental JSON: "
-                        + (line.length() > 4096 ? line.substring(0, 4096) + "..." : line), error);
-            }
-            if (wire == null || !"ok".equals(wire.status) || wire.result == null) {
+            if (!"ok".equals(wire.status) || wire.result == null) {
                 throw failure("KM incremental " + op + " failed: "
-                        + (wire == null ? line : wire.error));
+                        + (wire.error != null ? wire.error : wire.snippet));
             }
             return wire;
+        }
+
+        private WireResponse parseWireResponse(String line) throws Exception {
+            String snippet = line.length() > 4096 ? line.substring(0, 4096) + "..." : line;
+            try (JsonReader reader = new JsonReader(new StringReader(line))) {
+                WireResponse wire = new WireResponse();
+                wire.snippet = snippet;
+                reader.beginObject();
+                while (reader.hasNext()) {
+                    String name = reader.nextName();
+                    if (reader.peek() == JsonToken.NULL) {
+                        reader.nextNull();
+                        continue;
+                    }
+                    switch (name) {
+                        case "status":
+                            wire.status = reader.nextString();
+                            break;
+                        case "error":
+                            wire.error = reader.nextString();
+                            break;
+                        case "revision":
+                            wire.revision = reader.nextLong();
+                            break;
+                        case "receipt":
+                            wire.receipt = gson.fromJson(reader, IncrementalReceipt.class);
+                            break;
+                        case "result":
+                            wire.result = parseWireResult(reader);
+                            break;
+                        default:
+                            reader.skipValue();
+                            break;
+                    }
+                }
+                reader.endObject();
+                return wire;
+            } catch (Exception error) {
+                throw new InvalidWireJsonException(snippet, error);
+            }
+        }
+
+        private WireResult parseWireResult(JsonReader reader) throws Exception {
+            WireResult r = new WireResult();
+            reader.beginObject();
+            while (reader.hasNext()) {
+                String name = reader.nextName();
+                if (reader.peek() == JsonToken.NULL) {
+                    reader.nextNull();
+                    continue;
+                }
+                switch (name) {
+                    case "consistent":
+                        r.consistent = reader.nextBoolean();
+                        break;
+                    case "dropped":
+                        r.dropped = reader.nextInt();
+                        break;
+                    case "delta":
+                        r.delta = reader.nextBoolean();
+                        break;
+                    case "base_revision":
+                        r.base_revision = reader.nextLong();
+                        break;
+                    case "unsatisfiable": {
+                        List<String> list = new ArrayList<>();
+                        reader.beginArray();
+                        while (reader.hasNext()) list.add(reader.nextString());
+                        reader.endArray();
+                        r.unsatisfiable = list;
+                        break;
+                    }
+                    case "rows": {
+                        List<WireRow> rowsList = new ArrayList<>();
+                        reader.beginArray();
+                        while (reader.hasNext()) {
+                            rowsList.add(gson.fromJson(reader, WireRow.class));
+                        }
+                        reader.endArray();
+                        r.rows = rowsList;
+                        break;
+                    }
+                    case "subsumptions": {
+                        Map<String, String[]> builtRows = new HashMap<>();
+                        Map<String, String> localPool = new HashMap<>();
+                        String curSub = null;
+                        ArrayList<String> curList = new ArrayList<>();
+                        reader.beginArray();
+                        while (reader.hasNext()) {
+                            reader.beginArray();
+                            String sub = reader.nextString();
+                            String sup = reader.nextString();
+                            while (reader.hasNext()) reader.skipValue();
+                            reader.endArray();
+                            String isup = localPool.putIfAbsent(sup, sup);
+                            if (isup == null) isup = sup;
+                            if (curSub != null && curSub.equals(sub)) {
+                                curList.add(isup);
+                            } else {
+                                if (curSub != null) {
+                                    String[] existing = builtRows.get(curSub);
+                                    if (existing == null) {
+                                        builtRows.put(curSub, curList.toArray(new String[0]));
+                                    } else {
+                                        String[] merged = new String[existing.length + curList.size()];
+                                        System.arraycopy(existing, 0, merged, 0, existing.length);
+                                        for (int i = 0; i < curList.size(); i++) merged[existing.length + i] = curList.get(i);
+                                        builtRows.put(curSub, merged);
+                                    }
+                                    curList.clear();
+                                }
+                                String isub = localPool.putIfAbsent(sub, sub);
+                                if (isub == null) isub = sub;
+                                curSub = isub;
+                                curList.add(isup);
+                            }
+                        }
+                        if (curSub != null) {
+                            String[] existing = builtRows.get(curSub);
+                            if (existing == null) {
+                                builtRows.put(curSub, curList.toArray(new String[0]));
+                            } else {
+                                String[] merged = new String[existing.length + curList.size()];
+                                System.arraycopy(existing, 0, merged, 0, existing.length);
+                                for (int i = 0; i < curList.size(); i++) merged[existing.length + i] = curList.get(i);
+                                builtRows.put(curSub, merged);
+                            }
+                        }
+                        reader.endArray();
+                        r.builtRows = builtRows;
+                        r.builtPool = localPool;
+                        break;
+                    }
+                    default:
+                        reader.skipValue();
+                        break;
+                }
+            }
+            reader.endObject();
+            return r;
         }
 
         private RuntimeException failure(String message) {
@@ -356,9 +526,18 @@ public final class Classifier {
         }
     }
 
+    private static final class InvalidWireJsonException extends RuntimeException {
+        final String snippet;
+        InvalidWireJsonException(String snippet, Throwable cause) {
+            super(cause);
+            this.snippet = snippet;
+        }
+    }
+
     private static final class WireResponse {
         String status;
         String error;
+        String snippet;
         Long revision;
         WireResult result;
         IncrementalReceipt receipt;
@@ -368,6 +547,7 @@ public final class Classifier {
         /** The replace response's receipt and revision with the complete answer of that revision. */
         WireResponse(WireResponse base, WireResult result) {
             this.status = base.status;
+            this.snippet = base.snippet;
             this.revision = base.revision;
             this.receipt = base.receipt;
             this.result = result;
@@ -383,6 +563,8 @@ public final class Classifier {
         boolean consistent;
         int dropped;
         List<String[]> subsumptions;
+        Map<String, String[]> builtRows;
+        Map<String, String> builtPool;
         List<String> unsatisfiable;
         // Row-delta answers: only subjects whose superclass set changed.
         Boolean delta;

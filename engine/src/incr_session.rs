@@ -61,8 +61,10 @@ const PRODUCTION_DEFAULTS: &[(&str, &str)] = &[
 const MEMO_LIMIT: usize = 6;
 /// Modules below this many axioms are classified without subject restriction.
 const MODULE_RESTRICT_MIN_AXIOMS: usize = 200;
-/// Keep serialised answers (whole and per subject) up to this many pairs.
+/// Keep serialised whole-taxonomy answers up to this many pairs.
 const RENDER_CACHE_PAIRS: usize = 4_000_000;
+/// Keep per-subject serialised row slices (shared across revisions) up to this many pairs.
+const CHUNK_CACHE_PAIRS: usize = 20_000_000;
 /// `orchestrate`'s in-process ELC/CB size gate (`INPROC_ELC_MAX`).
 const INPROC_SIZE_GATE: usize = 4 << 20;
 /// Only search an inconsistency witness when one classification is this cheap.
@@ -72,7 +74,41 @@ const EAGER_INDEX_MAX_SECONDS: f64 = 60.0;
 const WITNESS_MAX_CHECKS: usize = 400;
 const WITNESS_BUDGET_FACTOR: f64 = 10.0;
 /// Optional support discovery, including proposal/reconstruction and one check.
-const EARLY_OBJECT_SUPPORT_LIMIT: std::time::Duration = std::time::Duration::from_millis(100);
+const EARLY_OBJECT_SUPPORT_LIMIT: std::time::Duration = std::time::Duration::from_millis(2000);
+
+fn declared_named_individual_token(slice: &str) -> Option<&str> {
+    if !slice.contains("NamedIndividual") {
+        return None;
+    }
+    let Ok(crate::frontend::sexpr::Node::List("Declaration", args)) =
+        crate::frontend::sexpr::Parser::new(slice).parse()
+    else {
+        return None;
+    };
+    args.into_iter().find_map(|arg| match arg {
+        crate::frontend::sexpr::Node::List("NamedIndividual", inner) => match inner.as_slice() {
+            [crate::frontend::sexpr::Node::Atom(token)] => Some(*token),
+            _ => None,
+        },
+        _ => None,
+    })
+}
+
+fn declaration_kept_for_tokens(slice: &str, used_tokens: &FxHashSet<&str>) -> bool {
+    declared_named_individual_token(slice).is_none_or(|token| used_tokens.contains(token))
+}
+
+fn unused_named_individual_declaration(slice: &str, new: &Statements) -> bool {
+    let Some(token) = declared_named_individual_token(slice) else {
+        return false;
+    };
+    if !new.text[new.header_end..].contains(token) {
+        return true;
+    }
+    !new.counts.values().any(|&(_, _, c, d)| {
+        crate::frontend::sexpr::tokens(&new.text[c..d]).any(|t| t == token)
+    })
+}
 
 /// `Some(true)`: a fresh `km classify` process published an inconsistent
 /// answer within `limit`. `None`: no answer in time.
@@ -149,14 +185,14 @@ fn inconsistency_witness_with(text: &str, scanned: &Scan, budget_seconds: f64,
     let core: FxHashSet<u128> = index.empty_module_statements().into_iter().collect();
     let mut header = String::from(&text[..scanned.open_end]);
     header.push('\n');
+    let mut declarations = Vec::new();
     let mut candidates = Vec::new();
     let mut seen: FxHashSet<u128> = FxHashSet::default();
     // Preserve the former first probe's bytes: all declarations first, then
     // the unique core axioms in their original order.
     for st in &scanned.statements {
         if st.kind == StmtKind::Declaration {
-            header.push_str(&text[st.start..st.end]);
-            header.push('\n');
+            declarations.push(&text[st.start..st.end]);
         } else if matches!(st.kind, StmtKind::Logical | StmtKind::Assertion)
             && core.contains(&st.hash) && seen.insert(st.hash)
         {
@@ -172,7 +208,17 @@ fn inconsistency_witness_with(text: &str, scanned: &Scan, budget_seconds: f64,
         if checks > WITNESS_MAX_CHECKS || remaining.is_zero() {
             return None;
         }
+        let mut used_tokens: FxHashSet<&str> = FxHashSet::default();
+        for (_, statement) in subset {
+            used_tokens.extend(crate::frontend::sexpr::tokens(statement));
+        }
         let mut doc = header.clone();
+        for &decl in &declarations {
+            if declaration_kept_for_tokens(decl, &used_tokens) {
+                doc.push_str(decl);
+                doc.push('\n');
+            }
+        }
         for (_, statement) in subset {
             doc.push_str(statement);
             doc.push('\n');
@@ -350,8 +396,13 @@ impl Taxonomy {
         for (s, row) in self.rows.iter().enumerate() {
             let new_row = slice(row);
             let changed = if aligned {
-                let old = prev.rows.get(s).map_or(NONE, slice);
-                new_row != old
+                let old_opt = prev.rows.get(s);
+                if row.as_ref().zip(old_opt.and_then(|r| r.as_ref())).is_some_and(|(a, b)| Arc::ptr_eq(a, b)) {
+                    false
+                } else {
+                    let old = old_opt.map_or(NONE, slice);
+                    new_row != old
+                }
             } else {
                 let old_row = prev.ids.get(&*self.iris[s]).map_or(NONE, |&id| slice(&prev.rows[id as usize]));
                 let mut a: Vec<&str> = new_row.iter().map(|&o| &*self.iris[o as usize]).collect();
@@ -381,7 +432,7 @@ impl Taxonomy {
 
     fn write_json<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
         let escaped = &self.escaped;
-        let cache_chunks = self.pair_count() <= RENDER_CACHE_PAIRS;
+        let cache_chunks = self.pair_count() <= CHUNK_CACHE_PAIRS;
         w.write_all(b"{\"consistent\":")?;
         w.write_all(if self.consistent { b"true" } else { b"false" })?;
         w.write_all(b",\"subsumptions\":[")?;
@@ -407,13 +458,18 @@ impl Taxonomy {
                 continue;
             }
             let chunk = self.chunks[s].get_or_init(|| {
-                let mut c = Vec::with_capacity(row.len() * (escaped[s].len() + 48));
+                let s_bytes = escaped[s].as_bytes();
+                let total_bytes: usize = row.iter()
+                    .map(|&o| s_bytes.len() + escaped[o as usize].len() + 3)
+                    .sum::<usize>()
+                    + row.len().saturating_sub(1);
+                let mut c = Vec::with_capacity(total_bytes);
                 for (k, &o) in row.iter().enumerate() {
                     if k > 0 {
                         c.push(b',');
                     }
                     c.push(b'[');
-                    c.extend_from_slice(escaped[s].as_bytes());
+                    c.extend_from_slice(s_bytes);
                     c.push(b',');
                     c.extend_from_slice(escaped[o as usize].as_bytes());
                     c.push(b']');
@@ -539,9 +595,16 @@ impl InconsistencyCertificate {
         let support = if let Some(witness) = witness {
             if witness.iter().any(|h| source.stmt(h).is_none()) { return None; }
             let wanted: FxHashSet<u128> = witness.iter().copied().collect();
+            let mut used_tokens: FxHashSet<&str> = FxHashSet::default();
+            for h in witness {
+                let slice = source.stmt(h)?;
+                used_tokens.extend(crate::frontend::sexpr::tokens(slice));
+            }
             let statements = source.counts.iter().filter_map(|(hash, &(_, kind, a, b))| {
-                (kind == StmtKind::Declaration || wanted.contains(hash))
-                    .then(|| (*hash, Arc::<str>::from(&source.text[a..b])))
+                let slice = &source.text[a..b];
+                ((kind == StmtKind::Declaration && declaration_kept_for_tokens(slice, &used_tokens))
+                    || wanted.contains(hash))
+                    .then(|| (*hash, Arc::<str>::from(slice)))
             }).collect();
             InconsistencySupport::Witness { header: Arc::from(source.header()), statements }
         } else {
@@ -594,6 +657,11 @@ fn verified_source_support_with(source: &Arc<Statements>, scanned: &Scan,
     if source.collision || proposal.is_empty() || proposal.len() > 64
         || scanned.open_end != source.header_end { return None; }
     let wanted: FxHashSet<_> = proposal.iter().copied().collect();
+    let mut used_tokens: FxHashSet<&str> = FxHashSet::default();
+    for h in proposal {
+        let slice = source.stmt(h)?;
+        used_tokens.extend(crate::frontend::sexpr::tokens(slice));
+    }
     let mut header = String::from(source.header()); header.push('\n');
     let mut axioms = String::new();
     let mut emitted = FxHashSet::default();
@@ -602,7 +670,9 @@ fn verified_source_support_with(source: &Arc<Statements>, scanned: &Scan,
         if fingerprint(slice.as_bytes()) != statement.hash
             || source.stmt(&statement.hash) != Some(slice) { return None; }
         if statement.kind == StmtKind::Declaration {
-            header.push_str(slice); header.push('\n');
+            if declaration_kept_for_tokens(slice, &used_tokens) {
+                header.push_str(slice); header.push('\n');
+            }
         } else if matches!(statement.kind, StmtKind::Logical | StmtKind::Assertion)
             && wanted.contains(&statement.hash) && emitted.insert(statement.hash)
         {
@@ -940,6 +1010,10 @@ struct PreparationWork {
     /// Own the bounded set of donors that existed before this transaction.
     /// Lazy index builds during a declined attempt are not cross-revision work.
     prior_compilers: Vec<Arc<LocalityIndex>>,
+    added_probe: Vec<u128>,
+    added_probe_complete: bool,
+    removed_probe: Vec<u128>,
+    removed_probe_complete: bool,
     rebuilt_index_axioms: usize,
     index_build_calls: usize,
     index_build_failures: usize,
@@ -1048,9 +1122,12 @@ fn is_builtin_class_name(name: &str) -> bool {
 }
 
 fn class_domain(index: &LocalityIndex) -> FxHashSet<Box<str>> {
-    let mut domain: FxHashSet<Box<str>> = index.names.iter().zip(&index.symbols).zip(&index.is_class)
-        .filter(|((_, symbol), class)| **class || is_builtin_class_name(symbol))
-        .map(|((name, _), _)| name.clone()).collect();
+    let mut domain = FxHashSet::with_capacity_and_hasher(index.names.len() + 4, Default::default());
+    for ((name, symbol), class) in index.names.iter().zip(&index.symbols).zip(&index.is_class) {
+        if *class || is_builtin_class_name(symbol) {
+            domain.insert(Box::<str>::from(&**name));
+        }
+    }
     domain.extend(["owl:Thing", "owl:Nothing", "http://www.w3.org/2002/07/owl#Thing",
         "http://www.w3.org/2002/07/owl#Nothing"].into_iter().map(Box::<str>::from));
     domain
@@ -1066,35 +1143,45 @@ fn anonymous_assertions(text: &str, scanned: &Scan) -> FxHashSet<u128> {
 
 /// Fingerprints only select comparisons: equal hashes must name equal text.
 fn statement_delta(old: &Statements, new: &Statements) -> Option<StatementDelta> {
-    statement_delta_probe(old, new, None)
+    statement_delta_probes(old, new, None, None)
 }
 
 /// `statement_delta`, additionally listing (up to `ADDED_PROBE_MAX`) the
 /// fingerprints of statements of NEW that OLD lacks. The list is complete only
 /// when it is not longer than the cap; a longer one is truncated and unusable.
-const ADDED_PROBE_MAX: usize = 32;
+const ADDED_PROBE_MAX: usize = 64;
 
-fn statement_delta_probe(old: &Statements, new: &Statements, mut added: Option<&mut Vec<u128>>)
-    -> Option<StatementDelta>
-{
+fn statement_delta_probes(
+    old: &Statements,
+    new: &Statements,
+    mut added: Option<&mut Vec<u128>>,
+    mut removed: Option<&mut Vec<u128>>,
+) -> Option<StatementDelta> {
     if old.collision || new.collision || old.header() != new.header() { return None; }
     let mut delta = StatementDelta::default();
+    let mut shared_unique = 0usize;
     for (hash, &(count, kind, a, b)) in &old.counts {
         if let Some(&(after, _, c, d)) = new.counts.get(hash) {
             if old.text[a..b] != new.text[c..d] { return None; }
+            shared_unique += 1;
             delta.removed_statements += count.saturating_sub(after) as usize;
             delta.added_statements += after.saturating_sub(count) as usize;
         } else {
             delta.removed_statements += count as usize;
             if matches!(kind, StmtKind::Logical | StmtKind::Assertion) { delta.removed_axioms += 1; }
+            if let Some(list) = removed.as_deref_mut() {
+                if list.len() <= ADDED_PROBE_MAX { list.push(*hash); }
+            }
         }
     }
-    for (hash, &(count, kind, ..)) in &new.counts {
-        if !old.counts.contains_key(hash) {
-            delta.added_statements += count as usize;
-            if matches!(kind, StmtKind::Logical | StmtKind::Assertion) { delta.added_axioms += 1; }
-            if let Some(list) = added.as_deref_mut() {
-                if list.len() <= ADDED_PROBE_MAX { list.push(*hash); }
+    if shared_unique < new.counts.len() {
+        for (hash, &(count, kind, ..)) in &new.counts {
+            if !old.counts.contains_key(hash) {
+                delta.added_statements += count as usize;
+                if matches!(kind, StmtKind::Logical | StmtKind::Assertion) { delta.added_axioms += 1; }
+                if let Some(list) = added.as_deref_mut() {
+                    if list.len() <= ADDED_PROBE_MAX { list.push(*hash); }
+                }
             }
         }
     }
@@ -1105,9 +1192,10 @@ fn statement_delta_probe(old: &Statements, new: &Statements, mut added: Option<&
 /// Every modified row loses its own immutable render cache as well.
 fn prune_public_domain(tax: &mut Taxonomy, domain: &FxHashSet<Box<str>>) -> FxHashSet<Box<str>> {
     let mut changed = FxHashSet::default();
-    if tax.iris.iter().all(|name| domain.contains(&**name)) { return changed; }
+    let in_domain: Vec<bool> = tax.iris.iter().map(|name| domain.contains(&**name)).collect();
+    if in_domain.iter().all(|&keep| keep) { return changed; }
     for id in 0..tax.rows.len() {
-        if !domain.contains(&*tax.iris[id]) {
+        if !in_domain[id] {
             if tax.rows[id].is_some() || tax.unsat.contains(&(id as u32)) {
                 changed.insert(Box::<str>::from(&*tax.iris[id]));
             }
@@ -1115,8 +1203,8 @@ fn prune_public_domain(tax: &mut Taxonomy, domain: &FxHashSet<Box<str>>) -> FxHa
             tax.unsat.remove(&(id as u32));
             tax.chunks[id] = std::sync::OnceLock::new();
         } else if let Some(row) = &tax.rows[id] {
-            let kept: Vec<u32> = row.iter().copied().filter(|&target| domain.contains(&*tax.iris[target as usize])).collect();
-            if kept.len() != row.len() {
+            if row.iter().any(|&target| !in_domain[target as usize]) {
+                let kept: Vec<u32> = row.iter().copied().filter(|&target| in_domain[target as usize]).collect();
                 changed.insert(Box::<str>::from(&*tax.iris[id]));
                 tax.rows[id] = (!kept.is_empty()).then(|| Arc::from(kept));
                 tax.chunks[id] = std::sync::OnceLock::new();
@@ -1333,9 +1421,17 @@ impl Session {
         // members of any deletion base: checking them first rejects a base
         // that is not a superset without scanning every statement of NEW.
         let mut added_probe = Vec::new();
+        let mut removed_probe = Vec::new();
         let transaction_delta = self.current.and_then(|i| self.memo[i].statements.as_ref())
-            .and_then(|old| statement_delta_probe(old, &statements, Some(&mut added_probe)));
-        if added_probe.len() > ADDED_PROBE_MAX { added_probe.clear(); }
+            .and_then(|old| statement_delta_probes(old, &statements, Some(&mut added_probe), Some(&mut removed_probe)));
+        let added_probe_complete = transaction_delta.is_some() && added_probe.len() <= ADDED_PROBE_MAX;
+        let removed_probe_complete = transaction_delta.is_some() && removed_probe.len() <= ADDED_PROBE_MAX;
+        if !added_probe_complete { added_probe.clear(); }
+        if !removed_probe_complete { removed_probe.clear(); }
+        preparation.added_probe = added_probe.clone();
+        preparation.added_probe_complete = added_probe_complete;
+        preparation.removed_probe = removed_probe;
+        preparation.removed_probe_complete = removed_probe_complete;
         stage("transaction delta", started);
         if let Some(i) = self.memo.iter().position(|r| {
             r.content_key == content_key && r.content_key != 0
@@ -1415,7 +1511,7 @@ impl Session {
         // Small clash proposals avoid repeated minimization when available;
         // eager base preparation shares the index instead of rebuilding it.
         let InconsistencyPreparation { witness, index: witness_index } =
-            (!tax.consistent && self.current.is_none() && full_seconds < WITNESS_MAX_SECONDS)
+            (!tax.consistent && full_seconds < WITNESS_MAX_SECONDS)
                 .then(|| inconsistency_witness(&text, &scanned,
                     WITNESS_BUDGET_FACTOR * full_seconds + 15.0, &mut preparation))
                 .unwrap_or_default();
@@ -1518,6 +1614,8 @@ impl Session {
         mut verify_support: impl FnMut(&str, std::time::Duration) -> Option<Option<serde_json::Value>>)
         -> Result<Option<(Taxonomy, Receipt, Option<BaseState>)>, String>
     {
+        let added_probe_complete = work.added_probe_complete;
+        let removed_probe_complete = work.removed_probe_complete;
         let current = self.current;
         // Preserve max_by_key's last-on-tie rule while confirming only the
         // preferred candidate instead of scanning every older full source.
@@ -1533,9 +1631,9 @@ impl Session {
             let same_current = Some(i) == current && revision.base.as_ref()
                 .is_some_and(|base| Arc::ptr_eq(old, &base.statements));
             let delta = if same_current { transaction_delta } else { statement_delta(old, new) };
-            delta.map(|delta| (i, delta))
+            delta.map(|delta| (i, delta, same_current))
         });
-        let Some((bi, delta)) = selected else {
+        let Some((bi, delta, same_current)) = selected else {
             return if self.memo.is_empty() { Ok(None) }
                 else { Err("no complete consistent base with compatible exact source identities".into()) };
         };
@@ -1602,14 +1700,19 @@ impl Session {
         let old_domain = base.class_domain.as_ref().expect("indexed class domain").clone();
         let old = base.statements.clone();
         let previous = base.compiler_full.clone();
-        let previous_told = base.told.clone();
         let mut cached_tbox = None;
+        let exact_addition = if same_current && Arc::ptr_eq(&old, &selected_statements) {
+            delta.removed_statements == 0
+                && old.counts.keys().all(|h| new.counts.contains_key(h))
+        } else {
+            old.confirms_subset(new)
+        };
         if let Some((prepared, tbox)) = base.exact_union_pair(&selected_statements, new) {
             // Both immutable indexes describe exact OLD. For this deletion
             // OLD union NEW is OLD; keep its original source spans as well.
             *prepared_new = Some(prepared);
             cached_tbox = Some(tbox);
-        } else if old.confirms_subset(new) {
+        } else if exact_addition {
             // For an exact addition, the union is NEW. Keep the established
             // one-build path and its exact source provenance.
             let index = Arc::new(match previous {
@@ -1619,22 +1722,50 @@ impl Session {
             });
             *prepared_new = Some(PreparedCompiler::Exact(index));
         } else {
-            let mut union = String::from(old.header());
+            let mut union = String::with_capacity(old.text.len().max(new.text.len()) + 4096);
+            union.push_str(old.header());
             union.push('\n');
-            let mut emitted = FxHashSet::default();
-            for statements in [old.as_ref(), new.as_ref()] {
-                let mut ordered: Vec<_> = statements.counts.iter().collect();
-                ordered.sort_unstable_by_key(|(_, entry)| entry.2);
-                for (hash, _) in ordered {
-                    if emitted.insert(*hash) {
-                        union.push_str(statements.stmt(hash).expect("statement span"));
-                        union.push('\n');
-                    }
+            let mut union_statements = Vec::with_capacity(new.counts.len() + delta.removed_statements);
+            let mut removed_old: Vec<_> = if same_current && removed_probe_complete && Arc::ptr_eq(&old, &selected_statements) {
+                work.removed_probe.iter().filter_map(|h| old.counts.get(h).map(|entry| (*h, *entry))).collect()
+            } else {
+                old.counts.iter().filter(|(h, _)| !new.counts.contains_key(*h)).map(|(&h, &entry)| (h, entry)).collect()
+            };
+            removed_old.sort_unstable_by_key(|(_, entry)| entry.2);
+            let no_dups_in_new = new.counts.len() == scanned.statements.len();
+            let mut emitted = if no_dups_in_new {
+                FxHashSet::default()
+            } else {
+                FxHashSet::with_capacity_and_hasher(new.counts.len(), Default::default())
+            };
+            for st in &scanned.statements {
+                if no_dups_in_new || emitted.insert(st.hash) {
+                    let start = union.len();
+                    union.push_str(&new.text[st.start..st.end]);
+                    let end = union.len();
+                    union.push('\n');
+                    union_statements.push(crate::source_locality::Stmt {
+                        start, end, hash: st.hash, kind: st.kind,
+                    });
                 }
+            }
+            for (hash, (_, kind, a, b)) in removed_old {
+                let start = union.len();
+                union.push_str(&old.text[a..b]);
+                let end = union.len();
+                union.push('\n');
+                union_statements.push(crate::source_locality::Stmt {
+                    start, end, hash, kind,
+                });
             }
             union.push_str(")\n");
             let union = Arc::new(union);
-            let union_scan = scan(&union)?;
+            let union_scan = Scan {
+                open_end: old.header_end,
+                header_hash: old.header_hash,
+                prefixes: scanned.prefixes.clone(),
+                statements: union_statements,
+            };
             // Candidate statement_delta checked both collision flags and
             // every shared hash's exact text. Deduplication cannot merge
             // distinct statements when constructing this union.
@@ -1655,28 +1786,50 @@ impl Session {
         let union_index = prepared.index().clone();
         let union_scan = prepared.scan(scanned);
         if union_index.spelling_conflict { return Err("union has conflicting entity spellings".into()); }
+        let fast_probes = same_current && added_probe_complete && removed_probe_complete
+            && Arc::ptr_eq(&old, &selected_statements);
         // A full union's aggregate Class bits include removed OLD uses.
         // Recompute NEW's exact enabled contributions and referenced builtin
         // spellings. A fresh exact index remains the cheaper addition case.
-        let new_domain = Arc::new(match prepared {
-            PreparedCompiler::Exact(index) => class_domain(index),
+        let new_domain = match prepared {
+            PreparedCompiler::Exact(index) => Arc::new(class_domain(index)),
             PreparedCompiler::Union { .. } => {
-                let names = union_index.live_public_class_names(|hash| new.counts.contains_key(&hash))
-                    .ok_or("union compiler does not retain all assertions")?;
-                let mut domain: FxHashSet<Box<str>> = names.into_iter().map(Box::from).collect();
+                let names = if fast_probes {
+                    union_index.live_public_class_names(|hash| !work.removed_probe.contains(&hash))
+                } else {
+                    union_index.live_public_class_names(|hash| new.counts.contains_key(&hash))
+                }.ok_or("union compiler does not retain all assertions")?;
+                let mut domain = FxHashSet::with_capacity_and_hasher(names.len() + 4, Default::default());
+                for name in names {
+                    domain.insert(Box::from(name));
+                }
                 domain.extend(["owl:Thing", "owl:Nothing", "http://www.w3.org/2002/07/owl#Thing",
                     "http://www.w3.org/2002/07/owl#Nothing"].into_iter().map(Box::<str>::from));
-                domain
+                Arc::new(domain)
             }
-        });
+        };
         stage("common new_domain", started);
         let mut marked = vec![false; union_index.axiom_count()];
         let mut disabled = vec![false; union_index.axiom_count()];
-        for (id, hash) in union_index.axiom_hash.iter().enumerate() {
-            let was = old.counts.contains_key(hash);
-            let now = new.counts.contains_key(hash);
-            marked[id] = was != now;
-            disabled[id] = !now;
+        if fast_probes {
+            for h in &work.removed_probe {
+                if let Some(&id) = union_index.axiom_by_hash.get(h) {
+                    marked[id as usize] = true;
+                    disabled[id as usize] = true;
+                }
+            }
+            for h in &work.added_probe {
+                if let Some(&id) = union_index.axiom_by_hash.get(h) {
+                    marked[id as usize] = true;
+                }
+            }
+        } else {
+            for (id, hash) in union_index.axiom_hash.iter().enumerate() {
+                let was = old.counts.contains_key(hash);
+                let now = new.counts.contains_key(hash);
+                marked[id] = was != now;
+                disabled[id] = !now;
+            }
         }
         // A resolved-source positive object certificate supplies a model of
         // the whole union, hence of both actual revision subsets. Its ABox
@@ -1794,7 +1947,10 @@ impl Session {
                 {
                     use std::io::Write;
                     let io = |e: std::io::Error| e.to_string();
-                    let in_module: FxHashSet<u32> = module.iter().copied().collect();
+                    let in_module_hashes: FxHashSet<u128> = module
+                        .iter()
+                        .map(|&id| union_index.axiom_hash[id as usize])
+                        .collect();
                     let mut emitted = FxHashSet::default();
                     let mut out = std::io::BufWriter::with_capacity(1 << 20,
                         std::fs::File::create(module_file.path()).map_err(io)?);
@@ -1804,8 +1960,7 @@ impl Session {
                         let keep = match statement.kind {
                             StmtKind::Declaration => union_index.decl_entity.get(&statement.hash)
                                 .is_some_and(|&id| signature[id as usize]),
-                            StmtKind::Logical | StmtKind::Assertion => union_index.axiom_by_hash.get(&statement.hash)
-                                .is_some_and(|id| in_module.contains(id)),
+                            StmtKind::Logical | StmtKind::Assertion => in_module_hashes.contains(&statement.hash),
                             StmtKind::Annotation | StmtKind::Import => false,
                         };
                         if keep && emitted.insert(statement.hash) {
@@ -1841,14 +1996,15 @@ impl Session {
             modified.extend(prune_public_domain(&mut tax, &new_domain));
         }
         receipt.reused_subjects = retained_subject_count(&base_tax, modified.iter().map(|n| &**n));
-        let removed_hashes = union_index.axiom_hash.iter().filter(|h| !new.counts.contains_key(*h)).copied().collect();
+        let removed_hashes = union_index.axiom_hash.iter().zip(&disabled)
+            .filter_map(|(&h, &dis)| dis.then_some(h)).collect();
         let next = BaseState {
             statements: new.clone(), source: None, index: Some(Some(union_index.clone())),
             admission,
             compiler_full: Some(union_index),
             disabled: disabled.into(), full_disabled: Arc::from([]),
             removed_hashes: Arc::new(removed_hashes), class_domain: Some(new_domain),
-            full: None, told: Some(Arc::new(RetainedTold::prepare(text, scanned, new.clone(), previous_told.as_deref()))),
+            full: None, told: None,
             consistent: true, witness: None,
             anonymous: anonymous_assertions(text, scanned), source_bytes: text.len(),
         };
@@ -1862,6 +2018,7 @@ impl Session {
         transaction_delta: Option<StatementDelta>, added_probe: &[u128], work: &mut PreparationWork)
         -> Result<Option<(Taxonomy, Receipt, Option<BaseState>)>, String>
     {
+        let removed_probe_complete = work.removed_probe_complete;
         // A base: consistent, complete, same header, statement superset,
         // and every removed statement a logical axiom or an annotation.
         let mut candidates: Vec<_> = self.memo.iter().enumerate().filter_map(|(i, r)| {
@@ -1875,13 +2032,39 @@ impl Session {
         let best = candidates.into_iter().find_map(|(_, i)| {
             let old = &self.memo[i].base.as_ref().expect("candidate base").statements;
             if added_probe.iter().any(|hash| !old.counts.contains_key(hash)) { return None; }
+            let same_cur = self.current == Some(i) && self.memo[i].statements.as_ref()
+                .is_some_and(|cur| Arc::ptr_eq(cur, old));
+            if same_cur {
+                let d = transaction_delta?;
+                if d.added_statements != 0 { return None; }
+                let removed_ok = if removed_probe_complete && d.removed_statements == work.removed_probe.len() {
+                    work.removed_probe.iter().all(|h| {
+                        let &(_, kind, a, b) = old.counts.get(h).expect("removed hash");
+                        matches!(kind, StmtKind::Logical | StmtKind::Assertion | StmtKind::Annotation)
+                            || (kind == StmtKind::Declaration
+                                && unused_named_individual_declaration(&old.text[a..b], new))
+                    })
+                } else {
+                    old.counts.iter().all(|(h, &(m, kind, a, b))| {
+                        let kept = new.counts.get(h).map_or(0, |(n, ..)| *n);
+                        kept == m || kept > 0
+                            || matches!(kind, StmtKind::Logical | StmtKind::Assertion | StmtKind::Annotation)
+                            || (kind == StmtKind::Declaration
+                                && unused_named_individual_declaration(&old.text[a..b], new))
+                    })
+                };
+                return removed_ok.then_some(i);
+            }
             let subset = new.counts.iter().all(|(h, (n, ..))| {
                 old.counts.get(h).is_some_and(|(m, ..)| m >= n)
             });
             if !subset { return None; }
-            let removed_ok = old.counts.iter().all(|(h, (m, kind, ..))| {
+            let removed_ok = old.counts.iter().all(|(h, &(m, kind, a, b))| {
                 let kept = new.counts.get(h).map_or(0, |(n, ..)| *n);
-                kept == *m || kept > 0 || matches!(kind, StmtKind::Logical | StmtKind::Assertion | StmtKind::Annotation)
+                kept == m || kept > 0
+                    || matches!(kind, StmtKind::Logical | StmtKind::Assertion | StmtKind::Annotation)
+                    || (kind == StmtKind::Declaration
+                        && unused_named_individual_declaration(&old.text[a..b], new))
             });
             (removed_ok && new.confirms_subset(old)).then_some(i)
         });
@@ -1912,7 +2095,11 @@ impl Session {
                     return Ok(Some(((*base_tax).clone(), receipt, None)));
                 }
             }
-            let removed: Vec<u128> = base.statements.counts.keys().filter(|h| !new.counts.contains_key(*h)).copied().collect();
+            let removed: Vec<u128> = if same_current && removed_probe_complete {
+                work.removed_probe.clone()
+            } else {
+                base.statements.counts.keys().filter(|h| !new.counts.contains_key(*h)).copied().collect()
+            };
             let Some(index) = base.index(work) else { return Err("locality index unavailable".into()) };
             let mut marked = vec![false; index.axiom_count()];
             for h in &removed {
@@ -1927,13 +2114,17 @@ impl Session {
             }
             return Err("a deleted axiom is in the inconsistent module of the empty signature".into());
         }
-        let removed: Vec<u128> = base
-            .statements
-            .counts
-            .iter()
-            .filter(|(h, _)| !new.counts.contains_key(*h))
-            .map(|(h, _)| *h)
-            .collect();
+        let removed: Vec<u128> = if same_current && removed_probe_complete {
+            work.removed_probe.clone()
+        } else {
+            base
+                .statements
+                .counts
+                .iter()
+                .filter(|(h, _)| !new.counts.contains_key(*h))
+                .map(|(h, _)| *h)
+                .collect()
+        };
         let base_statements = base.statements.total;
         // The complete revision was above the pipeline's in-process size gate,
         // so it never ran the budgeted in-process CB attempt. Keep those
@@ -1946,9 +2137,13 @@ impl Session {
         } else {
             &[]
         };
-        let annotations: FxHashSet<u128> = removed
+        let removable_non_axioms: FxHashSet<u128> = removed
             .iter()
-            .filter(|h| base.statements.counts.get(*h).is_some_and(|(_, k, ..)| *k == StmtKind::Annotation))
+            .filter(|h| base.statements.counts.get(*h).is_some_and(|&(_, k, a, b)| {
+                k == StmtKind::Annotation
+                    || (k == StmtKind::Declaration
+                        && unused_named_individual_declaration(&base.statements.text[a..b], new))
+            }))
             .copied()
             .collect();
         let index_was_ready = base.index.as_ref().is_some_and(|i| i.is_some());
@@ -1964,9 +2159,10 @@ impl Session {
                     marked[a as usize] = true;
                     removed_axioms += 1;
                 } else if !index.assertions.contains(h) {
-                    // Annotation-only statements carry no logical content; any
+                    // Annotation-only statements and synthetic declarations of
+                    // removed named individuals carry no logical content; any
                     // other removed statement must be a known axiom.
-                    if !annotations.contains(h) {
+                    if !removable_non_axioms.contains(h) {
                         return Err("removed statement outside the locality index".into());
                     }
                 }
@@ -2127,57 +2323,63 @@ impl Session {
                 return restricted_complete(text, &names, &base_tax, receipt, started)
                     .map(|(tax, receipt)| Some((tax, receipt, Some(retained_base))));
             }
-            let in_module: FxHashSet<u32> = module.iter().copied().collect();
-            let mut out = String::with_capacity(scanned.open_end + 256 * (module.len() + 16));
-            out.push_str(&text[..scanned.open_end]);
-            out.push('\n');
-            let mut emitted: FxHashSet<u128> = FxHashSet::default();
-            for st in &scanned.statements {
-                let keep = match st.kind {
-                    StmtKind::Declaration => index
-                        .decl_entity
-                        .get(&st.hash)
-                        .is_some_and(|&e| signature[e as usize]),
-                    StmtKind::Logical | StmtKind::Assertion => index
-                        .axiom_by_hash
-                        .get(&st.hash)
-                        .is_some_and(|a| in_module.contains(a)),
-                    StmtKind::Annotation | StmtKind::Import => false,
-                };
-                if keep && emitted.insert(st.hash) {
-                    out.push_str(&text[st.start..st.end]);
-                    out.push('\n');
-                }
-            }
-            out.push_str(")\n");
-            if let Some(path) = std::env::var_os("KM_INCR_DEBUG_MODULE") {
-                let _ = std::fs::write(&path, &out);
-                let names: Vec<&str> = relevant.iter().map(|&s| &*index.names[s as usize]).collect();
-                let _ = std::fs::write(format!("{}.subjects.json", path.to_string_lossy()), serde_json::to_vec(&names).unwrap_or_default());
-                eprintln!("KM_INCR relevant={}", names.len());
-            }
-            stage("module text", started);
-            // An empty module entails only trivial subsumptions: every
-            // relevant subject is satisfiable with no named superclass.
-            let module_tax = if module.is_empty() {
+            let debug_module = std::env::var_os("KM_INCR_DEBUG_MODULE");
+            let module_tax = if module.is_empty() && debug_module.is_none() {
+                stage("module text", started);
                 Taxonomy::empty()
             } else {
-                // Only the relevant subjects' rows are used: restrict the
-                // bridge's subject probes to them (other routes ignore it).
-                // A small module skips the restriction: its two extra
-                // temporary files cost more than the probes they save.
-                let names: Vec<&str> = relevant.iter().map(|&s| &*index.names[s as usize]).collect();
-                let file = (module.len() >= MODULE_RESTRICT_MIN_AXIOMS)
-                    .then(|| crate::orchestrate::tmpfile::TempPath::new("-module-subjects.json"));
-                let mut settings: Vec<(&str, &str)> = module_settings.to_vec();
-                let path;
-                if let Some(file) = &file {
-                    std::fs::write(file.path(), serde_json::to_vec(&names).map_err(|e| e.to_string())?)
-                        .map_err(|e| e.to_string())?;
-                    path = file.path().to_string_lossy().into_owned();
-                    settings.push(("KM_PUBLIC_SUBJECT_IRIS_FILE", path.as_str()));
+                let in_module_hashes: FxHashSet<u128> = module
+                    .iter()
+                    .map(|&id| index.axiom_hash[id as usize])
+                    .collect();
+                let mut out = String::with_capacity(scanned.open_end + 256 * (module.len() + 16));
+                out.push_str(&text[..scanned.open_end]);
+                out.push('\n');
+                let mut emitted: FxHashSet<u128> = FxHashSet::default();
+                for st in &scanned.statements {
+                    let keep = match st.kind {
+                        StmtKind::Declaration => index
+                            .decl_entity
+                            .get(&st.hash)
+                            .is_some_and(|&e| signature[e as usize]),
+                        StmtKind::Logical | StmtKind::Assertion => in_module_hashes.contains(&st.hash),
+                        StmtKind::Annotation | StmtKind::Import => false,
+                    };
+                    if keep && emitted.insert(st.hash) {
+                        out.push_str(&text[st.start..st.end]);
+                        out.push('\n');
+                    }
                 }
-                classify_text_with(&out, &settings).map_err(|e| format!("module classification: {e}"))?
+                out.push_str(")\n");
+                if let Some(path) = debug_module {
+                    let _ = std::fs::write(&path, &out);
+                    let names: Vec<&str> = relevant.iter().map(|&s| &*index.names[s as usize]).collect();
+                    let _ = std::fs::write(format!("{}.subjects.json", path.to_string_lossy()), serde_json::to_vec(&names).unwrap_or_default());
+                    eprintln!("KM_INCR relevant={}", names.len());
+                }
+                stage("module text", started);
+                // An empty module entails only trivial subsumptions: every
+                // relevant subject is satisfiable with no named superclass.
+                if module.is_empty() {
+                    Taxonomy::empty()
+                } else {
+                    // Only the relevant subjects' rows are used: restrict the
+                    // bridge's subject probes to them (other routes ignore it).
+                    // A small module skips the restriction: its two extra
+                    // temporary files cost more than the probes they save.
+                    let names: Vec<&str> = relevant.iter().map(|&s| &*index.names[s as usize]).collect();
+                    let file = (module.len() >= MODULE_RESTRICT_MIN_AXIOMS)
+                        .then(|| crate::orchestrate::tmpfile::TempPath::new("-module-subjects.json"));
+                    let mut settings: Vec<(&str, &str)> = module_settings.to_vec();
+                    let path;
+                    if let Some(file) = &file {
+                        std::fs::write(file.path(), serde_json::to_vec(&names).map_err(|e| e.to_string())?)
+                            .map_err(|e| e.to_string())?;
+                        path = file.path().to_string_lossy().into_owned();
+                        settings.push(("KM_PUBLIC_SUBJECT_IRIS_FILE", path.as_str()));
+                    }
+                    classify_text_with(&out, &settings).map_err(|e| format!("module classification: {e}"))?
+                }
             };
             if !module_tax.consistent || module_tax.dropped != 0 {
                 return Err("module classification was not complete and consistent".into());

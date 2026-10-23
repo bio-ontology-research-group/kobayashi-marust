@@ -404,6 +404,39 @@ pub struct CompileReuse {
     pub csr_literal_records: usize,
 }
 
+enum SymbolLookup {
+    Root(FxHashMap<std::sync::Arc<str>, u32>),
+    Reused {
+        parent: std::sync::Arc<SymbolLookup>,
+        remap: Vec<u32>,
+        fresh: FxHashMap<std::sync::Arc<str>, u32>,
+        depth: u8,
+    },
+}
+
+impl SymbolLookup {
+    fn get(&self, iri: &str) -> Option<u32> {
+        match self {
+            Self::Root(map) => map.get(iri).copied(),
+            Self::Reused { parent, remap, fresh, .. } => {
+                fresh.get(iri).copied().or_else(|| {
+                    parent.get(iri).and_then(|old_id| {
+                        let id = *remap.get(old_id as usize)?;
+                        (id != u32::MAX).then_some(id)
+                    })
+                })
+            }
+        }
+    }
+
+    fn depth(&self) -> u8 {
+        match self {
+            Self::Root(_) => 0,
+            Self::Reused { depth, .. } => *depth,
+        }
+    }
+}
+
 /// Compiled locality index of one revision.
 pub struct LocalityIndex {
     /// Actual compiler provenance, independent of TBox admissibility.
@@ -427,11 +460,12 @@ pub struct LocalityIndex {
     /// Almost only EL-style constructors occur (predicts module cost only).
     pub el_like: bool,
     pub assertions: crate::fxhash::FxHashSet<u128>,
-    pub symbols: Vec<Box<str>>,
-    sym_ids: FxHashMap<Box<str>, u32>,
+    pub symbols: Vec<std::sync::Arc<str>>,
+    sym_ids: std::sync::Arc<SymbolLookup>,
     /// Published name (source spelling) of each symbol.
-    pub names: Vec<Box<str>>,
-    name_ids: FxHashMap<Box<str>, u32>,
+    pub names: Vec<std::sync::Arc<str>>,
+    name_ids: std::sync::OnceLock<FxHashMap<std::sync::Arc<str>, u32>>,
+    name_lookups: std::sync::atomic::AtomicUsize,
     /// Some entity is spelled in two ways; published names are then not a
     /// function of the symbol and reuse must decline.
     pub spelling_conflict: bool,
@@ -451,12 +485,15 @@ pub struct LocalityIndex {
     local_sig_off: Vec<u32>,
     local_sig: Vec<u32>,
     /// Conjunctions: literal ranges and owning axiom.
+    ax_conj_off: Vec<u32>,
     conj_off: Vec<u32>,
     conj_lits: Vec<u32>,
     conj_axiom: Vec<u32>,
     /// symbol -> conjunctions containing it (CSR).
     occ_off: Vec<u32>,
     occ: Vec<u32>,
+    /// symbol -> axioms whose local_sig contains it (lazy CSR).
+    prod: std::sync::OnceLock<(Vec<u32>, Vec<u32>)>,
     pub axiom_by_hash: FxHashMap<u128, u32>,
     /// Declaration statement hash -> declared entity symbol.
     pub decl_entity: FxHashMap<u128, u32>,
@@ -466,10 +503,12 @@ pub struct LocalityIndex {
 
 struct Builder<'p> {
     prefixes: &'p [(String, String)],
-    symbols: Vec<Box<str>>,
-    sym_ids: FxHashMap<Box<str>, u32>,
+    donor_old: Option<&'p LocalityIndex>,
+    donor_remap: Vec<u32>,
+    symbols: Vec<std::sync::Arc<str>>,
+    sym_ids: FxHashMap<std::sync::Arc<str>, u32>,
     is_class: Vec<bool>,
-    names: Vec<Box<str>>,
+    names: Vec<std::sync::Arc<str>>,
     spelling_conflict: bool,
     /// No universal object property occurs, every compiled construct is
     /// understood, and (outside TBox mode) no nominal occurs.
@@ -485,9 +524,9 @@ struct Builder<'p> {
 }
 
 impl Builder<'_> {
-    fn resolve(&self, tok: &str) -> Option<String> {
+    fn resolve<'a>(&self, tok: &'a str) -> Option<std::borrow::Cow<'a, str>> {
         if let Some(inner) = tok.strip_prefix('<') {
-            return Some(inner.strip_suffix('>').unwrap_or(inner).to_string());
+            return Some(std::borrow::Cow::Borrowed(inner.strip_suffix('>').unwrap_or(inner)));
         }
         let c = *tok.as_bytes().first()?;
         if c == b'"' || c == b'^' || c == b'@' || c.is_ascii_digit() || c == b'-' || c == b'+'
@@ -499,7 +538,7 @@ impl Builder<'_> {
         let (pre, local) = (&tok[..=p], &tok[p + 1..]);
         for (name, iri) in self.prefixes.iter().rev() {
             if name == pre {
-                return Some(format!("{iri}{local}"));
+                return Some(std::borrow::Cow::Owned(format!("{iri}{local}")));
             }
         }
         let builtin = match pre {
@@ -510,7 +549,7 @@ impl Builder<'_> {
             "xml:" => "http://www.w3.org/XML/1998/namespace",
             _ => return None,
         };
-        Some(format!("{builtin}{local}"))
+        Some(std::borrow::Cow::Owned(format!("{builtin}{local}")))
     }
 
     // Pure admission: never intern symbols or alter producer/locality ordering.
@@ -582,6 +621,15 @@ impl Builder<'_> {
     /// IRI without brackets).
     fn intern(&mut self, iri: &str, tok: &str) -> u32 {
         let spelling = tok.strip_prefix('<').and_then(|x| x.strip_suffix('>')).unwrap_or(tok);
+        if let Some(old) = self.donor_old {
+            if let Some(old_sym) = old.symbol(iri) {
+                let id = self.replay_symbol(old_sym);
+                if &*self.names[id as usize] != spelling {
+                    self.spelling_conflict = true;
+                }
+                return id;
+            }
+        }
         if let Some(&id) = self.sym_ids.get(iri) {
             if &*self.names[id as usize] != spelling {
                 self.spelling_conflict = true;
@@ -589,7 +637,7 @@ impl Builder<'_> {
             return id;
         }
         let id = self.symbols.len() as u32;
-        let key: Box<str> = iri.into();
+        let key: std::sync::Arc<str> = iri.into();
         self.symbols.push(key.clone());
         self.sym_ids.insert(key, id);
         self.names.push(spelling.into());
@@ -597,10 +645,15 @@ impl Builder<'_> {
         id
     }
 
-    fn replay_symbol(&mut self, old: &LocalityIndex, symbol: u32, remap: &mut [u32]) -> u32 {
-        let slot = &mut remap[symbol as usize];
+    fn replay_symbol(&mut self, symbol: u32) -> u32 {
+        let slot = &mut self.donor_remap[symbol as usize];
         if *slot == u32::MAX {
-            *slot = self.intern(&old.symbols[symbol as usize], &old.names[symbol as usize]);
+            let old = self.donor_old.expect("accepted donor");
+            let id = self.symbols.len() as u32;
+            self.symbols.push(old.symbols[symbol as usize].clone());
+            self.names.push(old.names[symbol as usize].clone());
+            self.is_class.push(false);
+            *slot = id;
         }
         *slot
     }
@@ -707,11 +760,11 @@ impl Builder<'_> {
     fn role(&mut self, node: &Node<'_>) -> F {
         match node {
             Node::Atom(t) => match self.resolve(t) {
-                Some(iri) if iri == format!("{OWL}topObjectProperty") => {
+                Some(iri) if iri.strip_prefix(OWL) == Some("topObjectProperty") => {
                     self.individual_free = false;
                     F::T
                 }
-                Some(iri) if iri == format!("{OWL}bottomObjectProperty") => F::Fa,
+                Some(iri) if iri.strip_prefix(OWL) == Some("bottomObjectProperty") => F::Fa,
                 Some(iri) => F::V(self.intern(&iri, t)),
                 None => F::T,
             },
@@ -729,8 +782,8 @@ impl Builder<'_> {
     fn dprop(&mut self, node: &Node<'_>) -> F {
         match node {
             Node::Atom(t) => match self.resolve(t) {
-                Some(iri) if iri == format!("{OWL}topDataProperty") => F::T,
-                Some(iri) if iri == format!("{OWL}bottomDataProperty") => F::Fa,
+                Some(iri) if iri.strip_prefix(OWL) == Some("topDataProperty") => F::T,
+                Some(iri) if iri.strip_prefix(OWL) == Some("bottomDataProperty") => F::Fa,
                 Some(iri) => F::V(self.intern(&iri, t)),
                 None => F::T,
             },
@@ -743,8 +796,8 @@ impl Builder<'_> {
         let unknown = (F::T, F::T);
         match node {
             Node::Atom(t) => match self.resolve(t) {
-                Some(iri) if iri == format!("{OWL}Thing") => (F::T, F::Fa),
-                Some(iri) if iri == format!("{OWL}Nothing") => (F::Fa, F::T),
+                Some(iri) if iri.strip_prefix(OWL) == Some("Thing") => (F::T, F::Fa),
+                Some(iri) if iri.strip_prefix(OWL) == Some("Nothing") => (F::Fa, F::T),
                 Some(iri) => {
                     let id = self.intern(&iri, t);
                     self.is_class[id as usize] = true;
@@ -1092,16 +1145,27 @@ impl LocalityIndex {
         Self::build_mode_reusing(text, scan, tbox, None).map(|(index, _)| index)
     }
 
-    fn build_mode_reusing<'a>(text: &str, scan: &Scan, tbox: bool,
-        donor: Option<(&LocalityIndex, &dyn Fn(u128) -> Option<&'a str>)>)
+    fn build_mode_reusing<'a, 'd>(text: &str, scan: &Scan, tbox: bool,
+        donor: Option<(&'d LocalityIndex, &dyn Fn(u128) -> Option<&'a str>)>)
         -> Result<(Self, CompileReuse), String>
     {
+        let cap_sym = donor.map_or(0, |(old, _)| old.symbols.len() + 16);
+        let cap_ax = donor.map_or(0, |(old, _)| old.axiom_hash.len() + 16);
+        let cap_sig = donor.map_or(0, |(old, _)| old.sig.len() + 64);
+        let cap_lsig = donor.map_or(0, |(old, _)| old.local_sig.len() + 64);
+        let cap_conj = donor.map_or(0, |(old, _)| old.conj_axiom.len() + 16);
+        let cap_clits = donor.map_or(0, |(old, _)| old.conj_lits.len() + 64);
+        let cap_cls = donor.map_or(0, |(old, _)| old.class_lits.len() + 32);
+        let cap_decl = donor.map_or(0, |(old, _)| old.decl_entity.len() + 16);
+        let cap_cdecl = donor.map_or(0, |(old, _)| old.class_declarations.len() + 16);
         let mut bld = Builder {
             prefixes: &scan.prefixes,
-            symbols: Vec::new(),
+            donor_old: donor.map(|(old, _)| old),
+            donor_remap: donor.map_or_else(Vec::new, |(old, _)| vec![u32::MAX; old.symbols.len()]),
+            symbols: Vec::with_capacity(cap_sym),
             sym_ids: FxHashMap::default(),
-            is_class: Vec::new(),
-            names: Vec::new(),
+            is_class: Vec::with_capacity(cap_sym),
+            names: Vec::with_capacity(cap_sym),
             spelling_conflict: false,
             individual_free: true,
             el_like: true,
@@ -1112,24 +1176,34 @@ impl LocalityIndex {
         // Header-sized work only; never parse every skipped ABox assertion.
         let universal_role_aliases = if tbox { bld.universal_role_aliases() } else { Vec::new() };
         let mut stats = CompileReuse::default();
-        let mut donor_remap = donor.map(|(old, _)| vec![u32::MAX; old.symbols.len()]);
         let mut all_individual_free = true;
-        let mut all_positive_object = !tbox;
+        let mut all_positive_object = true;
         // TBox builds skip assertions, so only a witness can be recorded.
         let mut tbox_outside_positive = false;
-        let (mut class_off, mut class_lits) = (vec![0u32], Vec::new());
-        let mut compile_flags = Vec::new();
+        let mut class_off = Vec::with_capacity(cap_ax + 1);
+        class_off.push(0u32);
+        let mut class_lits = Vec::with_capacity(cap_cls);
+        let mut compile_flags = Vec::with_capacity(cap_ax);
         let mut assertions = crate::fxhash::FxHashSet::default();
         let mut non_el = 0usize;
-        let mut axiom_hash = Vec::new();
-        let mut axiom_always = Vec::new();
-        let mut nominal: Vec<bool> = Vec::new();
-        let (mut sig_off, mut sig) = (vec![0u32], Vec::new());
-        let (mut local_sig_off, mut local_sig) = (vec![0u32], Vec::new());
-        let (mut conj_off, mut conj_lits, mut conj_axiom) = (vec![0u32], Vec::new(), Vec::new());
-        let mut axiom_by_hash = FxHashMap::default();
-        let mut decl_entity = FxHashMap::default();
-        let mut class_declarations = FxHashMap::default();
+        let mut axiom_hash = Vec::with_capacity(cap_ax);
+        let mut axiom_always = Vec::with_capacity(cap_ax);
+        let mut nominal: Vec<bool> = Vec::with_capacity(cap_ax);
+        let mut sig_off = Vec::with_capacity(cap_ax + 1);
+        sig_off.push(0u32);
+        let mut sig = Vec::with_capacity(cap_sig);
+        let mut local_sig_off = Vec::with_capacity(cap_ax + 1);
+        local_sig_off.push(0u32);
+        let mut local_sig = Vec::with_capacity(cap_lsig);
+        let mut ax_conj_off = Vec::with_capacity(cap_ax + 1);
+        ax_conj_off.push(0u32);
+        let mut conj_off = Vec::with_capacity(cap_conj + 1);
+        conj_off.push(0u32);
+        let mut conj_lits = Vec::with_capacity(cap_clits);
+        let mut conj_axiom = Vec::with_capacity(cap_conj);
+        let mut axiom_by_hash = FxHashMap::with_capacity_and_hasher(cap_ax, Default::default());
+        let mut decl_entity = FxHashMap::with_capacity_and_hasher(cap_decl, Default::default());
+        let mut class_declarations = FxHashMap::with_capacity_and_hasher(cap_cdecl, Default::default());
         let mut buf = Vec::new();
         for st in &scan.statements {
             let slice = &text[st.start..st.end];
@@ -1137,6 +1211,42 @@ impl LocalityIndex {
                 StmtKind::Annotation => continue,
                 StmtKind::Import => return Err("imports are not reusable".into()),
                 StmtKind::Declaration => {
+                    if let Some((old, lookup)) = donor {
+                        if let Some(&old_sym) = old.decl_entity.get(&st.hash) {
+                            if lookup(st.hash) == Some(slice) {
+                                let id = bld.replay_symbol(old_sym);
+                                if old.class_declarations.contains_key(&st.hash) {
+                                    bld.is_class[id as usize] = true;
+                                    class_declarations.insert(st.hash, id);
+                                }
+                                decl_entity.insert(st.hash, id);
+                                continue;
+                            }
+                        }
+                    }
+                    if let Some((open, after_open)) = slice.find('(')
+                        .and_then(|i| slice[i + 1..].find('(').map(|j| (i + 1, i + 1 + j)))
+                    {
+                        let kind = slice[open..after_open].trim();
+                        if kind != "Annotation" {
+                            if let Some(close) = slice[after_open + 1..].find(')') {
+                                let t = slice[after_open + 1..after_open + 1 + close].trim();
+                                if !t.is_empty() && !t.contains('(')
+                                    && slice[after_open + 1 + close + 1..].trim() == ")"
+                                {
+                                    if let Some(iri) = bld.resolve(t) {
+                                        let id = bld.intern(&iri, t);
+                                        if kind == "Class" {
+                                            bld.is_class[id as usize] = true;
+                                            class_declarations.insert(st.hash, id);
+                                        }
+                                        decl_entity.insert(st.hash, id);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     let node = Parser::new(slice).parse()?;
                     if let Node::List(_, args) = &node {
                         for a in args {
@@ -1194,10 +1304,9 @@ impl LocalityIndex {
             let positive_object;
             if let Some((old, old_id)) = previous {
                 stats.reused_compiled_axioms += 1;
-                let remap = donor_remap.as_mut().expect("accepted donor remap");
                 buf.clear();
                 for &symbol in old.sig_of(old_id as u32) {
-                    buf.push(bld.replay_symbol(old, symbol, remap));
+                    buf.push(bld.replay_symbol(symbol));
                 }
                 buf.sort_unstable();
                 buf.dedup();
@@ -1205,14 +1314,14 @@ impl LocalityIndex {
                 sig_off.push(sig.len() as u32);
                 buf.clear();
                 for &symbol in old.local_sig_of(old_id as u32) {
-                    buf.push(bld.replay_symbol(old, symbol, remap));
+                    buf.push(bld.replay_symbol(symbol));
                 }
                 buf.sort_unstable();
                 buf.dedup();
                 local_sig.extend_from_slice(&buf);
                 local_sig_off.push(local_sig.len() as u32);
                 for &symbol in &old.class_lits[old.class_off[old_id] as usize..old.class_off[old_id + 1] as usize] {
-                    let symbol = bld.replay_symbol(old, symbol, remap);
+                    let symbol = bld.replay_symbol(symbol);
                     bld.is_class[symbol as usize] = true;
                     bld.cur_classes.push(symbol);
                 }
@@ -1221,14 +1330,12 @@ impl LocalityIndex {
                 bld.cur_nominal = old.nominal[old_id];
                 positive_object = old.compile_flags[old_id] & 4 != 0;
                 axiom_always.push(old.axiom_always[old_id]);
-                // Owners are monotone in axiom build order. Avoid an O(A*C)
-                // scan of all conjunctions for every copied axiom.
-                let first = old.conj_axiom.partition_point(|&owner| owner < old_id as u32);
-                let last = old.conj_axiom.partition_point(|&owner| owner <= old_id as u32);
+                let first = old.ax_conj_off[old_id] as usize;
+                let last = old.ax_conj_off[old_id + 1] as usize;
                 for c in first..last {
                     buf.clear();
                     for &symbol in &old.conj_lits[old.conj_off[c] as usize..old.conj_off[c + 1] as usize] {
-                        buf.push(bld.replay_symbol(old, symbol, remap));
+                        buf.push(bld.replay_symbol(symbol));
                     }
                     buf.sort_unstable();
                     buf.dedup();
@@ -1238,46 +1345,132 @@ impl LocalityIndex {
                 }
             } else {
                 stats.compiled_axioms += 1;
-                let node = Parser::new(slice).parse()?;
-                let (head, args) = match &node {
-                    Node::List(h, a) => (*h, a.iter().filter(|n| n.head() != Some("Annotation")).collect::<Vec<_>>()),
-                    Node::Atom(_) => return Err("malformed statement".into()),
-                };
-                let admitted = bld.positive_object_axiom(head, &args);
-                positive_object = !tbox && admitted;
-                if tbox && !admitted { tbox_outside_positive = true; }
-                let f = bld.axiom(head, &args);
-                buf.clear();
-                for a in &args { bld.collect(a, &mut buf); }
-                buf.sort_unstable();
-                buf.dedup();
-                sig.extend_from_slice(&buf);
-                sig_off.push(sig.len() as u32);
-                buf.clear();
-                if !bld.collect_local_axiom(head, &args, &mut buf) {
-                    buf.clear();
-                    buf.extend_from_slice(&sig[sig_off[id as usize] as usize..]);
-                }
-                buf.sort_unstable();
-                buf.dedup();
-                local_sig.extend_from_slice(&buf);
-                local_sig_off.push(local_sig.len() as u32);
-                match dnf(&f) {
-                    None => axiom_always.push(true),
-                    Some(conjs) => {
-                        let mut always = false;
-                        for mut c in conjs {
-                            c.sort_unstable();
-                            c.dedup();
-                            if c.is_empty() { always = true; break; }
-                            conj_lits.extend_from_slice(&c);
-                            conj_off.push(conj_lits.len() as u32);
-                            conj_axiom.push(id);
+                let mut fast_compiled = false;
+                let mut fast_pos = false;
+                if slice.starts_with("SubClassOf") && !slice.contains("Annotation") {
+                    let mut toks = crate::frontend::sexpr::tokens(slice);
+                    if toks.next() == Some("SubClassOf") && toks.next() == Some("(") {
+                        if let (Some(t1), Some(t2)) = (toks.next(), toks.next()) {
+                            if t1 != "(" && t1 != ")" && t2 != "(" && t2 != ")" {
+                                match toks.next() {
+                                    Some(")") if toks.next().is_none() => {
+                                        if let (Some(iri1), Some(iri2)) = (bld.resolve(t1), bld.resolve(t2)) {
+                                            if !iri1.starts_with(OWL) && !iri2.starts_with(OWL) {
+                                                let sym1 = bld.intern(&iri1, t1);
+                                                bld.is_class[sym1 as usize] = true;
+                                                bld.cur_classes.push(sym1);
+                                                let sym2 = bld.intern(&iri2, t2);
+                                                bld.is_class[sym2 as usize] = true;
+                                                bld.cur_classes.push(sym2);
+                                                if sym1 == sym2 {
+                                                    sig.push(sym1);
+                                                    local_sig.push(sym1);
+                                                } else if sym1 < sym2 {
+                                                    sig.extend_from_slice(&[sym1, sym2]);
+                                                    local_sig.extend_from_slice(&[sym1, sym2]);
+                                                } else {
+                                                    sig.extend_from_slice(&[sym2, sym1]);
+                                                    local_sig.extend_from_slice(&[sym2, sym1]);
+                                                }
+                                                sig_off.push(sig.len() as u32);
+                                                local_sig_off.push(local_sig.len() as u32);
+                                                axiom_always.push(false);
+                                                conj_lits.push(sym1);
+                                                conj_off.push(conj_lits.len() as u32);
+                                                conj_axiom.push(id);
+                                                fast_pos = true;
+                                                fast_compiled = true;
+                                            }
+                                        }
+                                    }
+                                    Some("(") if t2 == "ObjectSomeValuesFrom" => {
+                                        if let (Some(tr), Some(tb), Some(")"), Some(")")) =
+                                            (toks.next(), toks.next(), toks.next(), toks.next())
+                                        {
+                                            if tr != "(" && tr != ")" && tb != "(" && tb != ")"
+                                                && toks.next().is_none()
+                                            {
+                                                if let (Some(iri1), Some(irir), Some(irib)) =
+                                                    (bld.resolve(t1), bld.resolve(tr), bld.resolve(tb))
+                                                {
+                                                    if !iri1.starts_with(OWL) && !irir.starts_with(OWL) && !irib.starts_with(OWL) {
+                                                        let sym1 = bld.intern(&iri1, t1);
+                                                        bld.is_class[sym1 as usize] = true;
+                                                        bld.cur_classes.push(sym1);
+                                                        let symr = bld.intern(&irir, tr);
+                                                        let symb = bld.intern(&irib, tb);
+                                                        bld.is_class[symb as usize] = true;
+                                                        bld.cur_classes.push(symb);
+                                                        buf.clear();
+                                                        buf.extend_from_slice(&[sym1, symr, symb]);
+                                                        buf.sort_unstable();
+                                                        buf.dedup();
+                                                        sig.extend_from_slice(&buf);
+                                                        sig_off.push(sig.len() as u32);
+                                                        local_sig.extend_from_slice(&buf);
+                                                        local_sig_off.push(local_sig.len() as u32);
+                                                        axiom_always.push(false);
+                                                        conj_lits.push(sym1);
+                                                        conj_off.push(conj_lits.len() as u32);
+                                                        conj_axiom.push(id);
+                                                        fast_pos = true;
+                                                        fast_compiled = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
-                        axiom_always.push(always);
+                    }
+                }
+                if fast_compiled {
+                    positive_object = fast_pos;
+                } else {
+                    let node = Parser::new(slice).parse()?;
+                    let (head, args) = match &node {
+                        Node::List(h, a) => (*h, a.iter().filter(|n| n.head() != Some("Annotation")).collect::<Vec<_>>()),
+                        Node::Atom(_) => return Err("malformed statement".into()),
+                    };
+                    let admitted = bld.positive_object_axiom(head, &args);
+                    positive_object = admitted;
+                    if tbox && !admitted { tbox_outside_positive = true; }
+                    let f = bld.axiom(head, &args);
+                    buf.clear();
+                    for a in &args { bld.collect(a, &mut buf); }
+                    buf.sort_unstable();
+                    buf.dedup();
+                    sig.extend_from_slice(&buf);
+                    sig_off.push(sig.len() as u32);
+                    buf.clear();
+                    if !bld.collect_local_axiom(head, &args, &mut buf) {
+                        buf.clear();
+                        buf.extend_from_slice(&sig[sig_off[id as usize] as usize..]);
+                    }
+                    buf.sort_unstable();
+                    buf.dedup();
+                    local_sig.extend_from_slice(&buf);
+                    local_sig_off.push(local_sig.len() as u32);
+                    match dnf(&f) {
+                        None => axiom_always.push(true),
+                        Some(conjs) => {
+                            let mut always = false;
+                            for mut c in conjs {
+                                c.sort_unstable();
+                                c.dedup();
+                                if c.is_empty() { always = true; break; }
+                                conj_lits.extend_from_slice(&c);
+                                conj_off.push(conj_lits.len() as u32);
+                                conj_axiom.push(id);
+                            }
+                            axiom_always.push(always);
+                        }
                     }
                 }
             }
+            ax_conj_off.push(conj_axiom.len() as u32);
             nominal.push(bld.cur_nominal);
             if !bld.el_like { non_el += 1; }
             all_individual_free &= bld.individual_free;
@@ -1309,9 +1502,23 @@ impl LocalityIndex {
         stats.csr_axiom_records = axiom_hash.len();
         stats.csr_conjunctions = conj_axiom.len();
         stats.csr_literal_records = conj_lits.len();
+        let exact_full = !tbox
+            || (assertions.is_empty() && all_individual_free && !nominal.iter().any(|n| *n));
+        let sym_ids = match bld.donor_old {
+            Some(old) if old.sym_ids.depth() < 16 => std::sync::Arc::new(SymbolLookup::Reused {
+                parent: old.sym_ids.clone(),
+                remap: bld.donor_remap,
+                fresh: bld.sym_ids,
+                depth: old.sym_ids.depth() + 1,
+            }),
+            Some(_) => std::sync::Arc::new(SymbolLookup::Root(
+                bld.symbols.iter().enumerate().map(|(i, s)| (s.clone(), i as u32)).collect(),
+            )),
+            None => std::sync::Arc::new(SymbolLookup::Root(bld.sym_ids)),
+        };
         Ok((LocalityIndex {
-            full_mode: !tbox,
-            positive_object_source: all_positive_object,
+            full_mode: exact_full,
+            positive_object_source: exact_full && all_positive_object,
             outside_positive_object: if tbox { tbox_outside_positive } else { !all_positive_object },
             tbox_mode: tbox && all_individual_free,
             nominal,
@@ -1319,9 +1526,10 @@ impl LocalityIndex {
             el_like: non_el * 100 <= axiom_hash.len(),
             assertions,
             symbols: bld.symbols,
-            sym_ids: bld.sym_ids,
+            sym_ids,
             is_class: bld.is_class,
-            name_ids: bld.names.iter().enumerate().map(|(i, n)| (n.clone(), i as u32)).collect(),
+            name_ids: std::sync::OnceLock::new(),
+            name_lookups: std::sync::atomic::AtomicUsize::new(0),
             names: bld.names,
             spelling_conflict: bld.spelling_conflict,
             axiom_hash,
@@ -1333,11 +1541,13 @@ impl LocalityIndex {
             sig,
             local_sig_off,
             local_sig,
+            ax_conj_off,
             conj_off,
             conj_lits,
             conj_axiom,
             occ_off,
             occ,
+            prod: std::sync::OnceLock::new(),
             axiom_by_hash,
             decl_entity,
             class_declarations,
@@ -1345,12 +1555,51 @@ impl LocalityIndex {
     }
 
     pub fn symbol(&self, iri: &str) -> Option<u32> {
-        self.sym_ids.get(iri).copied()
+        self.sym_ids.get(iri)
     }
 
     /// Symbol of a published name.
     pub fn named(&self, name: &str) -> Option<u32> {
-        self.name_ids.get(name).copied()
+        if let Some(map) = self.name_ids.get() {
+            return map.get(name).copied();
+        }
+        let n = self.name_lookups.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if n < 8 {
+            return self.names.iter().enumerate().rev()
+                .find(|(_, s)| &***s == name)
+                .map(|(i, _)| i as u32);
+        }
+        self.name_ids.get_or_init(|| {
+            let mut map = FxHashMap::with_capacity_and_hasher(self.names.len(), Default::default());
+            for (i, s) in self.names.iter().enumerate() {
+                map.insert(s.clone(), i as u32);
+            }
+            map
+        }).get(name).copied()
+    }
+
+    fn producers(&self) -> &(Vec<u32>, Vec<u32>) {
+        self.prod.get_or_init(|| {
+            let nsym = self.symbols.len();
+            let nax = self.axiom_hash.len();
+            let mut counts = vec![0u32; nsym + 1];
+            for &s in &self.local_sig {
+                counts[s as usize + 1] += 1;
+            }
+            for i in 0..nsym {
+                counts[i + 1] += counts[i];
+            }
+            let prod_off = counts.clone();
+            let mut fill = counts;
+            let mut prod = vec![0u32; self.local_sig.len()];
+            for ax in 0..nax {
+                for &s in self.local_sig_of(ax as u32) {
+                    prod[fill[s as usize] as usize] = ax as u32;
+                    fill[s as usize] += 1;
+                }
+            }
+            (prod_off, prod)
+        })
     }
 
     pub fn axiom_count(&self) -> usize {
@@ -1471,6 +1720,71 @@ impl LocalityIndex {
         if (0..self.axiom_hash.len()).any(|a| base.in_mod[a] && marked[a]) {
             return None;
         }
+        let nsym = self.symbols.len();
+        let nax = self.axiom_hash.len();
+        let (prod_off, prod) = self.producers();
+        let mut reach_ax = vec![false; nax];
+        let mut reach_sym = vec![false; nsym];
+        let mut q_ax = Vec::new();
+        for ax in 0..nax {
+            if marked[ax] && !disabled[ax] && !base.in_mod[ax] {
+                reach_ax[ax] = true;
+                q_ax.push(ax as u32);
+            }
+        }
+        let mut reach_classes = Vec::new();
+        while let Some(ax) = q_ax.pop() {
+            let c_lo = self.ax_conj_off[ax as usize] as usize;
+            let c_hi = self.ax_conj_off[ax as usize + 1] as usize;
+            for c in c_lo..c_hi {
+                let l_lo = self.conj_off[c] as usize;
+                let l_hi = self.conj_off[c + 1] as usize;
+                for &s in &self.conj_lits[l_lo..l_hi] {
+                    let su = s as usize;
+                    if !base.in_s[su] && !reach_sym[su] {
+                        reach_sym[su] = true;
+                        if self.is_class[su] {
+                            reach_classes.push(s);
+                        }
+                        let p_lo = prod_off[su] as usize;
+                        let p_hi = prod_off[su + 1] as usize;
+                        for &p_ax in &prod[p_lo..p_hi] {
+                            let pu = p_ax as usize;
+                            if !disabled[pu] && !base.in_mod[pu] && !reach_ax[pu] {
+                                reach_ax[pu] = true;
+                                q_ax.push(p_ax);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if reach_classes.is_empty() {
+            return Some(Vec::new());
+        }
+        if reach_classes.len() <= 4096 {
+            reach_classes.sort_unstable();
+            let mut work = base.clone();
+            work.logging = true;
+            work.log_s.clear();
+            work.log_c.clear();
+            work.log_m.clear();
+            let mut out = Vec::new();
+            for node in reach_classes {
+                let cp = (work.log_s.len(), work.log_c.len(), work.log_m.len());
+                queue.clear();
+                work.add(node, &mut queue);
+                let hit = work.run_logged(self, &mut queue, disabled, &mut |ev| match ev {
+                    Event::Axiom(ax) => marked[ax as usize],
+                    Event::Symbol(_) => false,
+                });
+                work.undo_to(cp);
+                if hit {
+                    out.push(node);
+                }
+            }
+            return Some(out);
+        }
         // Depth-first over a forest in which every class's parent lies in
         // its module signature (a single-literal trigger `B` of an axiom whose
         // signature contains class `A` puts `A` into the module of `B`). Then
@@ -1478,8 +1792,7 @@ impl LocalityIndex {
         // parent's state, so each class only propagates its delta. A class
         // whose delta fires a marked axiom is affected together with its whole
         // subtree (their modules contain its module).
-        let nsym = self.symbols.len();
-        let candidate = |a: u32| self.is_class[a as usize] && !base.in_s[a as usize];
+        let candidate = |a: u32| self.is_class[a as usize] && !base.in_s[a as usize] && reach_sym[a as usize];
         let mut parent = vec![u32::MAX; nsym];
         for c in 0..self.conj_axiom.len() {
             if disabled[self.conj_axiom[c] as usize]
@@ -2390,6 +2703,7 @@ impl ToldProofs {
         }
         let mut stats = ToldReuse::default();
         let mut replay_ids = Vec::new();
+        let empty_support = std::sync::Arc::new(ToldSupport::default());
         for st in &scan.statements {
             if st.kind != StmtKind::Logical { continue; }
             let slice = &text[st.start..st.end];
@@ -2405,9 +2719,13 @@ impl ToldProofs {
                 stats.parsed_statements += 1;
                 t.recording = Some(ToldSupport::default());
                 t.parse_statement(&bld, slice, st.hash);
-                let support = std::sync::Arc::new(t.recording.take().expect("support recorder"));
+                let rec = t.recording.take().expect("support recorder");
                 for id in t.record_used.drain(..) { t.record_ids[id as usize] = u32::MAX; }
-                support
+                if rec.names.is_empty() && rec.edges.is_empty() && rec.definitions.is_empty() {
+                    empty_support.clone()
+                } else {
+                    std::sync::Arc::new(rec)
+                }
             };
             t.supports.push((st.hash, support));
         }
@@ -2419,6 +2737,8 @@ impl ToldProofs {
     fn resolver(scan: &Scan) -> Builder<'_> {
         Builder {
             prefixes: &scan.prefixes,
+            donor_old: None,
+            donor_remap: Vec::new(),
             symbols: Vec::new(),
             sym_ids: FxHashMap::default(),
             is_class: Vec::new(),
@@ -2579,6 +2899,47 @@ impl ToldProofs {
     }
 
     fn parse_statement(&mut self, bld: &Builder<'_>, slice: &str, tag: u128) {
+            if slice.starts_with("SubClassOf") && !slice.contains("Annotation") {
+                let mut toks = crate::frontend::sexpr::tokens(slice);
+                if toks.next() == Some("SubClassOf") && toks.next() == Some("(") {
+                    if let (Some(t1), Some(t2)) = (toks.next(), toks.next()) {
+                        if t1 == "(" || t2 == "(" {
+                            return;
+                        }
+                        if t1 != ")" && t2 != ")" {
+                            match toks.next() {
+                                Some(")") if toks.next().is_none() => {
+                                    let Some(a) = self.name(bld, &Node::Atom(t1)) else { return };
+                                    if let Some(b) = self.name(bld, &Node::Atom(t2)) {
+                                        self.edge(a, b, tag);
+                                    }
+                                    return;
+                                }
+                                Some("(") if t2 != "ObjectIntersectionOf" => {
+                                    let mut depth = 1usize;
+                                    for tok in &mut toks {
+                                        match tok {
+                                            "(" => depth += 1,
+                                            ")" => {
+                                                depth -= 1;
+                                                if depth == 0 {
+                                                    break;
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    if depth == 0 && toks.next() == Some(")") && toks.next().is_none() {
+                                        let _ = self.name(bld, &Node::Atom(t1));
+                                        return;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
             let Ok(node) = Parser::new(slice).parse() else { return };
             let Node::List(head, args) = &node else { return };
             let args: Vec<&Node<'_>> = args.iter().filter(|n| n.head() != Some("Annotation")).collect();

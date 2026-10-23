@@ -59,6 +59,29 @@ fn expression(node: &Node<'_>, prefixes: &BTreeMap<String, String>) -> Option<Ve
     result.sort(); result.dedup();
     (!result.is_empty() && result.len() <= MAX_BODY).then_some(result)
 }
+/// Positive/head position: in `A ⊑ C1 ⊓ C2`, each supported conjunct `Ci` is
+/// soundly entailed on its own even if another conjunct is outside this
+/// optional proposal fragment.
+fn head_expression(node: &Node<'_>, prefixes: &BTreeMap<String, String>) -> Option<Vec<Pred>> {
+    let mut result = match node {
+        Node::Atom(_) => vec![Pred::Class(iri(node, prefixes)?)],
+        Node::List("ObjectHasValue", args) if args.len() == 2 =>
+            vec![Pred::Value(role(&args[0], prefixes)?, iri(&args[1], prefixes)?)],
+        Node::List("ObjectIntersectionOf", args) if (2..=MAX_BODY).contains(&args.len()) => {
+            let mut out = Vec::new();
+            for arg in args {
+                if let Some(sub) = head_expression(arg, prefixes) {
+                    out.extend(sub);
+                    if out.len() > MAX_BODY { return None; }
+                }
+            }
+            out
+        },
+        _ => return None,
+    };
+    result.sort(); result.dedup();
+    (!result.is_empty() && result.len() <= MAX_BODY).then_some(result)
+}
 impl Program {
     fn collect(&mut self, node: &Node<'_>, hash: u128, prefixes: &BTreeMap<String, String>) -> Option<()> {
         let Node::List(head, args) = node else { return Some(()); };
@@ -75,21 +98,22 @@ impl Program {
                 }
             },
             ("SubClassOf", [left, right]) => {
-                if let (Some(body), Some(head)) = (expression(left, prefixes), expression(right, prefixes)) {
+                if let (Some(body), Some(head)) = (expression(left, prefixes), head_expression(right, prefixes)) {
                     self.rules.push(Rule { body, head, hash });
                 }
             },
             ("EquivalentClasses", items) if (2..=16).contains(&items.len()) => {
-                // Skip the whole axiom if any expression is outside this fragment.
-                if let Some(forms) = items.iter().map(|n| expression(n, prefixes)).collect::<Option<Vec<_>>>() {
-                    for form in forms.iter().skip(1) {
-                        self.rules.push(Rule { body: forms[0].clone(), head: form.clone(), hash });
-                        self.rules.push(Rule { body: form.clone(), head: forms[0].clone(), hash });
+                for item in items.iter().skip(1) {
+                    if let (Some(body), Some(head)) = (expression(&items[0], prefixes), head_expression(item, prefixes)) {
+                        self.rules.push(Rule { body, head, hash });
+                    }
+                    if let (Some(body), Some(head)) = (expression(item, prefixes), head_expression(&items[0], prefixes)) {
+                        self.rules.push(Rule { body, head, hash });
                     }
                 }
             },
             ("ObjectPropertyDomain", [property, domain]) => {
-                if let (Some(property), Some(domain)) = (role(property, prefixes), expression(domain, prefixes)) {
+                if let (Some(property), Some(domain)) = (role(property, prefixes), head_expression(domain, prefixes)) {
                     self.domains.entry(property).or_default().push((domain, hash)); self.constraints += 1;
                 }
             },

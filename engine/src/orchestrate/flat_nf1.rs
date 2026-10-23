@@ -111,7 +111,7 @@ fn source_certainly_declines<R: BufRead>(
             return Ok(false);
         }
         let text = line.trim();
-        if text.is_empty() {
+        if text.is_empty() || text.starts_with('#') {
             continue;
         }
         if !SCREEN_ACCEPTED_LINE_PREFIXES
@@ -591,7 +591,17 @@ pub(super) fn try_classify(path: &Path) -> io::Result<Option<GroupedJsonTaxonomy
         }));
     }
     if source_bytes < MIN_DIRECT_SOURCE_BYTES {
-        return Ok(None);
+        if source_bytes == 0 {
+            return Ok(None);
+        }
+        let file = File::open(path)?;
+        let reader = BufReader::with_capacity(64 << 10, file);
+        if !flat_source_screen(reader)? {
+            return Ok(None);
+        }
+        let file = File::open(path)?;
+        let reader = BufReader::with_capacity(64 << 10, file);
+        return classify_reader(reader, 1);
     }
 
     let file = File::open(path)?;
@@ -775,7 +785,7 @@ fn positive_abox_empty_taxonomy_screen<R: BufRead>(mut reader: R) -> io::Result<
             break;
         }
         let text = line.trim();
-        if text.is_empty() {
+        if text.is_empty() || text.starts_with('#') {
             continue;
         }
         if closed {
@@ -821,7 +831,7 @@ fn pure_leaf_source_screen<R: BufRead>(mut reader: R) -> io::Result<bool> {
             break;
         }
         let text = line.trim();
-        if text.is_empty() {
+        if text.is_empty() || text.starts_with('#') {
             continue;
         }
         if closed {
@@ -915,6 +925,7 @@ fn flat_source_screen<R: BufRead>(mut reader: R) -> io::Result<bool> {
         }
         let text = line.trim();
         if text.is_empty()
+            || text.starts_with('#')
             || text == ")"
             || prefix_declaration(text)
             || ontology_header(text)
@@ -1071,7 +1082,7 @@ fn classify_sparse_horn_reader<R: BufRead>(
             break;
         }
         let text = line.trim();
-        if text.is_empty() {
+        if text.is_empty() || text.starts_with('#') {
             continue;
         }
         if closed {
@@ -1650,7 +1661,7 @@ fn classify_reader<R: BufRead>(
             break;
         }
         let text = line.trim();
-        if text.is_empty() {
+        if text.is_empty() || text.starts_with('#') {
             continue;
         }
         if closed {
@@ -2663,6 +2674,7 @@ mod certain_decline_tests {
             "DisjointClasses(<http://e/C0001> <http://e/C0002>)\n",
             "DifferentIndividuals(<http://e/i> <http://e/j>)\n",
             "  SubClassOf(<http://e/C0001> <http://e/C0002>)  \r\n",
+            "# a comment line\n",
         ] {
             let text = source(extra);
             assert!(
@@ -2699,7 +2711,6 @@ mod certain_decline_tests {
             "ObjectPropertyAssertion(<http://e/r> <http://e/i> <http://e/j>)\n",
             "SameIndividual(<http://e/i> <http://e/j>)\n",
             "DLSafeRule(Body() Head())\n",
-            "# a comment line\n",
             // 3. an existential left side with a real binary role axiom
             "SubClassOf(ObjectSomeValuesFrom(<http://e/r> <http://e/C0001>) <http://e/C0002>)\n\
              SubObjectPropertyOf(<http://e/r> <http://e/s>)\n",

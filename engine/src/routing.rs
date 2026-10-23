@@ -1443,7 +1443,7 @@ fn source_el_shape(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
 
-    source.logical_axioms >= 1_000
+    source.logical_axioms > 0
         && source.existentials > 0
         && source.declared_data_properties == 0
         && source.domain_axioms == 0
@@ -1720,7 +1720,8 @@ fn bounded_near_el_certified_candidate(profile: &OntologyProfile) -> bool {
             && source.unions <= ABSORBABLE_UNIONS
             && source.unions.saturating_mul(UNION_AXIOM_SHARE) <= source.logical_axioms);
 
-    source.logical_axioms >= TRIVIAL_SOURCE_AXIOMS
+    (source.logical_axioms >= TRIVIAL_SOURCE_AXIOMS
+        || (source.logical_axioms > 0 && source.unions == 0 && source.existentials > 0))
         && source.file_bytes <= REFUSAL_BUDGET_BYTES
         && source.max_concept_depth <= 3
         && source.disjoint_class_axioms <= source.distinct_classes
