@@ -1,5 +1,111 @@
 # Changelog
 
+## [1.5.2]
+
+### Benchmark result and removal of performance exception
+
+Across the frozen 80-ontology incremental benchmark panel (`r0` initialization plus
+`r1..r8` updates, four arms, five counterbalanced repetitions), every evaluated
+incremental update cell (`632 / 632` CLI and `632 / 632` OWLAPI; `624 / 624`
+four-arm CLI and `608 / 608` four-arm OWLAPI) has a median paired
+`candidate_retained / candidate_fresh` ratio strictly below `1.0`, and every
+completed whole session (`79 / 79` candidate-complete on both CLI and OWLAPI;
+`78 / 78` four-arm CLI and `76 / 76` four-arm OWLAPI) has a lower
+`candidate_retained` session median than `candidate_fresh` and every available
+fresh baseline.
+
+The v1.5.1 whole-session performance exception on `ore_ont_2713` has been resolved
+and [`docs/release-1.5.1-performance-exception.json`](docs/release-1.5.1-performance-exception.json)
+has been removed. On `ore_ont_16744`, KM 1.5.2 (`candidate_retained` and
+`candidate_fresh`) completes all nine revisions across all five repetitions on both
+CLI and OWLAPI (where v1.5.0 and v1.5.1 timed out on updates 7 and 8). On
+`ore_ont_10689` and `ore_ont_15703`, KM 1.5.2 completes all five repetitions of
+both `candidate_retained` and `candidate_fresh` on CLI and OWLAPI (whereas v1.5.0
+had OWLAPI baseline non-completions). Only `ore_ont_1194` times out at 240 seconds
+across all four arms and remains in the 80-case / 640-cell denominators. Zero
+available answers differ across arms (`0` semantic differences across `3,555`
+candidate-pair revision checks on CLI and `3,555` on OWLAPI), and zero completed
+update cells (`r1..r8`) fall back to `full_classify`.
+
+On the full 1,920-ontology total static classification benchmark
+(`full-candidate-inputs.json`, SHA-256
+`0309377d05dfd0cd81eb46050416272fbd52b16e77f21d9a37d732b352817fb4`, `1,708`
+admitted `checks_passed` ontologies and `212` `invalid_input` expected refusals),
+KM 1.5.2 solves `1,660 / 1,708` admitted ontologies verified against the four
+independent reference reasoners (`konclude`, `hermit`, `openllet`, `jfact`),
+refuses `212 / 212` invalid inputs (`0` unresolved), and produces `0` taxonomy
+differences across all `1,660` completed classifications compared against released
+KM 1.5.0. Updated `RustDL v0.4.41` (`7bf5af7e1b1381bf879540f433d6b5f0f4c70f89`,
+SHA-256 `52f3e03be74a82a51854e76e26cc4aa95681f87f340f1ba11fa81fecffc243a1`) was
+also built and evaluated on the 1,920-ontology benchmark, solving `1,428 / 1,708`
+admitted ontologies (up from `1,212` in `RustDL v0.4.28`); on the `1,419` common
+verified ontologies, KM 1.5.2 has mean / median wall time `2.3638 s / 0.2462 s`
+versus `8.3728 s / 0.6257 s` for `RustDL v0.4.41`. See the attached
+`BENCHMARKS.md`, `build-completion.json`, and
+[release protocol](docs/RELEASE-1.5.2.md).
+
+### Incremental and classification improvements
+
+- Add a direct `flat_nf1` classification and incremental locality fast path
+  (`engine/src/orchestrate/flat_nf1.rs`, `engine/src/routing.rs`,
+  `engine/src/source_locality.rs`, `engine/src/named_subclass_validation.rs`) for
+  assertion-free ontologies whose TBox consists of unary named-class
+  `SubClassOf(A, B)` axioms, declarations, and annotations. This path computes the
+  exact transitive closure over dense integer class IDs while preserving full ELC
+  publication certification and incremental module reuse, recovering `ore_ont_16744`
+  updates 7 and 8 from 240-second timeouts down to ~0.4–13 seconds.
+- Upgrade assertion-free initial TBox locality indexes to `exact_full` cross-revision
+  compiler donors (`engine/src/incr_session.rs`) and extend localized incremental
+  support reuse (`engine/src/incr_support/rules.rs`,
+  `engine/src/incr_support/object.rs`), eliminating all remaining `full_classify`
+  update fallbacks across `r1..r8`.
+- Initialize retained OWLAPI sessions directly through `sendSessionInit` in
+  `KMReasoner` (`protege/src/main/java/org/bioontology/kobayashimarust/protege/KMReasoner.java`),
+  eliminating the duplicate one-shot `km classify` process spawn during `r0`
+  initialization, and stream compact functional syntax without non-semantic comment
+  lines or per-token flushes (`Classifier.java`, `RetainedFunctionalSyntax.java`).
+
+### Comparison identities and validation
+
+Both the native implementation and the Java OWLAPI adapter are built from commit
+`1f4fb91e61ae072aa64ad6d8ca58732a77e90a59`. The final release commit adds release
+documentation only, with an empty tree diff against `engine/`, `lean/`, and
+`protege/`.
+
+| Method | Version and full source commit | Artifact SHA-256 | Execution / scope |
+|---|---|---|---|
+| Candidate retained | KM 1.5.2, `1f4fb91e61ae072aa64ad6d8ca58732a77e90a59` | `5bdced8e7926686927799b61549cdc19e122487d36d32f58d48a25d064c0662b` (native), `25f9f66f7f7164225f65cfc04ab8c335b3f25f394a9153a45dec942370cc0053` (JAR) | Persistent source/OWLAPI session |
+| Candidate fresh | KM 1.5.2, `1f4fb91e61ae072aa64ad6d8ca58732a77e90a59` | `5bdced8e7926686927799b61549cdc19e122487d36d32f58d48a25d064c0662b` (native), `25f9f66f7f7164225f65cfc04ab8c335b3f25f394a9153a45dec942370cc0053` (JAR) | 1,920-input static classifier and fresh per-revision classifier |
+| Released retained | KM 1.5.0, `d95f0b840a433b5b43c4eff48092e8b600bca8de` | `1dbc0dd92170abcd70e948fa2dc2d9d13d5c72076bcff9ad7a664921188e5900` | Released persistent session |
+| Released fresh | KM 1.5.0, `d95f0b840a433b5b43c4eff48092e8b600bca8de` | `1dbc0dd92170abcd70e948fa2dc2d9d13d5c72076bcff9ad7a664921188e5900` | Released 1,920-input static and fresh per-revision classifier |
+| Prior incremental release | KM 1.5.1, `2823c0ebd98ec9d6f4afd2cdb19bb0ba5bffab2a` | `5ee715d66e391e561e188c735a8fa6a0aaabc4383e7d8bd243b52495b2cac3a8` (native), `8ffdfbc4d3e947afe1b03d86a17bb9d57ff5f73b12acfc01b1f2d00f5e2cabb9` (JAR) | Prior incremental release reference |
+| Konclude | `v0.7.0-1138`, `0002e80635403960a7df5d93bd0e8f994d4952d0` (banner `500e11d9`) | `e8dd5373d4606a1c9dbab0896b5939124ef7997781f15aea0d6f5fc6fd4cf0f4` | 1,920-input correctness and comparative reference |
+| RustDL (updated latest) | `v0.4.41`, `7bf5af7e1b1381bf879540f433d6b5f0f4c70f89` (tag `6f50561fdf5ed6b442cd9e3da38a05c78c076645`) | `52f3e03be74a82a51854e76e26cc4aa95681f87f340f1ba11fa81fecffc243a1` | 1,920-input comparative benchmark (updated latest) |
+| RustDL (v1.5.0 baseline) | `v0.4.28`, `b120b1783dc83838df186591b18ac68891a2e87d` | `20b31b3f53474e95e533e0eae84d7d85da48be6987599f4ba6ee947e65ab6bea` | 1,920-input comparative benchmark (historical baseline) |
+| ELK | `v0.6.0`, `b8ac5ce83db0704a7359d96aa382891e2f547863` | `7ffc442f2966667a488479a748502276136445c8e44ffd9e8498873a401cb3d4` | 1,920-input and ORE comparative reference |
+| HermiT | `1.4.5.519` (Maven `net.sourceforge.owlapi:org.semanticweb.hermit:1.4.5.519`) | `59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c` | 1,920-input correctness and ORE comparative reference |
+| Openllet | `2.6.5` (Maven `com.github.galigator.openllet:openllet-owlapi:2.6.5`) | `43671b4a4ea06a24834183b5c55cdb3830fe1c96d33ffe56b32a5167d6f0319f` | 1,920-input correctness reference |
+| JFact | `5.0.3` (Maven `net.sourceforge.owlapi:jfact:5.0.3`) | `06f85fd8e6cc647f7436b8a13da13a4d0b03b2df1d1184394ebe885f29c65867` | 1,920-input correctness reference |
+| Whelk | `v1.2.1`, `cd559645c89337190331e66673dc6d31eed5a291` (tag `d0f430f6468b6449cbaa6cf3e5d63f4042aae998`) | `e5ce43b18ee9e8ada9ce9cc2a7cea35f6658d56089b3d4caa4bb9bfec2fce55b` | Comparative benchmark reference |
+| MORe | `0.2.0-SNAPSHOT`, `9d29fb15352b781a3dba015696b1b269320603b2` | `1097e637fd25f2f64b9fd63c1f0f2ab24c2c2c3a198b7b5c521ea43915840302` | Comparative benchmark reference |
+| Sequoia | `0.6.1-alpha`, `c5248ec7be30` | `a84dfc7b30cb46dfd9333ef89ac6c2b1cd3bb27025777cc02f8c84b6df7a7649` (launcher), `283a6b1b0f1113a4c40403f81eab28bc972926cd984f9e484a949ffbfbd6f39f` (runtime manifest) | Comparative benchmark reference |
+
+All four production Lean certification gates (`elc`, `routing`, `ht`, `cb`) pass
+from the exact tagged commit with zero `sorryAx`, alongside the 45-command serial
+Rust CI suite and all 76 Java tests.
+
+### Release artifacts and reproducibility
+
+[Release documentation](docs/RELEASE-1.5.2.md) describes the benchmark protocol and
+competing method identities. The release's
+[`BENCHMARKS.md`](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.5.2/BENCHMARKS.md)
+contains per-case and per-update timing, coverage, and strategy tables.
+[`build-completion.json`](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.5.2/build-completion.json)
+binds those results, exact-tag certification, source, native executable, and JAR
+hashes. Assets include `km-v1.5.2-linux-x86_64`, `kobayashi-marust-protege-1.5.2.jar`,
+`km-v1.5.2-certified-source.tar.gz`, `BENCHMARKS.md`, `build-completion.json`, and
+`SHA256SUMS`.
+
 ## [1.5.1]
 
 ### Benchmark result and accepted exception
