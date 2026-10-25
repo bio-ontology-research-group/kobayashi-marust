@@ -1,5 +1,111 @@
 # Changelog
 
+## [1.5.3]
+
+### Matched 1,920-ontology classification and 80-ontology incremental results
+
+On the full 1,920-ontology total static classification benchmark
+(`full-candidate-inputs.json`, SHA-256
+`0309377d05dfd0cd81eb46050416272fbd52b16e77f21d9a37d732b352817fb4`, `1,708`
+admitted `checks_passed` ontologies and `212` `invalid_input` expected refusals),
+evaluated on matched IBEX `cpu_intel_gold_6248` hardware (Intel Xeon Gold 6248 @
+2.50 GHz) with scoped process-tree monitoring (`ScopedSnapshot` + kernel `pidfd`
+exit readiness) and profile-guided optimization (`-Cprofile-use`, profile SHA-256
+`63c8227e30b6008625bacce2e2ff2e6986a1c124e7bba702f993e4b9019f745b`), KM 1.5.3
+solves `1,662 / 1,708` admitted ontologies verified against the four independent
+reference reasoners (`konclude`, `hermit`, `openllet`, `jfact`), refuses
+`212 / 212` invalid inputs (`0` unresolved), and produces `0` taxonomy
+differences across all `1,663` common completed classifications compared against
+released KM 1.5.0 while newly solving `ore_ont_8509` in `4.02 s` and recovering
+`ore_ont_2874`.
+
+Across all `1,662` verified completions, KM 1.5.3 achieves `2.6581 s` mean and
+`0.1377 s` median classification time (`218.23 MiB` mean peak RSS, `56.27 MiB`
+median peak RSS), beating `konclude` (`2.9232 s` mean / `0.2690 s` median across
+`1,655` solved; `2.1246 s / 0.1336 s` vs `2.9334 s / 0.2671 s` on the `1,642`
+common verified ontologies), KM 1.5.0 (`3.2557 s / 0.2305 s` across `1,661`
+solved; `2.6574 s / 0.1374 s` vs `3.2557 s / 0.2305 s` on the `1,661` common),
+KM 1.5.2 (`5.6605 s / 0.3209 s` across `1,660` solved; `2.5969 s / 0.1373 s` vs
+`5.6605 s / 0.3209 s` on the `1,660` common), `rustdl v0.4.41` (`8.5060 s /
+0.6576 s` across `1,428` solved; `1.0699 s / 0.1050 s` vs `8.3728 s / 0.6257 s`
+on `1,419` common), `rustdl v0.4.28` (`5.1386 s / 0.3312 s` across `1,212`
+solved; `1.0381 s / 0.0979 s` vs `5.0630 s / 0.3183 s` on `1,205` common), and
+`elk v0.6.0` (`11.9712 s / 4.7772 s` across `1,411` solved; `1.7085 s / 0.1061 s`
+vs `11.7327 s / 4.7464 s` on `1,399` common).
+
+Across the frozen 80-ontology incremental benchmark panel (`r0` initialization
+plus `r1..r8` updates, four arms, five counterbalanced repetitions), every
+evaluated incremental update cell (`632 / 632` CLI and `632 / 632` OWLAPI;
+`624 / 624` four-arm CLI and `608 / 608` four-arm OWLAPI) has a median paired
+`candidate_retained / candidate_fresh` ratio strictly below `1.0`, and every
+completed whole session (`79 / 79` candidate-complete on both CLI and OWLAPI;
+`78 / 78` four-arm CLI and `76 / 76` four-arm OWLAPI) has a lower
+`candidate_retained` session median than `candidate_fresh` and every available
+fresh baseline, with `0` semantic differences across `3,555` candidate-pair
+revision checks on CLI and `3,555` on OWLAPI. See the attached `BENCHMARKS.md`,
+`build-completion.json`, and [release protocol](docs/RELEASE-1.5.3.md).
+
+### Classification, routing, and harness improvements
+
+- Diagnose and resolve the v1.5.2 static-classification slowdown caused by (1)
+  unscoped `/proc` process-tree polling (`tree_watchdog.snapshot_all()`) sharing
+  the single pinned CPU core at 50 Hz and adding up to `20 ms` post-exit sleep
+  latency, replaced by scoped `/proc/<pid>/task/<tid>/children` + `cgroup.procs`
+  sampling (`ScopedSnapshot`) and kernel `pidfd` exit readiness, (2) Broadwell
+  workstation multi-worker contention versus IBEX `cpu_intel_gold_6248` Cascade
+  Lake hardware, and (3) non-PGO compilation versus PGO (`-Cprofile-use`).
+- Replace eager per-node resolution vector clones with copy-on-write storage in
+  hypertableau (`engine/src/tableau.rs`) and pack clause head bitsets into a
+  single machine word when the signature fits (`engine/src/clause.rs`).
+- Extend classifier-owned atomic ABox projection across the screened nominal-free
+  object fragment and anonymous individuals (`engine/src/abox_project.rs`), retry
+  compact EL-ABox fallback in-memory without reloading the ontology from disk
+  (`engine/src/orchestrate/runner.rs`), refine HT bridge-first and
+  certified-nominal routing guards (`engine/src/routing.rs`), and add fast
+  integral decimal lexical screening (`engine/src/frontend/conformance.rs`).
+
+### Comparison identities and validation
+
+Both the native implementation and the Java OWLAPI adapter are built from commit
+`ecc4b1c57bc799bd8b2cf501fb5c2921607d9051`. The final release commit adds release
+documentation only, with an empty tree diff against `engine/`, `lean/`, and
+`protege/`.
+
+| Method | Version and full source commit | Artifact SHA-256 | Execution / scope |
+|---|---|---|---|
+| Candidate retained | KM 1.5.3, `ecc4b1c57bc799bd8b2cf501fb5c2921607d9051` | `2470b0415f1a78533024e15b5c317f9e743a98916b597739db93b9452a8dd8d4` (native), `fa6d4c6aa97da3811bc411ab51d597d25c1a8d31e333383599ef13be916b10be` (JAR) | Persistent source/OWLAPI session |
+| Candidate fresh | KM 1.5.3, `ecc4b1c57bc799bd8b2cf501fb5c2921607d9051` | `2470b0415f1a78533024e15b5c317f9e743a98916b597739db93b9452a8dd8d4` (native), `fa6d4c6aa97da3811bc411ab51d597d25c1a8d31e333383599ef13be916b10be` (JAR) | 1,920-input static classifier and fresh per-revision classifier |
+| Released retained | KM 1.5.0, `d95f0b840a433b5b43c4eff48092e8b600bca8de` | `1dbc0dd92170abcd70e948fa2dc2d9d13d5c72076bcff9ad7a664921188e5900` | Released persistent session |
+| Released fresh | KM 1.5.0, `d95f0b840a433b5b43c4eff48092e8b600bca8de` | `1dbc0dd92170abcd70e948fa2dc2d9d13d5c72076bcff9ad7a664921188e5900` | Released 1,920-input static and fresh per-revision classifier |
+| Prior release | KM 1.5.2, `860d2a41861554c4ec2966d961781b87c6c732ee` (impl `1f4fb91e61ae072aa64ad6d8ca58732a77e90a59`) | `5bdced8e7926686927799b61549cdc19e122487d36d32f58d48a25d064c0662b` (native), `25f9f66f7f7164225f65cfc04ab8c335b3f25f394a9153a45dec942370cc0053` (JAR) | Prior non-PGO release reference |
+| Prior incremental release | KM 1.5.1, `2823c0ebd98ec9d6f4afd2cdb19bb0ba5bffab2a` | `5ee715d66e391e561e188c735a8fa6a0aaabc4383e7d8bd243b52495b2cac3a8` (native), `8ffdfbc4d3e947afe1b03d86a17bb9d57ff5f73b12acfc01b1f2d00f5e2cabb9` (JAR) | Prior incremental release reference |
+| Konclude | `v0.7.0-1138`, `0002e80635403960a7df5d93bd0e8f994d4952d0` (banner `500e11d9`) | `e8dd5373d4606a1c9dbab0896b5939124ef7997781f15aea0d6f5fc6fd4cf0f4` | 1,920-input correctness and comparative reference |
+| RustDL (updated latest) | `v0.4.41`, `7bf5af7e1b1381bf879540f433d6b5f0f4c70f89` (tag `6f50561fdf5ed6b442cd9e3da38a05c78c076645`) | `52f3e03be74a82a51854e76e26cc4aa95681f87f340f1ba11fa81fecffc243a1` | 1,920-input comparative benchmark (updated latest) |
+| RustDL (v1.5.0 baseline) | `v0.4.28`, `b120b1783dc83838df186591b18ac68891a2e87d` | `20b31b3f53474e95e533e0eae84d7d85da48be6987599f4ba6ee947e65ab6bea` | 1,920-input comparative benchmark (historical baseline) |
+| ELK | `v0.6.0`, `b8ac5ce83db0704a7359d96aa382891e2f547863` | `7ffc442f2966667a488479a748502276136445c8e44ffd9e8498873a401cb3d4` | 1,920-input and ORE comparative reference |
+| HermiT | `1.4.5.519` (Maven `net.sourceforge.owlapi:org.semanticweb.hermit:1.4.5.519`) | `59a7dc34d874c0dd9fb752594eb8d55b611e70d3cf7e839d581d7c366a5dd99c` | 1,920-input correctness and ORE comparative reference |
+| Openllet | `2.6.5` (Maven `com.github.galigator.openllet:openllet-owlapi:2.6.5`) | `43671b4a4ea06a24834183b5c55cdb3830fe1c96d33ffe56b32a5167d6f0319f` | 1,920-input correctness reference |
+| JFact | `5.0.3` (Maven `net.sourceforge.owlapi:jfact:5.0.3`) | `06f85fd8e6cc647f7436b8a13da13a4d0b03b2df1d1184394ebe885f29c65867` | 1,920-input correctness reference |
+| Whelk | `v1.2.1`, `cd559645c89337190331e66673dc6d31eed5a291` (tag `d0f430f6468b6449cbaa6cf3e5d63f4042aae998`) | `e5ce43b18ee9e8ada9ce9cc2a7cea35f6658d56089b3d4caa4bb9bfec2fce55b` | Comparative benchmark reference |
+| MORe | `0.2.0-SNAPSHOT`, `9d29fb15352b781a3dba015696b1b269320603b2` | `1097e637fd25f2f64b9fd63c1f0f2ab24c2c2c3a198b7b5c521ea43915840302` | Comparative benchmark reference |
+| Sequoia | `0.6.1-alpha`, `c5248ec7be30` | `a84dfc7b30cb46dfd9333ef89ac6c2b1cd3bb27025777cc02f8c84b6df7a7649` (launcher), `283a6b1b0f1113a4c40403f81eab28bc972926cd984f9e484a949ffbfbd6f39f` (runtime manifest) | Comparative benchmark reference |
+
+All four production Lean certification gates (`elc`, `routing`, `ht`, `cb`) pass
+from the exact tagged commit with zero `sorryAx`, alongside the 45-command serial
+Rust CI suite (`3,120` passed, `0` failed) and all 76 Java tests.
+
+### Release artifacts and reproducibility
+
+[Release documentation](docs/RELEASE-1.5.3.md) describes the root-cause analysis,
+benchmark protocol, and competing method identities. The release's
+[`BENCHMARKS.md`](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.5.3/BENCHMARKS.md)
+contains per-case and per-update timing, coverage, and strategy tables.
+[`build-completion.json`](https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.5.3/build-completion.json)
+binds those results, exact-tag certification, source, native executable, and JAR
+hashes. Assets include `km-v1.5.3-linux-x86_64`, `kobayashi-marust-protege-1.5.3.jar`,
+`km-v1.5.3-certified-source.tar.gz`, `BENCHMARKS.md`, `build-completion.json`, and
+`SHA256SUMS`.
+
 ## [1.5.2]
 
 ### Benchmark result and removal of performance exception

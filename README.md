@@ -24,7 +24,7 @@ without access to the expected answer.
 - Source-level transactional incremental reasoning reuses exact taxonomy rows,
   source indexes, and checked supports where eligible, with full-classification
   fallback and atomic updates. See the [incremental API](docs/INCREMENTAL-REASONING.md)
-  and [v1.5.2 release and benchmark protocol](docs/RELEASE-1.5.2.md).
+  and [v1.5.3 release and benchmark protocol](docs/RELEASE-1.5.3.md).
 - The native CLI and OWLAPI/Protégé integration return verified, subset-minimal
   source-axiom explanations for every advertised entailment kind.
 - Lean provides sorry-free soundness and completeness certification for the
@@ -109,15 +109,22 @@ gold, 35 invalid-input refusals, two memory-limit failures, and one timeout.
 The historical benchmark table below does not describe these new validation
 rules.
 
-In v1.5.2 ([`docs/RELEASE-1.5.2.md`](docs/RELEASE-1.5.2.md)), the 1,920-ontology
-static classification benchmark solves `1,660 / 1,708` admitted ontologies
-verified against `konclude` (`v0.7.0-1138`, `0002e80635403960a7df5d93bd0e8f994d4952d0`),
-`hermit` (`1.4.5.519`), `openllet` (`2.6.5`), and `jfact` (`5.0.3`), refuses all
-`212 / 212` invalid inputs, and compares against updated `rustdl` (`v0.4.41`,
-`7bf5af7e1b1381bf879540f433d6b5f0f4c70f89`, `1,428` solved), `rustdl` (`v0.4.28`,
-`b120b1783dc83838df186591b18ac68891a2e87d`, `1,212` solved), and `elk` (`v0.6.0`,
-`b8ac5ce83db0704a7359d96aa382891e2f547863`, `1,411` solved). On the 80-ontology
-incremental benchmark, KM 1.5.2 completes all `79 / 79` solvable cases and beats
+In v1.5.3 ([`docs/RELEASE-1.5.3.md`](docs/RELEASE-1.5.3.md)), the 1,920-ontology
+static classification benchmark solves `1,662 / 1,708` admitted ontologies
+verified against `konclude` (`v0.7.0-1138`, `0002e80635403960a7df5d93bd0e8f994d4952d0`,
+`1,655` solved), `hermit` (`1.4.5.519`), `openllet` (`2.6.5`), and `jfact`
+(`5.0.3`), refuses all `212 / 212` invalid inputs, and beats `konclude`
+(`2.9232 s` mean / `0.2690 s` median all-verified; `2.9334 s / 0.2671 s` on the
+`1,642` common verified ontologies), KM 1.5.0 (`3.2557 s / 0.2305 s`, `1,661`
+solved), KM 1.5.2 (`5.6605 s / 0.3209 s`, `1,660` solved), updated `rustdl`
+(`v0.4.41`, `7bf5af7e1b1381bf879540f433d6b5f0f4c70f89`, `8.5060 s / 0.6576 s`,
+`1,428` solved), `rustdl` (`v0.4.28`, `b120b1783dc83838df186591b18ac68891a2e87d`,
+`5.1386 s / 0.3312 s`, `1,212` solved), and `elk` (`v0.6.0`,
+`b8ac5ce83db0704a7359d96aa382891e2f547863`, `11.9712 s / 4.7772 s`, `1,411`
+solved) with `2.6581 s` mean and `0.1377 s` median wall time (`2.1246 s` mean /
+`0.1336 s` median on the `1,642` common verified intersection with `konclude`;
+`218.23 MiB` mean and `56.27 MiB` median peak RSS). On the 80-ontology
+incremental benchmark, KM 1.5.3 completes all `79 / 79` solvable cases and beats
 fresh classification from scratch on `632 / 632` evaluated update cells (`r1..r8`)
 and `79 / 79` completed whole sessions (`r0..r8`) on both CLI and OWLAPI with zero
 semantic differences.
