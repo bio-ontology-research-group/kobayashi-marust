@@ -451,6 +451,7 @@ impl<'a> DataAbox<'a> {
     pub fn atomic_class_assertion_classes(
         &self,
         expected: u64,
+        allow_anonymous_individuals: bool,
     ) -> Option<std::collections::BTreeSet<&'a str>> {
         if expected == 0
             || self.cassert.len() as u64 != expected
@@ -488,7 +489,11 @@ impl<'a> DataAbox<'a> {
         // one shared witness, so aliases are harmless in that case.
         if classes.len() > 1
             && individual_classes.keys().any(|individual| {
-                !individual
+                let valid_anon = allow_anonymous_individuals
+                    && individual
+                        .strip_prefix("_:")
+                        .is_some_and(|label| !label.is_empty() && !label.contains('\\'));
+                let valid_full_iri = individual
                     .strip_prefix('<')
                     .and_then(|s| s.strip_suffix('>'))
                     .is_some_and(|iri| {
@@ -502,7 +507,8 @@ impl<'a> DataAbox<'a> {
                                         c.is_ascii_alphanumeric() || matches!(c, b'+' | b'-' | b'.')
                                     })
                             })
-                    })
+                    });
+                !(valid_anon || valid_full_iri)
             })
         {
             return None;

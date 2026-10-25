@@ -1,4 +1,4 @@
-"""Download prevalidated v1.5.2 assets bound by an annotated release tag.
+"""Download prevalidated v1.5.3 assets bound by an annotated release tag.
 
 This verifies transport identity, not certification or performance acceptance.
 No credentials are required for the allowlisted public HTTPS downloads.
@@ -11,20 +11,20 @@ import re
 import subprocess
 import urllib.request
 
-TAG = "v1.5.2"
+TAG = "v1.5.3"
 HEX = r"[0-9a-f]{64}"
 COMMIT = r"[0-9a-f]{40}"
 NAMES = {
-    "km-v1.5.2-linux-x86_64": 256 << 20,
-    "km-v1.5.2-certified-source.tar.gz": 256 << 20,
+    "km-v1.5.3-linux-x86_64": 256 << 20,
+    "km-v1.5.3-certified-source.tar.gz": 256 << 20,
     "build-completion.json": 8 << 20,
     "BENCHMARKS.md": 16 << 20,
-    "kobayashi-marust-protege-1.5.2.jar": 32 << 20,
+    "kobayashi-marust-protege-1.5.3.jar": 32 << 20,
     "SHA256SUMS": 64 << 10,
 }
-PREFIX = "https://leechuck.de/km-release-assets/v1.5.2/"
+PREFIX = "https://leechuck.de/km-release-assets/v1.5.3/"
 POINTER = re.compile(
-    r"KM-Release-Manifest: (https://leechuck\.de/km-release-assets/v1\.5\.2/"
+    r"KM-Release-Manifest: (https://leechuck\.de/km-release-assets/v1\.5\.3/"
     r"(" + COMMIT + r")/(" + HEX + r")/manifest\.json)"
 )
 

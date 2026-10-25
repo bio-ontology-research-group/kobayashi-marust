@@ -11308,7 +11308,7 @@ pub fn positive_abox_classify(
     clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
 ) -> Option<PositiveAboxResult> {
-    positive_abox_classify_mode(clauses, meta, false, false)
+    positive_abox_classify_mode(clauses, meta, false, false).ok().flatten()
 }
 
 /// Orchestrator-specialized positive-ABox completion. It computes the same
@@ -11318,7 +11318,7 @@ pub(crate) fn positive_abox_classify_compact(
     clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
 ) -> Option<PositiveAboxResult> {
-    positive_abox_classify_mode(clauses, meta, true, false)
+    positive_abox_classify_mode(clauses, meta, true, false).ok().flatten()
 }
 
 /// Fast consistency certificate obtained by homomorphically merging every
@@ -11330,6 +11330,17 @@ pub(crate) fn positive_abox_classify_compact_merged(
     clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
 ) -> Option<PositiveAboxResult> {
+    positive_abox_classify_mode(clauses, meta, true, true).ok().flatten()
+}
+
+/// Like [`positive_abox_classify_compact_merged`], but distinguishes an
+/// out-of-fragment decline (`Ok(None)`) from a merged-root clash (`Err(())`),
+/// so callers only reload and retry the exact per-individual ABox when the
+/// merged over-approximation actually clashed.
+pub(crate) fn positive_abox_classify_compact_merged_with_retry(
+    clauses: Vec<JClause>,
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Result<Option<PositiveAboxResult>, ()> {
     positive_abox_classify_mode(clauses, meta, true, true)
 }
 
@@ -11338,13 +11349,15 @@ fn positive_abox_classify_mode(
     meta: &crate::json_io::NominalAboxMeta,
     compact: bool,
     merged_overapprox: bool,
-) -> Option<PositiveAboxResult> {
-    let prepared = prepare_positive_abox_mode(clauses, meta, merged_overapprox)?;
+) -> Result<Option<PositiveAboxResult>, ()> {
+    let Some(prepared) = prepare_positive_abox_mode(clauses, meta, merged_overapprox) else {
+        return Ok(None);
+    };
     let PositiveAboxPreparation::Clauses { clauses, roots } = prepared else {
-        return Some(PositiveAboxResult {
+        return Ok(Some(PositiveAboxResult {
             consistent: false,
             classification: None,
-        });
+        }));
     };
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
     let result = match if compact {
@@ -11357,7 +11370,7 @@ fn positive_abox_classify_mode(
             if debug {
                 eprintln!("KM_EL_ABOX defer: augmented clause set is not pure EL++");
             }
-            return None;
+            return Ok(None);
         }
     };
     let node_unsat = if let Some(encoded) = &result.compact {
@@ -11380,12 +11393,12 @@ fn positive_abox_classify_mode(
         })
     };
     if merged_overapprox && node_unsat && !result.inconsistent {
-        return None;
+        return Err(());
     }
-    Some(PositiveAboxResult {
+    Ok(Some(PositiveAboxResult {
         consistent: !result.inconsistent && !node_unsat,
         classification: Some(result),
-    })
+    }))
 }
 
 pub fn positive_abox_consistent(

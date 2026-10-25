@@ -447,7 +447,10 @@ fn independent_large_abox_candidate(profile: &OntologyProfile) -> bool {
 /// terminologies from the SRIQ member of the same ABox family.
 fn independent_large_abox_el_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
     independent_large_abox_candidate(profile)
+        && source.domain_axioms == 0
+        && source.range_axioms == 0
         && source.unions == 0
         && source.complements == 0
         && source.universals == 0
@@ -457,6 +460,7 @@ fn independent_large_abox_el_candidate(profile: &OntologyProfile) -> bool {
         && source.has_self == 0
         && source.functional_role_axioms == 0
         && source.inverse_functional_role_axioms == 0
+        && count("InverseObjectProperties") == 0
         && !profile.expressivity.cardinality
         && !profile.expressivity.qualified_cardinality
         && !profile.expressivity.functionality
@@ -565,8 +569,29 @@ pub(crate) fn functional_data_abox_bridge_candidate(profile: &OntologyProfile) -
 /// schedule.
 pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &OntologyProfile) -> bool {
     let source = &profile.source;
+    let reflexive_roles = source
+        .axiom_types
+        .get("ReflexiveObjectProperty")
+        .copied()
+        .unwrap_or(0);
+    let data_assertions = source
+        .axiom_types
+        .get("DataPropertyAssertion")
+        .copied()
+        .unwrap_or(0);
     let existing_bridge_first = compact_typed_bridge_first_candidate(profile)
         || functional_data_abox_bridge_candidate(profile);
+    let (max_bytes, max_logical_axioms) = if selected == Route::Nominals {
+        (
+            BOUNDED_BRIDGE_FIRST_NOMINALS_MAX_BYTES,
+            BOUNDED_BRIDGE_FIRST_NOMINALS_MAX_LOGICAL_AXIOMS,
+        )
+    } else {
+        (
+            BOUNDED_BRIDGE_FIRST_MAX_BYTES,
+            BOUNDED_BRIDGE_FIRST_MAX_LOGICAL_AXIOMS,
+        )
+    };
     matches!(
         selected,
         Route::Nominals | Route::NominalNiAbox | Route::CertifiedNominals
@@ -575,8 +600,14 @@ pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &Ontology
             semantic_fragment(profile),
             SemanticFragment::Nominal | SemanticFragment::NativeBridgeAbox
         )
-        && source.file_bytes <= BOUNDED_BRIDGE_FIRST_MAX_BYTES
-        && source.logical_axioms <= BOUNDED_BRIDGE_FIRST_MAX_LOGICAL_AXIOMS
+        && reflexive_roles == 0
+        && !(selected == Route::CertifiedNominals
+            && source.unions == 0
+            && source.role_assertions > 0
+            && source.disjoint_class_axioms > source.distinct_classes)
+        && (data_assertions == 0 || source.abox_axioms <= 5_000)
+        && source.file_bytes <= max_bytes
+        && source.logical_axioms <= max_logical_axioms
         && source.imports == 0
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
@@ -585,6 +616,8 @@ pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &Ontology
 /// Cost bounds of [`bounded_bridge_first_candidate`]'s second frontend pass.
 const BOUNDED_BRIDGE_FIRST_MAX_BYTES: u64 = 4 << 20;
 const BOUNDED_BRIDGE_FIRST_MAX_LOGICAL_AXIOMS: u64 = 20_000;
+const BOUNDED_BRIDGE_FIRST_NOMINALS_MAX_BYTES: u64 = 8 << 20;
+const BOUNDED_BRIDGE_FIRST_NOMINALS_MAX_LOGICAL_AXIOMS: u64 = 35_000;
 
 /// Automatic nominal routes that replaced the historical TBox-only production
 /// schedule because its CB fallback did not carry singleton/ABox semantics.
@@ -603,6 +636,7 @@ pub(crate) fn certified_nominal_production_probe_candidate(profile: &OntologyPro
             || small_class_identity_abox_production_candidate(profile)
             || large_no_cardinality_abox_production_candidate(profile)
             || (typed_object_abox_bridge_candidate(profile)
+                && !sequential_typed_bridge_candidate(profile)
                 && !profile.expressivity.cardinality
                 && !profile.expressivity.qualified_cardinality
                 && !profile.expressivity.datatype))
@@ -2498,6 +2532,7 @@ impl EnvironmentGuard {
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
             .chain(std::iter::once("KM_DATA_ASSERTION_AS_CLASS"))
+            .chain(std::iter::once("KM_CB_FIRST_TYPED_NOMINAL_S"))
             .chain(ROUTE_KEYS.iter().copied())
             .map(|key| (key, std::env::var_os(key)))
             .collect();
@@ -3959,11 +3994,17 @@ mod tests {
         }
         // Cost bounds on the second frontend pass.
         let mut large = profile.clone();
-        large.source.file_bytes = (4 << 20) + 1;
+        large.source.file_bytes = (8 << 20) + 1;
         assert!(!bounded_bridge_first_candidate(Route::Nominals, &large));
         let mut large = profile.clone();
-        large.source.logical_axioms = 20_001;
+        large.source.logical_axioms = 35_001;
         assert!(!bounded_bridge_first_candidate(Route::Nominals, &large));
+        let mut reflexive = profile.clone();
+        reflexive
+            .source
+            .axiom_types
+            .insert("ReflexiveObjectProperty".into(), 1);
+        assert!(!bounded_bridge_first_candidate(Route::Nominals, &reflexive));
         // The bridge refuses rules before search; imports are never routed.
         let mut rules = profile.clone();
         rules.source.rule_axioms = 1;

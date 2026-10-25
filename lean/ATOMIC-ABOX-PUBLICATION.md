@@ -94,3 +94,21 @@ compressed build/gate logs are recorded in
 `results/benchmarks/2026-09-17-dynamic-baseline/abox-lean-certification.json`.
 This gate result does not substitute for the complete corpus correctness check
 or the timed benchmark comparisons.
+
+## Classifier-owned object-fragment atomic ABox admission
+
+The `atomic_class_abox_source_admissible` helper retains the existing
+positive-EL arm and adds a nominal-free object arm for `km classify` under
+automatic routing (`ofn_to_clauses_for_classifier`). It requires the existing
+disjoint-union profile, no datatype or grounding expressivity, and an explicit
+whitelist of supported object TBox/RBox axioms, harmless annotations,
+declarations, and class assertions. `DisjointObjectProperties` is excluded.
+Unknown axioms, keys, imports, rules, and data axioms decline the new arm.
+Default standalone `ofn` preserves its prior contract unchanged.
+
+Admission alone proves no consistency verdict. The outer count requires all
+source ABox axioms to be class assertions, and `DataAbox::atomic_class_assertion_classes`
+checks complete atomic coverage and the per-individual single-class premise,
+recording the asserted classes for the complete-worker publication check.
+Frontend global inconsistency, worker inconsistency, and missing/dropped
+clause fences remain authoritative.

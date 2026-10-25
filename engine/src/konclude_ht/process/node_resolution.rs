@@ -160,6 +160,46 @@ impl ProcessTagger {
 // CIndividualProcessNodeVector (Process/CIndividualProcessNodeVector.{h,cpp}).
 // ===========================================================================
 
+const NODE_VECTOR_CHUNK_SIZE: usize = 256;
+
+/// A branch snapshot shares its table and chunks. A write copies a shared
+/// table of Arc handles and only the addressed chunk, keeping logical holes.
+#[derive(Debug, Default, Clone)]
+struct NodeVectorSide {
+    len: usize,
+    chunks: std::sync::Arc<Vec<std::sync::Arc<[NodeId; NODE_VECTOR_CHUNK_SIZE]>>>,
+}
+
+impl NodeVectorSide {
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    fn get(&self, index: usize) -> NodeId {
+        if index >= self.len {
+            return NodeId::NONE;
+        }
+        self.chunks[index / NODE_VECTOR_CHUNK_SIZE][index % NODE_VECTOR_CHUNK_SIZE]
+    }
+
+    fn set(&mut self, index: usize, node: NodeId) {
+        let chunks = std::sync::Arc::make_mut(&mut self.chunks);
+        if index >= self.len {
+            let len = index + 1;
+            chunks.resize_with(len.div_ceil(NODE_VECTOR_CHUNK_SIZE), || {
+                std::sync::Arc::new([NodeId::NONE; NODE_VECTOR_CHUNK_SIZE])
+            });
+            self.len = len;
+        }
+        std::sync::Arc::make_mut(&mut chunks[index / NODE_VECTOR_CHUNK_SIZE])
+            [index % NODE_VECTOR_CHUNK_SIZE] = node;
+    }
+}
+
 /// Port of `CIndividualProcessNodeVector`
 /// (a `CDefaultDoubleDynamicReferenceVector<CIndividualProcessNode*>`): the
 /// databox's `mIndiProcessVector`, the per-individual map from a signed individual
@@ -181,22 +221,22 @@ impl ProcessTagger {
 #[derive(Debug, Default, Clone)]
 pub struct IndividualProcessNodeVector {
     /// ids `>= 0` → `pos[id]`.
-    pos: Vec<NodeId>,
+    pos: NodeVectorSide,
     /// ids `< 0` → `neg[-id]`.
-    neg: Vec<NodeId>,
+    neg: NodeVectorSide,
 }
 
 impl IndividualProcessNodeVector {
     /// Port of `CIndividualProcessNodeVector::CIndividualProcessNodeVector`.
     pub fn new() -> Self {
         IndividualProcessNodeVector {
-            pos: Vec::new(),
-            neg: Vec::new(),
+            pos: NodeVectorSide::default(),
+            neg: NodeVectorSide::default(),
         }
     }
 
     #[inline]
-    fn side(&self, id: Cint64) -> (&Vec<NodeId>, usize) {
+    fn side(&self, id: Cint64) -> (&NodeVectorSide, usize) {
         if id >= 0 {
             (&self.pos, id as usize)
         } else {
@@ -208,7 +248,7 @@ impl IndividualProcessNodeVector {
     /// node for `id`, or `Id::NONE` (`nullptr`) if none.
     pub fn get_data(&self, id: Cint64) -> NodeId {
         let (vec, idx) = self.side(id);
-        vec.get(idx).copied().unwrap_or(NodeId::NONE)
+        vec.get(idx)
     }
 
     /// Port of `CDefaultDoubleDynamicReferenceVector::hasData(cint64)`.
@@ -219,17 +259,9 @@ impl IndividualProcessNodeVector {
     /// Port of `CDefaultDoubleDynamicReferenceVector::setLocalData(cint64, T)`.
     pub fn set_local_data(&mut self, id: Cint64, node: NodeId) -> &mut Self {
         if id >= 0 {
-            let idx = id as usize;
-            if idx >= self.pos.len() {
-                self.pos.resize(idx + 1, NodeId::NONE);
-            }
-            self.pos[idx] = node;
+            self.pos.set(id as usize, node);
         } else {
-            let idx = (-id) as usize;
-            if idx >= self.neg.len() {
-                self.neg.resize(idx + 1, NodeId::NONE);
-            }
-            self.neg[idx] = node;
+            self.neg.set((-id) as usize, node);
         }
         self
     }
@@ -519,5 +551,165 @@ impl CalculationAlgorithmContextBase {
             return 0;
         }
         self.process_context().node(opp).individual_node_id()
+    }
+}
+
+#[cfg(test)]
+mod node_vector_cow_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[derive(Clone, Default)]
+    struct FlatVector {
+        pos: Vec<NodeId>,
+        neg: Vec<NodeId>,
+    }
+
+    impl FlatVector {
+        fn set(&mut self, id: Cint64, node: NodeId) {
+            let (side, index) = if id >= 0 {
+                (&mut self.pos, id as usize)
+            } else {
+                (&mut self.neg, (-id) as usize)
+            };
+            if index >= side.len() {
+                side.resize(index + 1, NodeId::NONE);
+            }
+            side[index] = node;
+        }
+
+        fn get(&self, id: Cint64) -> NodeId {
+            let (side, index) = if id >= 0 {
+                (&self.pos, id as usize)
+            } else {
+                (&self.neg, (-id) as usize)
+            };
+            side.get(index).copied().unwrap_or(NodeId::NONE)
+        }
+    }
+
+    fn same(vector: &IndividualProcessNodeVector, flat: &FlatVector) {
+        assert_eq!(vector.get_item_min_index(), -((flat.neg.len() as Cint64) - 1).max(0));
+        assert_eq!(vector.get_item_max_index(), flat.pos.len() as Cint64 - 1);
+        assert_eq!(vector.get_item_count(),
+            (flat.pos.len() + flat.neg.len().saturating_sub(1)) as Cint64);
+        for id in (-2050..=2050).chain([4096, -4096, 65_536, -65_536, 65_537, -65_537, 65_538, -65_538]) {
+            assert_eq!(vector.get_data(id), flat.get(id), "id={id}");
+            assert_eq!(vector.has_data(id), flat.get(id).is_some(), "id={id}");
+        }
+    }
+
+    #[test]
+    fn node_vector_cow_matches_flat_sparse_boundaries_and_none_growth() {
+        let mut vector = IndividualProcessNodeVector::default();
+        let mut flat = FlatVector::default();
+        same(&vector, &flat);
+        // NONE writes grow both logical sides, including negative-side slot0.
+        for (i, id) in [0, -1, 255, 256, 257, -255, -256, -257,
+            511, 512, 513, -511, -512, -513, 65_537, -65_537, 1, -1, 0]
+            .into_iter().enumerate()
+        {
+            let node = if i % 3 == 0 { NodeId::NONE } else { NodeId::new(i as Cint64) };
+            if i % 2 == 0 { vector.set_data(id, node); }
+            else { vector.set_local_data(id, node); }
+            flat.set(id, node);
+            same(&vector, &flat);
+        }
+        // Repeated overwrites cross chunk boundaries, holes and both signs.
+        let mut seed = 0x5687_0012_9230u64;
+        for i in 0..512 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let id = ((seed >> 16) % 4101) as Cint64 - 2050;
+            let node = if i % 7 == 0 { NodeId::NONE } else { NodeId::new(i) };
+            vector.set_local_data(id, node);
+            flat.set(id, node);
+            if i % 31 == 0 { same(&vector, &flat); }
+        }
+        same(&vector, &flat);
+    }
+
+    #[test]
+    fn node_vector_cow_retained_siblings_and_nested_restore_match_flat() {
+        let mut parent = IndividualProcessNodeVector::new();
+        let mut flat_parent = FlatVector::default();
+        for id in [0, 255, 256, 1025, -1, -256, -1025] {
+            parent.set_data(id, NodeId::new(id.unsigned_abs() as Cint64));
+            flat_parent.set(id, parent.get_data(id));
+        }
+        let saved_parent = parent.clone();
+        let flat_saved_parent = flat_parent.clone();
+        let mut first = parent.clone();
+        let mut flat_first = flat_parent.clone();
+        let mut sibling = parent.clone();
+        let mut flat_sibling = flat_parent.clone();
+        first.set_local_data(256, NodeId::new(90));
+        first.set_data(-2049, NodeId::NONE);
+        flat_first.set(256, NodeId::new(90));
+        flat_first.set(-2049, NodeId::NONE);
+        let saved_first = first.clone();
+        let flat_saved_first = flat_first.clone();
+        first.set_data(-1, NodeId::new(91));
+        flat_first.set(-1, NodeId::new(91));
+        sibling.set_data(1025, NodeId::NONE);
+        flat_sibling.set(1025, NodeId::NONE);
+        parent.set_data(65_537, NodeId::new(92));
+        flat_parent.set(65_537, NodeId::new(92));
+        same(&first, &flat_first);
+        same(&sibling, &flat_sibling);
+        same(&parent, &flat_parent);
+        same(&saved_parent, &flat_saved_parent);
+        first = saved_first;
+        same(&first, &flat_saved_first);
+        first = saved_parent;
+        same(&first, &flat_saved_parent);
+    }
+
+    #[test]
+    fn node_vector_cow_shared_write_detaches_only_touched_chunk() {
+        let mut parent = IndividualProcessNodeVector::new();
+        parent.set_data(3 * NODE_VECTOR_CHUNK_SIZE as Cint64 - 1, NodeId::new(5));
+        parent.set_data(-257, NodeId::new(6));
+        let mut child = parent.clone();
+        assert!(Arc::ptr_eq(&parent.pos.chunks, &child.pos.chunks));
+        assert!(Arc::ptr_eq(&parent.neg.chunks, &child.neg.chunks));
+        child.set_data(256, NodeId::new(7));
+        assert!(!Arc::ptr_eq(&parent.pos.chunks, &child.pos.chunks));
+        assert!(Arc::ptr_eq(&parent.neg.chunks, &child.neg.chunks));
+        for index in 0..3 {
+            assert_eq!(Arc::ptr_eq(&parent.pos.chunks[index], &child.pos.chunks[index]), index != 1);
+        }
+        assert_eq!(parent.get_data(256), NodeId::NONE);
+        assert_eq!(child.get_data(256), NodeId::new(7));
+    }
+
+    #[test]
+    fn node_vector_cow_databox_epochs_restore_signed_mapping_and_lengths() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut flat = FlatVector::default();
+        // Real arena nodes precede both epochs, so each saved mapping remains valid.
+        let nodes = [(); 6].map(|_| ctx.process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE)));
+        for (id, node) in [(0, nodes[0]), (-1, nodes[1]), (256, nodes[2]), (-257, nodes[3])] {
+            ctx.processing_data_box_mut().individual_process_node_vector_mut()
+                .set_data(id, node);
+            flat.set(id, node);
+        }
+        let saved = flat.clone();
+        ctx.push_branch_epoch();
+        ctx.processing_data_box_mut().individual_process_node_vector_mut()
+            .set_local_data(-1, nodes[4]).set_data(1025, NodeId::NONE);
+        flat.set(-1, nodes[4]);
+        flat.set(1025, NodeId::NONE);
+        let middle = flat.clone();
+        ctx.push_branch_epoch();
+        ctx.processing_data_box_mut().individual_process_node_vector_mut()
+            .set_data(0, NodeId::NONE).set_local_data(-2049, nodes[5]);
+        flat.set(0, NodeId::NONE);
+        flat.set(-2049, nodes[5]);
+        same(ctx.processing_data_box().individual_process_node_vector(), &flat);
+        ctx.pop_branch_epoch();
+        same(ctx.processing_data_box().individual_process_node_vector(), &middle);
+        ctx.pop_branch_epoch();
+        same(ctx.processing_data_box().individual_process_node_vector(), &saved);
     }
 }

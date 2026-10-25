@@ -276,6 +276,9 @@ done
     cargo test --release --lib definition_containment_subsumers_reach_the_classification_output -- --test-threads=1
     cargo test --release --lib bridge_candidate_ -- --test-threads=1
     cargo test --release --lib bridge_model_positive_tags_reads_cow_additional_alias_with_local_shadowing -- --test-threads=1
+    cargo test --release --lib node_vector_cow_tests -- --test-threads=1
+    cargo test --release --lib konclude_ht::process::db1::tests:: -- --test-threads=1
+    cargo test --release --lib konclude_ht::completion::context::context_init_tests:: -- --test-threads=1
     cargo test --release --lib classification_message_analyser_visit_reuse_preserves_all_ordered_payloads -- --test-threads=1
     cargo test --release --lib preferred_nominal_probe_ -- --test-threads=1
     cargo test --release --lib orchestrate::public_subjects::tests -- --test-threads=1

@@ -2109,6 +2109,31 @@ fn spawn_ht(
     Option<ProxyAboxCertificate>,
     Option<super::tmpfile::TempPath>,
 )> {
+    prepare_ht(cfg, clauses_path, named)?.launch()
+}
+
+/// Owns the validated input and command before any HT worker exists.
+/// Output/marker paths retain their original RAII cleanup while preparation
+/// is dropped or launch fails. Serialization remains part of launch.
+struct PreparedHt {
+    cmd: Command,
+    tin: cb_to_ht::TInput,
+    out_path: super::tmpfile::TempPath,
+    short_race: bool,
+    bridge_candidate: bool,
+    bridge_exclusive: bool,
+    cb_first_structural_source: bool,
+    proxy_abox_certificate: Option<ProxyAboxCertificate>,
+    bridge_answer_marker: Option<super::tmpfile::TempPath>,
+}
+
+/// Perform the original HT conversion, eligibility checks and command setup.
+/// This opens the output file as before, but does not spawn or serialize.
+fn prepare_ht(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+) -> Option<PreparedHt> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules): (
         Vec<JClause>,
@@ -2136,6 +2161,18 @@ fn spawn_ht(
             v.rules,
         )
     };
+    // Raw source metadata must be checked before conversion can project it.
+    // Retain only this scheduling bit, not another copy of the concept trees.
+    let cb_first_structural_source = cfg.threads == Some(1)
+        && cb_first_duration(
+            std::env::var("KM_CB_FIRST_TYPED_NOMINAL_S").ok().as_deref(),
+        ).is_some()
+        && cb_first_source_candidate(
+            &source_axioms,
+            &cl,
+            std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
+            std::env::var_os("KM_NO_SOURCE_TBOX").is_some(),
+        );
     let _tconv = Instant::now();
     let certified_tbox_only = std::env::var_os("KM_HT_CERT_TBOX_ONLY").is_some();
     let specialist_only = std::env::var("KM_HT_ONLY").ok();
@@ -2625,56 +2662,92 @@ fn spawn_ht(
         // recoveries (see config.rs / project_km_qo_deadend). Kept for the record.
         cmd.env("KM_HT_QO", "1").env("KM_HT_CONTRA", "1");
     }
-    let mut child = cmd.spawn().ok()?;
-    let stdin = child.stdin.take()?;
-    let bytes = serde_json::to_vec(&tin).ok()?;
-    thread::spawn(move || {
-        let mut w = stdin;
-        let _ = w.write_all(&bytes);
-        // The serialised TInput is the largest transient this process holds
-        // while the worker runs, and it is dead once the pipe has drained. The
-        // callers' trim runs before this write finishes, so release it here
-        // exactly as `spawn_tableau` does.
-        drop(w);
-        drop(bytes);
-        release_transient_heap();
-    });
-    let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
-    // The third element gates the SHORT race budget: true for the fast certify-or-
-    // defer arms (SHOQ fast-Ht AND the QO hybrid). Both emit an answer ONLY when
-    // they soundly+completely certify (CERTIFY_ONLY), so harvesting that answer as
-    // soon as it is ready — instead of waiting out the full ht_budget_s for a doomed
-    // CB — is monotone-safe (CB is still preferred whenever CB finishes first). The
-    // QO arm certifies 7581 in ~17s but the old full-budget path never harvested it
-    // within the 120-240s wall, so 7581 timed out despite a ready sound answer.
-    // card_candidate joins the SHORT-race arms: the first-class card rules + o-rule
-    // are a complete decision procedure for the SHQ/SHOQ fragment and fold quickly
-    // (9540: 64 nodes, <1s), so harvest the answer after the short budget instead of
-    // waiting out the doomed CB for the full ht_budget_s (which on a 240s sweep gives
-    // the card arm only a 15s window). CB-preference is preserved: `take_cb` is
-    // checked every loop iteration, so a card ont CB solves fast still goes to CB.
-    Some((
-        child,
+    Some(PreparedHt {
+        cmd,
+        tin,
         out_path,
-        shoq_candidate
+        short_race: shoq_candidate
             || no_blocking_shoiq_candidate
             || qo_candidate
             || card_candidate
             || bridge_candidate,
-        bridge_candidate.then_some(tin.queries.len()),
-        // Whether KM_HT_BRIDGE_ONLY was set on this worker: only then does the
-        // race scheduler's instant (0 s) trigger-absorb harvest apply — any
-        // other worker can answer from a non-bridge arm without the bridge's
-        // complete-answer-or-defer guarantee.
+        bridge_candidate,
         bridge_exclusive,
-        // Only the native bridge consumes this exact typed ABox channel.  The
-        // scheduler uses the conjunction with bridge exclusivity to prevent a
-        // speculative multi-threaded CB fallback from starving that serial,
-        // certified worker without ever making the bridge authoritative.
-        typed_nominal_exclusive,
+        cb_first_structural_source,
         proxy_abox_certificate,
         bridge_answer_marker,
-    ))
+    })
+}
+
+impl PreparedHt {
+    fn launch(self) -> Option<(
+        Child,
+        super::tmpfile::TempPath,
+        bool,
+        Option<usize>,
+        bool,
+        bool,
+        Option<ProxyAboxCertificate>,
+        Option<super::tmpfile::TempPath>,
+    )> {
+        let PreparedHt {
+            mut cmd,
+            tin,
+            out_path,
+            short_race,
+            bridge_candidate,
+            bridge_exclusive,
+            cb_first_structural_source: _,
+            proxy_abox_certificate,
+            bridge_answer_marker,
+        } = self;
+        let mut child = cmd.spawn().ok()?;
+        let stdin = child.stdin.take()?;
+        let bytes = serde_json::to_vec(&tin).ok()?;
+        thread::spawn(move || {
+            let mut w = stdin;
+            let _ = w.write_all(&bytes);
+            // The serialised TInput is the largest transient this process holds
+            // while the worker runs, and it is dead once the pipe has drained. The
+            // callers' trim runs before this write finishes, so release it here
+            // exactly as `spawn_tableau` does.
+            drop(w);
+            drop(bytes);
+            release_transient_heap();
+        });
+        let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
+        // The third element gates the SHORT race budget: true for the fast certify-or-
+        // defer arms (SHOQ fast-Ht AND the QO hybrid). Both emit an answer ONLY when
+        // they soundly+completely certify (CERTIFY_ONLY), so harvesting that answer as
+        // soon as it is ready — instead of waiting out the full ht_budget_s for a doomed
+        // CB — is monotone-safe (CB is still preferred whenever CB finishes first). The
+        // QO arm certifies 7581 in ~17s but the old full-budget path never harvested it
+        // within the 120-240s wall, so 7581 timed out despite a ready sound answer.
+        // card_candidate joins the SHORT-race arms: the first-class card rules + o-rule
+        // are a complete decision procedure for the SHQ/SHOQ fragment and fold quickly
+        // (9540: 64 nodes, <1s), so harvest the answer after the short budget instead of
+        // waiting out the doomed CB for the full ht_budget_s (which on a 240s sweep gives
+        // the card arm only a 15s window). CB-preference is preserved: `take_cb` is
+        // checked every loop iteration, so a card ont CB solves fast still goes to CB.
+        Some((
+            child,
+            out_path,
+            short_race,
+            bridge_candidate.then_some(tin.queries.len()),
+            // Whether KM_HT_BRIDGE_ONLY was set on this worker: only then does the
+            // race scheduler's instant (0 s) trigger-absorb harvest apply — any
+            // other worker can answer from a non-bridge arm without the bridge's
+            // complete-answer-or-defer guarantee.
+            bridge_exclusive,
+            // Only the native bridge consumes this exact typed ABox channel.  The
+            // scheduler uses the conjunction with bridge exclusivity to prevent a
+            // speculative multi-threaded CB fallback from starving that serial,
+            // certified worker without ever making the bridge authoritative.
+            typed_nominal_exclusive,
+            proxy_abox_certificate,
+            bridge_answer_marker,
+        ))
+    }
 }
 
 /// Read a finished HT worker's taxonomy, applying the proxy ABox certificate
@@ -3396,6 +3469,83 @@ fn ht_first_deadline() -> Option<Duration> {
     (seconds > 0.0).then(|| Duration::from_secs_f64(seconds))
 }
 
+/// Scheduling evidence only: never substitutes for worker/certificate gates.
+fn cb_first_source_candidate(
+    source_axioms: &[crate::json_io::SourceAxiomMeta],
+    raw_clauses: &[crate::json_io::JClause],
+    trigger_absorb: bool,
+    source_tbox_disabled: bool,
+) -> bool {
+    trigger_absorb
+        && !source_tbox_disabled
+        && !source_axioms.is_empty()
+        && source_axioms.iter().all(|axiom| {
+            cb_first_concept_nominal_free(&axiom.left)
+                && cb_first_concept_nominal_free(&axiom.right)
+        })
+        && !has_datatype(raw_clauses)
+}
+
+fn cb_first_concept_nominal_free(concept: &crate::frontend::syntax::Concept) -> bool {
+    use crate::frontend::syntax::Concept;
+    match concept {
+        Concept::Nominal(_) => false,
+        Concept::Not(child)
+        | Concept::Exists(_, child)
+        | Concept::Forall(_, child)
+        | Concept::AtLeast(_, _, child)
+        | Concept::AtMost(_, _, child) => cb_first_concept_nominal_free(child),
+        Concept::And(children) | Concept::Or(children) => {
+            children.iter().all(cb_first_concept_nominal_free)
+        }
+        Concept::Name(_) | Concept::Top | Concept::Bottom | Concept::HasSelf(_) => true,
+    }
+}
+
+/// Opt-in solo-CB grace. Invalid, nonfinite, negative and zero values disable it.
+fn cb_first_duration(value: Option<&str>) -> Option<Duration> {
+    let seconds = value?.parse::<f64>().ok()?;
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return None;
+    }
+    Duration::try_from_secs_f64(seconds).ok().filter(|d| !d.is_zero())
+}
+
+fn cb_first_eligible(mode: &str, threads: Option<usize>, typed_nominal: bool) -> bool {
+    mode == "fallback" && threads == Some(1) && typed_nominal
+}
+
+/// Prefer a completed CB answer before creating any worker. Errors stay in
+/// the slot for the existing race; error/deadline consumes the launch closure
+/// exactly once. The grace clock is independent of CB's preference clock.
+fn cb_first_then_launch<T, E, L>(
+    slot: &Mutex<Option<Result<T, E>>>,
+    event: &engine_run::ArmEvent,
+    started: Instant,
+    grace: Duration,
+    launch: impl FnOnce() -> L,
+) -> Result<T, L> {
+    loop {
+        let seen = event.epoch();
+        {
+            let mut guard = slot.lock().unwrap();
+            match guard.as_ref() {
+                Some(Ok(_)) => return Ok(guard.take().unwrap().ok().unwrap()),
+                Some(Err(_)) => break,
+                None => {}
+            }
+        }
+        let Some(remaining) = grace.checked_sub(started.elapsed()) else {
+            break;
+        };
+        if remaining.is_zero() {
+            break;
+        }
+        event.wait_past(seen, remaining.min(Duration::from_millis(50)));
+    }
+    Err(launch())
+}
+
 fn ht_acceptance_budget(
     trigger_absorb: bool,
     bridge_exclusive: bool,
@@ -3511,7 +3661,50 @@ where
         }
         // Whatever happens below, the CB thread must receive its count.
         let budget_guard = budget_cell.resolve_on_drop(cfg.threads);
-        let spawned = spawn_ht(cfg, clauses_path, named);
+        let prepared = prepare_ht(cfg, clauses_path, named);
+        let cb_first = cb_first_duration(
+            std::env::var("KM_CB_FIRST_TYPED_NOMINAL_S").ok().as_deref(),
+        )
+        .filter(|_| {
+            prepared.as_ref().is_some_and(|prepared| {
+                cb_first_eligible(
+                    &race_mode,
+                    cfg.threads,
+                    typed_nominal_bridge_exclusive(&prepared.tin, prepared.bridge_exclusive)
+                        || prepared.bridge_exclusive,
+                ) && prepared.cb_first_structural_source
+            })
+        });
+        let spawned = match (prepared, cb_first) {
+            (Some(prepared), Some(grace)) => {
+                // Release the serial CB worker before measuring its solo opportunity.
+                // start_cb! is a no-op if the original pre-prepare start already ran;
+                // its original cb_t0 continues to govern the later preference budget.
+                budget_cell.resolve(Some(1));
+                let grace_started = Instant::now();
+                start_cb!();
+                match cb_first_then_launch(&cb_slot, &event, grace_started, grace, || {
+                    prepared.launch()
+                }) {
+                    Ok(out) => {
+                        drop(budget_guard);
+                        release_transient_heap();
+                        if timing {
+                            eprintln!(
+                                "KM_TIMING race: CB-first accepted without HT after {:.2}s solo grace",
+                                grace_started.elapsed().as_secs_f64()
+                            );
+                        }
+                        return Ok(out);
+                    }
+                    Err(spawned) => spawned,
+                }
+            }
+            (prepared, _) => {
+                // No opt-in/eligibility: preserve the original HT-first scheduler.
+                prepared.and_then(PreparedHt::launch)
+            }
+        };
         release_transient_heap();
         let Some((
             mut ht,
@@ -3793,6 +3986,271 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cb_first_source_axiom(
+        left: crate::frontend::syntax::Concept,
+        right: crate::frontend::syntax::Concept,
+    ) -> crate::json_io::SourceAxiomMeta {
+        crate::json_io::SourceAxiomMeta {
+            kind: crate::json_io::SourceAxiomKind::SubClass,
+            left,
+            right,
+        }
+    }
+
+    #[test]
+    fn cb_first_source_requires_enabled_present_nonempty_metadata() {
+        use crate::frontend::syntax::Concept;
+        let axioms = [cb_first_source_axiom(Concept::Top, Concept::Name("A".into()))];
+        for trigger in [false, true] {
+            for disabled in [false, true] {
+                assert_eq!(cb_first_source_candidate(&axioms, &[], trigger, disabled), trigger && !disabled);
+                assert!(!cb_first_source_candidate(&[], &[], trigger, disabled));
+            }
+        }
+        let missing: crate::json_io::JInput = serde_json::from_str(r#"{"clauses":[]}"#).unwrap();
+        assert!(missing.source_axioms.is_empty());
+        assert!(!cb_first_source_candidate(&missing.source_axioms, &missing.clauses, true, false));
+    }
+
+    #[test]
+    fn cb_first_source_checks_every_concept_constructor_and_both_axiom_sides() {
+        use crate::frontend::syntax::{Concept, Role};
+        fn wrappers(child: Concept) -> Vec<Concept> {
+            let role = Role::Name("r".into());
+            vec![
+                Concept::Not(Box::new(child.clone())),
+                Concept::And([Concept::Top, child.clone()].into_iter().collect()),
+                Concept::Or([Concept::Bottom, child.clone()].into_iter().collect()),
+                Concept::Exists(role.clone(), Box::new(child.clone())),
+                Concept::Forall(role.clone(), Box::new(child.clone())),
+                Concept::AtLeast(1, role.clone(), Box::new(child.clone())),
+                Concept::AtMost(2, role, Box::new(child)),
+            ]
+        }
+        let mut positive = vec![Concept::Name("A".into()), Concept::Top, Concept::Bottom,
+            Concept::HasSelf(Role::Inverse("r".into())), Concept::HasSelf(Role::Universal),
+            Concept::And(Default::default()), Concept::Or(Default::default())];
+        positive.extend(wrappers(Concept::Name("A".into())));
+        for child in wrappers(Concept::Name("A".into())) { positive.extend(wrappers(child)); }
+        for concept in positive {
+            assert!(cb_first_concept_nominal_free(&concept));
+            for axiom in [cb_first_source_axiom(concept.clone(), Concept::Top), cb_first_source_axiom(Concept::Top, concept)] {
+                assert!(cb_first_source_candidate(&[axiom], &[], true, false));
+            }
+        }
+        let mut negative = vec![Concept::Nominal("a".into())];
+        negative.extend(wrappers(Concept::Nominal("a".into())));
+        for child in wrappers(Concept::Nominal("a".into())) { negative.extend(wrappers(child)); }
+        for concept in negative {
+            assert!(!cb_first_concept_nominal_free(&concept));
+            for axiom in [cb_first_source_axiom(concept.clone(), Concept::Top), cb_first_source_axiom(Concept::Top, concept)] {
+                // A clean first axiom must not hide a later nominal-bearing axiom.
+                assert!(!cb_first_source_candidate(&[cb_first_source_axiom(Concept::Top, Concept::Top), axiom], &[], true, false));
+            }
+        }
+    }
+
+    #[test]
+    fn cb_first_source_uses_exact_raw_datatype_marker_in_body_and_head() {
+        use crate::frontend::syntax::Concept;
+        use crate::json_io::{JAtom, JClause, JTerm};
+        let source = [cb_first_source_axiom(Concept::Top, Concept::Name("A".into()))];
+        for name in ["ordinary", "__dt__val__literal", "prefix__dt__val__suffix"] {
+            let atom = JAtom::Concept { concept: name.into(), term: JTerm::Var { name: "x".into() } };
+            for clause in [JClause { body: vec![atom.clone()], head: vec![] }, JClause { body: vec![], head: vec![atom] }] {
+                assert_eq!(cb_first_source_candidate(&source, &[clause], true, false), !name.contains("__dt__val__"));
+            }
+        }
+        // Same spelling in a role is not the existing exact datatype predicate.
+        let role = JAtom::Role { role: "__dt__val__role".into(), source: JTerm::Var { name: "x".into() }, target: JTerm::Var { name: "y".into() } };
+        assert!(cb_first_source_candidate(&source, &[JClause { body: vec![role], head: vec![] }], true, false));
+    }
+
+    #[test]
+    fn cb_first_duration_defaults_off_and_rejects_invalid_values() {
+        assert_eq!(cb_first_duration(None), None);
+        for value in ["", "0", "-1", "NaN", "inf", "-inf", "1e300", "1e-100"] {
+            assert_eq!(cb_first_duration(Some(value)), None, "{value}");
+        }
+        assert_eq!(cb_first_duration(Some("0.25")), Some(Duration::from_millis(250)));
+    }
+
+    #[test]
+    fn cb_first_eligibility_requires_fallback_explicit_serial_and_typed() {
+        for mode in ["fallback", "race", "other"] {
+            for threads in [None, Some(1), Some(2)] {
+                for typed in [false, true] {
+                    assert_eq!(
+                        cb_first_eligible(mode, threads, typed),
+                        mode == "fallback" && threads == Some(1) && typed
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cb_first_success_never_consumes_worker_launch_closure() {
+        let prepared = prepared_ht_test_command("/this/worker/must/not/launch");
+        let output = prepared.out_path.path().to_owned();
+        let slot: Mutex<Option<Result<u32, ()>>> = Mutex::new(Some(Ok(7)));
+        let event = engine_run::ArmEvent::new();
+        let result = cb_first_then_launch(&slot, &event, Instant::now(), Duration::from_secs(1), || {
+            let _ = prepared.launch();
+            panic!("CB success must not attempt HT launch");
+        });
+        assert_eq!(result.ok(), Some(7));
+        assert!(slot.lock().unwrap().is_none());
+        assert!(!output.exists()); // dropped uncalled closure owns PreparedHt
+    }
+
+    #[test]
+    fn cb_first_error_launches_once_without_consuming_cb_error() {
+        let slot = Mutex::new(Some(Err::<u32, _>("CB error")));
+        let event = engine_run::ArmEvent::new();
+        let launches = std::cell::Cell::new(0);
+        let started = Instant::now();
+        let result = cb_first_then_launch(&slot, &event, started, Duration::from_secs(60), || {
+            launches.set(launches.get() + 1);
+            prepared_ht_test_command("/bin/false").launch()
+        });
+        let (mut child, output, _, _, _, _, _, marker) = result.err().unwrap().unwrap();
+        assert!(!child.wait().unwrap().success());
+        drop((output, marker));
+        assert_eq!(launches.get(), 1);
+        assert_eq!(*slot.lock().unwrap(), Some(Err("CB error")));
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn cb_first_deadline_launch_failure_returns_without_waiting_for_cb() {
+        let slot: Mutex<Option<Result<u32, ()>>> = Mutex::new(None);
+        let event = engine_run::ArmEvent::new();
+        let launches = std::cell::Cell::new(0);
+        let result = cb_first_then_launch(&slot, &event, Instant::now(), Duration::ZERO, || {
+            launches.set(launches.get() + 1);
+            prepared_ht_test_command("/this/worker/does/not/exist").launch()
+        });
+        assert!(result.err().unwrap().is_none());
+        assert_eq!(launches.get(), 1);
+        assert!(slot.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn cb_first_prepare_failure_resolves_budget_and_retains_cb_only_fallback() {
+        let mut cfg = Config::from_env();
+        cfg.threads = Some(1);
+        let out = race_cb_vs_ht(
+            &cfg,
+            Path::new("/this/clause/file/does/not/exist"),
+            &std::collections::HashSet::new(),
+            "fallback",
+            |budget| {
+                assert_eq!(budget.get(), Some(1));
+                Ok(EngineOut { dropped: 17, ..Default::default() })
+            },
+        ).unwrap();
+        assert_eq!(out.dropped, 17);
+    }
+
+    #[test]
+    fn cb_first_observes_notified_success_during_grace_without_launch() {
+        let slot: Arc<Mutex<Option<Result<u32, ()>>>> = Arc::new(Mutex::new(None));
+        let event = engine_run::ArmEvent::new();
+        let producer_slot = slot.clone();
+        let producer_event = event.clone();
+        let producer = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(10));
+            *producer_slot.lock().unwrap() = Some(Ok(9));
+            producer_event.notify();
+        });
+        let result = cb_first_then_launch(&slot, &event, Instant::now(), Duration::from_secs(5), || {
+            panic!("notified CB success must avoid worker launch");
+        });
+        producer.join().unwrap();
+        assert_eq!(result.ok(), Some(9));
+    }
+
+    fn prepared_ht_test_command(program: &str) -> PreparedHt {
+        let out_path = super::super::tmpfile::TempPath::new(".prepared-ht-test");
+        let mut cmd = Command::new(program);
+        cmd.stdin(Stdio::piped())
+            .stdout(File::create(out_path.path()).unwrap());
+        PreparedHt {
+            cmd,
+            tin: cb_to_ht::TInput {
+                concepts: vec!["test:A".into()],
+                queries: vec![0],
+                ..Default::default()
+            },
+            out_path,
+            short_race: true,
+            bridge_candidate: true,
+            bridge_exclusive: true,
+            cb_first_structural_source: true,
+            proxy_abox_certificate: None,
+            bridge_answer_marker: Some(super::super::tmpfile::TempPath::new(
+                ".prepared-ht-marker-test",
+            )),
+        }
+    }
+
+    #[test]
+    fn prepared_ht_drop_cleans_output_and_marker_without_launch() {
+        let prepared = prepared_ht_test_command("/this/path/must/not/be/executed");
+        let output = prepared.out_path.path().to_owned();
+        let marker = prepared.bridge_answer_marker.as_ref().unwrap().path().to_owned();
+        std::fs::write(&marker, b"marker").unwrap();
+        assert!(output.exists());
+        drop(prepared);
+        assert!(!output.exists());
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn prepared_ht_launch_failure_cleans_owned_paths() {
+        let prepared = prepared_ht_test_command("/this/path/does/not/exist/km-worker");
+        let output = prepared.out_path.path().to_owned();
+        let marker = prepared.bridge_answer_marker.as_ref().unwrap().path().to_owned();
+        std::fs::write(&marker, b"marker").unwrap();
+        assert!(prepared.launch().is_none());
+        assert!(!output.exists());
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn prepared_ht_launch_preserves_serialized_input_and_metadata() {
+        let prepared = prepared_ht_test_command("/bin/cat");
+        let expected_bytes = serde_json::to_vec(&prepared.tin).unwrap();
+        let expected_typed = typed_nominal_bridge_exclusive(&prepared.tin, true);
+        let output = prepared.out_path.path().to_owned();
+        let marker = prepared.bridge_answer_marker.as_ref().unwrap().path().to_owned();
+        std::fs::write(&marker, b"marker").unwrap();
+        let (mut child, out_path, short, queries, exclusive, typed, proxy, answer_marker) =
+            prepared.launch().unwrap();
+        assert!(child.wait().unwrap().success());
+        assert_eq!(std::fs::read(&output).unwrap(), expected_bytes);
+        assert!(short);
+        assert_eq!(queries, Some(1));
+        assert!(exclusive);
+        assert_eq!(typed, expected_typed);
+        assert!(proxy.is_none());
+        assert_eq!(answer_marker.as_ref().unwrap().path(), marker);
+        drop((out_path, answer_marker));
+        assert!(!output.exists());
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn prepared_ht_immediate_worker_error_keeps_existing_launch_contract() {
+        let prepared = prepared_ht_test_command("/bin/false");
+        let (mut child, out_path, _, _, _, _, _, marker) = prepared.launch().unwrap();
+        // As before, a broken stdin write is ignored by the detached writer;
+        // launching still succeeds and the existing racer observes the exit.
+        assert!(!child.wait().unwrap().success());
+        drop((out_path, marker));
+    }
 
     #[test]
     fn ready_thread_budget_answers_without_blocking() {

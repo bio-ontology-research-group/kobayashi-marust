@@ -183,6 +183,43 @@ pub struct ContextClause {
     pub max_head_mask: u64,
 }
 
+/// Preserve head-position order while skipping unset mask positions. The wide
+/// variant retains the existing all-head fallback for heads longer than 64.
+enum MaxHeadIter<'a> {
+    Mask { head: &'a [Lit], remaining: u64 },
+    All(std::iter::Copied<std::slice::Iter<'a, Lit>>),
+}
+
+impl Iterator for MaxHeadIter<'_> {
+    type Item = Lit;
+
+    #[inline]
+    fn next(&mut self) -> Option<Lit> {
+        match self {
+            Self::Mask { head, remaining } => {
+                if *remaining == 0 {
+                    return None;
+                }
+                let index = remaining.trailing_zeros() as usize;
+                *remaining &= *remaining - 1;
+                Some(head[index])
+            }
+            Self::All(iter) => iter.next(),
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::Mask { remaining, .. } => {
+                let len = remaining.count_ones() as usize;
+                (len, Some(len))
+            }
+            Self::All(iter) => iter.size_hint(),
+        }
+    }
+}
+
 impl ContextClause {
     pub fn new(body: Vec<Pred>, head: Vec<Lit>, root: bool, sig: &Sig) -> ContextClause {
         let body = sort_dedup_pred(body);
@@ -220,14 +257,17 @@ impl ContextClause {
     /// exceeds 64 literals, the sound over-approximation).
     #[inline]
     pub fn max_head(&self) -> impl Iterator<Item = Lit> + '_ {
-        let all = self.head.len() > 64;
-        self.head.iter().enumerate().filter_map(move |(i, &l)| {
-            if all || (self.max_head_mask >> i) & 1 == 1 {
-                Some(l)
-            } else {
-                None
-            }
-        })
+        match self.head.len() {
+            0 => MaxHeadIter::Mask { head: &self.head, remaining: 0 },
+            1..=63 => MaxHeadIter::Mask {
+                head: &self.head,
+                // Public head/mask fields may have been edited independently.
+                // Ignore high bits exactly as the former positional filter did.
+                remaining: self.max_head_mask & ((1u64 << self.head.len()) - 1),
+            },
+            64 => MaxHeadIter::Mask { head: &self.head, remaining: self.max_head_mask },
+            _ => MaxHeadIter::All(self.head.iter().copied()),
+        }
     }
 
     pub fn is_horn(&self) -> bool {
@@ -498,5 +538,117 @@ mod maximal_head_tests {
             Lit::P(Pred::Concept { iri: right, t: X }),
         ];
         assert_eq!(compute_max_head_mask(&head, true, &sig), 0b11);
+    }
+
+    fn linear_max_head(clause: &ContextClause) -> impl Iterator<Item = Lit> + '_ {
+        let all = clause.head.len() > 64;
+        clause.head.iter().enumerate().filter_map(move |(i, &literal)| {
+            (all || (clause.max_head_mask >> i) & 1 == 1).then_some(literal)
+        })
+    }
+
+    // Deliberately unsorted, with repeated values and mixed literal kinds.
+    // The public method selects positions; it must not normalize the head.
+    fn public_head(len: usize) -> Vec<Lit> {
+        (0..len).map(|i| match i % 4 {
+            0 => Lit::P(Pred::Concept { iri: (i % 9) as Iri, t: X }),
+            1 => Lit::P(Pred::Role { iri: (i % 5) as Iri, s: X, t: Y }),
+            2 => Lit::eq(Y, X),
+            _ => Lit::ineq(Y, X),
+        }).collect()
+    }
+
+    fn assert_max_head_matches_linear(clause: &ContextClause) {
+        let expected: Vec<_> = linear_max_head(clause).collect();
+        let mut actual = clause.max_head();
+        for (position, &literal) in expected.iter().enumerate() {
+            let remaining = expected.len() - position;
+            assert_eq!(actual.size_hint(), (remaining, Some(remaining)));
+            assert_eq!(actual.next(), Some(literal), "clause={clause:?}");
+        }
+        assert_eq!(actual.size_hint(), (0, Some(0)));
+        assert_eq!(actual.next(), None);
+        assert_eq!(actual.next(), None);
+        assert_eq!(clause.max_head().collect::<Vec<_>>(), expected);
+        assert_eq!(clause.max_head().count(), expected.len());
+        assert_eq!(clause.max_head().last(), expected.last().copied());
+        for n in 0..=expected.len() + 1 {
+            assert_eq!(clause.max_head().nth(n), linear_max_head(clause).nth(n));
+            assert_eq!(clause.max_head().skip(n).collect::<Vec<_>>(),
+                       linear_max_head(clause).skip(n).collect::<Vec<_>>());
+        }
+        assert_eq!(clause.max_head().take(3).collect::<Vec<_>>(),
+                   linear_max_head(clause).take(3).collect::<Vec<_>>());
+        assert_eq!(clause.max_head().find(|l| matches!(l, Lit::Eq { .. })),
+                   linear_max_head(clause).find(|l| matches!(l, Lit::Eq { .. })));
+        assert_eq!(clause.max_head().any(|l| matches!(l, Lit::Ineq { .. })),
+                   linear_max_head(clause).any(|l| matches!(l, Lit::Ineq { .. })));
+        assert_eq!(clause.max_head().all(|l| matches!(l, Lit::P(_))),
+                   linear_max_head(clause).all(|l| matches!(l, Lit::P(_))));
+        let predicates: Vec<_> = linear_max_head(clause).filter_map(|l| {
+            if let Lit::P(p) = l { Some((p, l)) } else { None }
+        }).collect();
+        assert_eq!(clause.max_head_predicates().collect::<Vec<_>>(), predicates);
+    }
+
+    #[test]
+    fn max_head_bits_matches_linear_lengths_masks_and_combinators() {
+        let mut masks = vec![0, u64::MAX, 0xaaaa_aaaa_aaaa_aaaa,
+                             0x5555_5555_5555_5555, 0b10101, 1 | (1 << 63)];
+        masks.extend((0..64).map(|bit| 1u64 << bit));
+        for len in 0..=70 {
+            let mut clause = ContextClause {
+                body: Vec::new(), head: public_head(len), max_head_mask: 0,
+            };
+            for &mask in &masks {
+                clause.max_head_mask = mask;
+                assert_max_head_matches_linear(&clause);
+            }
+        }
+        // Exhaust all combinations of low mask bits, including high bits
+        // outside the public head's length and repeated selected literals.
+        for len in 0..=8 {
+            for mask in 0..=255 {
+                let clause = ContextClause {
+                    body: Vec::new(), head: public_head(len), max_head_mask: mask,
+                };
+                assert_max_head_matches_linear(&clause);
+            }
+        }
+    }
+
+    #[test]
+    fn max_head_bits_preserves_independent_public_field_mutations() {
+        let mut clause = ContextClause {
+            body: Vec::new(), head: public_head(70), max_head_mask: 1 << 63,
+        };
+        for len in [70, 65, 64, 63, 2, 1, 0, 1, 2, 63, 64, 65, 70] {
+            clause.head.resize(len, Lit::eq(Y, X));
+            assert_max_head_matches_linear(&clause);
+            clause.head.reverse();
+            assert_max_head_matches_linear(&clause);
+        }
+        clause.head = vec![Lit::ineq(Y, X), Lit::eq(Y, X), Lit::ineq(Y, X)];
+        clause.max_head_mask = 0b101;
+        assert_max_head_matches_linear(&clause);
+        assert_eq!(clause.max_head().collect::<Vec<_>>(),
+                   vec![Lit::ineq(Y, X), Lit::ineq(Y, X)]);
+    }
+
+    #[test]
+    fn max_head_bits_matches_normalized_root_and_nonroot_clauses() {
+        let mut sig = Sig::default();
+        for i in 0..9 { sig.concept(&format!("C{i}")); }
+        for i in 0..5 { sig.role(&format!("R{i}")); }
+        for root in [false, true] {
+            for len in 0..=70 {
+                let clause = ContextClause::new(Vec::new(), public_head(len), root, &sig);
+                assert_max_head_matches_linear(&clause);
+                let sorted = ContextClause::from_sorted_unique(
+                    clause.body.clone(), clause.head.clone(), root, &sig,
+                );
+                assert_max_head_matches_linear(&sorted);
+            }
+        }
     }
 }

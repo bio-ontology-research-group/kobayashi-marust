@@ -30,7 +30,7 @@ jobs:
           version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' engine/Cargo.toml | head -n1)
           test "v${version}" = "$RELEASE_TAG"
       - name: Verify prevalidated release assets
-        if: env.RELEASE_TAG == 'v1.5.2'
+        if: env.RELEASE_TAG == 'v1.5.3'
         run: python3 .github/scripts/release_assets.py
       - name: Publish GitHub release
         env:
@@ -43,10 +43,10 @@ jobs:
             emit { print }
           ' CHANGELOG.md > release-notes.md
           test -s release-notes.md
-          if test "$RELEASE_TAG" = "v1.5.2"; then
+          if test "$RELEASE_TAG" = "v1.5.3"; then
             # Fresh release only. Never hide or rewrite an existing publication.
             if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              echo "v1.5.2 already exists; inspect the prior attempt before recovery" >&2
+              echo "v1.5.3 already exists; inspect the prior attempt before recovery" >&2
               exit 1
             fi
             gh release create "$RELEASE_TAG" \
@@ -69,7 +69,7 @@ jobs:
             --title "KM ${RELEASE_TAG}" \
             --notes-file release-notes.md
       - name: Upload verified release assets and publish draft
-        if: env.RELEASE_TAG == 'v1.5.2'
+        if: env.RELEASE_TAG == 'v1.5.3'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -77,10 +77,10 @@ jobs:
           test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')" = 0
           gh release upload "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            release-assets/km-v1.5.2-linux-x86_64 \
-            release-assets/km-v1.5.2-certified-source.tar.gz \
+            release-assets/km-v1.5.3-linux-x86_64 \
+            release-assets/km-v1.5.3-certified-source.tar.gz \
             release-assets/build-completion.json \
             release-assets/BENCHMARKS.md \
-            release-assets/kobayashi-marust-protege-1.5.2.jar \
+            release-assets/kobayashi-marust-protege-1.5.3.jar \
             release-assets/SHA256SUMS
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false

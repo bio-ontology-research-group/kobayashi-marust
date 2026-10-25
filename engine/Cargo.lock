@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "kobayashi-marust"
-version = "1.5.2"
+version = "1.5.3"
 dependencies = [
  "dhat",
  "horned-owl",

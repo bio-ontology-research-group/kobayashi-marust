@@ -1929,6 +1929,28 @@ fn disjoint_union_abox_candidate(
         && source.axiom_types.get("HasKey").copied().unwrap_or(0) == 0
 }
 
+/// Source admission only; the independent atomic observer and exact worker
+/// result still establish complete ABox coverage and consistency.
+pub(super) fn atomic_class_abox_source_admissible(profile: &OntologyProfile) -> bool {
+    const OBJECT_AXIOMS: &[&str] = &[
+        "Declaration", "Annotation", "AnnotationAssertion",
+        "SubAnnotationPropertyOf", "AnnotationPropertyDomain", "AnnotationPropertyRange",
+        "SubClassOf", "EquivalentClasses", "DisjointClasses", "DisjointUnion",
+        "SubObjectPropertyOf", "EquivalentObjectProperties", "InverseObjectProperties",
+        "TransitiveObjectProperty", "SymmetricObjectProperty", "ReflexiveObjectProperty",
+        "FunctionalObjectProperty", "InverseFunctionalObjectProperty",
+        "AsymmetricObjectProperty", "IrreflexiveObjectProperty",
+        "ObjectPropertyDomain", "ObjectPropertyRange", "ClassAssertion",
+    ];
+    // Keep the existing EL admission unchanged. The extended object arm needs
+    // disjoint-union closure and must not accept skipped/unknown source axioms.
+    profile.positive_el_abox_materializable
+        || (profile.disjoint_union_abox_candidate
+            && !profile.expressivity.datatype
+            && !profile.expressivity.grounding
+            && profile.source.axiom_types.keys().all(|kind| OBJECT_AXIOMS.contains(&kind.as_str())))
+}
+
 /// Prove that an ABox may be omitted while classifying named TBox concepts.
 ///
 /// The accepted source fragment has only positive assertions and a TBox/RBox

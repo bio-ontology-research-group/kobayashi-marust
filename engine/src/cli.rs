@@ -227,10 +227,20 @@ pub fn run_ofn(args: &[String]) {
     // the exact file it registered as its own rewrite of a validated source.
     let trusted_rewrite = std::env::var_os(crate::orchestrate::TRUSTED_REWRITE_ENV)
         .is_some_and(|trusted| std::path::Path::new(&trusted) == std::path::Path::new(path));
+    let classifier_extended_atomic =
+        std::env::var_os(crate::frontend::CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV)
+            .is_some_and(|v| v == std::ffi::OsStr::new("1"));
+    let parse_ofn = || {
+        if classifier_extended_atomic {
+            crate::frontend::ofn_to_clauses_for_classifier(&text)
+        } else {
+            ofn_to_clauses(&text)
+        }
+    };
     let parsed = if trusted_rewrite {
-        crate::frontend::with_trusted_rewrite(|| ofn_to_clauses(&text))
+        crate::frontend::with_trusted_rewrite(parse_ofn)
     } else {
-        ofn_to_clauses(&text)
+        parse_ofn()
     };
     let result = match parsed {
         Ok(r) => r,

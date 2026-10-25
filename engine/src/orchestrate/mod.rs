@@ -531,7 +531,7 @@ fn bridge_attempt_deadline() -> Option<std::time::Instant> {
 }
 
 /// Default wall-clock bound of the bridge-first attempt before a nominal leaf.
-const BRIDGE_FIRST_BUDGET_S: u64 = 20;
+const BRIDGE_FIRST_BUDGET_S: u64 = 8;
 
 /// Default wall-clock bound of the data-free subset inconsistency attempt of
 /// the ABox quotient path.
@@ -540,8 +540,8 @@ const DATA_FREE_SUBSET_BUDGET_S: u64 = 20;
 /// Default wall-clock bound of the second bridge-first attempt that carries
 /// data-property assertions as `DataHasValue` class assertions. It runs only
 /// after the historical attempt declined, so a decline here adds at most this
-/// bound to the unchanged schedule; the measured answers arrive within 2 s.
-const DATA_ASSERTION_BRIDGE_BUDGET_S: u64 = 5;
+/// bound to the unchanged schedule; the measured answers arrive within 12 s.
+const DATA_ASSERTION_BRIDGE_BUDGET_S: u64 = 12;
 
 /// Budget (seconds) of a speculative attempt, overridable for measurement.
 /// `0` disables the bound and restores the unbounded historical schedule.
@@ -1870,6 +1870,7 @@ fn classify_with_evidence_mode(
     // publishable as is; any decline or budget expiry restores this call's
     // environment and continues with the unchanged schedule below.
     if automatic_requested
+        && !meta.profile.atomic_class_abox_candidate
         && crate::routing::bounded_bridge_first_candidate(selected_route, &meta.profile)
     {
         // The historical attempt runs first and unchanged. Only when it
@@ -1883,9 +1884,15 @@ fn classify_with_evidence_mode(
             .source
             .axiom_types
             .get("DataPropertyAssertion")
-            .is_some_and(|&count| count > 0);
+            .is_some_and(|&count| count > 0)
+            && meta.profile.source.abox_axioms <= 5_000;
         let attempts = [
-            (false, speculative_bridge_budget("KM_BRIDGE_FIRST_BUDGET_S", BRIDGE_FIRST_BUDGET_S)),
+            (
+                false,
+                (!data_assertions)
+                    .then(|| speculative_bridge_budget("KM_BRIDGE_FIRST_BUDGET_S", BRIDGE_FIRST_BUDGET_S))
+                    .flatten(),
+            ),
             (
                 true,
                 data_assertions
@@ -1900,6 +1907,7 @@ fn classify_with_evidence_mode(
         ];
         for (convert_data_assertions, budget) in attempts {
             let Some(budget) = budget else { continue };
+            let attempt_t0 = std::time::Instant::now();
             let bridge_attempt = {
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
                 let _deadline = BridgeAttemptDeadline::install(budget);
@@ -1928,6 +1936,18 @@ fn classify_with_evidence_mode(
                             "KM_TIMING bounded bridge-first{label} declined @ {:.2}s: {error}",
                             t_start.elapsed().as_secs_f64()
                         );
+                    }
+                    // If the unconverted attempt ran until its wall-clock budget
+                    // rather than declining early during ABox conversion, the
+                    // native ABox was already accepted and the bridge timed out
+                    // during saturation/probing; do not spend a second budget.
+                    if !convert_data_assertions
+                        && attempt_t0
+                            .elapsed()
+                            .saturating_add(std::time::Duration::from_millis(250))
+                            >= budget
+                    {
+                        break;
                     }
                 }
             }
@@ -1966,6 +1986,33 @@ fn classify_with_evidence_mode(
                         "KM_TIMING compact typed bridge probe declined @ {:.2}s: {error}",
                         t_start.elapsed().as_secs_f64()
                     );
+                }
+                if crate::routing::functional_data_abox_bridge_candidate(&meta.profile) {
+                    if let Some(budget) = speculative_bridge_budget(
+                        "KM_DATA_ASSERTION_BRIDGE_BUDGET_S",
+                        DATA_ASSERTION_BRIDGE_BUDGET_S,
+                    ) {
+                        let data_class_attempt = {
+                            let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                            let _deadline = BridgeAttemptDeadline::install(budget);
+                            crate::routing::Route::HtBridge.apply_environment();
+                            std::env::set_var("KM_ROUTE", crate::routing::Route::HtBridge.as_str());
+                            std::env::set_var("KM_DATA_ASSERTION_AS_CLASS", "1");
+                            let bridge_cfg = Config::from_env();
+                            classify_with_evidence_mode(&bridge_cfg, ont, retain_grouped_output)
+                        };
+                        match data_class_attempt {
+                            Ok(evidence) => return Ok(evidence),
+                            Err(error) => {
+                                if timing {
+                                    eprintln!(
+                                        "KM_TIMING compact typed bridge (data assertions as class) declined @ {:.2}s: {error}",
+                                        t_start.elapsed().as_secs_f64()
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2050,6 +2097,7 @@ fn classify_with_evidence_mode(
     // any decline or worker failure restores this call's environment and keeps
     // the unchanged exact nominal route below.
     if automatic_requested
+        && !meta.profile.atomic_class_abox_candidate
         && matches!(
             selected_route,
             crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
@@ -2189,6 +2237,20 @@ fn classify_with_evidence_mode(
             .and_then(|value| value.parse::<usize>().ok())
             .filter(|&workers| (1..=8).contains(&workers))
             .map(|workers| workers.to_string());
+        if selected_route == crate::routing::Route::CertifiedNominals
+            && meta.profile.atomic_class_abox_candidate
+        {
+            std::env::remove_var("KM_NOMINALS");
+        }
+        if selected_route == crate::routing::Route::CertifiedNominals
+            && (meta.profile.source.file_bytes > (4 << 20)
+                || meta.profile.atomic_class_abox_candidate
+                || meta.profile.source.disjoint_class_axioms
+                    > meta.profile.source.distinct_classes)
+            && std::env::var_os("KM_CB_FIRST_TYPED_NOMINAL_S").is_none()
+        {
+            std::env::set_var("KM_CB_FIRST_TYPED_NOMINAL_S", "75");
+        }
         if selected_route == crate::routing::Route::CertifiedNominals
             && crate::routing::sequential_typed_bridge_candidate(&meta.profile)
         {
@@ -2431,12 +2493,12 @@ fn classify_with_evidence_mode(
             },
         };
         let result = if reloadable {
-            match crate::elcomplete::positive_abox_classify_compact_merged(
+            match crate::elcomplete::positive_abox_classify_compact_merged_with_retry(
                 input.clauses,
                 &input.nominal_abox,
             ) {
-                Some(result) => Some(result),
-                None => {
+                Ok(result) => result,
+                Err(()) => {
                     if std::env::var_os("KM_ELC_DEBUG").is_some() {
                         eprintln!(
                             "KM_EL_ABOX merged over-approximation declined; retrying exact ABox"

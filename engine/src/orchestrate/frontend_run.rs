@@ -229,7 +229,7 @@ fn run_ofn_in_process(
     text: &str,
     clauses_path: &Path,
 ) -> Result<(Meta, Option<crate::json_io::JInput>, Option<TempPath>), OrchestrateError> {
-    let result = match crate::frontend::ofn_to_clauses(text) {
+    let result = match crate::frontend::ofn_to_clauses_for_classifier(text) {
         Ok(r) => r,
         Err(e) => return Err(OrchestrateError::OutOfFragment(e.0)),
     };
@@ -420,7 +420,8 @@ pub fn run_ofn_split_cached(
         .arg(elc_binary.path())
         .stdin(Stdio::null())
         .stdout(File::create(clauses.path())?)
-        .stderr(File::create(stderr.path())?);
+        .stderr(File::create(stderr.path())?)
+        .env(crate::frontend::CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV, "1");
     // The worker skips re-validation only for exactly this registered file.
     if trusted {
         command.env(super::TRUSTED_REWRITE_ENV, ont);
@@ -485,6 +486,7 @@ pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath>
             .stdin(Stdio::null())
             .stdout(File::create(clauses.path()).ok()?)
             .stderr(Stdio::null())
+            .env_remove(crate::frontend::CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV)
             .env("KM_ABSORB", if absorb { "1" } else { "0" }),
     )?;
     if status.code() == Some(0) {

@@ -505,6 +505,8 @@ fn read_status_mb(field: &str) -> u64 {
         .unwrap_or(0)
 }
 
+pub(crate) const CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV: &str = "KM_CLASSIFIER_EXTENDED_ATOMIC_ABOX";
+
 /// Port of `frontend.ofn_to_clauses` + the `iri_map`/`named`/`declared` outputs.
 pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment> {
     let requested = std::env::var("KM_ROUTE")
@@ -512,6 +514,17 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         .parse::<crate::routing::Route>()
         .map_err(|error| parse::OutOfFragment(format!("configuration: {error}")))?;
     ofn_to_clauses_requested(text, requested)
+}
+
+/// Classifier-owned frontend entry point that enables extended object-fragment
+/// atomic ABox projection under automatic routing while keeping the public
+/// standalone `ofn` contract byte-identical.
+pub(crate) fn ofn_to_clauses_for_classifier(text: &str) -> Result<FrontendResult, parse::OutOfFragment> {
+    let requested = std::env::var("KM_ROUTE")
+        .unwrap_or_else(|_| "manual".to_string())
+        .parse::<crate::routing::Route>()
+        .map_err(|error| parse::OutOfFragment(format!("configuration: {error}")))?;
+    ofn_to_clauses_representation(text, requested, false, true)
 }
 
 /// Symbolic bounds require a native consumer; this wrapper deliberately does
@@ -543,7 +556,7 @@ impl SymbolicFrontendResult {
 /// Full frontend preprocessing with checked symbolic number provenance.
 /// Worker admission and publication certificates remain separate obligations.
 pub fn ofn_to_symbolic_frontend(text: &str) -> Result<SymbolicFrontendResult, parse::OutOfFragment> {
-    ofn_to_clauses_representation(text, crate::routing::Route::Manual, true)
+    ofn_to_clauses_representation(text, crate::routing::Route::Manual, true, false)
         .map(SymbolicFrontendResult)
 }
 
@@ -1003,7 +1016,7 @@ fn ofn_to_clauses_requested(
     text: &str,
     requested: crate::routing::Route,
 ) -> Result<FrontendResult, parse::OutOfFragment> {
-    ofn_to_clauses_representation(text, requested, false)
+    ofn_to_clauses_representation(text, requested, false, false)
 }
 
 thread_local! {
@@ -1029,6 +1042,7 @@ fn ofn_to_clauses_representation(
     text: &str,
     requested: crate::routing::Route,
     symbolic: bool,
+    enable_extended_atomic: bool,
 ) -> Result<FrontendResult, parse::OutOfFragment> {
     if !TRUSTED_REWRITE.with(|flag| flag.get()) {
         conformance::check_source(text).map_err(parse::OutOfFragment)?;
@@ -1208,12 +1222,23 @@ fn ofn_to_clauses_representation(
     // An atomic ABox with at most one distinct class per individual has a
     // compact certificate: it is consistent iff every asserted class is
     // satisfiable in the TBox. The
-    // source profile proves the surrounding positive EL fragment, while this
-    // independent observer proves complete atomic-assertion coverage.
-    let atomic_class_abox_raw = if profile.positive_el_abox_materializable
+    // source profile admits either the existing positive EL fragment or the
+    // screened nominal-free object fragment closed under disjoint unions;
+    // this independent observer still proves complete atomic coverage.
+    let atomic_extended_active = enable_extended_atomic
+        && requested == crate::routing::Route::Auto;
+    let atomic_source_admissible = if atomic_extended_active {
+        profile::atomic_class_abox_source_admissible(&profile)
+    } else {
+        profile.positive_el_abox_materializable
+    };
+    let atomic_class_abox_raw = if atomic_source_admissible
         && profile.source.abox_axioms == profile.source.class_assertions
     {
-        data_abox.atomic_class_assertion_classes(profile.source.class_assertions)
+        data_abox.atomic_class_assertion_classes(
+            profile.source.class_assertions,
+            atomic_extended_active,
+        )
     } else {
         None
     };
@@ -1863,7 +1888,7 @@ fn route_needs_bottom_prepass(route: crate::routing::Route) -> bool {
 mod separable_abox_elision_tests {
     use super::{
         likely_atomic_class_only_abox, likely_separable_positive_abox,
-        with_ofn_to_clauses_requested_route,
+        with_ofn_to_clauses_for_classifier_route, with_ofn_to_clauses_requested_route,
     };
     use crate::routing::Route;
 
@@ -1951,6 +1976,86 @@ mod separable_abox_elision_tests {
                 .expect("supported source");
             assert!(!result.profile.inert_role_abox_probe_candidate, "{source}");
         }
+    }
+
+    #[test]
+    fn extended_atomic_abox_admits_non_el_object_tboxes() {
+        let _environment_lock = lock_environment();
+        for axiom in [
+            "SubClassOf(<urn:A> ObjectUnionOf(<urn:B> <urn:C>))",
+            "SubClassOf(<urn:A> ObjectAllValuesFrom(<urn:r> <urn:B>))",
+            "SubClassOf(<urn:A> ObjectSomeValuesFrom(ObjectInverseOf(<urn:r>) <urn:B>)) InverseObjectProperties(<urn:r> <urn:s>)",
+            "ObjectPropertyDomain(<urn:r> ObjectUnionOf(<urn:A> <urn:B>)) ObjectPropertyRange(ObjectInverseOf(<urn:r>) ObjectAllValuesFrom(<urn:s> <urn:B>))",
+        ] {
+            let source = format!("Ontology({axiom} DisjointClasses(<urn:D> <urn:E>) ClassAssertion(<urn:A> <urn:a>) ClassAssertion(<urn:B> _:genid1))");
+            let default_result = with_ofn_to_clauses_requested_route(&source, Route::Auto, |r| r).expect("default non-EL object source");
+            assert!(!default_result.profile.atomic_class_abox_candidate, "{axiom}");
+            let result = with_ofn_to_clauses_for_classifier_route(&source, Route::Auto, |r| r).expect("supported non-EL object source");
+            assert!(!result.profile.positive_el_abox_materializable, "{axiom}");
+            assert!(result.profile.disjoint_union_abox_candidate, "{axiom}");
+            assert!(result.profile.atomic_class_abox_candidate, "{axiom}");
+            assert_eq!(result.asserted_classes, vec!["A", "B"]);
+            assert!(result.nominal_abox.individuals.is_empty());
+        }
+    }
+
+    #[test]
+    fn extended_atomic_abox_rejects_non_el_source_constraints() {
+        let _environment_lock = lock_environment();
+        for extra in [
+            "SubClassOf(<urn:B> ObjectOneOf(<urn:a>))",
+            "SubClassOf(<urn:B> ObjectSomeValuesFrom(owl:topObjectProperty <urn:C>))",
+            "HasKey(<urn:A> (<urn:r>) ())",
+            "SubClassOf(<urn:B> DataSomeValuesFrom(<urn:p> xsd:integer))",
+            "DataPropertyAssertion(<urn:p> <urn:a> \"x\")",
+            "ObjectPropertyAssertion(<urn:r> <urn:a> <urn:b>)",
+            "NegativeObjectPropertyAssertion(<urn:r> <urn:a> <urn:b>)",
+            "SameIndividual(<urn:a> <urn:b>)",
+            "DifferentIndividuals(<urn:a> <urn:b>)",
+            "DisjointObjectProperties(<urn:r> <urn:s>)",
+        ] {
+            let source = format!("Ontology(SubClassOf(<urn:A> ObjectUnionOf(<urn:B> <urn:C>)) ClassAssertion(<urn:A> <urn:a>) {extra})");
+            let result = with_ofn_to_clauses_for_classifier_route(&source, Route::Auto, |r| r).expect("valid non-EL rejected projection source");
+            assert!(!result.profile.positive_el_abox_materializable, "{extra}");
+            assert!(!result.profile.atomic_class_abox_candidate, "{extra}");
+        }
+    }
+
+    #[test]
+    fn extended_atomic_abox_observer_preserves_joint_membership_and_alias_rejection() {
+        let _environment_lock = lock_environment();
+        for (second, accepted) in [("<http://example.org/a>", false), (":a", false), ("<http://example.org/b>", true), ("_:bnode1", true)] {
+            let source = format!("Prefix(:=<http://example.org/>) Ontology(SubClassOf(<http://example.org/C> ObjectUnionOf(<http://example.org/D> <http://example.org/E>)) DisjointClasses(<http://example.org/A> <http://example.org/B>) ClassAssertion(<http://example.org/A> <http://example.org/a>) ClassAssertion(<http://example.org/B> {second}))");
+            let result = with_ofn_to_clauses_for_classifier_route(&source, Route::Auto, |r| r).expect("non-EL atomic joint membership source");
+            assert!(!result.profile.positive_el_abox_materializable);
+            assert!(result.profile.disjoint_union_abox_candidate);
+            assert_eq!(result.profile.atomic_class_abox_candidate, accepted, "{second}");
+            if second == "<http://example.org/a>" { assert!(result.abox_inconsistent); }
+        }
+    }
+
+    #[test]
+    fn extended_atomic_abox_source_whitelist_fails_closed_and_retains_el_arm() {
+        use crate::frontend::profile::{atomic_class_abox_source_admissible, OntologyProfile};
+        let mut profile = OntologyProfile::default();
+        profile.disjoint_union_abox_candidate = true;
+        profile.source.axiom_types.insert("ClassAssertion".into(), 1);
+        profile.source.axiom_types.insert("SubClassOf".into(), 1);
+        assert!(atomic_class_abox_source_admissible(&profile));
+        for rejected in ["UnknownFutureAxiom", "DisjointObjectProperties", "DataPropertyDomain", "HasKey", "Import"] {
+            profile.source.axiom_types.insert(rejected.into(), 1);
+            assert!(!atomic_class_abox_source_admissible(&profile), "{rejected}");
+            profile.source.axiom_types.remove(rejected);
+        }
+        for (closure, datatype, grounding) in [(false, false, false), (true, true, false), (true, false, true)] {
+            profile.disjoint_union_abox_candidate = closure;
+            profile.expressivity.datatype = datatype;
+            profile.expressivity.grounding = grounding;
+            assert!(!atomic_class_abox_source_admissible(&profile));
+        }
+        // Existing EL admission is retained as the identical first disjunct.
+        profile.positive_el_abox_materializable = true;
+        assert!(atomic_class_abox_source_admissible(&profile));
     }
 
     #[test]
@@ -2440,6 +2545,16 @@ pub(crate) fn with_ofn_to_clauses_requested_route<T>(
 ) -> Result<T, parse::OutOfFragment> {
     let _guard = crate::routing::EnvironmentGuard::capture();
     ofn_to_clauses_requested(text, requested).map(consume)
+}
+
+#[cfg(test)]
+pub(crate) fn with_ofn_to_clauses_for_classifier_route<T>(
+    text: &str,
+    requested: crate::routing::Route,
+    consume: impl FnOnce(FrontendResult) -> T,
+) -> Result<T, parse::OutOfFragment> {
+    let _guard = crate::routing::EnvironmentGuard::capture();
+    ofn_to_clauses_representation(text, requested, false, true).map(consume)
 }
 
 #[cfg(test)]

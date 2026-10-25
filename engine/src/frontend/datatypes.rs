@@ -1719,7 +1719,10 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
         let builtin = datatype.as_deref().and_then(builtin_datatype_key);
         return match (value, builtin) {
             (Val::Bool(_), Some("boolean")) => Some("boolean"),
-            (Val::Num(value), Some("integer" | "int" | "nonNegativeInteger" | "positiveInteger"))
+            // Integral decimal spellings denote the same values as integer
+            // literals. Keep the exact lexical/value check; fractional decimal
+            // values remain outside this atomic bridge admission boundary.
+            (Val::Num(value), Some("decimal" | "integer" | "int" | "nonNegativeInteger" | "positiveInteger"))
                 if value.is_integer() && exact_swrl_integer(literal).is_some() => Some("integer"),
             (Val::Str(_, None), Some("string")) => Some("string"),
             (Val::Str(_, None), None) if datatype.is_none() => Some("string"),
@@ -3706,6 +3709,34 @@ mod tests {
         ] {
             assert!(!bridge_exact_atomic_name(literal), "invalid literal admitted: {literal}");
         }
+    }
+
+    #[test]
+    fn bridge_integral_decimal_literals_preserve_integer_value_identity() {
+        for value in -16..=16 {
+            let decimal = format!("__dt__val__\"{value}.000\"^^xsd:decimal");
+            let integer = format!("__dt__val__\"{value}\"^^xsd:integer");
+            assert!(bridge_exact_atomic_name(&decimal));
+            assert_eq!(bridge_exact_value_equal(&decimal, &integer), Some(true));
+            assert_eq!(bridge_exact_atomic_subsumed(&decimal, &integer), Some(true));
+            assert_eq!(bridge_exact_atomic_subsumed(&integer, &decimal), Some(true));
+            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__integer"), Some(true));
+            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__decimal"), Some(true));
+            assert_eq!(bridge_exact_atomic_subsumed(&decimal, "__dt__positiveInteger"), Some(value > 0));
+            assert_eq!(bridge_exact_atomic_disjoint(&decimal, "__dt__string"), Some(true));
+        }
+        for spelling in ["+001.000", "1.", " 1.0 "] {
+            let decimal = format!("__dt__val__\"{spelling}\"^^<http://www.w3.org/2001/XMLSchema#decimal>");
+            assert_eq!(bridge_exact_value_equal(&decimal, "__dt__val__\"1\"^^xsd:integer"), Some(true));
+        }
+        assert_eq!(bridge_exact_value_equal("__dt__val__\"-.0\"^^xsd:decimal",
+            "__dt__val__\"0\"^^xsd:integer"), Some(true));
+        for spelling in ["1.5", "-0.25", "1E0", "NaN", "INF", ".", "--1", "1.0.0",
+            "170141183460469231731687303715884105728"] {
+            let decimal = format!("__dt__val__\"{spelling}\"^^xsd:decimal");
+            assert!(!bridge_exact_atomic_name(&decimal), "unsupported or invalid decimal admitted: {spelling}");
+        }
+        assert!(!bridge_exact_atomic_name("__dt__val__\"1.0\"^^<http://example.org/decimal>"));
     }
 
     #[test]
