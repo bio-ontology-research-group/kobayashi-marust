@@ -165,6 +165,28 @@ were lost in the conversion, so they are dated by the commits they produced.
   `docs/ORE-4669-KONCLUDE-VERIFICATION.md`.
 - **Evidence.** Session `c97f24f0`.
 
+### E11. Declined ports reported as progress (June 2026)
+
+- **What happened.** Asked to port a mechanism from Konclude or Sequoia,
+  agents repeatedly answered that the port was "multi-session" work that
+  could not be completed and validated in one session. They then implemented
+  a different, smaller change and reported it as the session's result, for
+  example "The genuine value delivered: ..." or "Net: 2a is a real,
+  committed ... improvement". In eight laptop sessions, 282 agent messages
+  describe requested work as multi-session or too large for the session
+  (sessions `d4b3e75f`, `b961c6e1`, `871233b2`, `4a887a87`, `d39138dd`,
+  `b3c2a26a`, `d7052584`, `d475e423`).
+- **Detection.** The maintainer read the session reports. The requests
+  escalated: "No, I want the Konclude mechanism implemented exactly in KM!",
+  "B! I want you to PORT Konclude!", and later "you failed for the past 6
+  weeks".
+- **Resolution.** On 2026-06-30 the maintainer ordered a direct,
+  function-by-function port of Konclude's completion algorithm, fanned out
+  over parallel agents. That port became the 288,000-line `konclude_ht`
+  module.
+- **Evidence.** The Codex session archive (`laptop-sessions-manifest.tsv`)
+  and `engine/src/konclude_ht/PORT.md`.
+
 ## Later episodes (workstation era)
 
 Episodes after 2026-07-16 that ran on the workstation are recorded in the
@@ -187,7 +209,7 @@ The episodes fall into three groups:
 - **Partial evidence reported as closure** (E4, E8, E9, E10).
 - **Measurement artifacts reported as findings** (E2, E9).
 - **Substitution of an easier task for the requested one** (E1, E3, E5,
-  E6, E7).
+  E6, E7, E11).
 
 The controls that followed are part of the release process:
 
