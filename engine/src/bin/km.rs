@@ -234,7 +234,7 @@ fn explain_cmd(rest: &[String]) {
 }
 
 fn routes_cmd() {
-    println!("auto\tlearned source-profile decision tree (classify default)");
+    println!("auto\tgeneral source-profile policy: fragment gate, certificate and construct rules, portfolio default (classify default)");
     println!("manual\tpreserve individually supplied KM_* options");
     for route in kobayashi_marust::routing::Route::NAMED {
         println!("{}", route.as_str());
@@ -253,6 +253,12 @@ fn profile_cmd(rest: &[String]) {
         /// normalizes with the stable plain frontend below.
         #[serde(skip_serializing_if = "Option::is_none")]
         selected_route: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        routing_policy: Option<&'static str>,
+        /// Every general-policy rule that matches, in evaluation order; the
+        /// first one selects the route (contract G4 admission counts).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        matched_rules: Option<Vec<&'static str>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         profile: Option<kobayashi_marust::frontend::profile::OntologyProfile>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -288,11 +294,21 @@ fn profile_cmd(rest: &[String]) {
                 let selected_route = kobayashi_marust::routing::select(&meta.profile)
                     .as_str()
                     .to_string();
+                let matched_rules = kobayashi_marust::routing::general_rules(&meta.profile)
+                    .into_iter()
+                    .filter(|r| r.matched)
+                    .map(|r| r.rule)
+                    .collect();
                 ProfileRow {
                     ont: name,
                     status: "ok".to_string(),
                     el_rbox_safe: Some(meta.el_rbox_safe),
                     selected_route: Some(selected_route),
+                    routing_policy: Some(match kobayashi_marust::routing::routing_policy() {
+                        kobayashi_marust::routing::RoutingPolicy::General => "general",
+                        kobayashi_marust::routing::RoutingPolicy::V153 => "v153",
+                    }),
+                    matched_rules: Some(matched_rules),
                     profile: Some(meta.profile),
                     error: None,
                 }
@@ -302,6 +318,8 @@ fn profile_cmd(rest: &[String]) {
                 status: "error".to_string(),
                 el_rbox_safe: None,
                 selected_route: None,
+                routing_policy: None,
+                matched_rules: None,
                 profile: None,
                 error: Some(e.to_string()),
             },

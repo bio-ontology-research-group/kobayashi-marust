@@ -9,6 +9,9 @@ use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, RuleAtom, RuleTerm}
 pub(super) struct Scan {
     count: u64,
     queries: u64,
+    /// Distinct non-query rules. An OWL ontology is a set of axioms, so a
+    /// repeated rule axiom is one rule; the parsed view keeps one copy.
+    distinct: std::collections::HashSet<String>,
     invalid: bool,
     non_pointwise_source: bool,
 }
@@ -36,8 +39,11 @@ fn pointwise_source(node: &Node<'_>) -> bool {
     let Node::List(kind, args) = node else { return false };
     let args = super::parse::strip_annotations(args);
     match *kind {
-        "Annotation" | "DLSafeRule" => true,
-        "Declaration" => matches!(args.as_slice(), [Node::List("Class" | "NamedIndividual", inner)]
+        // Annotations and declarations carry no logical content; they must not
+        // change whether the source is pointwise (routing contract G5).
+        "Annotation" | "AnnotationAssertion" | "SubAnnotationPropertyOf"
+        | "AnnotationPropertyDomain" | "AnnotationPropertyRange" | "DLSafeRule" => true,
+        "Declaration" => matches!(args.as_slice(), [Node::List(_, inner)]
             if inner.len() == 1 && named(&inner[0])),
         "SubClassOf" => args.len() == 2 && args.iter().all(|node| class(node)),
         "EquivalentClasses" | "DisjointClasses" => args.len() >= 2 && args.iter().all(|node| class(node)),
@@ -55,6 +61,7 @@ impl Scan {
             return;
         }
         self.count += 1;
+        self.distinct.insert(format!("{node:?}"));
         let arguments = super::parse::strip_annotations(arguments);
         let valid = (|| {
             let [Node::List("Body", body), Node::List("Head", head)] = arguments.as_slice() else {
@@ -87,7 +94,8 @@ impl Scan {
             return 0;
         }
         let rules: Vec<_> = ontology.rules().collect();
-        if rules.len() as u64 != self.count { return 0; }
+        // Every distinct source rule must be represented in the parsed view.
+        if rules.len() != self.distinct.len() { return 0; }
         // Recheck the parsed view independently of the raw-node certificate.
         for rule in &rules {
             let Axiom::Rule(body, head) = rule else { return 0 };

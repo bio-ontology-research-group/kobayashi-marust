@@ -1561,7 +1561,11 @@ fn ofn_to_clauses_representation(
     // the parsed-AST certificate above has run. Once the complete typed payload
     // is proved, add the complete-answer-or-defer SHOIQ competitor while
     // retaining that same CB fallback.
+    // Under the general policy this specialist is not scheduled: its only
+    // protection against the inconsistent Wine-family edit was an exact
+    // source-count fence, which is not admissible routing evidence.
     if automatic
+        && crate::routing::routing_policy() == crate::routing::RoutingPolicy::V153
         && route == crate::routing::Route::Nominals
         && nominal_abox.complete
         && crate::routing::nominal_ni_abox_candidate(&profile)
@@ -1795,7 +1799,12 @@ fn ofn_to_clauses_representation(
         route.apply_environment();
     }
     if automatic && route == crate::routing::Route::Elc && (!el_rbox_safe || !pure_el_shape) {
-        route = crate::routing::Route::CbPlain16;
+        // The general policy withdraws to the portfolio, which carries an
+        // exact fallback; v1.5.3 withdrew to the isolated plain CB bundle.
+        route = match crate::routing::routing_policy() {
+            crate::routing::RoutingPolicy::General => crate::routing::Route::ProductionAll,
+            crate::routing::RoutingPolicy::V153 => crate::routing::Route::CbPlain16,
+        };
         route.apply_environment();
     }
 
