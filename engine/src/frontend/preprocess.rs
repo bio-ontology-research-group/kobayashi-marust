@@ -520,6 +520,230 @@ fn chain_clauses_with(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClause> {
     extra
 }
 
+/// Regular role-inclusion automata for the consumers that the one-level
+/// [`transitivity_clauses`] and [`chain_clauses`] encodings do not cover.
+///
+/// For a role `T`, let `L(T)` be the set of role words `w` with `w ⊑ T` under
+/// the role hierarchy, the role chains, and transitivity. An OWL 2 DL role
+/// hierarchy is regular, so `L(T)` is accepted by a finite automaton built by
+/// unfolding (Horrocks, Kutz, and Sattler, KR 2006): `T` itself; `L(U)` for
+/// every strict sub-role `U`; `L(R)L(S)` for every chain `R∘S ⊑ T`; `L(S)*`
+/// after `T` for a left-recursive chain `T∘S ⊑ T`; `L(R)*` before `T` for a
+/// right-recursive chain `R∘T ⊑ T`; and `L(T)+` when `T` is transitive. A
+/// consumer `Γ(x) ∧ T(x,y) ∧ ⋀C_i(y) → Δ(x)` holds for every `T`-path that
+/// spells a word of `L(T)`, so it is encoded by markers propagated backwards
+/// along the automaton:
+///
+///   ⋀C_i(x) → M_f(x)                    (final state)
+///   R(x,y) ∧ M_q'(y) → M_q(x)           (transition q --R--> q')
+///   M_q'(x) → M_q(x)                     (ε-transition q --> q')
+///   Γ(x) ∧ M_s(x) → Δ(x)                 (initial state)
+///
+/// Every marker clause is entailed: `M_q(x)` holds only if some path from `x`
+/// spelling a word accepted from `q` reaches a node satisfying every `C_i`,
+/// and every accepted word is below `T`. The clauses are therefore additive
+/// and sound, and they complete the encoding for consumers of roles whose
+/// language is not covered by one chain step or one transitive closure: roles
+/// with a non-simple strict sub-role, chains over non-simple roles,
+/// self-recursive chains, and transitive roles that are also chain targets.
+/// Transitions on a role also fire on edges of its simple sub-roles, which
+/// the role-inclusion clauses lift to the super-role.
+fn regular_role_automaton_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClause> {
+    if info.chains.is_empty() && info.trans.is_empty() {
+        return Vec::new();
+    }
+    let trans: HashSet<&str> = info.trans.iter().map(String::as_str).collect();
+    let mut sub_roles: HashMap<&str, Vec<&str>> = HashMap::default();
+    for c in tbox {
+        if let ([Atom::Role(u, us, ut)], [Atom::Role(v, vs, vt)]) = (c.body.as_slice(), c.head.as_slice()) {
+            if us == vs && ut == vt && us != ut && u != v {
+                sub_roles.entry(v.as_str()).or_default().push(u.as_str());
+            }
+        }
+    }
+    for subs in sub_roles.values_mut() {
+        subs.sort_unstable();
+        subs.dedup();
+    }
+    let mut chains_into: HashMap<&str, Vec<(&str, &str)>> = HashMap::default();
+    for (r, s, t) in &info.chains {
+        chains_into.entry(t.as_str()).or_default().push((r.as_str(), s.as_str()));
+    }
+    // Non-simple roles: chain targets and transitive roles, closed upwards
+    // under the role hierarchy.
+    let mut super_roles: HashMap<&str, Vec<&str>> = HashMap::default();
+    for (sup, subs) in &sub_roles {
+        for sub in subs {
+            super_roles.entry(sub).or_default().push(sup);
+        }
+    }
+    let mut non_simple: HashSet<&str> = HashSet::default();
+    let mut queue: VecDeque<&str> = chains_into.keys().copied().chain(trans.iter().copied()).collect();
+    while let Some(role) = queue.pop_front() {
+        if non_simple.insert(role) {
+            for sup in super_roles.get(role).map(Vec::as_slice).unwrap_or(&[]) {
+                queue.push_back(sup);
+            }
+        }
+    }
+    // Consumer roles whose language the one-level encodings already cover.
+    let needs_automaton = |t: &str| -> bool {
+        if !non_simple.contains(t) {
+            return false;
+        }
+        let strict_non_simple_sub = {
+            let mut seen: HashSet<&str> = HashSet::default();
+            let mut stack: Vec<&str> = sub_roles.get(t).cloned().unwrap_or_default();
+            let mut found = false;
+            while let Some(u) = stack.pop() {
+                if u == t || !seen.insert(u) {
+                    continue;
+                }
+                if non_simple.contains(u) {
+                    found = true;
+                    break;
+                }
+                stack.extend(sub_roles.get(u).cloned().unwrap_or_default());
+            }
+            found
+        };
+        let chains = chains_into.get(t).map(Vec::as_slice).unwrap_or(&[]);
+        strict_non_simple_sub
+            || (trans.contains(t) && !chains.is_empty())
+            || chains.iter().any(|(r, s)| {
+                *r == t || *s == t || non_simple.contains(r) || non_simple.contains(s)
+            })
+    };
+
+    struct Nfa<'a> {
+        states: usize,
+        moves: Vec<(usize, &'a str, usize)>,
+        epsilon: Vec<(usize, usize)>,
+    }
+    // Each unfolding gets its own entry and exit states, joined to its
+    // context by ε-transitions, so loops of a sub-language stay local to it.
+    #[allow(clippy::too_many_arguments)]
+    fn build<'a>(
+        role: &'a str,
+        from: usize,
+        to: usize,
+        nfa: &mut Nfa<'a>,
+        stack: &mut Vec<&'a str>,
+        sub_roles: &HashMap<&'a str, Vec<&'a str>>,
+        chains_into: &HashMap<&'a str, Vec<(&'a str, &'a str)>>,
+        non_simple: &HashSet<&'a str>,
+        trans: &HashSet<&'a str>,
+    ) {
+        let (a, b) = (nfa.states, nfa.states + 1);
+        nfa.states += 2;
+        nfa.epsilon.push((from, a));
+        nfa.epsilon.push((b, to));
+        nfa.moves.push((a, role, b));
+        if stack.contains(&role) {
+            // An equivalent role on the unfolding stack: its words are
+            // already produced by the enclosing unfolding.
+            return;
+        }
+        stack.push(role);
+        for &sub in sub_roles.get(role).map(Vec::as_slice).unwrap_or(&[]) {
+            if non_simple.contains(sub) {
+                build(sub, a, b, nfa, stack, sub_roles, chains_into, non_simple, trans);
+            }
+        }
+        for &(r, s) in chains_into.get(role).map(Vec::as_slice).unwrap_or(&[]) {
+            if r == role && s == role {
+                continue;
+            } else if r == role {
+                // L(role) L(s)*
+                build(s, b, b, nfa, stack, sub_roles, chains_into, non_simple, trans);
+            } else if s == role {
+                // L(r)* L(role)
+                build(r, a, a, nfa, stack, sub_roles, chains_into, non_simple, trans);
+            } else {
+                let mid = nfa.states;
+                nfa.states += 1;
+                build(r, a, mid, nfa, stack, sub_roles, chains_into, non_simple, trans);
+                build(s, mid, b, nfa, stack, sub_roles, chains_into, non_simple, trans);
+            }
+        }
+        if trans.contains(role) {
+            // L(role)+: after a complete word, another one may follow.
+            nfa.epsilon.push((b, a));
+        }
+        stack.pop();
+    }
+
+    let x = var_x();
+    let y = var_y();
+    let mut automata: HashMap<&str, Nfa<'_>> = HashMap::default();
+    let mut emitted: HashSet<(String, Vec<String>)> = HashSet::default();
+    let mut extra = Vec::new();
+    for c in tbox {
+        let Some(role) = single_body_role(c) else { continue };
+        let (t, source, target) = role_parts(role);
+        if *source != x || *target == x || !needs_automaton(t) {
+            continue;
+        }
+        let yt = target.clone();
+        let mut c_on_y: Vec<String> = c
+            .body
+            .iter()
+            .filter_map(|a| match a {
+                Atom::Concept(name, term) if *term == yt => Some(name.clone()),
+                _ => None,
+            })
+            .collect();
+        c_on_y.sort();
+        if c_on_y.is_empty()
+            || c.head.is_empty()
+            || !c.head.iter().all(|h| matches!(h, Atom::Concept(_, term) if *term == x))
+        {
+            continue;
+        }
+        let nfa = automata.entry(t).or_insert_with(|| {
+            let mut nfa = Nfa { states: 2, moves: Vec::new(), epsilon: Vec::new() };
+            let mut stack = Vec::new();
+            build(t, 0, 1, &mut nfa, &mut stack, &sub_roles, &chains_into, &non_simple, &trans);
+            nfa.moves.sort_unstable();
+            nfa.moves.dedup();
+            nfa.epsilon.sort_unstable();
+            nfa.epsilon.dedup();
+            nfa
+        });
+        let marker = |q: usize| format!("__ria__{}__q{}__{}", t, q, c_on_y.join("_"));
+        if emitted.insert((t.to_string(), c_on_y.clone())) {
+            extra.push(clause(
+                c_on_y.iter().map(|ci| Atom::Concept(ci.clone(), x.clone())),
+                [Atom::Concept(marker(1), x.clone())],
+            ));
+            for &(q, r, q2) in &nfa.moves {
+                extra.push(clause(
+                    [
+                        Atom::Role(r.to_string(), x.clone(), y.clone()),
+                        Atom::Concept(marker(q2), y.clone()),
+                    ],
+                    [Atom::Concept(marker(q), x.clone())],
+                ));
+            }
+            for &(q, q2) in &nfa.epsilon {
+                extra.push(clause(
+                    [Atom::Concept(marker(q2), x.clone())],
+                    [Atom::Concept(marker(q), x.clone())],
+                ));
+            }
+        }
+        let mut body: Vec<Atom> = c
+            .body
+            .iter()
+            .filter(|a| matches!(a, Atom::Concept(_, term) if *term == x))
+            .cloned()
+            .collect();
+        body.push(Atom::Concept(marker(0), x.clone()));
+        extra.push(clause(body, c.head.iter().cloned()));
+    }
+    extra
+}
+
 /// Drop inverse-bridge clauses whose derived atoms nothing can consume.
 ///
 /// `link_inverse` emits both `R(x,y) -> S(y,x)` and `S(x,y) -> R(y,x)` for
@@ -1218,6 +1442,7 @@ pub(super) fn augment_with_chains_retaining_role_axioms(
     let chain_info = detect_role_chains(&tbox);
     let mut derived = transitivity_clauses_with(&tbox, &chain_info);
     derived.extend(chain_clauses_with(&tbox, &chain_info));
+    derived.extend(regular_role_automaton_clauses(&tbox, &chain_info));
     derived.extend(transitive_chain_compose_clauses(&tbox));
     derived.extend(role_automaton_reachability_clauses(&tbox));
     // Do not use `filter().collect()` here. `Vec`'s in-place collection may

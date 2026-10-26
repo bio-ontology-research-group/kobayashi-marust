@@ -2476,6 +2476,15 @@ pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
             Route::HtRules,
         ),
         (
+            // Typed object ABoxes, including the all-different datatype
+            // layout, which the native bridge carries into its nominal model.
+            "typed_abox_for_native_bridge",
+            "construct",
+            fragment == SemanticFragment::NativeBridgeAbox
+                || (nominal && typed_object_abox_bridge_candidate(profile)),
+            Route::CertifiedNominals,
+        ),
+        (
             // The ABox reduces to TBox classification plus a consistency check
             // of each asserted type: atomic class assertions, inert role edges,
             // or isolated existential witnesses.
@@ -2489,15 +2498,14 @@ pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
             Route::ProductionAll,
         ),
         (
-            // Typed object ABoxes, including the all-different datatype
-            // layout, which the native bridge carries into its nominal model.
-            "typed_abox_for_native_bridge",
-            "construct",
-            fragment == SemanticFragment::NativeBridgeAbox
-                || (nominal && typed_object_abox_bridge_candidate(profile)),
+            // Contract G2: where the evidence cannot decide between the
+            // native bridge and the exact nominal CB calculus, race them. The
+            // certified nominal portfolio carries nominal CB as its exact arm.
+            "nominal_portfolio_default",
+            "semantic",
+            nominal,
             Route::CertifiedNominals,
         ),
-        ("nominal_default", "semantic", nominal, Route::Nominals),
         (
             "el_terminology",
             "semantic",
@@ -3447,6 +3455,28 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// General policy: an ABox or nominal source that no certificate or
+    /// construct rule admits races the native bridge against the exact
+    /// nominal CB calculus (contract G2), and a nominal-free source that is
+    /// not EL takes the production portfolio.
+    #[test]
+    fn general_policy_defaults_are_portfolios() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 10;
+        profile.source.tbox_axioms = 10;
+        profile.source.unions = 1;
+        assert_eq!(select(&profile), Route::ProductionAll);
+        profile.source.abox_axioms = 3;
+        profile.source.role_assertions = 1;
+        profile.source.class_assertions = 1;
+        profile
+            .source
+            .axiom_types
+            .insert("DataPropertyAssertion".into(), 1);
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
     }
 
     fn legacy_policy() {
@@ -5037,6 +5067,7 @@ mod tests {
 
     #[test]
     fn typed_object_abox_candidate_uses_certified_bridge_portfolio() {
+        legacy_policy();
         let profile = source_profile(
             r#"Ontology(
                 Declaration(Class(<A>))
@@ -6114,6 +6145,7 @@ mod tests {
 
     #[test]
     fn vacuous_top_role_object_abox_uses_the_certified_typed_bridge() {
+        legacy_policy();
         // Inverse/complement SHOI terminology of roughly 8,600 axioms with a
         // compact positive object ABox whose roles are read by the TBox: the
         // ORE 16303 feature shape. No projection certificate applies.
