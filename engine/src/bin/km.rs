@@ -273,11 +273,16 @@ fn profile_cmd(rest: &[String]) {
     // Full statistics are intentionally opt-in on the normal frontend path so
     // the production classifier does not rescan its complete clause vector.
     std::env::set_var("KM_PROFILE_CLAUSES", "1");
-    // Corpus profiles use the stable plain frontend. A caller can still obtain
-    // route-specific clauses via `km classify --route ...`; source statistics
-    // and expressivity are route-independent.
-    kobayashi_marust::routing::Route::CbPlain16.apply_environment();
-    std::env::set_var("KM_ROUTE", "manual");
+    // Profile under the automatic request so that the source certificates and
+    // the selected route are the ones `km classify` computes (routing
+    // contract G3). `KM_PROFILE_MANUAL=1` restores the v1.5.3 plain-frontend
+    // profile.
+    if std::env::var_os("KM_PROFILE_MANUAL").is_some() {
+        kobayashi_marust::routing::Route::CbPlain16.apply_environment();
+        std::env::set_var("KM_ROUTE", "manual");
+    } else {
+        std::env::set_var("KM_ROUTE", "auto");
+    }
     let cfg = Config::from_env();
     let multi = onts.len() > 1;
     let stdout = std::io::stdout();

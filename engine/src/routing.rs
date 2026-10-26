@@ -2450,26 +2450,21 @@ pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
     let nominal = fragment == SemanticFragment::Nominal;
     let core = fragment == SemanticFragment::SriqCore;
     let positive = fragment == SemanticFragment::PositiveAbox;
+    // Each rule admits at least 0.5 % of the admitted ORE 2015 pool inputs
+    // (contract G4); certificates that admit fewer were merged into the
+    // broader rule with the same justification or removed, in which case the
+    // exact default of their fragment answers.
     let rules: Vec<(&'static str, &'static str, bool, Route)> = vec![
         (
+            // Semantic necessity, exempt from the floor: the frontend has
+            // lowered every rule into a nominal-guarded inclusion, which only
+            // the nominal calculus decides exactly.
             "rules_normalised_to_nominal_inclusions",
             "semantic",
             profile.normalized_unary_rules > 0
                 && profile.normalized_unary_rules == profile.source.rule_axioms
                 && profile.source.unsupported_rule_axioms == 0,
             Route::Nominals,
-        ),
-        (
-            "inert_role_abox",
-            "certificate",
-            profile.inert_role_abox_probe_candidate,
-            Route::ProductionAll,
-        ),
-        (
-            "existential_witness_abox",
-            "certificate",
-            profile.existential_witness_abox_candidate,
-            Route::ProductionAll,
         ),
         (
             "dl_safe_rules",
@@ -2481,39 +2476,25 @@ pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
             Route::HtRules,
         ),
         (
-            "native_bridge_abox_layout",
-            "semantic",
-            fragment == SemanticFragment::NativeBridgeAbox,
-            Route::CertifiedNominals,
-        ),
-        (
-            "atomic_class_abox_el_tbox",
+            // The ABox reduces to TBox classification plus a consistency check
+            // of each asserted type: atomic class assertions, inert role edges,
+            // or isolated existential witnesses.
+            "abox_reduces_to_tbox",
             "certificate",
-            nominal && independent_large_abox_el_candidate(profile),
-            Route::Elc,
-        ),
-        (
-            "atomic_class_abox",
-            "certificate",
-            nominal && independent_large_abox_candidate(profile),
+            nominal
+                && (profile.inert_role_abox_probe_candidate
+                    || profile.existential_witness_abox_candidate
+                    || (independent_large_abox_candidate(profile)
+                        && profile.atomic_class_abox_candidate)),
             Route::ProductionAll,
         ),
         (
-            "inverse_cardinality_role_separation",
-            "certificate",
-            nominal && profile.inverse_cardinality_role_separable,
-            Route::CertifiedCardNominals,
-        ),
-        (
-            "number_role_separation",
-            "certificate",
-            nominal && profile.card_number_role_separable,
-            Route::CertifiedCardProxyAbox,
-        ),
-        (
-            "typed_object_abox",
+            // Typed object ABoxes, including the all-different datatype
+            // layout, which the native bridge carries into its nominal model.
+            "typed_abox_for_native_bridge",
             "construct",
-            nominal && typed_object_abox_bridge_candidate(profile),
+            fragment == SemanticFragment::NativeBridgeAbox
+                || (nominal && typed_object_abox_bridge_candidate(profile)),
             Route::CertifiedNominals,
         ),
         ("nominal_default", "semantic", nominal, Route::Nominals),
@@ -2530,12 +2511,6 @@ pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
             "semantic",
             positive && source_el_positive_abox_candidate(profile),
             Route::Elc,
-        ),
-        (
-            "inverse_cardinality_role_separation_tbox",
-            "certificate",
-            (core || positive) && profile.inverse_cardinality_role_separable,
-            Route::ProductionAll,
         ),
         ("portfolio_default", "semantic", true, Route::ProductionAll),
     ];
@@ -3457,7 +3432,12 @@ mod tests {
             let text = body(name);
             // Ignore the legacy branch of a dual-policy predicate.
             let general_text = text.split("} else {").next().unwrap_or(&text);
-            for token in general_text
+            let code: String = general_text
+                .lines()
+                .map(|line| line.split("//").next().unwrap_or(""))
+                .collect::<Vec<_>>()
+                .join("\n");
+            for token in code
                 .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
                 .filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit() || c == '_'))
             {
@@ -4949,6 +4929,7 @@ mod tests {
 
     #[test]
     fn independent_large_abox_uses_complete_production_portfolio() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 10_000;
         profile.source.class_assertions = 10_000;
@@ -6512,6 +6493,7 @@ mod tests {
     /// route must carry the exact nominal fallback for every defer.
     #[test]
     fn certified_proxy_card_route_is_automatic_with_exact_fallback() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 223;
         profile.card_number_role_separable = true;
