@@ -14,27 +14,29 @@ without access to the expected answer.
 
 ## Highlights
 
-- The recorded v1.4.0 candidate completes all 592 ORE 2015 ontologies under the documented
-  240-second and 20-GiB benchmark contract.
-- Those results comprise 588 exact retained signatures and four independently
-  adjudicated cases: 2669, 15516, 10860, and the no-gold ontology 1194.
-- KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle.
+- **v1.5.3** classifies `1,662 / 1,708` valid ontologies in the 1,920-file ORE
+  2015 pool, verified against Konclude, HermiT, Openllet, and JFact, and refuses
+  all `212 / 212` invalid inputs. Konclude solves `1,655`.
+- On one core under a 240-second, 20-GiB limit, KM 1.5.3 has a mean wall time of
+  `2.66 s` and a median of `0.14 s` (Konclude: `2.92 s` / `0.27 s`). On the
+  `1,642` ontologies that both solve, KM takes `2.12 s` / `0.13 s` and Konclude
+  `2.93 s` / `0.27 s`. See the [benchmark](#ore-2015-benchmark).
+- KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle. Input
+  validation rejects ontologies outside OWL 2 DL before reasoning.
 - Conversion, routing, and certification paths fail closed when they cannot
   justify a complete result.
 - Source-level transactional incremental reasoning reuses exact taxonomy rows,
   source indexes, and checked supports where eligible, with full-classification
-  fallback and atomic updates. See the [incremental API](docs/INCREMENTAL-REASONING.md)
-  and [v1.5.3 release and benchmark protocol](docs/RELEASE-1.5.3.md).
+  fallback and atomic updates. In v1.5.3 every evaluated update (`632 / 632`)
+  and every completed session (`79 / 79`) is faster than reclassifying from
+  scratch, on both the CLI and OWLAPI. See the
+  [incremental API](docs/INCREMENTAL-REASONING.md).
 - The native CLI and OWLAPI/Protégé integration return verified, subset-minimal
   source-axiom explanations for every advertised entailment kind.
 - Lean provides sorry-free soundness and completeness certification for the
   production ELC, hypertableau, and CB publication boundaries and for their
   automatic routing composition. Accepted routed taxonomies are bound to the
   exact source clauses and requested named-class signature.
-- On the completed ORE panel, the automatic route has lower median wall time
-  and lower mean and median peak process-tree RSS than the retained
-  correct-completion results for ELK, HermiT, Konclude, and Sequoia. Its mean
-  wall time is lower than HermiT, Konclude, and Sequoia, but not ELK.
 
 ## Install
 
@@ -47,7 +49,11 @@ cargo build --release --locked
 ./target/release/km --help
 ```
 
-The main executable is `engine/target/release/km`.
+The main executable is `engine/target/release/km`. The measured v1.5.3 build
+uses `--features mimalloc` and profile-guided optimization; see
+[`docs/RELEASE-1.5.3.md`](docs/RELEASE-1.5.3.md#reproducing-and-inspecting-the-release).
+Prebuilt Linux x86-64 executables and the Protégé JAR are attached to each
+[GitHub release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases).
 
 ## Classify an ontology
 
@@ -83,82 +89,78 @@ selects a compatible reasoning route. Worker entry points are also available
 as `km ofn`, `km elc`, `km engine`, and `km tableau` for development and
 diagnostics.
 
-Version 1.4.4 adds inverse expressions in role chains and
-extends DL-safe SWRL reasoning. Its input checks reject malformed ontologies
-before reasoning. For example, `"text"^^rdfs:Literal` has no literal lexical
-mapping: use of `rdfs:Literal` as a data range does not make it a valid literal
-datatype. KM explains the violation and exits with code 2 without rewriting
-the input or producing a classification. A valid construct whose complete
-execution cannot be established is a separate refusal (exit code 3).
+### Input validation
 
-The final validation inventory covers 1,920 unchanged corpus files: 1,708
-pass its implemented checks and 212 are refused. Independent audits verified
-all 212 violations, including the 33 additional anonymous-tree diagnoses.
-The anonymous-individual check follows the formal condition in
+Since v1.4.4, input checks reject malformed ontologies before reasoning. For
+example, `"text"^^rdfs:Literal` has no literal lexical mapping: use of
+`rdfs:Literal` as a data range does not make it a valid literal datatype. KM
+explains the violation and exits with code 2 without rewriting the input or
+producing a classification. A valid construct whose complete execution cannot
+be established is a separate refusal (exit code 3).
+
+Of the 1,920 files in the ORE 2015 pool, 1,708 pass the implemented checks and
+212 are refused. Independent audits verified all 212 violations. The
+anonymous-individual check follows the formal condition in
 [OWL 2 section 11.2](https://www.w3.org/TR/owl2-syntax/#Global_Restrictions_on_Axioms_in_OWL_2_DL):
 each anonymous tree must contain a node with at most one object-property
 assertion to a named individual. The named-star example immediately after
-that condition contradicts it; KM follows the explicit condition. The release
-candidate passed 2,822 Rust tests and all four production Lean gates.
-The final 1,920-input classification run reports 1,622 successes, 212 input
-rejections, and 86 non-completions. The output audit verifies every successful
-output, zero dropped axioms, and all refusals as invalid inputs. No unsupported
-input or unexplained engine-error outcomes remain in this run. The
-592-input gold comparison has 552 Konclude matches, two successes without
-gold, 35 invalid-input refusals, two memory-limit failures, and one timeout.
-The historical benchmark table below does not describe these new validation
-rules.
-
-In v1.5.3 ([`docs/RELEASE-1.5.3.md`](docs/RELEASE-1.5.3.md)), the 1,920-ontology
-static classification benchmark solves `1,662 / 1,708` admitted ontologies
-verified against `konclude` (`v0.7.0-1138`, `0002e80635403960a7df5d93bd0e8f994d4952d0`,
-`1,655` solved), `hermit` (`1.4.5.519`), `openllet` (`2.6.5`), and `jfact`
-(`5.0.3`), refuses all `212 / 212` invalid inputs, and beats `konclude`
-(`2.9232 s` mean / `0.2690 s` median all-verified; `2.9334 s / 0.2671 s` on the
-`1,642` common verified ontologies), KM 1.5.0 (`3.2557 s / 0.2305 s`, `1,661`
-solved), KM 1.5.2 (`5.6605 s / 0.3209 s`, `1,660` solved), updated `rustdl`
-(`v0.4.41`, `7bf5af7e1b1381bf879540f433d6b5f0f4c70f89`, `8.5060 s / 0.6576 s`,
-`1,428` solved), `rustdl` (`v0.4.28`, `b120b1783dc83838df186591b18ac68891a2e87d`,
-`5.1386 s / 0.3312 s`, `1,212` solved), and `elk` (`v0.6.0`,
-`b8ac5ce83db0704a7359d96aa382891e2f547863`, `11.9712 s / 4.7772 s`, `1,411`
-solved) with `2.6581 s` mean and `0.1377 s` median wall time (`2.1246 s` mean /
-`0.1336 s` median on the `1,642` common verified intersection with `konclude`;
-`218.23 MiB` mean and `56.27 MiB` median peak RSS). On the 80-ontology
-incremental benchmark, KM 1.5.3 completes all `79 / 79` solvable cases and beats
-fresh classification from scratch on `632 / 632` evaluated update cells (`r1..r8`)
-and `79 / 79` completed whole sessions (`r0..r8`) on both CLI and OWLAPI with zero
-semantic differences.
+that condition contradicts it; KM follows the explicit condition.
 
 ## ORE 2015 benchmark
 
-The table reports the automatic KM route, not an oracle-selected union of
-manually chosen configurations. Correct counts require agreement with the
-retained or independently adjudicated full-IRI result signature. Times and
-memory are computed over correct completions.
+### v1.5.3: full 1,920-ontology pool
 
-| Reasoner | Tested version / commit | Correct completions | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
-|---|---|---:|---:|---:|---:|---:|
-| KM | v1.4.0 candidate; source archive `affa892f…ed83a6`; binary `33951140…c320e1` | 592/592 | 1.7798 | 0.1588 | 227.64 | 27.31 |
-| ELK | 0.6.0 | 531/592 | 1.5208 | 0.7520 | 493.33 | 234.30 |
-| Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 3.2765 | 0.2814 | 559.90 | 76.87 |
-| Sequoia | 0.6.1-alpha; `c5248ec7be30` | 339/592 | 7.3704 | 2.5371 | 2207.35 | 536.15 |
-| HermiT | 1.4.6.519-SNAPSHOT | 557/592 | 13.1172 | 1.8782 | 1331.72 | 714.22 |
+The release benchmark runs `km classify` on the frozen 1,920-ontology ORE 2015
+pool: 1,708 valid ontologies and 212 expected invalid-input refusals. Each run
+uses one core, a 240-second timeout, and a 20,480-MiB process-tree RSS limit
+on Intel Xeon Gold 6248 nodes (IBEX `cpu_intel_gold_6248`), the same hardware
+as the baselines. A result counts as solved only when its taxonomy agrees with
+the independent references (Konclude, HermiT, Openllet, and JFact).
 
-Metrics are computed independently over each reasoner's correct completions;
-incorrect, incomplete, timed-out, and failed runs do not make a reasoner look
-faster. The final KM row is accepted only when the release binary's SHA-256 is
-recorded by all 592 result, profile, and checkpoint records and the aggregate
-gate passes strictly on all four metrics.
+KM 1.5.3 solves `1,662 / 1,708` and refuses `212 / 212` invalid inputs with
+zero unresolved cases. Over its verified completions it has `2.6581 s` mean and
+`0.1377 s` median wall time, and `218.23 MiB` mean and `56.27 MiB` median peak
+RSS. Its taxonomies match released KM 1.5.0 on all `1,663` classifications
+that both complete.
 
-The benchmark corpus, limits, canonical signatures, adjudications, special
-cases, and route history are documented in
+| Method | Version / commit | Verified solved / 1,708 | Mean / median (s) | Common with KM 1.5.3 | KM 1.5.3 on common, mean / median (s) | Method on common, mean / median (s) | KM 1.5.3 gained / lost |
+|---|---|---:|---:|---:|---:|---:|---:|
+| **KM 1.5.3** | `v1.5.3` / `ecc4b1c57bc7` | **1,662** | **2.6581 / 0.1377** | – | – | – | – |
+| KM 1.5.0 | `v1.5.0` / `d95f0b840a43` | 1,661 | 3.2557 / 0.2305 | 1,661 | 2.6574 / 0.1374 | 3.2557 / 0.2305 | 1 / 0 |
+| KM 1.5.2 | `v1.5.2` / `1f4fb91e61ae` | 1,660 | 5.6605 / 0.3209 | 1,660 | 2.5969 / 0.1373 | 5.6605 / 0.3209 | 2 / 0 |
+| Konclude | `v0.7.0-1138` / `0002e8063540` | 1,655 | 2.9232 / 0.2690 | 1,642 | 2.1246 / 0.1336 | 2.9334 / 0.2671 | 20 / 13 |
+| RustDL | `v0.4.41` / `7bf5af7e1b13` | 1,428 | 8.5060 / 0.6576 | 1,419 | 1.0699 / 0.1050 | 8.3728 / 0.6257 | 243 / 9 |
+| RustDL | `v0.4.28` / `b120b1783dc8` | 1,212 | 5.1386 / 0.3312 | 1,205 | 1.0381 / 0.0979 | 5.0630 / 0.3183 | 457 / 7 |
+| ELK | `v0.6.0` / `b8ac5ce83db0` | 1,411 | 11.9712 / 4.7772 | 1,399 | 1.7085 / 0.1061 | 11.7327 / 4.7464 | 263 / 12 |
+
+Times are computed over each method's verified completions. The KM 1.5.2
+figures come from a non-PGO build on different hardware; the
+[release notes](docs/RELEASE-1.5.3.md#root-cause-diagnosis-of-the-v152-classification-discrepancy)
+explain the discrepancy. Exact binaries, hashes, and per-case tables are in
+[`docs/RELEASE-1.5.3.md`](docs/RELEASE-1.5.3.md) and the release assets
+`BENCHMARKS.md` and `build-completion.json`.
+
+### v1.5.3: incremental reasoning
+
+The incremental benchmark uses 80 ORE 2015 ontologies, each with nine source
+revisions (`r0` initial, `r1..r8` updates), five counterbalanced repetitions,
+and four arms (KM 1.5.3 and KM 1.5.0, each retained and fresh). An update
+counts as faster when the median of its five paired retained/fresh ratios is
+below 1.0.
+
+| Path | Candidate-complete ontologies / 80 | Update cells faster than fresh | Whole sessions faster than fresh |
+|---|---:|---:|---:|
+| CLI | 79 | 632 / 632 | 79 / 79 |
+| OWLAPI | 79 | 632 / 632 | 79 / 79 |
+
+No update falls back to full classification, and all 7,110 cross-arm
+revision checks agree. Only `ore_ont_1194` times out in all four arms.
+
+The corpus, limits, canonical signatures, adjudications, special cases, and
+route history are documented in
 [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md),
 [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md), and
-[`results/benchmarks/`](results/benchmarks/). The v1.3.0 aggregate, route
-provenance, binary hash, jobs, and gate evidence are recorded in
-[`2026-08-30-v1.3.0-release`](results/benchmarks/2026-08-30-v1.3.0-release/README.md).
-The table records the exact tested artifacts; it is not automatically
-attributed to later source releases.
+[`results/benchmarks/`](results/benchmarks/).
 
 ## Protégé plugin
 
