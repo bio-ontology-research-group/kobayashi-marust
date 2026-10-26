@@ -1,0 +1,13 @@
+{
+  "source": "laptop Codex session archive copied 2026-10-26, imported into a separate AgentsView v0.33.1 database",
+  "project": "kobayashi_marust",
+  "selection": "sessions started after the laptop import snapshot (2026-07-10T09:04:19Z), excluding 019f515d-dd8a-7290-ae37-e2aa29b89d41, which was moved to the workstation on 2026-07-16 and is counted in the workstation window",
+  "sessions": 24,
+  "date_range": ["2026-07-13", "2026-07-23"],
+  "model": "gpt-5.6-sol",
+  "input_tokens": 39311375,
+  "output_tokens": 3245517,
+  "cache_read_tokens": 1576404736,
+  "list_price_usd_estimate": 900,
+  "pricing_note": "per-token rates fitted to the workstation AgentsView v0.41.1 daily costs for gpt-5.6-sol (usd per million tokens: input 6.03, output 7.57, cache read 0.391); v0.33.1 reports no price for this model"
+}
