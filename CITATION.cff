@@ -7,7 +7,9 @@ authors:
     given-names: Robert
     affiliation: "King Abdullah University of Science and Technology (KAUST)"
 repository-code: "https://github.com/bio-ontology-research-group/kobayashi-marust"
-license: BSD-3-Clause
+license:
+  - BSD-3-Clause
+  - LGPL-3.0-only
 keywords:
   - description logic
   - OWL 2 DL

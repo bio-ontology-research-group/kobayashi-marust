@@ -1,3 +1,23 @@
+// SPDX-License-Identifier: LGPL-3.0-only
+//
+// This file is part of Kobayashi-MaRust (KM). It contains functions
+// translated from the reasoning system Konclude, Copyright (C) by the
+// Konclude Developer Team (<http://konclude.com/>,
+// <https://github.com/konclude/Konclude>), which is licensed under version 3
+// of the GNU Lesser General Public License (LGPLv3); the translated functions
+// are marked in their doc comments. Because of them this file is distributed
+// under version 3 of the GNU Lesser General Public License. The remaining
+// code is Copyright (C) 2026 Robert Hoehndorf and the Bio-Ontology Research
+// Group, KAUST, and is additionally available under the BSD 3-Clause License
+// in LICENSE.
+//
+// This file is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
+// for more details. Copies of the LGPLv3 and GPLv3 accompany this repository
+// as LICENSE-LGPL-3.0.txt and LICENSE-GPL-3.0.txt; see also
+// <https://www.gnu.org/licenses/>.
+
 //! HermiT-style hypertableau (Motik–Shearer–Horrocks, JAIR 2009), ported as a
 //! distinct model-construction engine from the legacy `tableau.rs` paths.
 //!

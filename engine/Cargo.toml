@@ -2,7 +2,7 @@
 name = "kobayashi-marust"
 version = "1.5.2"
 edition = "2021"
-license = "BSD-3-Clause"
+license = "BSD-3-Clause AND LGPL-3.0-only"
 description = "An experimental hybrid SROIQ / OWL 2 DL reasoner written in Rust."
 repository = "https://github.com/bio-ontology-research-group/kobayashi-marust"
 keywords = ["description-logic", "owl", "reasoner", "sroiq", "lean"]

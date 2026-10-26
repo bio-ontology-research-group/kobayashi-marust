@@ -3,7 +3,7 @@
 **An experimental SROIQ / OWL 2 DL reasoner written in Rust.**
 
 [![CI](https://github.com/bio-ontology-research-group/kobayashi-marust/actions/workflows/ci.yml/badge.svg)](https://github.com/bio-ontology-research-group/kobayashi-marust/actions/workflows/ci.yml)
-[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](LICENSE)
+[![License: BSD-3-Clause AND LGPL-3.0-only](https://img.shields.io/badge/License-BSD--3--Clause%20AND%20LGPL--3.0--only-blue.svg)](NOTICE.md)
 [![Rust](https://img.shields.io/badge/engine-Rust-orange.svg)](engine)
 [![Lean 4](https://img.shields.io/badge/formalisation-Lean%204-brightgreen.svg)](lean)
 
@@ -259,4 +259,15 @@ explanations.
 
 ## License
 
-KM is distributed under the [BSD 3-Clause License](LICENSE).
+KM's original source is distributed under the [BSD 3-Clause License](LICENSE).
+`engine/src/konclude_ht/` is a function-by-function Rust translation of the
+hypertableau kernel of [Konclude](https://github.com/konclude/Konclude)
+(Copyright the Konclude Developer Team, LGPLv3) and is distributed under
+`LGPL-3.0-only`, as are `engine/src/role_automaton.rs` and the files with
+functions translated from Konclude, `engine/src/hypertableau.rs` and
+`engine/src/frontend/profile.rs`. Every affected file carries an SPDX header.
+The `km` binary links the translated module and is a combined work under
+LGPLv3 section 4; the published source satisfies that section's relinking
+condition. [`NOTICE.md`](NOTICE.md) gives the full statement, and the licence
+texts are [`LICENSE`](LICENSE), [`LICENSE-LGPL-3.0.txt`](LICENSE-LGPL-3.0.txt),
+and [`LICENSE-GPL-3.0.txt`](LICENSE-GPL-3.0.txt).

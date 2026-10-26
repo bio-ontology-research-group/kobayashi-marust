@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Licensing
+
+- The `konclude_ht` module, `role_automaton.rs`, and the files with functions
+  translated from Konclude (`hypertableau.rs`, `frontend/profile.rs`) now
+  carry `SPDX-License-Identifier: LGPL-3.0-only` headers with Konclude's
+  copyright notice, because Konclude is LGPLv3 and the translation is a
+  derivative work. New `NOTICE.md` and `engine/src/konclude_ht/LICENSE.md`
+  state the terms, the LGPLv3 and GPLv3 texts ship as `LICENSE-LGPL-3.0.txt`
+  and `LICENSE-GPL-3.0.txt`, the crate licence field is
+  `BSD-3-Clause AND LGPL-3.0-only`, and `CITATION.cff` and the README state
+  the split. The module docs of `engine.rs` and `calc.rs` now describe the CB
+  engine as an independent implementation of Sequoia's published calculus:
+  the June 2026 version followed Sequoia's Scala structure, and no line of it
+  remains. KM's original files remain BSD 3-Clause. No code changed.
+
 ## [1.5.2]
 
 ### Benchmark result and removal of performance exception

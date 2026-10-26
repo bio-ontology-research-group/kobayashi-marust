@@ -13,14 +13,18 @@ Calculation (1.9k) + Cache (36k) + Manager (5k) + Strategy (1.7k) + Task (6.5k)
 ≈ **209k LOC**. This is a months-scale, multi-wave effort; `PORT.md` is the
 durable tracker so any session/agent can resume from the status table.
 
-## License note (due diligence)
+## License (resolved 2026-10-24)
 
-Konclude is LGPL-licensed. A function-by-function translation is a **derivative
-work**: if KM with this module is ever distributed, the LGPL terms attach to the
-ported module (notice retention, source availability, relink ability). This does
-not affect private/research use. Keep this module dirctory self-contained and
-LGPL-headed so the obligation stays scoped to `konclude_ht/` and is easy to honor
-or excise. (Engineering flag only — the user owns the decision.)
+Konclude is LGPLv3-licensed and this module is a function-by-function
+translation, so it is a derivative work. Every `.rs` file in `konclude_ht/`
+carries an `SPDX-License-Identifier: LGPL-3.0-only` header with Konclude's
+copyright notice, `LICENSE.md` in this directory states the terms, the LGPLv3
+and GPLv3 texts are in the repository root as `LICENSE-LGPL-3.0.txt` and
+`LICENSE-GPL-3.0.txt`, and the crate's `license` field is
+`BSD-3-Clause AND LGPL-3.0-only`. `role_automaton.rs`, `hypertableau.rs`, and
+`frontend/profile.rs` contain translated Konclude functions and carry the same
+header. New files added to this module must start with the same header; a
+translated Konclude function added elsewhere makes that file LGPL as well.
 
 ## Source
 

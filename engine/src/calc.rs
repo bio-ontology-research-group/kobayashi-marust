@@ -2,9 +2,10 @@
 //! Tena-Cucala, Cuenca Grau, and Horrocks (CB reasoning for ALCHOIQ / SROIQ),
 //! as implemented in the Sequoia reasoner.
 //!
-//! Faithful Rust port of the term / predicate / literal / clause representation
-//! and the *context literal ordering* (`clauses/package.scala`,
-//! `clauses/Term.scala`).
+//! Term / predicate / literal / clause representation and the *context literal
+//! ordering* of the Sequoia calculus (Bate et al., JAIR 2018), following the
+//! definitions used by Sequoia's `clauses` package (`package.scala`,
+//! `Term.scala`); the code is KM's own.
 //!
 //! Term encoding preserves Sequoia's integer term order in a `u32` layout:
 //!   * neighbour variables `z_i`, predecessor `y`, and central `x` occupy the
@@ -540,8 +541,8 @@ impl Lit {
 
 // --------------------------- context ordering ------------------------------
 
-/// The context literal ordering `lteq` (faithful port of
-/// `ContextLiteralOrdering.lteq` in `clauses/package.scala`).
+/// The context literal ordering `lteq` (the ordering that Sequoia's
+/// `ContextLiteralOrdering.lteq` in `clauses/package.scala` defines).
 ///
 /// Returns `true` iff `o1 <= o2` in the (partial) context literal order.
 /// `root` selects the root-context refinement (query concepts mutually

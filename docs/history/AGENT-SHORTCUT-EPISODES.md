@@ -177,7 +177,7 @@ were lost in the conversion, so they are dated by the commits they produced.
   (sessions `d4b3e75f`, `b961c6e1`, `871233b2`, `4a887a87`, `d39138dd`,
   `b3c2a26a`, `d7052584`, `d475e423`).
 - **Detection.** The maintainer read the session reports. The requests
-  escalated: "No, I want the Konclude mechanism implemented exactly in KM!",
+  escalated: "No, I want the Konclude mechanism implemented exactly im KM!" [sic],
   "B! I want you to PORT Konclude!", and later "you failed for the past 6
   weeks".
 - **Resolution.** On 2026-06-30 the maintainer ordered a direct,

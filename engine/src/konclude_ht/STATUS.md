@@ -3,8 +3,9 @@
 A direct, function-by-function Rust port of Konclude's hypertableau reasoning
 kernel, incorporated as a self-contained KM module. This file is the at-a-glance
 status; `PORT.md` holds the full wave-by-wave history (W0-W555) and the per-unit
-status table. **License note:** Konclude is LGPL; this is a derivative work —
-LGPL headers + attribution still need to be added (see Next steps §6).
+status table. **License:** Konclude is LGPLv3 and this module is a derivative
+work; every file carries an `LGPL-3.0-only` SPDX header and `LICENSE.md` in
+this directory states the terms (resolved 2026-10-24, see `PORT.md`).
 
 _Last updated 2026-07-14 on branch `payg-strategy`. Suite: 1,475 passed,
 0 failed, 7 ignored on ws. The production bridge, COW/DDB trust chain,
@@ -3370,7 +3371,7 @@ ssh ws 'cd ~/km-frontend/kobayashi-marust/engine && cargo test --release konclud
      thread write drain + the missing linker/counting APIs (see the W6.5 note in
      PORT.md). This is an optimization layer — the reasoner runs without it.
    - Datatypes, nominals (`O`) expansion, the `Self` and role-chain rules.
-6. **Productionize**: add LGPL headers + attribution to `konclude_ht/`; expose a
+6. **Productionize**: (LGPL headers + attribution added 2026-10-24); expose a
    `km konclude_ht <ont>` subcommand or route the hybrid router to it; validate
    verdicts against Konclude on a small ORE fragment (the existing `.sig.gz`
    signature-diff harness).

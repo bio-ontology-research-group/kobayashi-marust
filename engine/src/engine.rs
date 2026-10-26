@@ -1,6 +1,13 @@
-//! The disjunctive context calculus engine (single-threaded), a faithful port
-//! of Sequoia's `context/Context.scala`, `context/Rules.scala`, and
-//! `context/ContextState.scala`.
+//! The disjunctive context calculus engine (single-threaded). It implements the
+//! context calculus of Sequoia (Bate et al., JAIR 2018) and uses Sequoia's
+//! rule and trigger terminology. The first version of this file (2026-06-02,
+//! 1,106 lines) was written following the structure of Sequoia's
+//! `context/Context.scala`, `context/Rules.scala`, and
+//! `context/ContextState.scala`; it has since been rewritten in full (no line
+//! of that version remains) around a per-function-symbol expansion strategy,
+//! the nominal rules, retained-derivation evidence for the Lean checkers, and
+//! KM's own data structures, so the module is an independent implementation
+//! of the published calculus rather than a translation of the Scala source.
 //!
 //! Rules implemented: Core, Hyper, Pred, Succ, Eq, Ineq, Elim (redundancy).
 //! Expansion strategy: a *pay-as-you-go* strategy — one successor context per
@@ -275,8 +282,9 @@ impl RedundancyTrieNode {
     }
 }
 
-/// Faithful Rust port of Sequoia's `TrieContextClauseRedundancyIndex` and the
-/// subset/superset operations of `TrieSearchTree`.  A context clause maps to
+/// Redundancy index after the design of Sequoia's
+/// `TrieContextClauseRedundancyIndex` and the subset/superset operations of
+/// its `TrieSearchTree`.  A context clause maps to
 /// the sorted set key `head ++ body`; key inclusion is therefore exactly
 /// `ContextClause::test_strengthening` in both components.
 #[derive(Default)]
