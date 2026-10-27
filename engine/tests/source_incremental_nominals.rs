@@ -60,7 +60,11 @@ fn nominal_cb_addition_retains_state_and_equals_fresh_classify() {
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
     assert_eq!(rows.len(), 3, "rows={rows:#?}");
-    assert_eq!(rows[0]["route"], "nominals");
+    assert!(
+        rows[0]["route"] == "nominals" || rows[0]["route"] == "certified_nominals",
+        "route={}",
+        rows[0]["route"]
+    );
     assert_eq!(rows[0]["retained_backend"], true);
     assert_eq!(rows[1]["receipt"]["strategy"], "cb_delta");
     assert_eq!(rows[1]["receipt"]["meaningful_incremental_update"], true);

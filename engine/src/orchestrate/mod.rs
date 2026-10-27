@@ -1322,10 +1322,30 @@ fn validate_user_input(ont: &Path) -> Result<(), OrchestrateError> {
 }
 
 fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Option<u32> {
-    let individuals = profile
+    // The nominal calculus allocates fresh nominals above every source
+    // individual (engine `nom_first`), up to its budget. The packed `f(o)`
+    // field must cover those identifiers too; sizing it for the source
+    // individuals alone exhausts the field on small inputs whose Nom rule
+    // fires.
+    let nominal_budget: u64 = std::env::var("KM_NOM_BUDGET")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(4096);
+    let source_individuals = profile
         .clauses
         .individual_term_symbols
         .max(profile.source.distinct_individuals);
+    // Reserve room for the budget whenever that still fits the established
+    // layout; very large ABoxes keep the narrowest lossless field, and the
+    // engine then marks a run truncated if fresh nominals overflow it.
+    let with_budget = source_individuals
+        .saturating_add(nominal_budget)
+        .saturating_add(1);
+    let individuals = if with_budget < 1u64 << crate::calc::COMP_IND_BITS {
+        with_budget
+    } else {
+        source_individuals
+    };
     if profile.clauses.function_term_symbols == 0 {
         crate::calc::choose_comp_ind_bits_unknown_functions(individuals)
     } else {
@@ -4095,6 +4115,9 @@ mod tests {
         profile.clauses.individual_term_symbols = 0;
         profile.source.distinct_individuals = 18_055;
         assert_eq!(composite_layout(&profile), Some(15));
+        // Fresh nominals of the Nom rule must fit beside a tiny source ABox.
+        profile.source.distinct_individuals = 2;
+        assert_eq!(composite_layout(&profile), Some(13));
 
         profile.source.distinct_individuals = 129_647;
         assert_eq!(composite_layout(&profile), Some(17));
@@ -4102,6 +4125,9 @@ mod tests {
         profile.clauses.function_term_symbols = 130_303;
         profile.source.distinct_individuals = 18_055;
         assert_eq!(composite_layout(&profile), Some(15));
+        // Fresh nominals of the Nom rule must fit beside a tiny source ABox.
+        profile.source.distinct_individuals = 2;
+        assert_eq!(composite_layout(&profile), Some(13));
     }
 
     #[test]

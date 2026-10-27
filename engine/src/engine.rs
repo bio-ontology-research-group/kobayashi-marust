@@ -5655,9 +5655,14 @@ impl Engine {
         let allocated = self.nom_allocated.get();
         let next = self.nom_next.get();
         let width_i32 = i32::try_from(width).ok();
+        // Fresh nominals also appear inside packed `f(o)` terms, so the block
+        // must fit the active composite individual field as well as the
+        // individual id range; otherwise the run is marked truncated instead
+        // of overflowing the packing.
+        let composite_limit = 1i64 << crate::calc::active_comp_ind_bits();
         let range_ok = width_i32
             .and_then(|count| next.checked_add(count))
-            .is_some_and(|end| end <= (FTERM_BASE - X) as i32);
+            .is_some_and(|end| end <= (FTERM_BASE - X) as i32 && i64::from(end) <= composite_limit);
         if allocated.saturating_add(width) > self.nom_budget || !range_ok {
             if !self.nom_truncated.replace(true) {
                 eprintln!(

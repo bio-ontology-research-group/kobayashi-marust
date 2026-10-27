@@ -34,6 +34,12 @@ thread_local! {
     static TEST_POLICY: std::cell::Cell<Option<RoutingPolicy>> = const { std::cell::Cell::new(None) };
 }
 
+/// Pin the calling test thread to a routing policy (tests only).
+#[cfg(test)]
+pub(crate) fn pin_test_policy(policy: RoutingPolicy) {
+    TEST_POLICY.with(|p| p.set(Some(policy)));
+}
+
 pub fn routing_policy() -> RoutingPolicy {
     #[cfg(test)]
     if let Some(policy) = TEST_POLICY.with(|p| p.get()) {

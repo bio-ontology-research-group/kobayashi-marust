@@ -2680,7 +2680,9 @@ Ontology(
  SubClassOf(:X ObjectUnionOf(:Y :Z))
 )"#;
         let mut session = SourceIncrementalClassifier::new(before).unwrap();
-        assert_eq!(session.route(), "nominals");
+        // The general policy's nominal default is the certified nominal
+        // portfolio; both keep the exact nominal clause route.
+        assert!(matches!(session.route(), "nominals" | "certified_nominals"), "{}", session.route());
         assert!(session.retained_backend());
 
         let receipt = session.replace_source(after).unwrap();
@@ -2894,6 +2896,9 @@ Ontology(
  SubClassOf(:X :Y) SubClassOf(:Y :Z)
 )"#;
 
+        // The typed-ABox SHOIQ specialist is scheduled only by the v1.5.3
+        // policy; the general policy does not select it.
+        crate::routing::pin_test_policy(crate::routing::RoutingPolicy::V153);
         let mut session = SourceIncrementalClassifier::new(before).unwrap();
         assert_eq!(session.route(), "nominal_ni_abox");
         assert!(session.retained_backend());
