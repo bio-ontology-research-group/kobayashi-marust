@@ -338,6 +338,8 @@ pub struct DataAbox<'a> {
     ranges: HashMap<&'a str, Vec<&'a str>>,
     /// Complete, exact value enumerations, conjunctive across range axioms.
     finite_ranges: HashMap<&'a str, Vec<Vec<String>>>,
+    /// User datatypes whose `DatatypeDefinition` is a provably empty range.
+    empty_datatypes: HashSet<&'a str>,
     /// property token -> named domain classes (conjunctive)
     domains: HashMap<&'a str, Vec<&'a str>>,
     functional: HashSet<&'a str>,
@@ -557,6 +559,19 @@ impl<'a> DataAbox<'a> {
                 if let Some(p) = args.first().and_then(|n| n.as_atom()) {
                     self.functional.insert(p);
                 }
+            }
+            "DatatypeDefinition" => {
+                let args = strip_annotations(args);
+                if let (Some(datatype), Some(range)) = (args.first().and_then(|n| n.as_atom()), args.get(1)) {
+                    if super::datatypes::extent::data_range_extent(range)
+                        == Some(super::datatypes::extent::DataExtent::Empty)
+                    {
+                        self.empty_datatypes.insert(datatype);
+                    }
+                }
+                // Defined datatypes still make positive-assertion omission unsafe.
+                self.global_omission_unsafe |=
+                    unsupported_data_constraints(node, &mut self.unsupported_properties);
             }
             "DataPropertyDomain" => {
                 let args = strip_annotations(args);
@@ -1185,6 +1200,19 @@ impl<'a> DataAbox<'a> {
     /// ranges, at-most-1 constraints, or `DifferentIndividuals`. Sound: every
     /// reported clash is an OWL 2 entailment; caps degrade to "not detected".
     pub fn is_inconsistent(&self) -> bool {
+        // A range that is a user datatype defined as an empty range admits no
+        // value, so any (possibly inherited) assertion on the property clashes.
+        if !self.empty_datatypes.is_empty() {
+            for &(property, ..) in &self.assertions {
+                if self.all_supers(property).iter().any(|parent| {
+                    self.ranges.get(parent).is_some_and(|ranges| {
+                        ranges.iter().any(|range| self.empty_datatypes.contains(range))
+                    })
+                }) {
+                    return true;
+                }
+            }
+        }
         // A finite range is exhaustive. An asserted value outside every
         // enumerated value proves a clash; unknown equality never does.
         // Keep the existing omission fence even when these checks succeed.
@@ -1327,6 +1355,10 @@ mod tests {
             assert!(build(&inherited).is_inconsistent(), "{range}");
             assert!(!build(&[range_axiom.as_str()]).is_inconsistent(), "{range}");
         }
+        let defined = ["DatatypeDefinition(<E> DataComplementOf(rdfs:Literal))",
+            "DataPropertyRange(<p> <E>)", r#"DataPropertyAssertion(<p> <a> "1"^^xsd:integer)"#];
+        assert!(build(&defined).is_inconsistent());
+        assert!(!build(&defined[..2]).is_inconsistent());
         // A non-empty complex range is not a clash by itself.
         let axioms = ["DataPropertyRange(<p> DataComplementOf(xsd:string))",
             r#"DataPropertyAssertion(<p> <a> "1"^^xsd:integer)"#];

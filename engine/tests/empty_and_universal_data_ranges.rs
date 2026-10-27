@@ -380,6 +380,8 @@ fn assertions_against_empty_ranges_are_inconsistent() {
         "SubDataPropertyOf(:e owl:bottomDataProperty) DataPropertyAssertion(:e :a \"1\"^^xsd:integer)",
         "DataPropertyRange(:e DataComplementOf(rdfs:Literal)) DataPropertyAssertion(:e :a \"1\"^^xsd:integer)",
         "DataPropertyRange(:e DataIntersectionOf(xsd:integer xsd:string)) DataPropertyAssertion(:e :a \"x\")",
+        "Declaration(Datatype(:E)) DatatypeDefinition(:E DataComplementOf(rdfs:Literal)) \
+         DataPropertyRange(:e :E) DataPropertyAssertion(:e :a \"1\"^^xsd:integer)",
         "ClassAssertion(DataAllValuesFrom(:d DataIntersectionOf(xsd:integer xsd:string)) :a) \
          DataPropertyAssertion(:d :a \"x\")",
         "ClassAssertion(DataSomeValuesFrom(:d DataComplementOf(rdfs:Literal)) :a)",
@@ -397,4 +399,48 @@ fn assertions_against_empty_ranges_are_inconsistent() {
          DataPropertyAssertion(:e :a \"1\"^^xsd:integer)\n)\n"
     );
     assert!(run(&text, None).lines().any(|line| line == "CONSISTENT 1"));
+}
+
+/// Complements of non-trivial ranges relate to their operands: `¬D ∩ D = ∅`,
+/// `¬¬D = D`, `x ⊑ ¬D` when `x ∩ D = ∅`, `¬D ⊑ ¬E` when `E ⊑ D`, and a
+/// finite range minus each of its values is empty. Expected answers are hand
+/// derived and agree with HermiT.
+#[test]
+fn complements_of_ordinary_ranges() {
+    let names = |list: &[&str]| list.iter().map(|c| c.to_string()).collect::<BTreeSet<_>>();
+    let pairs = |list: &[(&str, &str)]| {
+        list.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<BTreeSet<_>>()
+    };
+    let cases: &[(&str, &[(&str, &str)], &[&str])] = &[
+        ("EquivalentClasses(:C DataSomeValuesFrom(:d DataIntersectionOf(DatatypeRestriction(xsd:integer \
+          xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"2\"^^xsd:integer) \
+          DataComplementOf(DataOneOf(\"1\"^^xsd:integer)) DataComplementOf(DataOneOf(\"2\"^^xsd:integer)))))",
+         &[], &["C"]),
+        ("EquivalentClasses(:C ObjectIntersectionOf(DataMinCardinality(1 :d) \
+          DataAllValuesFrom(:d DataComplementOf(xsd:integer)) \
+          DataAllValuesFrom(:d DataComplementOf(DataComplementOf(xsd:integer)))))",
+         &[], &["C"]),
+        ("EquivalentClasses(:C ObjectIntersectionOf(DataSomeValuesFrom(:d DataComplementOf(xsd:integer)) \
+          DataAllValuesFrom(:d xsd:integer)))",
+         &[], &["C"]),
+        ("EquivalentClasses(:X DataAllValuesFrom(:d xsd:integer)) \
+          EquivalentClasses(:Y DataAllValuesFrom(:d DataComplementOf(DataComplementOf(xsd:integer))))",
+         &[("X", "Y"), ("Y", "X")], &[]),
+        ("EquivalentClasses(:X DataSomeValuesFrom(:d xsd:string)) \
+          EquivalentClasses(:Y DataSomeValuesFrom(:d DataComplementOf(xsd:integer)))",
+         &[("X", "Y")], &[]),
+        ("EquivalentClasses(:X DataSomeValuesFrom(:d DataComplementOf(xsd:decimal))) \
+          EquivalentClasses(:Y DataSomeValuesFrom(:d DataComplementOf(xsd:integer)))",
+         &[("X", "Y")], &[]),
+    ];
+    for (body, subs, unsat) in cases {
+        let text = format!(
+            "{HEADER}Declaration(Class(:C)) Declaration(Class(:X)) Declaration(Class(:Y))\n{body}\n)\n"
+        );
+        // The tableau route declines facet and string ranges.
+        for route in ROUTES.iter().filter(|route| **route != Some("tableau")) {
+            let answer = classify(&text, *route);
+            assert_eq!(answer, Answer { unsat: names(unsat), subs: pairs(subs) }, "{body} on {route:?}");
+        }
+    }
 }

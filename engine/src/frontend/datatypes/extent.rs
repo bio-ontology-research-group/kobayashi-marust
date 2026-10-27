@@ -114,7 +114,8 @@ fn empty(node: &Node, depth: usize) -> bool {
         return members.iter().any(|m| empty(m, depth + 1))
             || members.iter().enumerate().any(|(i, left)| {
                 members.iter().skip(i + 1).any(|right| disjoint(left, right, depth + 1))
-            });
+            })
+            || finite_intersection_empty(members);
     }
     if let Some(literals) = args(node, "DataOneOf") {
         // `DataOneOf()` lists no value. Non-empty lists denote their values.
@@ -123,6 +124,33 @@ fn empty(node: &Node, depth: usize) -> bool {
         }
     }
     leaf_empty(&range_from_node(node))
+}
+
+/// The values of a finite range (an enumeration, or a small named or
+/// facet-restricted range), when the datatype oracle can list them.
+fn finite_values(range: &DRange) -> Option<Vec<super::Val>> {
+    match range {
+        DRange::OneOf(values) => Some(values.clone()),
+        _ => enumerate_range(range, ENUMERATION_CAP)?
+            .iter()
+            .map(|literal| super::parse_literal(literal).map(|(value, _)| value))
+            .collect(),
+    }
+}
+
+/// An intersection with a finite member is empty when each of that member's
+/// values is provably outside some other member (e.g. `[1,2] ∩ ¬{1} ∩ ¬{2}`,
+/// which no pair of members decides).
+fn finite_intersection_empty(members: &[Node]) -> bool {
+    let ranges: Vec<DRange> = members.iter().map(range_from_node).collect();
+    ranges.iter().enumerate().any(|(i, range)| {
+        finite_values(range).is_some_and(|values| {
+            values.iter().all(|value| {
+                ranges.iter().enumerate()
+                    .any(|(j, other)| i != j && val_in_range(value, other) == Some(false))
+            })
+        })
+    })
 }
 
 /// `true` only when every data value lies in the range.
@@ -224,13 +252,8 @@ fn subset(left: &Node, right: &Node, depth: usize) -> bool {
         return true;
     }
     // A finite range lies inside `outer` when each of its values does.
-    let values = match &inner {
-        DRange::OneOf(values) => Some(values.clone()),
-        _ => enumerate_range(&inner, ENUMERATION_CAP).map(|literals| {
-            literals.iter().filter_map(|literal| super::parse_literal(literal).map(|(v, _)| v)).collect()
-        }),
-    };
-    values.is_some_and(|values| values.iter().all(|value| val_in_range(value, &outer) == Some(true)))
+    finite_values(&inner)
+        .is_some_and(|values| values.iter().all(|value| val_in_range(value, &outer) == Some(true)))
 }
 
 #[cfg(test)]
@@ -255,6 +278,9 @@ mod tests {
             "DataIntersectionOf(xsd:boolean DataComplementOf(DataOneOf(\"true\"^^xsd:boolean \"false\"^^xsd:boolean)))",
             "DataOneOf()",
             "DataIntersectionOf(DataComplementOf(xsd:integer) DataComplementOf(DataComplementOf(xsd:integer)))",
+            "DataIntersectionOf(DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer \
+             xsd:maxInclusive \"2\"^^xsd:integer) DataComplementOf(DataOneOf(\"1\"^^xsd:integer)) \
+             DataComplementOf(DataOneOf(\"2\"^^xsd:integer)))",
         ] {
             assert_eq!(extent(text), Some(DataExtent::Empty), "{text}");
         }
@@ -286,6 +312,9 @@ mod tests {
             "DataUnionOf(xsd:integer xsd:string)",
             // `xsd:integer ⊄ xsd:int`, so the union is not the whole domain.
             "DataUnionOf(DataComplementOf(xsd:integer) xsd:int)",
+            "DataIntersectionOf(DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer \
+             xsd:maxInclusive \"3\"^^xsd:integer) DataComplementOf(DataOneOf(\"1\"^^xsd:integer)) \
+             DataComplementOf(DataOneOf(\"2\"^^xsd:integer)))",
             "DatatypeRestriction(xsd:integer xsd:minInclusive \"3\"^^xsd:integer xsd:maxInclusive \"3\"^^xsd:integer)",
             "DatatypeRestriction(xsd:string xsd:pattern \"[a-z]+\")",
             "DataIntersectionOf(xsd:string DatatypeRestriction(xsd:string xsd:pattern \"x\"))",

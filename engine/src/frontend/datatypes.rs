@@ -1296,6 +1296,13 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
 
 /// `D1 ⊑ D2`?
 fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
+    // `¬¬x = x`.
+    if let DRange::Complement(inner) = d1 {
+        if let DRange::Complement(x) = inner.as_ref() { return range_subsumed(x, d2); }
+    }
+    if let DRange::Complement(inner) = d2 {
+        if let DRange::Complement(x) = inner.as_ref() { return range_subsumed(d1, x); }
+    }
     match (d1, d2) {
         (DRange::Float(a), _) if a.empty() => Some(true),
         (DRange::Float(a), DRange::Float(b)) => Some(a.subset(b)),
@@ -1345,7 +1352,12 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
         // subsumption INTO an enumeration: only decidable by enumerating the
         // left side, which the cover machinery handles separately — unknown
         (_, DRange::OneOf(_)) => None,
-        (DRange::Complement(_), _) | (_, DRange::Complement(_)) => None,
+        // `¬a ⊑ ¬b` iff `b ⊑ a`; `x ⊑ ¬b` iff `x ∩ b = ∅`. (`¬a ⊑ x` needs
+        // `a ∪ x` universal, which is decided by `extent`, not here.)
+        (DRange::Complement(a), DRange::Complement(b)) =>
+            (range_subsumed(b, a) == Some(true)).then_some(true),
+        (_, DRange::Complement(b)) => (range_disjoint(d1, b) == Some(true)).then_some(true),
+        (DRange::Complement(_), _) => None,
         (DRange::Named(a), DRange::Named(b)) => {
             if a.kind == b.kind { return Some(true); }
             if a.part != b.part {
@@ -1525,6 +1537,13 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
 
 /// `D1 ∩ D2 = ∅`?
 fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
+    // `¬¬x = x`.
+    if let DRange::Complement(inner) = d1 {
+        if let DRange::Complement(x) = inner.as_ref() { return range_disjoint(x, d2); }
+    }
+    if let DRange::Complement(inner) = d2 {
+        if let DRange::Complement(x) = inner.as_ref() { return range_disjoint(d1, x); }
+    }
     match (d1, d2) {
         (DRange::Float(a), _) | (_, DRange::Float(a)) if a.empty() => Some(true),
         (DRange::Float(a), DRange::Float(b)) => Some(a.disjoint(b)),
@@ -1560,7 +1579,10 @@ fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
                 None
             }
         }
-        (DRange::Complement(_), _) | (_, DRange::Complement(_)) => None,
+        // `¬a ∩ x = ∅` iff `x ⊑ a`. (`¬a ∩ ¬b = ∅` needs `a ∪ b` universal.)
+        (DRange::Complement(_), DRange::Complement(_)) => None,
+        (DRange::Complement(a), other) | (other, DRange::Complement(a)) =>
+            (range_subsumed(other, a) == Some(true)).then_some(true),
         (DRange::Named(a), DRange::Named(b)) => {
             if a.part != b.part {
                 return Some(true);
