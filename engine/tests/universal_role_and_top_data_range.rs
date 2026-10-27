@@ -260,22 +260,116 @@ fn universal_role_restrictions_are_complete() {
 }
 
 /// `T1 ≡ ∃U.F` next to nominal and data-value definitions. The expected
-/// answer is `F ⊑ T1` only. This still does not terminate on the nominal CB
-/// routes. The data-value singleton part is fixed (see
-/// `data_value_singleton_next_to_nominal_successors`); what remains is the
-/// ground context's seeding with the x-form ontology facts, which multiplies
-/// the `⊤ ⊑ ∃link.{hub}` hub encoding and the `⊤ ⊑ ¬{1} ⊔ {1}` excluded
-/// middle over every ground term. The object-property analogue
-/// (`ObjectHasValue` for `DataHasValue`) diverges the same way. Changing that
-/// seeding changes what the calculus derives and needs Lean re-certification.
+/// answer is `F ⊑ T1` only (HermiT agrees). The nominal CB routes used to
+/// run forever: the data value `1` became a ground individual, every
+/// `⊤ ⊑ C` fact (the universal-role hub `⊤ ⊑ ∃link.{hub}` among them) was
+/// instantiated at it, and the ground context exploded. The frontend's sort
+/// encoding (`frontend::sorts`) now keeps `owl:Thing` to the object domain.
 #[test]
-#[ignore = "open: ground-context x-form fact seeding blows up with the universal-role hub (calculus change pending)"]
 fn nominal_top_role_reproducer() {
-    let (answer, elapsed) = classify(NOMINAL_TOP_ROLE);
-    assert!(elapsed < BOUND);
-    assert!(answer.consistent);
-    assert!(answer.unsat.is_empty());
-    assert_eq!(answer.subs, pairs(&[("urn:q#F", "urn:q#T1")]));
+    for route in NOMINAL_ROUTES {
+        let (answer, elapsed) = classify_on(NOMINAL_TOP_ROLE, route);
+        assert!(elapsed < BOUND, "{route:?}");
+        assert!(answer.consistent, "{route:?}");
+        assert!(answer.unsat.is_empty(), "{route:?}");
+        assert_eq!(answer.subs, pairs(&[("urn:q#F", "urn:q#T1")]), "{route:?}");
+    }
+}
+
+/// The sort encoding must not make the data value itself unsatisfiable: a
+/// marker `D` with `∃link.⊤ ⊑ ¬D` alone would, because the hub axiom is
+/// instantiated at the value. `W2 ≡ F ⊓ (u value 1)` and
+/// `W3 ≡ S6 ⊓ (u value 1)` stay satisfiable (HermiT: `W2 ⊑ F ⊑ T1`,
+/// `W3 ⊑ S6`, nothing unsatisfiable).
+#[test]
+fn data_value_next_to_universal_role_hub_stays_satisfiable() {
+    let text = NOMINAL_TOP_ROLE.replace(
+        "\n)",
+        "\nDeclaration(Class(<urn:q#W2>)) EquivalentClasses(<urn:q#W2> ObjectIntersectionOf(<urn:q#F> \
+         DataHasValue(<http://x/u> \"1\"^^xsd:integer)))\n\
+         Declaration(Class(<urn:q#W3>)) EquivalentClasses(<urn:q#W3> ObjectIntersectionOf(<urn:q#S6> \
+         DataHasValue(<http://x/u> \"1\"^^xsd:integer)))\n)",
+    );
+    assert_ne!(text, NOMINAL_TOP_ROLE, "probe classes appended");
+    let expected = pairs(&[
+        ("urn:q#F", "urn:q#T1"),
+        ("urn:q#W2", "urn:q#F"),
+        ("urn:q#W2", "urn:q#T1"),
+        ("urn:q#W3", "urn:q#S6"),
+    ]);
+    for route in NOMINAL_ROUTES {
+        let (answer, elapsed) = classify_on(&text, route);
+        assert!(elapsed < BOUND, "{route:?}");
+        assert!(answer.consistent, "{route:?}");
+        assert!(answer.unsat.is_empty(), "{route:?}: {:?}", answer.unsat);
+        assert_eq!(answer.subs, expected, "{route:?}");
+    }
+}
+
+/// Data-range-level facts must keep applying to data nodes: with
+/// `A ⊑ (u value 2)` and `C ≡ ¬∀u.{1}`, the value `2` is not `1`, so
+/// `A ⊑ C` (HermiT agrees). Relativizing the excluded middle
+/// `⊤ ⊑ ¬{1} ⊔ {1}` of the complement definer would lose it.
+#[test]
+fn data_range_complement_excluded_middle_still_applies_to_values() {
+    let text = "Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(<http://x/o>\n\
+        Declaration(DataProperty(<http://x/u>)) Declaration(ObjectProperty(<http://x/r>)) \
+        Declaration(NamedIndividual(<urn:q#c>))\n\
+        Declaration(Class(<urn:q#A>)) Declaration(Class(<urn:q#C>)) Declaration(Class(<urn:q#S>))\n\
+        SubClassOf(<urn:q#A> DataHasValue(<http://x/u> \"2\"^^xsd:integer))\n\
+        EquivalentClasses(<urn:q#C> ObjectComplementOf(DataAllValuesFrom(<http://x/u> DataOneOf(\"1\"^^xsd:integer))))\n\
+        EquivalentClasses(<urn:q#S> ObjectIntersectionOf(ObjectOneOf(<urn:q#c>) ObjectSomeValuesFrom(<http://x/r> ObjectOneOf(<urn:q#c>))))\n)\n";
+    for route in NOMINAL_ROUTES {
+        let (answer, elapsed) = classify_on(text, route);
+        assert!(elapsed < BOUND, "{route:?}");
+        assert!(answer.consistent, "{route:?}");
+        assert!(answer.unsat.is_empty(), "{route:?}");
+        assert_eq!(answer.subs, pairs(&[("urn:q#A", "urn:q#C")]), "{route:?}");
+    }
+}
+
+/// Object and data assertions on the same individual, next to a `⊤ ⊑ ∃r.{b}`
+/// fact. Hand derivation: `⊤ ⊑ ∃r.{b} ⊑ B`, so every class is below `B`;
+/// `a ∈ A` and `u(a,1)`, so `D ≡ {a} ⊓ (u value 1)` is `{a}` and
+/// `E ≡ {a} ⊓ C` is below `D` and `A`; `C ⊒ ¬(u value 1)` does not contain
+/// `a` in every model, so `D ⋢ E` (HermiT agrees on the whole table). The
+/// data assertions are written as `ClassAssertion(DataHasValue(u v) a)`,
+/// the form the frontend always carries (a `DataPropertyAssertion` is
+/// converted only when that conversion is enabled). The nominal routes used
+/// to run forever on this input as well.
+#[test]
+fn mixed_object_and_data_assertions_on_one_individual() {
+    let text = "Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(<http://x/o>\n\
+        Declaration(DataProperty(<http://x/u>)) Declaration(ObjectProperty(<http://x/r>))\n\
+        Declaration(NamedIndividual(<urn:q#a>)) Declaration(NamedIndividual(<urn:q#b>))\n\
+        Declaration(Class(<urn:q#A>)) Declaration(Class(<urn:q#B>)) Declaration(Class(<urn:q#C>)) \
+        Declaration(Class(<urn:q#D>)) Declaration(Class(<urn:q#E>))\n\
+        ClassAssertion(<urn:q#A> <urn:q#a>)\n\
+        ObjectPropertyAssertion(<http://x/r> <urn:q#a> <urn:q#b>)\n\
+        ClassAssertion(DataHasValue(<http://x/u> \"1\"^^xsd:integer) <urn:q#a>)\n\
+        ClassAssertion(DataHasValue(<http://x/u> \"2\"^^xsd:integer) <urn:q#b>)\n\
+        SubClassOf(ObjectSomeValuesFrom(<http://x/r> ObjectOneOf(<urn:q#b>)) <urn:q#B>)\n\
+        SubClassOf(ObjectComplementOf(DataHasValue(<http://x/u> \"1\"^^xsd:integer)) <urn:q#C>)\n\
+        SubClassOf(owl:Thing ObjectSomeValuesFrom(<http://x/r> ObjectOneOf(<urn:q#b>)))\n\
+        EquivalentClasses(<urn:q#D> ObjectIntersectionOf(ObjectOneOf(<urn:q#a>) DataHasValue(<http://x/u> \"1\"^^xsd:integer)))\n\
+        EquivalentClasses(<urn:q#E> ObjectIntersectionOf(ObjectOneOf(<urn:q#a>) <urn:q#C>))\n)\n";
+    let expected = pairs(&[
+        ("urn:q#A", "urn:q#B"),
+        ("urn:q#C", "urn:q#B"),
+        ("urn:q#D", "urn:q#A"),
+        ("urn:q#D", "urn:q#B"),
+        ("urn:q#E", "urn:q#A"),
+        ("urn:q#E", "urn:q#B"),
+        ("urn:q#E", "urn:q#C"),
+        ("urn:q#E", "urn:q#D"),
+    ]);
+    for route in NOMINAL_ROUTES {
+        let (answer, elapsed) = classify_on(text, route);
+        assert!(elapsed < BOUND, "{route:?}");
+        assert!(answer.consistent, "{route:?}");
+        assert!(answer.unsat.is_empty(), "{route:?}");
+        assert_eq!(answer.subs, expected, "{route:?}");
+    }
 }
 
 /// Every route that a nominal input can take. `auto` and the three

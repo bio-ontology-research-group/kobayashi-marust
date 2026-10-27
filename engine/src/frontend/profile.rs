@@ -1035,6 +1035,15 @@ impl<'a> SourceProfileBuilder<'a> {
         self.expr.universal_role = false;
     }
 
+    /// Raw source names of every data property mentioned by the source
+    /// (declared or used), sorted; the frontend's sort encoding resolves them
+    /// against the registry without assigning new names.
+    pub(super) fn data_property_names(&self) -> Vec<&'a str> {
+        let mut names: Vec<_> = self.data_properties.iter().copied().collect();
+        names.sort_unstable();
+        names
+    }
+
     pub(super) fn rule_individual_names(&self) -> Vec<&'a str> {
         if self.stats.rule_axioms == 0 { return Vec::new(); }
         let mut names: Vec<_> = self.individuals.iter().copied()

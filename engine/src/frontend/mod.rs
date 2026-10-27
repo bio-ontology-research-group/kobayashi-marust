@@ -32,6 +32,7 @@ pub mod rbox;
 mod rule_certificate;
 mod unary_rules;
 pub mod sexpr;
+pub mod sorts;
 pub mod syntax;
 pub mod top_role;
 pub mod universal_role;
@@ -1140,6 +1141,7 @@ fn ofn_to_clauses_representation(
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
     let rule_individual_names = profile_builder.rule_individual_names();
+    let data_property_raw = profile_builder.data_property_names();
     let (mut profile, source_class_raw) =
         profile_builder.finish_with_separable_class_names(text.len() as u64);
     // A contradiction entailed by ordinary source axioms remains a
@@ -1745,6 +1747,23 @@ fn ofn_to_clauses_representation(
             }
             let groups = datatypes::datatype_role_groups_linked(&tbox, &linked_roles);
             tbox.extend(datatypes::datatype_relation_clauses_grouped(&dt_names, 8, Some(&groups)));
+        }
+    }
+    // Two-sorted domain encoding (docs/NOMINALS-CB.md, "Object and data
+    // sorts"): under nominal clausification, when the clause set carries data
+    // values next to nominals or individuals, make `Δ_I ∩ Δ_D = ∅` explicit so
+    // that no `⊤ ⊑ C` fact forces object structure on a data value. Outside
+    // that gate the clause output is unchanged.
+    if nominals_mode && has_individuals && sorts::has_data_values(&tbox) {
+        // Only names the primary parse has already registered resolve; an
+        // unused declared data property has no clauses to sort.
+        let data_roles: BTreeSet<String> = data_property_raw
+            .iter()
+            .filter_map(|raw| reg.assigned(raw).map(str::to_string))
+            .collect();
+        let count = sorts::encode(&mut tbox, &data_roles);
+        if std::env::var_os("KM_OFN_TIMING").is_some() {
+            eprintln!("ofn [sorts] {} clauses added or relativized", count);
         }
     }
     t.lap("rbox+domain+declared");

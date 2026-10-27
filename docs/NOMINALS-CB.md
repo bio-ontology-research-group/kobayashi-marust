@@ -234,3 +234,83 @@ Frontend:
   fact-core scrutiny as fd94c7e.
 - Additional-nominal explosion control: the paper bounds Nom by input
   z_i-multiplicity; KM should surface a counter (KM_STATS) from day one.
+
+## 6. Object and data sorts (`frontend/sorts.rs`)
+
+OWL 2 Direct Semantics interprets class expressions over the object domain
+`Δ_I` and data ranges over the data domain `Δ_D`, with `Δ_I ∩ Δ_D = ∅`,
+object properties in `Δ_I × Δ_I`, and data properties in `Δ_I × Δ_D`.
+The clause set is one-sorted: a data value is an element of the single
+domain, carrying its `__dt__` concept. Under nominal clausification a data
+value also becomes a ground individual: the loader reads the at-most-one
+clause `v(z₁) ∧ v(z₂) → z₁ ≈ z₂` as `v(x) → x ≈ o_v` over a fresh individual
+`o_v`, and the ground context instantiates every empty-body fact at it. A
+fact `⊤ ⊑ C` is `owl:Thing ⊑ C` and should range over `Δ_I` only; applied
+to a value it forces object structure there (the universal-role hub
+`⊤ ⊑ ∃link.{hub}` is the reproducer), merges the value with named
+individuals through `⊤ ⊑ ¬{v} ⊔ {v}`, and the ground context does not
+terminate in practice.
+
+The frontend therefore makes the two sorts explicit, with one fresh marker
+concept `D` (`__data__`, interpreted as `Δ_D`), only under nominal
+clausification and only when the clause set carries a data value next to
+nominals or individuals. Everything else keeps its clause output unchanged.
+The encoding is linear in the signature:
+
+- every data range `R` (a `__dt__` concept): `R ⊑ D`;
+- every object-sorted concept `A` (source classes, `__nom__` proxies,
+  object-sorted definers): `A ⊑ ¬D`;
+- every role `P`: `∃P.⊤ ⊑ ¬D`; `∃P⁻.⊤ ⊑ ¬D` when `P` is object-sorted
+  and `∃P⁻.⊤ ⊑ D` when `P` is a data property;
+- every class-level fact `→ C(x)` becomes `→ C(x) ∨ D(x)`, i.e.
+  `¬D ⊑ C`: `owl:Thing` is `¬D`.
+
+Sorts are inferred from the clause set: data ranges and the source's data
+properties are data, source classes and named individuals are objects, and
+the atoms on one term of one clause share a sort. A definer that appears in
+both sorts (the `⊤` definer shared by `≥1 p` and `≥1 r`) gets no sort clause
+and keeps its facts. A fact is class-level when every concept in its head is
+object-sorted; a data-range-level fact, the excluded middle
+`→ Q(x) ∨ R(x)` of a `DataComplementOf` definer `Q`, stays as it is, and so
+does every ground fact.
+
+Exactness. Let `O` be the source ontology, `S` its one-sorted clause set
+before this pass, and `S'` the result. `S` is read against the two-sorted
+semantics as in the rest of the frontend; the claim is that `S'` has the
+same entailments over the source signature as `O`.
+
+- A two-sorted model `I` of `O` yields a model of `S'`: take the one domain
+  `Δ_I ⊎ Δ_D`, interpret `D` as `Δ_D`, and keep every other symbol. Data
+  ranges lie in `Δ_D`, class expressions and named individuals in `Δ_I`,
+  property domains in `Δ_I`, object ranges in `Δ_I` and data ranges in `Δ_D`,
+  so every sort clause holds. A class-level fact `⊤ ⊑ C` of `O` holds on
+  `Δ_I = ¬D`, so `→ C(x) ∨ D(x)` holds everywhere. A data-range-level fact
+  `→ Q(x) ∨ R(x)` with `Q` the definer of `Δ_D \ R` holds on `Δ_D`; on
+  `Δ_I` interpret `Q` as true, which satisfies `Q ∧ R → ⊥` there since `R`
+  is empty on `Δ_I`, and `Q` occurs nowhere else than in such definer
+  clauses and as a data-property filler, whose instances are in `Δ_D`.
+- A model `J` of `S'` yields a two-sorted model of `O`: let
+  `Δ_I = Δ_J \ D^J` and `Δ_D = D^J` (extended by the standard value space of
+  the datatype map, on which no `__dt__` concept of `S'` is forced). Every
+  source class is a subset of `Δ_I` by `A ⊑ ¬D`, every data range a subset
+  of `Δ_D` by `R ⊑ D`, every property respects its sorts by the domain and
+  range clauses, and every named individual is in `Δ_I` by
+  `__nom__o ⊑ ¬D`. A source axiom other than a `⊤` fact is a clause with a
+  body that pins its central element to a class, a property, or a nominal,
+  so it is evaluated on `Δ_I` exactly as `S` evaluates it; a class-level
+  `⊤ ⊑ C` holds on `¬D = Δ_I` by its relativized clause; a
+  data-range-level fact holds on `Δ_D` because it was not relativized. The
+  restriction of `J` to `Δ_I` therefore satisfies `O` under Direct
+  Semantics, with the data values of `J` as its data interpretation.
+
+Leaving the data-range-level facts unrelativized is sound because, on an
+object node, `→ Q(x) ∨ R(x)` with `R ⊑ D` and the node's `¬D` only
+derives `Q(x)`, the complement side of the range, which the first
+direction interprets as true on `Δ_I`; relativizing them to `¬D` would
+instead be incomplete, since a data node reached by a data property is in
+`D` and would lose the excluded middle (`A ⊑ (u value 2)` and
+`C ≡ ¬∀u.{1}` entail `A ⊑ C`, which needs `¬{1}` at the value `2`).
+
+The fresh individual `o_v` of the loader needs no sort clause: `v ⊑ D`
+covers every element that is the value, and when `v` is empty `o_v`
+denotes an arbitrary element.
