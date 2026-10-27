@@ -14,8 +14,17 @@ no wrong answers, no lost inputs, and mean and median ratios at most 1.10.
 | 2 | after the role-automaton fix, certificate rules withdrawn | dd2dcc41… | 54610950 | 1102 | 1101 | none | 7499 | 0.999 | 1.045 |
 | 3 | `2179c50c` (certificate rules restored; universal role; bug 4 and 5 fixes) | d852ddc4… | 54642012 | 1102 | 1102 | none | none | 1.011 | 1.067 |
 | 4 | `400f1bdc` (realization; data-range and bottom-property fixes; spelling fix) | 6c02f317… | 54653332 | 1102 | 1102 | none | none | 1.053 | 1.068 |
+| 5 | `b574d11e` (bug 1: at-most-one clauses as fresh nominals, object/data sorts) | d59a672d… | 54669336 | 1099 | 1101 | v153: 14321, 13132, 6951 | general: 9800 | 1.042 | 1.102 |
 
-Runs 3 and 4 meet the contract. Run 1's two wrong answers were the frontend
+Runs 3 and 4 meet the contract. Run 5 does not: the bug 1 encoding made the
+`nominals` route unsound on three inputs that the v1.5.3 policy sends there
+after the bridge declines on unsupported data-property assertions (14321:
+three satisfiable classes reported unsatisfiable; 13132 and 6951: reported
+inconsistent), while `certified_nominals` under the general policy stayed
+correct on the same binary; the general policy also lost 9800 (certified
+nominal CB 71 s in run 4, timeout in run 5) and its median ratio rose to
+1.102. The three wrong answers and the lost input are under investigation
+before any further run. Run 1's two wrong answers were the frontend
 role-chain encoding, which every clause route shared and v1.5.3 masked by
 routing those inputs to the Konclude bridge. Run 2's lost input (7499) needed
 the proved source certificates, which the maintainer exempted from the
