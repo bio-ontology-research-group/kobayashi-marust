@@ -461,6 +461,12 @@ fn builtin_datatype_key(name: &str) -> Option<&str> {
     }
 }
 
+/// Whether a source datatype token is `rdfs:Literal`, the top data range
+/// whose value space contains every data value.
+pub(crate) fn is_top_data_range(name: &str) -> bool {
+    builtin_datatype_key(name) == Some("rdfs:Literal")
+}
+
 /// Canonical, collision-free key for a named data range in the internal
 /// `__dt__` symbol space.  Known builtins retain the historical compact key;
 /// every other source token is encoded byte-for-byte instead of losing its

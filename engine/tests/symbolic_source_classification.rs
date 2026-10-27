@@ -112,7 +112,10 @@ fn automatic_symbolic_route_respects_requested_runtime_certificate() {
 #[test]
 fn automatic_symbolic_decline_preserves_ordinary_pipeline_coverage() {
     let source = LARGE_SOURCE.replacen("Ontology(",
-        "Ontology(Declaration(Class(<urn:B>)) ObjectPropertyDomain(<http://www.w3.org/2002/07/owl#topObjectProperty> <urn:B>)", 1);
+        // The universal role as a sub-role is outside both the symbolic bridge
+        // and the frontend's universal-role rewrite (which turns a domain or
+        // range of the universal role into an ordinary `⊤ ⊑ C`).
+        "Ontology(Declaration(ObjectProperty(<urn:s>)) SubObjectPropertyOf(<http://www.w3.org/2002/07/owl#topObjectProperty> <urn:s>)", 1);
     let explicit = classify_mode(&source, false, true);
     assert!(!explicit.status.success());
     assert!(String::from_utf8_lossy(&explicit.stderr).contains("symbolic source bridge deferred"));

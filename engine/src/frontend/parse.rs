@@ -215,10 +215,25 @@ pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                 Box::new(Concept::Nominal(reg.short(args[1].as_atom().unwrap_or("")))),
             )),
             "ObjectHasSelf" => Ok(Concept::HasSelf(role_cls(reg, &args[0])?)),
-            "DataSomeValuesFrom" => Ok(Concept::Exists(
-                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                Box::new(dt_concept(&args[1])),
-            )),
+            // `rdfs:Literal` is the top data range: every value a data
+            // property can take lies in it (OWL 2 Structural Specification
+            // 4.1), so `DataSomeValuesFrom(p rdfs:Literal)` holds exactly when
+            // `p` has some value, i.e. it is `DataMinCardinality(1 p)`. Parse
+            // it as that unqualified cardinality (filler `⊤`, as below), so the
+            // two spellings share one exact encoding. The `__dt__Literal`
+            // node label it used to carry added nothing a model could
+            // falsify (it holds for every data value), so no clash is lost;
+            // keeping it made the native completion bridge defer and the
+            // classification fall back to much slower calculi.
+            "DataSomeValuesFrom" => {
+                let role = Role::Name(reg.short(args[0].as_atom().unwrap_or("")));
+                Ok(match &args[1] {
+                    Node::Atom(name) if super::datatypes::is_top_data_range(name) => {
+                        Concept::AtLeast(1, role, Box::new(Concept::Top))
+                    }
+                    other => Concept::Exists(role, Box::new(dt_concept(other))),
+                })
+            }
             "DataAllValuesFrom" => Ok(Concept::Forall(
                 Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
                 Box::new(dt_concept(&args[1])),
@@ -955,6 +970,31 @@ mod axiom_drop_regression_tests {
         let ontology = parse_with_data_assertion_conversion(false, text);
         assert_eq!(ontology.data_assertions_as_class(), 0);
         assert_eq!(ontology.abox().count(), 0);
+    }
+
+    #[test]
+    fn literal_existential_is_the_unqualified_min_cardinality() {
+        for literal in ["rdfs:Literal", "<http://www.w3.org/2000/01/rdf-schema#Literal>"] {
+            let mut registry = IriRegistry::new();
+            let text = format!(
+                "Ontology(SubClassOf(<A> DataSomeValuesFrom(<p> {literal})) \
+                 SubClassOf(<B> DataMinCardinality(1 <p>)))"
+            );
+            let ontology = parse_axioms(&mut registry, &text).unwrap();
+            let sups: Vec<&Concept> = ontology.tbox().map(|axiom| match axiom {
+                Axiom::SubClassOf(_, sup) => sup,
+                other => panic!("unexpected axiom {other:?}"),
+            }).collect();
+            assert_eq!(sups.len(), 2);
+            assert_eq!(sups[0], sups[1], "{literal}");
+            assert_eq!(sups[0], &Concept::AtLeast(1, Role::Name("p".into()), Box::new(Concept::Top)));
+        }
+        // Other data ranges keep their datatype filler.
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry,
+            "Ontology(SubClassOf(<A> DataSomeValuesFrom(<p> xsd:integer)))").unwrap();
+        assert!(matches!(ontology.tbox().next(),
+            Some(Axiom::SubClassOf(_, Concept::Exists(_, filler))) if **filler == Concept::Name("__dt__integer".into())));
     }
 
     #[test]

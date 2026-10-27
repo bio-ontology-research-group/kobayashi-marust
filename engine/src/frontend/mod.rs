@@ -34,6 +34,7 @@ mod unary_rules;
 pub mod sexpr;
 pub mod syntax;
 pub mod top_role;
+pub mod universal_role;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
@@ -1051,6 +1052,19 @@ fn ofn_to_clauses_representation(
     // constants are rewritten; ordinary source spelling/identity is retained.
     let builtin_source = builtin_aliases::canonicalize(text).map_err(parse::OutOfFragment)?;
     let text = builtin_source.as_ref();
+    // Universal-role restrictions become an exact nominal-hub encoding, a
+    // conservative extension with the same taxonomy (see `universal_role`).
+    // The calculi have no universal-role object, so `∃U.C` / `∀U.C` were
+    // ordinary role restrictions: incomplete, and expensive. Rewriting the
+    // source before the streaming parse lets the profile, the router, every
+    // clause consumer and the incremental sessions see one ontology.
+    // `KM_NO_UNIVERSAL_ROLE_HUB` keeps the source for differential tests.
+    let universal_source = if std::env::var_os("KM_NO_UNIVERSAL_ROLE_HUB").is_none() {
+        universal_role::encode(text).map_err(parse::OutOfFragment)?
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    };
+    let text = universal_source.as_ref();
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
@@ -2530,7 +2544,9 @@ mod separable_abox_elision_tests {
         // elided and the conservative occurrence flag stays authoritative.
         let text = VACUOUS_TOP_ROLE_OBJECT_ABOX.replace(
             "SubClassOf(ObjectSomeValuesFrom(<urn:r> owl:Thing) <urn:D>)",
-            "SubClassOf(ObjectSomeValuesFrom(owl:topObjectProperty <urn:A>) <urn:D>)",
+            // U as a sub-role is outside the universal-role hub rewrite, so the
+            // builtin stays in the retained ontology.
+            "SubObjectPropertyOf(owl:topObjectProperty <urn:s>)",
         );
         let result = with_ofn_to_clauses_requested_route(&text, Route::Auto, |result| result)
             .expect("read universal-role source");

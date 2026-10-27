@@ -1,0 +1,9 @@
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x/o>
+Declaration(ObjectProperty(<http://x/r>)) Declaration(DataProperty(<http://x/u>))
+Declaration(NamedIndividual(<http://x/a>)) Declaration(NamedIndividual(<urn:q#c>)) Declaration(NamedIndividual(<urn:q#d>))
+Declaration(Class(<urn:q#F>))
+Declaration(Class(<urn:q#T1>)) EquivalentClasses(<urn:q#T1> ObjectSomeValuesFrom(owl:topObjectProperty <urn:q#F>))
+Declaration(Class(<urn:q#S3>)) EquivalentClasses(<urn:q#S3> ObjectIntersectionOf(ObjectOneOf(<http://x/a>) ObjectComplementOf(DataHasValue(<http://x/u> "1"^^xsd:integer))))
+Declaration(Class(<urn:q#S6>)) EquivalentClasses(<urn:q#S6> ObjectIntersectionOf(ObjectOneOf(<urn:q#c>) ObjectSomeValuesFrom(<http://x/r> ObjectOneOf(<urn:q#d>)) ObjectSomeValuesFrom(ObjectInverseOf(<http://x/r>) ObjectOneOf(<urn:q#d>))))
+)
