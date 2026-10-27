@@ -328,6 +328,59 @@ fn data_range_complement_excluded_middle_still_applies_to_values() {
     }
 }
 
+/// The `⊤` definer is shared between `owl:Thing` and the `rdfs:Literal`
+/// filler of `≥1 linkURI`, and `DataPropertyRange(uri anyURI)` is written
+/// as an implication from it. The sort encoding must relativize that
+/// implication like a `⊤ ⊑ C` fact; otherwise the object-sorted range
+/// definer is forced on the `linkURI` value and `URLLink` (and `V`) become
+/// unsatisfiable, which the `nominals` route reported on ore_ont_14321,
+/// 13132 and 6951. HermiT: consistent, nothing unsatisfiable, no
+/// subsumption.
+#[test]
+fn data_property_range_over_the_shared_top_definer_stays_satisfiable() {
+    let text = "Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(<http://x/o>\n\
+        Declaration(Class(<urn:q#URLLink>)) Declaration(Class(<urn:q#Document>)) Declaration(Class(<urn:q#V>))\n\
+        Declaration(DataProperty(<urn:q#linkURI>)) Declaration(DataProperty(<urn:q#uri>)) \
+        Declaration(DataProperty(<urn:q#u>))\n\
+        Declaration(NamedIndividual(<urn:q#a>))\n\
+        SubClassOf(<urn:q#URLLink> DataMinCardinality(1 <urn:q#linkURI>))\n\
+        SubClassOf(<urn:q#Document> owl:Thing)\n\
+        DataPropertyRange(<urn:q#uri> xsd:anyURI)\n\
+        ClassAssertion(owl:Thing <urn:q#a>)\n\
+        SubClassOf(<urn:q#V> DataHasValue(<urn:q#u> \"1\"^^xsd:integer))\n)\n";
+    for route in NOMINAL_ROUTES {
+        let (answer, elapsed) = classify_on(text, route);
+        assert!(elapsed < BOUND, "{route:?}");
+        assert!(answer.consistent, "{route:?}");
+        assert!(answer.unsat.is_empty(), "{route:?}: {:?}", answer.unsat);
+        assert!(answer.subs.is_empty(), "{route:?}: {:?}", answer.subs);
+    }
+}
+
+/// The datatype agent's reproducer: `Has ≡ ≥1 d` reifies `⊤` with only
+/// data-sorted evidence, `DataPropertyRange(e string)` is written as an
+/// implication from that definer, and `V ≡ (e value 1)` clashes with the
+/// range. HermiT: consistent, `V` unsatisfiable, nothing else. The
+/// `nominals` route used to answer inconsistent.
+#[test]
+fn data_sorted_top_definer_keeps_data_values_satisfiable() {
+    let text = "Prefix(:=<http://example.org/t#>)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n\
+        Ontology(<http://example.org/t>\n\
+        Declaration(DataProperty(:d)) Declaration(DataProperty(:e)) Declaration(Class(:Has)) \
+        Declaration(Class(:V)) Declaration(NamedIndividual(:a))\n\
+        EquivalentClasses(:Has DataMinCardinality(1 :d))\n\
+        DataPropertyRange(:e xsd:string)\n\
+        EquivalentClasses(:V DataHasValue(:e \"1\"^^xsd:integer))\n\
+        ClassAssertion(:Has :a)\n)\n";
+    for route in NOMINAL_ROUTES {
+        let (answer, elapsed) = classify_on(text, route);
+        assert!(elapsed < BOUND, "{route:?}");
+        assert!(answer.consistent, "{route:?}");
+        assert_eq!(answer.unsat, names(&[":V"]), "{route:?}");
+        assert!(answer.subs.is_empty(), "{route:?}: {:?}", answer.subs);
+    }
+}
+
 /// Object and data assertions on the same individual, next to a `⊤ ⊑ ∃r.{b}`
 /// fact. Hand derivation: `⊤ ⊑ ∃r.{b} ⊑ B`, so every class is below `B`;
 /// `a ∈ A` and `u(a,1)`, so `D ≡ {a} ⊓ (u value 1)` is `{a}` and

@@ -19,7 +19,12 @@
 //! * every role: domain `⊑ ¬D`; range `⊑ ¬D` for object roles and `⊑ D`
 //!   for data roles;
 //! * every class-level fact `⊤ ⊑ C` becomes `¬D ⊑ C`, i.e. `→ C(x) ∨ D(x)`:
-//!   `owl:Thing` is `¬D`.
+//!   `owl:Thing` is `¬D`. The same applies to a clause whose body is only
+//!   polymorphic or data-sorted concepts and whose head is object-sorted:
+//!   the normaliser writes `⊤ ⊑ ∀p.R` of a `DataPropertyRange` as
+//!   `Q_⊤(x) → Q(x)` once `⊤` has a definer, and `Q_⊤` also holds on data
+//!   values (it is the `rdfs:Literal` filler), so without the `D(x)`
+//!   disjunct the object-sorted `Q` would be forced on a value.
 //!
 //! Data-range-level facts (the excluded middle `→ Q(x) ∨ R(x)` of a
 //! `DataComplementOf` definer `Q`) stay unrelativized: they must keep
@@ -32,6 +37,17 @@
 //! every clause), so the pass needs no provenance from the clausifier. A
 //! concept used in both sorts (the `⊤` definer of an unqualified
 //! cardinality) gets no sort clause and keeps its facts as they are.
+//!
+//! Before any clause is emitted, sort admissibility is closed under the
+//! clause set: whenever the body of a clause admits a sort at a term and no
+//! head atom on that term admits it, the head concepts (the definers first,
+//! the seeded names only when no definer is there) are made to admit it,
+//! and a role position in the same situation admits it too. A concept or
+//! role position that admits both sorts gets no sort clause. The closure is
+//! what guarantees that no sort clause can make a clause unsatisfiable for
+//! an element the clause set allows in that sort; the `⊤`-axiom
+//! relativization runs first so that `⊤ ⊑ C` keeps its exact reading
+//! instead of turning `C` polymorphic.
 //!
 //! The exactness argument is in docs/NOMINALS-CB.md, "Object and data sorts".
 
@@ -67,6 +83,61 @@ impl Sort {
 
 fn is_data_range(name: &str) -> bool {
     name.starts_with("__dt__")
+}
+
+/// The abstraction concept of a `DataComplementOf` range. Its excluded
+/// middle against the complemented range is not relativized, which places
+/// every object node on the complement side, so the concept admits both
+/// sorts and must not receive a `⊑ D` clause.
+fn is_complement_range(name: &str) -> bool {
+    name.starts_with("__dt__c__DataComplementOf(")
+}
+
+/// The sorts an element carrying a concept, or filling a role position, may
+/// have. `Sort::Both` and `Sort::Unknown` admit both.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Admits {
+    object: bool,
+    data: bool,
+}
+
+impl Admits {
+    const BOTH: Admits = Admits { object: true, data: true };
+
+    fn from_sort(sort: Sort) -> Admits {
+        match sort {
+            Sort::Object => Admits { object: true, data: false },
+            Sort::Data => Admits { object: false, data: true },
+            Sort::Both | Sort::Unknown => Admits::BOTH,
+        }
+    }
+
+    fn admits(self, sort: Sort) -> bool {
+        match sort {
+            Sort::Object => self.object,
+            Sort::Data => self.data,
+            Sort::Both | Sort::Unknown => true,
+        }
+    }
+
+    /// Admit `sort` as well; `true` when that is new.
+    fn add(&mut self, sort: Sort) -> bool {
+        let before = *self;
+        match sort {
+            Sort::Object => self.object = true,
+            Sort::Data => self.data = true,
+            Sort::Both | Sort::Unknown => {}
+        }
+        *self != before
+    }
+
+    fn only(self) -> Option<Sort> {
+        match (self.object, self.data) {
+            (true, false) => Some(Sort::Object),
+            (false, true) => Some(Sort::Data),
+            _ => None,
+        }
+    }
 }
 
 /// A role named by the source: not an inverse bridge, chain, or
@@ -108,6 +179,8 @@ struct Sorts {
     concepts: BTreeMap<String, (Sort, bool)>,
     /// Role (domain, range) sorts.
     roles: BTreeMap<String, (Sort, Sort)>,
+    /// Structural sort of every Skolem term and individual (phase 1).
+    terms: BTreeMap<Term, Sort>,
 }
 
 impl Sorts {
@@ -148,7 +221,7 @@ impl Sorts {
                 }
             }
         }
-        let mut sorts = Sorts { concepts, roles };
+        let mut sorts = Sorts { concepts, roles, terms: BTreeMap::new() };
         // Phase 1, structural evidence: a term's sort comes from the seeded
         // concepts on it and from the role positions it fills. A variable is
         // local to its clause; a Skolem term `f(x)` (one function per
@@ -269,6 +342,7 @@ impl Sorts {
                 break;
             }
         }
+        sorts.terms = global.into_iter().map(|(t, s)| (t.clone(), s)).collect();
         sorts
     }
 
@@ -311,17 +385,25 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
     let y = Term::Var("y".to_string());
     let d = |t: &Term| Atom::Concept(DATA_SORT.to_string(), t.clone());
     let mut count = 0usize;
-    // Class-level facts: `⊤ ⊑ C` becomes `¬D ⊑ C`. A fact is class-level
-    // when it mentions exactly one variable and every concept in its head is
-    // object-sorted; data-range-level, polymorphic and unresolved facts are
+    // Class-level facts: `⊤ ⊑ C` becomes `¬D ⊑ C`. A clause is class-level
+    // when it mentions exactly one variable, its body is empty or consists
+    // of polymorphic or data-sorted concept atoms only (nothing that pins
+    // the element to the object domain), and every concept in its head is
+    // object-sorted. Data-range-level, polymorphic and unresolved heads are
     // left as they are (see the module documentation), and so are ground
     // facts, whose individuals carry their own sort.
     for c in tbox.iter_mut() {
-        if !c.body.is_empty() {
-            continue;
-        }
         let mut vars: BTreeSet<&Term> = BTreeSet::new();
-        let mut object_level = true;
+        let mut object_level = !c.head.is_empty();
+        for atom in &c.body {
+            match atom {
+                Atom::Concept(name, t) => {
+                    vars.extend(term_var(t));
+                    object_level &= matches!(sorts.concept(name), Sort::Both | Sort::Data);
+                }
+                Atom::Role(..) | Atom::Eq(..) => object_level = false,
+            }
+        }
         for atom in &c.head {
             match atom {
                 Atom::Concept(name, t) => {
@@ -342,33 +424,148 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
             continue;
         }
         let v = (*vars.iter().next().expect("one variable")).clone();
+        let body = std::mem::take(&mut c.body);
         let mut head = std::mem::take(&mut c.head);
         head.push(d(&v));
-        *c = clause(Vec::new(), head);
+        *c = clause(body, head);
         count += 1;
     }
+    // Admissibility, closed under the clause set (see the module
+    // documentation). Seeds keep their one sort unless no definer can take
+    // the blame; a complement range is treated like a definer.
+    let mut concept_adm: BTreeMap<String, Admits> = sorts
+        .concepts
+        .iter()
+        .map(|(name, (sort, _))| (name.clone(), Admits::from_sort(*sort)))
+        .collect();
+    concept_adm.insert(DATA_SORT.to_string(), Admits::from_sort(Sort::Data));
+    let flippable = |name: &str| {
+        name != DATA_SORT && (!sorts.concepts[name].1 || is_complement_range(name))
+    };
+    let mut role_adm: BTreeMap<String, (Admits, Admits)> = sorts
+        .roles
+        .iter()
+        .map(|(name, (domain, range))| {
+            (name.clone(), (Admits::from_sort(*domain), Admits::from_sort(*range)))
+        })
+        .collect();
+    loop {
+        let mut changed = false;
+        for c in tbox.iter() {
+            let mut terms: BTreeSet<&Term> = BTreeSet::new();
+            for atom in c.body.iter().chain(c.head.iter()) {
+                match atom {
+                    Atom::Concept(_, t) => {
+                        terms.insert(t);
+                    }
+                    Atom::Role(_, s, t) | Atom::Eq(s, t) => {
+                        terms.insert(s);
+                        terms.insert(t);
+                    }
+                }
+            }
+            for t in terms {
+                for sort in [Sort::Object, Sort::Data] {
+                    // A Skolem term or individual has a structural sort.
+                    let structural = if matches!(t, Term::Var(_)) {
+                        Sort::Unknown
+                    } else {
+                        sorts.terms.get(t).copied().unwrap_or(Sort::Unknown)
+                    };
+                    if structural.definite() && structural != sort {
+                        continue;
+                    }
+                    let body_admits = c.body.iter().all(|atom| match atom {
+                        Atom::Concept(name, u) if u == t => concept_adm[name].admits(sort),
+                        Atom::Role(name, s, u) => {
+                            (s != t || role_adm[name].0.admits(sort))
+                                && (u != t || role_adm[name].1.admits(sort))
+                        }
+                        _ => true,
+                    });
+                    if !body_admits {
+                        continue;
+                    }
+                    let mut on_term = false;
+                    let mut satisfied = false;
+                    let mut definers: Vec<&str> = Vec::new();
+                    let mut concepts: Vec<&str> = Vec::new();
+                    let mut positions: Vec<(&str, bool)> = Vec::new();
+                    for atom in &c.head {
+                        match atom {
+                            Atom::Concept(name, u) if u == t => {
+                                on_term = true;
+                                satisfied |= concept_adm[name].admits(sort);
+                                concepts.push(name);
+                                if flippable(name) {
+                                    definers.push(name);
+                                }
+                            }
+                            Atom::Role(name, s, u) => {
+                                if s == t {
+                                    on_term = true;
+                                    satisfied |= role_adm[name].0.admits(sort);
+                                    positions.push((name, false));
+                                }
+                                if u == t {
+                                    on_term = true;
+                                    satisfied |= role_adm[name].1.admits(sort);
+                                    positions.push((name, true));
+                                }
+                            }
+                            Atom::Eq(s, u) if s == t || u == t => {
+                                on_term = true;
+                                satisfied = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                    if !on_term || satisfied {
+                        continue;
+                    }
+                    if !definers.is_empty() {
+                        for name in definers {
+                            changed |= concept_adm.get_mut(name).expect("head concept").add(sort);
+                        }
+                    } else if !concepts.is_empty() {
+                        for name in concepts {
+                            changed |= concept_adm.get_mut(name).expect("head concept").add(sort);
+                        }
+                    } else {
+                        for (name, range) in positions {
+                            let entry = role_adm.get_mut(name).expect("head role");
+                            changed |= if range { entry.1.add(sort) } else { entry.0.add(sort) };
+                        }
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
     let mut added: Vec<DLClause> = Vec::new();
-    for (name, (sort, _)) in &sorts.concepts {
+    for (name, adm) in &concept_adm {
+        if name == DATA_SORT {
+            continue;
+        }
         let atom = Atom::Concept(name.clone(), x.clone());
-        match sort {
-            // Every data range lies in Δ_D. A data-sorted definer gets no
-            // clause: its unrelativized excluded middle also holds on
-            // object nodes.
-            Sort::Data if is_data_range(name) => added.push(clause([atom], [d(&x)])),
-            Sort::Object => added.push(clause([atom, d(&x)], [])),
+        match adm.only() {
+            Some(Sort::Data) => added.push(clause([atom], [d(&x)])),
+            Some(Sort::Object) => added.push(clause([atom, d(&x)], [])),
             _ => {}
         }
     }
-    for (name, (domain, range)) in &sorts.roles {
+    for (name, (domain, range)) in &role_adm {
         let atom = Atom::Role(name.clone(), x.clone(), y.clone());
-        match domain {
-            Sort::Object => added.push(clause([atom.clone(), d(&x)], [])),
-            Sort::Data => added.push(clause([atom.clone()], [d(&x)])),
+        match domain.only() {
+            Some(Sort::Object) => added.push(clause([atom.clone(), d(&x)], [])),
+            Some(Sort::Data) => added.push(clause([atom.clone()], [d(&x)])),
             _ => {}
         }
-        match range {
-            Sort::Object => added.push(clause([atom.clone(), d(&y)], [])),
-            Sort::Data => added.push(clause([atom.clone()], [d(&y)])),
+        match range.only() {
+            Some(Sort::Object) => added.push(clause([atom.clone(), d(&y)], [])),
+            Some(Sort::Data) => added.push(clause([atom.clone()], [d(&y)])),
             _ => {}
         }
     }
@@ -478,6 +675,93 @@ mod tests {
         encode(&mut tbox, &BTreeSet::from(["u".to_string()]));
         assert!(tbox.contains(&fact([c("Q_t", x())])));
         assert!(!tbox.iter().any(|cl| cl.body.contains(&c("Q_t", x()))));
+    }
+
+    /// ore_ont_14321: `DataPropertyRange(uri anyURI)` is written as
+    /// `Q_⊤(x) → Q_97(x)` with `Q_⊤` the shared `⊤` definer, which also
+    /// holds on the `linkURI` value; `Q_97` is object-sorted (domain of
+    /// `uri`). Without the `D(x)` disjunct the value would clash with
+    /// `Q_97 ⊑ ¬D`, making `URLLink ⊑ ≥1 linkURI` unsatisfiable.
+    #[test]
+    fn a_top_definer_implication_with_an_object_head_is_relativized() {
+        let mut tbox = vec![
+            fact([c("Q_t", x())]),
+            clause([c("Document", x())], [c("Q_t", x())]),
+            clause([c("Q_72", x())], [r("linkURI", x(), fx("f"))]),
+            clause([c("Q_72", x())], [c("Q_t", fx("f"))]),
+            clause([c("URLLink", x())], [c("Q_72", x())]),
+            clause([c("Q_97", x()), r("uri", x(), y())], [c("__dt__anyURI", y())]),
+            clause([c("Q_t", x())], [c("Q_97", x())]),
+            clause([c("V", x())], [c(VAL, fx("g"))]),
+        ];
+        let roles = BTreeSet::from(["linkURI".to_string(), "uri".to_string()]);
+        let sorts = Sorts::infer(&tbox, &roles);
+        assert_eq!(sorts.concept("Q_t"), Sort::Both);
+        assert_eq!(sorts.concept("Q_97"), Sort::Object);
+        encode(&mut tbox, &roles);
+        let dx = c(DATA_SORT, x());
+        assert!(tbox.contains(&clause([c("Q_t", x())], [c("Q_97", x()), dx.clone()])));
+        assert!(tbox.contains(&fact([c("Q_t", x())])));
+        assert!(tbox.contains(&clause([c("Document", x())], [c("Q_t", x())])));
+    }
+
+    /// The coordinator's reproducer: `Has ≡ ≥1 d` reifies `⊤` as `Q_1`
+    /// (data-sorted: its only structural evidence is the `d` successor),
+    /// `DataPropertyRange(e string)` is `Q_1(x) → Q_7(x)` with `Q_7`
+    /// object-sorted. The implication is relativized, `Q_7 ⊑ ¬D` stays, and
+    /// the closure leaves `Q_1` alone (its fact holds on both sorts).
+    #[test]
+    fn a_data_sorted_top_definer_implication_is_relativized_and_the_range_definer_keeps_its_sort() {
+        let mut tbox = vec![
+            fact([c("Q_1", x())]),
+            clause([c("Q_0", x())], [r("d", x(), fx("f"))]),
+            clause([c("Q_0", x())], [c("Q_1", fx("f"))]),
+            clause([c("Has", x())], [c("Q_0", x())]),
+            clause([c("Q_1", x())], [c("Q_7", x())]),
+            clause([c("Q_7", x()), r("e", x(), y())], [c("__dt__string", y())]),
+            clause([c("V", x())], [c(VAL, fx("g"))]),
+        ];
+        let roles = BTreeSet::from(["d".to_string(), "e".to_string()]);
+        let sorts = Sorts::infer(&tbox, &roles);
+        assert_eq!(sorts.concept("Q_1"), Sort::Data);
+        assert_eq!(sorts.concept("Q_7"), Sort::Object);
+        encode(&mut tbox, &roles);
+        let dx = c(DATA_SORT, x());
+        assert!(tbox.contains(&clause([c("Q_1", x())], [c("Q_7", x()), dx.clone()])));
+        assert!(tbox.contains(&clause([c("Q_7", x()), dx.clone()], [])));
+        assert!(tbox.contains(&fact([c("Q_1", x())])));
+        assert!(!tbox.iter().any(|cl| cl.body == vec![c("Q_1", x())] && cl.head == vec![dx.clone()]));
+    }
+
+    /// The closure repairs a head the inference cannot: a data-sorted
+    /// definer implied by a polymorphic one through a role-guarded clause
+    /// must admit both sorts and then gets no `⊑ D` clause; a complement
+    /// range in an unrelativized excluded middle admits both sorts too.
+    #[test]
+    fn admissibility_closure_removes_clauses_instead_of_guessing() {
+        let comp = "__dt__c__DataComplementOf(xsd:string)";
+        let mut tbox = vec![
+            fact([c("Q_t", x())]),
+            clause([c("A", x())], [r("u", x(), fx("f"))]),
+            clause([c("A", x())], [c("Q_t", fx("f"))]),
+            clause([c("A", x())], [r("r", x(), fx("g"))]),
+            clause([c("A", x())], [c("Q_t", fx("g"))]),
+            // Q_t implies Q_d, whose only structural evidence is data-sorted.
+            clause([c("Q_t", x())], [c("Q_d", x())]),
+            clause([c("Q_d", x()), c(VAL, x())], []),
+            fact([c("__dt__string", x()), c(comp, x())]),
+        ];
+        let roles = BTreeSet::from(["u".to_string()]);
+        let sorts = Sorts::infer(&tbox, &roles);
+        assert_eq!(sorts.concept("Q_t"), Sort::Both);
+        assert_eq!(sorts.concept("Q_d"), Sort::Data);
+        encode(&mut tbox, &roles);
+        let dx = c(DATA_SORT, x());
+        assert!(!tbox.contains(&clause([c("Q_d", x())], [dx.clone()])));
+        assert!(!tbox.iter().any(|cl| cl.body.contains(&c("Q_d", x())) && cl.body.contains(&dx)));
+        assert!(tbox.contains(&clause([c("__dt__string", x())], [dx.clone()])));
+        assert!(!tbox.contains(&clause([c(comp, x())], [dx.clone()])));
+        assert!(tbox.contains(&clause([c("A", x()), dx.clone()], [])));
     }
 
     #[test]

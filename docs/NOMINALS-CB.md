@@ -263,7 +263,13 @@ The encoding is linear in the signature:
 - every role `P`: `∃P.⊤ ⊑ ¬D`; `∃P⁻.⊤ ⊑ ¬D` when `P` is object-sorted
   and `∃P⁻.⊤ ⊑ D` when `P` is a data property;
 - every class-level fact `→ C(x)` becomes `→ C(x) ∨ D(x)`, i.e.
-  `¬D ⊑ C`: `owl:Thing` is `¬D`.
+  `¬D ⊑ C`: `owl:Thing` is `¬D`. A clause whose body consists only of
+  polymorphic or data-sorted concepts and whose head is object-sorted is
+  treated the same way: the normaliser writes `⊤ ⊑ ∀p.R` of a
+  `DataPropertyRange` as `Q_⊤(x) → Q(x)` once `⊤` has a definer, and
+  `Q_⊤` also holds on data values (it is the `rdfs:Literal` filler of an
+  unqualified data cardinality), so the clause is a `⊤ ⊑ C` fact in
+  disguise.
 
 Sorts are inferred from the clause set: data ranges and the source's data
 properties are data, source classes and named individuals are objects, and
@@ -273,6 +279,30 @@ and keeps its facts. A fact is class-level when every concept in its head is
 object-sorted; a data-range-level fact, the excluded middle
 `→ Q(x) ∨ R(x)` of a `DataComplementOf` definer `Q`, stays as it is, and so
 does every ground fact.
+
+Admissibility closure. Sort inference alone is not enough: it joins sorts
+only on shared terms and never follows an implication from a data- or
+both-sorted concept into an object-sorted one. In ore_ont_14321, 13132 and
+6951, `≥1 d` reifies `⊤` as `Q_1`, whose only structural evidence is the
+data successor, and `DataPropertyRange(e R)` is clausified as
+`Q_1(x) → Q_7(x)`, `Q_7(x) ∧ e(x,y) → R(y)`. Inference gave `Q_1` data and
+`Q_7` object, so `Q_7 ⊑ ¬D` together with the unrelativized fact `→ Q_1(x)`
+made every data node inconsistent and every `≥1 d` unsatisfiable. Two rules
+now prevent that. First, a clause whose body consists only of polymorphic or
+data-sorted concepts on its single variable and whose head is object-sorted
+is relativized like a `⊤` fact (`Q_1(x) → Q_7(x) ∨ D(x)`): it is a `⊤ ⊑ C`
+axiom written through the shared `⊤` definer. Second, before any sort clause
+is emitted, admissibility is closed under the clause set as a least
+fixpoint: whenever the body of a clause admits a sort at a term and no head
+atom on that term admits it, the head definers (or, when the head has none,
+its seeded concepts, or else its role positions) are made to admit it. A
+concept or role position that admits both sorts at the fixpoint gets no
+sort clause; the encoding never guesses. The `DataComplementOf` range
+concept is a definer for this purpose: its unrelativized excluded middle
+puts object nodes on the complement side, so it admits both sorts and gets
+no `⊑ D` clause. The closure guarantees that every sort clause is
+consistent with every clause of `S'` read in the two-sorted model of the
+first direction below.
 
 Exactness. Let `O` be the source ontology, `S` its one-sorted clause set
 before this pass, and `S'` the result. `S` is read against the two-sorted
