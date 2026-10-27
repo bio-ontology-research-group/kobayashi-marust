@@ -2536,7 +2536,15 @@ mod separable_abox_elision_tests {
             .expect("read universal-role source");
         assert!(result.profile.expressivity.universal_role);
         assert!(!result.profile.disjoint_union_abox_candidate);
-        assert_eq!(result.route, Route::Nominals.as_str());
+        // Both automatic policies keep the input on a nominal-aware route: the
+        // general policy's default is the certified nominal portfolio, whose
+        // exact arm is the nominal CB calculus.
+        assert!(
+            result.route == Route::Nominals.as_str()
+                || result.route == Route::CertifiedNominals.as_str(),
+            "{}",
+            result.route
+        );
     }
 }
 

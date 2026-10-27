@@ -2450,10 +2450,10 @@ pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
     let nominal = fragment == SemanticFragment::Nominal;
     let core = fragment == SemanticFragment::SriqCore;
     let positive = fragment == SemanticFragment::PositiveAbox;
-    // Each rule admits at least 0.5 % of the admitted ORE 2015 pool inputs
-    // (contract G4); certificates that admit fewer were merged into the
-    // broader rule with the same justification or removed, in which case the
-    // exact default of their fragment answers.
+    // Each construct rule admits at least 0.5 % of the admitted ORE 2015 pool
+    // inputs (contract G4); semantic gates and proved source certificates are
+    // exempt. Rules below the floor were merged into the broader rule with the
+    // same justification or removed, leaving the exact default.
     let rules: Vec<(&'static str, &'static str, bool, Route)> = vec![
         (
             // Semantic necessity, exempt from the floor: the frontend has
@@ -2476,6 +2476,33 @@ pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
             Route::HtRules,
         ),
         (
+            // Parsed-AST certificates: the ABox reduces to TBox classification
+            // plus a consistency check of each asserted type (inert role edges
+            // or isolated existential witnesses). The frontend replaces the
+            // ABox by internal type probes on the portfolio route.
+            "abox_reduces_to_tbox",
+            "certificate",
+            nominal
+                && (profile.inert_role_abox_probe_candidate
+                    || profile.existential_witness_abox_candidate),
+            Route::ProductionAll,
+        ),
+        (
+            // Proved source certificates, exempt from the admission floor
+            // (contract G4 as amended on 2026-10-27): no number-restricted role
+            // interacts with an inverse, chained, or transitive role.
+            "inverse_cardinality_role_separation",
+            "certificate",
+            nominal && profile.inverse_cardinality_role_separable,
+            Route::CertifiedCardNominals,
+        ),
+        (
+            "number_role_separation",
+            "certificate",
+            nominal && profile.card_number_role_separable,
+            Route::CertifiedCardProxyAbox,
+        ),
+        (
             // Typed object ABoxes, including the all-different datatype
             // layout, which the native bridge carries into its nominal model.
             "typed_abox_for_native_bridge",
@@ -2485,16 +2512,13 @@ pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
             Route::CertifiedNominals,
         ),
         (
-            // The ABox reduces to TBox classification plus a consistency check
-            // of each asserted type: atomic class assertions, inert role edges,
-            // or isolated existential witnesses.
-            "abox_reduces_to_tbox",
+            // The ABox's atomic class assertions reduce to TBox classification
+            // plus a satisfiability check of each asserted class.
+            "atomic_class_abox",
             "certificate",
             nominal
-                && (profile.inert_role_abox_probe_candidate
-                    || profile.existential_witness_abox_candidate
-                    || (independent_large_abox_candidate(profile)
-                        && profile.atomic_class_abox_candidate)),
+                && independent_large_abox_candidate(profile)
+                && profile.atomic_class_abox_candidate,
             Route::ProductionAll,
         ),
         (

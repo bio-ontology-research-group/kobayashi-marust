@@ -17,11 +17,129 @@ const BUILTINS: [(&str, &str, &str); 6] = [
     ("http://www.w3.org/2002/07/owl#bottomDataProperty", "owl:bottomDataProperty", "<http://www.w3.org/2002/07/owl#bottomDataProperty>"),
 ];
 
+/// Canonicalize the source before parsing: nonstandard spellings of the six
+/// OWL semantic constants, then mixed spellings of one entity (a full IRI and
+/// a prefixed name that expands to it). Sources without either stay
+/// byte-identical.
+pub fn canonicalize(text: &str) -> Result<Cow<'_, str>, String> {
+    match canonicalize_builtins(text)? {
+        Cow::Borrowed(t) => canonicalize_entity_spellings(t),
+        Cow::Owned(t) => Ok(Cow::Owned(canonicalize_entity_spellings(&t)?.into_owned())),
+    }
+}
+
+/// Namespaces whose prefixed names are vocabulary, not source entities.
+const VOCABULARY: [&str; 4] = [
+    "http://www.w3.org/2002/07/owl#",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "http://www.w3.org/2000/01/rdf-schema#",
+    "http://www.w3.org/2001/XMLSchema#",
+];
+
+/// One entity may be written as a full IRI `<ns:local>` and as a prefixed name
+/// `p:local` with `Prefix(p:=<ns:>)`. OWL identifies the two; KM's IRI registry
+/// keys entities by spelling. Where a document uses both spellings for the
+/// same IRI, rewrite every prefixed occurrence of that IRI to the full IRI.
+fn canonicalize_entity_spellings(text: &str) -> Result<Cow<'_, str>, String> {
+    let mut parser = Parser::new(text);
+    let mut prefixes: BTreeMap<String, String> = BTreeMap::new();
+    while parser.peek() == Some("Prefix") {
+        let Node::List("Prefix", args) = parser.parse()? else {
+            return Err("spelling canonicalization: malformed Prefix".into());
+        };
+        let parts: Option<Vec<_>> = args.iter().map(Node::as_atom).collect();
+        let definition = parts.ok_or("spelling canonicalization: non-atom Prefix")?.concat();
+        let (prefix, value) = definition.split_once(":=")
+            .ok_or("spelling canonicalization: malformed Prefix binding")?;
+        let iri = value.strip_prefix('<').and_then(|v| v.strip_suffix('>'))
+            .ok_or("spelling canonicalization: malformed Prefix IRI")?;
+        if prefix != "_" && !VOCABULARY.contains(&iri) {
+            prefixes.insert(prefix.to_owned(), iri.to_owned());
+        }
+    }
+    if prefixes.is_empty() {
+        return Ok(Cow::Borrowed(text));
+    }
+    if parser.next_tok() != Some("Ontology") || parser.next_tok() != Some("(") {
+        return Err("spelling canonicalization: missing Ontology(".into());
+    }
+    let expand = |token: &str| -> Option<String> {
+        if token.starts_with('<') || token.starts_with('"') || token.starts_with("_:") {
+            return None;
+        }
+        let (prefix, local) = token.split_once(':')?;
+        prefixes.get(prefix).map(|ns| format!("{ns}{local}"))
+    };
+    let mut full_iris: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut prefixed: Vec<(usize, usize, String)> = Vec::new();
+    fn visit<'a>(
+        text: &'a str,
+        node: &Node<'a>,
+        expand: &dyn Fn(&str) -> Option<String>,
+        full_iris: &mut std::collections::BTreeSet<&'a str>,
+        prefixed: &mut Vec<(usize, usize, String)>,
+    ) -> Result<(), String> {
+        match node {
+            Node::List("Annotation" | "AnnotationAssertion" | "SubAnnotationPropertyOf"
+                | "AnnotationPropertyDomain" | "AnnotationPropertyRange", _) => {}
+            Node::List(_, args) => {
+                for arg in args {
+                    visit(text, arg, expand, full_iris, prefixed)?;
+                }
+            }
+            Node::Atom(token) => {
+                if let Some(iri) = token.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
+                    full_iris.insert(iri);
+                } else if let Some(iri) = expand(token) {
+                    let start = (token.as_ptr() as usize).checked_sub(text.as_ptr() as usize)
+                        .ok_or("spelling canonicalization: foreign token")?;
+                    let end = start + token.len();
+                    if text.get(start..end) != Some(*token) {
+                        return Err("spelling canonicalization: invalid token range".into());
+                    }
+                    prefixed.push((start, end, iri));
+                }
+            }
+        }
+        Ok(())
+    }
+    while parser.peek() != Some(")") {
+        if parser.peek().is_none() {
+            return Err("spelling canonicalization: unterminated Ontology".into());
+        }
+        if let node @ Node::List(_, _) = parser.parse()? {
+            visit(text, &node, &expand, &mut full_iris, &mut prefixed)?;
+        }
+    }
+    let mut edits: Vec<(usize, usize, String)> = prefixed
+        .into_iter()
+        .filter(|(_, _, iri)| full_iris.contains(iri.as_str()))
+        .collect();
+    if edits.is_empty() {
+        return Ok(Cow::Borrowed(text));
+    }
+    edits.sort_by_key(|e| e.0);
+    let mut out = String::with_capacity(text.len() + edits.len() * 16);
+    let mut copied = 0;
+    for (start, end, iri) in edits {
+        if start < copied {
+            return Err("spelling canonicalization: overlapping tokens".into());
+        }
+        out.push_str(&text[copied..start]);
+        out.push('<');
+        out.push_str(&iri);
+        out.push('>');
+        copied = end;
+    }
+    out.push_str(&text[copied..]);
+    Ok(Cow::Owned(out))
+}
+
 /// Canonicalize nonstandard abbreviated spellings of six semantic constants.
 /// Already supported full IRIs and `owl:` spellings remain byte-identical.
 /// No owned source buffer or ontology traversal when no relevant alias occurs.
 /// This is not an OWL validator; callers must validate the original source.
-pub fn canonicalize(text: &str) -> Result<Cow<'_, str>, String> {
+fn canonicalize_builtins(text: &str) -> Result<Cow<'_, str>, String> {
     let mut parser = Parser::new(text);
     let mut prefixes = BTreeMap::new();
     while parser.peek() == Some("Prefix") {
@@ -169,5 +287,16 @@ DataPropertyAssertion(<urn:d> <urn:i> "escaped \"o:Nothing\"")
         assert!(matches!(canonicalize(&source).unwrap(),Cow::Borrowed(_)));
         assert!(canonicalize("Prefix(owl:=<urn:evil#>) Ontology()").is_err());
         assert!(canonicalize("Prefix(o:=<urn:a>) Prefix(o:=<urn:b>) Ontology()").is_err());
+    }
+
+    #[test]
+    fn mixed_entity_spellings_are_unified() {
+        let source = "Prefix(:=<urn:t#>)\nOntology(<urn:t>\nSubObjectPropertyOf(:r :s)\nSubClassOf(:A ObjectSomeValuesFrom(<urn:t#r> :B))\nAnnotationAssertion(:p :A \"x:y\")\n)";
+        let out = canonicalize(source).unwrap();
+        assert!(out.contains("SubObjectPropertyOf(<urn:t#r> :s)"), "{out}");
+        assert!(out.contains("SubClassOf(:A ObjectSomeValuesFrom(<urn:t#r> :B))"), "{out}");
+        assert!(out.contains("AnnotationAssertion(:p :A \"x:y\")"), "{out}");
+        let consistent = "Prefix(:=<urn:t#>)\nOntology(SubObjectPropertyOf(:r :s))";
+        assert!(matches!(canonicalize(consistent).unwrap(), Cow::Borrowed(_)));
     }
 }
