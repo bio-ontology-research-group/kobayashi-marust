@@ -1,5 +1,81 @@
 # Changelog
 
+## [1.5.4] (unreleased)
+
+### General routing policy
+
+- Replace the v1.5.3 route selector, whose numeric bands each admitted one or
+  two known ORE ontologies, with a general policy (`KM_ROUTING_POLICY=general`,
+  the default; `v153` keeps the old selector). The general policy uses
+  semantic, certificate, and construct evidence only and falls back to a
+  portfolio when it cannot decide (`engine/src/routing.rs`, `general_rules`).
+  An audit test rejects numeric thresholds in the general rules, metamorphic
+  tests check route stability under renaming and axiom reordering, and a
+  design/held-out split (`results/benchmarks/2026-10-26-v154-routing/`) keeps
+  the measurement honest. See `docs/V1.5.4-ACCEPTANCE.md` and
+  `docs/V1.5.4-ROUTING-INVENTORY.md`.
+- Four paired design-half runs against the v1.5.3 policy on the same binary
+  are logged in `results/benchmarks/2026-10-26-v154-routing/RUNS.md`; the
+  current candidate loses no input, gives no wrong answer, and runs within
+  7% of v1.5.3 in mean and median time.
+
+### Wrong answers fixed
+
+- Role chains: the frontend's chain encoding missed consumers of a super-role
+  of a chained or transitive role, so every clause route missed 20
+  subsumptions on ORE 14101 (v1.5.3 answered it correctly only because its
+  routing sent the input to the Konclude bridge). The frontend now encodes
+  regular role inclusions with the Horrocks, Kutz and Sattler automaton
+  (`preprocess.rs`, `regular_role_automaton_clauses`); five completeness
+  tests run six routes.
+- Entity spellings: a full IRI and its prefixed name, or two prefixes bound
+  to the same namespace, named different entities. The frontend now respells
+  an IRI in full whenever it has more than one spelling
+  (`builtin_aliases.rs`).
+- `owl:topObjectProperty` was clausified as an ordinary role, which was
+  incomplete (`A ⊑ F`, `F ⊑ ∀U.B` did not give `A ⊑ B`) and ran small inputs
+  to the worker limit. `universal_role.rs` rewrites `∃U.C` and `∀U.C` through
+  a hub individual and a fresh role, exactly.
+- Data ranges: every data range was an opaque label, so an empty range
+  (`DataComplementOf(rdfs:Literal)`, `DataIntersectionOf(xsd:integer
+  xsd:string)`, crossed facets) in `∃`, `≥n`, or `∃ ⊓ ∀` was satisfiable, a
+  universal range in `∀` was not `⊤`, and `owl:bottomDataProperty` and
+  `owl:bottomObjectProperty` related things. `datatypes/extent.rs` decides
+  provably empty and universal ranges; `syntax.rs` folds the trivial
+  restrictions; the bottom properties get `∃bottom.⊤ ⊑ ⊥`; complement ranges
+  are related to their operands; and the ABox precheck clashes on assertions
+  under an empty range. `DataSomeValuesFrom(p rdfs:Literal)` is read as
+  `DataMinCardinality(1 p)`. HermiT 1.4.3 was the reference except for one
+  HermiT wrong answer (`DataIntersectionOf(xsd:integer xsd:string)` with
+  min-1), where the tests follow the OWL 2 datatype map.
+- Incremental source: an incremental replacement missed an unsatisfiable
+  class that a fresh classification found (`incr_session.rs`,
+  `replace_rows_from` looked up unsatisfiable names in the fresh IRI table).
+- Fresh nominals are bounded by the composite term field, which removes a
+  `calc.rs` panic on inputs whose nominal budget did not fit.
+
+### Realization
+
+- `km classify --realize` (or `--realize=direct`) appends `TYPE a C` and
+  `SAME a b` rows, exact under the OWL 2 direct semantics; default output is
+  unchanged. It adds one fresh class per named individual and classifies
+  once (`orchestrate/realize.rs`). On the W3C wine and food ontologies (206
+  individuals) it matches HermiT row for row in about 19 s against 7 s for the
+  plain taxonomy. See `docs/REALIZATION.md`.
+
+### Lean boundary
+
+- The documentation now states the proved boundary: a checker's acceptance
+  of an evidence document proves the answer exact for the normalised clauses
+  in that document. The frontend is unmodelled, procedure completeness is a
+  theorem premise, and no checker runs on the default route. See
+  `docs/history/LEAN-BOUNDARY-AUDIT-2026-10-27.md` and
+  `docs/CERTIFICATION-ROADMAP.md` (v1.5.5 checkers-on suite, v1.5.6 frontend
+  proof, v1.6.0 completeness proofs). A checkers-on test suite over 101
+  inputs and five routes is recorded in
+  `results/benchmarks/2026-10-27-checkers-on/` on branch
+  `test/v154-checkers-on`.
+
 ## [1.5.3]
 
 ### Matched 1,920-ontology classification and 80-ontology incremental results
