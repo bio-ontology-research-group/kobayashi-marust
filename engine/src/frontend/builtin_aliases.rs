@@ -111,9 +111,20 @@ fn canonicalize_entity_spellings(text: &str) -> Result<Cow<'_, str>, String> {
             visit(text, &node, &expand, &mut full_iris, &mut prefixed)?;
         }
     }
+    // An IRI is respelled in full when it has more than one spelling: the
+    // full form, or two prefixes bound to the same namespace.
+    let mut spellings: BTreeMap<&str, std::collections::BTreeSet<&str>> = BTreeMap::new();
+    for (start, end, iri) in &prefixed {
+        spellings.entry(iri.as_str()).or_default().insert(&text[*start..*end]);
+    }
+    let respell: std::collections::BTreeSet<String> = spellings
+        .iter()
+        .filter(|(iri, forms)| forms.len() > 1 || full_iris.contains(*iri))
+        .map(|(iri, _)| (*iri).to_owned())
+        .collect();
     let mut edits: Vec<(usize, usize, String)> = prefixed
         .into_iter()
-        .filter(|(_, _, iri)| full_iris.contains(iri.as_str()))
+        .filter(|(_, _, iri)| respell.contains(iri.as_str()))
         .collect();
     if edits.is_empty() {
         return Ok(Cow::Borrowed(text));
@@ -296,6 +307,10 @@ DataPropertyAssertion(<urn:d> <urn:i> "escaped \"o:Nothing\"")
         assert!(out.contains("SubObjectPropertyOf(<urn:t#r> :s)"), "{out}");
         assert!(out.contains("SubClassOf(:A ObjectSomeValuesFrom(<urn:t#r> :B))"), "{out}");
         assert!(out.contains("AnnotationAssertion(:p :A \"x:y\")"), "{out}");
+        let two_prefixes = "Prefix(p:=<urn:t#>)\nPrefix(q:=<urn:t#>)\nOntology(SubClassOf(p:A p:C)\nSubClassOf(q:C q:D))";
+        let out = canonicalize(two_prefixes).unwrap();
+        assert!(out.contains("SubClassOf(p:A <urn:t#C>)"), "{out}");
+        assert!(out.contains("SubClassOf(<urn:t#C> q:D)"), "{out}");
         let consistent = "Prefix(:=<urn:t#>)\nOntology(SubObjectPropertyOf(:r :s))";
         assert!(matches!(canonicalize(consistent).unwrap(), Cow::Borrowed(_)));
     }
