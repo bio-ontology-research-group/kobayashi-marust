@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use super::iri::IriRegistry;
 use super::sexpr::{Node, Parser};
-use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm, RuleDataTerm};
+use super::syntax::{data_all, data_at_least, data_at_most, data_some, mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm, RuleDataTerm};
 
 /// Out-of-fragment marker (port of `OutOfFragment`).
 #[derive(Debug)]
@@ -215,28 +215,21 @@ pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                 Box::new(Concept::Nominal(reg.short(args[1].as_atom().unwrap_or("")))),
             )),
             "ObjectHasSelf" => Ok(Concept::HasSelf(role_cls(reg, &args[0])?)),
-            // `rdfs:Literal` is the top data range: every value a data
-            // property can take lies in it (OWL 2 Structural Specification
-            // 4.1), so `DataSomeValuesFrom(p rdfs:Literal)` holds exactly when
-            // `p` has some value, i.e. it is `DataMinCardinality(1 p)`. Parse
-            // it as that unqualified cardinality (filler `⊤`, as below), so the
-            // two spellings share one exact encoding. The `__dt__Literal`
-            // node label it used to carry added nothing a model could
-            // falsify (it holds for every data value), so no clash is lost;
-            // keeping it made the native completion bridge defer and the
-            // classification fall back to much slower calculi.
-            "DataSomeValuesFrom" => {
-                let role = Role::Name(reg.short(args[0].as_atom().unwrap_or("")));
-                Ok(match &args[1] {
-                    Node::Atom(name) if super::datatypes::is_top_data_range(name) => {
-                        Concept::AtLeast(1, role, Box::new(Concept::Top))
-                    }
-                    other => Concept::Exists(role, Box::new(dt_concept(other))),
-                })
-            }
-            "DataAllValuesFrom" => Ok(Concept::Forall(
+            // A provably empty range makes the restriction `⊥`; a provably
+            // universal one (`rdfs:Literal`, every value a data property can
+            // take, OWL 2 Structural Specification 4.1, or an equivalent
+            // boolean combination) makes it "p has some value", i.e. the
+            // unqualified `DataMinCardinality(1 p)`, so the two spellings
+            // share one exact encoding. The `__dt__Literal` label it used to
+            // carry added nothing a model could falsify, and keeping it made
+            // the native completion bridge defer to much slower calculi.
+            "DataSomeValuesFrom" => Ok(data_some(
                 Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                Box::new(dt_concept(&args[1])),
+                dt_concept(&args[1]),
+            )),
+            "DataAllValuesFrom" => Ok(data_all(
+                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                dt_concept(&args[1]),
             )),
             "DataHasValue" => {
                 let refs: Vec<&Node> = args.iter().collect();
@@ -261,12 +254,14 @@ pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                 } else {
                     Concept::Top
                 };
+                // An empty qualifying range makes min `⊥` (n >= 1) and max
+                // `⊤`; a universal one is the unqualified filler `⊤`.
                 match *head {
-                    "DataMinCardinality" => Ok(Concept::AtLeast(n, r, Box::new(filler))),
-                    "DataMaxCardinality" => Ok(Concept::AtMost(n, r, Box::new(filler))),
+                    "DataMinCardinality" => Ok(data_at_least(n, r, filler)),
+                    "DataMaxCardinality" => Ok(data_at_most(n, r, filler)),
                     _ => Ok(mk_and([
-                        Concept::AtLeast(n, r.clone(), Box::new(filler.clone())),
-                        Concept::AtMost(n, r, Box::new(filler)),
+                        data_at_least(n, r.clone(), filler.clone()),
+                        data_at_most(n, r, filler),
                     ])),
                 }
             }
@@ -750,13 +745,15 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // range(p) = D ≡ ⊤ ⊑ ∀p.D over the range's abstraction concept.
             // (data_range.rs separately derives the empty-range constraints;
             // DataPropertyDomain already has its own arm above.)
-            o.add(Axiom::SubClassOf(
-                Concept::Top,
-                Concept::Forall(
-                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                    Box::new(dt_concept(args[1])),
-                ),
-            ));
+            // A universal range constrains nothing; an empty one gives
+            // `⊤ ⊑ ∀p.⊥`, i.e. p has no value anywhere.
+            let range = data_all(
+                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                dt_concept(args[1]),
+            );
+            if range != Concept::Top {
+                o.add(Axiom::SubClassOf(Concept::Top, range));
+            }
         }
         "DatatypeDefinition" => {
             o.add(Axiom::EquivalentClasses(
@@ -878,7 +875,25 @@ where
         Ok(())
     })?;
     ontology.commit_data_assertions_as_class(data_assertion_literal_cap());
+    add_bottom_data_property_axiom(reg, ontology);
     Ok(())
+}
+
+/// `owl:bottomDataProperty` relates no individual to any value (OWL 2 Direct
+/// Semantics, Table 4), but the parser maps it to an ordinary role name. When
+/// the source uses it, add `∃bottomDataProperty.⊤ ⊑ ⊥`, the exact meaning of
+/// the builtin: every restriction that forces a value of it (or of a
+/// subproperty) is then `⊥`, and every `∀`/`≤` restriction on it is `⊤`.
+/// Sources that do not mention it are unchanged.
+fn add_bottom_data_property_axiom(reg: &IriRegistry, ontology: &mut Ontology) {
+    const SPELLINGS: [&str; 2] =
+        ["owl:bottomDataProperty", "http://www.w3.org/2002/07/owl#bottomDataProperty"];
+    if let Some(name) = SPELLINGS.iter().find_map(|spelling| reg.assigned(spelling)) {
+        ontology.add(Axiom::SubClassOf(
+            Concept::Exists(Role::Name(name.to_string()), Box::new(Concept::Top)),
+            Concept::Bottom,
+        ));
+    }
 }
 
 /// Positive data-property assertions are carried as `DataHasValue` class
@@ -995,6 +1010,56 @@ mod axiom_drop_regression_tests {
             "Ontology(SubClassOf(<A> DataSomeValuesFrom(<p> xsd:integer)))").unwrap();
         assert!(matches!(ontology.tbox().next(),
             Some(Axiom::SubClassOf(_, Concept::Exists(_, filler))) if **filler == Concept::Name("__dt__integer".into())));
+    }
+
+    #[test]
+    fn empty_and_universal_data_ranges_simplify_their_restrictions() {
+        let sup = |body: &str| {
+            let mut registry = IriRegistry::new();
+            let ontology = parse_axioms(&mut registry, &format!("Ontology(SubClassOf(<A> {body}))")).unwrap();
+            let sup = match ontology.tbox().next() {
+                Some(Axiom::SubClassOf(_, sup)) => sup.clone(),
+                other => panic!("unexpected axiom {other:?}"),
+            };
+            sup
+        };
+        let p = || Role::Name("p".into());
+        let has = Concept::AtLeast(1, p(), Box::new(Concept::Top));
+        for empty in ["DataComplementOf(rdfs:Literal)", "DataIntersectionOf(xsd:integer xsd:string)"] {
+            assert_eq!(sup(&format!("DataSomeValuesFrom(<p> {empty})")), Concept::Bottom, "{empty}");
+            assert_eq!(sup(&format!("DataAllValuesFrom(<p> {empty})")),
+                Concept::Forall(p(), Box::new(Concept::Bottom)), "{empty}");
+            assert_eq!(sup(&format!("DataMinCardinality(2 <p> {empty})")), Concept::Bottom, "{empty}");
+            assert_eq!(sup(&format!("DataMinCardinality(0 <p> {empty})")), Concept::Top, "{empty}");
+            assert_eq!(sup(&format!("DataMaxCardinality(0 <p> {empty})")), Concept::Top, "{empty}");
+            assert_eq!(sup(&format!("DataExactCardinality(1 <p> {empty})")), Concept::Bottom, "{empty}");
+        }
+        for universal in ["rdfs:Literal", "DataUnionOf(xsd:integer DataComplementOf(xsd:integer))"] {
+            assert_eq!(sup(&format!("DataSomeValuesFrom(<p> {universal})")), has, "{universal}");
+            assert_eq!(sup(&format!("DataAllValuesFrom(<p> {universal})")), Concept::Top, "{universal}");
+            assert_eq!(sup(&format!("DataMaxCardinality(1 <p> {universal})")), sup("DataMaxCardinality(1 <p>)"));
+            assert_eq!(sup(&format!("DataExactCardinality(1 <p> {universal})")), sup("DataExactCardinality(1 <p>)"));
+        }
+        // A universal range axiom constrains nothing; an empty one forbids values.
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry,
+            "Ontology(DataPropertyRange(<p> rdfs:Literal) DataPropertyRange(<q> DataComplementOf(rdfs:Literal)))").unwrap();
+        let axioms: Vec<_> = ontology.tbox().cloned().collect();
+        assert_eq!(axioms, vec![Axiom::SubClassOf(Concept::Top,
+            Concept::Forall(Role::Name("q".into()), Box::new(Concept::Bottom)))]);
+    }
+
+    #[test]
+    fn bottom_data_property_has_no_values() {
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry,
+            "Ontology(SubDataPropertyOf(<p> owl:bottomDataProperty))").unwrap();
+        let name = registry.assigned("owl:bottomDataProperty").unwrap().to_string();
+        assert!(ontology.tbox().any(|axiom| *axiom == Axiom::SubClassOf(
+            Concept::Exists(Role::Name(name.clone()), Box::new(Concept::Top)), Concept::Bottom)));
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry, "Ontology(SubClassOf(<A> DataMinCardinality(1 <p>)))").unwrap();
+        assert_eq!(ontology.tbox().count(), 1);
     }
 
     #[test]

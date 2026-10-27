@@ -4033,3 +4033,4 @@ mod tests {
 }
 
 pub(crate) mod numeric_cells;
+pub(crate) mod extent;

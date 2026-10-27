@@ -72,6 +72,14 @@ impl IriRegistry {
         IriRegistry::default()
     }
 
+    /// The internal name already assigned to `name` (either spelling), without
+    /// registering it.
+    pub fn assigned(&self, name: &str) -> Option<&str> {
+        let raw = name.trim();
+        let full = raw.strip_prefix('<').and_then(|r| r.strip_suffix('>')).unwrap_or(raw);
+        self.short_iri.get(full).map(String::as_str)
+    }
+
     /// Port of `short`. Distinct full IRIs always get distinct internal names;
     /// unique local names are returned unchanged.
     pub fn short(&mut self, name: &str) -> String {

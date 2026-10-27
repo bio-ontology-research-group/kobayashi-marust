@@ -538,6 +538,17 @@ impl<'a> DataAbox<'a> {
                         if let Some(values) = super::datatypes::bridge_exact_finite_values(&name) {
                             self.finite_ranges.entry(p).or_default().push(values);
                         }
+                    } else if let (Some(p), Some(range)) =
+                        (args.first().and_then(|n| n.as_atom()), args.get(1))
+                    {
+                        // A provably empty range (`DataComplementOf(rdfs:Literal)`,
+                        // `DataIntersectionOf(xsd:integer xsd:string)`, ...) is the
+                        // empty enumeration: every asserted value lies outside it.
+                        if super::datatypes::extent::data_range_extent(range)
+                            == Some(super::datatypes::extent::DataExtent::Empty)
+                        {
+                            self.finite_ranges.entry(p).or_default().push(Vec::new());
+                        }
                     }
                 }
             }
@@ -1303,6 +1314,23 @@ mod tests {
         let data = build(&member);
         assert!(!data.is_inconsistent());
         assert!(data.global_omission_unsafe);
+    }
+
+    #[test]
+    fn empty_complex_range_rejects_every_assertion() {
+        for range in ["DataComplementOf(rdfs:Literal)", "DataIntersectionOf(xsd:integer xsd:string)"] {
+            let range_axiom = format!("DataPropertyRange(<p> {range})");
+            let axioms = [range_axiom.as_str(), r#"DataPropertyAssertion(<p> <a> "1"^^xsd:integer)"#];
+            assert!(build(&axioms).is_inconsistent(), "{range}");
+            let inherited = [range_axiom.as_str(), "SubDataPropertyOf(<q> <p>)",
+                r#"DataPropertyAssertion(<q> <a> "x")"#];
+            assert!(build(&inherited).is_inconsistent(), "{range}");
+            assert!(!build(&[range_axiom.as_str()]).is_inconsistent(), "{range}");
+        }
+        // A non-empty complex range is not a clash by itself.
+        let axioms = ["DataPropertyRange(<p> DataComplementOf(xsd:string))",
+            r#"DataPropertyAssertion(<p> <a> "1"^^xsd:integer)"#];
+        assert!(!build(&axioms).is_inconsistent());
     }
 
     #[test]

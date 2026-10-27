@@ -87,6 +87,61 @@ pub fn mk_or<I: IntoIterator<Item = Concept>>(concepts: I) -> Concept {
     Concept::Or(flat)
 }
 
+/// The filler of a data restriction, with a provably empty data range
+/// replaced by `⊥` and a provably universal one (`rdfs:Literal` and its
+/// equivalents) by `⊤`. Other fillers, including every value concept, are
+/// returned unchanged. See `datatypes::extent`.
+pub fn data_filler(filler: Concept) -> Concept {
+    use super::datatypes::extent::{data_concept_extent, DataExtent};
+    match &filler {
+        Concept::Name(name) => match data_concept_extent(name) {
+            Some(DataExtent::Empty) => Concept::Bottom,
+            Some(DataExtent::Universal) => Concept::Top,
+            None => filler,
+        },
+        _ => filler,
+    }
+}
+
+/// `DataSomeValuesFrom(p R)`: `⊥` when `R` is empty, and the unqualified
+/// `≥1 p` when `R` is universal (every data value lies in `R`, so the two
+/// coincide; this is also the encoding of `DataMinCardinality(1 p)`).
+pub fn data_some(role: Role, filler: Concept) -> Concept {
+    match data_filler(filler) {
+        Concept::Bottom => Concept::Bottom,
+        Concept::Top => Concept::AtLeast(1, role, Box::new(Concept::Top)),
+        filler => Concept::Exists(role, Box::new(filler)),
+    }
+}
+
+/// `DataAllValuesFrom(p R)`: `⊤` when `R` is universal; `∀p.⊥` (p has no
+/// value) when `R` is empty.
+pub fn data_all(role: Role, filler: Concept) -> Concept {
+    match data_filler(filler) {
+        Concept::Top => Concept::Top,
+        filler => Concept::Forall(role, Box::new(filler)),
+    }
+}
+
+/// `DataMinCardinality(n p R)`: an empty `R` admits no successor, so the
+/// restriction is `⊥` for `n ≥ 1` and `⊤` for `n = 0`.
+pub fn data_at_least(n: i64, role: Role, filler: Concept) -> Concept {
+    match data_filler(filler) {
+        Concept::Bottom if n >= 1 => Concept::Bottom,
+        Concept::Bottom => Concept::Top,
+        filler => Concept::AtLeast(n, role, Box::new(filler)),
+    }
+}
+
+/// `DataMaxCardinality(n p R)`: an empty `R` has no successor to count, so
+/// the restriction is `⊤`.
+pub fn data_at_most(n: i64, role: Role, filler: Concept) -> Concept {
+    match data_filler(filler) {
+        Concept::Bottom => Concept::Top,
+        filler => Concept::AtMost(n, role, Box::new(filler)),
+    }
+}
+
 /// SROIQ axiom (TBox / RBox / ABox). Port of the `syntax` axiom dataclasses.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Axiom {
@@ -287,12 +342,38 @@ impl Ontology {
             }
             defs.insert(name, current);
         }
+        // An inlined definition can be a provably empty or universal range
+        // (`DatatypeDefinition(:E DataComplementOf(rdfs:Literal))`). The
+        // restriction is then simplified exactly as a direct use of that
+        // range is in `parse::cls`; the `data_*` constructors return the
+        // ordinary restriction for every other filler. Only a `__dt__` name
+        // occurs as a data filler, so object restrictions are untouched.
+        fn is_data_name(concept: &Concept) -> bool {
+            matches!(concept, Concept::Name(name) if name.starts_with("__dt__"))
+        }
+        fn trivial(concept: &Concept) -> bool {
+            matches!(concept, Concept::Top | Concept::Bottom)
+        }
         fn rewrite(concept: &Concept, defs: &BTreeMap<String, Concept>) -> Concept {
             match concept {
                 Concept::Name(name) => defs.get(name).cloned().unwrap_or_else(|| concept.clone()),
                 Concept::Not(inner) => Concept::Not(Box::new(rewrite(inner, defs))),
-                Concept::And(items) => Concept::And(items.iter().map(|c| rewrite(c, defs)).collect()),
-                Concept::Or(items) => Concept::Or(items.iter().map(|c| rewrite(c, defs)).collect()),
+                Concept::And(items) => {
+                    let items: BTreeSet<Concept> = items.iter().map(|c| rewrite(c, defs)).collect();
+                    if items.iter().any(trivial) { mk_and(items) } else { Concept::And(items) }
+                }
+                Concept::Or(items) => {
+                    let items: BTreeSet<Concept> = items.iter().map(|c| rewrite(c, defs)).collect();
+                    if items.iter().any(trivial) { mk_or(items) } else { Concept::Or(items) }
+                }
+                Concept::Exists(role, filler) if is_data_name(filler) =>
+                    data_some(role.clone(), rewrite(filler, defs)),
+                Concept::Forall(role, filler) if is_data_name(filler) =>
+                    data_all(role.clone(), rewrite(filler, defs)),
+                Concept::AtLeast(n, role, filler) if is_data_name(filler) =>
+                    data_at_least(*n, role.clone(), rewrite(filler, defs)),
+                Concept::AtMost(n, role, filler) if is_data_name(filler) =>
+                    data_at_most(*n, role.clone(), rewrite(filler, defs)),
                 Concept::Exists(role, filler) => Concept::Exists(role.clone(), Box::new(rewrite(filler, defs))),
                 Concept::Forall(role, filler) => Concept::Forall(role.clone(), Box::new(rewrite(filler, defs))),
                 Concept::AtLeast(n, role, filler) => Concept::AtLeast(*n, role.clone(), Box::new(rewrite(filler, defs))),
