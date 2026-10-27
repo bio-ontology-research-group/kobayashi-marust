@@ -875,24 +875,33 @@ where
         Ok(())
     })?;
     ontology.commit_data_assertions_as_class(data_assertion_literal_cap());
-    add_bottom_data_property_axiom(reg, ontology);
+    add_bottom_property_axioms(reg, ontology);
     Ok(())
 }
 
-/// `owl:bottomDataProperty` relates no individual to any value (OWL 2 Direct
-/// Semantics, Table 4), but the parser maps it to an ordinary role name. When
-/// the source uses it, add `∃bottomDataProperty.⊤ ⊑ ⊥`, the exact meaning of
-/// the builtin: every restriction that forces a value of it (or of a
-/// subproperty) is then `⊥`, and every `∀`/`≤` restriction on it is `⊤`.
-/// Sources that do not mention it are unchanged.
-fn add_bottom_data_property_axiom(reg: &IriRegistry, ontology: &mut Ontology) {
-    const SPELLINGS: [&str; 2] =
+/// `owl:bottomDataProperty` and `owl:bottomObjectProperty` relate nothing
+/// (OWL 2 Direct Semantics, Table 4), but the parser maps each to an ordinary
+/// role name. When the source uses one, add `∃bottom.⊤ ⊑ ⊥`, the exact
+/// meaning of the builtin: every restriction that forces a filler of it (or
+/// of a subproperty) is then `⊥`, and every `∀`/`≤` restriction on it is
+/// `⊤`. The object property also gets the inverse form, so a restriction on
+/// `bottomObjectProperty⁻` is handled without an inverse-role inference.
+/// Sources that mention neither are unchanged.
+fn add_bottom_property_axioms(reg: &IriRegistry, ontology: &mut Ontology) {
+    const DATA: [&str; 2] =
         ["owl:bottomDataProperty", "http://www.w3.org/2002/07/owl#bottomDataProperty"];
-    if let Some(name) = SPELLINGS.iter().find_map(|spelling| reg.assigned(spelling)) {
-        ontology.add(Axiom::SubClassOf(
-            Concept::Exists(Role::Name(name.to_string()), Box::new(Concept::Top)),
-            Concept::Bottom,
-        ));
+    const OBJECT: [&str; 2] =
+        ["owl:bottomObjectProperty", "http://www.w3.org/2002/07/owl#bottomObjectProperty"];
+    let empty = |role: Role| Axiom::SubClassOf(
+        Concept::Exists(role, Box::new(Concept::Top)),
+        Concept::Bottom,
+    );
+    if let Some(name) = DATA.iter().find_map(|spelling| reg.assigned(spelling)) {
+        ontology.add(empty(Role::Name(name.to_string())));
+    }
+    if let Some(name) = OBJECT.iter().find_map(|spelling| reg.assigned(spelling)) {
+        ontology.add(empty(Role::Name(name.to_string())));
+        ontology.add(empty(Role::Inverse(name.to_string())));
     }
 }
 
@@ -1059,6 +1068,21 @@ mod axiom_drop_regression_tests {
             Concept::Exists(Role::Name(name.clone()), Box::new(Concept::Top)), Concept::Bottom)));
         let mut registry = IriRegistry::new();
         let ontology = parse_axioms(&mut registry, "Ontology(SubClassOf(<A> DataMinCardinality(1 <p>)))").unwrap();
+        assert_eq!(ontology.tbox().count(), 1);
+    }
+
+    #[test]
+    fn bottom_object_property_has_no_fillers() {
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry,
+            "Ontology(SubObjectPropertyOf(<r> owl:bottomObjectProperty))").unwrap();
+        let name = registry.assigned("owl:bottomObjectProperty").unwrap().to_string();
+        for role in [Role::Name(name.clone()), Role::Inverse(name.clone())] {
+            assert!(ontology.tbox().any(|axiom| *axiom == Axiom::SubClassOf(
+                Concept::Exists(role.clone(), Box::new(Concept::Top)), Concept::Bottom)));
+        }
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry, "Ontology(SubClassOf(<A> ObjectMinCardinality(1 <r>)))").unwrap();
         assert_eq!(ontology.tbox().count(), 1);
     }
 
