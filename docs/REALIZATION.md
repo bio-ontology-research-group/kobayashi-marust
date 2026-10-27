@@ -22,12 +22,11 @@ as `km classify --lines` prints them, followed by:
 
 `TYPE` rows are sorted by individual, then class; `SAME` rows are sorted.
 Individuals and classes use the same spelling as the classification rows.
-Where a source writes one entity both as a prefixed name and as its full IRI,
-KM canonicalizes it to the full IRI (printed without angle brackets); it is
-one individual with one set of rows. An IRI written only as a prefixed name
-keeps that spelling. A source that writes one individual with two different
-prefixes and never in full is declined (exit code 3) rather than reported
-under two names.
+Where a source writes one entity in more than one spelling (a prefixed name
+and its full IRI, or two prefixes bound to the same namespace), KM
+canonicalizes it to the full IRI (printed without angle brackets); it is one
+individual with one set of rows. An IRI written with a single prefixed
+spelling keeps that spelling.
 
 JSON output (no `--lines`) is the ordinary classification object with two more
 keys: `"types"` (a list of `[individual, class]` pairs) and `"same"` (a list

@@ -185,14 +185,14 @@ fn prefix_bindings(text: &str) -> Result<BTreeMap<String, String>, OrchestrateEr
 
 /// The source after the classifier's own spelling canonicalization
 /// (`builtin_aliases::canonicalize`, which rewrites a prefixed name to the
-/// full IRI wherever both spellings of one entity occur), and its named
+/// full IRI wherever one entity has more than one spelling), and its named
 /// individuals, one per IRI, in the spelling the classification uses.
 ///
 /// Probes are written in that canonical spelling, so the extended document
 /// canonicalizes to itself and each probe names exactly the entity the
-/// classifier sees. Two prefixed spellings of one IRI without its full
-/// spelling are not identified by the classifier; realization declines them
-/// rather than report one individual under two names.
+/// classifier sees. After canonicalization every IRI has one spelling; the
+/// check below declines, rather than report one individual under two
+/// names, should that invariant ever fail.
 fn canonical_individuals(text: &str) -> Result<(String, Vec<String>), OrchestrateError> {
     let canonical = crate::frontend::builtin_aliases::canonicalize(text)
         .map_err(OrchestrateError::from_conformance)?
@@ -487,9 +487,10 @@ mod tests {
     }
 
     #[test]
-    fn two_prefixed_spellings_of_one_individual_are_declined() {
+    fn two_prefixed_spellings_of_one_individual_are_one_individual() {
         let text = "Prefix(p:=<http://x/o#>)\nPrefix(q:=<http://x/o#>)\nOntology(ClassAssertion(p:C p:a) ClassAssertion(p:C q:a))";
-        assert!(matches!(canonical_individuals(text), Err(OrchestrateError::OutOfFragment(_))));
+        let (_, individuals) = canonical_individuals(text).unwrap();
+        assert_eq!(individuals, ["<http://x/o#a>"]);
     }
 
     #[test]
