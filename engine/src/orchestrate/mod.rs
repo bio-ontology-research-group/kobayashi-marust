@@ -1364,7 +1364,44 @@ pub(crate) fn classify_with_evidence(
     classify_with_evidence_mode(initial_cfg, ont, false)
 }
 
+thread_local! {
+    /// Data-property assertions the last frontend run of this classification
+    /// did not carry (`frontend_run::run_ofn_split_cached`). Published as
+    /// dropped axioms by the outermost classification call on this thread.
+    pub(crate) static UNCARRIED_DATA_ASSERTIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// Nesting depth of `classify_with_evidence_mode` (fallback and probe
+    /// routes recurse into it); only the outermost call publishes.
+    static CLASSIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn classify_with_evidence_mode(
+    initial_cfg: &Config,
+    ont: &Path,
+    retain_grouped_output: bool,
+) -> Result<ClassificationEvidence, OrchestrateError> {
+    let depth = CLASSIFY_DEPTH.with(|d| { let v = d.get(); d.set(v + 1); v });
+    if depth == 0 {
+        UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(0));
+    }
+    let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
+    CLASSIFY_DEPTH.with(|d| d.set(depth));
+    if depth == 0 {
+        // A data-property assertion the clause set does not carry is an
+        // omitted axiom of the published answer: count it with the worker's
+        // dropped clauses so the taxonomy is never published as complete.
+        // An inconsistency proved without it stays exact (entailment is
+        // monotone), so only a consistent answer carries the count.
+        let uncarried = UNCARRIED_DATA_ASSERTIONS.with(|u| u.replace(0));
+        if let Ok(evidence) = &mut result {
+            if evidence.classification.consistent {
+                evidence.classification.dropped += uncarried as usize;
+            }
+        }
+    }
+    result
+}
+
+fn classify_with_evidence_inner(
     initial_cfg: &Config,
     ont: &Path,
     retain_grouped_output: bool,

@@ -112,6 +112,7 @@ struct OfnMeta {
     asserted_classes: Vec<String>,
     profile: crate::frontend::profile::OntologyProfile,
     route: String,
+    uncarried_data_assertions: u64,
 }
 
 /// Serialized with [`crate::json_io::write_clause_led_json`]: `clauses` is
@@ -299,6 +300,7 @@ pub fn run_ofn(args: &[String]) {
             asserted_classes: result.asserted_classes,
             profile: result.profile,
             route: result.route,
+            uncarried_data_assertions: result.uncarried_data_assertions,
         };
         match std::fs::File::create(mp) {
             Ok(f) => {

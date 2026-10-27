@@ -42,6 +42,10 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use clauses::{clause, clause_into_json, Atom, DLClause, Term};
 use iri::IriRegistry;
 
+/// Coverage diagnostic for data-property assertions the clause set does not
+/// carry (`"<n> data-property assertion axiom(s) are unsupported"`).
+pub const DATA_ASSERTIONS_UNSUPPORTED_SUFFIX: &str = " data-property assertion axiom(s) are unsupported";
+
 /// Result of `ofn_to_clauses`: the JSON clause set plus the output-mapping
 /// side data.
 pub struct FrontendResult {
@@ -70,6 +74,11 @@ pub struct FrontendResult {
     /// Exact nominal/ABox provenance for the native Konclude bridge. Empty on
     /// nominal-free inputs; `complete=false` makes the bridge fail closed.
     pub nominal_abox: crate::json_io::NominalAboxMeta,
+    /// Positive and negative `DataPropertyAssertion` axioms the clause set does
+    /// not carry and whose omission is not certified harmless. The orchestrator
+    /// re-runs the frontend with `KM_DATA_ASSERTION_AS_CLASS` when this is
+    /// positive and publishes the remainder as dropped axioms.
+    pub uncarried_data_assertions: u64,
     /// KM_HT_CARD: first-class qualified number restrictions (`define`'s `≥n`/`≤n`
     /// markers). Empty unless the frontend `KM_HT_CARD` flag is set.
     pub cardinalities: Vec<crate::json_io::CardMeta>,
@@ -369,9 +378,7 @@ fn collect_nominal_abox(
     // Every positive data assertion converted to its class assertion is
     // covered; anything else (negative or unconverted ones) is not.
     if source_data_role != converted_data {
-        unsupported.insert(format!(
-            "{source_data_role} data-property assertion axiom(s) are unsupported"
-        ));
+        unsupported.insert(format!("{source_data_role}{DATA_ASSERTIONS_UNSUPPORTED_SUFFIX}"));
     }
     if (source_same == 0) != (parsed_same_pairs == 0) || parsed_same_pairs < source_same {
         unsupported.insert(format!(
@@ -1469,6 +1476,7 @@ fn ofn_to_clauses_representation(
     // Even an empty finite grounding still needs the original named ABox
     // and role axioms for independent source-model verification.
     let ht_rules = !rules.is_empty() || profile.normalized_finite_data_rules > 0;
+    let converted_data_assertions = ontology.data_assertions_as_class();
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
@@ -1572,6 +1580,25 @@ fn ofn_to_clauses_representation(
             .retain(|reason| reason != &diagnostic);
         nominal_abox.complete = nominal_abox.unsupported.is_empty();
     }
+    // Data-property assertions the clause set does not carry: the source
+    // count of positive and negative assertions less the positive ones
+    // converted to `DataHasValue` class assertions, unless the drop was
+    // certified harmless just above (the diagnostic is then gone). The
+    // orchestrator re-runs the frontend with the conversion when this is
+    // positive and publishes any remainder as dropped axioms, so a clause
+    // worker never publishes a complete-looking taxonomy over a silently
+    // dropped assertion.
+    let uncarried_data_assertions = if nominal_abox
+        .unsupported
+        .iter()
+        .any(|reason| reason.ends_with(DATA_ASSERTIONS_UNSUPPORTED_SUFFIX))
+    {
+        let source_count = |kind: &str| profile.source.axiom_types.get(kind).copied().unwrap_or(0);
+        (source_count("DataPropertyAssertion") + source_count("NegativeDataPropertyAssertion"))
+            .saturating_sub(converted_data_assertions)
+    } else {
+        0
+    };
     // Source routing initially keeps these ontologies on the exact nominal CB
     // calculus because data assertions are not known to be representable until
     // the parsed-AST certificate above has run. Once the complete typed payload
@@ -1918,6 +1945,7 @@ fn ofn_to_clauses_representation(
         rules,
         profile,
         route: route.as_str().to_string(),
+        uncarried_data_assertions,
     })
 }
 

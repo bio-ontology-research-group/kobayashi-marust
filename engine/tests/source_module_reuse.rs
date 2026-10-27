@@ -1155,12 +1155,18 @@ fn common_data_core_prefers_plain_module_before_full_common_path() {
         let rows=session(&[old,addition.clone(),mixed.clone()]);
         for (revision, source) in [(1, &addition), (2, &mixed)] {
             assert_eq!(rows[revision]["status"],"ok","count={count}: {:#?}",rows[revision]);
-            let expected = if negative && count == 1 { "common_module_reuse" }
+            // An isolated negative data assertion is local to the module,
+            // but no clause route carries it: the module's answer reports it
+            // as a dropped axiom, which disqualifies module reuse, so the
+            // revision is classified in full.
+            let expected = if negative && count == 1 { "full_classify" }
                 else { "common_object_module_reuse" };
             assert_eq!(rows[revision]["receipt"]["strategy"],expected,
                 "count={count}, negative={negative}, unicode={unicode}, revision={revision}: {:#?}",rows[revision]);
-            assert!(rows[revision]["receipt"]["module_axioms"].as_u64().unwrap()<200);
-            assert!(rows[revision]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+            if expected != "full_classify" {
+                assert!(rows[revision]["receipt"]["module_axioms"].as_u64().unwrap()<200);
+                assert!(rows[revision]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+            }
             assert_eq!(canonical(&rows[revision]["result"]),
                 canonical(&fresh(source,931 + count * 3 + revision)));
         }
