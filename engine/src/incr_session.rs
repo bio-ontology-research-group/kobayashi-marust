@@ -2674,11 +2674,14 @@ fn replace_rows_from(tax: &mut Taxonomy, fresh: TaxonomyRows, subjects: &[String
             wanted.insert(f, id);
         }
     }
+    // Match unsatisfiable subjects by name, not through `fresh.iris`: that
+    // table interns only names occurring in a row, and an unsatisfiable
+    // subject without one (no row, never a superclass) is absent from it.
+    let requested: FxHashSet<&str> = subjects.iter().map(String::as_str).collect();
     for u in &fresh.unsatisfiable {
-        if let Some(&f) = fresh_ids.get(u.as_str()) {
-            if let Some(&id) = wanted.get(&f) {
-                tax.unsat.insert(id);
-            }
+        if requested.contains(u.as_str()) {
+            let id = tax.id(u);
+            tax.unsat.insert(id);
         }
     }
     let mut map: Vec<u32> = vec![u32::MAX; fresh.iris.len()];
@@ -4102,6 +4105,27 @@ mod tests {
         assert_eq!(state, pairs_of(&other));
         assert!(d["rows"].as_array().unwrap().iter().any(|r| r["s"] == "http://e/C" && r["o"] == serde_json::json!([])));
         assert_eq!(d["unsatisfiable"], serde_json::json!(["http://e/D"]));
+    }
+
+    /// An unsatisfiable requested subject has no row and is never a
+    /// superclass, so the pipeline's grouped answer need not intern it in
+    /// `iris`. Its unsatisfiability must still replace the base row.
+    #[test]
+    fn replace_rows_from_keeps_unsatisfiable_subject_absent_from_iris() {
+        let mut tax = tax_of(&["http://e/A", "http://e/Q", "http://e/T"],
+            vec![(1, vec![0]), (0, vec![2])], &[]);
+        let fresh = TaxonomyRows { consistent: true, dropped: 0,
+            unsatisfiable: vec!["http://e/Q".into(), "http://e/Unrequested".into()],
+            iris: vec![Arc::from("http://e/A"), Arc::from("http://e/T")],
+            rows: vec![(0, vec![1])] };
+        replace_rows_from(&mut tax, fresh, &["http://e/Q".to_string(), "http://e/A".to_string()]);
+        let q = tax.id("http://e/Q");
+        assert!(tax.unsat.contains(&q));
+        assert!(tax.rows[q as usize].is_none());
+        assert_eq!(tax.unsat.len(), 1, "an unrequested name must not be marked");
+        let a = tax.id("http://e/A");
+        let t = tax.id("http://e/T");
+        assert_eq!(tax.rows[a as usize].as_deref(), Some(&[t][..]));
     }
 
     fn ofn(axioms: &str) -> String {

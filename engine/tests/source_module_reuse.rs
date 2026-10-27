@@ -1213,3 +1213,35 @@ fn global_deletion_reuses_proved_rows_and_forgets_removed_role_premises() {
     assert!(after.contains(&(":E".into(), ":G".into())));
     assert!(!repaired_pairs.contains(&(":E".into(), ":G".into())));
 }
+
+/// Regression: a requested subject that becomes unsatisfiable has no row in
+/// the restricted NEW answer, so the reuse merge must take it from the
+/// answer's unsatisfiable list by name (it was silently dropped).
+#[test]
+fn nominal_common_edit_making_a_class_unsatisfiable_is_exact() {
+    let shared = [
+        "SubClassOf(:B :A)",
+        "EquivalentClasses(:C ObjectHasValue(:r :a))",
+        "SubClassOf(:D :C)",
+        "ClassAssertion(:D :a)",
+        "SubClassOf(:E ObjectSomeValuesFrom(:r ObjectOneOf(:a)))",
+        "ClassAssertion(:A :a)",
+        "SubClassOf(:F :G)",
+        "Declaration(DataProperty(:p))",
+        "DataPropertyAssertion(:p :a \"x\")",
+        "SubClassOf(:A ObjectSomeValuesFrom(:r owl:Thing))",
+    ];
+    let mut before = shared.to_vec();
+    before.push("EquivalentClasses(:K ObjectIntersectionOf(:A ObjectSomeValuesFrom(:r owl:Thing)))");
+    let mut after = shared.to_vec();
+    after.push("EquivalentClasses(:K ObjectIntersectionOf(:A ObjectComplementOf(ObjectSomeValuesFrom(:r owl:Thing))))");
+    let (old, new) = (ontology(&before), ontology(&after));
+    let rows = session(&[old.clone(), new.clone(), old.clone(), new.clone()]);
+    for (index, source) in [&old, &new, &old, &new].into_iter().enumerate() {
+        assert_eq!(rows[index]["status"], "ok", "row {index}: {:#?}", rows[index]);
+        assert_eq!(canonical(&rows[index]["result"]), canonical(&fresh(source, 1300 + index)),
+            "revision {index}: {:#?}", rows[index]["receipt"]);
+    }
+    assert!(canonical(&rows[1]["result"]).1.contains(":K"), "{:#?}", rows[1]);
+    assert_eq!(rows[1]["receipt"]["strategy"], "common_nominal_subject_reuse", "{:#?}", rows[1]["receipt"]);
+}
