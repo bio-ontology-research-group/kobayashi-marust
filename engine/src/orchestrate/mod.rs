@@ -1332,13 +1332,10 @@ fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Opti
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(4096);
-    // Nominal CB also interns one reserved individual per at-most-one
-    // clause (`json_io::singleton_clause_concept`).
     let source_individuals = profile
         .clauses
         .individual_term_symbols
-        .max(profile.source.distinct_individuals)
-        .saturating_add(profile.clauses.singleton_concepts);
+        .max(profile.source.distinct_individuals);
     // Reserve room for the budget whenever that still fits the established
     // layout; very large ABoxes keep the narrowest lossless field, and the
     // engine then marks a run truncated if fresh nominals overflow it.
@@ -4169,10 +4166,6 @@ mod tests {
         // Fresh nominals of the Nom rule must fit beside a tiny source ABox.
         profile.source.distinct_individuals = 2;
         assert_eq!(composite_layout(&profile), Some(13));
-        // One reserved individual per at-most-one (data-value) clause: 2 + 4096
-        // reserved + 1 + 4096 singletons no longer fits 13 bits.
-        profile.clauses.singleton_concepts = 4_096;
-        assert_eq!(composite_layout(&profile), Some(14));
     }
 
     #[test]

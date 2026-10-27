@@ -261,10 +261,11 @@ fn universal_role_restrictions_are_complete() {
 
 /// `T1 ≡ ∃U.F` next to nominal and data-value definitions. The expected
 /// answer is `F ⊑ T1` only (HermiT agrees). The nominal CB routes used to
-/// run forever: the data value `1` became a ground individual, every
-/// `⊤ ⊑ C` fact (the universal-role hub `⊤ ⊑ ∃link.{hub}` among them) was
-/// instantiated at it, and the ground context exploded. The frontend's sort
-/// encoding (`frontend::sorts`) now keeps `owl:Thing` to the object domain.
+/// run forever: every `⊤ ⊑ C` fact, the excluded middle `⊤ ⊑ ¬{1} ⊔ {1}`
+/// among them, was instantiated at every ground term, the hub of the
+/// universal role included, and the value's at-most-one clause turned
+/// every pair into a merge candidate. The frontend's sort encoding
+/// (`frontend::sorts`) now keeps `owl:Thing` to the object domain.
 #[test]
 fn nominal_top_role_reproducer() {
     for route in NOMINAL_ROUTES {
@@ -458,8 +459,8 @@ const S6_BOTH_WAYS: &str = "EquivalentClasses(<urn:q#S6> ObjectIntersectionOf(Ob
 /// the Protégé bug-1 reproducer). The frontend encodes the value `1` by the
 /// at-most-one clause `val(z₁) ∧ val(z₂) → z₁ ≈ z₂`, whose unguarded
 /// variables the nominal CB Hyper rule bound to every pair of terms in the
-/// ground context; it never finished. The nominal worker now reads that clause
-/// as the conservative `val(x) → x ≈ o_val` over a fresh individual.
+/// ground context; it never finished. The frontend's sort encoding now keeps
+/// the value away from object terms (`frontend::sorts`).
 ///
 /// Hand derivation (OWL 2 Direct Semantics): every case is consistent (take
 /// `c`, `d` distinct with `r(c,d)`, `r(d,c)`, `a` anywhere, no `u` values, so

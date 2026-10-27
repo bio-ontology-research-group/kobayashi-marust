@@ -229,29 +229,6 @@ impl Builder {
                 ));
             }
         }
-        // An at-most-one clause `A(z₁) ∧ A(z₂) → z₁ ≈ z₂` has unguarded
-        // neighbour variables, outside the calculus's DL-clause normal form.
-        // Hyper then binds z₁, z₂ to every pair of terms in a context —
-        // including x, individuals and, in the ground context, every `f(o)` —
-        // and the pairwise equalities make saturation explode combinatorially
-        // (the Protégé bug-1 hang). In nominal mode it is replaced by the
-        // normal-form, conservative `A(x) → x ≈ o_A` over a fresh reserved
-        // individual (`json_io::singleton_clause_concept` gives the argument),
-        // which the nominal rules handle exactly. Outside nominal mode
-        // individuals are unsupported, so the clause keeps its former
-        // treatment there.
-        if self.nominals {
-            if let Some(concept) = crate::json_io::singleton_clause_concept(c) {
-                let central = JAtom::Concept {
-                    concept: concept.to_string(),
-                    term: JTerm::Var { name: "x".into() },
-                };
-                let body = self.atom_pred(&central, &mut varmap)?;
-                let name = crate::json_io::singleton_individual_name(concept);
-                let o = ind_term(self.individual(&name));
-                return Some(OntologyClause::new(vec![body], vec![Lit::eq(X, o)]));
-            }
-        }
         let mut body: Vec<Pred> = Vec::new();
         // A body equality `a ≈ b` is a negative equality literal: the clause
         // `{a≈b} ∧ Γ → Δ` is logically `Γ → Δ ∨ a ≉ b`.  We move such body
@@ -1301,39 +1278,6 @@ mod tests {
         let mut rr = Reasoner::new(&clauses);
         rr.saturate();
         rr
-    }
-
-    #[test]
-    fn nominal_mode_reads_at_most_one_clauses_as_fresh_nominals() {
-        let eq = |a: JTerm, b: JTerm| JAtom::Eq { left: a, right: b };
-        let singleton = cl(vec![c("V", vn("y0")), c("V", vn("y1"))], vec![eq(vn("y0"), vn("y1"))]);
-        let swapped = cl(vec![c("V", vn("y1")), c("V", vn("y0"))], vec![eq(vn("y0"), vn("y1"))]);
-        assert_eq!(crate::json_io::singleton_clause_concept(&singleton), Some("V"));
-        assert_eq!(crate::json_io::singleton_clause_concept(&swapped), Some("V"));
-        // Not the shape: two concepts, a central variable, or a one-variable
-        // equality.
-        for other in [
-            cl(vec![c("V", vn("y0")), c("W", vn("y1"))], vec![eq(vn("y0"), vn("y1"))]),
-            cl(vec![c("V", vx()), c("V", vn("y1"))], vec![eq(vx(), vn("y1"))]),
-            cl(vec![c("V", vn("y0")), c("V", vn("y0"))], vec![eq(vn("y0"), vn("y0"))]),
-            cl(vec![c("V", vn("y0")), c("V", vn("y1"))], vec![]),
-        ] {
-            assert_eq!(crate::json_io::singleton_clause_concept(&other), None);
-        }
-
-        let mut builder = Builder::new();
-        builder.nominals = true;
-        let clause = builder.clause(&singleton).expect("normal-form nominal clause");
-        let v = builder.sig.concept("V");
-        let o = ind_term(builder.ind_id[&crate::json_io::singleton_individual_name("V")]);
-        assert_eq!(clause.body, vec![Pred::Concept { iri: v, t: X }]);
-        assert_eq!(clause.head, vec![Lit::eq(X, o)]);
-        // Outside nominal mode the clause keeps its former reading.
-        let mut builder = Builder::new();
-        builder.nominals = false;
-        let clause = builder.clause(&singleton).expect("unchanged clause");
-        assert_eq!(clause.body.len(), 2);
-        assert!(builder.ind_id.is_empty());
     }
 
     #[test]

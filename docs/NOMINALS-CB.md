@@ -241,15 +241,20 @@ OWL 2 Direct Semantics interprets class expressions over the object domain
 `Δ_I` and data ranges over the data domain `Δ_D`, with `Δ_I ∩ Δ_D = ∅`,
 object properties in `Δ_I × Δ_I`, and data properties in `Δ_I × Δ_D`.
 The clause set is one-sorted: a data value is an element of the single
-domain, carrying its `__dt__` concept. Under nominal clausification a data
-value also becomes a ground individual: the loader reads the at-most-one
-clause `v(z₁) ∧ v(z₂) → z₁ ≈ z₂` as `v(x) → x ≈ o_v` over a fresh individual
-`o_v`, and the ground context instantiates every empty-body fact at it. A
-fact `⊤ ⊑ C` is `owl:Thing ⊑ C` and should range over `Δ_I` only; applied
-to a value it forces object structure there (the universal-role hub
-`⊤ ⊑ ∃link.{hub}` is the reproducer), merges the value with named
-individuals through `⊤ ⊑ ¬{v} ⊔ {v}`, and the ground context does not
-terminate in practice.
+domain, carrying its `__dt__` concept, and the value's at-most-one clause
+`v(z₁) ∧ v(z₂) → z₁ ≈ z₂` binds its two unguarded variables to any pair of
+terms of a context. Under nominal clausification the ground context
+instantiates every empty-body fact at every ground term. A fact `⊤ ⊑ C` is
+`owl:Thing ⊑ C` and should range over `Δ_I` only; applied everywhere,
+the excluded middle `⊤ ⊑ ¬{v} ⊔ {v}` of a negated value restriction offers
+`{v}` at every named individual, every Skolem successor and the
+universal-role hub (`⊤ ⊑ ∃link.{hub}` is the reproducer), the at-most-one
+clause turns every pair of them into a merge candidate, and the ground
+context does not terminate in practice. (An interim encoding of the
+at-most-one clause as `v(x) → x ≈ o_v` over a fresh individual removed
+the unguarded variables but made each value a hub of the ground context,
+which cost ore_ont_9800 more than an order of magnitude; it was reverted
+once the sort encoding below proved sufficient on its own.)
 
 The frontend therefore makes the two sorts explicit, with one fresh marker
 concept `D` (`__data__`, interpreted as `Δ_D`), only under nominal
@@ -341,6 +346,10 @@ instead be incomplete, since a data node reached by a data property is in
 `D` and would lose the excluded middle (`A ⊑ (u value 2)` and
 `C ≡ ¬∀u.{1}` entail `A ⊑ C`, which needs `¬{1}` at the value `2`).
 
-The fresh individual `o_v` of the loader needs no sort clause: `v ⊑ D`
-covers every element that is the value, and when `v` is empty `o_v`
-denotes an arbitrary element.
+Why the sorts alone stop the divergence: every ground object term carries
+an object-sorted concept (a `__nom__` proxy, a source class, or an
+object-sorted definer through its Skolem function), so `¬D` holds at it,
+while `v ⊑ D`. The excluded middle `→ Q(x) ∨ v(x)` therefore collapses to
+the unit `Q(t)` at every object term, `v` is never derived there, and the
+at-most-one clause only ever matches data-sorted terms, the data successors
+of the same element; no merge between object terms is ever proposed.

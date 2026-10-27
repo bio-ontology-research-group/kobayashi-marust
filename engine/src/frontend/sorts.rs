@@ -5,12 +5,13 @@
 //! The clause set is one-sorted: a data value is an element of the same
 //! domain as every object, carrying its `__dt__` concept. That is exact as
 //! long as nothing forces a data value into object structure. Under nominal
-//! clausification a data value becomes a ground individual (the data-value
-//! singleton of `reasoner::Builder`), and every empty-body fact `⊤ ⊑ C`
-//! (`owl:Thing ⊑ C`, which should range over `Δ_I` only) is instantiated at
-//! it. With a universal-role hub or another `⊤ ⊑ ∃R.{o}` axiom that gives
-//! the value object successors, merges it with named individuals through
-//! `⊤ ⊑ ¬{v} ⊔ {v}`, and lets the ground context explode.
+//! clausification every empty-body fact `⊤ ⊑ C` (`owl:Thing ⊑ C`, which
+//! should range over `Δ_I` only) is instantiated in the ground context at
+//! every term, data values included, and the value's at-most-one clause
+//! `v(z₁) ∧ v(z₂) → z₁ ≈ z₂` together with the excluded middle
+//! `⊤ ⊑ ¬{v} ⊔ {v}` then makes every pair of ground terms (named
+//! individuals, their Skolem successors, the universal-role hub) a merge
+//! candidate, and the ground context explodes.
 //!
 //! This pass makes the two sorts explicit with one fresh marker concept
 //! [`DATA_SORT`] (`D`, interpreted as `Δ_D`), linearly in the signature:
@@ -163,9 +164,8 @@ fn term_var(term: &Term) -> Option<&Term> {
 }
 
 /// Whether the encoding applies to this clause set: it carries a data value
-/// (every `__dt__val__` concept also yields a data-value singleton in nominal
-/// mode) and the caller has established that the source has nominals or
-/// individuals.
+/// (every `__dt__val__` concept comes with its at-most-one clause) and the
+/// caller has established that the source has nominals or individuals.
 pub fn has_data_values(tbox: &[DLClause]) -> bool {
     tbox.iter().any(|c| {
         c.body.iter().chain(c.head.iter()).any(|atom| {

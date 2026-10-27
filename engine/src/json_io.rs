@@ -75,43 +75,6 @@ pub struct JClause {
     pub head: Vec<JAtom>,
 }
 
-/// The concept `A` of an at-most-one clause `A(z₁) ∧ A(z₂) → z₁ ≈ z₂` over
-/// two distinct non-central variables (the frontend's data-value singleton,
-/// `datatypes::singleton_clause`, is one instance).
-///
-/// Such a clause has no central variable: its neighbour variables are not
-/// guarded by a body role, so it lies outside the DL-clause normal form of the
-/// consequence-based calculus. The nominal CB worker therefore replaces it by
-/// `A(x) → x ≈ o_A` over the fresh individual
-/// [`singleton_individual_name`]`(A)`; that clause is in normal form (the
-/// calculus's `B ⊑ {o}` shape) and is a conservative extension of the
-/// original: it entails `|A| ≤ 1`, and every model with `|A| ≤ 1` becomes a
-/// model of it by interpreting the fresh `o_A` as the `A`-element (or any
-/// element when `A` is empty).
-pub fn singleton_clause_concept(clause: &JClause) -> Option<&str> {
-    let [JAtom::Concept { concept: left, term: JTerm::Var { name: z1 } },
-        JAtom::Concept { concept: right, term: JTerm::Var { name: z2 } }] = clause.body.as_slice()
-    else {
-        return None;
-    };
-    let [JAtom::Eq { left: JTerm::Var { name: e1 }, right: JTerm::Var { name: e2 } }] =
-        clause.head.as_slice()
-    else {
-        return None;
-    };
-    let distinct_neighbours = z1 != z2 && z1 != "x" && z2 != "x";
-    let same_pair = (e1 == z1 && e2 == z2) || (e1 == z2 && e2 == z1);
-    (left == right && distinct_neighbours && same_pair).then_some(left.as_str())
-}
-
-/// Reserved name of the fresh individual that replaces the at-most-one clause
-/// of `concept` in nominal CB mode (see [`singleton_clause_concept`]). The
-/// `__` prefix is reserved for internal names: the IRI registry escapes
-/// source local names that start with it.
-pub fn singleton_individual_name(concept: &str) -> String {
-    format!("__singleton__{concept}")
-}
-
 /// KM_HT_CARD side-channel: a first-class qualified number restriction recorded
 /// by the frontend (`define`) so cb_to_ht can install it as a Konclude
 /// `≥n`/`≤n` rule (and drop the clausal `⋁ Eq` pigeonhole) instead of letting
