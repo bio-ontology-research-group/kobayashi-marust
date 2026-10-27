@@ -58,12 +58,20 @@ struct Answer {
 /// default policy), killing the child (by its own handle) after `BOUND`.
 /// Subsumptions involving unsatisfiable classes or builtins are dropped.
 fn classify(text: &str, route: Option<&str>) -> Answer {
-    let stdout = run(text, route);
+    classify_within(text, route, BOUND)
+}
+
+fn classify_within(text: &str, route: Option<&str>, bound: Duration) -> Answer {
+    let stdout = run_within(text, route, bound);
     parse(&stdout)
 }
 
 /// Raw `km classify --lines` output.
 fn run(text: &str, route: Option<&str>) -> String {
+    run_within(text, route, BOUND)
+}
+
+fn run_within(text: &str, route: Option<&str>, bound: Duration) -> String {
     let fixture = Fixture::new(text);
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     for (key, _) in std::env::vars_os() {
@@ -90,10 +98,10 @@ fn run(text: &str, route: Option<&str>) -> String {
             assert!(status.success(), "km failed on route {route:?}: {stderr}\n{stdout}");
             return stdout;
         }
-        if started.elapsed() > BOUND {
+        if started.elapsed() > bound {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("km classify exceeded {BOUND:?} on route {route:?}:\n{text}");
+            panic!("km classify exceeded {bound:?} on route {route:?}:\n{text}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -441,6 +449,82 @@ fn complements_of_ordinary_ranges() {
         for route in ROUTES.iter().filter(|route| **route != Some("tableau")) {
             let answer = classify(&text, *route);
             assert_eq!(answer, Answer { unsat: names(unsat), subs: pairs(subs) }, "{body} on {route:?}");
+        }
+    }
+}
+
+/// Every data value lies in `R` or in `DataComplementOf(R)`. The frontend
+/// emits that excluded middle for every complement range that occurs (next
+/// to the disjointness of the two), so restrictions over `R` and `¬R` relate
+/// to the unqualified cardinalities. Expected answers are hand derived and
+/// agree with HermiT 1.4.3.456.
+#[test]
+fn excluded_middle_of_complement_ranges() {
+    let names = |list: &[&str]| list.iter().map(|c| c.to_string()).collect::<BTreeSet<_>>();
+    let pairs = |list: &[(&str, &str)]| {
+        list.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<BTreeSet<_>>()
+    };
+    let one = "\"1\"^^xsd:integer";
+    let has = "EquivalentClasses(:H DataMinCardinality(1 :d))";
+    let none = "EquivalentClasses(:N DataMaxCardinality(0 :d))";
+    let c_h = [("C", "H"), ("H", "C")];
+    let c_n = [("C", "N"), ("N", "C")];
+    let cases: Vec<(String, &[(&str, &str)])> = vec![
+        // A ⊑ ∃d.Literal and C ≡ (d value 1) ⊔ ∃d.¬{1}: A ⊑ C.
+        (format!("SubClassOf(:A DataSomeValuesFrom(:d rdfs:Literal)) \
+          EquivalentClasses(:C ObjectUnionOf(DataHasValue(:d {one}) \
+          DataSomeValuesFrom(:d DataComplementOf(DataOneOf({one})))))"), &[("A", "C")]),
+        // ∃d.R ⊔ ∃d.¬R ≡ ≥1 d.
+        (format!("{has} EquivalentClasses(:C ObjectUnionOf(DataSomeValuesFrom(:d xsd:integer) \
+          DataSomeValuesFrom(:d DataComplementOf(xsd:integer))))"), &c_h),
+        // ∀d.R ⊓ ∀d.¬R ≡ ≤0 d.
+        (format!("{none} EquivalentClasses(:C ObjectIntersectionOf(DataAllValuesFrom(:d xsd:integer) \
+          DataAllValuesFrom(:d DataComplementOf(xsd:integer))))"), &c_n),
+        // ∃d.(R ⊔ ¬R) ≡ ≥1 d.
+        (format!("{has} EquivalentClasses(:C DataSomeValuesFrom(:d \
+          DataUnionOf(xsd:integer DataComplementOf(xsd:integer))))"), &c_h),
+        // Nested: ∃d.¬¬R ⊔ ∃d.¬R ≡ ≥1 d.
+        (format!("{has} EquivalentClasses(:C ObjectUnionOf(\
+          DataSomeValuesFrom(:d DataComplementOf(DataComplementOf(xsd:integer))) \
+          DataSomeValuesFrom(:d DataComplementOf(xsd:integer))))"), &c_h),
+        // Value and complement of value: ∀d.{1} ⊓ ∀d.¬{1} ≡ ≤0 d.
+        (format!("{none} EquivalentClasses(:C ObjectIntersectionOf(DataAllValuesFrom(:d DataOneOf({one})) \
+          DataAllValuesFrom(:d DataComplementOf(DataOneOf({one})))))"), &c_n),
+        // A facet range and its complement.
+        (format!("{has} EquivalentClasses(:C ObjectUnionOf(\
+          DataSomeValuesFrom(:d DatatypeRestriction(xsd:integer xsd:minInclusive {one})) \
+          DataSomeValuesFrom(:d DataComplementOf(DatatypeRestriction(xsd:integer xsd:minInclusive {one})))))"), &c_h),
+        // ∀d.¬¬R ⊓ ∀d.¬R ≡ ≤0 d.
+        (format!("{none} EquivalentClasses(:C ObjectIntersectionOf(\
+          DataAllValuesFrom(:d DataComplementOf(DataComplementOf(xsd:integer))) \
+          DataAllValuesFrom(:d DataComplementOf(xsd:integer))))"), &c_n),
+        // The pre-existing excluded middle of ¬(d value 1): ∀d.{1} ⊓ ¬(d value 1) ≡ ≤0 d.
+        (format!("{none} EquivalentClasses(:C ObjectIntersectionOf(DataAllValuesFrom(:d DataOneOf({one})) \
+          ObjectComplementOf(DataHasValue(:d {one}))))"), &c_n),
+    ];
+    for (body, subs) in &cases {
+        let text = format!(
+            "{HEADER}Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:H)) \
+             Declaration(Class(:N))\n{body}\n)\n"
+        );
+        // The tableau route declines the union range. The forced `ht_general`
+        // arm is left out: it does not use a data excluded middle whose two
+        // heads are both data ranges (it does use the definer-headed one of
+        // `ObjectComplementOf(DataHasValue(..))`); it is not an automatic route
+        // for these inputs. The forced `nominals` arm is left out for the
+        // value cases: on an individual-free input it instantiates the
+        // unrelativized excluded middle at the data-value individual and runs
+        // for minutes (as it already did for `ObjectComplementOf(DataHasValue)`).
+        for route in ROUTES.iter().filter(|route| {
+            **route != Some("ht_general")
+                && !(**route == Some("tableau") && body.contains("DataUnionOf"))
+                && !(**route == Some("nominals") && body.contains("DataOneOf"))
+        }) {
+            // The value cases split on the value singleton in every context
+            // and take about 30 s on the CB routes, as the pre-existing
+            // `ObjectComplementOf(DataHasValue)` case already did.
+            let answer = classify_within(&text, *route, Duration::from_secs(180));
+            assert_eq!(answer, Answer { unsat: names(&[]), subs: pairs(subs) }, "{body} on {route:?}");
         }
     }
 }

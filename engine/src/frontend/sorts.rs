@@ -90,7 +90,7 @@ fn is_data_range(name: &str) -> bool {
 /// every object node on the complement side, so the concept admits both
 /// sorts and must not receive a `⊑ D` clause.
 fn is_complement_range(name: &str) -> bool {
-    name.starts_with("__dt__c__DataComplementOf(")
+    super::datatypes::is_complement_range(name)
 }
 
 /// The sorts an element carrying a concept, or filling a role position, may
@@ -630,6 +630,30 @@ mod tests {
         assert_eq!(sorts.concept("Q_3"), Sort::Object);
         assert_eq!(sorts.roles["u"], (Sort::Object, Sort::Data));
         assert_eq!(sorts.roles["r"], (Sort::Object, Sort::Object));
+    }
+
+    /// The concept of a `DataComplementOf` range carries an unrelativized
+    /// excluded middle `→ ¬R(x) ∨ R(x)` (from `datatypes`). It must not be
+    /// placed in Δ_D: on an object node the fact then only derives `¬R`.
+    #[test]
+    fn complement_range_concepts_get_no_data_sort_clause() {
+        const NOT_INT: &str = "__dt__c__DataComplementOf(xsd:integer)";
+        const INT: &str = "__dt__integer";
+        let mut tbox = vec![
+            clause([c("Q_0", x()), r("u", x(), y())], [c(NOT_INT, y())]),
+            clause([c("A", x())], [c("Q_0", x())]),
+            clause([c("Q_1", x()), c(VAL, x())], []),
+            fact([c(NOT_INT, x()), c(INT, x())]),
+            clause([c(NOT_INT, x()), c(INT, x())], []),
+            fact([c("__nom__o", Term::Ind("o".into()))]),
+        ];
+        let _ = encode(&mut tbox, &BTreeSet::from(["u".to_string()]));
+        let dx = c(DATA_SORT, x());
+        assert!(tbox.contains(&clause([c(INT, x())], [dx.clone()])));
+        assert!(!tbox.contains(&clause([c(NOT_INT, x())], [dx.clone()])));
+        assert!(tbox.contains(&fact([c(NOT_INT, x()), c(INT, x())])));
+        assert!(!tbox.contains(&fact([c(NOT_INT, x()), c(INT, x()), dx.clone()])));
+        assert!(tbox.contains(&clause([c("A", x()), dx.clone()], [])));
     }
 
     #[test]

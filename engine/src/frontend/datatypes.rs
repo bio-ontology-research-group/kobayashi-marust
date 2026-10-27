@@ -2678,6 +2678,28 @@ pub(crate) fn union_member_names(name: &str) -> Option<Vec<String>> {
         .collect()
 }
 
+/// The internal name of the operand of a `DataComplementOf` range concept:
+/// `__dt__c__DataComplementOf(R)` gives `R`'s own `__dt__` name (a named
+/// datatype key or the canonical text of a complex range). `None` for any
+/// other symbol.
+pub(crate) fn complement_operand_name(name: &str) -> Option<String> {
+    let text = name.strip_prefix("__dt__c__")?;
+    let mut parser = Parser::new(text);
+    let Node::List("DataComplementOf", args) = parser.parse().ok()? else { return None };
+    let [operand] = args.as_slice() else { return None };
+    Some(match operand {
+        Node::Atom(atom) => format!("__dt__{}", datatype_concept_key(atom)),
+        list => format!("__dt__c__{}", super::parse::serialize_node(list)),
+    })
+}
+
+/// Whether `name` is the concept of a `DataComplementOf` range. Its
+/// excluded middle `→ ¬R(x) ∨ R(x)` is emitted unrelativized: on an object
+/// node it only places the node on the complement side (see `sorts`).
+pub(crate) fn is_complement_range(name: &str) -> bool {
+    name.starts_with("__dt__c__DataComplementOf(")
+}
+
 /// `true` when `range` is a `DataUnionOf` of named datatypes and `head`
 /// names every member: then `range(x) -> head` is valid.
 pub(crate) fn bridge_exact_union_cover(range: &str, head: &[&str]) -> bool {
@@ -3015,12 +3037,35 @@ pub fn datatype_relation_clauses_grouped(
     let unions: Vec<(String, Vec<String>)> = names.iter()
         .filter_map(|name| union_member_names(name).map(|members| (name.clone(), members)))
         .collect();
+    // `DataComplementOf(R)`: every data value lies in `R` or in its
+    // complement, so the complement concept `C` gets the excluded middle
+    // `→ C(x) ∨ R(x)` next to the disjointness `C ∧ R → ⊥` the pairwise
+    // relations derive. `R` joins the vocabulary (and `C`'s role groups) so
+    // that its own relations, covers and, for a nested complement, its own
+    // excluded middle are emitted; the operands are closed transitively.
+    let mut complements: Vec<(String, String)> = Vec::new();
+    {
+        let mut pending: Vec<String> = names.iter().cloned().collect();
+        let mut seen: BTreeSet<String> = names.clone();
+        while let Some(name) = pending.pop() {
+            if let Some(operand) = complement_operand_name(&name) {
+                if seen.insert(operand.clone()) {
+                    pending.push(operand.clone());
+                }
+                complements.push((name, operand));
+            }
+        }
+        complements.sort();
+    }
     let mut expanded_names: BTreeSet<String> = BTreeSet::new();
     let mut expanded_groups: Vec<BTreeSet<String>> = Vec::new();
-    if !unions.is_empty() {
+    if !unions.is_empty() || !complements.is_empty() {
         expanded_names = names.clone();
         for (_, members) in &unions {
             expanded_names.extend(members.iter().cloned());
+        }
+        for (_, operand) in &complements {
+            expanded_names.insert(operand.clone());
         }
         if let Some(groups) = groups {
             expanded_groups = groups.iter().map(|group| {
@@ -3030,15 +3075,29 @@ pub fn datatype_relation_clauses_grouped(
                         group.extend(members.iter().cloned());
                     }
                 }
+                // Operands of nested complements join through the chain
+                // `¬¬R`, `¬R`, `R`, so iterate to the closure.
+                loop {
+                    let before = group.len();
+                    for (complement, operand) in &complements {
+                        if group.contains(complement) {
+                            group.insert(operand.clone());
+                        }
+                    }
+                    if group.len() == before {
+                        break;
+                    }
+                }
                 group
             }).collect();
         }
     }
-    let (names, groups): (&BTreeSet<String>, Option<&[BTreeSet<String>]>) = if unions.is_empty() {
-        (names, groups)
-    } else {
-        (&expanded_names, groups.map(|_| expanded_groups.as_slice()))
-    };
+    let (names, groups): (&BTreeSet<String>, Option<&[BTreeSet<String>]>) =
+        if unions.is_empty() && complements.is_empty() {
+            (names, groups)
+        } else {
+            (&expanded_names, groups.map(|_| expanded_groups.as_slice()))
+        };
     // Integral cells. Within one role group, the integral ranges cut the
     // integer line into elementary segments ("cells") on which every range of
     // the group is constant. Each range `A` is covered exactly by its cells:
@@ -3158,6 +3217,10 @@ pub fn datatype_relation_clauses_grouped(
     for (union, members) in &unions {
         out.push(clause([cx(union)], members.iter().map(|member| cx(member)).collect::<Vec<_>>()));
     }
+    // Excluded middle of every complement range (see above).
+    for (complement, operand) in &complements {
+        out.push(clause([], [cx(complement), cx(operand)]));
+    }
     // Integral cell covers (see `integral_cell_covers` above).
     for (range, heads) in &cell_covers {
         out.push(clause([cx(range)], heads.iter().map(|head| cx(head)).collect::<Vec<_>>()));
@@ -3222,6 +3285,48 @@ pub fn datatype_relation_clauses_grouped(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn complement_ranges_get_their_excluded_middle() {
+        use super::*;
+        let names = |list: &[&str]| list.iter().map(|n| n.to_string()).collect::<BTreeSet<String>>();
+        let not_int = "__dt__c__DataComplementOf(xsd:integer)";
+        let int = "__dt__integer";
+        assert_eq!(complement_operand_name(not_int).as_deref(), Some(int));
+        assert_eq!(complement_operand_name(int), None);
+        assert_eq!(complement_operand_name("__dt__c__DataUnionOf(xsd:integer xsd:string)"), None);
+        assert!(is_complement_range(not_int) && !is_complement_range(int));
+        // The operand joins the vocabulary; excluded middle and disjointness.
+        let clauses = datatype_relation_clauses(&names(&[not_int]), 8);
+        assert!(clauses.contains(&clause([], [cx(not_int), cx(int)])));
+        assert!(clauses.contains(&clause([cx(not_int), cx(int)], [])));
+        // Nested complements close transitively: ¬¬int ≡ int.
+        let nn = "__dt__c__DataComplementOf(DataComplementOf(xsd:integer))";
+        let clauses = datatype_relation_clauses(&names(&[nn]), 8);
+        assert!(clauses.contains(&clause([], [cx(nn), cx(not_int)])));
+        assert!(clauses.contains(&clause([], [cx(not_int), cx(int)])));
+        assert!(clauses.contains(&clause([cx(nn)], [cx(int)])));
+        assert!(clauses.contains(&clause([cx(int)], [cx(nn)])));
+        assert!(clauses.contains(&clause([cx(nn), cx(not_int)], [])));
+        // A complex operand keeps its canonical text, and its own cover.
+        let not_one = "__dt__c__DataComplementOf(DataOneOf(\"1\"^^xsd:integer))";
+        let one = "__dt__c__DataOneOf(\"1\"^^xsd:integer)";
+        let value = "__dt__val__\"1\"^^xsd:integer";
+        assert_eq!(complement_operand_name(not_one).as_deref(), Some(one));
+        let clauses = datatype_relation_clauses(&names(&[not_one, value]), 8);
+        assert!(clauses.contains(&clause([], [cx(not_one), cx(one)])));
+        assert!(clauses.contains(&clause([cx(one)], [cx(value)])));
+        assert!(clauses.contains(&clause([cx(not_one), cx(value)], [])));
+        // Role groups: the operand follows the complement into its group, so
+        // the group-local relations (here the value membership) are emitted.
+        let groups = vec![names(&[not_one]), names(&[value])];
+        let grouped = datatype_relation_clauses_grouped(&names(&[not_one, value]), 8, Some(&groups));
+        assert!(grouped.contains(&clause([], [cx(not_one), cx(one)])));
+        assert!(grouped.contains(&clause([cx(not_one), cx(value)], [])));
+        // Vocabularies without a complement are unchanged in shape.
+        let plain = datatype_relation_clauses(&names(&[int, "__dt__string"]), 8);
+        assert!(plain.iter().all(|c| !c.body.is_empty() || c.head.len() != 2));
+    }
+
     #[test]
     fn ieee_facet_ranges_preserve_discrete_bounds_and_partitions() {
         for kind in ["float", "double"] {
