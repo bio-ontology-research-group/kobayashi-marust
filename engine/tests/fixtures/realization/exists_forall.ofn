@@ -1,0 +1,13 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<urn:t:ef>
+Declaration(Class(<urn:t#Dog>)) Declaration(Class(<urn:t#Animal>)) Declaration(Class(<urn:t#DogOwner>)) Declaration(Class(<urn:t#Happy>)) Declaration(Class(<urn:t#Person>))
+Declaration(ObjectProperty(<urn:t#hasPet>)) Declaration(ObjectProperty(<urn:t#hasChild>))
+Declaration(NamedIndividual(<urn:t#a>)) Declaration(NamedIndividual(<urn:t#d>)) Declaration(NamedIndividual(<urn:t#m>)) Declaration(NamedIndividual(<urn:t#c>)) Declaration(NamedIndividual(<urn:t#lonely>))
+SubClassOf(<urn:t#Dog> <urn:t#Animal>)
+EquivalentClasses(<urn:t#DogOwner> ObjectSomeValuesFrom(<urn:t#hasPet> <urn:t#Dog>))
+ObjectPropertyRange(<urn:t#hasChild> <urn:t#Person>)
+ClassAssertion(<urn:t#Dog> <urn:t#d>)
+ObjectPropertyAssertion(<urn:t#hasPet> <urn:t#a> <urn:t#d>)
+ClassAssertion(ObjectAllValuesFrom(<urn:t#hasChild> <urn:t#Happy>) <urn:t#m>)
+ObjectPropertyAssertion(<urn:t#hasChild> <urn:t#m> <urn:t#c>)
+)

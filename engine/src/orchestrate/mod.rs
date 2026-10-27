@@ -25,6 +25,7 @@ mod symbolic_source;
 mod data_source;
 pub(crate) mod public_subjects;
 pub mod race;
+pub mod realize;
 pub mod tmpfile;
 
 use std::collections::{BTreeMap, HashMap, HashSet};

@@ -1,0 +1,10 @@
+Ontology(<urn:t:inc>
+Declaration(Class(<urn:t#A>)) Declaration(Class(<urn:t#B>))
+Declaration(ObjectProperty(<urn:t#r>))
+Declaration(NamedIndividual(<urn:t#x>)) Declaration(NamedIndividual(<urn:t#y>))
+DisjointClasses(<urn:t#A> <urn:t#B>)
+ClassAssertion(<urn:t#A> <urn:t#x>)
+SubClassOf(ObjectSomeValuesFrom(<urn:t#r> <urn:t#A>) <urn:t#B>)
+ObjectPropertyAssertion(<urn:t#r> <urn:t#x> <urn:t#x>)
+ClassAssertion(<urn:t#A> <urn:t#y>)
+)

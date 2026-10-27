@@ -2,6 +2,9 @@
 //!
 //!   `km classify [--lines | --json-edges] <ont.ofn>`  the pure-Rust classify orchestrator
 //!                                      (replacement for `owl_classify.py`)
+//!   `km classify --realize[=all|direct] ...`  also report the entailed types
+//!                                      (`TYPE a C`) and equalities (`SAME a b`)
+//!                                      of named individuals; see docs/REALIZATION.md
 //!   `km explain <ont.ofn> ...`          one source-axiom justification
 //!   `km ofn|elc|engine|tableau`        the worker reasoners
 //!   `km incremental`                   stateful exact EL++/CB/direct-HT session
@@ -56,7 +59,7 @@ fn main() {
         // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
-            eprintln!("usage: km classify [--lines | --json-edges] [--route ROUTE] [--format FORMAT] <ontology>");
+            eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> subclass <SUB> <SUPER>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
@@ -450,6 +453,27 @@ fn cb_to_ht_cmd() {
     }
 }
 
+fn classify_help() {
+    println!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
+    println!();
+    println!("  --lines             tab-separated line output (default: JSON)");
+    println!("  --json-edges        JSON whose subsumptions are graph edges (take their transitive closure)");
+    println!("  --realize[=all]     also report every entailed named type of each named individual");
+    println!("  --realize=direct    also report only the most specific entailed named types");
+    println!("  --route ROUTE       force a reasoning route (see `km routes`)");
+    println!("  --format FORMAT     auto, functional, owlxml, rdfxml or turtle");
+    println!();
+    println!("line output (--lines):");
+    println!("  CONSISTENT 0|1      ontology consistency");
+    println!("  DROPPED N           clauses outside the handled fragment (N > 0: incomplete answer)");
+    println!("  SUB<TAB>C<TAB>D     C is subsumed by D");
+    println!("  UNSAT<TAB>C         C is unsatisfiable");
+    println!("  TYPE<TAB>a<TAB>C    (--realize) O entails C(a); owl:Thing is never listed");
+    println!("  SAME<TAB>a<TAB>b    (--realize) O entails a = b, once per pair with a < b");
+    println!("With --realize the JSON object carries the same rows under \"types\" and \"same\".");
+    println!("An inconsistent ontology reports CONSISTENT 0 and no TYPE or SAME rows.");
+}
+
 fn classify_cmd(rest: &[String]) {
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
@@ -458,10 +482,21 @@ fn classify_cmd(rest: &[String]) {
     let mut graph_edges = std::env::var("KM_JSON_GRAPH_EDGES").is_ok_and(|v| v == "1");
     let mut route: Option<&str> = None;
     let mut ontology: Option<&str> = None;
+    let mut realize: Option<orchestrate::realize::TypeMode> = None;
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
+            "-h" | "--help" => {
+                classify_help();
+                exit(0);
+            }
             "--lines" => lines = true,
+            "--realize" | "--realize=all" => realize = Some(orchestrate::realize::TypeMode::All),
+            "--realize=direct" => realize = Some(orchestrate::realize::TypeMode::Direct),
+            value if value.starts_with("--realize=") => {
+                eprintln!("--realize takes all or direct, got {:?}", value.trim_start_matches("--realize="));
+                exit(2);
+            }
             "--json-edges" => graph_edges = true,
             "--route" => {
                 index += 1;
@@ -502,7 +537,7 @@ fn classify_cmd(rest: &[String]) {
         exit(2);
     }
     let Some(ontology) = ontology else {
-        eprintln!("usage: km classify [--lines | --json-edges] [--route ROUTE] [--format FORMAT] <ontology>");
+        eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
         exit(2);
     };
     if let Some(requested) = route {
@@ -524,6 +559,38 @@ fn classify_cmd(rest: &[String]) {
         exit(2);
     }
     let cfg = Config::from_env();
+    if let Some(mode) = realize {
+        if graph_edges {
+            eprintln!("--realize cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
+            exit(2);
+        }
+        match orchestrate::realize::realize(&cfg, Path::new(ontology), mode) {
+            Ok(res) => {
+                use std::io::{BufWriter, Write};
+                let stdout = std::io::stdout();
+                let mut w = BufWriter::new(stdout.lock());
+                if lines {
+                    let _ = writeln!(w, "{}", res.to_lines());
+                } else {
+                    if let Err(error) = res.write_json(&mut w) {
+                        eprintln!("classification serialise error: {error}");
+                        exit(1);
+                    }
+                    let _ = w.write_all(b"\n");
+                }
+                let _ = w.flush();
+                return;
+            }
+            Err(OrchestrateError::OutOfFragment(e)) => {
+                eprintln!("unsupported: {e}");
+                exit(3);
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                exit(e.exit_code());
+            }
+        }
+    }
     if !lines {
         match orchestrate::classify_json(&cfg, Path::new(ontology)) {
             Ok(res) => {

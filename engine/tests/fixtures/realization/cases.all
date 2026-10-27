@@ -1,0 +1,10 @@
+TYPE	urn:t#apple	urn:t#Everything
+TYPE	urn:t#apple	urn:t#RedThing
+TYPE	urn:t#green	urn:t#Everything
+TYPE	urn:t#green	urn:t#Primary
+TYPE	urn:t#only	urn:t#Everything
+TYPE	urn:t#red	urn:t#Everything
+TYPE	urn:t#red	urn:t#Primary
+TYPE	urn:t#x	urn:t#A
+TYPE	urn:t#x	urn:t#D
+TYPE	urn:t#x	urn:t#Everything
