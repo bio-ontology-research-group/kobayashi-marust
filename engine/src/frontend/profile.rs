@@ -217,6 +217,13 @@ pub struct ClauseStatistics {
     /// Distinct normalized named-individual term names.
     #[serde(default)]
     pub individual_term_symbols: u64,
+    /// Distinct concepts with an at-most-one clause
+    /// (`json_io::singleton_clause_concept`). The nominal CB worker interns
+    /// one fresh individual for each, so the `f(o)` layout must cover them.
+    /// Computed for every frontend run, also when the remaining clause
+    /// statistics are not requested.
+    #[serde(default)]
+    pub singleton_concepts: u64,
     pub equality_atoms: u64,
     pub role_chain_clauses: u64,
     pub transitivity_clauses: u64,
@@ -2205,6 +2212,18 @@ fn observe_term<'a>(
     }
 }
 
+/// Number of distinct concepts with an at-most-one clause. The shape test
+/// rejects every other clause on its body and head lengths, so this pass is
+/// cheap even on the largest inputs.
+pub fn singleton_concepts(clauses: &[crate::json_io::JClause]) -> u64 {
+    clauses
+        .iter()
+        .filter(|clause| clause.body.len() == 2 && clause.head.len() == 1)
+        .filter_map(crate::json_io::singleton_clause_concept)
+        .collect::<HashSet<&str>>()
+        .len() as u64
+}
+
 /// Compute normalized-clause statistics in one borrowed pass over the final
 /// clause vector.  No clause or symbol strings are cloned.
 pub fn clause_statistics(clauses: &[crate::json_io::JClause]) -> ClauseStatistics {
@@ -2314,6 +2333,7 @@ pub fn clause_statistics(clauses: &[crate::json_io::JClause]) -> ClauseStatistic
     out.role_symbols = roles.len() as u64;
     out.function_term_symbols = functions.len() as u64;
     out.individual_term_symbols = individuals.len() as u64;
+    out.singleton_concepts = singleton_concepts(clauses);
     out.complementary_definers = top_pairs.intersection(&bottom_pairs).count() as u64;
     out
 }

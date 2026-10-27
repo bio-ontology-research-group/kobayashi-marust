@@ -46,12 +46,20 @@ struct Answer {
 /// Classify `text` with `km classify --lines`, killing the child (by its own
 /// handle) when it exceeds `BOUND`.
 fn classify(text: &str) -> (Answer, Duration) {
+    classify_on(text, None)
+}
+
+/// As [`classify`], on the named `KM_ROUTE` procedure when one is given.
+fn classify_on(text: &str, route: Option<&str>) -> (Answer, Duration) {
     let fixture = Fixture::new(text);
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("KM_") {
             command.env_remove(key);
         }
+    }
+    if let Some(route) = route {
+        command.env("KM_ROUTE", route);
     }
     command
         .args(["classify", "--lines"])
@@ -73,7 +81,7 @@ fn classify(text: &str) -> (Answer, Duration) {
         if started.elapsed() > BOUND {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("km classify exceeded {BOUND:?}");
+            panic!("km classify exceeded {BOUND:?} (route {route:?})");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -252,16 +260,127 @@ fn universal_role_restrictions_are_complete() {
 }
 
 /// `T1 ≡ ∃U.F` next to nominal and data-value definitions. The expected
-/// answer is `F ⊑ T1` only. This still does not terminate: the hub encoding
-/// is exact, but the certified bridge defers on its global `⊤ ⊑ ∃S.{g}`
-/// axiom when data properties occur (blank-data-node certificate), and the
-/// nominal CB fallback diverges on `S3`/`S6` even without the universal role.
+/// answer is `F ⊑ T1` only. This still does not terminate on the nominal CB
+/// routes. The data-value singleton part is fixed (see
+/// `data_value_singleton_next_to_nominal_successors`); what remains is the
+/// ground context's seeding with the x-form ontology facts, which multiplies
+/// the `⊤ ⊑ ∃link.{hub}` hub encoding and the `⊤ ⊑ ¬{1} ⊔ {1}` excluded
+/// middle over every ground term. The object-property analogue
+/// (`ObjectHasValue` for `DataHasValue`) diverges the same way. Changing that
+/// seeding changes what the calculus derives and needs Lean re-certification.
 #[test]
-#[ignore = "open: nominal CB fallback diverges on the S3/S6 part (independent of owl:topObjectProperty)"]
+#[ignore = "open: ground-context x-form fact seeding blows up with the universal-role hub (calculus change pending)"]
 fn nominal_top_role_reproducer() {
     let (answer, elapsed) = classify(NOMINAL_TOP_ROLE);
     assert!(elapsed < BOUND);
     assert!(answer.consistent);
     assert!(answer.unsat.is_empty());
     assert_eq!(answer.subs, pairs(&[("urn:q#F", "urn:q#T1")]));
+}
+
+/// Every route that a nominal input can take. `auto` and the three
+/// portfolios run the nominal CB calculus as their exact fallback.
+const NOMINAL_ROUTES: [Option<&str>; 6] = [
+    None,
+    Some("nominals"),
+    Some("certified_nominals"),
+    Some("nominal_ni_abox"),
+    Some("certified_card_proxy_abox"),
+    Some("default"),
+];
+
+fn data_value_case(body: &str) -> String {
+    format!(
+        "Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(<http://x/o>\n\
+         Declaration(ObjectProperty(<http://x/r>)) Declaration(ObjectProperty(<http://x/p>))\n\
+         Declaration(DataProperty(<http://x/u>))\n\
+         Declaration(NamedIndividual(<http://x/a>)) Declaration(NamedIndividual(<urn:q#c>))\n\
+         Declaration(NamedIndividual(<urn:q#d>)) Declaration(NamedIndividual(<urn:q#e>))\n\
+         Declaration(Class(<urn:q#B>)) Declaration(Class(<urn:q#S3>)) Declaration(Class(<urn:q#S6>))\n\
+         Declaration(Class(<urn:q#X>))\n{body}\n)\n"
+    )
+}
+
+const NOT_VALUE_ONE: &str =
+    "SubClassOf(ObjectComplementOf(DataHasValue(<http://x/u> \"1\"^^xsd:integer)) <urn:q#B>)";
+const S6_BOTH_WAYS: &str = "EquivalentClasses(<urn:q#S6> ObjectIntersectionOf(ObjectOneOf(<urn:q#c>) \
+    ObjectSomeValuesFrom(<http://x/r> ObjectOneOf(<urn:q#d>)) \
+    ObjectSomeValuesFrom(ObjectInverseOf(<http://x/r>) ObjectOneOf(<urn:q#d>))))";
+
+/// `¬(u value 1) ⊑ B` with `S6 ≡ {c} ⊓ ∃r.{d} ⊓ ∃r⁻.{d}` (the S3/S6 part of
+/// the Protégé bug-1 reproducer). The frontend encodes the value `1` by the
+/// at-most-one clause `val(z₁) ∧ val(z₂) → z₁ ≈ z₂`, whose unguarded
+/// variables the nominal CB Hyper rule bound to every pair of terms in the
+/// ground context; it never finished. The nominal worker now reads that clause
+/// as the conservative `val(x) → x ≈ o_val` over a fresh individual.
+///
+/// Hand derivation (OWL 2 Direct Semantics): every case is consistent (take
+/// `c`, `d` distinct with `r(c,d)`, `r(d,c)`, `a` anywhere, no `u` values, so
+/// `B = ⊤`); no named class is unsatisfiable or below another: `S6` and `S3`
+/// are singletons that a model may put inside or outside `B` (give `c` the
+/// value `1` or not) and that a model may keep apart from each other, and
+/// `B` is not below the singletons in a model with three or more elements.
+/// `X ⊑ ≥2 u.{1}` is unsatisfiable: two distinct `u`-values that both equal
+/// `1` cannot exist.
+#[test]
+fn data_value_singleton_next_to_nominal_successors() {
+    let renamed = data_value_case(
+        "Declaration(ObjectProperty(<http://y/link2>)) Declaration(DataProperty(<http://y/score>)) \
+         Declaration(NamedIndividual(<urn:z#k>)) Declaration(NamedIndividual(<urn:z#m>)) \
+         Declaration(Class(<urn:z#Cls>)) Declaration(Class(<urn:z#Def>)) \
+         SubClassOf(ObjectComplementOf(DataHasValue(<http://y/score> \"7\"^^xsd:integer)) <urn:z#Cls>) \
+         EquivalentClasses(<urn:z#Def> ObjectIntersectionOf(ObjectOneOf(<urn:z#k>) \
+         ObjectSomeValuesFrom(<http://y/link2> ObjectOneOf(<urn:z#m>)) \
+         ObjectSomeValuesFrom(ObjectInverseOf(<http://y/link2>) ObjectOneOf(<urn:z#m>))))",
+    );
+    let reordered = data_value_case(
+        "EquivalentClasses(<urn:q#S6> ObjectIntersectionOf(\
+         ObjectSomeValuesFrom(ObjectInverseOf(<http://x/r>) ObjectOneOf(<urn:q#d>)) \
+         ObjectSomeValuesFrom(<http://x/r> ObjectOneOf(<urn:q#d>)) ObjectOneOf(<urn:q#c>))) \
+         SubClassOf(ObjectComplementOf(DataHasValue(<http://x/u> \"1\"^^xsd:integer)) <urn:q#B>)",
+    );
+    let cases: Vec<(&str, String, &[&str])> = vec![
+        ("minimal", data_value_case(&format!("{NOT_VALUE_ONE} {S6_BOTH_WAYS}")), &[]),
+        ("renamed", renamed, &[]),
+        ("reordered", reordered, &[]),
+        (
+            "forward successor only",
+            data_value_case(&format!(
+                "{NOT_VALUE_ONE} EquivalentClasses(<urn:q#S6> ObjectSomeValuesFrom(<http://x/r> ObjectOneOf(<urn:q#d>)))"
+            )),
+            &[],
+        ),
+        (
+            "object value instead of data value",
+            data_value_case(&format!(
+                "SubClassOf(ObjectComplementOf(ObjectHasValue(<http://x/p> <urn:q#e>)) <urn:q#B>) {S6_BOTH_WAYS}"
+            )),
+            &[],
+        ),
+        (
+            "S3 and S6",
+            data_value_case(&format!(
+                "EquivalentClasses(<urn:q#S3> ObjectIntersectionOf(ObjectOneOf(<http://x/a>) \
+                 ObjectComplementOf(DataHasValue(<http://x/u> \"1\"^^xsd:integer)))) {S6_BOTH_WAYS}"
+            )),
+            &[],
+        ),
+        (
+            "value counting stays exact",
+            data_value_case(&format!(
+                "{NOT_VALUE_ONE} {S6_BOTH_WAYS} \
+                 SubClassOf(<urn:q#X> DataMinCardinality(2 <http://x/u> DataOneOf(\"1\"^^xsd:integer)))"
+            )),
+            &["urn:q#X"],
+        ),
+    ];
+    for (name, text, unsat) in &cases {
+        for route in NOMINAL_ROUTES {
+            let (answer, elapsed) = classify_on(text, route);
+            assert!(elapsed < BOUND, "{name} on {route:?}");
+            assert!(answer.consistent, "{name} on {route:?}");
+            assert_eq!(answer.unsat, names(unsat), "{name} on {route:?}");
+            assert!(answer.subs.is_empty(), "{name} on {route:?}: {:?}", answer.subs);
+        }
+    }
 }

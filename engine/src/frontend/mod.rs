@@ -1878,6 +1878,8 @@ fn ofn_to_clauses_representation(
     // classification carries zeroed clause statistics in its meta.
     if std::env::var_os("KM_PROFILE_CLAUSES").is_some() {
         profile.clauses = profile::clause_statistics(&jclauses);
+    } else {
+        profile.clauses.singleton_concepts = profile::singleton_concepts(&jclauses);
     }
 
     let rbox = rbox.iter().map(rbox::to_row).collect();
