@@ -247,3 +247,46 @@ fn prefixed_and_rdfxml_individuals_use_the_classification_spelling() {
         .collect()
     );
 }
+
+fn realize_source(name: &str, source: &str) -> (String, String) {
+    let path = std::env::temp_dir().join(format!("km-realize-{name}-{}.ofn", std::process::id()));
+    std::fs::write(&path, source).unwrap();
+    let plain = stdout(&km(&path, &["--lines"]));
+    let realized = stdout(&km(&path, &["--lines", "--realize"]));
+    std::fs::remove_file(&path).unwrap();
+    (plain, realized)
+}
+
+/// One individual written as `:a` and as its full IRI is one individual: one
+/// TYPE row, no SAME row. Names follow classify's spelling rule (a prefixed
+/// name becomes the full IRI where both spellings occur).
+#[test]
+fn mixed_spellings_of_one_individual_are_one_individual() {
+    let (plain, realized) = realize_source("mixed", "Prefix(:=<http://x/o#>)\nOntology(<http://x/o>\n\
+        Declaration(Class(:C)) Declaration(Class(:D)) Declaration(NamedIndividual(:a))\n\
+        SubClassOf(:C :D)\nClassAssertion(:C <http://x/o#a>)\nClassAssertion(:C :a)\n)\n");
+    let sub = plain.lines().find(|line| line.starts_with("SUB\t")).unwrap();
+    let fields: Vec<&str> = sub.split('\t').collect();
+    assert_eq!(
+        realization_rows(&realized),
+        [format!("TYPE\thttp://x/o#a\t{}", fields[1]), format!("TYPE\thttp://x/o#a\t{}", fields[2])]
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(taxonomy_lines(&realized), taxonomy_lines(&plain));
+}
+
+#[test]
+fn mixed_spelling_same_individual_reports_one_pair() {
+    let (plain, realized) = realize_source("mixed-same", "Prefix(:=<http://x/o#>)\nOntology(<http://x/o>\n\
+        Declaration(Class(<http://x/o#C>)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\n\
+        SameIndividual(:a <http://x/o#b>)\nClassAssertion(:C :b)\n)\n");
+    assert_eq!(
+        realization_rows(&realized),
+        ["TYPE\t:a\thttp://x/o#C", "TYPE\thttp://x/o#b\thttp://x/o#C", "SAME\t:a\thttp://x/o#b"]
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    );
+    assert_eq!(taxonomy_lines(&realized), taxonomy_lines(&plain));
+}

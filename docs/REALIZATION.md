@@ -21,8 +21,13 @@ as `km classify --lines` prints them, followed by:
 | `SAME<TAB>a<TAB>b` | `O ⊨ a = b`, for `a ≠ b`; each unordered pair once, with `a < b` |
 
 `TYPE` rows are sorted by individual, then class; `SAME` rows are sorted.
-Individuals and classes use the same spelling as the classification rows
-(the full IRI without angle brackets for IRIs written in full).
+Individuals and classes use the same spelling as the classification rows.
+Where a source writes one entity both as a prefixed name and as its full IRI,
+KM canonicalizes it to the full IRI (printed without angle brackets); it is
+one individual with one set of rows. An IRI written only as a prefixed name
+keeps that spelling. A source that writes one individual with two different
+prefixes and never in full is declined (exit code 3) rather than reported
+under two names.
 
 JSON output (no `--lines`) is the ordinary classification object with two more
 keys: `"types"` (a list of `[individual, class]` pairs) and `"same"` (a list

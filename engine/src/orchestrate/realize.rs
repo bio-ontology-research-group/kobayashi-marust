@@ -165,6 +165,61 @@ fn individuals_in<'a>(node: &Node<'a>, out: &mut Vec<&'a str>) {
     }
 }
 
+/// The `Prefix(p:=<ns>)` bindings of an OFN document.
+fn prefix_bindings(text: &str) -> Result<BTreeMap<String, String>, OrchestrateError> {
+    let mut parser = sexpr::Parser::new(text);
+    let mut prefixes = BTreeMap::new();
+    while parser.peek() == Some("Prefix") {
+        let node = parser.parse().map_err(OrchestrateError::InvalidOntology)?;
+        let Node::List(_, args) = node else { break };
+        let parts: Option<Vec<&str>> = args.iter().map(Node::as_atom).collect();
+        let Some(definition) = parts.map(|p| p.concat()) else { continue };
+        if let Some((prefix, value)) = definition.split_once(":=") {
+            if let Some(iri) = value.strip_prefix('<').and_then(|v| v.strip_suffix('>')) {
+                prefixes.insert(prefix.to_string(), iri.to_string());
+            }
+        }
+    }
+    Ok(prefixes)
+}
+
+/// The source after the classifier's own spelling canonicalization
+/// (`builtin_aliases::canonicalize`, which rewrites a prefixed name to the
+/// full IRI wherever both spellings of one entity occur), and its named
+/// individuals, one per IRI, in the spelling the classification uses.
+///
+/// Probes are written in that canonical spelling, so the extended document
+/// canonicalizes to itself and each probe names exactly the entity the
+/// classifier sees. Two prefixed spellings of one IRI without its full
+/// spelling are not identified by the classifier; realization declines them
+/// rather than report one individual under two names.
+fn canonical_individuals(text: &str) -> Result<(String, Vec<String>), OrchestrateError> {
+    let canonical = crate::frontend::builtin_aliases::canonicalize(text)
+        .map_err(OrchestrateError::from_conformance)?
+        .into_owned();
+    let prefixes = prefix_bindings(&canonical)?;
+    let expand = |token: &str| -> String {
+        if let Some(iri) = token.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
+            return iri.to_string();
+        }
+        token
+            .split_once(':')
+            .and_then(|(prefix, local)| prefixes.get(prefix).map(|ns| format!("{ns}{local}")))
+            .unwrap_or_else(|| token.to_string())
+    };
+    let individuals = source_individuals(&canonical)?;
+    let mut spelling_of: BTreeMap<String, &str> = BTreeMap::new();
+    for token in &individuals {
+        if let Some(other) = spelling_of.insert(expand(token), token) {
+            return Err(OrchestrateError::OutOfFragment(format!(
+                "realization: individual {} is spelled both {other} and {token}",
+                expand(token)
+            )));
+        }
+    }
+    Ok((canonical, individuals))
+}
+
 /// The public name of a source token, as the classification output spells
 /// class names: the IRI without its angle brackets, otherwise the token.
 fn public_name(token: &str) -> String {
@@ -326,7 +381,7 @@ pub fn realize(cfg: &Config, ont: &Path, mode: TypeMode) -> Result<Realization, 
     super::validate_user_input(ont)?;
     let prepared = super::input::prepare(ont)?;
     let text = std::fs::read_to_string(prepared.path())?;
-    let individuals = source_individuals(&text)?;
+    let (text, individuals) = canonical_individuals(&text)?;
     if individuals.is_empty() {
         let classification = super::classify_with_evidence(cfg, ont)?.classification;
         return Ok(Realization { classification, types: Vec::new(), same: Vec::new() });
@@ -414,6 +469,27 @@ mod tests {
         assert!(extended.starts_with("Ontology(<urn:o> ClassAssertion(<urn:C> <urn:a>)\n"));
         assert!(extended.contains("EquivalentClasses(<http://km.invalid/realize#individual0> ObjectOneOf(<urn:a>))\n)"));
         assert_eq!(source_individuals(&extended).unwrap(), ["<urn:a>"]);
+    }
+
+    #[test]
+    fn mixed_spellings_of_one_individual_yield_one_canonical_individual() {
+        let text = "Prefix(:=<http://x/o#>)\nOntology(<http://x/o>\n\
+            Declaration(Class(:C)) Declaration(NamedIndividual(:a))\n\
+            ClassAssertion(:C <http://x/o#a>)\nClassAssertion(:C :a)\n\
+            SameIndividual(:b <http://x/o#c>) ClassAssertion(:C :c))";
+        let (canonical, individuals) = canonical_individuals(text).unwrap();
+        assert_eq!(individuals, ["<http://x/o#a>", ":b", "<http://x/o#c>"]);
+        assert!(!canonical.contains(" :a") && !canonical.contains("(:a"));
+        let (extended, probes) = probe_source(&canonical, &individuals).unwrap();
+        assert_eq!(probes[0].1, "http://x/o#a");
+        // The probe-extended document is its own canonical form.
+        assert_eq!(crate::frontend::builtin_aliases::canonicalize(&extended).unwrap(), extended);
+    }
+
+    #[test]
+    fn two_prefixed_spellings_of_one_individual_are_declined() {
+        let text = "Prefix(p:=<http://x/o#>)\nPrefix(q:=<http://x/o#>)\nOntology(ClassAssertion(p:C p:a) ClassAssertion(p:C q:a))";
+        assert!(matches!(canonical_individuals(text), Err(OrchestrateError::OutOfFragment(_))));
     }
 
     #[test]
