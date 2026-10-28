@@ -3665,10 +3665,11 @@ fn partial_absorption_trigger(
         return *cached;
     }
     let (concept, negated) = literal;
-    let (op_code, role, operands) = {
+    let (op_code, parameter, role, operands) = {
         let c = b.ctx.ontology_arenas().concept(concept);
         (
             c.get_operator_code(),
+            c.get_parameter(),
             c.get_role(),
             c.get_operand_list().to_vec(),
         )
@@ -3716,9 +3717,19 @@ fn partial_absorption_trigger(
                 complexity,
             })
         }
-    } else if (!negated && matches!(op_code, op::CCSOME | op::CCSELF | op::CCATLEAST))
+    } else if (!negated && matches!(op_code, op::CCSOME | op::CCSELF))
+        || (!negated && op_code == op::CCATLEAST && parameter >= 1)
         || (negated && matches!(op_code, op::CCALL | op::CCATMOST))
     {
+        // A partial trigger must be a NECESSARY condition: an R-edge (with a
+        // triggered filler) exists on every instance of the literal. That
+        // holds for `>=n R.C` only when n >= 1; `>=0 R.C` is TOP and has
+        // no trigger. Konclude enforces this through
+        // `isConceptPartialImplicationTriggerable` (`CCATLEAST && parm >= 1`,
+        // cpp 3949), which gates every call of `getPartialTriggersForConcept`;
+        // the port has no separate gate, so the bound lives here. Without it
+        // `SubClassOf(>=0 s.C, C)` was gated on an s-edge and `TOP <= C` was
+        // lost (missed inconsistencies, generator seeds 44 and 161).
         let &inverse = role_inverses.get(&role)?;
         let mut filler_triggers = Vec::new();
         for operand in operands {
